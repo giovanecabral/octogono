@@ -79,7 +79,9 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   só vale depois de confirmar que o deploy aconteceu — antes disso é medição
   da versão anterior, não da que você acabou de escrever. **O deploy é do
   usuário, não do agente** — avise quando uma mudança em `api/ai.js` precisar
-  de deploy pra ser testável, não rode `vercel --prod` sozinho.
+  de deploy pra ser testável, não rode `vercel --prod` sozinho. Comando exato,
+  se for rodar: `vercel --prod --scope giovanecpiresg-4823s-projects` — sem o
+  `--scope` dá "Not authorized", o projeto está sob um time.
 - **A semente controla tudo que é sorteado.** Qualquer mudança que altere o
   consumo de `rng` quebra os links de desafio já compartilhados. Rode
   `node testar.js desafio` depois de mexer em draft ou seleção de adversário.
