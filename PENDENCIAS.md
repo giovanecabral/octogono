@@ -52,6 +52,15 @@ alguma vez", não "ainda é campeão no fim". Precisa medir os dois números
 (antes e depois) pra saber se essa mudança moveu o placar de verdade ou só
 corrigiu o texto.
 
+**Achado jogando, depois desta medição ter sido escrita: cinturão fácil
+demais.** Chegou ao título com o joelho lesionado — carreira que deveria
+estar carregando uma penalidade de verdade (ver item de lesão diluída pelo
+treino, "Já feito" no fim) ainda assim alcançou o topo. Suspeita: mesma causa
+raiz do item 4 (efeito do treino) e do item 7 (meio da tabela não separa) —
+a escada de adversários se auto-compensando pode estar apagando o custo de
+qualquer penalidade, lesão incluída. Esta medição (%) é o que decide se a
+suspeita procede; não redecidir de olho antes dela.
+
 **Pronto quando:** número medido em ≥400 carreiras, comparado ao
 comportamento pré-conserto, registrado aqui ou no `LEIA-ME.md`.
 
@@ -110,6 +119,19 @@ mensurável no meio, sem quebrar a calibração do motor.
 
 ---
 
+## 8. Portunhol nos dilemas — baixa prioridade, fica para o fim
+
+Achado jogando: saiu "o promoter tá gritando pro fight semana que vem" e
+"escondendo do doctor" — inglês solto no meio de uma voz que é gíria de
+lutador brasileiro. É o prompt do `dilema` (a cena, não o julgamento) —
+`julgar` não tem esse sintoma nas medições feitas até aqui.
+
+**Pronto quando:** amostra de desfechos/cenas reais não mostra mistura de
+inglês solto (não é bug urgente, é polimento — cortar na frente de itens que
+mudam o resultado da carreira seria errado).
+
+---
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):
@@ -142,6 +164,20 @@ normal depois, pra confirmar que continua no ~69º percentil.
 
 ## Já feito, não refazer
 
+- **Conteúdo inseguro no dilema.** Texto do jogador filtrado (`conteudoInseguro()`)
+  antes de sequer chamar `julgar` — mais barato, não depende da IA obedecer.
+  Desfecho da IA filtrado de novo do outro lado, como rede. Se disparar em
+  qualquer ponto, o `j` inteiro é descartado, não só o texto (achado real: a
+  IA tinha aplicado lesão permanente junto com narração de automutilação).
+  Prompt (`api/ai.js`) é o freio principal — regex local é rede, deliberadamente
+  magra, porque ameaça vaga não dá pra distinguir de hype de MMA sem contexto
+  ("vou fazer ele sofrer" muda de sentido conforme o alvo). Duas rodadas de
+  medição contra a API real: 1ª achou ameaça vaga virando lesão de verdade e
+  um vazamento de "existe filtro" no desfecho; 2ª (depois do reforço) fechou
+  os dois — 7/7 inseguras neutras, 4/4 controles de trash talk esportivo
+  continuam passando, 40/40 benignas nas duas rodadas. `node testar.js
+  conteudo` cobre offline. Ver `LEIA-ME.md`, seção "Conteúdo inseguro no
+  dilema", pelo relato completo.
 - **Lesão visível, v1 (dilema).** `st.eventoMod` combina multiplicativo com
   qualquer outro efeito no mesmo atributo; severidade/duração vêm de tabela
   medida no jogo (temporária -50%/8 lutas ~0,7-0,9 vitórias; permanente
