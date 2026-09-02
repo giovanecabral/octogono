@@ -73,6 +73,13 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **A IA nunca é dependência.** Se a API cair, o jogo cai em moldes locais.
   Nenhum número que a IA devolve é aceito sem trava (`lim()`).
 - **A chave do OpenRouter mora só na Vercel.** Nunca no arquivo.
+- **`api/ai.js` local não é o que está no ar.** É função serverless da Vercel
+  — editar o arquivo local não muda nada em produção até alguém rodar o
+  deploy. Medição contra a API real (`https://draft-ufc.vercel.app/api/ai`)
+  só vale depois de confirmar que o deploy aconteceu — antes disso é medição
+  da versão anterior, não da que você acabou de escrever. **O deploy é do
+  usuário, não do agente** — avise quando uma mudança em `api/ai.js` precisar
+  de deploy pra ser testável, não rode `vercel --prod` sozinho.
 - **A semente controla tudo que é sorteado.** Qualquer mudança que altere o
   consumo de `rng` quebra os links de desafio já compartilhados. Rode
   `node testar.js desafio` depois de mexer em draft ou seleção de adversário.

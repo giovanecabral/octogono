@@ -76,45 +76,13 @@ Tipo de situação para gerar desta vez: ${d.seed}`,
     system: `${VOZ}
 Você julga o que um lutador de MMA decidiu fazer numa situação e narra o desfecho.
 Responda SOMENTE com JSON, sem markdown:
-{"houveLesao":true|false,
- "lesao":{"permanente":true|false,"atributo":"slpm"|"strDef"|"durability"|"tdDef"|"subAvg"|"kdAvg","regiao":"3 a 5 palavras, ex. 'joelho travado'"}|null,
- "evitouLesao":true|false,
- "desfecho":"2 a 4 frases contando o que aconteceu",
+{"desfecho":"2 a 4 frases contando o que aconteceu",
  "seguidores":número entre -0.35 e 0.60,
  "fa":número entre -2.5 e 2.5,
  "atributo":"slpm"|"strDef"|"durability"|"tdDef"|"subAvg"|"kdAvg"|"nenhum",
- "efeito":número entre 0.90 e 1.10}
-
-Decida "houveLesao" PRIMEIRO, antes de qualquer outro campo. Os dois blocos
-abaixo são MUTUAMENTE EXCLUSIVOS — nunca preencha os dois:
-- houveLesao=true → "lesao" é OBRIGATÓRIO (nunca null), e "atributo"/"efeito"
-  ficam "nenhum"/1.
-- houveLesao=false → "lesao" é sempre null, e "atributo"/"efeito" seguem o
-  julgamento normal, como sempre.
-
-A GRANDE MAIORIA das cenas NÃO é sobre lesão — é houveLesao=false. Patrocínio,
-imprensa, treinador, família, dinheiro, adversário provocando, redes sociais,
-contrato: nada disso é lesão, mesmo que a cena mencione perigo ou cansaço de
-passagem. Exemplo de houveLesao=false: cena sobre patrocinador oferecendo
-dinheiro pra estampar marca no calção — nenhum risco físico, é decisão de
-carreira, "atributo"/"efeito" seguem normais.
-
-Só marque houveLesao=true quando a decisão do jogador RESULTOU numa lesão
-física real (osso, articulação, ligamento) que continua prejudicando ele
-depois deste dilema — não pra machucado leve que passa em dias, nem se ele
-evitou o risco (aí é "evitouLesao", não "houveLesao"). Exemplo de
-houveLesao=true: cena sobre dor no joelho, jogador decide esconder do médico e
-lutar assim mesmo. "permanente" é true só quando a decisão foi claramente por
-algo que deixa sequela (recusar operar, ignorar recomendação médica grave); do
-contrário false. Quando houveLesao=true, a MAGNITUDE do efeito não é sua — o
-jogo decide isso sozinho a partir de uma tabela medida; não tente fazer
-"atributo"/"efeito" concordar com a gravidade da lesão.
-
-"evitouLesao" é true quando a cena envolvia risco físico real e a decisão do
-jogador foi evitá-lo (a lesão não aconteceu por causa disso — logo houveLesao
-é false nesse caso); false em qualquer outro caso, inclusive quando não havia
-risco físico na cena.
-
+ "efeito":número entre 0.90 e 1.10,
+ "lesao":{"permanente":true|false,"atributo":"slpm"|"strDef"|"durability"|"tdDef"|"subAvg"|"kdAvg","regiao":"3 a 5 palavras, ex. 'joelho travado'"}|null,
+ "evitouLesao":true|false}
 "seguidores" é variação relativa. Seja severo quando a decisão for burra e
 generoso quando for corajosa ou esperta. Decisão morna dá números perto de zero.
 Se a decisão do jogador foi recusar um risco físico — não lutar machucado, não
@@ -122,6 +90,17 @@ arriscar o corpo — isso é PRUDENTE, não covardia: não é "decisão burra". 
 assim NÃO é neutra: fã de MMA valoriza quem arrisca o corpo, então isso ainda
 custa fama e prestígio de verdade, números claramente negativos, não perto de
 zero.
+"lesao" só é preenchido quando a decisão do jogador RESULTOU numa lesão física
+real que vai continuar prejudicando ele depois deste dilema — não é pra
+machucado leve que passa em dias, nem se ele evitou a lesão. "permanente" é
+true só quando a decisão foi claramente por algo que deixa sequela (recusar
+operar, ignorar recomendação médica grave); do contrário false. Quando "lesao"
+não é null, a MAGNITUDE do efeito não é sua — o jogo decide isso sozinho a
+partir de uma tabela medida; não tente fazer "atributo"/"efeito" concordar com
+a gravidade da lesão, deixe "atributo":"nenhum","efeito":1 nesse caso.
+"evitouLesao" é true quando a cena envolvia risco físico real e a decisão do
+jogador foi evitá-lo (a lesão não aconteceu por causa disso); false em
+qualquer outro caso, inclusive quando não havia risco físico na cena.
 
 O "desfecho" é sobre a vida FORA do octógono. NUNCA afirme o resultado de uma
 luta — nocaute, finalização, decisão, quem venceu, em que round — isso quem
