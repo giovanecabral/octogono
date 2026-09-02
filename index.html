@@ -1,0 +1,3467 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha do Lutador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Preto com azul de arena. Sem gradiente, sem brilho, sem canto arredondado:
+     é isso que separa "escuro" de "escuro gerado por IA". O acento é o vermelho
+     de sangue seco do esporte, usado com parcimônia. */
+  --bg:#0A0D13;
+  --panel:#111722;
+  --panel2:#161E2B;
+  --line:#222C3C;
+  --line2:#33415A;
+  --ink:#E6EBF2;
+  --ink2:#AAB6C6;
+  --faded:#6B7A90;
+  --stamp:#C0392B;
+  --win:#4E9A62;
+  --gold:#B9932F;
+  /* nomes antigos mantidos para não quebrar regras existentes */
+  --stock:#0A0D13;
+  --stock-2:#111722;
+  --rule:#222C3C;
+  --loss:#C0392B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--stock);
+  color:var(--ink);
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    repeating-linear-gradient(0deg,rgba(0,0,0,.014) 0 1px,transparent 1px 3px);
+}
+/* A carreira tem três áreas lado a lado (ficha, narração, celular). Em 940px
+   elas se esmagavam e a narração sobrava com ~300px. */
+.wrap{max-width:1260px;margin:0 auto;padding:24px 18px 80px}
+
+/* ---------- cabeçalho da ficha ---------- */
+.doc-head{border-top:3px solid var(--ink);border-bottom:1px solid var(--ink);
+  padding:10px 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.doc-head h1{font-family:Oswald,Impact,sans-serif;font-weight:700;font-size:26px;
+  letter-spacing:.06em;text-transform:uppercase;margin:0}
+.doc-head .meta{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faded)}
+
+.eyebrow{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faded);
+  margin:26px 0 8px;border-bottom:1px solid var(--rule);padding-bottom:5px}
+
+/* ---------- botões ---------- */
+/* Botão NÃO herda color do body: usa o preto padrão do navegador. Sem esta
+   linha, toda carta (que é <button>) fica com texto preto sobre fundo preto. */
+button{font-family:inherit;color:inherit;cursor:pointer}
+.btn{background:var(--ink);color:var(--bg);border:none;padding:11px 20px;
+  font-family:Oswald,sans-serif;font-weight:500;font-size:15px;letter-spacing:.1em;
+  text-transform:uppercase;transition:transform .08s ease,background .15s ease}
+.btn:hover{background:var(--stamp);color:#fff}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{background:var(--rule);color:var(--faded);cursor:default;transform:none}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+.btn-ghost:hover{background:var(--ink);color:var(--bg)}
+.btn-ghost.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
+:focus-visible{outline:2px solid var(--stamp);outline-offset:2px}
+
+input[type=text]{font-family:inherit;font-size:16px;background:transparent;
+  border:none;border-bottom:1.5px solid var(--ink);padding:6px 2px;color:var(--ink);width:min(320px,100%)}
+input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
+
+/* ---------- orçamento ---------- */
+.budget{display:flex;align-items:center;gap:12px;margin:14px 0 18px;flex-wrap:wrap}
+.budget-bar{flex:1;min-width:180px;height:12px;border:1px solid var(--ink);position:relative;background:transparent}
+.budget-fill{position:absolute;inset:1px auto 1px 1px;background:var(--ink);transition:width .35s ease}
+.budget-fill.low{background:var(--stamp)}
+.budget-num{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+
+/* ---------- cartas do draft ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.card{border:1px solid var(--line2);background:var(--panel);padding:10px 11px;text-align:left;
+  display:flex;flex-direction:column;gap:6px;transition:background .12s,transform .08s}
+.card:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
+.card:active{transform:none;box-shadow:none}
+.card .pair{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase}
+.card .src{font-size:11.5px;color:var(--faded);margin-top:-6px}
+.card .attr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  border-top:1px dotted var(--rule);padding-top:6px}
+.card:hover .mira-attr .attr-l{color:#A8756E}
+.card .attr-l{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faded)}
+.card .attr-v{font-variant-numeric:tabular-nums;font-weight:500}
+.pctwrap{display:flex;align-items:center;gap:6px;margin-top:2px}
+.pctbar{flex:1;height:7px;background:rgba(255,255,255,.07);position:relative;min-width:52px}
+.pctbar i{position:absolute;left:0;top:0;bottom:0;display:block;transition:width .3s ease}
+.pctnum{font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;
+  white-space:nowrap;min-width:76px;text-align:right}
+/* escala: quanto mais verde, melhor que mais gente da divisão */
+.p1 i{background:#C0392B} .p1{color:#D1584A}
+.p2 i{background:#B07A3A} .p2{color:#C08F52}
+.p3 i{background:#5E6B7E} .p3{color:#8B99AC}
+.p4 i{background:#5E8A4A} .p4{color:#7CB069}
+.p5 i{background:#4E9A62} .p5{color:#6FC486}
+.elite{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;
+  color:#6FC486;border:1px solid #4E9A62;padding:0 4px;margin-left:6px;vertical-align:1px}
+.legend{border:1px dashed var(--line2);padding:10px 12px;margin:0 0 14px;
+  font-size:12px;line-height:1.6;color:var(--ink2);background:var(--panel)}
+.legend b{color:var(--ink);font-weight:600}
+.legend .sc{display:inline-flex;align-items:center;gap:0;margin:0 4px;vertical-align:-2px}
+.legend .sc span{width:16px;height:8px;display:block}
+.card .cost{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faded);border-top:1px solid var(--ink);padding-top:7px}
+.card .cost b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ---------- luta ao vivo ---------- */
+.live{border:1px solid var(--ink);background:var(--stock-2);margin:14px 0}
+.live-head{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:9px 13px;border-bottom:1px solid var(--ink);flex-wrap:wrap}
+.live-head .vs{font-family:Oswald,sans-serif;font-weight:700;font-size:14px;
+  letter-spacing:.05em;text-transform:uppercase}
+.live-head .rd{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faded);font-variant-numeric:tabular-nums}
+.play{padding:6px 13px 12px;min-height:110px}
+.pbp{display:grid;grid-template-columns:52px 1fr;gap:9px;padding:4px 0;font-size:13px;
+  animation:pbpin .22s ease both}
+@keyframes pbpin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.pbp .clk{color:var(--faded);font-size:11.5px;font-variant-numeric:tabular-nums;padding-top:1px}
+.pbp.big{font-weight:600}
+.pbp.kd{color:var(--stamp);font-weight:600}
+.pbp.rd{border-top:1px solid var(--rule);margin-top:6px;padding-top:8px;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--faded)}
+.pbp.fin{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--stamp);padding-top:8px}
+.btn-sm{padding:7px 13px;font-size:13px}
+
+/* ---------- escolha de divisão ---------- */
+/* ---------- seletor de modo ---------- */
+.modos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:9px;
+  margin:14px 0 10px}
+.modo{border:1px solid var(--line);background:var(--stock-2);padding:10px 12px;
+  display:flex;flex-direction:column;gap:4px;text-align:left}
+.modo:hover{border-color:var(--line2)}
+.modo.on{border-color:var(--stamp);background:var(--panel2)}
+.modo .n{font-family:Oswald,sans-serif;font-weight:700;font-size:13px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faded)}
+.modo.on .n{color:var(--stamp)}
+.modo .d{font-size:11px;color:var(--faded);line-height:1.45}
+.modo-nota{font-size:11px;color:var(--faded);line-height:1.6;margin:0 0 12px}
+.divs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:9px}
+.div-c{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;
+  text-align:left;display:flex;flex-direction:column;gap:5px;
+  transition:background .12s,transform .08s}
+.div-c:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
+.div-c:active{transform:none;box-shadow:none}
+.div-c .n{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.04em;text-transform:uppercase}
+.div-c .lb{font-size:11px;color:var(--faded);letter-spacing:.08em}
+.div-c .qt{font-size:11px;color:var(--faded);border-top:1px dotted var(--rule);
+  padding-top:5px;margin-top:2px}
+.div-c .qt b{color:var(--ink);font-weight:600}
+.div-c .top{font-size:11px;color:var(--faded);font-style:italic}
+.div-c.fem .n::after{content:" ♀";color:var(--stamp);font-size:13px}
+
+/* ---------- painel do lutador ---------- */
+.carreira{display:grid;grid-template-columns:262px minmax(0,1fr);gap:18px;align-items:start}
+.ficha{background:var(--panel);border:1px solid var(--line);position:sticky;top:72px}
+.ficha-top{padding:13px 14px 11px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:center}
+.ficha-top .boneco{flex:0 0 auto}
+.ficha-top .id{min-width:0}
+.ficha-top .nm{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;line-height:1.1;
+  word-break:break-word}
+.ficha-top .sub{font-size:11px;color:var(--faded);margin-top:3px}
+.ficha-top .assin{font-size:11px;color:var(--gold);margin-top:4px;letter-spacing:.04em}
+.ficha-sec{padding:11px 14px;border-bottom:1px solid var(--line)}
+.ficha-sec:last-child{border-bottom:none}
+.ficha-sec h4{margin:0 0 8px;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faded);font-weight:400}
+.cint{display:flex;align-items:center;gap:9px}
+.cint .b{font-family:Oswald,sans-serif;font-weight:700;font-size:15px;letter-spacing:.05em;
+  text-transform:uppercase;border:2px solid currentColor;padding:2px 9px}
+.cint .b.sim{color:var(--gold)}
+.cint .b.nao{color:var(--faded)}
+.cint small{font-size:11px;color:var(--faded)}
+/* vermelho escuro: é aviso do que falta, não alarme */
+.passo{margin-top:8px;font-size:11.5px;line-height:1.45;color:#9E4238;
+  border-left:2px solid #6E3A38;padding-left:9px}
+/* Posição na divisão: o número é a informação, o movimento é o drama. */
+.rank{display:flex;align-items:baseline;gap:8px}
+.rank .pos{font-family:Oswald,sans-serif;font-weight:700;font-size:19px;
+  letter-spacing:.03em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}
+.rank .de{font-size:11px;color:var(--faded)}
+.rank .mov{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;color:var(--faded)}
+.rank .mov.sobe{color:#6FC486}
+.rank .mov.cai{color:var(--stamp)}
+.rank-pico{margin-top:7px;font-size:11px;color:var(--faded)}
+.lesao-nome{font-family:Oswald,sans-serif;font-weight:600;font-size:13px;color:var(--ink)}
+.lesao-dur{margin-top:3px;font-size:11px;color:var(--stamp)}
+.atrs{display:grid;gap:7px}
+.atr{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:baseline}
+.atr .r{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faded)}
+.atr .v{font-size:11.5px;font-variant-numeric:tabular-nums;font-weight:600}
+.atr .g{font-size:10px;color:#6FC486;margin-left:4px}
+.atr .dn{font-size:10px;color:var(--stamp);margin-left:4px}
+.atrbar{grid-column:1/-1;height:6px;background:rgba(255,255,255,.07);position:relative;margin-top:1px}
+.atrbar .base{position:absolute;left:0;top:0;bottom:0;background:var(--ink2);opacity:.55}
+.atrbar .gan{position:absolute;top:0;bottom:0;background:#4E9A62}
+.atrbar .perda{position:absolute;top:0;bottom:0;background:var(--stamp);opacity:.55}
+@media (max-width:1080px){.carreira{grid-template-columns:1fr}.ficha{position:static}}
+
+/* ---------- criador de personagem ---------- */
+.criador{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start;margin-top:8px}
+.palco{background:var(--panel);border:1px solid var(--line);padding:22px 18px;text-align:center;
+  position:sticky;top:70px;
+  background-image:radial-gradient(ellipse at 50% 32%,rgba(255,255,255,.045),transparent 62%)}
+.palco .boneco{display:block;margin:0 auto;max-width:100%;height:auto}
+.palco .nomebox{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.palco .nomebox small{display:block;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faded);margin-bottom:5px}
+.palco input{width:100%;max-width:260px;text-align:center;font-size:17px}
+.painelC{background:var(--panel);border:1px solid var(--line)}
+.abas{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line)}
+.aba{flex:1 1 auto;background:transparent;border:none;border-bottom:2px solid transparent;
+  color:var(--faded);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  padding:11px 6px;transition:color .12s,border-color .12s}
+.aba:hover{color:var(--ink)}
+.aba.on{color:var(--ink);border-bottom-color:var(--stamp)}
+.corpoC{padding:15px 16px 18px;min-height:230px}
+.linhaC{margin-bottom:16px}
+.linhaC:last-child{margin-bottom:0}
+.linhaC-hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.linhaC-hd span{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faded)}
+.linhaC-hd b{font-size:12.5px;font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{border:1px solid var(--line2);background:transparent;color:var(--ink2);
+  font-size:11.5px;padding:5px 10px;transition:all .12s}
+.chip:hover{border-color:var(--ink2);color:var(--ink)}
+.chip.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
+.swatches{display:flex;flex-wrap:wrap;gap:6px}
+.sw{width:28px;height:28px;border:1px solid var(--line2);padding:0;transition:transform .1s}
+.sw:hover{transform:scale(1.12)}
+.sw.on{outline:2px solid var(--stamp);outline-offset:2px}
+@media (max-width:860px){.criador{grid-template-columns:1fr}.palco{position:static}
+  .aba{font-size:9.5px;padding:9px 4px}}
+
+/* ---------- tabuleiro do octógono ---------- */
+.arena{display:grid;grid-template-columns:270px minmax(340px,1fr) 290px;gap:16px;
+  align-items:start;margin-top:6px}
+/* A lista tinha 8 cartas e esticava a página inteira: não dava pra ver a última
+   opção e o octógono ao mesmo tempo. Agora ela rola dentro da própria coluna. */
+.cards-scroll{max-height:min(62vh,470px);overflow-y:auto;padding-right:5px;
+  scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+.cards-scroll::-webkit-scrollbar{width:7px}
+.cards-scroll::-webkit-scrollbar-thumb{background:var(--line2)}
+.col-t{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--faded);
+  margin-bottom:9px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.painel{background:var(--panel);border:1px solid var(--line);padding:13px 14px}
+/* O raio dos slots precisa deixar meia-largura de caixa para dentro, senão
+   eles vazam por cima das colunas vizinhas e do texto acima. */
+.oct-wrap{position:relative;width:100%;aspect-ratio:1/1;max-width:460px;margin:8px auto 0;
+  padding:0}
+.oct-wrap svg{position:absolute;inset:0;width:100%;height:100%}
+.slot{position:absolute;transform:translate(-50%,-50%);width:92px;z-index:2;
+  background:var(--panel);border:1px solid var(--line);padding:7px 8px;text-align:center;
+  transition:border-color .2s,background .2s}
+.slot .lab{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--faded);
+  display:block;line-height:1.25}
+.slot .val{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;line-height:1.1;
+  display:block;color:var(--faded)}
+.slot .src{font-size:9px;color:var(--faded);display:block;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot.cheio{border-color:var(--line2);background:var(--panel2)}
+.slot.cheio .val{color:var(--ink)}
+/* Destaque, não alarme: vermelho dessaturado e sem preenchimento.
+   O salto roda a cada passada de mouse porque desenhaOctogono recria os nós,
+   então a animação reinicia sozinha — é mais curto e mais fraco que o da
+   escolha, que é o momento que realmente merece peso. */
+.slot.mira{border-color:#6E3A38;box-shadow:inset 0 0 0 1px rgba(192,57,43,.16);
+  animation:salta .34s cubic-bezier(.3,1.5,.5,1) both}
+.slot.mira .lab{color:#A8756E}
+@keyframes salta{
+  0%{transform:translate(-50%,-50%) scale(1)}
+  45%{transform:translate(-50%,-58%) scale(1.11)}
+  100%{transform:translate(-50%,-50%) scale(1)}}
+.slot.novo{animation:fixa .45s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes fixa{from{opacity:0;transform:translate(-50%,-50%) scale(1.5)}
+  to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.oct-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:130px;z-index:1}
+.oct-mid .n{font-family:Oswald,sans-serif;font-weight:700;font-size:34px;line-height:1;color:var(--ink)}
+.oct-mid .l{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faded);margin-top:3px}
+.oct-mid .b{height:5px;background:rgba(255,255,255,.08);margin-top:9px;position:relative}
+.oct-mid .b i{position:absolute;left:0;top:0;bottom:0;background:var(--stamp);transition:width .4s ease}
+/* dossiê */
+.dossie .nm{font-family:Oswald,sans-serif;font-weight:700;font-size:23px;line-height:1.08;margin:2px 0 7px}
+.dossie .tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px}
+.dossie .tag{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--line2);padding:2px 6px;color:var(--ink2)}
+.dossie .tag.t{border-color:var(--gold);color:var(--gold)}
+.dossie p{font-size:12.5px;line-height:1.55;color:var(--ink2);margin:0 0 10px}
+.dossie .grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);margin-bottom:11px}
+.dossie .cel{background:var(--panel2);padding:7px 9px}
+/* Mesma marcação dos slots do octógono: liga visualmente "estes dois atributos"
+   com "estes dois lados". Sem isso o jogador não conecta os dois lados da tela. */
+.dossie .cel.mira{box-shadow:inset 0 0 0 1px #6E3A38;background:#151A24}
+.dossie .cel.mira small{color:#A8756E}
+.dossie .cel small{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faded)}
+.dossie .cel b{font-family:Oswald,sans-serif;font-weight:700;font-size:16px}
+.dossie .vazio{color:var(--faded);font-size:12.5px;line-height:1.6;padding:24px 0;text-align:center}
+@media (max-width:1000px){.arena{grid-template-columns:1fr}
+  .oct-wrap{max-width:420px}.slot{width:84px}}
+@media (max-width:560px){.oct-wrap{max-width:330px}.slot{width:70px;padding:5px 4px}
+  .slot .val{font-size:14px}.slot .lab{font-size:8px}.slot .src{display:none}}
+
+/* ---------- escolha de adversário e camp ---------- */
+.escolha{margin:12px 0 4px}
+.esc-hd{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faded);
+  margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid var(--rule)}
+.opps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.opp{border:1px solid var(--ink);background:var(--stock-2);padding:12px 13px;text-align:left;
+  display:flex;flex-direction:column;gap:7px;transition:background .12s,transform .08s}
+.opp:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
+.opp:active{transform:none;box-shadow:none}
+.opp .nm{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:16px;letter-spacing:.03em;line-height:1.15}
+.opp .arq{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faded)}
+.opp .bio{font-size:11.5px;color:var(--faded);line-height:1.45;
+  border-top:1px dotted var(--rule);padding-top:6px}
+.opp .bio b{color:var(--ink);font-weight:600}
+.opp .dif{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  border-top:1px solid var(--ink);padding-top:7px;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase}
+.opp .dif b{font-family:Oswald,sans-serif;font-size:13px;letter-spacing:.06em}
+.d1 b{color:#6FC486}.d2 b{color:#9FBF7C}.d3 b{color:#C08F52}.d4 b{color:#E05A48}
+.pips{display:flex;gap:3px}
+.pips i{width:9px;height:9px;border:1px solid var(--line2);display:block}
+.pips i.on{background:var(--ink2)}
+.d4 .pips i.on{background:var(--stamp);border-color:var(--stamp)}
+.camps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.camp{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;text-align:left;
+  display:flex;flex-direction:column;gap:5px;transition:background .12s,transform .08s}
+.camp:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
+.camp .t{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase}
+.camp .d{font-size:11.5px;color:var(--faded);line-height:1.4}
+.camp .g{font-size:11px;font-weight:600;color:#6FC486}
+.camp-bar{display:block;height:5px;background:rgba(255,255,255,.08);margin-top:4px;position:relative}
+.camp-bar i{position:absolute;left:0;top:0;bottom:0;background:#4E9A62;transition:width .3s ease}
+.camp-st{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faded);margin-top:3px}
+.contra{border-left:3px solid var(--stamp);padding:8px 0 8px 11px;margin:9px 0 2px;
+  font-size:12.5px;line-height:1.45}
+.contra b{font-weight:600}
+
+/* ---------- dilema interativo ---------- */
+.dilema{border:1.5px solid var(--line2);background:var(--panel);
+  padding:13px 15px;margin:10px 0 12px;animation:fade .4s ease both}
+.dil-t{font-family:Oswald,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+.dil-c{font-size:13.5px;line-height:1.55}
+.dil-in{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+.dil-in input{flex:1;min-width:180px;font-size:14px}
+.dil-r{font-style:italic;color:var(--faded);font-size:13px;margin-top:10px;
+  padding-left:12px;border-left:2px solid var(--rule)}
+.dil-o{font-size:13.5px;line-height:1.55;margin-top:9px;padding-top:9px;
+  border-top:1px dotted var(--rule)}
+.dil-fx{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap;align-items:baseline}
+
+/* ---------- celular: repercussão ---------- */
+.stage{display:grid;grid-template-columns:minmax(340px,1fr) 300px;gap:16px;align-items:start;margin:14px 0}
+.phone{border:2px solid var(--line2);border-radius:22px;background:var(--panel);
+  padding:9px 8px 12px;position:relative;box-shadow:3px 3px 0 rgba(0,0,0,.10)}
+.phone::before{content:"";display:block;width:52px;height:4px;border-radius:3px;
+  background:var(--rule);margin:0 auto 9px}
+.phone-hd{display:flex;justify-content:space-between;align-items:baseline;
+  padding:0 6px 7px;border-bottom:1px solid var(--rule);
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faded)}
+.feed{max-height:340px;overflow-y:auto;padding:0 4px}
+.tw{display:grid;grid-template-columns:30px 1fr;gap:8px;padding:9px 4px;
+  border-bottom:1px solid var(--rule);animation:pbpin .25s ease both}
+.tw .av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:600;color:#fff;letter-spacing:.02em}
+.tw .who{display:block;font-size:11.5px;font-weight:600;line-height:1.3}
+.tw .who span{font-weight:400;color:var(--faded);font-size:10.5px}
+.tw .txt{display:block;font-size:12px;line-height:1.42;margin-top:3px}
+.tw .rt{display:block;font-size:10px;color:var(--faded);margin-top:6px;letter-spacing:.06em}
+.tw.hater .av{filter:saturate(.35)}
+.tw.hater .txt{color:#D1584A}
+
+.meters{display:grid;gap:9px;margin:11px 0 0;padding:10px 8px 2px;border-top:1px solid var(--ink)}
+.meter{display:grid;gap:4px}
+.meter-hd{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faded)}
+.meter-hd b{font-size:15px;font-family:Oswald,sans-serif;letter-spacing:.02em;color:var(--ink)}
+.fanbar{height:9px;background:rgba(255,255,255,.07);position:relative}
+.fanbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);transition:width .6s ease}
+.fanbar.hot i{background:#4E9A62}
+.fanbar.cold i{background:var(--stamp)}
+.delta{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.delta.up{color:#6FC486}.delta.down{color:var(--stamp)}
+@media (max-width:900px){.stage{grid-template-columns:1fr}
+  .phone{max-width:340px;margin:0 auto}}
+
+/* ---------- registro de lutas ---------- */
+.bouts{border-top:1px solid var(--rule);margin-top:6px}
+.bout{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--rule);
+  animation:slide .3s ease both}
+@keyframes slide{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.bout .no{font-size:11px;color:var(--faded);font-variant-numeric:tabular-nums}
+.bout .opp{font-weight:500}
+.bout .how{font-size:11.5px;color:var(--faded);letter-spacing:.04em}
+.bout.title-fight .opp::after{content:" ★";color:var(--gold)}
+
+/* ---------- o carimbo (elemento assinatura) ---------- */
+.stamp{font-family:Oswald,sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
+  text-transform:uppercase;border:2.5px solid currentColor;padding:2px 8px;
+  color:var(--win);transform:rotate(-4deg);white-space:nowrap;
+  animation:press .3s cubic-bezier(.2,1.6,.4,1) both}
+.stamp.d{color:var(--loss);transform:rotate(3deg)}
+@keyframes press{from{opacity:0;transform:scale(2.6) rotate(-14deg)}
+  60%{opacity:1}to{opacity:.9;transform:scale(1) rotate(-4deg)}}
+.stamp.d{animation-name:pressD}
+@keyframes pressD{from{opacity:0;transform:scale(2.6) rotate(12deg)}
+  60%{opacity:1}to{opacity:.9;transform:scale(1) rotate(3deg)}}
+
+.event{font-style:italic;color:var(--faded);font-size:12.5px;padding:2px 0 10px 44px;
+  border-bottom:1px solid var(--rule);animation:fade .5s ease both}
+.event.rare{color:var(--stamp);font-style:normal;font-weight:500;
+  border-left:3px solid var(--stamp);padding:8px 0 8px 12px;margin-left:32px}
+.legacy{border-left:3px solid var(--ink);padding:12px 0 12px 16px;margin:20px 0 6px;
+  font-size:15px;line-height:1.6;font-style:italic}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* nocaute: a página leva o golpe */
+@keyframes shake{
+  0%,100%{transform:translate(0,0)}
+  15%{transform:translate(-7px,3px)}35%{transform:translate(6px,-3px)}
+  55%{transform:translate(-4px,-2px)}75%{transform:translate(3px,2px)}}
+body.ko .wrap{animation:shake .42s ease}
+body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
+  opacity:.16;pointer-events:none;animation:flash .42s ease forwards}
+@keyframes flash{from{opacity:.3}to{opacity:0}}
+
+/* ---------- relatório final ---------- */
+.tape{width:100%;border-collapse:collapse;margin-top:6px}
+.tape td{padding:7px 0;border-bottom:1px dotted var(--rule);vertical-align:baseline}
+.tape td:first-child{font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faded);width:46%}
+.tape td:last-child{text-align:right;font-weight:500;font-variant-numeric:tabular-nums}
+.verdict{display:flex;align-items:center;gap:20px;margin:22px 0 8px;
+  border-top:3px solid var(--ink);border-bottom:3px solid var(--ink);padding:18px 0}
+.verdict .letter{font-family:Oswald,sans-serif;font-weight:700;font-size:72px;line-height:.8;
+  color:var(--stamp);border:4px solid var(--stamp);padding:8px 18px 12px;transform:rotate(-3deg);
+  animation:press .45s cubic-bezier(.2,1.6,.4,1) both}
+.verdict .said{font-size:14px;line-height:1.45}
+.verdict .said small{display:block;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faded);margin-bottom:5px}
+.made-of{font-size:12px;color:var(--faded);line-height:1.7;margin-top:14px}
+.made-of b{color:var(--ink);font-weight:500}
+
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px}
+/* Durante a narração a página cresce e empurra os controles pra fora da tela.
+   Sem isto não dá pra desligar o automático depois de ligado. */
+/* padding-right = largura da engrenagem (36px) + o right:14px dela: reserva
+   exatamente a faixa que ela ocupa no topo, então o conteúdo desta barra
+   (inclusive o contador, que é o que costuma sobrar pro fim da linha em
+   viewport estreito) nunca desenha por baixo dela, em qualquer largura. */
+#controls{position:sticky;top:0;z-index:30;margin:0 0 4px;padding:11px 50px 10px 0;
+  background:var(--bg);border-bottom:1px solid var(--line2)}
+#controls::before{content:"";position:absolute;left:-40px;right:-40px;top:0;bottom:0;
+  background:var(--bg);z-index:-1}
+#controls.travado{border-bottom-color:var(--stamp)}
+#controls.travado .aviso{color:var(--stamp);font-weight:600}
+.hint{font-size:11.5px;color:var(--faded)}
+.hint .g{color:#6FC486;font-weight:600}
+.hint .dn{color:var(--stamp);font-weight:600}
+.hidden{display:none!important}
+.err{border:1.5px solid var(--stamp);padding:14px 16px;background:var(--stock-2)}
+.err b{font-family:Oswald,sans-serif;letter-spacing:.06em;text-transform:uppercase;
+  display:block;margin-bottom:6px;color:var(--stamp)}
+.err code{background:var(--stock);padding:1px 5px;font-size:12px}
+
+/* ---------- configurações (engrenagem) ---------- */
+/* Fica no canto inferior direito e fixo: a barra de controles é sticky no topo
+   e só existe durante a carreira. Embaixo o botão alcança todas as telas sem
+   disputar espaço com nada. */
+/* Canto superior direito, ancorada pela direita: cresce pro lado esquerdo no
+   hover em vez de "abrir pra direita" e sair da tela, que é onde ela mora.
+   width/max-width anima com transition (não `right`), então a engrenagem em
+   si não se desloca — só o espaço à esquerda dela aparece. overflow:hidden
+   esconde o rótulo até o max-width crescer o bastante pra revelar. */
+.cfg-btn{position:fixed;top:14px;right:14px;z-index:50;
+  display:flex;align-items:center;justify-content:flex-end;
+  height:36px;max-width:36px;overflow:hidden;
+  padding:0;background:var(--bg);border:1px solid var(--line);color:var(--faded);
+  transition:max-width .22s ease,border-color .15s ease,color .15s ease}
+.cfg-btn:hover,.cfg-btn:focus-visible{max-width:180px;color:var(--ink);border-color:var(--line2)}
+.cfg-btn svg{flex:none;width:17px;height:17px;margin:0 9px}
+.cfg-btn .cfg-lbl{flex:none;padding-left:12px;white-space:nowrap;
+  font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  opacity:0;transform:translateX(6px);
+  transition:opacity .16s ease,transform .16s ease}
+.cfg-btn:hover .cfg-lbl,.cfg-btn:focus-visible .cfg-lbl{opacity:1;transform:translateX(0)}
+/* prefers-reduced-motion já zera toda transition/animation via *{...} lá embaixo —
+   essa engrenagem usa só transition (max-width/opacity/transform), nada de JS
+   controlando a animação, então cai nessa regra global de graça. */
+.cfg-overlay{position:fixed;inset:0;z-index:70;background:rgba(6,8,12,.74);
+  display:flex;align-items:center;justify-content:center;padding:18px}
+.cfg-painel{width:100%;max-width:380px;background:var(--panel);
+  border:1px solid var(--line2);padding:16px 18px 15px}
+.cfg-top{display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--rule);padding-bottom:9px}
+.cfg-top h2{font-family:Oswald,Impact,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.14em;text-transform:uppercase;margin:0;color:var(--ink)}
+.cfg-x{background:none;border:0;color:var(--faded);font-size:15px;padding:2px 5px;
+  line-height:1}
+.cfg-x:hover{color:var(--stamp)}
+.cfg-linha{display:flex;align-items:center;gap:12px;padding:11px 0;
+  border-bottom:1px solid var(--rule)}
+.cfg-rot{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink2);width:70px;flex:none}
+.cfg-num{font-size:11.5px;color:var(--faded);width:40px;text-align:right;
+  flex:none;font-weight:400}
+.cfg-off{opacity:.32}
+.cfg-toggle{margin-left:auto;background:none;border:1px solid var(--line2);
+  color:var(--ink2);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  padding:5px 13px}
+.cfg-toggle.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
+.cfg-nota{font-size:11px;color:var(--faded);line-height:1.6;margin:13px 0 0}
+/* Barra sem canto arredondado e polegar retangular: o resto da página não tem
+   um único raio de canto, uma barra padrão de navegador destoaria. */
+.cfg-range{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:18px;
+  background:none;margin:0;cursor:pointer}
+.cfg-range::-webkit-slider-runnable-track{height:2px;background:var(--line2)}
+.cfg-range::-moz-range-track{height:2px;background:var(--line2)}
+.cfg-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:10px;height:16px;margin-top:-7px;background:var(--ink);border:0}
+.cfg-range::-moz-range-thumb{width:10px;height:16px;background:var(--ink);
+  border:0;border-radius:0}
+.cfg-range:disabled{cursor:default}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+@media (max-width:560px){
+  .doc-head h1{font-size:20px}
+  .bout{grid-template-columns:26px 1fr;row-gap:4px}
+  .bout .stamp{grid-column:2;justify-self:start}
+  .event{padding-left:36px}
+  .verdict{flex-direction:column;align-items:flex-start;gap:14px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="doc-head">
+    <h1>Ficha do Lutador</h1>
+    <div class="meta" id="docmeta">Comissão Atlética · Registro</div>
+  </div>
+  <div id="app"></div>
+</div>
+
+<!-- Engrenagem e painel ficam no HTML estático: existem em todas as telas e o
+     JS só precisa achá-los por id, sem depender de document.body. -->
+<!-- Rótulo vem ANTES do svg no DOM: com justify-content:flex-end no .cfg-btn,
+     os dois ficam colados na borda direita e o rótulo abre espaço à
+     ESQUERDA da engrenagem no hover — ela não se move.
+     title/aria-label continuam no botão: toque não tem hover, então o
+     rótulo visual nunca aparece em celular, mas o nome acessível segue ali. -->
+<button id="cfgbtn" class="cfg-btn" type="button" title="Configurações"
+        aria-label="Configurações">
+  <span class="cfg-lbl" aria-hidden="true">Configurações</span>
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M20.00,12.00 L19.79,13.81 L22.13,14.35 L20.82,17.50 L18.79,16.23 L17.66,17.66 L16.23,18.79 L17.50,20.82 L14.35,22.13 L13.81,19.79 L12.00,20.00 L10.19,19.79 L9.65,22.13 L6.50,20.82 L7.77,18.79 L6.34,17.66 L5.21,16.23 L3.18,17.50 L1.87,14.35 L4.21,13.81 L4.00,12.00 L4.21,10.19 L1.87,9.65 L3.18,6.50 L5.21,7.77 L6.34,6.34 L7.77,5.21 L6.50,3.18 L9.65,1.87 L10.19,4.21 L12.00,4.00 L13.81,4.21 L14.35,1.87 L17.50,3.18 L16.23,5.21 L17.66,6.34 L18.79,7.77 L20.82,6.50 L22.13,9.65 L19.79,10.19 Z M15.30,12.00 A3.3,3.3 0 1,0 8.70,12.00 A3.3,3.3 0 1,0 15.30,12.00 Z"/>
+  </svg>
+</button>
+<div id="cfg" class="cfg-overlay" style="display:none"></div>
+
+<script>
+/* =========================================================================
+   MOTOR — mesma lógica de fightsim.js, calibrada em 6.000 lutas
+   ========================================================================= */
+const TUNING={tickSeconds:15,roundSeconds:300,
+  koPower:{flyweight:.55,bantamweight:.65,featherweight:.80,lightweight:.95,
+    welterweight:1.05,middleweight:1.20,light_heavyweight:1.40,heavyweight:1.75,
+    w_strawweight:.45,w_flyweight:.50,w_bantamweight:.60,w_featherweight:.65},
+  reachPerInch:.012,reachCap:.10,gnpVolume:.65,gnpAccuracy:.80,
+  kdBase:.045,finishGivenKd:.58,subBase:1.4,standUpBase:.08,contestTemp:.55,leagueStrDef:.60,formSpread:.22};
+
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+function mulberry32(seed){let a=seed>>>0;return function(){a|=0;a=(a+0x6D2B79F5)|0;
+  let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;
+  return ((t^(t>>>14))>>>0)/4294967296;};}
+function contest(attack,defense){const a=clamp(attack,.02,.98),d=clamp(defense,.02,.98);
+  const k=TUNING.contestTemp,n=Math.pow(a*(1-d),k);
+  return n/(n+Math.pow((1-a)*d,k));}
+function poisson(l,rng){if(l<=0)return 0;const L=Math.exp(-l);let k=0,p=1;
+  do{k++;p*=rng();}while(p>L);return k-1;}
+function fmtClock(s){return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
+
+function mkState(f,form){return{ref:f,form,damage:0,sigStrikes:0,takedowns:0,knockdowns:0,
+  subAttempts:0,controlTicks:0};}
+
+function exchange(att,def,rng,opts={}){
+  const A=att.ref,D=def.ref,minutes=TUNING.tickSeconds/60;
+  const reachEdge=clamp(((A.reach??72)-(D.reach??72))*TUNING.reachPerInch,-TUNING.reachCap,TUNING.reachCap);
+  const baseAcc=opts.ground?TUNING.gnpAccuracy:A.strAcc;
+  const baseDef=opts.ground?D.strDef*.45:D.strDef;
+  const effAcc=clamp(contest((baseAcc+reachEdge)*att.form,baseDef*def.form),.05,.95);
+  const refAcc=clamp(contest(baseAcc,TUNING.leagueStrDef),.05,.95);
+  let lambda=A.slpm*minutes*(effAcc/refAcc)*att.form;
+  if(opts.ground)lambda*=TUNING.gnpVolume;
+  lambda*=clamp(1-att.damage/220,.45,1);
+  const landed=poisson(lambda,rng);
+  att.sigStrikes+=landed;
+  const power=TUNING.koPower[A.division]??1;
+  def.damage+=landed*power*(opts.ground?1.25:1)*2.15/(D.durability??1);
+  return landed;
+}
+/* devolve "" | "kd" | "ko". A rolagem decide QUEDA; só depois decide se a queda
+   vira nocaute. kdBase = koBase antigo / finishGivenKd, preservando a taxa de KO. */
+function impact(att,def,landed,rng){
+  if(!landed)return"";
+  const power=TUNING.koPower[att.ref.division]??1;
+  const punch=clamp((att.ref.kdAvg??.36)/.36,.45,2.4);
+  const p=TUNING.kdBase*power*punch*landed*
+    Math.pow(clamp(def.damage/100,0,2.5),1.6)/(def.ref.durability??1);
+  if(rng()>=clamp(p,0,.9))return"";
+  def.knockdowns=(def.knockdowns||0)+1;
+  return rng()<TUNING.finishGivenKd?"ko":"kd";
+}
+function simulateFight(fa,fb,{seed=1,rounds=3}={}){
+  const rng=mulberry32(seed);
+  const form=()=>1+(rng()+rng()+rng()-1.5)/1.5*TUNING.formSpread;
+  const A=mkState(fa,form()),B=mkState(fb,form());
+  const tpr=TUNING.roundSeconds/TUNING.tickSeconds;
+  const log=[];let sa=0,sb=0;
+  const push=(round,clock,kind,text)=>log.push({round,clock,kind,text});
+  const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
+  const fin=(w,l,round,clock,m)=>{
+    push(round,clock,"fin",`${w.ref.name} vence por ${m.toLowerCase()}`);
+    return{winner:w.ref.name,loser:l.ref.name,method:m,round,clock,cards:null,log,knockdowns:kds()};};
+
+  for(let round=1;round<=rounds;round++){
+    push(round,"5:00","rd",`Round ${round}`);
+    const snap={a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,
+                b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks};
+    let pos="STANDING",burst={a:0,b:0},since=0;
+
+    for(let t=0;t<tpr;t++){
+      const clock=fmtClock(TUNING.roundSeconds-t*TUNING.tickSeconds);
+      if(pos==="STANDING"){
+        for(const[att,def,tag]of[[A,B,"A"],[B,A,"B"]]){
+          const rate=(att.ref.tdAvg/clamp(att.ref.tdAcc,.1,1))/(900/TUNING.tickSeconds);
+          if(rng()<rate){
+            if(rng()<contest(att.ref.tdAcc*att.form,def.ref.tdDef*def.form)){
+              att.takedowns++;pos=tag==="A"?"GROUND_A":"GROUND_B";
+              push(round,clock,"big",`Queda de ${att.ref.name}. Levou pro chão.`);
+            }else push(round,clock,"",`${def.ref.name} defendeu a queda e voltou pra distância.`);
+            break;
+          }
+        }
+      }
+      if(pos==="STANDING"){
+        const la=exchange(A,B,rng),lb=exchange(B,A,rng);
+        burst.a+=la;burst.b+=lb;since++;
+        const ia=impact(A,B,la,rng);
+        if(ia==="ko")return fin(A,B,round,clock,"Nocaute");
+        if(ia==="kd")push(round,clock,"kd",`${B.ref.name} foi ao chão! Levantou cambaleando.`);
+        const ib=impact(B,A,lb,rng);
+        if(ib==="ko")return fin(B,A,round,clock,"Nocaute");
+        if(ib==="kd")push(round,clock,"kd",`${A.ref.name} foi ao chão! Levantou cambaleando.`);
+        if(since>=4){
+          if(burst.a+burst.b===0)push(round,clock,"",`Round estudado. Ninguém quer se abrir.`);
+          else if(burst.a>burst.b)push(round,clock,"",`${A.ref.name} acerta mais na troca, ${burst.a} a ${burst.b}.`);
+          else if(burst.b>burst.a)push(round,clock,"",`${B.ref.name} acerta mais na troca, ${burst.b} a ${burst.a}.`);
+          else push(round,clock,"",`Troca parelha, ${burst.a} a ${burst.b}.`);
+          burst={a:0,b:0};since=0;
+        }
+      }else{
+        const top=pos==="GROUND_A"?A:B,bot=pos==="GROUND_A"?B:A;
+        top.controlTicks++;
+        const landed=exchange(top,bot,rng,{ground:true});
+        const im=impact(top,bot,landed,rng);
+        if(im==="ko")return fin(top,bot,round,clock,"Nocaute técnico no chão");
+        if(landed>=3)push(round,clock,"big",`${top.ref.name} martelando por cima. ${bot.ref.name} só protege.`);
+        else if(top.controlTicks%3===0)push(round,clock,"",`${top.ref.name} controla a posição.`);
+        for(const[g,opp,mult]of[[top,bot,1.4],[bot,top,1.0]]){
+          const rate=(g.ref.subAvg/(900/TUNING.tickSeconds))*mult;
+          if(rng()<rate){
+            g.subAttempts++;
+            const p=contest(TUNING.subBase*clamp(g.ref.subAvg/2.5,.15,.9),opp.ref.tdDef);
+            if(rng()<p*3.6)return fin(g,opp,round,clock,"Finalização");
+            push(round,clock,"big",`${g.ref.name} tenta a finalização! ${opp.ref.name} escapa.`);
+          }
+        }
+        if(rng()<TUNING.standUpBase*(.5+bot.ref.tdDef)){
+          pos="STANDING";push(round,clock,"",`${bot.ref.name} conseguiu levantar.`);
+        }
+      }
+    }
+    const pa=(A.sigStrikes-snap.a)+(A.takedowns-snap.at)*6+(A.controlTicks-snap.ac)*.7;
+    const pb=(B.sigStrikes-snap.b)+(B.takedowns-snap.bt)*6+(B.controlTicks-snap.bc)*.7;
+    if(pa>pb){sa+=10;sb+=9;push(round,"0:00","rd",`Fim do round ${round} — ${A.ref.name} levou.`);}
+    else if(pb>pa){sb+=10;sa+=9;push(round,"0:00","rd",`Fim do round ${round} — ${B.ref.name} levou.`);}
+    else{sa+=10;sb+=10;push(round,"0:00","rd",`Fim do round ${round} — round dividido.`);}
+    A.damage*=.88;B.damage*=.88;
+  }
+  const w=sa>sb?A:sb>sa?B:(rng()<.5?A:B),l=w===A?B:A;
+  log.push({round:rounds,clock:"0:00",kind:"fin",
+    text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(sa,sb)}-${Math.min(sa,sb)}.`});
+  return{winner:w.ref.name,loser:l.ref.name,method:"Decisão",round:rounds,clock:"0:00",
+    cards:sa+"-"+sb,log,knockdowns:kds()};
+}
+
+/* =========================================================================
+   DRAFT — pares e pesos medidos (correlação e sensibilidade)
+   ========================================================================= */
+/* Medidos por ferramentas/sensibilidade.js contra ESTE motor.
+   Rode a ferramenta de novo sempre que mexer no TUNING — se o motor muda,
+   os pesos mudam junto e o draft passa a cobrar errado. */
+const WEIGHTS={slpm:1.00,subAvg:.63,tdAvg:.63,kdAvg:.48,tdDef:.48,strDef:.42,durability:.31,reach:.28};
+const RIDERS={slpm:["strAcc"],tdAvg:["tdAcc"],strDef:["sapm"]};
+const PAIRS=[
+ {id:"trocacao",label:"Trocação",
+  a:{key:"slpm",label:"Volume",fmt:v=>v.toFixed(2)+"/min"},
+  b:{key:"reach",label:"Envergadura",fmt:v=>v.toFixed(0)+'"'}},
+ {id:"poder",label:"Pancada",
+  a:{key:"kdAvg",label:"Poder",fmt:v=>v.toFixed(2)+"/15min"},
+  b:{key:"durability",label:"Queixo",fmt:v=>v.toFixed(2)}},
+ {id:"chao",label:"Luta agarrada",
+  a:{key:"tdAvg",label:"Quedas",fmt:v=>v.toFixed(2)+"/15min"},
+  b:{key:"tdDef",label:"Defesa de queda",fmt:v=>(v*100).toFixed(0)+"%"}},
+ {id:"jiujitsu",label:"Jiu-jitsu",
+  a:{key:"subAvg",label:"Finalizações",fmt:v=>v.toFixed(2)+"/15min"},
+  b:{key:"strDef",label:"Defesa de golpes",fmt:v=>(v*100).toFixed(0)+"%"}},
+];
+const TOTAL_WEIGHT=Object.values(WEIGHTS).reduce((a,b)=>a+b,0);
+const BUDGET_PCT=.76;
+
+function makePercentiler(pool){
+  const s={};Object.keys(WEIGHTS).forEach(k=>s[k]=pool.map(f=>f[k]).sort((x,y)=>x-y));
+  return(key,value)=>{const arr=s[key];let lo=0,hi=arr.length;
+    while(lo<hi){const m=(lo+hi)>>1;arr[m]<value?lo=m+1:hi=m;}return lo/arr.length;};
+}
+const cost=(pair,src,pct)=>WEIGHTS[pair.a.key]*pct(pair.a.key,src[pair.a.key])
+                          +WEIGHTS[pair.b.key]*pct(pair.b.key,src[pair.b.key]);
+
+/* Correção da dívida da iteração 3: se os dois candidatos de um par saírem
+   zerados, a linha vira decisão morta. ~25% das rolagens caíam nisso. */
+function rollTable(pool,remaining,rng,pct){
+  const rows=[];
+  for(const pair of remaining){
+    let cand=[];
+    for(let tries=0;tries<12;tries++){
+      cand=[pool[Math.floor(rng()*pool.length)],pool[Math.floor(rng()*pool.length)]];
+      if(cand.some(s=>s[pair.a.key]>0))break;
+    }
+    cand.forEach(src=>rows.push({pair,src,cost:cost(pair,src,pct)}));
+  }
+  return rows;
+}
+
+/* =========================================================================
+   AVALIAÇÃO — rating sai do próprio motor, contra um oponente mediano
+   ========================================================================= */
+function rateAll(roster){
+  const byDiv={};roster.forEach(f=>(byDiv[f.division]??=[]).push(f));
+  for(const div in byDiv){
+    const pool=byDiv[div];
+    const med=k=>{const v=pool.map(f=>f[k]).sort((a,b)=>a-b);return v[Math.floor(v.length/2)];};
+    const ref={name:"__med__",division:div};
+    ["slpm","strAcc","strDef","kdAvg","tdAvg","tdAcc","tdDef","subAvg","durability","reach","sapm"]
+      .forEach(k=>ref[k]=med(k));
+    for(const f of pool){let w=0;
+      for(let s=1;s<=18;s++)if(simulateFight(f,ref,{seed:s*31+7}).winner===f.name)w++;
+      f.rating=w/18;}
+  }
+  return roster;
+}
+
+/* =========================================================================
+   EVENTOS DE VIDA — quase todos disparados pelo que aconteceu na luta
+   ========================================================================= */
+const EVENTS=[
+ {when:s=>s.lastKO&&s.lastWon&&s.lastRound===1,
+  t:n=>`O nocaute de ${n} em menos de cinco minutos viralizou. Quatro milhões de views em dois dias.`},
+ {when:s=>s.lastKO&&s.lastWon,
+  t:n=>`${n} subiu no alambrado e gritou com o público. A imagem virou pôster.`},
+ {when:s=>s.lastMethod==="Finalização"&&s.lastWon,
+  t:n=>`A academia postou o mata-leão de ${n} em câmera lenta. Virou aula em ringue do mundo inteiro.`},
+ {when:s=>s.lastKO&&!s.lastWon,
+  t:n=>`${n} apagou no primeiro. O rosto dele virou figurinha de WhatsApp no dia seguinte.`,
+  fx:f=>({durability:f.durability*.96})},
+ {when:s=>s.streakL>=3,
+  t:n=>`Terceira seguida. Perguntaram sobre aposentadoria e ${n} saiu da entrevista sem responder.`},
+ {when:s=>s.streakL===2,
+  t:n=>`${n} trocou de academia. Disse que precisava recomeçar do zero.`,
+  fx:f=>({strDef:Math.min(.85,f.strDef*1.05)})},
+ {when:s=>s.streakW>=5,
+  t:n=>`Cinco seguidas. A imprensa começou a chamar ${n} de próximo desafiante.`},
+ {when:s=>s.streakW===3,
+  t:n=>`Um moleque de catorze anos apareceu no treino dizendo que quer ser igual a ${n}. Ele ficou sem saber o que responder.`},
+ {when:s=>s.title||s.peak>.9,
+  t:n=>`${n} pagou a reforma da academia onde começou. Botou o nome do primeiro treinador na porta.`},
+ {when:s=>s.lastWon&&s.fightNo>10,
+  t:n=>`${n} quitou a dívida do pai e não contou pra ninguém. Vazou mesmo assim.`},
+ {when:s=>!s.lastWon,
+  t:n=>`${n} perdeu o aniversário da filha por causa do corte de peso. Ela não falou com ele por uma semana.`},
+ {t:n=>`O joelho de ${n} travou no meio do camp. O médico falou em cirurgia, ${n} falou em anti-inflamatório.`,
+  fx:f=>({tdAvg:f.tdAvg*.92,slpm:f.slpm*.92})},
+ {t:n=>`O empresário de ${n} sumiu com a bolsa de duas lutas. Não valeu a pena processar.`},
+ {t:n=>`${n} escorregou na entrada do octógono e caiu sentado. O clipe já tem trilha de circo em nove versões.`},
+ {t:n=>`${n} respondeu "sim" pra uma pergunta que não era de sim ou não. Virou áudio de status.`},
+ {t:n=>`${n} postou um treino motivacional e esqueceu de cortar a parte em que cai da corda. Deixou no ar mesmo. Deu certo.`},
+ {when:s=>s.title,t:n=>`${n} levou o cinturão pra casa dos pais e deixou lá, em cima da geladeira.`},
+ {t:n=>`${n} insultou o adversário na coletiva e levou multa da comissão.`},
+ {t:n=>`${n} gaguejou ao dizer o nome do próprio patrocinador. O corte viralizou.`},
+ {t:n=>`${n} errou o peso por setecentos gramas. Perdeu vinte por cento da bolsa e a paciência do empresário.`},
+ {t:n=>`Uma marca de açaí fechou patrocínio com ${n}. O logo ficou torto no calção.`},
+ {t:n=>`${n} apareceu num podcast e disse que treina de madrugada porque de dia tem barulho.`},
+ {t:n=>`${n} começou a treinar com um faixa-preta antigo. O camp foi brutal.`,
+  fx:f=>({subAvg:f.subAvg*1.12,tdDef:Math.min(.92,f.tdDef*1.04)})},
+ {t:n=>`${n} machucou a mão no camp e escondeu da comissão.`,fx:f=>({kdAvg:f.kdAvg*.88})},
+ {t:n=>`${n} virou meme depois de dançar na encarada. Ganhou duzentos mil seguidores.`},
+ {t:n=>`${n} passou o camp inteiro no boxe. A defesa melhorou.`,
+  fx:f=>({strDef:Math.min(.85,f.strDef*1.06)})},
+ {t:n=>`${n} discutiu com o próprio treinador no córner. O vídeo vazou.`},
+ {t:n=>`${n} recusou uma luta por dinheiro e a internet não perdoou.`},
+];
+/* RAROS EXTREMOS — só disparam fora da curva, uma vez cada */
+const RARE=[
+ {tom:1,when:s=>s.fightNo>=18&&s.losses===0,
+  t:n=>`Dezoito e zero. Um repórter perguntou como é não conhecer a derrota. ${n} respondeu que conhece, só não dentro do octógono.`},
+ {tom:1,when:s=>s.fightNo>=12&&s.losses===0,
+  t:n=>`Doze lutas, doze vitórias. Começaram a dizer que a divisão está fraca, porque é mais fácil do que admitir que ${n} é bom demais.`},
+ {tom:-1,when:s=>s.fightNo>=10&&s.wins===0,
+  t:n=>`Dez derrotas em dez lutas. A comissão convocou ${n} pra uma conversa sobre continuar competindo.`},
+ {tom:1,when:s=>s.streakW>=8,
+  t:n=>`Oito seguidas. Pararam de perguntar se ${n} ganha e começaram a perguntar como.`},
+ {tom:-1,when:s=>s.streakL>=5,
+  t:n=>`Cinco derrotas em sequência. O ginásio esvaziou antes da luta de ${n} terminar.`},
+ {tom:-1,when:s=>s.koLosses>=4,
+  t:n=>`Quarto nocaute sofrido. O médico da comissão pediu tomografia e sugeriu, sem sugerir, que ${n} pensasse na vida.`},
+ {tom:1,when:s=>s.fightNo>=8&&s.wins>=6&&s.finishes===s.wins,
+  t:n=>`${n} nunca precisou de cartão de juiz. Todas as vitórias antes do apito.`},
+ {when:s=>s.fightNo>=14&&s.wins>=7&&s.finishes===0,
+  t:n=>`Sete vitórias, nenhuma antes do tempo. Chamam ${n} de chato. ${n} chama de eficiente.`},
+ {tom:-1,when:s=>s.lostBeltFast,
+  t:n=>`Perdeu o cinturão na primeira defesa. O reinado de ${n} durou menos que a fila da pesagem.`},
+ {when:s=>s.kdTaken>=6,
+  t:n=>`${n} já foi ao chão seis vezes na carreira e levantou nas seis. Isso vira lenda ou vira alerta, depende de quem conta.`},
+];
+
+/* LEGADO — a frase de fecho. O primeiro que casar vence, então a ordem importa. */
+const LEGACY=[
+ {when:s=>s.losses===0&&s.title,
+  t:n=>`Ninguém nunca botou ${n} no chão. Daqui a vinte anos vai ter discussão em mesa de bar sobre isso, e um cara vai jurar que estava lá.`},
+ {when:s=>s.losses===0,
+  t:n=>`${n} saiu invicto e sem cinturão, que é o jeito mais garantido de virar assunto eterno. Todo bar tem um defensor de ${n}.`},
+ {when:s=>s.wins===0,
+  t:n=>`Vinte e duas lutas, vinte e duas derrotas. Vão lembrar de ${n}, sim, mas por um compilado de dez minutos no YouTube com quatro milhões de views.`},
+ {when:s=>s.title&&s.peak>=.98,
+  t:n=>`${n} vai ser citado sempre que alguém abrir a frase "os melhores da história". Às vezes em primeiro, às vezes em quinto, mas sempre citado.`},
+ /* foiCampeao, não title: o texto é sobre um fato histórico permanente ("isso
+    ninguém tira") — precisa continuar valendo pra quem foi campeão e depois
+    perdeu o cinturão numa defesa, não só pra quem termina a carreira com ele. */
+ {when:s=>s.foiCampeao,
+  t:n=>`${n} teve o cinturão nas mãos e isso ninguém tira. Vão passar a luta do título de madrugada e alguém vai acordar o irmão pra assistir.`},
+ {when:s=>s.peak>=.9,
+  t:n=>`Chegou perto o suficiente pra doer. ${n} é aquele nome que sempre aparece na conversa de "esse aí merecia ter sido campeão".`},
+ {when:s=>s.finishes>=8,
+  t:n=>`Ninguém lembra do cartel de ${n}, mas todo mundo lembra de pelo menos um nocaute. É um jeito melhor de ser lembrado do que a maioria consegue.`},
+ {when:s=>s.wins>s.losses&&s.peak>=.6,
+  t:n=>`${n} foi bom o bastante pra ser reconhecido no aeroporto e não o bastante pra ser reconhecido fora dele. Vive bem assim.`},
+ {when:s=>s.wins>s.losses,
+  t:n=>`Carreira de gente séria. Daqui a dez anos um comentarista vai falar "${n}, lembra dele?" e metade da mesa vai lembrar.`},
+ {when:s=>s.wins>=6,
+  t:n=>`${n} vai ser lembrado na cidade onde nasceu e em mais nenhum lugar. O que já é bem mais do que quase todo mundo consegue.`},
+ {when:()=>true,
+  t:n=>`Daqui a cinco anos ninguém vai lembrar de ${n}. Mas em algum lugar tem uma foto na parede de uma academia, e o dono dela sabe exatamente quem é.`},
+];
+
+/* Em vez de rotular 28 eventos à mão (e errar quando alguém editar o texto),
+   a direção sai do próprio efeito: aplica num clone e compara os atributos.
+   Evento sem efeito é neutro. */
+const EIXOS_SOM=["slpm","strDef","tdDef","tdAvg","subAvg","kdAvg","durability","reach"];
+function direcaoEvento(e,f){
+  if(e&&e.tom)return e.tom;        // marcado à mão: os raros não mexem em atributo
+  if(!e||!e.fx)return 0;
+  let antes=0,depois=0;
+  try{
+    const d=e.fx(f);
+    for(const k of EIXOS_SOM){
+      if(d[k]==null||f[k]==null)continue;
+      antes+=1; depois+=d[k]/f[k];
+    }
+  }catch(err){return 0;}
+  if(!antes)return 0;
+  const razao=depois/antes;
+  return razao>1.008?1:razao<0.992?-1:0;
+}
+function somDoEvento(e,f){
+  const d=direcaoEvento(e,f);
+  (d>0?SOM.bom:d<0?SOM.ruim:SOM.evento)();
+}
+
+function drawEvent(st,rng,used,rareUsed){
+  const rare=RARE.filter((e,i)=>!rareUsed.has(i)&&e.when(st));
+  if(rare.length&&rng()<.85){const e=rare[0];rareUsed.add(RARE.indexOf(e));return{e,rare:true};}
+  return _drawNormal(st,rng,used);
+}
+function _drawNormal(st,rng,used){
+  const pool=EVENTS.filter((e,i)=>!used.has(i)&&(!e.when||e.when(st)));
+  if(!pool.length)return null;
+  const trig=pool.filter(e=>e.when);
+  const from=(trig.length&&rng()<.72)?trig:pool;
+  const e=from[Math.floor(rng()*from.length)];
+  used.add(EVENTS.indexOf(e));return{e,rare:false};
+}
+
+
+/* =========================================================================
+   REPERCUSSÃO — fã e seguidores saem da SIMULAÇÃO, não de texto gerado.
+   A luta já sabe se teve nocaute no primeiro round, quantas quedas caíram e
+   se foi zebra. Transformar isso em número é fórmula, não IA.
+   ========================================================================= */
+function hypeOf(r,won,opp,me_,titleFight,myKd,oppKd){
+  let h=0;
+  if(/ocaute/.test(r.method))h+=3.0;
+  else if(r.method==="Finalização")h+=2.4;
+  else h+=0.5;
+  if(r.round===1&&r.method!=="Decisão")h+=1.6;
+  if(r.round>=3&&r.method!=="Decisão")h+=0.8;      /* guerra longa */
+  h+=myKd*1.1+oppKd*0.6;                          /* apanhar também é drama */
+  if(titleFight)h+=2.2;
+  const upset=(opp.rating||.5)-(me_.__rating||.5);
+  if(won&&upset>.15)h+=2.0*Math.min(1,upset*3);   /* zebra */
+  h+=won?1.4:-0.8;
+  return Math.max(0,h);
+}
+/* seguidores crescem em porcentagem, então campeão chega a milhões e
+   perdedor apodrece devagar — igual à vida real */
+function followerDelta(followers,hype,won,standing){
+  /* multiplicado pelo standing: lutar no card principal rende muito mais
+     audiência que lutar no preliminar. É o que faz seguidor separar carreira. */
+  const g=(hype/6)*(won?.26:.07)*(.25+standing*1.8)-(won?0:.075);
+  const floor=won?260:-90;
+  return Math.round(followers*g+floor*(1+standing));
+}
+const fmtPico=p=>p>=.5?`top ${Math.round(100-p*100)}%`:"fora do top 50";
+const fmtNum=n=>n>=1e6?(n/1e6).toFixed(n>=1e7?0:1).replace(".",",")+"M"
+  :n>=1e3?(n/1e3).toFixed(n>=1e5?0:1).replace(".",",")+"mil":String(n);
+
+/* --- perfis procedurais: sem foto de pessoa real, sem licença, instantâneo --- */
+const HANDLES=["mma_","ufc","cortes","fight","octogono","canhoto","trocacao","chute",
+  "guilhotina","jab","zeh","mano","tiozao","fera","raiz"];
+const NAMES=["Rodrigo","Bianca","Wesley","Tatiane","Juninho","Camila","Alex","Débora",
+  "Matheus","Sabrina","Fernando","Paty","Igor","Larissa","Cleber","Vitor","Nayara",
+  "Douglas","Renata","Thiago","Marcelo","Aline","Kaique","Jéssica"];
+const AVCOL=["#8C4A3A","#3F5E7A","#5E7A3F","#7A5E3F","#6B3F7A","#3F7A6B","#7A3F52","#4A4A6B"];
+function persona(rng){
+  const nm=NAMES[Math.floor(rng()*NAMES.length)];
+  const h=HANDLES[Math.floor(rng()*HANDLES.length)];
+  const handle="@"+h+(rng()<.5?nm.toLowerCase().slice(0,4):"")+Math.floor(rng()*999);
+  return{name:nm,handle,color:AVCOL[Math.floor(rng()*AVCOL.length)],
+    initials:nm.slice(0,2).toUpperCase(),
+    rt:Math.floor(rng()*rng()*4200)};
+}
+
+/* --- moldes de comentário, escolhidos pelo QUE ACONTECEU --- */
+const TWEETS={
+ koWin:[n=>`${n} DESLIGOU O CARA. levanta não, acabou`,
+   n=>`assisti três vezes e ainda não vi o golpe que o ${n} acertou`,
+   n=>`o ${n} tem mão de pedreiro pelo amor de deus`,
+   n=>`GENTE O ${n.toUpperCase()} 😭 tô passando mal aqui em casa`,
+   n=>`quem apostou contra o ${n} merece perder mesmo`,
+   n=>`o cara caiu antes do som chegar no microfone`,
+   n=>`${n} não veio pra ganhar ponto, veio pra apagar gente`,
+   n=>`meu vizinho gritou junto comigo e a gente nem se conhece`],
+ subWin:[n=>`${n} pegou o pescoço e o cara desistiu na hora. jiu-jitsu é lindo`,
+   n=>`o ${n} finaliza com uma facilidade que ofende`,
+   n=>`ninguém quer ir pro chão com o ${n} e eu entendo perfeitamente`,
+   n=>`a torneira que o ${n} deu ali foi crueldade`,
+   n=>`o braço do coitado fez um barulho que eu escutei da sala`,
+   n=>`${n} transformou luta em aula de faixa preta`],
+ decWin:[n=>`ganhou mas foi feio, ${n} precisa arriscar mais`,
+   n=>`vitória é vitória, mas dormi no segundo round do ${n}`,
+   n=>`o ${n} venceu certinho, quem falou que foi roubo não assistiu`,
+   n=>`três rounds de abraço. obrigado ${n} por nada`,
+   n=>`${n} lutou pra não perder e conseguiu, parabéns eu acho`,
+   n=>`tecnicamente perfeito e emocionalmente vazio, esse é o ${n}`],
+ koLoss:[n=>`o ${n} desmaiou de pé, meu deus`,
+   n=>`acabou pro ${n}. queixo não se treina`,
+   n=>`já é o segundo nocaute feio do ${n}, alguém tira ele daí`,
+   n=>`não dá pra rir mas o jeito que o ${n} caiu 💀`,
+   n=>`${n} apagou e o córner demorou pra entender que acabou`],
+ subLoss:[n=>`${n} bateu rapidinho hein kkkkk`,
+   n=>`o ${n} entrou na guilhotina sozinho, treina defesa irmão`,
+   n=>`${n} deu o braço de bandeja e depois reclamou`],
+ decLoss:[n=>`${n} perdeu e nem lutou. cadê a vontade`,
+   n=>`${n} tem que decidir se quer ser lutador ou figurante`,
+   n=>`perdeu justo, mas o ${n} aguentou os três rounds pelo menos`,
+   n=>`quem paga ingresso pra ver o ${n} merece reembolso`],
+ title:[n=>`CAMPEÃO. ${n.toUpperCase()} É CAMPEÃO. tô chorando`,
+   n=>`esperei anos pra ver o ${n} com esse cinturão`,
+   n=>`meu pai levantou do sofá e ele nem gosta de luta`],
+ upset:[n=>`NINGUÉM deu nada pro ${n} e ele passou por cima`,
+   n=>`zebra do ano e o ${n} não tá nem aí pra vocês`,
+   n=>`apostei contra o ${n} e nunca fiquei tão feliz de perder dinheiro`],
+ knockdown:[n=>`o ${n} caiu e LEVANTOU. coração de leão`,
+   n=>`como o ${n} levantou daquilo eu não sei`,
+   n=>`o ${n} tava dormindo em pé e ainda terminou o round`],
+
+ /* HATERS: aparecem ganhando ou perdendo. Quanto mais famoso, mais tem. */
+ hater:[n=>`${n} é superestimado e vocês sabem disso, só não admitem`,
+   n=>`cartel de papel. o ${n} nunca enfrentou ninguém de verdade`,
+   n=>`daqui a dois anos ninguém vai lembrar do nome ${n}`,
+   n=>`a torcida do ${n} é mais chata que ele lutando`,
+   n=>`${n} vive de highlight editado, na luta inteira ele some`,
+   n=>`quero ver o ${n} contra alguém do top 5, aí a gente conversa`,
+   n=>`o ${n} tem marketing melhor que jab`,
+   n=>`não suporto a narrativa que fizeram em cima do ${n}`,
+   n=>`${n} só ganha de quem já tá acabado, olha o histórico`,
+   n=>`bloqueei o ${n} e minha timeline melhorou 80%`],
+
+ /* MEMES: piada de internet, sem tomar lado */
+ meme:[n=>`a cara do córner do ${n} entre os rounds virou template`,
+   n=>`fiz um bolão com meus amigos e ninguém acertou nada, obrigado ${n}`,
+   n=>`minha mãe entrou na sala na hora errada e perguntou se ele tinha morrido`,
+   n=>`o narrador gritou tanto que dava pra ouvir o microfone sofrendo`,
+   n=>`toda luta do ${n} eu prometo que é a última que assisto de madrugada`,
+   n=>`já tem edit do ${n} com funk e são 3 da manhã`,
+   n=>`o cara do card preliminar fez mais barulho que o main event`,
+   n=>`meu grupo da família mandou 40 áudios sobre isso`,
+   n=>`entrei pra ver luta e saí com opinião sobre corte de peso`,
+   n=>`descobri hoje que meu tio tem opinião forte sobre o ${n}`],
+
+ boring:[n=>`luta do ${n} serviu pra eu lavar a louça`,
+   n=>`${n} vs alguém = hora do banheiro`,
+   n=>`pausei pra fazer miojo e não perdi nada`],
+};
+
+/* Sorteio SEM REPOSIÇÃO num pool combinado.
+   O bug antigo: numa vitória por finalização o único bucket era subWin, com 3
+   moldes pra 4 linhas. O laço tentava 8 vezes, desistia e repetia o comentário.
+   Agora hater e meme sempre entram no pool, então nunca falta candidato. */
+function buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,name,followers=0){
+  const ko=/ocaute/.test(r.method),sub=r.method==="Finalização";
+  const cand=[];
+  /* peso é POR BUCKET, dividido entre os moldes dele. Sem isso o bucket com
+     mais textos domina o sorteio só por ser maior — foi o que aconteceu com
+     os haters, que tomaram 46% da timeline. */
+  const add=(bucket,peso,hater)=>{
+    const pool=TWEETS[bucket]||[];
+    pool.forEach(fn=>cand.push({fn,peso:peso/pool.length,hater:!!hater}));
+  };
+  if(titleFight&&won)add("title",5);
+  if(upset&&won)add("upset",5);
+  add(won?(ko?"koWin":sub?"subWin":"decWin"):(ko?"koLoss":sub?"subLoss":"decLoss"),4);
+  if(oppKd>0)add("knockdown",3);
+  if(r.method==="Decisão"&&!titleFight)add("boring",3);
+  add("meme",2);
+  /* fama atrai hater: quase nenhum no começo, presença real no topo.
+     Escala entre 2 mil (fama 0) e 1 milhão de seguidores (fama 1). */
+  const fama=Math.max(0,Math.min(1,(Math.log10(Math.max(100,followers))-3.3)/2.7));
+  add("hater",.5+fama*4.5,true);
+
+  const out=[],usados=new Set();
+  for(let i=0;i<4&&cand.length;i++){
+    const total=cand.reduce((s,c)=>s+(usados.has(c.fn)?0:c.peso),0);
+    if(total<=0)break;
+    let alvo=rng()*total,esc=null;
+    for(const c of cand){
+      if(usados.has(c.fn))continue;
+      alvo-=c.peso;
+      if(alvo<=0){esc=c;break;}
+    }
+    if(!esc)break;
+    usados.add(esc.fn);
+    out.push({p:persona(rng),text:esc.fn(name),hater:esc.hater});
+  }
+  return out;
+}
+function renderPhone(feed,fan,delta,followers){
+  const ph=document.getElementById("phone");
+  if(!ph)return;
+  ph.innerHTML=`<div class="phone-hd"><span>Repercussão</span><span>agora</span></div>
+    <div class="feed" id="feed"></div>
+    <div class="meters">
+      <div class="meter">
+        <div class="meter-hd"><span>Medidor de fã</span><b>${fan.toFixed(1)}<span style="font-size:11px;color:var(--faded)">/10</span></b></div>
+        <div class="fanbar ${fan>=7?"hot":fan<=3.5?"cold":""}"><i style="width:${fan*10}%"></i></div>
+      </div>
+      <div class="meter">
+        <div class="meter-hd"><span>Seguidores</span><b>${fmtNum(followers)}</b></div>
+        <div class="meter-hd"><span>nesta luta</span>
+          <span class="delta ${delta>=0?"up":"down"}">${delta>=0?"+":"−"}${fmtNum(Math.abs(delta))}</span></div>
+      </div>
+    </div>`;
+  const fd=document.getElementById("feed");
+  feed.forEach((t,i)=>setTimeout(()=>{
+    fd.appendChild(el("div","tw"+(t.hater?" hater":""),`
+      <span class="av" style="background:${t.p.color}">${t.p.initials}</span>
+      <span><span class="who">${t.p.name} <span>${t.p.handle}</span></span>
+        <span class="txt">${t.text}</span>
+        <span class="rt">${fmtNum(t.p.rt)} retweets</span></span>`));
+    fd.scrollTop=fd.scrollHeight;
+  },reduceMotion()?0:i*420/speed));
+}
+
+
+/* =========================================================================
+   CAMADA DE IA — opcional por design.
+   Se AI_URL estiver vazio, se a rede cair ou se estourar o tempo, tudo cai
+   no molde local e o jogador não percebe. A IA melhora o jogo, nunca o
+   sustenta. Todo número que volta do modelo é limitado no cliente: o texto
+   do jogador entra no prompt, então tratar a resposta como confiável seria
+   entregar as regras do jogo pra quem souber digitar.
+   ========================================================================= */
+const AI_URL="https://draft-ufc.vercel.app/api/ai";           /* ex: "https://seu-projeto.vercel.app/api/ai" */
+let aiVivo=true;
+
+async function ai(kind,data,ms=9500){
+  if(!AI_URL||!aiVivo)return null;
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),ms);
+  try{
+    const r=await fetch(AI_URL,{method:"POST",signal:ctrl.signal,
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({kind,data})});
+    clearTimeout(t);
+    if(!r.ok)throw new Error(r.status);
+    const j=await r.json();
+    return j.result??null;
+  }catch(e){
+    clearTimeout(t);
+    if(String(e.message)==="429"||String(e.message)==="500")aiVivo=false;
+    return null;
+  }
+}
+const lim=(v,lo,hi,def)=>{const n=Number(v);
+  return Number.isFinite(n)?Math.max(lo,Math.min(hi,n)):def;};
+
+/* busca antecipada: dispara quando a luta COMEÇA e resolve durante a
+   narração, que dura uns 12 segundos. Latência percebida vai a zero. */
+let feedPromise=null;
+function prefetchFeed(r,won,opp,titleFight,myKd,oppKd,upset){
+  feedPromise=ai("feed",{name:me.name,opp:opp.name,won,method:r.method,
+    round:r.round,clock:r.clock,myKd,oppKd,title:titleFight,upset,
+    record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers)});
+}
+async function resolveFeed(fallback,rng){
+  const got=await(feedPromise||Promise.resolve(null));
+  feedPromise=null;
+  if(!Array.isArray(got)||got.length===0)return fallback;
+  return got.slice(0,4).map(o=>{
+    const p=persona(rng);
+    if(o&&typeof o.nome==="string"&&o.nome.trim())
+      {p.name=o.nome.trim().slice(0,14);p.initials=p.name.slice(0,2).toUpperCase();}
+    return{p,text:String(o&&o.texto||"").slice(0,180)||"..."};
+  }).filter(t=>t.text!=="...");
+}
+
+/* ---------- dilema: o jogador escreve o que faz, a IA julga ---------- */
+const SEEDS=["imprensa provocando","dinheiro curto","família cobrando",
+  "lesão escondida","proposta de patrocínio duvidosa","polêmica nas redes",
+  "adversário te humilhando","convite pra outro esporte","treinador querendo sair",
+  "fã passando do limite","corte de peso dando errado","entrevista ao vivo"];
+const DILEMA_LOCAL=[
+ {titulo:"A pergunta na coletiva",cena:"Um repórter pergunta, ao vivo, se você não acha que só venceu porque o adversário estava machucado. O microfone está na sua frente e o ginásio inteiro escuta."},
+ {titulo:"O patrocínio esquisito",cena:"Uma casa de apostas oferece o dobro do que você ganha por luta. Seu treinador fez cara feia quando ouviu. O contrato vence amanhã."},
+ {titulo:"O primo com ideia",cena:"Seu primo apareceu com um plano de abrir uma academia com seu nome. Ele quer que você entre com tudo e não trouxe nenhum papel."},
+];
+
+/* O lim() trava número que a IA devolve; isto trava TEXTO no mesmo espírito
+   — a IA nunca é dependência. O desfecho do dilema é sobre a vida FORA do
+   octógono; nenhum resultado de luta é dela pra afirmar, quem decide isso é
+   o motor (ver api/ai.js, prompt de "julgar"). Corta só a FRASE que ofende,
+   não o desfecho inteiro — perder a narração toda por causa de uma frase
+   sai caro. CONTEXTO_TREINO existe porque um dilema pode ser sobre sparring
+   ou o desempenho de outra pessoa (parceiro de treino, adversário no
+   passado) sem afirmar nada da carreira do jogador — "nocauteou o parceiro
+   no sparring" não pode cair aqui. Medido em 40 desfechos reais da IA: 5%
+   das frases batem, sem falso positivo nos casos de terceiro. */
+const RESULTADO_LUTA=/\b(nocaute\w*|finaliz\w*(ou|ad[oa])|foi parad[oa] pelo árbitro|perdeu (a luta|o combate) por|venceu (a luta|o combate) por|(saiu|saí)\s+d[oa]\s+(oct[aáoó]gono|tatame|ringue)\s+(carregad\w*|derrotad\w*|chorando)|decis[ãa]o\s+(un[âa]nime|dividida|majorit[áa]ria))\b/i;
+const CONTEXTO_TREINO=/\b(sparring|trein\w*)\b/i;
+function semResultadoDeLuta(texto){
+  const frases=String(texto).split(/(?<=[.!?])\s+/).filter(Boolean);
+  const mantidas=frases.filter(f=>!(RESULTADO_LUTA.test(f)&&!CONTEXTO_TREINO.test(f)));
+  return mantidas.join(" ").trim();
+}
+
+async function abrirDilema(){
+  const bouts=document.getElementById("bouts");
+  const box=el("div","dilema");
+  box.innerHTML=`<div class="dil-t">Carregando…</div>`;
+  bouts.appendChild(box);
+  box.scrollIntoView({behavior:"smooth",block:"nearest"});
+
+  const seed=SEEDS[Math.floor(rng()*SEEDS.length)];
+  const mood=st.streakW>=3?"em alta":st.streakL>=2?"em queda":"estável";
+  let d=await ai("dilema",{name:me.name,record:`${st.wins}-${st.losses}`,
+    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed});
+  if(!d||!d.cena)d=DILEMA_LOCAL[Math.floor(rng()*DILEMA_LOCAL.length)];
+
+  box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
+    <div class="dil-c">${String(d.cena).slice(0,400)}</div>
+    <div class="dil-in">
+      <input type="text" id="dilresp" maxlength="200" placeholder="O que você faz?">
+      <button class="btn btn-sm" id="dilgo">Decidir</button></div>`;
+  const inp=document.getElementById("dilresp"),go=document.getElementById("dilgo");
+  inp.focus();
+  const enviar=async()=>{
+    const txt=inp.value.trim();
+    if(!txt)return inp.focus();
+    go.disabled=true;inp.disabled=true;go.textContent="…";
+    const j=await ai("julgar",{name:me.name,cena:d.cena,resposta:txt,
+      record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1)});
+    aplicarDilema(box,d,txt,j);
+  };
+  go.onclick=enviar;
+  inp.onkeydown=e=>{if(e.key==="Enter")enviar();};
+  return new Promise(res=>{box.__done=res;});
+}
+/* Severidade e duração da lesão são do JOGO, medidas — não da IA. Medido em
+   400 carreiras (candidatos()/simulateFight() reais), do jeito que o
+   TETO_TREINO foi medido: temporária custa ~0,7-0,9 vitórias em 22,
+   permanente ~1,0 (mesma ordem de grandeza do treino, não maior — é evento
+   situacional). A IA só classifica TIPO e ATRIBUTO (ver prompt de "julgar"
+   em api/ai.js) — deixar a MAGNITUDE com ela decepcionou: em 40 desfechos
+   reais medidos, o "efeito" que ela devolveu ficou quase sempre perto de
+   1.0, mesmo em cena dramática. Isto não passa por lim() porque não é
+   número da IA — é constante do jogo. lim() continua travando "efeito" no
+   dilema comum, abaixo. */
+const LESAO_TIPOS={
+  temporaria:{mult:.50,duracao:8},
+  permanente:{mult:.75,duracao:null},
+};
+
+function aplicarDilema(box,d,txt,j){
+  /* Todo número volta limitado. O jogador digita texto livre que entra no
+     prompt, então nada que o modelo devolve é aceito sem trava. */
+  const dSeg=lim(j&&j.seguidores,-.35,.60,0);
+  const dFan=lim(j&&j.fa,-2.5,2.5,0);
+  const ATTRS_LESAO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
+
+  /* Uma lesão de cada vez: st.lesao é objeto único, não lista. Se uma nova
+     sobrescrevesse a ativa, o multiplicador da primeira ficaria órfão em
+     st.eventoMod pra sempre (o tick de cura, em finishFight(), divide pelo
+     mult guardado em st.lesao — sem ele não tem como reverter o que já foi
+     aplicado). "já está machucado" também é defensável sozinho: não
+     empilha um segundo problema em cima do primeiro.
+
+     A IA nunca é dependência — vale pra ESTRUTURA da resposta, não só pros
+     números. houveLesao/lesao deveriam ser mutuamente exclusivos com
+     atributo/efeito (é o que o prompt de "julgar" pede), mas nunca confio
+     que isso foi respeitado: exijo os DOIS sinais concordando —
+     j.houveLesao===true E um objeto lesao válido E o campo atributo comum
+     ausente/"nenhum" (senão a IA preencheu os dois pares, sinal de que
+     não seguiu a instrução e a resposta inteira não é confiável). Qualquer
+     descompasso — houveLesao true com lesao null, houveLesao false com
+     lesao preenchido, atributo fora da lista — cai no caminho comum
+     abaixo, nunca em silêncio parcial. */
+  const lesaoBruta=j&&j.lesao;
+  const lesaoValida=!st.lesao&&j&&j.houveLesao===true&&lesaoBruta
+    &&ATTRS_LESAO.includes(lesaoBruta.atributo)&&me[lesaoBruta.atributo]!=null
+    &&(!j.atributo||j.atributo==="nenhum");
+  let atr=null, mult=1;
+  if(lesaoValida){
+    const tipo=LESAO_TIPOS[lesaoBruta.permanente?"permanente":"temporaria"];
+    atr=lesaoBruta.atributo; mult=tipo.mult;
+    st.eventoMod=st.eventoMod||{};
+    st.eventoMod[atr]=(st.eventoMod[atr]||1)*mult;
+    st.lesao={nome:String(lesaoBruta.regiao||"Lesão").slice(0,40),atributo:atr,mult,
+      permanente:!!lesaoBruta.permanente,desdeLuta:st.fightNo,duracao:tipo.duracao};
+  }else{
+    /* dilema comum (ou lesão bloqueada por já ter uma ativa): atributo/efeito
+       seguem vindo da IA, travados no lim() de sempre — o bypass acima é só
+       pra tabela de lesão, nunca pra isto. */
+    atr=ATTRS_LESAO.includes(j&&j.atributo)?j.atributo:null;
+    mult=lim(j&&j.efeito,.90,1.10,1);
+    if(atr&&me[atr]!=null){st.eventoMod=st.eventoMod||{};
+      st.eventoMod[atr]=(st.eventoMod[atr]||1)*mult;}
+  }
+
+  /* evitouLesao: risco físico evitado por escolha prudente. O custo em fama
+     já sai de dSeg/dFan (o prompt pede pra IA não tratar recusa como
+     neutra); o custo em ranking é mecânica nova — dilema nunca tocou
+     st.standing antes de hoje — e por isso fica fixo aqui, não depende da
+     IA lembrar de aplicar um número certo. */
+  if(j&&j.evitouLesao)st.standing=Math.max(.05,st.standing-.06);
+
+  const antes=st.followers;
+  st.followers=Math.max(120,Math.round(st.followers*(1+dSeg)));
+  st.fan=Math.max(0,Math.min(10,st.fan+dFan));
+  const dif=st.followers-antes;
+  /* aqui a direção é direta: os números já vieram limitados pelo lim() */
+  const peso=(dSeg*2.2)+(dFan*0.55);
+  (peso>0.12?SOM.bom:peso<-0.12?SOM.ruim:SOM.evento)();
+  /* Filtra ANTES do slice: cortar frase por regex depois de truncar em 500
+     poderia deixar uma frase pela metade sem o ponto final que a divide. */
+  const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,500):"";
+  const desfecho=bruto||"Você seguiu em frente e a semana passou sem grande consequência.";
+  box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
+    <div class="dil-c">${String(d.cena).slice(0,400)}</div>
+    <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
+    <div class="dil-o">${desfecho}</div>
+    <div class="dil-fx">
+      <span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>
+      <span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>
+      ${atr?`<span class="hint">${ROTULO_ATTR[atr]||atr} <span class="${mult>=1?"g":"dn"}">${
+        mult>=1?"+":""}${Math.round((mult-1)*100)}%</span></span>`:""}</div>`;
+  st.dilemas=(st.dilemas||0)+1;
+  if(box.__done)box.__done();
+}
+
+
+
+
+/* =========================================================================
+   SOM — sintetizado na Web Audio API, sem nenhum arquivo.
+   Motivos: o jogo continua sendo um HTML só, não depende de licença de
+   sample, não tem download nem espera. E o navegador BLOQUEIA áudio antes do
+   primeiro clique do usuário, então o contexto só nasce quando ele interage.
+   ========================================================================= */
+let AC=null, MASTER=null, BUS=null, MUSICA=null, AMB=null;
+let mudo=(()=>{try{return localStorage.getItem("mudo")==="1";}catch(e){return false;}})();
+
+/* Música e efeitos em barramentos separados porque na prática a pessoa quer
+   abaixar a trilha e manter o soco. O padrão dos dois é 1.00, que é o nível em
+   que o jogo foi equilibrado — quem não abrir o painel ouve exatamente o que
+   ouvia antes. Number() e não parseFloat(): o testar.js roda num sandbox
+   enxuto e parseFloat não está lá. */
+const lerVol=k=>{try{
+    const b=localStorage.getItem(k); if(b===null)return 1;
+    const v=Number(b); return isNaN(v)?1:clamp(v,0,1);
+  }catch(e){return 1;}};
+let volMusica=lerVol("vol_musica"), volEfeitos=lerVol("vol_efeitos");
+
+/* Dois barramentos sob o mesmo master: BUS carrega os efeitos, MUSICA carrega a
+   trilha. O mudo continua sendo ponto único — com ele ligado o contexto nem
+   nasce. */
+function ctx(){
+  if(mudo)return null;
+  if(!AC){
+    try{
+      AC=new (window.AudioContext||window.webkitAudioContext)();
+      MASTER=AC.createGain(); MASTER.gain.value=.9;        MASTER.connect(AC.destination);
+      BUS=AC.createGain();    BUS.gain.value=volEfeitos;   BUS.connect(MASTER);
+      MUSICA=AC.createGain(); MUSICA.gain.value=volMusica; MUSICA.connect(MASTER);
+    }catch(e){AC=null;return null;}
+  }
+  if(AC.state==="suspended")AC.resume();
+  return AC;
+}
+function env(g,t,pico,dur,atq=0.006){
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(pico,t+atq);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+}
+function ruido(dur,decai=true){
+  const a=ctx();if(!a)return null;
+  const n=Math.floor(a.sampleRate*dur);
+  const buf=a.createBuffer(1,n,a.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(decai?(1-i/n):1);
+  const s=a.createBufferSource();s.buffer=buf;return s;
+}
+
+/* ---------------- TRILHA ----------------
+   Bordão grave contínuo: fundamental em Lá0 (55 Hz), a quinta acima e uma
+   oitava, todas levemente desafinadas entre si. A desafinação é o que produz o
+   batimento lento que faz o som "respirar" em vez de zumbir parado.
+   Um filtro passa-baixa varre devagar por cima. Volume baixo de propósito:
+   é cama, não música. */
+function trilhaLiga(){
+  const a=ctx(); if(!a||AMB) return;
+  const g=a.createGain(); g.gain.value=0;
+  const lp=a.createBiquadFilter(); lp.type="lowpass";
+  lp.frequency.value=220; lp.Q.value=.7;
+  lp.connect(g); g.connect(MUSICA);
+
+  const vozes=[[55,0],[55.35,-0.4],[82.5,-6],[110,-9]];
+  const osc=vozes.map(([f,db])=>{
+    const o=a.createOscillator(), vg=a.createGain();
+    o.type="sine"; o.frequency.value=f;
+    vg.gain.value=Math.pow(10,db/20);
+    o.connect(vg).connect(lp); o.start();
+    return o;
+  });
+  /* sopro de sala: ruído filtrado bem embaixo, dá corpo sem virar chiado */
+  const s=ruido(8,false);
+  let sN=null;
+  if(s){ s.loop=true;
+    const bp=a.createBiquadFilter(); bp.type="lowpass"; bp.frequency.value=140;
+    const sg=a.createGain(); sg.gain.value=.045;
+    s.connect(bp).connect(sg).connect(lp); s.start(); sN=s; }
+
+  /* varredura lenta do filtro: 40 s de ida e volta */
+  const lfo=a.createOscillator(), lfoG=a.createGain();
+  lfo.type="sine"; lfo.frequency.value=1/40;
+  lfoG.gain.value=90; lfo.connect(lfoG).connect(lp.frequency); lfo.start();
+
+  g.gain.setValueAtTime(0.0001,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(.16,a.currentTime+3);   // entra devagar
+  AMB={g,osc,lfo,noise:sN};
+}
+function trilhaDesliga(){
+  if(!AMB||!AC)return;
+  const t=AC.currentTime;
+  AMB.g.gain.cancelScheduledValues(t);
+  AMB.g.gain.setValueAtTime(Math.max(.0001,AMB.g.gain.value),t);
+  AMB.g.gain.exponentialRampToValueAtTime(.0001,t+.8);
+  const {osc,lfo,noise}=AMB;
+  setTimeout(()=>{try{osc.forEach(o=>o.stop());lfo.stop();if(noise)noise.stop();}catch(e){}},900);
+  AMB=null;
+}
+
+/* ---------------- EFEITOS ----------------
+   Tudo transposto uma oitava e meia para baixo do que era antes, e com filtro
+   passa-baixa no lugar de onda crua. Agudo corta a trilha e cansa. */
+function tom(f,{tipo="sine",pico=.09,dur=.3,atq=.006,em=0,corte=null,varre=null}={}){
+  const a=ctx();if(!a)return;
+  const t=a.currentTime+em;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type=tipo; o.frequency.setValueAtTime(f,t);
+  if(varre)o.frequency.exponentialRampToValueAtTime(varre,t+dur);
+  let no=o;
+  if(corte){const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=corte;
+    o.connect(lp); no=lp;}
+  env(g,t,pico,dur,atq); no.connect(g).connect(BUS);
+  o.start(t); o.stop(t+dur+.12);
+}
+const SOM={
+  toque(){ if(toca("click",.75))return; tom(150,{tipo:"triangle",pico:.05,dur:.06,varre:96,corte:900}); },
+
+  fixa(){ tom(98,{tipo:"sine",pico:.10,dur:.22,corte:700});
+          tom(147,{tipo:"sine",pico:.07,dur:.26,em:.06,corte:800}); },
+
+  /* estalo abafado, tipo luva em corpo */
+  golpe(){ const a=ctx();if(!a)return;const t=a.currentTime;
+    const s=ruido(.11);if(!s)return;
+    const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(500,t);
+    const g=a.createGain();env(g,t,.11,.12,.002);
+    s.connect(lp).connect(g).connect(BUS);s.start(t);
+    tom(70,{tipo:"sine",pico:.07,dur:.1,varre:45}); },
+
+  queda(){ tom(96,{tipo:"sine",pico:.24,dur:.42,varre:34,atq:.005});
+    const a=ctx();if(!a)return;const t=a.currentTime;
+    const s=ruido(.3);if(!s)return;
+    const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(300,t);
+    const g=a.createGain();env(g,t,.13,.3,.004);
+    s.connect(lp).connect(g).connect(BUS);s.start(t); },
+
+  nocaute(){ tom(120,{tipo:"sine",pico:.38,dur:.85,varre:26,atq:.004});
+    const a=ctx();if(!a)return;const t=a.currentTime;
+    const s=ruido(2.2);if(!s)return;
+    const bp=a.createBiquadFilter();bp.type="lowpass";bp.frequency.setValueAtTime(700,t);
+    const g=a.createGain();
+    g.gain.setValueAtTime(.0001,t);
+    g.gain.exponentialRampToValueAtTime(.16,t+.35);     // a plateia leva um tempo
+    g.gain.exponentialRampToValueAtTime(.0001,t+2.2);
+    s.connect(bp).connect(g).connect(BUS);s.start(t); },
+
+  /* sino de round: grave e abafado, não o triângulo agudo de antes */
+  sino(){ [330,495,660].forEach((f,i)=>
+    tom(f,{tipo:"sine",pico:.055/(i+1),dur:1.4,atq:.002,corte:1200})); },
+
+  /* VITÓRIA: acorde maior grave que abre, com um peso embaixo */
+  vitoria(){ if(toca("vitoria",.85))return; tom(65,{tipo:"sine",pico:.16,dur:1.1,atq:.02});
+    [131,165,196].forEach((f,i)=>
+      tom(f,{tipo:"triangle",pico:.085,dur:1.0,em:i*.10,atq:.02,corte:1000}));
+    tom(262,{tipo:"sine",pico:.05,dur:1.2,em:.30,atq:.05,corte:900}); },
+
+  /* Evento neutro: um toque só, discreto. Serve de pontuação. */
+  evento(){ tom(147,{tipo:"sine",pico:.09,dur:.5,atq:.02,corte:900});
+            tom(220,{tipo:"sine",pico:.045,dur:.4,em:.03,atq:.03,corte:1100}); },
+
+  /* Evento BOM: terça maior subindo, curto. Menor que a vitória de propósito —
+     é uma boa notícia, não o fim de uma luta. */
+  bom(){ tom(98,{tipo:"sine",pico:.11,dur:.7,atq:.015});
+    [196,247,294].forEach((f,i)=>
+      tom(f,{tipo:"triangle",pico:.075,dur:.55,em:i*.075,atq:.012,corte:1500})); },
+
+  /* Evento RUIM: segunda menor descendo, com o chão saindo embaixo. */
+  ruim(){ tom(110,{tipo:"sine",pico:.12,dur:.9,atq:.015});
+    [233,208,175].forEach((f,i)=>
+      tom(f,{tipo:"triangle",pico:.07,dur:.55,em:i*.09,atq:.012,corte:1100}));
+    tom(87,{tipo:"sine",pico:.09,dur:.8,em:.28,atq:.04}); },
+
+  /* DERROTA: menor, desce, e a fundamental fica sozinha no fim */
+  derrota(){ if(toca("derrota",.85))return; tom(98,{tipo:"sine",pico:.14,dur:1.3,atq:.02});
+    [156,131,117].forEach((f,i)=>
+      tom(f,{tipo:"triangle",pico:.075,dur:.8,em:i*.16,atq:.02,corte:700}));
+    tom(58,{tipo:"sine",pico:.10,dur:1.6,em:.5,atq:.08}); },
+};
+
+/* O navegador só libera áudio depois de um gesto do usuário. Este ouvinte roda
+   uma vez e morre — é a única janela em que dá pra iniciar a trilha. */
+/* ---------------- ARQUIVOS ----------------
+   Os quatro áudios da pasta /audio substituem os sons sintetizados quando
+   carregam. Se algum faltar ou o navegador recusar o formato, o sintetizado
+   assume — o jogo nunca fica mudo por causa de um 404. */
+const ARQ={click:"audio/button_click.wav",vitoria:"audio/victory.wav",
+           derrota:"audio/defeat.wav",bgm:"audio/bgm_fight.ogg"};
+const BUF={};
+async function carregaAudio(){
+  const a=ctx(); if(!a) return;
+  await Promise.all(Object.entries(ARQ).map(async ([k,url])=>{
+    try{
+      const r=await fetch(url); if(!r.ok)throw 0;
+      BUF[k]=await a.decodeAudioData(await r.arrayBuffer());
+    }catch(e){ /* fica sem: o sintetizado cobre */ }
+  }));
+}
+function toca(k,ganho=1){
+  const a=ctx(); if(!a||!BUF[k])return false;
+  const s=a.createBufferSource(); s.buffer=BUF[k];
+  const g=a.createGain(); g.gain.value=ganho;
+  s.connect(g).connect(BUS); s.start();
+  return true;
+}
+let BGM=null;
+function bgmLiga(){
+  const a=ctx(); if(!a||!BUF.bgm||BGM) return false;
+  const s=a.createBufferSource(); s.buffer=BUF.bgm; s.loop=true;
+  const g=a.createGain(); g.gain.setValueAtTime(.0001,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(.34,a.currentTime+2.5);
+  s.connect(g).connect(MUSICA); s.start();
+  BGM={s,g}; return true;
+}
+function bgmDesliga(){
+  if(!BGM||!AC)return;
+  const t=AC.currentTime;
+  BGM.g.gain.cancelScheduledValues(t);
+  BGM.g.gain.setValueAtTime(Math.max(.0001,BGM.g.gain.value),t);
+  BGM.g.gain.exponentialRampToValueAtTime(.0001,t+.9);
+  const s=BGM.s; setTimeout(()=>{try{s.stop();}catch(e){}},1000);
+  BGM=null;
+}
+
+function armarTrilha(){
+  if(!document.addEventListener)return;      // ambiente sem eventos: sem trilha, sem erro
+  const arma=async()=>{
+    await carregaAudio();
+    if(!bgmLiga())trilhaLiga();          // sem arquivo, cai no bordão sintetizado
+    document.removeEventListener("pointerdown",arma);
+    document.removeEventListener("keydown",arma); };
+  document.addEventListener("pointerdown",arma);
+  document.addEventListener("keydown",arma);
+}
+
+/* Rampa curta em vez de salto: arrastar a barra mexe no ganho dezenas de vezes
+   por segundo e salto de ganho estala. */
+function ajustaGanho(no,v){
+  if(!no)return;
+  try{ no.gain.setTargetAtTime(v,AC.currentTime,.02); }
+  catch(e){ try{ no.gain.value=v; }catch(e2){} }
+}
+function aplicarVolumes(){
+  ajustaGanho(MUSICA,volMusica);
+  ajustaGanho(BUS,volEfeitos);
+}
+function definirVolume(qual,v){
+  v=clamp(Number(v)||0,0,1);
+  if(qual==="musica"){ volMusica=v; try{localStorage.setItem("vol_musica",String(v));}catch(e){} }
+  else               { volEfeitos=v; try{localStorage.setItem("vol_efeitos",String(v));}catch(e){} }
+  aplicarVolumes();
+}
+function definirMudo(v){
+  mudo=!!v;
+  try{localStorage.setItem("mudo",mudo?"1":"0");}catch(e){}
+  if(mudo){ bgmDesliga(); trilhaDesliga(); return; }
+  SOM.toque();                 // é ele que faz o contexto nascer
+  aplicarVolumes();
+  /* Quem começou mudo nunca chegou a baixar os arquivos: o ctx() devolvia null
+     e o carregaAudio saía na primeira linha. Carrega agora, e só então escolhe
+     entre arquivo e bordão sintetizado. */
+  try{ carregaAudio().then(()=>{ if(!bgmLiga())trilhaLiga(); }); }
+  catch(e){ if(!bgmLiga())trilhaLiga(); }
+}
+
+/* =========================================================================
+   CONFIGURAÇÕES — o painel da engrenagem
+   O botão "Som on/off" que morava na barra fixa SAIU e virou item daqui. Ter a
+   mesma função em dois lugares é a receita para os dois estados discordarem.
+   ========================================================================= */
+let cfgAberto=false;
+
+function linhaVolume(id,rotulo,valor,aoMudar){
+  const li=el("div","cfg-linha");
+  const inp=el("input");
+  inp.type="range"; inp.min="0"; inp.max="100"; inp.step="1";
+  inp.value=String(Math.round(valor*100));
+  inp.id=id; inp.className="cfg-range";
+  inp.setAttribute&&inp.setAttribute("aria-label",rotulo);
+  const num=el("b","cfg-num",inp.value+"%");
+  const aplica=()=>{
+    const v=clamp(Number(inp.value)/100,0,1);
+    num.textContent=Math.round(v*100)+"%";
+    aoMudar(v);
+  };
+  inp.oninput=aplica; inp.onchange=aplica;
+  li.append(el("span","cfg-rot",rotulo),inp,num);
+  return {li,inp};
+}
+
+function abrirConfig(){
+  const cx=document.getElementById("cfg");
+  if(!cx||cfgAberto)return;
+  cfgAberto=true;
+  cx.innerHTML="";
+
+  const p=el("div","cfg-painel");
+  const topo=el("div","cfg-top","<h2>Configurações</h2>");
+  const fechar=el("button","cfg-x","&#10005;");
+  fechar.id="cfgx"; fechar.type="button";
+  fechar.setAttribute&&fechar.setAttribute("aria-label","Fechar");
+  fechar.onclick=()=>{SOM.toque();fecharConfig();};
+  topo.appendChild(fechar);
+
+  const somL=el("div","cfg-linha");
+  const tg=el("button","cfg-toggle","");
+  tg.id="cfgmudo"; tg.type="button";
+  const mus=linhaVolume("cfg_mus","Música",volMusica,v=>definirVolume("musica",v));
+  const efe=linhaVolume("cfg_efe","Efeitos",volEfeitos,v=>definirVolume("efeitos",v));
+
+  /* Um lugar só decide a aparência das três linhas, senão o mudo e as barras
+     saem de sincronia como já saíam antes. */
+  const pintar=()=>{
+    tg.textContent=mudo?"Mudo":"Ligado";
+    tg.className="cfg-toggle"+(mudo?"":" on");
+    mus.li.className="cfg-linha"+(mudo?" cfg-off":"");
+    efe.li.className="cfg-linha"+(mudo?" cfg-off":"");
+    mus.inp.disabled=mudo; efe.inp.disabled=mudo;
+  };
+  tg.onclick=()=>{ definirMudo(!mudo); pintar(); };
+  pintar();
+
+  somL.append(el("span","cfg-rot","Som"),tg);
+  p.append(topo,somL,mus.li,efe.li);
+  p.appendChild(el("p","cfg-nota",
+    "A trilha é cama de fundo e entra bem abaixo dos efeitos. Se quiser ouvir só "+
+    "o soco, zere a música — o resto continua igual."));
+
+  /* Clique no fundo fecha; clique dentro do painel não. */
+  cx.onclick=e=>{ if(!e||e.target===cx)fecharConfig(); };
+  p.onclick=e=>{ if(e&&e.stopPropagation)e.stopPropagation(); };
+
+  cx.appendChild(p);
+  cx.style.display="flex";
+}
+function fecharConfig(){
+  const cx=document.getElementById("cfg");
+  cfgAberto=false;
+  if(!cx)return;
+  cx.style.display="none";
+  cx.innerHTML="";
+}
+function armarConfig(){
+  const b=document.getElementById("cfgbtn");
+  if(b)b.onclick=()=>{ SOM.toque(); cfgAberto?fecharConfig():abrirConfig(); };
+  if(document.addEventListener)
+    document.addEventListener("keydown",e=>{
+      if(e&&e.key==="Escape"&&cfgAberto)fecharConfig(); });
+}
+
+/* =========================================================================
+   FICHA DO LUTADOR — o painel que mostra a carreira acontecendo
+   ========================================================================= */
+const ROTULO_ATTR={slpm:"Volume",strDef:"Defesa de golpes",tdAvg:"Quedas",
+  tdDef:"Defesa de queda",subAvg:"Finalizações",kdAvg:"Poder",
+  durability:"Queixo",reach:"Alcance"};
+const FMT_ATTR={slpm:v=>v.toFixed(2),strDef:v=>Math.round(v*100)+"%",tdAvg:v=>v.toFixed(2),
+  tdDef:v=>Math.round(v*100)+"%",subAvg:v=>v.toFixed(2),kdAvg:v=>v.toFixed(2),
+  durability:v=>v.toFixed(2),reach:v=>v.toFixed(0)+String.fromCharCode(34)};
+
+/* Idade: começa em 24 e anda com a carreira. 22 lutas em ~9 anos é o ritmo de
+   um cartel de UFC de verdade. */
+const IDADE_INICIAL=24;
+const idadeAtual=()=>IDADE_INICIAL+Math.floor(fightNo/2.4);
+
+/* Assinatura derivada do eixo mais forte. É RÓTULO, não golpe simulado: o motor
+   não tem tipos de golpe, e inventar um seria mentir para o jogador. */
+function assinatura(){
+  const f=lutadorEfetivo();
+  const pares=[
+    ["kdAvg", f.kdAvg/0.36,  me.stance==="Southpaw"?"Canhota de nocaute":"Cruzado de direita"],
+    ["tdAvg", f.tdAvg/1.5,   "Queda dupla"],
+    ["subAvg",f.subAvg/0.7,  "Mata-leão"],
+    ["slpm",  f.slpm/3.5,    "Jab em série"],
+    ["tdDef", f.tdDef/0.62,  "Sprawl de ferro"],
+    ["strDef",f.strDef/0.58, "Esquiva e contra"],
+  ];
+  pares.sort((a,b)=>b[1]-a[1]);
+  return pares[0][1]>1.05?pares[0][2]:"Sem golpe marcante";
+}
+
+/* O próximo passo para o cinturão, em linguagem de UFC. Limiares de standing
+   intocados — são os mesmos que passam no testar.js. Só o texto mudou: nas
+   duas últimas faixas dá pra nomear gente de verdade (RANKING), porque ali
+   já são só 1-2 posições de banda. Entre 0.35 e 0.80 fica sem nome de
+   propósito — com 26 empatados no peso-leve, nomear ali fingiria uma
+   precisão que a escala não tem. */
+function passoCinturao(){
+  if(st.title)return null;
+  const s=st.standing;
+  if(s<0.35)return "Vencer no card preliminar até entrar no ranking dos 15";
+  if(s<0.60)return "Subir no ranking encadeando vitórias contra quem está acima";
+  if(s<0.80)return "Chegar ao top 5 da divisão";
+  if(s<0.88){
+    const nm=RANKING&&RANKING.desafiante?RANKING.desafiante.name:"um contender do top 5";
+    return `Vencer ${nm} para virar desafiante`;
+  }
+  if(st.streakW<3)return "Emplacar 3 vitórias seguidas para receber a disputa";
+  /* candidatos() garante esse nome — a carta travada ignora `fought` (ver
+     lá), então nomear aqui não promete o que o mecanismo pode não entregar.
+     "concedida" junta st.disputaLiberada (persistente: já foi sorteado
+     favorável antes, sobrevive entre lutas) com st.tituloEstaLuta (só é
+     fresco DURANTE a decisão desta luta, setado em nextFight() — ver lá);
+     qualquer um dos dois já garante que a próxima disputa, quando vier, é
+     contra este nome. Reconquista (perdeu o cinturão antes) nomeia
+     exCampeao, não RANKING.campeao — é contra quem tirou que a disputa de
+     volta acontece. */
+  const nm=st.exCampeao?st.exCampeao.name:(RANKING&&RANKING.campeao?RANKING.campeao.name:"o campeão");
+  const concedida=st.disputaLiberada||st.tituloEstaLuta;
+  return concedida
+    ? `Você é o desafiante: a disputa contra ${nm} vem na próxima luta`
+    : `Você é o desafiante: a disputa contra ${nm} pode vir, ou não — lesão do campeão, política, prioridade da organização`;
+}
+
+/* A posição sai da MESMA escala que escolhe adversário: candidatos() coloca o
+   jogador em standing*(N-1) na escada, então essa é a posição que o jogo já
+   usa de fato, só que invisível até agora.
+
+   Não conto "quantos têm rating maior" de propósito: rating é vitórias em 18
+   simulações, então só existem ~19 valores distintos e no peso-leve 26
+   lutadores empatam no mesmo número. Uma vitória faria a posição saltar 20
+   lugares de uma vez e a barra de progresso viraria escada de degrau alto. */
+function posicaoDivisao(s){
+  if(!LADDER||!LADDER.length||!st)return null;
+  const N=LADDER.length;
+  const v=clamp(s==null?st.standing:s,0,1);
+  return {n:N-Math.round(v*(N-1)),de:N};
+}
+
+function renderFicha(){
+  const box=document.getElementById("ficha");
+  if(!box||!st||!me)return;
+  const passo=passoCinturao();
+  const base=me.__base||{};
+  const linhas=ATTR_TREINAVEIS.concat(["reach"]).map(k=>{
+    const b=base[k]!=null?base[k]:me[k];
+    if(b==null)return "";
+    const atual=ATTR_TREINAVEIS.includes(k)?statAtual(k):b;
+    const ganho=b>0?(atual/b-1):0;
+    const pct=Math.max(0,Math.min(1,PCT?PCT(k,atual):0.5));
+    const pctBase=Math.max(0,Math.min(1,PCT?PCT(k,b):0.5));
+    return `<div class="atr">
+      <span class="r">${ROTULO_ATTR[k]||k}</span>
+      <span class="v">${FMT_ATTR[k]?FMT_ATTR[k](atual):atual.toFixed(2)}${
+        ganho>0.005?`<span class="g">+${Math.round(ganho*100)}%</span>`
+        :ganho<-0.005?`<span class="dn">${Math.round(ganho*100)}%</span>`:""}</span>
+      <span class="atrbar"><i class="base" style="width:${(pctBase*100).toFixed(0)}%"></i>
+        <i class="gan" style="left:${(pctBase*100).toFixed(0)}%;width:${
+          Math.max(0,(pct-pctBase)*100).toFixed(0)}%"></i>
+        <i class="perda" style="left:${(pct*100).toFixed(0)}%;width:${
+          Math.max(0,(pctBase-pct)*100).toFixed(0)}%"></i></span>
+    </div>`;
+  }).join("");
+
+  box.innerHTML=`
+    <div class="ficha-top">
+      ${bonecoSVG(ROSTO||cfgPadrao(),{w:64})}
+      <div class="id">
+        <div class="nm">${me.name}</div>
+        <div class="sub">${idadeAtual()} anos · ${st.wins}-${st.losses}</div>
+        <div class="assin">${assinatura()}</div>
+      </div>
+    </div>
+    <div class="ficha-sec">
+      <h4>Cinturão</h4>
+      <div class="cint"><span class="b ${st.title?"sim":"nao"}">${st.title?"Campeão":"Não"}</span>
+        ${st.title?`<small>${st.defesas||0} defesa${(st.defesas||0)===1?"":"s"}</small>`:""}</div>
+      ${passo?`<div class="passo">${passo}</div>`:""}
+    </div>
+    ${RANKING&&RANKING.campeao?`<div class="ficha-sec">
+      <h4>Ranking</h4>
+      <div class="rank-pico">Campeão: <b>${st.title?me.name:(st.exCampeao?st.exCampeao.name:RANKING.campeao.name)}</b></div>
+    </div>`:""}
+    ${(()=>{
+      const rk=posicaoDivisao();
+      if(!rk)return "";
+      /* rankAnt é gravado antes do standing mudar, então o movimento é sempre
+         o da última luta, não o acumulado. */
+      const mov=st.rankAnt!=null?st.rankAnt-rk.n:0;
+      const pico=posicaoDivisao(st.peak);
+      return `<div class="ficha-sec">
+        <h4>Posição na divisão</h4>
+        <div class="rank">
+          <span class="pos">#${rk.n}</span>
+          <span class="de">de ${rk.de}</span>
+          ${mov?`<span class="mov ${mov>0?"sobe":"cai"}">${mov>0?"&#9650;":"&#9660;"} ${Math.abs(mov)}</span>`:""}
+        </div>
+        ${pico&&pico.n<rk.n?`<div class="rank-pico">Melhor da carreira: #${pico.n}</div>`:""}
+      </div>`;
+    })()}
+    ${st.lesao?`<div class="ficha-sec">
+      <h4>Lesão</h4>
+      <div class="lesao">
+        <div class="lesao-nome">${st.lesao.nome}</div>
+        <div class="lesao-dur">${(()=>{
+          if(st.lesao.permanente)return "Lesão permanente — não cura";
+          const curaNaLuta=st.lesao.desdeLuta+st.lesao.duracao;
+          if(curaNaLuta>TOTAL_FIGHTS)return "Dura até o fim da carreira";
+          const restam=Math.max(0,curaNaLuta-st.fightNo);
+          return `Cura em ${restam} luta${restam===1?"":"s"}`;
+        })()}</div>
+      </div>
+    </div>`:""}
+    <div class="ficha-sec">
+      <h4>Atributos · base e treino</h4>
+      <div class="atrs">${linhas}</div>
+    </div>`;
+}
+
+/* =========================================================================
+   ESCOLHAS DE CARREIRA
+   O jogo pedia 4 decisões no draft e depois só "próxima luta" 22 vezes.
+   Agora cada luta tem duas: contra quem lutar e como se preparar.
+   ========================================================================= */
+/* Treino agora é PERMANENTE. Isso obriga teto e retorno decrescente: sem eles,
+   22 lutas de +10% viram +700% e a calibração toda vai embora.
+
+   Cada atributo tem um multiplicador acumulado que começa em 1.00 e satura em
+   TETO_TREINO. O ganho de cada camp é proporcional ao que FALTA para o teto,
+   então os primeiros treinos rendem muito e os últimos quase nada — que é como
+   evolução de atleta funciona de verdade. */
+const TETO_TREINO=1.26;
+const CAMPS=[
+ {id:"boxe",nome:"Boxe",desc:"Semanas na luva, cabeça saindo da linha.",
+  ganho:"defesa de golpes e volume",
+  alvos:{strDef:1.00,slpm:0.55},
+  contra:["Nocauteador","Pressão","Contragolpeador"]},
+ {id:"wrestling",nome:"Wrestling",desc:"Camp inteiro no tatame, sprawl e levantada.",
+  ganho:"defesa de queda e quedas",
+  alvos:{tdDef:1.00,tdAvg:0.60},
+  contra:["Wrestler","Finalizador","Antiqueda"]},
+ {id:"jiujitsu",nome:"Jiu-jitsu",desc:"Guarda, raspagem e caça de pescoço.",
+  ganho:"finalizações e defesa de queda",
+  alvos:{subAvg:1.00,tdDef:0.45},
+  contra:["Finalizador","Wrestler"]},
+ {id:"fisico",nome:"Físico",desc:"Só condicionamento e força. Aguenta e machuca.",
+  ganho:"queixo e poder",
+  alvos:{durability:0.85,kdAvg:0.85},
+  contra:["Queixo de ferro","Completo","Nocauteador"]},
+];
+const ATTR_TREINAVEIS=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
+const RITMO_TREINO=0.30;      // fração do que falta para o teto, por camp
+
+function aplicarCamp(camp){
+  st.treino=st.treino||{};
+  for(const [k,peso] of Object.entries(camp.alvos)){
+    const atual=st.treino[k]||1;
+    const falta=TETO_TREINO-atual;
+    st.treino[k]=atual+falta*RITMO_TREINO*peso;
+  }
+  st.campHist=st.campHist||{};
+  st.campHist[camp.id]=(st.campHist[camp.id]||0)+1;
+}
+/* valor efetivo = base do draft × multiplicador de treino × modificadores de evento */
+function statAtual(k){
+  const base=(me.__base&&me.__base[k]!=null)?me.__base[k]:me[k];
+  const t=(st.treino&&st.treino[k])||1;
+  const ev=(st.eventoMod&&st.eventoMod[k])||1;
+  return base*t*ev;
+}
+function lutadorEfetivo(){
+  const f=Object.assign({},me);
+  ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)f[k]=statAtual(k);});
+  if(f.strDef>.93)f.strDef=.93;
+  if(f.tdDef>.95)f.tdDef=.95;
+  return f;
+}
+
+/* CHANCE_DISPUTA não é medido — é o primeiro número pra uma mecânica nova
+   (diferente de WEIGHTS/TETO_TREINO, que vieram de medição). Falta medir
+   quantas lutas em média o jogador espera pela disputa depois de virar
+   desafiante. Ver PENDENCIAS item 1. */
+const CHANCE_DISPUTA=0.65;
+
+/* Elegível (standing>.88 + streak 3) != disputa concedida. "Pode não vir"
+   (lesão do campeão, política) é um sorteio em holdRng — nunca em rng, senão
+   desloca a sequência e link de desafio antigo para de reproduzir a mesma
+   carreira. Uma vez concedida fica concedida (st.disputaLiberada), não
+   sorteia de novo a cada fight-decision. Defesa (st.title já true) não
+   sorteia: é obrigatória, como no UFC real. */
+function tituloLiberado(){
+  if(st.title)return true;
+  if(!(st.standing>.88&&st.streakW>=3))return false;
+  if(st.disputaLiberada)return true;
+  if(holdRng()<CHANCE_DISPUTA){st.disputaLiberada=true;return true;}
+  return false;
+}
+
+/* três candidatos: mais fraco, parelho e acima. A diferença não é só risco —
+   é quanto o ranking anda. Ganhar de quem está acima vale muito mais.
+
+   Campeão e desafiante nº1 (RANKING) nunca aparecem aqui — são reservados
+   pra luta de título/defesa forçada abaixo. Sem essa reserva, standing alto
+   deixa a faixa "duro" bem em cima do topo da escada, onde o campeão está:
+   ele apareceria como luta comum antes da disputa, e a disputa de verdade
+   viraria revanche. */
+function candidatos(){
+  /* NÃO chama tituloLiberado() aqui. st.tituloEstaLuta já foi decidido em
+     nextFight(), uma vez por luta, antes de existir tela ou pick automático.
+     candidatos() só lê. Se o sorteio do holdRng morasse aqui, qualquer chamada
+     futura a candidatos() fora de nextFight() (ou uma segunda chamada por
+     engano) sortearia de novo e a chance efetiva de "a disputa vir" deixaria
+     de ser CHANCE_DISPUTA por luta — passaria a depender de quantas vezes a
+     função foi invocada. */
+  if(st.tituloEstaLuta){
+    /* A carta travada IGNORA `fought` de propósito — revanche de título é o
+       caso NORMAL do UFC, não exceção. Perder pro campeão e voltar pra
+       reconquistar, ou defender contra o mesmo desafiante nº1 mais de uma
+       vez, é a história, não um furo. Isso já foi tentado com guard
+       (`!fought.has(alvo.name)`) e quebrou: depois de qualquer disputa —
+       vitória OU derrota — `lutar()` marca `fought.add(opp.name)`
+       incondicional, então RANKING.campeao/desafiante ficam banidos de si
+       mesmos pra sempre a partir da 1ª vez, e a reconquista caía no fallback
+       comum contra um nome qualquer — o jogador ganhava o cinturão de
+       alguém aleatório enquanto a ficha continuava nomeando o campeão de
+       verdade. RANKING.campeao/desafiante continuam banidos das 3 BANDAS
+       COMUNS (reservados, abaixo) — só este caminho travado passa por cima
+       do `fought`. Repetir contra os dois nomeados é esperado e testado
+       (`node testar.js interface`/`cinturao`, ver LEIA-ME "O passo para o
+       cinturão" pela explicação completa); repetir contra qualquer outra
+       pessoa continua sendo bug. */
+    const alvo=st.title?RANKING.desafiante:RANKING.campeao;
+    if(alvo)return[{f:alvo,ganho:st.title?.10:.15}];
+  }
+  const N=LADDER.length;
+  const reservados=new Set([RANKING&&RANKING.campeao&&RANKING.campeao.name,
+    RANKING&&RANKING.desafiante&&RANKING.desafiante.name].filter(Boolean));
+  /* No topo do ranking não existe "acima": a faixa perigosa colapsava num
+     único adversário repetido e virava a opção MAIS fácil. Recuamos o centro
+     para que as três faixas sempre tenham gente de verdade. */
+  const larg=0.20;
+  const c=Math.floor(Math.min(st.standing,1-larg)*(N-1));
+  const faixas=[[-0.16,-0.07,0.045],[-0.03,0.03,0.075],[0.08,larg,0.125]];
+  const out=[];
+  for(const [lo,hi,ganho] of faixas){
+    const a=Math.max(0,Math.min(N-1,c+Math.round(lo*N)));
+    const b=Math.max(a,Math.min(N-1,c+Math.round(hi*N)));
+    let esc=null;
+    for(let t=0;t<60;t++){
+      const cand=LADDER[a+Math.floor(rng()*(b-a+1))];
+      if(cand&&!fought.has(cand.name)&&!reservados.has(cand.name)&&!out.some(o=>o.f.name===cand.name)){esc=cand;break;}
+    }
+    if(!esc){ // varre a faixa inteira antes de desistir
+      for(let i=a;i<=b;i++){const cd=LADDER[i];
+        if(cd&&!fought.has(cd.name)&&!reservados.has(cd.name)&&!out.some(o=>o.f.name===cd.name)){esc=cd;break;}}
+    }
+    /* Último recurso: o mais próximo da faixa que ainda não foi enfrentado.
+       Antes isso devolvia LADDER[a] direto e, num pool apertado, devolvia alguém
+       JÁ ENFRENTADO em silêncio — o modo lenda (49 lutadores no peso-pesado) fez
+       isso aparecer, mas o buraco sempre esteve aqui. A varredura não consome
+       rng, então link de desafio antigo continua reproduzindo a mesma carreira. */
+    if(!esc)for(let r=1;r<N&&!esc;r++){
+      for(const i of [a-r,b+r]){
+        const cd=LADDER[i];
+        if(cd&&!fought.has(cd.name)&&!reservados.has(cd.name)&&!out.some(o=>o.f.name===cd.name)){esc=cd;break;}
+      }
+    }
+    /* só sobra se o pool for menor que a carreira, e aí a divisão nem é oferecida */
+    if(!esc)esc=LADDER[Math.max(0,Math.min(N-1,a))];
+    out.push({f:esc,ganho});
+  }
+  return out;
+}
+
+function dificuldade(opp){
+  const d=(opp.rating??.5)-st.standing;
+  if(d<-0.10)return{n:1,rot:"Acessível",pips:1};
+  if(d<0.04) return{n:2,rot:"Parelho",pips:2};
+  if(d<0.16) return{n:3,rot:"Duro",pips:3};
+  return{n:4,rot:"Perigoso",pips:4};
+}
+function bioLutador(f){
+  const t=f.titulos||{disputas:0,vitorias:0};
+  const era=f.era?`${f.era[0]}–${f.era[1]}`:"—";
+  const linhas=[`<b>${f.fights}</b> lutas · ${era}`];
+  if(t.vitorias>0)linhas.push(`<b>${t.vitorias}</b> ${t.vitorias>1?"vitórias":"vitória"} em luta de cinturão`);
+  else if(t.disputas>0)linhas.push(`disputou o cinturão <b>${t.disputas}</b>x, nunca venceu`);
+  if(f.destaque)linhas.push(`${f.destaque.eixo} no <b>${Math.round(f.destaque.pct*100)}º</b> percentil`);
+  return linhas.join("<br>");
+}
+
+function telaAdversario(){
+  const box=document.getElementById("escolha");
+  box.style.display="";
+  const opts=candidatos();
+  box.innerHTML=`<div class="esc-hd">Luta ${fightNo+1} de ${TOTAL_FIGHTS} — escolha o adversário</div>
+    <div class="opps" id="opps"></div>`;
+  const g=document.getElementById("opps");
+  opts.forEach(o=>{
+    const d=dificuldade(o.f);
+    const b=el("button","opp d"+d.n,`
+      <span class="nm">${o.f.name}</span>
+      <span class="arq">${o.f.arquetipo||"—"}</span>
+      <span class="bio">${bioLutador(o.f)}</span>
+      <span class="dif"><span class="pips">${[1,2,3,4].map(i=>`<i class="${i<=d.pips?"on":""}"></i>`).join("")}</span>
+        <b>${d.rot}</b></span>
+      <span class="dif" style="border:none;padding-top:0"><span>ranking</span>
+        <b>+${Math.round(o.ganho*100)}</b></span>`);
+    b.onclick=()=>{SOM.toque();telaCamp(o);};
+    g.appendChild(b);
+  });
+  box.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function telaCamp(escolhido){
+  const box=document.getElementById("escolha");
+  box.innerHTML=`<div class="esc-hd">Camp para ${escolhido.f.name}</div>
+    <div class="contra">Ele é <b>${escolhido.f.arquetipo||"completo"}</b>${
+      escolhido.f.destaque?`, com ${escolhido.f.destaque.eixo} no <b>${Math.round(escolhido.f.destaque.pct*100)}º percentil</b> da divisão`:""}.
+      Prepare o que precisa.</div>
+    <div class="camps" id="camps"></div>`;
+  const g=document.getElementById("camps");
+  CAMPS.forEach(c=>{
+    /* mostra quanto ainda RENDE: sem isso o jogador não percebe o retorno
+       decrescente e continua repetindo um camp que já saturou */
+    const alvos=Object.keys(c.alvos);
+    const restante=alvos.reduce((s,k)=>{
+      const at=(st.treino&&st.treino[k])||1;
+      return s+(TETO_TREINO-at)/(TETO_TREINO-1);
+    },0)/alvos.length;
+    const rot=restante>.72?"rende muito":restante>.4?"ainda rende":
+              restante>.15?"quase no teto":"saturado";
+    const vezes=(st.campHist&&st.campHist[c.id])||0;
+    const b=el("button","camp",`<span class="t">${c.nome}</span>
+      <span class="d">${c.desc}</span>
+      <span class="g">${c.ganho}</span>
+      <span class="camp-bar"><i style="width:${Math.round(restante*100)}%"></i></span>
+      <span class="camp-st">${rot}${vezes?` · feito ${vezes}x`:""}</span>`);
+    b.onclick=()=>{SOM.toque();box.style.display="none";box.innerHTML="";lutar(escolhido,c);};
+    g.appendChild(b);
+  });
+}
+
+
+/* =========================================================================
+   BONECO — SVG desenhado por código, sem imagem nenhuma.
+   Mantém o jogo em arquivo único, escala em qualquer tamanho e acompanha as
+   variáveis de cor do tema. Os adversários também têm boneco, derivado do nome
+   e dos stats: se só o jogador tivesse, a tela de escolha ficaria torta.
+   ========================================================================= */
+/* =========================================================================
+   ROSTO v2 — busto em SVG construído sobre anatomia, não sobre coordenadas
+   soltas.
+
+   O sistema anterior quebrava porque cada peça tinha número fixo no código:
+   olho em x=39, boca em y=71. Trocar o formato da cabeça não movia nada disso,
+   então bastava mexer numa peça para as outras saírem do lugar.
+
+   Três decisões resolvem isso na raiz:
+
+   1. ANCORAGEM — o objeto A descreve a anatomia (linha dos olhos, base do
+      nariz, largura da mandíbula...). Toda peça se posiciona em relação a ele.
+      Mudar o porte move a mandíbula e barba, orelha e queixo acompanham.
+
+   2. SIMETRIA POR CONSTRUÇÃO — olho, sobrancelha e orelha são desenhados uma
+      vez e espelhados por transform. É impossível ficarem desalinhados ou de
+      tamanhos diferentes: são o mesmo desenho.
+
+   3. RECORTE — o cabelo é cortado pela região do crânio, a barba pela região da
+      mandíbula. Não conseguem invadir o rosto nem flutuar, por construção.
+
+   Sombra e realce saem do tom de pele por cálculo, então trocar a cor mantém a
+   iluminação coerente em rosto, pescoço e orelha.
+   ========================================================================= */
+
+/* ---------------------------- paletas ---------------------------- */
+const PELES=["#F5D6B8","#EAC39C","#DBA878","#C08B57","#9E6B3E","#7A4E2B","#573520","#3B2317"];
+const CABELOS=["#0F0C0A","#241A14","#3B2A1C","#5A3E24","#7E5A2E","#A8823F","#CBB077","#E0D2A8",
+               "#8A8A8A","#CFCFCF","#8C3327","#2B3F63"];
+const OLHOS_COR=["#4A2F1B","#6B4423","#8A6A3A","#4E6B4A","#3E6478","#5A6B7A","#2E2622"];
+const CALCOES=["#C0392B","#1F3A6E","#1E6B4A","#7A2D8C","#B9932F","#242A36","#0F5C6B","#8C3A1E"];
+
+const CABELO_TIPOS=["raspado","máquina","curto","social","topete","moicano","coque","dreads","longo"];
+const BARBAS=["nenhuma","por fazer","bigode","cavanhaque","curta","média","cheia","costeleta"];
+const OLHOS=["neutro","firme","fundo","inchado","cerrado"];
+const SOBRANCELHAS=["reta","grossa","angulada","fina","partida","arqueada"];
+const BOCAS=["neutra","cerrada","firme","larga","fina","protetor"];
+const CICATRIZES=["nenhuma","supercílio","maçã do rosto","abaixo do olho","queixo","lábio"];
+const PORTES=["magro","atlético","forte"];
+
+/* ---------------------- cor derivada do tom de pele ----------------------
+   Sombra e realce calculados a partir da base, então trocar o tom mantém a
+   iluminação coerente em rosto, pescoço e orelha ao mesmo tempo. */
+function mistura(hex,alvo,q){
+  const h=hex.replace("#","");
+  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  const a=alvo.replace("#","");
+  const r2=parseInt(a.slice(0,2),16),g2=parseInt(a.slice(2,4),16),b2=parseInt(a.slice(4,6),16);
+  const m=(x,y)=>Math.round(x+(y-x)*q).toString(16).padStart(2,"0");
+  return "#"+m(r,r2)+m(g,g2)+m(b,b2);
+}
+const sombrear=(c,q=.22)=>mistura(c,"#241512",q);
+const iluminar=(c,q=.16)=>mistura(c,"#FFF3E4",q);
+
+/* ---------------------------- anatomia ----------------------------
+   Todas as medidas em viewBox 0 0 100 120. Um único lugar. */
+function anatomia(porte){
+  const largura=[0,1,2].indexOf(porte)>=0?porte:1;
+  const jaw=[21.5,23.5,25.5][largura];      // meia-largura da mandíbula
+  return {
+    cx:50,
+    topo:18,                 // topo do crânio
+    testa:36,                // linha da testa
+    sobrancelha:44,          // linha da sobrancelha
+    olhos:50,                // linha dos olhos
+    nariz:60,                // base do nariz
+    boca:70,                 // linha da boca
+    queixo:90,               // ponta do queixo
+    jaw,                     // mandíbula
+    zigo:jaw+2.5,            // maçã do rosto: sempre mais larga que a mandíbula
+    tempora:jaw+1.5,
+    olhoDx:10.5,             // afastamento do centro (uma medida só: simetria)
+    olhoRx:5.0, olhoRy:3.3,
+    orelhaY:52,
+    pescocoW:[9,10.5,12][largura],
+    ombro:[30,35,40][largura],
+  };
+}
+
+/* silhueta da cabeça derivada da anatomia: mudar o porte muda tudo junto */
+function caminhoCabeca(A){
+  const {cx,topo,testa,olhos,nariz,queixo,jaw,zigo,tempora}=A;
+  return `M${cx-tempora} ${testa}
+    C${cx-tempora} ${topo+2} ${cx-13} ${topo} ${cx} ${topo}
+    C${cx+13} ${topo} ${cx+tempora} ${topo+2} ${cx+tempora} ${testa}
+    C${cx+zigo} ${olhos-1} ${cx+zigo} ${nariz} ${cx+jaw} ${nariz+7}
+    C${cx+jaw-1} ${queixo-11} ${cx+11} ${queixo} ${cx} ${queixo}
+    C${cx-11} ${queixo} ${cx-jaw+1} ${queixo-11} ${cx-jaw} ${nariz+7}
+    C${cx-zigo} ${nariz} ${cx-zigo} ${olhos-1} ${cx-tempora} ${testa}Z`;
+}
+/* região do crânio: recorta o cabelo. Ele não consegue invadir o rosto. */
+function caminhoCranio(A){
+  const {cx,topo,olhos,tempora,zigo,nariz}=A;
+  return `M${cx-tempora-7} ${olhos+4}
+    C${cx-tempora-7} ${topo-8} ${cx+tempora+7} ${topo-8} ${cx+tempora+7} ${olhos+4}
+    C${cx+zigo} ${nariz+2} ${cx-zigo} ${nariz+2} ${cx-tempora-7} ${olhos+4}Z`;
+}
+/* Região da barba. A borda de baixo é o próprio contorno da mandíbula; a de
+   cima sobe alto nas laterais (costeleta) e MERGULHA abaixo do nariz no centro.
+   Sem esse mergulho a barba cobria o nariz, que é o erro clássico de barba
+   colada por cima em vez de seguir o rosto. */
+function caminhoBarbaArea(A){
+  const {cx,olhos,queixo,jaw,zigo,nariz}=A;
+  return `M${cx-zigo+1} ${olhos+4}
+    C${cx-zigo} ${nariz+4} ${cx-jaw-1} ${queixo-9} ${cx} ${queixo-1}
+    C${cx+jaw+1} ${queixo-9} ${cx+zigo} ${nariz+4} ${cx+zigo-1} ${olhos+4}
+    C${cx+12} ${nariz+3} ${cx+7} ${nariz+5} ${cx} ${nariz+5}
+    C${cx-7} ${nariz+5} ${cx-12} ${nariz+3} ${cx-zigo+1} ${olhos+4}Z`;
+}
+
+let _svgId=0;
+function bonecoSVG(c,{w=120,alt=null}={}){
+  const id="f"+(++_svgId);
+  const A=anatomia((c.porte||0)%3);
+  const {cx}=A;
+  const pele=PELES[(c.pele||0)%PELES.length];
+  const som=sombrear(pele), som2=sombrear(pele,.4), luz=iluminar(pele);
+  const cab=CABELOS[(c.corCabelo||0)%CABELOS.length];
+  const cabS=mistura(cab,"#000000",.28);
+  const iris=OLHOS_COR[(c.corOlho||0)%OLHOS_COR.length];
+  const cal=CALCOES[(c.calcao||0)%CALCOES.length];
+  const linha="#171B22";
+  const T=n=>CABELO_TIPOS[(c.cabelo||0)%CABELO_TIPOS.length]===n;
+  const B=n=>BARBAS[(c.barba||0)%BARBAS.length]===n;
+  const O=OLHOS[(c.olho||0)%OLHOS.length];
+  const S=SOBRANCELHAS[(c.sobrancelha||0)%SOBRANCELHAS.length];
+  const M=BOCAS[(c.boca||0)%BOCAS.length];
+  const CIC=CICATRIZES[(c.cicatriz||0)%CICATRIZES.length];
+
+  /* ---- olho: desenhado UMA vez, espelhado. Não há como desalinhar. ---- */
+  const ex=cx-A.olhoDx, ey=A.olhos;
+  let rx=A.olhoRx, ry=A.olhoRy, tampa="";
+  if(O==="firme"){ry=2.7;}
+  if(O==="cerrado"){ry=2.1;}
+  if(O==="fundo"){ry=2.9;tampa=`<path d="M${ex-rx-1} ${ey+4.4} Q${ex} ${ey+6} ${ex+rx+1} ${ey+4.4}"
+      stroke="${som2}" stroke-width="1.1" fill="none" opacity=".75"/>`;}
+  if(O==="inchado"){ry=2.2;tampa=`<path d="M${ex-rx-1.5} ${ey+3.6} Q${ex} ${ey+6.6} ${ex+rx+1.5} ${ey+3.6}
+      Q${ex} ${ey+4.4} ${ex-rx-1.5} ${ey+3.6}Z" fill="#8E4A3C" opacity=".55"/>`;}
+  const olhoUm=`
+    <ellipse cx="${ex}" cy="${ey}" rx="${rx}" ry="${ry}" fill="#F6F3EE"/>
+    <circle cx="${ex+.4}" cy="${ey}" r="${Math.min(ry-.15,2.5)}" fill="${iris}"/>
+    <circle cx="${ex+.4}" cy="${ey}" r="${Math.min(ry-.15,2.5)*.45}" fill="#12100E"/>
+    <circle cx="${ex+1.5}" cy="${ey-1}" r=".8" fill="#FFFFFF" opacity=".85"/>
+    <path d="M${ex-rx-.6} ${ey-.4} Q${ex} ${ey-ry-1.6} ${ex+rx+.6} ${ey-.4}"
+      stroke="${linha}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    ${tampa}`;
+
+  /* ---- sobrancelha: ancorada na linha da sobrancelha, também espelhada ---- */
+  const bx=cx-A.olhoDx, by=A.sobrancelha;
+  const CEJA={
+    reta:`<path d="M${bx-6.5} ${by+.5} Q${bx} ${by-1.6} ${bx+6} ${by+.2}" stroke="${cabS}"
+            stroke-width="3.1" fill="none" stroke-linecap="round"/>`,
+    grossa:`<path d="M${bx-7} ${by+1} Q${bx} ${by-2.6} ${bx+6.5} ${by-.2}" stroke="${cabS}"
+            stroke-width="5" fill="none" stroke-linecap="round"/>`,
+    angulada:`<path d="M${bx-6.8} ${by-2} L${bx+6.2} ${by+1.8}" stroke="${cabS}"
+            stroke-width="4" fill="none" stroke-linecap="round"/>`,
+    fina:`<path d="M${bx-6} ${by+.4} Q${bx} ${by-1.4} ${bx+5.5} ${by}" stroke="${cabS}"
+            stroke-width="1.9" fill="none" stroke-linecap="round"/>`,
+    partida:`<path d="M${bx-6.8} ${by+.6} Q${bx-4} ${by-1.6} ${bx-1.8} ${by-1.2}" stroke="${cabS}"
+            stroke-width="3.4" fill="none" stroke-linecap="round"/>
+           <path d="M${bx+1.4} ${by-.6} Q${bx+4} ${by-.8} ${bx+6.2} ${by+.6}" stroke="${cabS}"
+            stroke-width="3.4" fill="none" stroke-linecap="round"/>`,
+    arqueada:`<path d="M${bx-6.5} ${by+1.4} Q${bx-1} ${by-3.4} ${bx+6} ${by+.4}" stroke="${cabS}"
+            stroke-width="3.2" fill="none" stroke-linecap="round"/>`,
+  }[S];
+
+  /* ---- orelha: ancorada na têmpora, espelhada ---- */
+  const oy=A.orelhaY, ox=cx-A.tempora;
+  const orelhaUma=`
+    <path d="M${ox+1} ${oy-6} C${ox-6} ${oy-7} ${ox-7} ${oy+3} ${ox-3.5} ${oy+7}
+      C${ox-1} ${oy+9} ${ox+1} ${oy+7} ${ox+1} ${oy+5}Z" fill="${pele}"
+      stroke="${linha}" stroke-width="1.6"/>
+    <path d="M${ox-1.5} ${oy-2.5} C${ox-4} ${oy-2} ${ox-4} ${oy+2} ${ox-2.5} ${oy+4}"
+      stroke="${som2}" stroke-width="1.2" fill="none" opacity=".8"/>`;
+
+  /* ---- boca: ancorada na linha da boca ---- */
+  const my=A.boca;
+  const BOCA={
+    neutra:`<path d="M${cx-7.5} ${my} Q${cx} ${my+2.6} ${cx+7.5} ${my}" stroke="${linha}"
+              stroke-width="2" fill="none" stroke-linecap="round"/>
+            <path d="M${cx-6} ${my-2.4} Q${cx} ${my-3.6} ${cx+6} ${my-2.4}" stroke="${som2}"
+              stroke-width="1.1" fill="none" opacity=".55"/>`,
+    cerrada:`<path d="M${cx-8} ${my} L${cx+8} ${my}" stroke="${linha}" stroke-width="2.6" stroke-linecap="round"/>
+             <path d="M${cx-6.5} ${my-2.6} Q${cx} ${my-4} ${cx+6.5} ${my-2.6}" stroke="${som2}"
+              stroke-width="1.2" fill="none" opacity=".6"/>`,
+    firme:`<path d="M${cx-8} ${my-.6} Q${cx} ${my+1.6} ${cx+8} ${my-.6}" stroke="${linha}"
+              stroke-width="2.4" fill="none" stroke-linecap="round"/>`,
+    larga:`<path d="M${cx-9.5} ${my} Q${cx} ${my+3} ${cx+9.5} ${my}" stroke="${linha}"
+              stroke-width="2.2" fill="none" stroke-linecap="round"/>
+           <path d="M${cx-7.5} ${my-2.6} Q${cx} ${my-4.2} ${cx+7.5} ${my-2.6}" stroke="${som2}"
+              stroke-width="1.2" fill="none" opacity=".55"/>`,
+    fina:`<path d="M${cx-6.5} ${my} Q${cx} ${my+1.6} ${cx+6.5} ${my}" stroke="${linha}"
+              stroke-width="1.7" fill="none" stroke-linecap="round"/>`,
+    protetor:`<path d="M${cx-8} ${my-3} Q${cx} ${my-5} ${cx+8} ${my-3}
+              L${cx+7.5} ${my+2.6} Q${cx} ${my+4.6} ${cx-7.5} ${my+2.6}Z"
+              fill="#DCE4EC" stroke="${linha}" stroke-width="1.2"/>
+            <path d="M${cx-4} ${my-3.6} L${cx-4} ${my+3.4} M${cx} ${my-4.2} L${cx} ${my+4}
+              M${cx+4} ${my-3.6} L${cx+4} ${my+3.4}" stroke="#A9B4C0" stroke-width=".9"/>`,
+  }[M];
+
+  /* ---- cabelo ----------------------------------------------------------
+     A versão anterior desenhava o crânio cheio de cabelo e depois "apagava" a
+     testa com uma forma cor de pele. Essa forma descia até a linha dos olhos e
+     cobria olhos e sobrancelhas.
+
+     Agora o cabelo é UM caminho fechado que sobe do lado da têmpora, passa pelo
+     topo do crânio e desce do outro lado, fechando por uma LINHA DO CABELO
+     desenhada explicitamente. Não existe nada para apagar, então não há como
+     invadir o rosto. */
+  const capa=(linhaY,forma)=>{
+    const {cx,topo,tempora,olhos}=A;
+    const L=cx-tempora-1.5, R=cx+tempora+1.5;
+    return `M${L} ${olhos-2}
+      C${L-1} ${topo+3} ${cx-13} ${topo-2} ${cx} ${topo-2}
+      C${cx+13} ${topo-2} ${R+1} ${topo+3} ${R} ${olhos-2}
+      L${R} ${linhaY+3} ${forma} L${L} ${linhaY+3}Z`;
+  };
+  const tipoCab=CABELO_TIPOS[(c.cabelo||0)%CABELO_TIPOS.length];
+  const th=A.testa;                       // linha do cabelo padrão
+  const CABELO={
+    raspado:``,
+    "máquina":`<path d="${capa(th+1,`C${cx+A.tempora-4} ${th-2} ${cx-A.tempora+4} ${th-2} ${cx-A.tempora-1.5} ${th+1}`)}"
+                fill="${cab}" opacity=".45"/>`,
+    curto:`<path d="${capa(th,`C${cx+A.tempora-5} ${th-4} ${cx-A.tempora+5} ${th-4} ${cx-A.tempora-1.5} ${th}`)}"
+            fill="${cab}"/>`,
+    social:`<path d="${capa(th-1,`C${cx+A.tempora-3} ${th-6} ${cx-6} ${th-7} ${cx-A.tempora-1.5} ${th-1}`)}"
+            fill="${cab}"/>`,
+    topete:`<path d="${capa(th-2,`C${cx+A.tempora-5} ${th-7} ${cx-A.tempora+5} ${th-7} ${cx-A.tempora-1.5} ${th-2}`)}"
+            fill="${cab}"/>
+            <path d="M${cx-9} ${th-3} Q${cx-3} ${A.topo-12} ${cx+9} ${th-6} Q${cx} ${th-6} ${cx-9} ${th-3}Z"
+            fill="${cab}"/>`,
+    moicano:`<path d="${capa(th+2,`C${cx+A.tempora-4} ${th} ${cx-A.tempora+4} ${th} ${cx-A.tempora-1.5} ${th+2}`)}"
+             fill="${cab}" opacity=".3"/>
+             <path d="M${cx-6} ${th+1} C${cx-6} ${A.topo-10} ${cx+6} ${A.topo-10} ${cx+6} ${th+1}Z"
+             fill="${cab}"/>`,
+    coque:`<path d="${capa(th,`C${cx+A.tempora-5} ${th-4} ${cx-A.tempora+5} ${th-4} ${cx-A.tempora-1.5} ${th}`)}"
+           fill="${cab}"/>`,
+    dreads:`<path d="${capa(th+1,`C${cx+A.tempora-5} ${th-3} ${cx-A.tempora+5} ${th-3} ${cx-A.tempora-1.5} ${th+1}`)}"
+            fill="${cab}"/>`,
+    longo:`<path d="${capa(th,`C${cx+A.tempora-5} ${th-4} ${cx-A.tempora+5} ${th-4} ${cx-A.tempora-1.5} ${th}`)}"
+           fill="${cab}"/>`,
+  }[tipoCab];
+
+  /* peças que ficam FORA do crânio, desenhadas sobre o cabelo base */
+  const cabeloFora=tipoCab==="coque"
+    ? `<circle cx="${cx}" cy="${A.topo-7}" r="7.5" fill="${cab}" stroke="${cabS}" stroke-width="1.2"/>`
+    : tipoCab==="dreads"
+    ? [0,1,2,3,4,5].map(i=>{
+        const lado=i<3?-1:1,k=i%3;
+        const x=cx+lado*(A.tempora-1+k*3.2), y=A.olhos-6+k*2.6;
+        return `<rect x="${x-2.2}" y="${y}" width="4.4" height="${16+k*6}" rx="2.2" fill="${cab}"/>`;
+      }).join("")
+    : tipoCab==="longo"
+    ? `<path d="M${cx-A.tempora-1} ${A.testa+2} C${cx-A.zigo-5} ${A.nariz} ${cx-A.zigo-4} ${A.queixo-4}
+        ${cx-A.jaw-3} ${A.queixo+4} L${cx-A.jaw+1} ${A.queixo+4}
+        C${cx-A.zigo+2} ${A.nariz+2} ${cx-A.tempora+1} ${A.olhos} ${cx-A.tempora+1} ${A.testa+3}Z" fill="${cab}"/>
+       <path d="M${cx+A.tempora+1} ${A.testa+2} C${cx+A.zigo+5} ${A.nariz} ${cx+A.zigo+4} ${A.queixo-4}
+        ${cx+A.jaw+3} ${A.queixo+4} L${cx+A.jaw-1} ${A.queixo+4}
+        C${cx+A.zigo-2} ${A.nariz+2} ${cx+A.tempora-1} ${A.olhos} ${cx+A.tempora-1} ${A.testa+3}Z" fill="${cab}"/>`
+    : "";
+
+  /* ---- barba: recortada pela mandíbula, acompanha o formato do rosto ---- */
+  const areaBarba=caminhoBarbaArea(A);
+  const bigode=`<path d="M${cx-7} ${my-3.4} Q${cx} ${my-6} ${cx+7} ${my-3.4}
+      Q${cx} ${my-1.4} ${cx-7} ${my-3.4}Z" fill="${cab}"/>`;
+  const queixinho=`<path d="M${cx-4.5} ${my+4} Q${cx} ${my+2.6} ${cx+4.5} ${my+4}
+      Q${cx+4} ${A.queixo-3} ${cx} ${A.queixo-1.5} Q${cx-4} ${A.queixo-3} ${cx-4.5} ${my+4}Z" fill="${cab}"/>`;
+  const manto=(op,topo)=>`<path d="${areaBarba}" fill="${cab}" opacity="${op}"
+      clip-path="url(#bar${id})" transform="translate(0 ${topo})"/>`;
+  const BARBA={
+    nenhuma:``,
+    "por fazer":`<path d="${areaBarba}" fill="${cab}" opacity=".22" clip-path="url(#bar${id})"/>`,
+    bigode:bigode,
+    cavanhaque:bigode+queixinho,
+    curta:`<path d="${areaBarba}" fill="${cab}" opacity=".55" clip-path="url(#bar${id})"/>`+bigode,
+    "média":`<path d="${areaBarba}" fill="${cab}" opacity=".8" clip-path="url(#bar${id})"/>`+bigode,
+    cheia:`<path d="${areaBarba}" fill="${cab}" clip-path="url(#bar${id})"/>`+bigode,
+    costeleta:`<path d="M${cx-A.tempora+1} ${A.olhos-2} L${cx-A.jaw-1} ${A.nariz+8}
+        L${cx-A.jaw+4} ${A.nariz+8} L${cx-A.tempora+5} ${A.olhos-2}Z" fill="${cab}"/>
+      <path d="M${cx+A.tempora-1} ${A.olhos-2} L${cx+A.jaw+1} ${A.nariz+8}
+        L${cx+A.jaw-4} ${A.nariz+8} L${cx+A.tempora-5} ${A.olhos-2}Z" fill="${cab}"/>`,
+  }[BARBAS[(c.barba||0)%BARBAS.length]];
+
+  /* ---- cicatriz: segue a anatomia da região, com relevo em vez de risco ---- */
+  const cicCor="#B5806E";
+  const CICS={
+    nenhuma:``,
+    "supercílio":`<path d="M${bx-3} ${by-4} L${bx-1.5} ${by+5}" stroke="${cicCor}" stroke-width="1.8"
+        stroke-linecap="round"/><path d="M${bx-3.4} ${by-2} L${bx-1} ${by-1.4}
+        M${bx-2.6} ${by+2} L${bx-.4} ${by+2.6}" stroke="${cicCor}" stroke-width=".9" opacity=".8"/>`,
+    "maçã do rosto":`<path d="M${cx+A.zigo-4} ${A.olhos+6} Q${cx+A.zigo-6} ${A.nariz-1} ${cx+A.jaw-5} ${A.nariz+4}"
+        stroke="${cicCor}" stroke-width="1.9" fill="none" stroke-linecap="round"/>`,
+    "abaixo do olho":`<path d="M${ex-4} ${ey+6.5} L${ex+3.5} ${ey+7.6}" stroke="${cicCor}"
+        stroke-width="1.7" stroke-linecap="round"/>`,
+    queixo:`<path d="M${cx-3} ${A.queixo-6} L${cx+2} ${A.queixo-3}" stroke="${cicCor}"
+        stroke-width="1.8" stroke-linecap="round"/>`,
+    "lábio":`<path d="M${cx+3.5} ${my-4.5} L${cx+5} ${my+3}" stroke="${cicCor}"
+        stroke-width="1.7" stroke-linecap="round"/>`,
+  };
+
+  const altura=alt||Math.round(w*1.2);
+  return `<svg viewBox="0 0 100 120" width="${w}" height="${altura}" class="boneco" aria-hidden="true">
+  <defs>
+    <clipPath id="cra${id}"><path d="${caminhoCranio(A)}"/></clipPath>
+    <clipPath id="bar${id}"><path d="${caminhoCabeca(A)}"/></clipPath>
+    <linearGradient id="luz${id}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${luz}" stop-opacity=".55"/>
+      <stop offset=".55" stop-color="${pele}" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ombros -->
+  <path d="M${cx-A.ombro} 120 C${cx-A.ombro+4} ${104} ${cx-14} ${100} ${cx} ${99}
+           C${cx+14} ${100} ${cx+A.ombro-4} ${104} ${cx+A.ombro} 120Z"
+    fill="${cal}" stroke="${linha}" stroke-width="1.8"/>
+  <path d="M${cx} 99 L${cx} 120" stroke="${mistura(cal,'#000000',.3)}" stroke-width="1.4"/>
+
+  <!-- pescoço: largura vem da anatomia, encaixa sob a mandíbula -->
+  <path d="M${cx-A.pescocoW} ${A.queixo-9} L${cx-A.pescocoW-1} ${A.queixo+12}
+           Q${cx} ${A.queixo+16} ${cx+A.pescocoW+1} ${A.queixo+12}
+           L${cx+A.pescocoW} ${A.queixo-9}Z" fill="${pele}" stroke="${linha}" stroke-width="1.7"/>
+  <path d="M${cx-A.pescocoW+1} ${A.queixo-6} Q${cx} ${A.queixo+3} ${cx+A.pescocoW-1} ${A.queixo-6}"
+    fill="${som}" opacity=".55"/>
+  <!-- trapézio -->
+  <path d="M${cx-A.ombro+3} ${106} Q${cx} ${A.queixo+8} ${cx+A.ombro-3} ${106}"
+    fill="none" stroke="${mistura(cal,'#000000',.22)}" stroke-width="1.2"/>
+
+  <!-- orelhas (espelhadas): antes da cabeça, para ficarem atrás -->
+  ${orelhaUma}
+  <g transform="translate(${cx*2} 0) scale(-1 1)">${orelhaUma}</g>
+
+  <!-- cabeça -->
+  <path d="${caminhoCabeca(A)}" fill="${pele}" stroke="${linha}" stroke-width="2"/>
+  <path d="${caminhoCabeca(A)}" fill="url(#luz${id})"/>
+  <!-- maçãs do rosto e têmporas -->
+  <path d="M${cx-A.zigo+2} ${A.olhos+4} Q${cx-A.jaw+3} ${A.nariz+3} ${cx-A.jaw+7} ${A.nariz+7}"
+    stroke="${som}" stroke-width="1.6" fill="none" opacity=".35"/>
+  <path d="M${cx+A.zigo-2} ${A.olhos+4} Q${cx+A.jaw-3} ${A.nariz+3} ${cx+A.jaw-7} ${A.nariz+7}"
+    stroke="${som}" stroke-width="1.6" fill="none" opacity=".35"/>
+
+  ${BARBA}
+
+  <!-- nariz: base ancorada, quebrado como o de lutador -->
+  <path d="M${cx-1.5} ${A.olhos+2} L${cx-2.5} ${A.nariz-3} Q${cx-4.5} ${A.nariz} ${cx-3} ${A.nariz+1.5}
+    Q${cx} ${A.nariz+2.6} ${cx+3} ${A.nariz+1.5} Q${cx+4.5} ${A.nariz} ${cx+2.5} ${A.nariz-3}
+    L${cx+1.5} ${A.olhos+2}" fill="${som}" opacity=".3"/>
+  <path d="M${cx-4.2} ${A.nariz+.6} Q${cx} ${A.nariz+3.2} ${cx+4.2} ${A.nariz+.6}"
+    stroke="${linha}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <circle cx="${cx-2.4}" cy="${A.nariz+.4}" r=".9" fill="${linha}" opacity=".7"/>
+  <circle cx="${cx+2.4}" cy="${A.nariz+.4}" r=".9" fill="${linha}" opacity=".7"/>
+
+  <!-- olhos e sobrancelhas: desenhados uma vez, espelhados -->
+  ${olhoUm}
+  <g transform="translate(${cx*2} 0) scale(-1 1)">${olhoUm}</g>
+  ${CEJA}
+  <g transform="translate(${cx*2} 0) scale(-1 1)">${CEJA}</g>
+
+  ${BOCA}
+  ${CICS[CIC]||""}
+
+  <!-- cabelo por último, recortado pelo crânio -->
+  ${CABELO}
+  ${cabeloFora}
+</svg>`;
+}
+
+/* Hash estável: o mesmo lutador tem sempre o mesmo rosto, em qualquer sessão. */
+function hashNome(s){
+  let x=2166136261>>>0;
+  for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=Math.imul(x,16777619)>>>0;}
+  return x;
+}
+function cfgPadrao(){
+  return{pele:1,cabelo:2,corCabelo:1,barba:1,olho:0,corOlho:0,sobrancelha:0,
+         boca:0,cicatriz:0,calcao:0,porte:1};
+}
+/* Não existe rosto para os lutadores do dataset, e é deliberado: eles são
+   pessoas reais e retrato reconhecível é direito de imagem. Só o lutador do
+   jogador tem rosto. A função que derivava rosto de lutador real foi removida
+   em vez de deixada sem uso, para ninguém reintroduzir sem querer. */
+
+/* =========================================================================
+   CARD COMPARTILHÁVEL
+   Desenhado em canvas 1080x1350 (retrato, formato de story e de timeline).
+   O importante não é a imagem: é a semente impressa nela. Com ela, quem vê
+   pode jogar a MESMA carreira — mesmas cartas, mesmos adversários — e comparar.
+   ========================================================================= */
+const CARD_W=1080, CARD_H=1350;
+/* O canvas não enxerga as variáveis CSS, então a paleta é repetida aqui.
+   Se você mexer no :root, mexa nestas também — senão o card sai com a cara
+   antiga e você só descobre quando alguém compartilha. */
+const C={stock:"#0A0D13",stock2:"#161E2B",ink:"#E6EBF2",stamp:"#C0392B",
+         faded:"#6B7A90",rule:"#222C3C",line2:"#33415A",win:"#4E9A62",gold:"#B9932F"};
+
+function quebrar(ctx,txt,max){
+  const linhas=[];let atual="";
+  for(const p of String(txt).split(" ")){
+    const t=atual?atual+" "+p:p;
+    if(ctx.measureText(t).width>max&&atual){linhas.push(atual);atual=p;}
+    else atual=t;
+  }
+  if(atual)linhas.push(atual);
+  return linhas;
+}
+
+async function desenharCard(g){
+  const cv=document.createElement("canvas");
+  cv.width=CARD_W;cv.height=CARD_H;
+  const x=cv.getContext("2d");
+  const M=72;                                    // margem
+
+  x.fillStyle=C.stock;x.fillRect(0,0,CARD_W,CARD_H);
+  // textura de papel: mesmas linhas horizontais da página
+  x.fillStyle="rgba(255,255,255,.014)";
+  for(let y=0;y<CARD_H;y+=3)x.fillRect(0,y,CARD_W,1);
+
+  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
+  const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
+  const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
+
+  // cabeçalho
+  regra(M,4,C.line2);
+  x.fillStyle=C.ink;x.font=disp(46);x.textBaseline="alphabetic";
+  x.fillText("FICHA DO LUTADOR",M,M+72);
+  x.fillStyle=C.faded;x.font=mono(19,500);
+  const dv=(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION;
+  x.fillText(dv.toUpperCase()+" · CARREIRA ENCERRADA",M,M+104);
+  regra(M+126,2,C.rule);
+
+  // nome — encolhe até caber na largura inteira, acima da linha do cartel
+  let y=M+200;
+  x.fillStyle=C.ink;
+  let tam=76;
+  do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>CARD_W-M*2&&tam>30);
+  x.fillText(me.name.toUpperCase(),M,y);
+
+  // cartel grande, com o carimbo à direita centrado NELE (não no nome)
+  y+=160;
+  x.font=disp(148);x.fillStyle=C.ink;
+  x.fillText(`${st.wins}-${st.losses}`,M,y);
+  x.font=mono(21,500);x.fillStyle=C.faded;
+  x.fillText("CARTEL",M+5,y+34);
+
+  x.save();
+  x.translate(CARD_W-M-76,y-52);
+  x.rotate(-4*Math.PI/180);
+  x.strokeStyle=C.stamp;x.lineWidth=7;
+  x.strokeRect(-72,-72,144,144);
+  x.fillStyle=C.stamp;x.font=disp(100);
+  x.textAlign="center";x.textBaseline="middle";
+  x.fillText(g.letter,0,6);
+  x.restore();
+  x.textAlign="left";x.textBaseline="alphabetic";
+
+  // linhas de dados
+  y+=74;
+  regra(y,2,C.rule);y+=46;
+  const linha=(rot,val,destaque)=>{
+    x.fillStyle=C.faded;x.font=mono(21,500);
+    x.fillText(rot.toUpperCase(),M,y);
+    x.fillStyle=destaque?C.stamp:C.ink;x.font=mono(25,600);
+    x.textAlign="right";x.fillText(String(val),CARD_W-M,y);
+    x.textAlign="left";
+    x.fillStyle=C.rule;x.fillRect(M,y+15,CARD_W-M*2,1);
+    y+=53;
+  };
+  linha("Pico no ranking",fmtPico(st.peak));
+  linha("Vitórias antes do fim",`${st.finishes} de ${st.wins}`);
+  linha("Maior sequência",`${st.longestW} vitórias`);
+  linha("Seguidores",fmtNum(st.followers));
+  linha("Medidor de fã",st.fan.toFixed(1)+" / 10");
+  linha("Cinturão",st.title?"SIM":"não",st.title);
+
+  // legado — é a carga emocional do card, ganha o espaço que sobra
+  y+=34;
+  x.font=`italic 28px "IBM Plex Mono",monospace`;
+  const leg=LEGACY.find(l=>l.when(st)).t(me.name);
+  const ls=quebrar(x,leg,CARD_W-M*2-32).slice(0,4);
+  x.fillStyle=C.stamp;x.fillRect(M,y-30,5,ls.length*40+14);
+  x.fillStyle=C.ink;                       // canvas mantém o último fillStyle
+  ls.forEach((l,i)=>x.fillText(l,M+28,y+i*40));
+  y+=ls.length*40+46;
+
+  // feito de
+  x.fillStyle=C.faded;x.font=mono(20,500);
+  x.fillText("ESSE LUTADOR ERA FEITO DE",M,y);y+=34;
+  x.fillStyle=C.ink;x.font=mono(22,500);
+  quebrar(x,picks.map(p=>`${p.pair.label} do ${p.from}`).join("  ·  "),CARD_W-M*2)
+    .slice(0,3).forEach(l=>{x.fillText(l,M,y);y+=31;});
+
+  // rodapé: a semente é a parte que importa
+  const yf=CARD_H-M-86;
+  regra(yf,4,C.line2);
+  x.fillStyle=C.ink;x.font=mono(24,600);
+  x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M,yf+46);
+  x.fillStyle=C.stamp;x.font=mono(26,600);
+  x.textAlign="right";
+  x.fillText("#"+SEED.toString(36).toUpperCase(),CARD_W-M,yf+46);
+  x.fillStyle=C.faded;x.font=mono(19,400);
+  x.fillText(location.host||"ficha do lutador",CARD_W-M,yf+76);
+  x.textAlign="left";
+  return cv;
+}
+
+function urlDesafio(){
+  const base=location.origin+location.pathname;
+  /* O modo entra no link porque ele troca o pool: a mesma semente em modos
+     diferentes dá cartas e adversários diferentes. Link antigo, sem m=, cai em
+     "normal" — que é o que ele sempre foi. */
+  return `${base}?d=${DIVISION}&s=${SEED.toString(36)}${MODO==="lenda"?"&m=lenda":""}`;
+}
+
+async function compartilhar(g,btn){
+  btn.disabled=true;const antes=btn.textContent;btn.textContent="Gerando…";
+  try{
+    if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+    const cv=await desenharCard(g);
+    const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
+    const arq=new File([blob],`${me.name.replace(/\s+/g,"-").toLowerCase()}.png`,{type:"image/png"});
+    const texto=`${me.name}: ${st.wins}-${st.losses}, nota ${g.letter}. Joga a mesma carreira:`;
+    if(navigator.canShare&&navigator.canShare({files:[arq]})){
+      await navigator.share({files:[arq],text:texto,url:urlDesafio()});
+    }else{
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);a.download=arq.name;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    }
+  }catch(e){ btn.textContent="Não deu"; setTimeout(()=>{btn.textContent=antes;btn.disabled=false;},1800); return; }
+  btn.textContent=antes;btn.disabled=false;
+}
+
+/* =========================================================================
+   INTERFACE
+   ========================================================================= */
+const app=document.getElementById("app");
+const docmeta=document.getElementById("docmeta");
+let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,usedEvents=null,rareUsed=null,fought=null;
+let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null;
+let speed=1,playing=false,playTimer=null;
+/* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
+   clicar no automático chamava nextFight por cima do dilema, a promessa nunca
+   resolvia e a carreira travava de vez. */
+let dilemaAberto=false;
+let escolhaAberta=false;
+const TOTAL_FIGHTS=22,SPEEDS=[1,2,4];
+let DIVISION="lightweight";
+let SEED=0;
+let ROSTO=null;
+/* Uma carreira são 22 lutas sem repetir adversário, então divisão com menos de
+   40 lutadores não fecha. O peso-pena feminino tem 5 e fica de fora. */
+const MIN_LUTADORES=40;
+
+/* ---------- modo de jogo ----------
+   "lenda" troca o pool INTEIRO — draft e adversários — por campeões e nomes
+   grandes. Lenda é quem já disputou cinturão OU está no topo do rating.
+
+   O corte é 13/18 escrito assim, e não 0.72, porque rating é vitórias em 18
+   simulações: os únicos valores que existem são múltiplos de 1/18. Escrever
+   "0.70" pegaria exatamente o mesmo conjunto que "0.67" e esconderia que a
+   escala é discreta. Medido: esse corte deixa 32% a 43% de cada divisão.
+
+   Nem toda divisão fecha nesse modo. Uma carreira são 22 lutas sem repetir
+   adversário, e peso-mosca (32 lendas) e as três divisões femininas
+   (15 a 25) ficam abaixo de MIN_LUTADORES. Elas somem do modo lenda em vez de
+   entrar e repetir adversário no meio da carreira. */
+const RATING_LENDA=13/18;
+const ehLenda=f=>(f.titulos&&f.titulos.disputas>=1)||f.rating>=RATING_LENDA-1e-9;
+let MODO="normal";
+function poolDivisao(id,modo){
+  const p=ROSTER?ROSTER.filter(f=>f.division===id):[];
+  return (modo||MODO)==="lenda"?p.filter(ehLenda):p;
+}
+
+/* Campeão nomeado. Critério é conquista (titulos.vitorias/disputas), não
+   rating: rating é vitórias em 18 simulações, só existem ~19 valores
+   distintos e no peso-leve 26 lutadores empatam — não dá pra nomear ninguém
+   com isso. Estático, deriva só do dataset: nenhuma carreira de NPC é
+   simulada (o cinturão só troca de mãos com o jogador; ver PENDENCIAS 1b).
+
+   Recência entra como BUCKET, não como corte: quem não luta há
+   CUTOFF_RANKING anos cai pro fim da lista em vez de sumir dela, senão o
+   peso-pesado "atual" seria o Randy Couture. Medido nas 11 divisões × 2
+   modos com esse corte de 6 anos: nenhum campeão sai com zero título, e o
+   modo lenda nomeia os mesmos campeões do modo normal (ehLenda nunca
+   derruba quem já é campeão). Sem fallback — não é caso que acontece. */
+let CUTOFF_RANKING=null;
+function buildRanking(pool){
+  const comparar=(a,b)=>
+    (b.titulos.vitorias-a.titulos.vitorias)||
+    (b.titulos.disputas-a.titulos.disputas)||
+    (b.fights-a.fights);
+  const ativos=pool.filter(f=>f.era&&f.era[1]>=CUTOFF_RANKING).sort(comparar);
+  const inativos=pool.filter(f=>!f.era||f.era[1]<CUTOFF_RANKING).sort(comparar);
+  const lista=[...ativos,...inativos].slice(0,16);
+  return{campeao:lista[0]||null,desafiante:lista[1]||null,lista};
+}
+const DIVISOES=[
+ {id:"flyweight",        nome:"Peso-mosca",      lbs:125},
+ {id:"bantamweight",     nome:"Peso-galo",       lbs:135},
+ {id:"featherweight",    nome:"Peso-pena",       lbs:145},
+ {id:"lightweight",      nome:"Peso-leve",       lbs:155},
+ {id:"welterweight",     nome:"Meio-médio",      lbs:170},
+ {id:"middleweight",     nome:"Peso-médio",      lbs:185},
+ {id:"light_heavyweight",nome:"Meio-pesado",     lbs:205},
+ {id:"heavyweight",      nome:"Peso-pesado",     lbs:265},
+ {id:"w_strawweight",    nome:"Peso-palha",      lbs:115,f:true},
+ {id:"w_flyweight",      nome:"Peso-mosca",      lbs:125,f:true},
+ {id:"w_bantamweight",   nome:"Peso-galo",       lbs:135,f:true},
+ {id:"w_featherweight",  nome:"Peso-pena",       lbs:145,f:true},
+];
+const reduceMotion=()=>window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;
+  if(h!==undefined)n.innerHTML=h;return n;};
+/* 5 faixas: o jogador precisa bater o olho e saber se é bom, sem fazer conta */
+const pctClass=p=>p>=.80?"p5":p>=.60?"p4":p>=.40?"p3":p>=.20?"p2":"p1";
+const pctLabel=p=>{const n=Math.round(p*100);
+  if(n>=90)return n+"% — elite";
+  if(n>=70)return n+"% — forte";
+  if(n>=45)return n+"% — mediano";
+  if(n>=25)return n+"% — fraco";
+  return n+"% — ruim";};
+const pctBar=p=>`<span class="pctwrap ${pctClass(p)}">
+  <span class="pctbar"><i style="width:${Math.max(2,Math.round(p*100))}%"></i></span>
+  <span class="pctnum">${pctLabel(p)}</span></span>`;
+
+/* ---------- carregar dados ---------- */
+async function boot(){
+  app.innerHTML=`<p class="hint" style="margin-top:30px">Carregando os lutadores…</p>`;
+  let data=null;
+  try{
+    const r=await fetch("./fighters.json");
+    if(!r.ok)throw 0;
+    data=await r.json();
+  }catch(e){ return askForFile(); }
+  ready(data);
+}
+function askForFile(){
+  app.innerHTML="";
+  const box=el("div","err",`<b>Não achei o fighters.json</b>
+    O navegador bloqueia leitura de arquivo local quando a página é aberta direto.
+    Rode um servidor na pasta do projeto:<br><br>
+    <code>python3 -m http.server 8000</code><br><br>
+    e abra <code>http://localhost:8000</code>. Ou escolha o arquivo aqui:`);
+  const inp=el("input");inp.type="file";inp.accept=".json";
+  inp.style.marginTop="12px";
+  inp.onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    try{ ready(JSON.parse(await f.text())); }
+    catch(err){ box.appendChild(el("p","hint","Esse arquivo não é um fighters.json válido.")); }
+  };
+  box.appendChild(inp);app.appendChild(box);
+}
+function ready(data){
+  app.innerHTML=`<p class="hint" style="margin-top:30px">Avaliando ${data.length} lutadores…</p>`;
+  setTimeout(()=>{
+    ROSTER=rateAll(data);
+    CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+    POOL=poolDivisao(DIVISION);
+    PCT=makePercentiler(POOL);
+    LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+    RANKING=buildRanking(POOL);
+    screenName();
+  },30);
+}
+
+/* ---------- tela 1: nome ---------- */
+/* ?d=divisao&s=semente vira desafio: mesma carreira, escolhas suas */
+function lerDesafio(){
+  try{
+    const p=new URLSearchParams(location.search);
+    const d=p.get("d"), s=p.get("s");
+    if(!d||!s)return null;
+    if(!DIVISOES.some(x=>x.id===d))return null;
+    const n=parseInt(s,36);
+    if(!Number.isFinite(n)||n<=0)return null;
+    return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal"};
+  }catch(e){return null;}
+}
+function screenName(){
+  app.innerHTML="";
+  const desafio=lerDesafio();
+  app.appendChild(el("div","eyebrow",desafio?"Você foi desafiado":"Abertura de registro"));
+  if(desafio){
+    const d=DIVISOES.find(x=>x.id===desafio.div);
+    app.appendChild(el("div","legend",
+      `Alguém mandou a carreira dele pra você. <b>${d.nome}</b>${
+        desafio.modo==="lenda"?", no modo <b>Seja uma lenda</b>":""}, as mesmas
+       cartas no draft e os mesmos adversários na mesma ordem. Só as escolhas
+       são suas.`));
+  }
+  const p=el("p","",`Todo lutador começa com um nome numa ficha. Depois disso é só o que ele faz no octógono.`);
+  const inp=el("input");inp.type="text";inp.placeholder="Nome do lutador";inp.maxLength=28;
+  const row=el("div","row");
+  const go=el("button","btn","Montar o lutador");
+  go.onclick=()=>{
+    const n=inp.value.trim();
+    if(!n){inp.focus();return;}
+    const dz=lerDesafio();
+    try{const r=localStorage.getItem("rosto");if(r)ROSTO=JSON.parse(r);}catch(e){}
+    if(dz){DIVISION=dz.div;SEED=dz.seed;MODO=dz.modo;screenCriador(n);}
+    else{SEED=0;MODO="normal";screenCriador(n);}
+  };
+  inp.onkeydown=e=>{if(e.key==="Enter")go.click();};
+  row.appendChild(go);
+  app.append(p,inp,row);
+  inp.focus();
+}
+
+/* ---------- tela 2: draft ---------- */
+/* Criador: personagem grande no palco, categorias em abas, alteração imediata.
+   As categorias são declarativas — acrescentar uma opção nova é adicionar uma
+   linha aqui, sem tocar em layout. */
+const CATEGORIAS=[
+ {rot:"Rosto",  itens:[["cor","Tom de pele",()=>PELES,"pele"],
+                       ["lista","Porte",()=>PORTES,"porte"]]},
+ {rot:"Cabelo", itens:[["lista","Estilo",()=>CABELO_TIPOS,"cabelo"],
+                       ["cor","Cor",()=>CABELOS,"corCabelo"]]},
+ {rot:"Barba",  itens:[["lista","Estilo",()=>BARBAS,"barba"]]},
+ {rot:"Olhos",  itens:[["lista","Formato",()=>OLHOS,"olho"],
+                       ["cor","Cor da íris",()=>OLHOS_COR,"corOlho"],
+                       ["lista","Sobrancelha",()=>SOBRANCELHAS,"sobrancelha"]]},
+ {rot:"Boca",   itens:[["lista","Formato",()=>BOCAS,"boca"]]},
+ {rot:"Marcas", itens:[["lista","Cicatriz",()=>CICATRIZES,"cicatriz"],
+                       ["cor","Cor do calção",()=>CALCOES,"calcao"]]},
+];
+let CAT_ATIVA=0;
+
+function screenCriador(name){
+  ROSTO=ROSTO||cfgPadrao();
+  app.innerHTML="";
+  docmeta.textContent=`Registro · ${name}`;
+  app.appendChild(el("div","eyebrow","Monte o seu lutador"));
+
+  const wrap=el("div","criador");
+  const palco=el("div","palco");palco.id="palco";
+  const pain=el("div","painelC");
+  pain.innerHTML=`<div class="abas" id="abas"></div><div class="corpoC" id="corpoC"></div>`;
+  wrap.append(palco,pain);app.appendChild(wrap);
+
+  const desenha=()=>{
+    palco.innerHTML=bonecoSVG(ROSTO,{w:250})+
+      `<div class="nomebox"><small>Nome do lutador</small>
+        <input type="text" id="nomeIn" maxlength="28" value="${(name||"").replace(/"/g,"&quot;")}"></div>`;
+    const ni=document.getElementById("nomeIn");
+    if(ni)ni.oninput=e=>{name=e.target.value;};
+  };
+
+  const abas=document.getElementById("abas");
+  CATEGORIAS.forEach((cat,i)=>{
+    const b=el("button","aba"+(i===CAT_ATIVA?" on":""),cat.rot);
+    b.onclick=()=>{CAT_ATIVA=i;SOM.toque();
+      abas.querySelectorAll(".aba").forEach((x,j)=>x.classList.toggle("on",j===i));
+      corpo();};
+    abas.appendChild(b);
+  });
+
+  function corpo(){
+    const alvo=document.getElementById("corpoC");
+    alvo.innerHTML="";
+    CATEGORIAS[CAT_ATIVA].itens.forEach(([tipo,rot,fonte,campo])=>{
+      const lista=fonte();
+      const bloco=el("div","linhaC");
+      bloco.innerHTML=`<div class="linhaC-hd"><span>${rot}</span>
+        <b id="v_${campo}">${tipo==="lista"?lista[ROSTO[campo]%lista.length]:""}</b></div>
+        <div class="${tipo==="cor"?"swatches":"chips"}" id="g_${campo}"></div>`;
+      alvo.appendChild(bloco);
+      const g=bloco.querySelector("#g_"+campo);
+      lista.forEach((item,i)=>{
+        const b=tipo==="cor"
+          ? el("button","sw"+(ROSTO[campo]===i?" on":""),"")
+          : el("button","chip"+(ROSTO[campo]===i?" on":""),item);
+        if(tipo==="cor")b.style.background=item;
+        b.onclick=()=>{
+          ROSTO[campo]=i;SOM.toque();
+          g.querySelectorAll(tipo==="cor"?".sw":".chip")
+            .forEach((x,j)=>x.classList.toggle("on",j===i));
+          const v=bloco.querySelector("#v_"+campo);
+          if(v&&tipo==="lista")v.textContent=item;
+          desenha();
+        };
+        g.appendChild(b);
+      });
+    });
+  }
+
+  const row=el("div","row");
+  const rand=el("button","btn btn-ghost","Sortear");
+  rand.onclick=()=>{SOM.toque();
+    const r=n=>Math.floor(Math.random()*n);
+    ROSTO={pele:r(PELES.length),cabelo:r(CABELO_TIPOS.length),corCabelo:r(CABELOS.length),
+      barba:r(BARBAS.length),olho:r(OLHOS.length),corOlho:r(OLHOS_COR.length),
+      sobrancelha:r(SOBRANCELHAS.length),boca:r(BOCAS.length),
+      cicatriz:r(CICATRIZES.length),calcao:r(CALCOES.length),porte:r(3)};
+    desenha();corpo();};
+  const dz=lerDesafio();
+  const ok=el("button","btn",dz?"Começar a carreira":"Escolher divisão");
+  ok.onclick=()=>{
+    const ni=document.getElementById("nomeIn");
+    const n=(ni?ni.value:name||"").trim();
+    if(!n){if(ni)ni.focus();return;}
+    SOM.toque();
+    try{localStorage.setItem("rosto",JSON.stringify(ROSTO));}catch(e){}
+    if(dz){DIVISION=dz.div;SEED=dz.seed;MODO=dz.modo;startDraft(n);}
+    else screenDivisao(n);
+  };
+  row.append(ok,rand);app.appendChild(row);
+  desenha();corpo();
+}
+
+const MODOS=[
+ {id:"normal",nome:"Carreira",
+  desc:"A divisão inteira. Você começa no card preliminar e sobe."},
+ /* O texto NÃO promete "mais difícil" porque a medição não confirma: o pool de
+    lendas te dá um lutador melhor na mesma proporção em que dá adversários
+    melhores. Muda quem entra no octógono, não o placar. */
+ {id:"lenda", nome:"Seja uma lenda",
+  desc:"Campeões e ex-desafiantes, no draft e do outro lado do octógono."},
+];
+function screenDivisao(name){
+  app.innerHTML="";
+  docmeta.textContent=`Registro · ${name}`;
+  app.appendChild(el("div","eyebrow","Em que divisão você vai lutar"));
+  app.appendChild(el("p","","A divisão muda tudo: quem você enfrenta, quanto se nocauteia e o quanto o seu queixo aguenta. Peso-pesado acaba luta cedo; mosca vai pros cartões."));
+  /* O modo vem ANTES da divisão porque é ele que decide quantos lutadores cada
+     divisão tem — e quais delas deixam de fechar 22 lutas sem repetir. */
+  const modos=el("div","modos");
+  const nota=el("p","modo-nota","");
+  const grid=el("div","divs");
+  app.append(modos,nota,grid);
+
+  const desenha=()=>{
+    modos.innerHTML="";
+    MODOS.forEach(m=>{
+      const b=el("button","modo"+(MODO===m.id?" on":""),
+        `<span class="n">${m.nome}</span><span class="d">${m.desc}</span>`);
+      b.id="modo_"+m.id;
+      b.onclick=()=>{ if(MODO===m.id)return; SOM.toque(); MODO=m.id; desenha(); };
+      modos.appendChild(b);
+    });
+
+    grid.innerHTML="";
+    const fora=[];
+    DIVISOES.forEach(d=>{
+      /* divisão pequena demais no dataset inteiro nunca foi jogável */
+      if(ROSTER.filter(f=>f.division===d.id).length<MIN_LUTADORES)return;
+      const pool=poolDivisao(d.id);
+      if(pool.length<MIN_LUTADORES){
+        fora.push(`${d.nome}${d.f?" fem.":""} (${pool.length})`);
+        return;
+      }
+      const top=[...pool].sort((a,b)=>b.rating-a.rating)[0];
+      const ko=TUNING.koPower[d.id];
+      const c=el("button","div-c"+(d.f?" fem":""),
+        `<span class="n">${d.nome}</span>
+         <span class="lb">até ${d.lbs} lb · ${ko>=1.3?"nocaute alto":ko>=.9?"nocaute médio":"nocaute baixo"}</span>
+         <span class="qt"><b>${pool.length}</b> ${MODO==="lenda"?"lendas":"lutadores"}</span>
+         <span class="top">o melhor daqui é ${top.name}</span>`);
+      c.onclick=()=>{SOM.toque();DIVISION=d.id;startDraft(name);};
+      grid.appendChild(c);
+    });
+
+    nota.innerHTML=fora.length
+      ? `Uma carreira são 22 lutas sem repetir adversário, então divisão com menos
+         de ${MIN_LUTADORES} lendas não fecha. Fora daqui: ${fora.join(" · ")}.`
+      : "";
+  };
+  desenha();
+}
+function startDraft(name){
+  /* refeito a cada carreira porque a divisão OU o modo podem ter mudado */
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+  /* A semente controla TUDO que é sorteado: as cartas oferecidas no draft, os
+     adversários e a ordem deles. Duas pessoas com a mesma semente recebem a
+     mesma carreira e só diferem nas escolhas. É isso que torna o link um
+     desafio de verdade em vez de um print. */
+  SEED=SEED||((Math.random()*4294967295)>>>0);
+  rng=mulberry32(SEED);
+  /* Stream separado pra "a disputa pode não vir": nunca consome do rng
+     principal, senão qualquer sorteio aqui deslocaria a sequência e link de
+     desafio antigo pararia de reproduzir a mesma carreira. */
+  holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
+  me={name,division:DIVISION};picks=[];
+  budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
+  remaining=[...PAIRS];
+  docmeta.textContent=`Registro · ${name}`;
+  renderDraft();
+}
+/* Os 8 atributos ocupam os 8 lados do octógono, e cada par preenche dois lados
+   VIZINHOS. O encaixe é exato — não é decoração adaptada. */
+const SLOTS=[
+ {k:"slpm",       lab:"Volume",    par:"trocacao", ang:-90},
+ {k:"reach",      lab:"Alcance",   par:"trocacao", ang:-45},
+ {k:"kdAvg",      lab:"Poder",     par:"poder",    ang:0},
+ {k:"durability", lab:"Queixo",    par:"poder",    ang:45},
+ {k:"tdAvg",      lab:"Quedas",    par:"chao",     ang:90},
+ {k:"tdDef",      lab:"Def. queda",par:"chao",     ang:135},
+ {k:"subAvg",     lab:"Finaliz.",  par:"jiujitsu", ang:180},
+ {k:"strDef",     lab:"Def. golpe",par:"jiujitsu", ang:225},
+];
+const FMT={slpm:v=>v.toFixed(1),reach:v=>v.toFixed(0)+'"',kdAvg:v=>v.toFixed(2),
+  durability:v=>v.toFixed(2),tdAvg:v=>v.toFixed(1),tdDef:v=>Math.round(v*100)+"%",
+  subAvg:v=>v.toFixed(1),strDef:v=>Math.round(v*100)+"%"};
+
+function octogonoSVG(){
+  const p=[];
+  for(let i=0;i<8;i++){const a=(i*45-67.5)*Math.PI/180;
+    p.push(`${50+41*Math.cos(a)},${50+41*Math.sin(a)}`);}
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <polygon points="${p.join(" ")}" fill="none" stroke="var(--line2)" stroke-width="1.1"/>
+    <polygon points="${p.join(" ")}" fill="none" stroke="var(--line)" stroke-width="6"
+      transform="translate(50 50) scale(.72) translate(-50 -50)"/>
+    <polygon points="${p.join(" ")}" fill="none" stroke="var(--line)" stroke-width=".5"
+      transform="translate(50 50) scale(.46) translate(-50 -50)"/></svg>`;
+}
+let parRecem=null;
+function desenhaOctogono(destacar){
+  const w=document.getElementById("oct");
+  if(!w)return;
+  const feitos=picks.length, total=4;
+  w.innerHTML=octogonoSVG()+
+    `<div class="oct-mid"><div class="n">${feitos}<span style="font-size:17px;color:var(--faded)">/${total}</span></div>
+      <div class="l">montado</div><div class="b"><i style="width:${feitos/total*100}%"></i></div></div>`;
+  SLOTS.forEach(s=>{
+    const a=s.ang*Math.PI/180;
+    const x=50+38*Math.cos(a), y=50+38*Math.sin(a);
+    const v=me[s.k];
+    const cheio=v!=null;
+    const origem=(picks.find(p=>p.pair.id===s.par)||{}).from||"";
+    const d=document.createElement("div");
+    /* A fixada tem que rodar UMA vez, quando o par acaba de ser escolhido.
+       Como esta função roda a cada passada de mouse, sem a flag ela reanimava
+       atributos já preenchidos toda hora. */
+    d.className="slot"+(cheio?" cheio":"")+(destacar===s.par?" mira":"")+
+      (parRecem===s.par?" novo":"");
+    d.style.left=x+"%"; d.style.top=y+"%";
+    d.innerHTML=`<span class="lab">${s.lab}</span>
+      <span class="val">${cheio?FMT[s.k](v):"—"}</span>
+      <span class="src">${cheio?origem:"vazio"}</span>`;
+    w.appendChild(d);
+  });
+  parRecem=null;                 // consumida: não reanima nas próximas passadas
+}
+
+function mostraDossie(r){
+  const d=document.getElementById("dossie");
+  if(!d)return;
+  if(!r){d.innerHTML=`<div class="col-t">Seu lutador</div>
+    <div style="text-align:center;padding:6px 0 2px">${bonecoSVG(ROSTO||cfgPadrao(),{w:130})}</div>
+    <div class="vazio" style="padding:8px 0">Passe o mouse numa carta<br>para ver o dossiê do lutador.</div>`;return;}
+  const f=r.src, t=f.titulos||{disputas:0,vitorias:0};
+  const pa=PCT(r.pair.a.key,f[r.pair.a.key]), pb=PCT(r.pair.b.key,f[r.pair.b.key]);
+  const tags=[`${f.fights} lutas`];
+  if(f.era)tags.push(`${f.era[0]}–${f.era[1]}`);
+  if(f.stance)tags.push(f.stance);
+  d.innerHTML=`<div class="col-t">Dossiê do lutador</div>
+    <div class="nm">${f.name}</div>
+    <div class="tags">${tags.map(x=>`<span class="tag">${x}</span>`).join("")}
+      ${t.vitorias>0?`<span class="tag t">${t.vitorias}x campeão</span>`:
+        t.disputas>0?`<span class="tag">${t.disputas} disputas de título</span>`:""}</div>
+    <p>${f.arquetipo||"Completo"}${f.destaque?`. ${f.destaque.eixo.charAt(0).toUpperCase()+f.destaque.eixo.slice(1)} no <b style="color:var(--ink)">${Math.round(f.destaque.pct*100)}º percentil</b> da divisão.`:", sem eixo dominante."}</p>
+    <div class="grid">
+      <div class="cel mira"><small>${r.pair.a.label}</small><b>${r.pair.a.fmt(f[r.pair.a.key])}</b></div>
+      <div class="cel mira"><small>${r.pair.b.label}</small><b>${r.pair.b.fmt(f[r.pair.b.key])}</b></div>
+    </div>
+    ${pctBar(pa)}${pctBar(pb)}
+    <div class="grid" style="margin-top:11px">
+      <div class="cel"><small>Custo</small><b>${r.cost.toFixed(2)}</b></div>
+      <div class="cel"><small>Sobra</small><b>${(budgetLeft-r.cost).toFixed(2)}</b></div>
+    </div>`;
+}
+
+function renderDraft(){
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow",
+    `${(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION} · montagem ${4-remaining.length+1} de 4 · cada escolha traz dois atributos do mesmo lutador`));
+
+  const arena=el("div","arena");
+  const esq=el("div","painel");
+  const meio=el("div","");
+  const dir=el("div","painel dossie");dir.id="dossie";
+  meio.innerHTML=`<div class="oct-wrap" id="oct"></div>`;
+  arena.append(esq,meio,dir);
+  app.appendChild(arena);
+
+  const pl=budgetLeft/(TOTAL_WEIGHT*BUDGET_PCT);
+  esq.innerHTML=`<div class="col-t">Escolha o próximo par</div>
+    <div class="budget"><span class="budget-num">${budgetLeft.toFixed(2)}</span>
+      <span class="budget-bar"><span class="budget-fill${pl<.3?" low":""}"
+        style="width:calc(${(pl*100).toFixed(1)}% - 2px)"></span></span></div>
+    <div class="cards cards-scroll" id="cards" style="grid-template-columns:1fr"></div>`;
+
+  const rows=rollTable(POOL,remaining,rng,PCT);
+  const afford=rows.filter(r=>r.cost<=budgetLeft);
+  const shown=afford.length?afford:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+  const grid=document.getElementById("cards");
+  shown.forEach(r=>{
+    const pa=PCT(r.pair.a.key,r.src[r.pair.a.key]),pb=PCT(r.pair.b.key,r.src[r.pair.b.key]);
+    const attr=(d,p)=>`<span class="attr mira-attr" style="display:block">
+      <span style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <span class="attr-l">${d.label}${p>=.90?'<span class="elite">elite</span>':""}</span>
+        <span class="attr-v">${d.fmt(r.src[d.key])}</span></span>
+      ${pctBar(p)}</span>`;
+    const c=el("button","card",`
+      <span class="pair">${r.pair.label}</span>
+      <span class="src"><b style="color:var(--ink);font-weight:600;font-size:12.5px">${r.src.name}</b> · ${r.src.fights} lutas</span>
+      ${attr(r.pair.a,pa)}${attr(r.pair.b,pb)}
+      <span class="cost"><span>custo</span><b>${r.cost.toFixed(2)}</b></span>`);
+    c.onclick=()=>pick(r);
+    c.onmouseenter=()=>{mostraDossie(r);desenhaOctogono(r.pair.id);};
+    c.onfocus=c.onmouseenter;
+    grid.appendChild(c);
+  });
+  desenhaOctogono(null);
+  mostraDossie(null);
+  if(picks.length===0)app.appendChild(el("div","legend",
+    `A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
+     naquele atributo. Passe o mouse numa carta para ver os dois lados que ela preenche.`));
+}
+function pick(r){
+  me[r.pair.a.key]=r.src[r.pair.a.key];
+  me[r.pair.b.key]=r.src[r.pair.b.key];
+  [r.pair.a.key,r.pair.b.key].forEach(k=>(RIDERS[k]||[]).forEach(rk=>me[rk]=r.src[rk]));
+  budgetLeft-=r.cost;
+  picks.push({pair:r.pair,from:r.src.name});
+  parRecem=r.pair.id;SOM.fixa();
+  remaining=remaining.filter(p=>p.id!==r.pair.id);
+  if(remaining.length)renderDraft(); else startCareer();
+}
+
+/* ---------- tela 3: carreira ---------- */
+function startCareer(){
+  if(me.sapm==null)me.sapm=3.2;
+  if(me.strAcc==null)me.strAcc=.45;
+  if(me.tdAcc==null)me.tdAcc=.38;
+  /* a base do draft nunca muda; treino e eventos são camadas por cima */
+  me.__base={};
+  ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+  st={treino:{},eventoMod:{},campHist:{},
+      wins:0,losses:0,finishes:0,streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,
+      standing:.18,peak:.18,events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,
+      fan:5.0,followers:2400,peakFollowers:2400,
+      longestW:0,lostBeltFast:false,rares:[],disputaLiberada:false,
+      exCampeao:null,foiCampeao:false,lesao:null};
+  usedEvents=new Set();rareUsed=new Set();fought=new Set();
+  fightNo=0;auto=false;speed=1;playing=false;
+
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow","Registro de lutas"));
+  app.appendChild(el("p","made-of","Seu lutador: "+
+    picks.map(p=>`<b>${p.pair.label}</b> do ${p.from}`).join(" · ")));
+  const row=el("div","row");row.id="controls";
+  const next=el("button","btn","Próxima luta");next.id="next";next.onclick=()=>nextFight();
+  const ab=el("button","btn btn-ghost","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
+  const sp=el("button","btn btn-ghost btn-sm","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
+  /* O som saiu daqui: mudo e volume moram no painel da engrenagem. */
+  const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
+  row.append(next,ab,sp,hint);app.appendChild(row);
+
+  const carr=el("div","carreira");
+  const ficha=el("div","ficha");ficha.id="ficha";
+  const col=el("div","");
+  carr.append(ficha,col);app.appendChild(carr);
+  const esc=el("div","escolha");esc.id="escolha";esc.style.display="none";
+  col.appendChild(esc);
+  const stage=el("div","stage");stage.id="stage";stage.style.display="none";
+  const live=el("div","live");live.id="live";
+  const phone=el("div","phone");phone.id="phone";phone.style.visibility="hidden";
+  stage.append(live,phone);col.appendChild(stage);
+  const bouts=el("div","bouts");bouts.id="bouts";col.appendChild(bouts);
+  renderFicha();
+}
+/* Ponto único que decide o estado dos botões. Antes isso estava espalhado em
+   quatro lugares e um deles esquecia o automático. */
+function atualizarControles(){
+  const next=document.getElementById("next");
+  const ab=document.getElementById("autob");
+  const ctrl=document.getElementById("controls");
+  const cont=document.getElementById("counter");
+  if(!next||!ab)return;
+  const fim=fightNo>=TOTAL_FIGHTS;
+  next.disabled=dilemaAberto||escolhaAberta||playing||auto||fim;
+  ab.disabled=dilemaAberto||fim;
+  if(ctrl)ctrl.classList.toggle("travado",dilemaAberto||escolhaAberta);
+  if(cont&&dilemaAberto)cont.textContent="responda para continuar";
+  else if(cont&&escolhaAberta)cont.textContent="escolha o adversário";
+  else if(cont)cont.textContent=`${fightNo} de ${TOTAL_FIGHTS} · ${st.wins}-${st.losses}`;
+}
+function cycleSpeed(){
+  speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
+  document.getElementById("speedb").textContent=`Velocidade ${speed}x`;
+}
+function toggleAuto(){
+  if(dilemaAberto)return;                 // não dá pra pular um dilema
+  auto=!auto;
+  if(auto&&escolhaAberta){                // automático assume as escolhas
+    escolhaAberta=false;
+    const b=document.getElementById("escolha");
+    if(b){b.style.display="none";b.innerHTML="";}
+  }
+  const b=document.getElementById("autob");
+  b.classList.toggle("on",auto);
+  b.textContent=auto?"Parar automático":"Modo automático";
+  atualizarControles();
+  if(auto&&!playing)nextFight();
+}
+function pickOpponent(){
+  const center=Math.floor(st.standing*(LADDER.length-1));
+  const spread=Math.max(8,Math.floor(LADDER.length*.06));
+  const lo=Math.max(0,center-spread),hi=Math.min(LADDER.length-1,center+spread);
+  for(let t=0;t<40;t++){
+    const c=LADDER[lo+Math.floor(rng()*(hi-lo+1))];
+    if(!fought.has(c.name)){fought.add(c.name);return c;}
+  }
+  return LADDER[lo+Math.floor(rng()*(hi-lo+1))];
+}
+function nextFight(){
+  if(fightNo>=TOTAL_FIGHTS||playing||dilemaAberto||escolhaAberta)return;
+  /* Único lugar que decide "é luta de título?" pra esta luta. Uma vez por
+     luta, aqui, antes de existir tela ou pick automático — candidatos() e
+     lutar() só leem st.tituloEstaLuta depois disso. */
+  st.tituloEstaLuta=tituloLiberado();
+  if(auto){                                  // no automático a máquina escolhe o meio
+    const opts=candidatos();
+    /* opts tem 3 cartas normalmente, mas 1 só em luta de título/defesa
+       (oponente travado em RANKING) — min(1,length-1) pega "o do meio" nas
+       três e a única carta quando só existe uma, sem consumir rng extra. */
+    lutar(opts[Math.min(1,opts.length-1)],CAMPS[Math.floor(rng()*CAMPS.length)]);
+    return;
+  }
+  escolhaAberta=true;atualizarControles();
+  telaAdversario();
+}
+
+function lutar(escolhido,camp){
+  escolhaAberta=false;
+  fightNo++;st.fightNo=fightNo;
+  const opp=escolhido.f;
+  fought.add(opp.name);
+  st.ganhoEscolhido=escolhido.ganho;
+  aplicarCamp(camp);                    // permanente, com teto
+  renderFicha();
+  st.campEscolhido=camp.nome;
+  const comCamp=lutadorEfetivo();
+  me.__rating=st.standing;
+  /* st.tituloEstaLuta já foi decidido em nextFight(), antes de existir tela
+     ou pick automático. Recalcular aqui com tituloLiberado() de novo poderia
+     consumir holdRng outra vez e discordar do que a tela mostrou. */
+  const titleFight=!!st.tituloEstaLuta;
+  const r=simulateFight(comCamp,opp,{seed:Math.floor(rng()*1e9),rounds:titleFight?5:3});
+  const won0=r.winner===me.name;
+  const kd0=r.knockdowns[opp.name]||0, kdt0=r.knockdowns[me.name]||0;
+  /* dispara agora; resolve durante os ~12s de narração */
+  prefetchFeed(r,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
+  narrate(opp,r,titleFight);
+}
+/* Narração completa: percorre o log tick a tick. O botão de velocidade só
+   divide o intervalo, nunca pula linha — nada de resultado escondido. */
+function narrate(opp,r,titleFight){
+  playing=true;atualizarControles();
+  const live=document.getElementById("live");
+  document.getElementById("stage").style.display="";
+  document.getElementById("phone").style.visibility="hidden";
+  live.innerHTML=`<div class="live-head">
+      <span class="vs" style="display:flex;align-items:center;gap:9px">
+        ${bonecoSVG(ROSTO||cfgPadrao(),{w:38})}
+        <span>${me.name} &nbsp;vs&nbsp; ${opp.name}${titleFight?" · cinturão":""}</span>
+      </span>
+      <span class="rd" id="rdlabel">Round 1</span></div>
+    <div class="play" id="play"></div>`;
+  const play=document.getElementById("play"),lines=r.log;let i=0;
+  const step=()=>{
+    if(i>=lines.length){finishFight(opp,r,titleFight);return;}
+    const L=lines[i++];
+    if(L.kind==="rd"&&/^Round/.test(L.text))
+      document.getElementById("rdlabel").textContent=`Round ${L.round}`;
+    const row=el("div","pbp"+(L.kind?" "+L.kind:""),
+      `<span class="clk">${L.clock}</span><span>${L.text}</span>`);
+    play.appendChild(row);
+    row.scrollIntoView({behavior:"smooth",block:"nearest"});
+    /* o som sai do TIPO da linha, que o motor já classifica */
+    if(L.kind==="kd")SOM.queda();
+    else if(L.kind==="rd"&&/^Fim/.test(L.text))SOM.sino();
+    else if(L.kind==="big")SOM.golpe();
+    else if(L.kind==="fin"&&/ocaute/.test(L.text))SOM.nocaute();
+    if(L.kind==="fin"&&/ocaute/.test(L.text)&&!reduceMotion()){
+      document.body.classList.add("ko");
+      setTimeout(()=>document.body.classList.remove("ko"),440);
+    }
+    const base=L.kind==="fin"?950:L.kind==="rd"?700:
+               (L.kind==="kd"||L.kind==="big")?780:470;
+    playTimer=setTimeout(step,reduceMotion()?10:base/speed);
+  };
+  step();
+}
+function finishFight(opp,r,titleFight){
+  playing=false;atualizarControles();
+  const won=r.winner===me.name;
+  const isKO=/ocaute/.test(r.method),finish=r.method!=="Decisão";
+  const myKd=r.knockdowns[opp.name]||0,oppKd=r.knockdowns[me.name]||0;
+  st.kdGiven+=myKd;st.kdTaken+=oppKd;
+  /* Antes de mexer no standing: é daqui que sai a seta de subiu/caiu na ficha. */
+  const _rkAntes=posicaoDivisao();
+  if(_rkAntes)st.rankAnt=_rkAntes.n;
+
+  if(won){
+    st.wins++;st.streakW++;st.streakL=0;st.longestW=Math.max(st.longestW,st.streakW);
+    if(finish)st.finishes++;
+    if(opp.rating>st.bestBeaten){st.bestBeaten=opp.rating;st.bestWin=opp.name;}
+    st.standing=Math.min(1,st.standing+(titleFight?.05:(st.ganhoEscolhido??.07)));
+    st.peak=Math.max(st.peak,st.standing);
+    /* foiCampeao é permanente (histórico: já foi campeão, ninguém tira — usado
+       pelo LEGACY). title é o status ATUAL, e É esse que zera na derrota
+       abaixo — os dois precisam existir separados, senão reconquistar o
+       cinturão não tem como ser distinguido de nunca tê-lo perdido. */
+    if(titleFight){if(st.title)st.defesas=(st.defesas||0)+1;st.title=true;st.foiCampeao=true;st.exCampeao=null;}
+  }else{
+    st.losses++;st.streakL++;st.streakW=0;
+    if(isKO)st.koLosses++;
+    if(titleFight&&st.title){
+      /* defesas só incrementa em vitória (acima), então defesas===0 aqui
+         significa que esta é a PRIMEIRA defesa perdida — só nesse caso o
+         evento raro "perdeu na primeira defesa" é verdade. Perder a 5ª
+         defesa não é a mesma coisa e não pode usar o mesmo texto. */
+      if((st.defesas||0)===0)st.lostBeltFast=true;
+      /* perder uma defesa custa o cinturão de verdade: title volta a false,
+         exCampeao guarda quem tirou (a ficha e a próxima disputa passam a
+         nomear essa pessoa, não mais o jogador), defesas zera (reinado novo
+         começa do zero se reconquistar) e disputaLiberada reseta — sem isso
+         a reconquista aproveitaria a concessão antiga do holdRng e nunca
+         sortearia de novo (ver candidatos()/tituloLiberado()). */
+      st.title=false;st.exCampeao=opp;st.defesas=0;st.disputaLiberada=false;
+    }else if(titleFight&&!st.title){
+      /* Perdeu a DISPUTA em si, antes de nunca ter sido campeão — st.title
+         já era false, então o bloco acima não roda, mas o reset do
+         disputaLiberada precisa acontecer aqui do mesmo jeito. Sem isso, a
+         próxima vez que standing/streakW voltarem a bater o limiar,
+         tituloLiberado() acha disputaLiberada ainda true (da concessão
+         antiga) e devolve o campeão sem sortear holdRng de novo — só que
+         agora ignorando `fought` (ver candidatos()), então mesmo achando o
+         campeão em `fought` a carta trava nele mesmo assim, revanche de
+         verdade. Esse ELSE existe só pra documentar por que o reset não
+         soma com o bloco de cima: são estados mutuamente exclusivos
+         (perdeu sendo campeão vs. perdeu não sendo). */
+      st.disputaLiberada=false;
+    }
+    /* perder para quem estava abaixo custa mais caro que perder para um perigoso */
+    const punicao=st.ganhoEscolhido<=.05?.13:st.ganhoEscolhido>=.12?.06:.09;
+    st.standing=Math.max(.05,st.standing-punicao);
+  }
+  st.lastMethod=r.method;st.lastWon=won;st.lastRound=r.round;st.lastKO=isKO;
+
+  /* Tick de cura. st.eventoMod já acumula multiplicativo (outro evento pode
+     ter mexido no MESMO atributo antes ou depois da lesão) — dividir pelo
+     mult da lesão desfaz só o que ela escreveu; um "=1" apagaria também um
+     bônus de evento que nada tem a ver com a lesão. Roda depois da luta
+     recém-simulada (a lesão ainda vale PRA ELA), então passa a valer pra
+     próxima a partir daqui. */
+  if(st.lesao&&!st.lesao.permanente&&st.fightNo-st.lesao.desdeLuta>=st.lesao.duracao){
+    const a=st.lesao.atributo;
+    st.eventoMod[a]=(st.eventoMod[a]||1)/st.lesao.mult;
+    st.lesao=null;
+  }
+
+  /* --- repercussão --- */
+  const hype=hypeOf(r,won,opp,me,titleFight,myKd,oppKd);
+  const upset=won&&(opp.rating-st.standing)>.15;
+  const alvo=Math.max(0,Math.min(10,1.3+hype*1.30));
+  st.fan=Math.max(0,Math.min(10,st.fan*.62+alvo*.38));      /* média móvel */
+  const delta=followerDelta(st.followers,hype,won,st.standing);
+  st.followers=Math.max(120,st.followers+delta);
+  st.peakFollowers=Math.max(st.peakFollowers,st.followers);
+  st.lastDelta=delta;
+  const ph=document.getElementById("phone");
+  if(ph){
+    const molde=buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,me.name,st.followers);
+    ph.style.visibility="visible";
+    resolveFeed(molde,rng).then(f=>renderPhone(f,st.fan,delta,st.followers));
+  }
+
+  const bouts=document.getElementById("bouts");
+  const line=el("div","bout"+(titleFight?" title-fight":""));
+  line.innerHTML=`<span class="no">${String(fightNo).padStart(2,"0")}</span>
+    <span><span class="opp">${opp.name}</span><br><span class="how">${r.method} · round ${r.round} ${r.clock}${r.cards?" · "+r.cards:""}${(myKd||oppKd)?` · quedas ${myKd}-${oppKd}`:""}</span></span>
+    <span class="stamp${won?"":" d"}">${won?"Vitória":"Derrota"}</span>`;
+  bouts.appendChild(line);
+  (won?SOM.vitoria:SOM.derrota)();     // um só, no carimbo, seja qual for o método
+
+  /* dilema interativo a cada 5 lutas; nas outras, evento normal */
+  if(fightNo%5===0&&fightNo<TOTAL_FIGHTS){
+    dilemaAberto=true;
+    if(auto){auto=false;clearTimeout(autoTimer);
+      const b=document.getElementById("autob");
+      b.classList.remove("on");b.textContent="Modo automático";}
+    atualizarControles();
+    abrirDilema()
+      .catch(()=>{})                       // falha do dilema não pode travar a carreira
+      .then(()=>{dilemaAberto=false;atualizarControles();renderFicha();});
+  }else if(fightNo%2===0||finish){
+    const d=drawEvent(st,rng,usedEvents,rareUsed);
+    if(d){
+      bouts.appendChild(el("div","event"+(d.rare?" rare":""),(d.rare?"":"— ")+d.e.t(me.name)));
+      somDoEvento(d.e,lutadorEfetivo());
+      st.events++;
+      if(d.rare)st.rares.push(d.e.t(me.name));
+      if(d.e.fx){
+        /* o efeito entra numa camada separada: se fosse direto no atributo,
+           ele apagaria a base e o treino perderia referência */
+        const d2=d.e.fx(lutadorEfetivo());
+        st.eventoMod=st.eventoMod||{};
+        for(const k in d2){
+          const antes=statAtual(k)||1;
+          st.eventoMod[k]=(st.eventoMod[k]||1)*(d2[k]/antes);
+        }
+      }
+    }
+  }
+  atualizarControles();renderFicha();
+
+  if(fightNo>=TOTAL_FIGHTS){
+    auto=false;clearTimeout(autoTimer);
+    setTimeout(()=>{document.getElementById("stage").style.display="none";},2600);
+    const c=document.getElementById("controls");c.innerHTML="";
+    const fin=el("button","btn","Encerrar a carreira");fin.onclick=screenReport;
+    c.appendChild(fin);return;
+  }
+  atualizarControles();
+  if(auto&&!dilemaAberto)autoTimer=setTimeout(()=>{if(auto&&!dilemaAberto)nextFight();},1100/speed);
+}
+
+/* ---------- tela 4: relatório ---------- */
+function grade(){
+  const winPct=st.wins/Math.max(1,st.wins+st.losses);
+  const finishPct=st.finishes/Math.max(1,st.wins);
+  const score=st.peak*40+st.bestBeaten*30+winPct*12+finishPct*8+(st.title?10:0);
+  const tiers=[[90,"S","Lenda. Vão passar essas lutas na TV por trinta anos."],
+    [78,"A","Nome grande. Entrou no hall da fama da divisão."],
+    [64,"B","Carreira sólida. Foi luta principal várias vezes."],
+    [48,"C","Meio de card. Sustentou a família lutando."],
+    [32,"D","Ficou pelo caminho. Teve momentos."],
+    [0,"F","Não deu. Mas você entrou no octógono, que é mais do que a maioria."]];
+  const t=tiers.find(x=>score>=x[0]);
+  return{score:Math.round(score),letter:t[1],verdict:t[2]};
+}
+function screenReport(){
+  const g=grade();
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow","Encerramento de registro"));
+  app.appendChild(el("div","",`<div style="text-align:center;margin:4px 0 10px">
+    ${bonecoSVG(ROSTO||cfgPadrao(),{w:150})}</div>`));
+  const tape=el("table","tape"),row=(l,v)=>`<tr><td>${l}</td><td>${v}</td></tr>`;
+  tape.innerHTML=
+    row("Cartel",`${st.wins}-${st.losses}`)+
+    row("Vitórias antes do fim",`${st.finishes} de ${st.wins} (${Math.round(100*st.finishes/Math.max(1,st.wins))}%)`)+
+    row("Maior sequência",`${st.longestW} vitórias`)+
+    row("Idade ao encerrar",`${idadeAtual()} anos`)+
+    row("Defesas de cinturão",st.defesas||0)+
+    row("Golpe marcante",assinatura())+
+    row("Quedas aplicadas / sofridas",`${st.kdGiven} / ${st.kdTaken}`)+
+    row("Nocautes sofridos",st.koLosses)+
+    row("Pico no ranking",fmtPico(st.peak))+
+    row("Melhor vitória",st.bestWin||"—")+
+    (MODO==="lenda"?row("Modo","Seja uma lenda"):"")+
+    row("Cinturão",st.title?"Sim":"Não")+
+    row("Seguidores no fim",fmtNum(st.followers))+
+    row("Pico de seguidores",fmtNum(st.peakFollowers))+
+    row("Medidor de fã final",st.fan.toFixed(1)+" / 10")+
+    row("Momentos fora do octógono",st.events)+
+    row("Decisões que você tomou",st.dilemas||0);
+  app.appendChild(tape);
+
+  const v=el("div","verdict");
+  v.innerHTML=`<div class="letter">${g.letter}</div>
+    <div class="said"><small>Parecer da comissão · ${g.score} de 100</small>${g.verdict}</div>`;
+  app.appendChild(v);
+
+  app.appendChild(el("div","legacy",LEGACY.find(l=>l.when(st)).t(me.name)));
+
+  if(st.rares.length)
+    app.appendChild(el("p","made-of","<b>Fora da curva:</b> "+st.rares.join(" &nbsp;·&nbsp; ")));
+  app.appendChild(el("p","made-of",`<b>${me.name}</b> era feito de: `+
+    picks.map(p=>`${p.pair.label} do ${p.from}`).join(" · ")));
+
+  const row2=el("div","row");
+  const share=el("button","btn","Compartilhar");
+  share.onclick=()=>compartilhar(g,share);
+  const link=el("button","btn btn-ghost","Copiar desafio");
+  link.onclick=async()=>{
+    try{await navigator.clipboard.writeText(urlDesafio());link.textContent="Copiado";}
+    catch(e){link.textContent=urlDesafio();}
+    setTimeout(()=>link.textContent="Copiar desafio",2200);
+  };
+  const again=el("button","btn btn-ghost","Nova carreira");
+  again.onclick=()=>{docmeta.textContent="Comissão Atlética · Registro";
+    history.replaceState(null,"",location.pathname);SEED=0;screenName();};
+  row2.append(share,link,again);app.appendChild(row2);
+  app.appendChild(el("p","hint",
+    `Semente <b>#${SEED.toString(36).toUpperCase()}</b> — quem abrir seu link pega as mesmas cartas e os mesmos adversários.`));
+}
+armarTrilha();
+armarConfig();
+boot();
+</script>
+</body>
+</html>
