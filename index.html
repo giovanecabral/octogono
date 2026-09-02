@@ -1191,6 +1191,25 @@ function semResultadoDeLuta(texto){
   return mantidas.join(" ").trim();
 }
 
+/* A DEFESA PRINCIPAL É A INSTRUÇÃO NO PROMPT (api/ai.js, "julgar" e VOZ) —
+   isto aqui é REDE DE BAIXO, não o freio. RESULTADO_LUTA funciona por regex
+   porque o vocabulário de "quem venceu a luta" é fechado (nocaute, decisão,
+   finalização — um punhado de palavras). Automutilação, violência gráfica e
+   conteúdo sexual não têm vocabulário fechado: a IA narra a mesma coisa com
+   outra palavra, eufemismo, ou outra língua, e o regex não pega. Por isso
+   ESTE filtro não mira falso positivo baixo como o RESULTADO_LUTA (~5%) —
+   mira pegar tudo que puder, aceitando gastar desfecho legítimo se precisar.
+   Dispara em dois pontos: no texto do JOGADOR, antes de sequer chamar a IA
+   (mais barato, e não depende da IA ter obedecido a instrução); e no
+   "desfecho" que a IA devolve, como rede pro que passar da instrução. Se
+   disparar em qualquer um dos dois, a resposta inteira da IA é descartada —
+   não só o texto: um "j" que narrou isso não é confiável em nenhum campo,
+   número incluso. */
+const CONTEUDO_INSEGURO=/\b(automutila\w*|mutila\w*|amputa\w*|decepa\w*|cutelo|suicid\w*|se\s+matar|tirar\s+a\s+(própria\s+)?vida|overdose\s+proposital|esfaquea\w*|estrangula\w*|tortura\w*|degola\w*|desmembra\w*|estupr\w*|abus\w*\s+sexual|cort\w*.{0,25}(mãos?|braços?|pernas?|dedos?|pulsos?|veias?|membros?)|(mãos?|braços?|pernas?|dedos?|pulsos?|veias?|membros?).{0,25}cort\w*)/i;
+function conteudoInseguro(texto){
+  return CONTEUDO_INSEGURO.test(String(texto||""));
+}
+
 async function abrirDilema(){
   const bouts=document.getElementById("bouts");
   const box=el("div","dilema");
@@ -1202,7 +1221,12 @@ async function abrirDilema(){
   const mood=st.streakW>=3?"em alta":st.streakL>=2?"em queda":"estável";
   let d=await ai("dilema",{name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed});
-  if(!d||!d.cena)d=DILEMA_LOCAL[Math.floor(rng()*DILEMA_LOCAL.length)];
+  /* dilema não recebe texto do jogador — não dá pra provocar ele do jeito
+     que dá pra provocar o julgar. Ainda assim, rede embaixo: se a IA gerar
+     algo ruim sem provocação (improvável, mas não impossível), cai no
+     mesmo fallback que já existe pra quando ela falha. */
+  if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo))
+    d=DILEMA_LOCAL[Math.floor(rng()*DILEMA_LOCAL.length)];
 
   box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
@@ -1215,7 +1239,10 @@ async function abrirDilema(){
     const txt=inp.value.trim();
     if(!txt)return inp.focus();
     go.disabled=true;inp.disabled=true;go.textContent="…";
-    const j=await ai("julgar",{name:me.name,cena:d.cena,resposta:txt,
+    /* Corta ANTES de chamar a IA, não só depois: mais barato (economiza a
+       chamada inteira) e não depende de o julgar ter obedecido a instrução
+       de conteúdo inseguro — o texto nunca sai daqui. */
+    const j=conteudoInseguro(txt)?null:await ai("julgar",{name:me.name,cena:d.cena,resposta:txt,
       record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1)});
     aplicarDilema(box,d,txt,j);
   };
@@ -1238,7 +1265,13 @@ const LESAO_TIPOS={
   permanente:{mult:.75,duracao:null},
 };
 
-function aplicarDilema(box,d,txt,j){
+function aplicarDilema(box,d,txt,jBruto){
+  /* Rede de baixo do conteúdo inseguro (ver CONTEUDO_INSEGURO acima): um "j"
+     cujo desfecho narrou automutilação/violência/sexual não é confiável em
+     NENHUM campo, não só no texto — descarta o objeto inteiro, não só a
+     frase. A partir daqui só se usa jSeguro, nunca jBruto. */
+  const jSeguro=(jBruto&&conteudoInseguro(jBruto.desfecho))?null:jBruto;
+  const j=jSeguro;
   /* Todo número volta limitado. O jogador digita texto livre que entra no
      prompt, então nada que o modelo devolve é aceito sem trava. */
   const dSeg=lim(j&&j.seguidores,-.35,.60,0);

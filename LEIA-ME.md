@@ -293,6 +293,52 @@ depois de subir. O deploy é do dono do projeto, não de quem edita o arquivo.
   roda sem rede, então não vê nada disso — é cego a essa classe de
   divergência por construção, com ou sem lesão. Ver `PENDENCIAS.md`.
 
+### Conteúdo inseguro no dilema
+
+O texto do jogador (`resposta`, no dilema) vai direto pro prompt do `julgar`
+— é a única superfície do jogo onde texto livre do jogador chega numa IA.
+Achado jogando de propósito: escrever automutilação gráfica fez a IA narrar
+de volta em detalhe e ainda aplicar lesão permanente. O `lim()` trava número;
+não existia nada travando conteúdo.
+
+**A defesa principal é a instrução no prompt, não o regex local.** Isso
+importa registrar com todas as letras porque é fácil de inverter com o
+tempo: o `RESULTADO_LUTA` (ver acima) funciona bem por regex porque o
+vocabulário de "quem venceu a luta" é fechado — meia dúzia de palavras
+(nocaute, decisão, finalização). Automutilação, violência gráfica e
+conteúdo sexual não têm vocabulário fechado: a IA narra a mesma coisa com
+outra palavra, eufemismo, ou outra língua, e regex nenhum pega tudo. Por
+isso a ordem de confiança é essa, não o contrário — `api/ai.js` (`VOZ`
+compartilhada + instrução específica no `julgar`) é quem carrega o peso; o
+regex do client (`CONTEUDO_INSEGURO`) é rede de baixo, não o freio. Se
+algum dia o prompt for enfraquecido "porque o regex já resolve", essa frase
+está errada — o regex nunca resolveu sozinho, só pega o que passar da
+instrução.
+
+**Dois pontos de checagem, um deles antes de gastar a chamada.** O texto do
+jogador passa por `conteudoInseguro()` ANTES de chamar `ai("julgar",...)` —
+mais barato (a chamada nem sai) e não depende de a IA ter obedecido a
+instrução, já que o texto nunca sai do navegador. O `desfecho` que a IA
+devolve passa pela mesma função depois, como rede pro que passar da
+instrução do prompt. Nos dois casos o `j` inteiro é descartado, não só o
+texto — foi assim que a lesão permanente saiu junto da narração ruim no
+achado original: um "j" que produziu isso não é confiável em nenhum campo,
+número incluso.
+
+**Sem recusa explicada.** O desfecho vira neutro e curto, do mesmo jeito que
+uma resposta morna qualquer vira — nunca uma tela dizendo "isso é proibido".
+Confirmar o gatilho na tela seria um convite a testar o limite.
+
+**A calibração é oposta à do `RESULTADO_LUTA` de propósito.** Lá, falso
+positivo custa perder uma frase boa, e a taxa foi medida pra ficar embaixo
+de ~5%. Aqui, falso positivo custa um desfecho genérico a mais — barato — e
+falso negativo é o risco real. `CONTEUDO_INSEGURO` mira pegar tudo que
+puder, não mirar uma taxa baixa.
+
+```bash
+node testar.js conteudo     # as duas frases que produziram o achado, mais o descarte completo do j
+```
+
 ### Idade e assinatura
 
 A idade começa em 24 e anda com a carreira — 22 lutas em ~9 anos é o ritmo real

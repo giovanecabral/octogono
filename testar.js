@@ -964,6 +964,88 @@ function testarLesao() {
   return ok && passos.length > 0;
 }
 
+/* ================================================================== *
+ * 8. CONTEÚDO INSEGURO — o freio local pega o que já causou o problema?
+ * ================================================================== */
+/* A defesa principal é a instrução no prompt (api/ai.js) — isto testa só a
+   REDE de baixo, que roda sem rede nenhuma (regex, client). Não prova que a
+   IA obedece a instrução (isso só dá pra confirmar contra o ar, depois de
+   deploy) — prova que, se o desfecho vier ruim mesmo assim, o jogo descarta
+   a resposta inteira, e que texto comum de dilema não é pego à toa. */
+function testarConteudoInseguro() {
+  console.log("\n" + cinza("freio de conteúdo inseguro: as duas frases reais, mais o descarte completo do j"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__seg=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    /* as duas exatas que produziram o problema — se o freio não pega
+       essas, não pegou nada */
+    passo("pega: 'corto meus dedos fora com um cutelo'",
+      conteudoInseguro("corto meus dedos fora com um cutelo"));
+    passo("pega: 'corto minhas pernas fora'",
+      conteudoInseguro("corto minhas pernas fora"));
+
+    /* texto comum de dilema não pode disparar à toa */
+    const benignos=[
+      "Assino o contrato sem mostrar pro empresário.",
+      "Ignoro e posto um vídeo do treino de verdade.",
+      "Converso com ela sobre os riscos e por que continuo.",
+      "Levo minha família pro camp comigo.",
+      "Recuso educadamente e explico o motivo.",
+    ];
+    const falsosPositivos=benignos.filter(t=>conteudoInseguro(t));
+    passo("não dispara em texto comum de dilema (" + benignos.length + " frases benignas)",
+      falsosPositivos.length===0);
+
+    /* aplicarDilema() descarta o j INTEIRO, não só o desfecho — número
+       incluso, é o achado real: a IA tinha aplicado lesão permanente
+       junto com a narração ruim */
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:1,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+        lostBeltFast:false,rares:[],disputaLiberada:false,defesas:0,exCampeao:null,
+        foiCampeao:false,lesao:null};
+    const box=document.getElementById("caixaSegurancaTeste");
+    const followersAntes=st.followers, fanAntes=st.fan;
+    aplicarDilema(box,{titulo:"T",cena:"C"},"corto meus dedos fora com um cutelo",
+      {desfecho:"narração gráfica de automutilação aqui",seguidores:.5,fa:2.5,
+       lesao:{permanente:true,atributo:"strDef",regiao:"mãos mutiladas"},evitouLesao:false});
+
+    passo("j inseguro: não vira lesão", st.lesao===null);
+    passo("j inseguro: seguidores não mudou (não é 0.5 de ganho)", st.followers===followersAntes);
+    passo("j inseguro: fã não mudou (não é +2.5)", st.fan===fanAntes);
+    passo("j inseguro: desfecho cai no texto genérico",
+      box.innerHTML.includes("Você seguiu em frente"));
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__seg || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
 /* ================================================================== */
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
@@ -977,6 +1059,7 @@ try {
   else if (cmd === "pesos") ok = medirPesos(div || "lightweight");
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
+  else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
   else if (cmd === "escolhas") ok = testarEscolhas(div || "lightweight");
   else if (cmd === "treino") ok = testarTreino(div || "lightweight");
@@ -1016,7 +1099,7 @@ try {
     else console.log(cinza("\n  interface quebrada — pulei o resto, conserte isso primeiro"));
     console.log("\n" + (ok ? verde("TUDO CERTO") : vermelho("ALGO SAIU DA FAIXA")) + "\n");
   } else {
-    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao] [divisão] [normal|lenda]\n`);
+    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|conteudo] [divisão] [normal|lenda]\n`);
     process.exit(0);
   }
 } catch (e) {
