@@ -153,7 +153,13 @@ normal depois, pra confirmar que continua no ~69º percentil.
   barra que sumiu, e bloco nomeado com a duração real (não promete cura que
   a carreira não alcança). `node testar.js lesao` cobre os dois bugs achados
   em revisão antes de implementar (cura zerando bônus de evento; segunda
-  lesão sobrescrevendo a primeira).
+  lesão sobrescrevendo a primeira). Classificação (IA reconhecer cena de
+  lesão) medida **contra a API depois de deploy de verdade**: 8/8 nas cenas
+  de lesão, 0/34 nas sem lesão — sem portão nenhum. Um portão (`houveLesao`)
+  chegou a ser desenhado e revertido no meio do processo, porque a medição
+  que o motivou tinha testado uma versão de `api/ai.js` de ~17h atrás, nunca
+  deployada — ver `LEIA-ME.md`, seção "Lesão", pelo relato completo antes de
+  reintroduzir isso.
 - Campeão nomeado por divisão, ranking visível na ficha, disputa recebida via
   `holdRng` (stream separado do `rng` principal) em vez de automática
 - Perder uma defesa custa o cinturão de verdade (`st.title` zera, `exCampeao`

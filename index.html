@@ -1252,20 +1252,20 @@ function aplicarDilema(box,d,txt,j){
      aplicado). "já está machucado" também é defensável sozinho: não
      empilha um segundo problema em cima do primeiro.
 
-     A IA nunca é dependência — vale pra ESTRUTURA da resposta, não só pros
-     números. houveLesao/lesao deveriam ser mutuamente exclusivos com
-     atributo/efeito (é o que o prompt de "julgar" pede), mas nunca confio
-     que isso foi respeitado: exijo os DOIS sinais concordando —
-     j.houveLesao===true E um objeto lesao válido E o campo atributo comum
-     ausente/"nenhum" (senão a IA preencheu os dois pares, sinal de que
-     não seguiu a instrução e a resposta inteira não é confiável). Qualquer
-     descompasso — houveLesao true com lesao null, houveLesao false com
-     lesao preenchido, atributo fora da lista — cai no caminho comum
-     abaixo, nunca em silêncio parcial. */
+     Existiu aqui um portão exigindo j.houveLesao===true concordando com o
+     objeto lesao, mais um campo separado no prompt do julgar pedindo pra
+     decidir isso ANTES do resto. Foi revertido: medido depois de deploy de
+     verdade (a medição anterior tinha testado uma versão do prompt que
+     nunca tinha saído do arquivo local — ver LEIA-ME.md, seção "Lesão"), o
+     prompt sem o portão já acerta 8/8 nas cenas de lesão e 0/34 nas sem
+     lesão. O portão era complexidade resolvendo um problema que não
+     existia. A IA às vezes preenche lesao E o atributo/efeito comum ao
+     mesmo tempo (o prompt pede pra não fazer isso, mas acontece — visto em
+     3 das 8 respostas medidas) — isso é ignorado aqui de propósito, só a
+     validade do PRÓPRIO objeto lesao importa. */
   const lesaoBruta=j&&j.lesao;
-  const lesaoValida=!st.lesao&&j&&j.houveLesao===true&&lesaoBruta
-    &&ATTRS_LESAO.includes(lesaoBruta.atributo)&&me[lesaoBruta.atributo]!=null
-    &&(!j.atributo||j.atributo==="nenhum");
+  const lesaoValida=!st.lesao&&lesaoBruta
+    &&ATTRS_LESAO.includes(lesaoBruta.atributo)&&me[lesaoBruta.atributo]!=null;
   let atr=null, mult=1;
   if(lesaoValida){
     const tipo=LESAO_TIPOS[lesaoBruta.permanente?"permanente":"temporaria"];

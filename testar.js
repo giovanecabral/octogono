@@ -863,7 +863,7 @@ function testarLesao() {
 
     st.fightNo=6;
     aplicarDilema(box,{titulo:"Joelho travado",cena:"..."},"aceito lutar assim mesmo",
-      {houveLesao:true,desfecho:"Ele decide arriscar.",seguidores:0,fa:0,
+      {desfecho:"Ele decide arriscar.",seguidores:0,fa:0,
        lesao:{permanente:false,atributo:"slpm",regiao:"Mão quebrada"},evitouLesao:false});
 
     passo("aplica lesão: st.lesao criado com os campos certos",
@@ -888,14 +888,14 @@ function testarLesao() {
     st.lesao=null;
     st.fightNo=1;
     aplicarDilema(box,{titulo:"Mão quebrada",cena:"..."},"aceito lutar assim mesmo",
-      {houveLesao:true,desfecho:"...",seguidores:0,fa:0,
+      {desfecho:"...",seguidores:0,fa:0,
        lesao:{permanente:false,atributo:"slpm",regiao:"Mão quebrada"},evitouLesao:false});
     const primeiraLesao=st.lesao;
     passo("2ª lesão: a 1ª foi aplicada (setup do cenário)", !!primeiraLesao);
 
     st.fightNo=2;
     aplicarDilema(box,{titulo:"Costela trincada",cena:"..."},"aceito lutar assim mesmo",
-      {houveLesao:true,desfecho:"...",seguidores:0,fa:0,
+      {desfecho:"...",seguidores:0,fa:0,
        lesao:{permanente:true,atributo:"durability",regiao:"Costela trincada"},evitouLesao:false});
 
     passo("2ª lesão: st.lesao continua sendo a 1ª (não sobrescreveu)",
@@ -910,32 +910,30 @@ function testarLesao() {
     passo("evitouLesao: standing cai um valor fixo (-0.06), não depende da IA",
       Math.abs(st.standing-(.5-.06))<1e-9);
 
-    /* A IA nunca é dependência, também na ESTRUTURA da resposta — não só nos
-       números. houveLesao/lesao deveriam ser mutuamente exclusivos com
-       atributo/efeito (é o que o prompt de "julgar" pede), mas o jogo nunca
-       confia que isso foi respeitado sozinho. Só o primeiro caso (os dois
-       sinais concordando, sem sobra do par antigo) pode virar lesão — os
-       outros quatro são formas de a IA não seguir a instrução, e nenhuma
-       delas pode corromper st.eventoMod. */
+    /* Existiu aqui um portão (houveLesao) exigindo dois sinais concordando.
+       Medido depois de deploy de verdade: o prompt sem o portão já acerta
+       8/8 nas cenas de lesão e 0/34 nas sem lesão — revertido, ver o
+       comentário em aplicarDilema() no index.html. O que sobra pra testar
+       é mais simples: só a validade do PRÓPRIO objeto lesao decide, e a
+       IA às vezes preenche lesao E o atributo/efeito comum juntos (visto
+       em 3 das 8 respostas medidas) — isso não pode impedir a lesão de
+       aplicar, nem corromper st.eventoMod nos casos que devem ficar de
+       fora. */
     const casosValidacao=[
-      {nome:"houveLesao true, lesao válida, atributo comum ausente — vira",
-       j:{houveLesao:true,lesao:{permanente:false,atributo:"strDef",regiao:"Mão quebrada"},
+      {nome:"lesao válida — vira",
+       j:{lesao:{permanente:false,atributo:"strDef",regiao:"Mão quebrada"},
           atributo:"nenhum",efeito:1,desfecho:"...",seguidores:0,fa:0},
        deveVirar:true},
-      {nome:"houveLesao true, lesao null — NÃO vira",
-       j:{houveLesao:true,lesao:null,atributo:"strDef",efeito:.95,desfecho:"...",seguidores:0,fa:0},
-       deveVirar:false},
-      {nome:"houveLesao false, lesao preenchida (contradição) — NÃO vira",
-       j:{houveLesao:false,lesao:{permanente:false,atributo:"strDef",regiao:"X"},
-          atributo:"nenhum",efeito:1,desfecho:"...",seguidores:0,fa:0},
+      {nome:"lesao válida MESMO com atributo comum também preenchido (a IA não limpa sempre) — vira",
+       j:{lesao:{permanente:false,atributo:"strDef",regiao:"Mão quebrada"},
+          atributo:"strDef",efeito:.92,desfecho:"...",seguidores:0,fa:0},
+       deveVirar:true},
+      {nome:"lesao null — NÃO vira",
+       j:{lesao:null,atributo:"strDef",efeito:.95,desfecho:"...",seguidores:0,fa:0},
        deveVirar:false},
       {nome:"atributo da lesão fora da lista (reach) — NÃO vira",
-       j:{houveLesao:true,lesao:{permanente:false,atributo:"reach",regiao:"X"},
+       j:{lesao:{permanente:false,atributo:"reach",regiao:"X"},
           atributo:"nenhum",efeito:1,desfecho:"...",seguidores:0,fa:0},
-       deveVirar:false},
-      {nome:"os dois pares preenchidos juntos (atributo comum também setado) — NÃO vira",
-       j:{houveLesao:true,lesao:{permanente:false,atributo:"strDef",regiao:"X"},
-          atributo:"strDef",efeito:.92,desfecho:"...",seguidores:0,fa:0},
        deveVirar:false},
     ];
     for(const c of casosValidacao){

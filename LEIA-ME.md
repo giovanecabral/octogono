@@ -244,6 +244,38 @@ de verdade (fã de MMA valoriza quem arrisca o corpo).
 começa na luta 18 (numa carreira de 22) não cabe — o texto mostra "dura até o
 fim da carreira" em vez de prometer uma cura que a carreira não alcança.
 
+**Não existe portão `houveLesao` — e o motivo de ter sido tentado e revertido
+é o registro mais importante deste bloco.** Um jogador jogou uma carreira de
+verdade, chegou numa cena claramente de lesão ("Costela tá solta"), aceitou
+lutar machucado, e nada aconteceu: sem bloco na ficha, atributo em verde. A
+suspeita — os dois pares do JSON (`lesao` e `atributo`/`efeito`) competem, e o
+par antigo ganha por ter mais peso implícito no prompt — parecia certa e tinha
+um mecanismo plausível (ordem de geração do JSON, autoregressiva). Um portão
+foi desenhado: `houveLesao` na frente do schema, decisão obrigatória antes do
+resto.
+
+Só que a medição que "confirmou" o problema nunca tinha saído do arquivo
+local. `api/ai.js` é função serverless da Vercel — editar o arquivo não muda
+nada em produção até alguém rodar o deploy, e nesta sessão ninguém tinha
+rodado. Toda chamada a `julgar` durante a investigação bateu numa versão de
+~17h atrás, sem `lesao` nem `evitouLesao` nenhum. O "0/7 não virou lesão" não
+media a IA escolhendo o caminho antigo — media um campo que não existia no
+servidor. Confirmado direto (`curl` no endpoint): a resposta real não tinha
+os campos novos.
+
+Depois do deploy de verdade, medido o prompt SEM portão, direto: **8/8** nas
+cenas de lesão, **0/34** válidas nas sem lesão. O prompt já funcionava —
+`houveLesao` foi revertido, do client e do prompt. O que ficou: a IA
+ocasionalmente preenche `lesao` E o par `atributo`/`efeito` antigo ao mesmo
+tempo (visto em 3 das 8 respostas medidas, apesar do prompt pedir pra não
+fazer isso) — o jogo ignora isso de propósito, só a validade do objeto
+`lesao` decide (`node testar.js lesao` cobre esse caso e o inverso).
+
+A lição que fica, registrada também no `CLAUDE.md`: medição contra a API real
+só vale depois de deploy confirmado. `api/ai.js` é o arquivo mais frágil do
+projeto — sem teste, fora do `node testar.js`, só verificável contra a API
+depois de subir. O deploy é do dono do projeto, não de quem edita o arquivo.
+
 **O que ainda falta (não implementado nesta rodada):**
 
 - **Lesão por nocaute.** Escopo cortado de propósito — nocaute→lesão precisa
