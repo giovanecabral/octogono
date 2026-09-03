@@ -143,17 +143,26 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   if (req.method === "OPTIONS") return res.status(204).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "só POST" });
+  /* "transitorio" em TODO corpo de erro daqui pra baixo — é o que o client
+     usa pra decidir se desiste de chamar a IA pelo resto da carreira
+     (desliga na 1ª) ou se cada chamada é uma tentativa nova e independente
+     (nunca desliga por essa via). false = classe de erro que não se resolve
+     tentando de novo na mesma sessão (chave errada, sem crédito, bug nosso
+     de kind/data). true = instabilidade passageira (rede, timeout, infra do
+     upstream, manha do modelo numa chamada específica). 429 (rate limit) é
+     tratado à parte pelo client, via "status" — não é nem um nem outro,
+     é pausa com espera, não desligamento permanente. */
+  if (req.method !== "POST") return res.status(405).json({ error: "só POST", transitorio: false });
   if (!process.env.OPENROUTER_API_KEY)
-    return res.status(500).json({ error: "OPENROUTER_API_KEY não configurada" });
+    return res.status(500).json({ error: "OPENROUTER_API_KEY não configurada", transitorio: false });
 
   const { kind, data } = req.body || {};
   const build = PROMPTS[kind];
-  if (!build) return res.status(400).json({ error: "kind inválido" });
+  if (!build) return res.status(400).json({ error: "kind inválido", transitorio: false });
 
   let p;
   try { p = build(data || {}); }
-  catch { return res.status(400).json({ error: "data inválida" }); }
+  catch { return res.status(400).json({ error: "data inválida", transitorio: false }); }
 
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), 9000);
@@ -190,7 +199,12 @@ export default async function handler(req, res) {
     if (!r.ok) {
       const body = await r.text();
       console.error("openrouter erro", r.status, body.slice(0, 300));
-      return res.status(502).json({ error: "upstream", status: r.status });
+      /* 401/402/403 (chave, crédito, permissão) não se resolvem tentando de
+         novo — false. 429/500/502/503/504 (limite ou instabilidade do lado
+         deles) sim — true. O client trata 429 à parte mesmo assim (pausa
+         com espera, não desligamento), usando "status" abaixo. */
+      const transitorio = [429, 500, 502, 503, 504].includes(r.status);
+      return res.status(502).json({ error: "upstream", status: r.status, transitorio });
     }
 
     const j = await r.json();
@@ -210,7 +224,7 @@ export default async function handler(req, res) {
     });
 
     if (!txt || !String(txt).trim())
-      return res.status(502).json({ error: "modelo devolveu conteúdo vazio", ...eco() });
+      return res.status(502).json({ error: "modelo devolveu conteúdo vazio", transitorio: true, ...eco() });
 
     txt = String(txt).replace(/```json|```/g, "").trim();
 
@@ -226,7 +240,7 @@ export default async function handler(req, res) {
       try { parsed = JSON.parse("[" + txt.replace(/,\s*$/, "") + "]"); } catch {}
     }
     if (parsed === undefined)
-      return res.status(502).json({ error: "resposta não era JSON", ...eco() });
+      return res.status(502).json({ error: "resposta não era JSON", transitorio: true, ...eco() });
 
     /* o feed vem embrulhado em {"comentarios":[...]}; devolvemos o array puro
        para o cliente não precisar saber disso */
@@ -244,6 +258,8 @@ export default async function handler(req, res) {
     clearTimeout(timeout);
     const abortou = e.name === "AbortError";
     console.error("falha", e.message);
-    return res.status(abortou ? 504 : 500).json({ error: abortou ? "timeout" : "falha" });
+    /* Timeout ou falha de rede DAQUI (a função serverless) até o OpenRouter —
+       instabilidade do caminho, não da conta. Transitório. */
+    return res.status(abortou ? 504 : 500).json({ error: abortou ? "timeout" : "falha", transitorio: true });
   }
 }
