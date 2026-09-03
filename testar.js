@@ -278,17 +278,20 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
       /* carta única: repetir adversário aqui é ESPERADO — revanche de
          título é o caso normal (ver comentário em candidatos() no
          index.html e "O passo para o cinturão" no LEIA-ME.md). Só vale se
-         o nome travado for de fato o campeão ou o desafiante nº1 do
-         RANKING desta divisão — repetir qualquer outro nome continua
-         sendo o bug antigo (escada silenciosa) e reprova. */
+         o nome travado estiver no RANKING.lista (campeão + 15) desta
+         divisão — repetir qualquer outro nome continua sendo o bug antigo
+         (escada silenciosa) e reprova. NÃO checa contra campeao/desafiante
+         especificamente: com rotação de contender, "o desafiante" deixa de
+         ser nome fixo (é RANKING.lista[st.desafianteIdx], que anda durante
+         a carreira) — checar só os dois primeiros nomes reprovaria toda
+         defesa depois que o índice avançasse, ou pior, passaria por acaso
+         se o índice parasse coincidindo com desafiante. */
       lutasUnicas++;
       const rk = UI.ranking();
-      const permitidos = new Set([rk && rk.campeao && rk.campeao.name,
-        rk && rk.desafiante && rk.desafiante.name].filter(Boolean));
+      const permitidos = new Set((rk && rk.lista || []).map(f => f.name));
       if (!permitidos.has(nm[1]))
-        throw new Error(`carta única de título veio contra "${nm[1]}", que não é `
-          + `o campeão (${rk && rk.campeao && rk.campeao.name}) nem o desafiante `
-          + `nº1 (${rk && rk.desafiante && rk.desafiante.name}) do ranking`);
+        throw new Error(`carta única de título veio contra "${nm[1]}", que não está `
+          + `no RANKING.lista desta divisão`);
     }
     escolhido.onclick();
     env.drenar(); await respirar();

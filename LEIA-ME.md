@@ -460,10 +460,19 @@ antigo: a escada de matchmaking não pode repetir adversário em silêncio (bug
 real, já mordeu o modo lenda uma vez — ver acima), e revanche de título não é
 esse bug. `testarInterface()` agora conta distintos só entre as lutas de 3
 CARTAS COMUNS; uma luta de carta única (título/defesa) pode repetir nome, mas
-só se o nome repetido for literalmente `RANKING.campeao` ou `RANKING.desafiante`
-desta divisão — qualquer outra repetição continua reprovando. Se alguém tentar
+só se o nome repetido estiver no `RANKING.lista` (campeão + 15) desta
+divisão — qualquer outra repetição continua reprovando. Se alguém tentar
 "consertar" isso de volta pra "22 sempre distintos" sem ler até aqui, a
 revanche de título quebra nos mesmos termos de antes.
+
+A checagem NÃO compara contra `RANKING.campeao`/`desafiante` especificamente
+— compara contra `RANKING.lista` inteiro. Motivo: rotação de contender (ver
+"Rotação de contender" mais abaixo) faz "o desafiante" deixar de ser um nome
+fixo — vira `RANKING.lista[st.desafianteIdx]`, que anda durante a carreira.
+Checar só os dois primeiros nomes reprovaria toda defesa depois que o índice
+avançasse, ou pior, passaria por coincidência se o índice parasse batendo com
+`desafiante`. Checar a lista inteira é a versão que sobrevive à rotação sem
+precisar ser reescrita nela.
 
 **Perder uma defesa custa o cinturão de verdade.** Achado depois de um jogador
 terminar campeão com o evento raro "Perdeu o cinturão na primeira defesa" na
