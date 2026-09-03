@@ -37,6 +37,16 @@ Partes: `interface`, `motor`, `draft`, `escolhas`, `treino`, `desafio`,
 mais passa limpo e só quebra quando o jogador clica. Foi assim que a tela de
 draft travou uma vez.
 
+**Um segundo `<script>` no `<head>` sem `id` quebra `testar.js` inteiro.**
+`lerScript()` acha o motor com `indexOf("<script>")` — string literal, sem
+atributo. Se algum outro `<script>` (analytics, um widget, o que for) for
+inserido ANTES do motor no HTML e escrito como `<script>` puro, ele vira o
+primeiro match e `lerScript()` extrai a coisa errada — a interface inteira
+reprova com "Unexpected token '<'", sem dizer o motivo. Já aconteceu (o
+script do Vercel Analytics). Qualquer `<script>` novo no `<head>` — ou em
+qualquer lugar antes do motor — precisa de um atributo (`id`, `defer` com
+`src`, o que for) pra não casar com essa busca literal.
+
 ## Como trabalhar aqui
 
 - **Verifique antes de afirmar.** Se disser "só o index.html mudou", confira.
