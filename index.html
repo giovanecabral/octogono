@@ -1131,9 +1131,23 @@ function renderPhone(feed,fan,delta,followers){
    ========================================================================= */
 const AI_URL="https://draft-ufc.vercel.app/api/ai";           /* ex: "https://seu-projeto.vercel.app/api/ai" */
 let aiVivo=true;
+/* Timestamp (ms), não segundos: rate limit (429) é ESPERADO com tráfego
+   real, não exceção — pausa com espera, não desliga a carreira inteira por
+   causa de 60s ruins. 60000 é chute inicial, não medido — não sei a janela
+   real do limite do OpenRouter nesse plano; se 429 continuar comum mesmo
+   com a pausa, é isso que precisa remedir, não o desenho. */
+let aiPausadoAte=0;
+const AI_PAUSA_MS=60000;
+/* Falha de rede pontual (sem resposta nenhuma — servidor não respondeu, não
+   é ele dizendo "não" com um status) merece nova tentativa; a 2ª seguida
+   sem resposta já é sinal de que o caminho está inalcançável, e continuar
+   tentando paga o timeout inteiro (9,5s) em toda chamada — pior que
+   qualquer erro rápido. Zera a cada resposta recebida, mesmo de erro:
+   resposta de erro significa que a rede está de pé, só o proxy disse não. */
+let falhasRedeSeguidas=0;
 
 async function ai(kind,data,ms=9500){
-  if(!AI_URL||!aiVivo)return null;
+  if(!AI_URL||!aiVivo||Date.now()<aiPausadoAte)return null;
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   try{
@@ -1141,12 +1155,26 @@ async function ai(kind,data,ms=9500){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kind,data})});
     clearTimeout(t);
-    if(!r.ok)throw new Error(r.status);
+    falhasRedeSeguidas=0;
+    if(!r.ok){
+      /* O servidor já sabe o que aconteceu — não adivinha por status HTTP
+         externo (502 cobre seis coisas diferentes, ver api/ai.js). Corpo
+         pode não vir (resposta não-JSON de algum proxy no meio do caminho)
+         ou pode faltar "transitorio" (deploy do client mais novo que o do
+         servidor) — nos dois casos não desliga nada, só essa chamada
+         falhou. */
+      let corpo=null;
+      try{corpo=await r.json();}catch(e){}
+      if(corpo&&corpo.status===429)aiPausadoAte=Date.now()+AI_PAUSA_MS;
+      else if(corpo&&corpo.transitorio===false)aiVivo=false;
+      return null;
+    }
     const j=await r.json();
     return j.result??null;
   }catch(e){
     clearTimeout(t);
-    if(String(e.message)==="429"||String(e.message)==="500")aiVivo=false;
+    falhasRedeSeguidas++;
+    if(falhasRedeSeguidas>=2)aiVivo=false;
     return null;
   }
 }

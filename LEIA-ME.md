@@ -645,6 +645,59 @@ viraria um ChatGPT grátis pago por você.
 para o prompt, então alguém vai tentar pedir um milhão de seguidores. A defesa é
 o `lim()` no cliente, não o prompt.
 
+### Quando a IA falha
+
+Confirmado rodando `api/ai.js` local com uma chave inválida de propósito
+(nunca a de produção): os três pontos que chamam IA (`feed`, `dilema`,
+`julgar`) já tinham fallback antes de qualquer coisa nesta seção existir —
+`resolveFeed()` cai no molde local que `buildFeed()` já monta antes de
+perguntar pra IA, `dilema` cai em `DILEMA_LOCAL`, `julgar` devolvendo `null`
+zera os números do dilema e cai no texto genérico. O jogador não vê nada
+quebrado em nenhum dos três.
+
+**O que precisou de conserto foi a eficiência, não a corretude.** `ai()`
+decide se desiste de chamar a IA pelo resto da carreira (`aiVivo=false`) ou
+se cada chamada é independente — a versão antiga só desligava em `429` ou
+`500` do STATUS EXTERNO do proxy, e o proxy devolve `502` pra seis situações
+bem diferentes (chave errada, sem crédito, permissão, instabilidade
+temporária do upstream, modelo respondeu vazio, modelo respondeu algo que
+não é JSON). Chave inválida vira `502`, não `500` — o `aiVivo` antigo nunca
+desligava nesse caso, e o jogo pagava um round-trip fadado a falhar em
+**toda** chamada de IA da carreira inteira.
+
+O conserto: `api/ai.js` manda `"transitorio":true|false` em todo corpo de
+erro — o servidor já sabe exatamente o que aconteceu, não devia ser o client
+adivinhando por número. `false` (chave, crédito, permissão, `kind`/`data`
+inválido) desliga na 1ª — não se resolve tentando de novo na mesma sessão.
+`true` (instabilidade do upstream, timeout do proxy, modelo com soluço numa
+chamada específica) nunca desliga por essa via.
+
+**429 é caso à parte, não `true` nem `false`.** Rate limit é justamente o que
+tende a passar sozinho — e com tráfego de anúncio (`PLANO-LANCAMENTO.md`) é o
+caso ESPERADO, não a exceção. Desligar a IA pro resto da carreira por causa
+de 60 segundos de pico seria caro demais. `aiPausadoAte` (timestamp) pausa
+sem desligar; a chamada durante a pausa nem tenta rede, mas resume sozinha
+quando o relógio passar. `AI_PAUSA_MS=60000` é chute inicial, não medido —
+se 429 continuar aparecendo mesmo com a pausa, é isso que precisa remedir.
+
+**Falha sem resposta nenhuma (rede caiu, DNS falhou, timeout do
+`AbortController`) é outra categoria** — o proxy nem foi alcançado, não tem
+`transitorio` pra ler. Uma falha assim pode ser blip pontual; duas seguidas
+já são sinal de que o caminho está inalcançável, e continuar tentando paga o
+timeout inteiro (9,5s) em toda chamada — pior que qualquer erro rápido do
+proxy. `falhasRedeSeguidas` desliga na 2ª seguida, zera a cada resposta
+recebida (mesmo de erro — significa que a rede está de pé).
+
+**Compatibilidade entre deploys**: enquanto só um dos dois arquivos estiver
+no ar (client novo + servidor velho sem `transitorio`, ou o contrário), o
+pior caso é o comportamento de antes continuar — `transitorio` chega
+`undefined`, nada desliga à toa. O conserto só vale de verdade com os dois
+publicados juntos.
+
+```bash
+node testar.js aivivo     # os 6 casos, sem rede: transitorio true/false/ausente, 429, falha de rede 1x/2x
+```
+
 ---
 
 ## Atualizar os dados

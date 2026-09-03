@@ -1049,6 +1049,113 @@ function testarConteudoInseguro() {
   return ok && passos.length > 0;
 }
 
+/* ================================================================== *
+ * 9. AI VIVO — desliga exatamente onde deve, nunca onde não deve
+ * ================================================================== */
+/* Sem rede nenhuma — alimenta ai() com respostas montadas à mão via um
+   fetch falso que devolve o que cada cenário pede. Cobre os seis casos que
+   importam: transitorio false/true/ausente (servidor velho), falha sem
+   resposta 1x e 2x seguidas, e o contador zerando ao receber qualquer
+   resposta no meio de duas falhas de rede. */
+function testarAiVivo() {
+  console.log("\n" + cinza("aiVivo: desliga só na classe de erro certa, pausa em 429, conta falha de rede"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  /* fila de respostas: cada chamada de fetch() consome uma. {throw:true} =
+     falha de rede (sem resposta nenhuma); senão {ok,body} vira a resposta. */
+  let fila = [];
+  let chamadasFetch = 0;
+  env.sandbox.fetch = async () => {
+    chamadasFetch++;
+    const prox = fila.shift();
+    if (!prox || prox.throw) throw new Error("rede");
+    return { ok: prox.ok, json: async () => prox.body };
+  };
+
+  const corpo = `
+;globalThis.__result=(async function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    // cenário 1: transitorio:false desliga na 1ª
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
+    await ai("julgar",{});
+    passo("transitorio:false desliga aiVivo na 1ª chamada", aiVivo===false);
+
+    // cenário 2: transitorio:true NÃO desliga
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    __filaSet([{ok:false,body:{error:"upstream",status:503,transitorio:true}}]);
+    await ai("julgar",{});
+    passo("transitorio:true NÃO desliga aiVivo", aiVivo===true);
+
+    // cenário 3: transitorio AUSENTE (servidor velho, deploy do client na
+    // frente do servidor) NÃO desliga — é o estado real entre os dois deploys
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    __filaSet([{ok:false,body:{error:"upstream",status:401}}]);
+    await ai("julgar",{});
+    passo("transitorio AUSENTE (servidor velho) NÃO desliga aiVivo", aiVivo===true);
+
+    // cenário 4: falha sem resposta 1x não desliga, 2x seguidas desliga
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    __filaSet([{throw:true}]);
+    await ai("julgar",{});
+    passo("1ª falha de rede seguida NÃO desliga", aiVivo===true && falhasRedeSeguidas===1);
+    __filaSet([{throw:true}]);
+    await ai("julgar",{});
+    passo("2ª falha de rede SEGUIDA desliga", aiVivo===false);
+
+    // cenário 5: contador zera ao receber QUALQUER resposta (mesmo de erro)
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    __filaSet([{throw:true}]);
+    await ai("julgar",{}); // falha 1 — contador vira 1
+    __filaSet([{ok:false,body:{error:"upstream",status:503,transitorio:true}}]);
+    await ai("julgar",{}); // respondeu (mesmo com erro) — zera o contador
+    passo("contador zera ao receber resposta de erro (não só sucesso)", falhasRedeSeguidas===0);
+    __filaSet([{throw:true}]);
+    await ai("julgar",{}); // 3ª falha de rede, mas só a 1ª DEPOIS do reset
+    passo("depois de zerar, uma falha de rede sozinha NÃO desliga", aiVivo===true);
+
+    // cenário 6: 429 pausa com espera, não desliga — e a pausa bloqueia
+    // chamada nova sem nem tentar rede
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    const antesDe429=Date.now();
+    __filaSet([{ok:false,body:{error:"upstream",status:429,transitorio:true}}]);
+    await ai("julgar",{});
+    passo("429 NÃO desliga aiVivo (permanece true)", aiVivo===true);
+    passo("429 seta pausa no futuro", aiPausadoAte>antesDe429);
+    const chamadasAntes=__chamadasFetch();
+    await ai("julgar",{}); // ainda dentro da janela de pausa
+    passo("chamada durante a pausa não tenta rede (fetch não incrementa)",
+      __chamadasFetch()===chamadasAntes);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  env.sandbox.__filaSet = (arr) => { fila = arr; };
+  env.sandbox.__chamadasFetch = () => chamadasFetch;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  return env.sandbox.__result.then((passos) => {
+    let ok = true;
+    for (const p of passos) {
+      if (!p.ok) ok = false;
+      console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    return ok && passos.length > 0;
+  });
+}
+
 /* ================================================================== */
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
@@ -1063,6 +1170,7 @@ try {
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
+  else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
   else if (cmd === "escolhas") ok = testarEscolhas(div || "lightweight");
   else if (cmd === "treino") ok = testarTreino(div || "lightweight");
@@ -1102,7 +1210,7 @@ try {
     else console.log(cinza("\n  interface quebrada — pulei o resto, conserte isso primeiro"));
     console.log("\n" + (ok ? verde("TUDO CERTO") : vermelho("ALGO SAIU DA FAIXA")) + "\n");
   } else {
-    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|conteudo] [divisão] [normal|lenda]\n`);
+    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|conteudo|aivivo] [divisão] [normal|lenda]\n`);
     process.exit(0);
   }
 } catch (e) {
