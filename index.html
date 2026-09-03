@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ficha do Lutador</title>
+<!-- Vercel Web Analytics — sem backend, sem SDK (o projeto não tem build step).
+     O stub deixa chamar va(...) antes do script real carregar (fila em vaq);
+     script.js só existe/funciona se Analytics estiver ligado no projeto na
+     Vercel — sem isso, o <script defer> dá 404 em silêncio e window.va nunca
+     vira a função de verdade, então TODA chamada de va() no jogo usa
+     window.va&&... com try/catch (ver evento() no script principal). Igual
+     ao princípio de audio/localStorage: analytics nunca pode derrubar a
+     carreira de ninguém. -->
+
+<script id="va-stub">window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script>
+<script defer src="/_vercel/insights/script.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -1141,6 +1152,15 @@ async function ai(kind,data,ms=9500){
 }
 const lim=(v,lo,hi,def)=>{const n=Number(v);
   return Number.isFinite(n)?Math.max(lo,Math.min(hi,n)):def;};
+
+/* Analytics nunca pode derrubar a carreira de ninguém — mesmo princípio de
+   áudio/localStorage. window.va existe sempre (stub no <head>, ver
+   comentário lá) mas só vira a função de verdade se Analytics estiver
+   ligado no projeto; se não estiver, script.js dá 404 e window.va fica
+   sendo o stub que só enfileira sem nunca ler — sem custo, sem quebra. */
+function evento(nome){
+  try{window.va&&window.va("event",{name:nome});}catch(e){}
+}
 
 /* busca antecipada: dispara quando a luta COMEÇA e resolve durante a
    narração, que dura uns 12 segundos. Latência percebida vai a zero. */
@@ -2718,6 +2738,11 @@ const pctBar=p=>`<span class="pctwrap ${pctClass(p)}">
 
 /* ---------- carregar dados ---------- */
 async function boot(){
+  /* "Abriu o jogo" — evento 1 de 4 do funil (PLANO-LANCAMENTO.md, fase 0).
+     Primeira linha de propósito: conta toda visita, mesmo as que falham
+     depois (fetch do fighters.json caindo em askForFile()) — "abriu" não
+     deveria depender de nada dar certo depois. */
+  evento("abriu");
   app.innerHTML=`<p class="hint" style="margin-top:30px">Carregando os lutadores…</p>`;
   let data=null;
   try{
@@ -3125,6 +3150,11 @@ function pick(r){
 
 /* ---------- tela 3: carreira ---------- */
 function startCareer(){
+  /* "Terminou o draft" — evento 2 de 4. Chamada aqui, não em pick(), porque
+     startCareer() só roda quando as 4 cartas já foram escolhidas
+     (remaining.length===0 em pick()) — é o ponto exato de conclusão, não
+     "escolheu mais uma". */
+  evento("terminou_draft");
   if(me.sapm==null)me.sapm=3.2;
   if(me.strAcc==null)me.strAcc=.45;
   if(me.tdAcc==null)me.tdAcc=.38;
@@ -3411,6 +3441,13 @@ function finishFight(opp,r,titleFight){
     }
   }
   atualizarControles();renderFicha();
+
+  /* "Terminou a luta 5" e "terminou as 22" — eventos 3 e 4 de 4. fightNo já
+     foi incrementado em lutar() antes de finishFight() rodar, então aqui já
+     reflete a luta que acabou de concluir. Fixo em 5, não "a cada 5" — o
+     funil da fase 0 quer um ponto de corte, não uma série. */
+  if(fightNo===5)evento("terminou_luta_5");
+  if(fightNo>=TOTAL_FIGHTS)evento("terminou_22");
 
   if(fightNo>=TOTAL_FIGHTS){
     auto=false;clearTimeout(autoTimer);
