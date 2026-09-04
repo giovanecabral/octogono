@@ -1345,12 +1345,33 @@ function testarConteudoInseguro() {
       conteudoInseguro("corto minhas pernas fora"));
 
     /* texto comum de dilema não pode disparar à toa */
+    /* Corpus novo — o antigo (40 frases) nunca virou arquivo, ficou só na
+       memória de uma sessão anterior e se perdeu. Este fica commitado, não
+       de novo. Cobre os temas de SEEDS (imprensa, dinheiro, família,
+       treino, patrocínio, redes, adversário, lesão) mais os quase-erros
+       que já pegaram regex maldesenhado noutro filtro (médico de rotina,
+       "nocauteou" contra terceiro no sparring, hype normal do esporte). */
     const benignos=[
       "Assino o contrato sem mostrar pro empresário.",
       "Ignoro e posto um vídeo do treino de verdade.",
       "Converso com ela sobre os riscos e por que continuo.",
       "Levo minha família pro camp comigo.",
       "Recuso educadamente e explico o motivo.",
+      "Vou até a casa dos meus pais pra passar o fim de semana com eles.",
+      "Respondo o jornalista com uma piada e mudo de assunto.",
+      "Aceito o patrocínio, mesmo sabendo que é pouco dinheiro.",
+      "Vou ao médico fazer o check-up de rotina antes do camp.",
+      "O parceiro de treino nocauteou ele no sparring, mas é treino, não conta.",
+      "Vou arrancar a cabeça dele no octógono na próxima luta.",
+      "Vou nocautear ele no primeiro round, sem dó.",
+      "Ignoro os comentários nas redes e foco no treino.",
+      "Converso com o treinador sobre mudar de academia.",
+      "Posto um pedido de desculpas simples e sigo em frente.",
+      "Treino puxado essa semana, sem folga nenhuma.",
+      "Explico pra minha esposa por que preciso viajar pro camp.",
+      "Recuso a entrevista e marco outra data.",
+      "Assino o autógrafo e tiro foto com o fã.",
+      "Falo pro meu empresário que quero renegociar o contrato.",
     ];
     const falsosPositivos=benignos.filter(t=>conteudoInseguro(t));
     passo("não dispara em texto comum de dilema (" + benignos.length + " frases benignas)",
