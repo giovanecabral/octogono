@@ -331,6 +331,39 @@ Confirmar o gatilho na tela seria um convite a testar o limite. Isso já foi
 medido falhando uma vez — ver "duas rodadas de medição" abaixo — antes de
 virar regra explícita no prompt.
 
+**O texto neutro não bastava — o NÚMERO denunciava o filtro.** Achado
+jogando de novo: o desfecho genérico funcionava (nada narrado, nenhuma
+pista de filtro no texto), mas a linha de efeito mostrava "+0 seguidores
++0.0 de fã" em **verde** — `j` nulo faz `dSeg`/`dFan` cair no `def=0` do
+`lim()`, e `dif>=0` (zero incluso) pinta a classe `up`. Dois problemas
+juntos: verde é cor de ganho e zero não é ganho (sinal errado em qualquer
+caso, filtro ou não); e um padrão de "as duas métricas zeradas ao mesmo
+tempo, sempre" é uma segunda assinatura do filtro, silenciosa mas
+reconhecível — o mesmo problema que "sem recusa explicada" já tentava
+evitar, só que pelo número em vez do texto.
+
+Antes de decidir o conserto, medido se desfecho comum já produz efeito
+zero — se produzisse, esconder a linha só mudaria a FORMA da assinatura,
+não a removeria. Nove chamadas reais ao `julgar` (produção, deployada) com
+respostas deliberadamente mornas/sem-graça ("não faço nada de especial",
+"ignoro e sigo o dia", "aceito sem entusiasmo"): a IA nunca devolveu 0.0 —
+o menor módulo visto foi 0,05 em `seguidores` e 0,10 em `fa`, sempre em
+passos desses tamanhos. Em qualquer contagem de seguidores realista do
+jogo, 0,05 já vira dezenas ou centenas de seguidores de diferença — nunca
+arredonda pra "+0" na tela. Conclusão: o "+0/+0,0 simultâneo" não acontece
+em resposta comum, então esconder a linha nesse caso é seguro — não troca
+uma assinatura por outra, remove a única que existia.
+
+Conserto: cada linha de efeito (`seguidores`, `fã`) só aparece se o valor
+EXIBIDO for diferente de zero — não `dSeg`/`dFan` brutos, o que a
+tela mostra depois do arredondamento (`dif!==0` pros seguidores, que já é
+inteiro; `Math.abs(dFan)>=0.05` pra fã, o limiar onde `toFixed(1)` deixa de
+mostrar "0.0"). Vale pra qualquer desfecho com efeito nulo, não só os
+filtrados — é o que faz o caso filtrado se misturar com os comuns.
+`node testar.js conteudo` cobre os dois lados: o `j` inseguro não deixa
+nenhuma das duas linhas aparecer, e um efeito de verdade (não zero)
+continua aparecendo normal.
+
 **A calibração é oposta à do `RESULTADO_LUTA` de propósito.** Lá, falso
 positivo custa perder uma frase boa, e a taxa foi medida pra ficar embaixo
 de ~5%. Aqui, falso positivo custa um desfecho genérico a mais — barato — e
@@ -762,6 +795,21 @@ regime upset chega a ser o gatilho DOMINANTE de uma carreira inteira (5 de 5
 cards numa das divisões testadas). Quem joga manual e arrisca a faixa
 perigosa vê upset com frequência real — o automático é só o piso.
 
+**Segundo problema, achado jogando: zebra na luta 1 não é zebra.** O
+jogador começa com `standing=.18` — quase todo mundo tem rating maior no
+início, então quase toda vitória cedo bate o limiar de diferença por
+default, sem ser zebra de verdade. Medido: 120 carreiras, bot do
+`testarInterface` (varia dificuldade), **77% dos upsets caíam nas lutas
+1-5, mediana luta 2** — não é "raro que aconteça cedo", é o padrão
+dominante. Conserto: piso de `fightNo>=6` (pula exatamente a faixa
+inflada) e diferença de rating subiu de `.15` pra `.20` (era generosa
+demais mesmo tirando o problema do início). `node testar.js momentos`
+prova as duas pontas — dispara na luta 6 com diferença grande, não dispara
+na luta 3 com a mesma diferença. Depois do conserto, `st.momentos.length`
+médio caiu de ~2,75 (estimativa antes do piso) pra **1,87** (120
+carreiras, min 0, max 6) — dentro da faixa, sem desabar pra perto de 1
+(o que teria sido sinal de ter cortado demais).
+
 **`r.clock` é o relógio REGRESSIVO da luta** (começa em `"5:00"`, desce até
 `"0:00"` — ver `exchange()`), não o tempo decorrido que a leitura de
 transmissão real sugere. KO rápido (round 1, abaixo de 1 minuto decorrido) é
@@ -797,6 +845,40 @@ um terceiro parâmetro opcional (`desenhar=desenharCard`) em vez de duplicar
 a lógica de blob/share/download inteira; o texto do compartilhamento
 distingue os dois pelo formato do objeto (`g.frase` só existe no card de
 momento, `g.letter` só no de fim de carreira).
+
+**O primeiro desenho tinha metade do card vazia.** Só frase, sem mais nada
+— o card de fim de carreira preenche o espaço porque tem cartel, grade e
+legado; este só tinha a frase e ar de sobra. Corrigido com um bloco de 3
+linhas fixas (reaproveita o `linha()` do `desenharCard`, redefinido local):
+adversário, resultado (`método · round · tempo`) e posição na divisão —
+capturados em `criarMomento(tipo,frase,opp,r)` no INSTANTE do gatilho
+(dentro de `finishFight()`, onde `opp`/`r` sempre existem), não no desenho,
+porque na hora que o jogador abre o card o standing já andou e a posição
+mudaria. Deliberadamente só 3 — a tentação depois de "ainda parece vazio"
+é acrescentar mais linha, e o risco real é o card virar planilha; o ajuste
+certo pra isso é a frase, não os dados.
+
+**As frases originais eram descrição, não piada.** "${n} entrou como
+azarão contra ${opp} e saiu com a mão levantada" fala O QUE aconteceu sem
+imagem nem graça — comparado com o padrão que o próprio `RARE` já produz
+("o reinado durou menos que a fila da pesagem"), não tem o que faz alguém
+postar. Reescritas nas 4 frases novas, mesmo padrão seco/imagem concreta
+do `RARE`/`LEGACY`:
+
+| gatilho | frase final |
+|---|---|
+| KO rápido | "${n} não deixou o locutor terminar de apresentar o adversário." |
+| primeiro cinturão | "${n} levantou o cinturão e não soltou pra nenhuma foto." |
+| upset | "${opp} tinha tudo pra vencer, menos a luta." |
+| lesão vencida | "${n} entrou mancando e saiu com a mão levantada." |
+
+**Prévia no painel, não só texto e botão.** `abrirPainelMomentos()` agora
+renderiza `desenharCardMomento(m)` de verdade pra cada item da lista e
+desenha reduzido (140px de largura, mesma proporção 4:5 do card) num
+`<canvas>` pequeno — sem isso o jogador só descobre o que vai postar
+depois de baixar. Falha ao gerar a miniatura não impede salvar (`try/catch`
+silencioso: a miniatura é conveniência, não pode derrubar o botão que
+importa).
 
 ```bash
 node testar.js momentos   # cada gatilho na hora certa, uma vez só, sem rede

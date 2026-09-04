@@ -559,7 +559,10 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
   max-width:480px;width:100%;max-height:82vh;overflow:auto;padding:18px}
 .painel-momentos h3{margin:0 0 12px;font-family:Oswald,sans-serif;font-size:18px;color:var(--ink)}
 .painel-momentos .vazio{color:var(--faded);font-size:13px}
-.momento-item{border:1px solid var(--rule);padding:10px 12px;margin-bottom:10px}
+.momento-item{border:1px solid var(--rule);padding:10px 12px;margin-bottom:10px;
+  display:flex;gap:12px;align-items:flex-start}
+.momento-mini{flex:none;border:1px solid var(--rule)}
+.momento-texto{flex:1;min-width:0}
 .momento-item .frase{font-size:13px;color:var(--ink);margin-bottom:8px}
 .momento-item .meta{font-size:11px;color:var(--faded);margin-bottom:8px}
 .painel-fechar{margin-top:4px}
@@ -925,13 +928,20 @@ const LEGACY=[
    aqui interrompe a narração nem o automático — ver LEIA-ME "Card de
    momento" pro porquê de cada gatilho ter sido cortado ou mantido, medido
    em 120 carreiras antes de escrever uma linha desta seção. */
-function criarMomento(tipo,frase){
-  return{tipo,frase,cartel:`${st.wins}-${st.losses}`,luta:fightNo};
+function criarMomento(tipo,frase,opp,r){
+  /* 3 linhas fixas, sempre as mesmas 3 — adversário, resultado, posição na
+     divisão. Capturadas AQUI (no instante do gatilho), não no desenho:
+     por quando o jogador abrir o card, standing já andou. */
+  const pos=posicaoDivisao();
+  return{tipo,frase,cartel:`${st.wins}-${st.losses}`,luta:fightNo,
+    adversario:opp?opp.name:null,
+    resultado:r?`${r.method} · round ${r.round} ${r.clock}`:null,
+    posicao:pos?`#${pos.n} de ${pos.de}`:null};
 }
-const FRASE_KO_RAPIDO=n=>`Round 1, menos de um minuto. ${n} nem precisou aquecer o cardio.`;
-const FRASE_PRIMEIRO_CINTURAO=n=>`${n} é campeão. Primeira vez, e ninguém tira essa da história.`;
-const FRASE_UPSET=(n,opp)=>`${n} entrou como azarão contra ${opp} e saiu com a mão levantada.`;
-const FRASE_LESAO_VENCIDA=n=>`Machucado, e venceu do mesmo jeito. ${n} não esperou o corpo se explicar.`;
+const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o adversário.`;
+const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
+const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
+const FRASE_LESAO_VENCIDA=n=>`${n} entrou mancando e saiu com a mão levantada.`;
 
 /* Em vez de rotular 28 eventos à mão (e errar quando alguém editar o texto),
    a direção sai do próprio efeito: aplica num clone e compara os atributos.
@@ -1429,8 +1439,8 @@ function aplicarDilema(box,d,txt,jBruto){
     <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
     <div class="dil-o">${desfecho}</div>
     <div class="dil-fx">
-      <span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>
-      <span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>
+      ${dif!==0?`<span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>`:""}
+      ${Math.abs(dFan)>=0.05?`<span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>`:""}
       ${atr?`<span class="hint">${ROTULO_ATTR[atr]||atr} <span class="${mult>=1?"g":"dn"}">${
         mult>=1?"+":""}${Math.round((mult-1)*100)}%</span></span>`:""}</div>`;
   st.dilemas=(st.dilemas||0)+1;
@@ -2736,8 +2746,27 @@ async function desenharCardMomento(m){
   x.restore();
   x.textAlign="left";x.textBaseline="alphabetic";
 
+  // bloco de dados: 3 linhas fixas, nem mais nem menos — cartel já apareceu
+  // grande acima, então não repete aqui. Crescer essa lista vira planilha
+  // (ver LEIA-ME "Card de momento"); se o card ainda parecer vazio, o
+  // ajuste é a frase, não mais linha.
+  y+=74;
+  regra(y,2,C.rule);y+=46;
+  const linha=(rot,val)=>{
+    x.fillStyle=C.faded;x.font=mono(21,500);
+    x.fillText(rot.toUpperCase(),M,y);
+    x.fillStyle=C.ink;x.font=mono(25,600);
+    x.textAlign="right";x.fillText(String(val),CARD_W-M,y);
+    x.textAlign="left";
+    x.fillStyle=C.rule;x.fillRect(M,y+15,CARD_W-M*2,1);
+    y+=53;
+  };
+  if(m.adversario)linha("Adversário",m.adversario);
+  if(m.resultado)linha("Resultado",m.resultado);
+  if(m.posicao)linha("Posição na divisão",m.posicao);
+  y+=34;
+
   // frase — mesma carga emocional do LEGACY no card de fim de carreira
-  y+=140;
   x.font=`italic 30px "IBM Plex Mono",monospace`;
   const ls=quebrar(x,m.frase,CARD_W-M*2-32).slice(0,5);
   x.fillStyle=C.stamp;x.fillRect(M,y-30,5,ls.length*42+14);
@@ -2759,7 +2788,7 @@ async function desenharCardMomento(m){
 
 /* Abre por cima de tudo, sem tocar em playing/auto/dilemaAberto — o
    automático continua rodando por baixo se o jogador não fechar. */
-function abrirPainelMomentos(){
+async function abrirPainelMomentos(){
   const p=document.getElementById("painelMomentos");
   p.innerHTML="";
   const box=el("div","painel-momentos");
@@ -2767,15 +2796,27 @@ function abrirPainelMomentos(){
   if(!st.momentos.length){
     box.appendChild(el("p","vazio","Nenhum momento marcante ainda."));
   }else{
-    st.momentos.forEach(m=>{
+    for(const m of st.momentos){
       const item=el("div","momento-item");
-      item.appendChild(el("div","frase",m.frase));
-      item.appendChild(el("div","meta",`Luta ${m.luta} de ${TOTAL_FIGHTS} · ${m.cartel}`));
+      /* miniatura: o mesmo canvas do card de verdade, reduzido — sem prévia
+         o jogador só descobre o que vai postar depois de baixar. */
+      try{
+        const cv=await desenharCardMomento(m);
+        const thumbW=140,thumbH=Math.round(thumbW*CARD_H/CARD_W);
+        const mini=document.createElement("canvas");
+        mini.width=thumbW;mini.height=thumbH;mini.className="momento-mini";
+        mini.getContext("2d").drawImage(cv,0,0,thumbW,thumbH);
+        item.appendChild(mini);
+      }catch(e){/* sem prévia não impede salvar — segue sem a miniatura */}
+      const texto=el("div","momento-texto");
+      texto.appendChild(el("div","frase",m.frase));
+      texto.appendChild(el("div","meta",`Luta ${m.luta} de ${TOTAL_FIGHTS} · ${m.cartel}`));
       const btn=el("button","btn btn-sm","Salvar imagem");
       btn.onclick=()=>compartilhar(m,btn,desenharCardMomento);
-      item.appendChild(btn);
+      texto.appendChild(btn);
+      item.appendChild(texto);
       box.appendChild(item);
-    });
+    }
   }
   const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
   fechar.onclick=fecharPainelMomentos;
@@ -3536,14 +3577,14 @@ function finishFight(opp,r,titleFight){
     if(titleFight){
       if(st.title)st.defesas=(st.defesas||0)+1;
       st.title=true;st.foiCampeao=true;st.exCampeao=null;
-      if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",FRASE_PRIMEIRO_CINTURAO(me.name)));
+      if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
     }
     /* rápido é clock ALTO nesta luta — ver clockSeconds() */
     if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<60)
-      st.momentos.push(criarMomento("ko",FRASE_KO_RAPIDO(me.name)));
+      st.momentos.push(criarMomento("ko",FRASE_KO_RAPIDO(me.name),opp,r));
     if(lutandoMachucado&&!st.lesao.venceuMachucado){
       st.lesao.venceuMachucado=true;
-      st.momentos.push(criarMomento("lesao",FRASE_LESAO_VENCIDA(me.name)));
+      st.momentos.push(criarMomento("lesao",FRASE_LESAO_VENCIDA(me.name),opp,r));
     }
   }else{
     st.losses++;st.streakL++;st.streakW=0;
@@ -3558,7 +3599,7 @@ function finishFight(opp,r,titleFight){
         /* mesmo texto do RARE "lostBeltFast", achado por id — não duplica a
            frase nem depende de índice do array (ver comentário no RARE). */
         st.momentos.push(criarMomento("cinturaoPerdido",
-          RARE.find(rr=>rr.id==="lostBeltFast").t(me.name)));
+          RARE.find(rr=>rr.id==="lostBeltFast").t(me.name),opp,r));
       }
       /* perder uma defesa custa o cinturão de verdade: title volta a false,
          exCampeao guarda quem tirou (a ficha e a próxima disputa passam a
@@ -3604,9 +3645,13 @@ function finishFight(opp,r,titleFight){
   /* upset compara com quem o jogador ERA antes de vencer — standingPre, não
      st.standing (que essa altura do won já subiu). Usar o pós-luta fazia
      "vitória sobre favorito" quase nunca disparar: o próprio salto de
-     standing da vitória encolhia a diferença que definia o upset. */
-  const upset=won&&(opp.rating-standingPre)>.15;
-  if(upset)st.momentos.push(criarMomento("upset",FRASE_UPSET(me.name,opp.name)));
+     standing da vitória encolhia a diferença que definia o upset.
+     fightNo>=6 e diferença >.20 (era >.15, sem piso): medido em 120
+     carreiras, 77% dos upsets caíam nas lutas 1-5 só porque standing começa
+     baixo (.18) — não é zebra de verdade, é o jogador ainda subindo do
+     fundo da tabela. Ver LEIA-ME "Card de momento". */
+  const upset=won&&fightNo>=6&&(opp.rating-standingPre)>.20;
+  if(upset)st.momentos.push(criarMomento("upset",FRASE_UPSET(me.name,opp.name),opp,r));
   const alvo=Math.max(0,Math.min(10,1.3+hype*1.30));
   st.fan=Math.max(0,Math.min(10,st.fan*.62+alvo*.38));      /* média móvel */
   const delta=followerDelta(st.followers,hype,won,st.standing);
@@ -3646,7 +3691,7 @@ function finishFight(opp,r,titleFight){
       st.events++;
       if(d.rare){
         st.rares.push(d.e.t(me.name));
-        if(d.e.card)st.momentos.push(criarMomento("raro",d.e.t(me.name)));
+        if(d.e.card)st.momentos.push(criarMomento("raro",d.e.t(me.name),opp,r));
       }
       if(d.e.fx){
         /* o efeito entra numa camada separada: se fosse direto no atributo,

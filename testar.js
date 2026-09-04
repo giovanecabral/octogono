@@ -1048,15 +1048,27 @@ function testarMomentos() {
     passo("perda na 4ª defesa (não a 1ª) NÃO dispara cinturaoPerdido",
       !st.momentos.some(m=>m.tipo==="cinturaoPerdido"));
 
-    /* --- upset: compara com o standing de ANTES da vitória. standingPre=.40,
-       opp.rating=.58 (diff .18>.15) — COM o bug antigo (comparar depois da
-       vitória subir o standing pra .47) a diferença cai pra .11 e não
-       dispararia. Prova que o conserto está no lugar certo. */
-    st=stBase(); st.fightNo=1; st.standing=.40; st.ganhoEscolhido=.07;
-    finishFight({name:"Favorito",rating:.58},
+    /* --- upset: compara com o standing de ANTES da vitória, luta>=6, diff>.20.
+       standingPre=.40, opp.rating=.63 (diff .23>.20) — COM o bug antigo
+       (comparar depois da vitória subir o standing pra .47) a diferença cai
+       pra .16 e não dispararia. Prova que o conserto está no lugar certo. */
+    rng=mulberry32(1);
+    st=stBase(); fightNo=6; st.fightNo=6; st.standing=.40; st.ganhoEscolhido=.07;
+    finishFight({name:"Favorito",rating:.63},
       {winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
-    passo("upset dispara comparando com o standing PRÉ-luta (.40), não o pós (.47)",
+    passo("upset (luta 6) dispara comparando com o standing PRÉ-luta (.40), não o pós (.47)",
       st.momentos.some(m=>m.tipo==="upset"));
+
+    /* --- upset: piso de luta 6, medido em 120 carreiras (77% dos upsets
+       caíam nas lutas 1-5, só por standing começar baixo — não é zebra de
+       verdade, ver LEIA-ME "Card de momento"). Mesma diferença de rating
+       (.23), luta 3 — NÃO pode disparar. */
+    rng=mulberry32(1);
+    st=stBase(); fightNo=3; st.fightNo=3; st.standing=.40; st.ganhoEscolhido=.07;
+    finishFight({name:"Favorito",rating:.63},
+      {winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("upset NÃO dispara antes da luta 6, mesmo com diferença de rating grande (piso)",
+      !st.momentos.some(m=>m.tipo==="upset"));
 
     /* --- lesão vencida: só a primeira vitória com a lesão ativa */
     st=stBase(); st.fightNo=5;
@@ -1096,6 +1108,14 @@ function testarMomentos() {
     finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
     passo("18-0: dispara card de momento (é um dos 3 marcados card:true)",
       st.momentos.some(m=>m.tipo==="raro"));
+
+    /* bloco de dados do card: adversário e resultado vêm de opp/r, sempre
+       disponíveis (todo gatilho roda dentro de finishFight(opp,r,...)) —
+       3 linhas fixas, nem mais (ver LEIA-ME "Card de momento"). */
+    const ultimo=st.momentos[st.momentos.length-1];
+    passo("card carrega adversário", ultimo.adversario==="Rival");
+    passo("card carrega resultado (método · round · tempo)",
+      ultimo.resultado==="Decisão · round 3 5:00");
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -1178,6 +1198,27 @@ function testarConteudoInseguro() {
     passo("j inseguro: fã não mudou (não é +2.5)", st.fan===fanAntes);
     passo("j inseguro: desfecho cai no texto genérico",
       box.innerHTML.includes("Você seguiu em frente"));
+    /* achado jogando: filtro certo, apresentação errada — efeito zero
+       cravado (j nulo) desenhava "+0 seguidores" e "+0.0 de fã" em VERDE
+       (dif>=0 é true pra zero), um padrão que uma resposta comum não
+       reproduz (a IA nunca devolveu zero nas medições, sempre pelo menos
+       ±0.05/±0.1 — ver LEIA-ME "Conteúdo inseguro no dilema"). Isso
+       denunciava o filtro pela cor. Sem linha nenhuma quando o efeito é
+       zero apaga essa assinatura. */
+    passo("j inseguro: SEM linha de seguidores (efeito zero não vira linha)",
+      !box.innerHTML.includes("seguidores</span>"));
+    passo("j inseguro: SEM linha de fã (efeito zero não vira linha)",
+      !box.innerHTML.includes("de fã</span>"));
+
+    // controle: efeito de verdade (não zero) continua aparecendo
+    st.followers=2400; st.fan=5;
+    aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
+      {desfecho:"Fez a escolha certa e ganhou uns seguidores.",seguidores:.05,fa:.3,
+       atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
+    passo("efeito real (não zero): linha de seguidores aparece",
+      box.innerHTML.includes("seguidores</span>"));
+    passo("efeito real (não zero): linha de fã aparece",
+      box.innerHTML.includes("de fã</span>"));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }

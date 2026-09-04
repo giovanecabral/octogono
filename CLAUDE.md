@@ -87,11 +87,12 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   — editar o arquivo local não muda nada em produção até alguém rodar o
   deploy. Medição contra a API real (`https://draft-ufc.vercel.app/api/ai`)
   só vale depois de confirmar que o deploy aconteceu — antes disso é medição
-  da versão anterior, não da que você acabou de escrever. **O deploy é do
-  usuário, não do agente** — avise quando uma mudança em `api/ai.js` precisar
-  de deploy pra ser testável, não rode `vercel --prod` sozinho. Comando exato,
-  se for rodar: `vercel --prod --scope giovanecpiresg-4823s-projects` — sem o
-  `--scope` dá "Not authorized", o projeto está sob um time.
+  da versão anterior, não da que você acabou de escrever (isso já invalidou
+  uma sessão inteira de medição, ver LEIA-ME "Lesão"). **Deploy: comando
+  exato `vercel --prod --scope giovanecpiresg-4823s-projects`** — sem o
+  `--scope` dá "Not authorized", o projeto está sob um time. Commit antes de
+  todo deploy. Deploy obrigatório sempre que `api/ai.js` mudar, antes de
+  qualquer medição contra a API real.
 - **A semente controla tudo que é sorteado.** Qualquer mudança que altere o
   consumo de `rng` quebra os links de desafio já compartilhados. Rode
   `node testar.js desafio` depois de mexer em draft ou seleção de adversário.
