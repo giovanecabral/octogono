@@ -1237,9 +1237,14 @@ const lim=(v,lo,hi,def)=>{const n=Number(v);
    comentário lá) mas só vira a função de verdade se Analytics estiver
    ligado no projeto; se não estiver, script.js dá 404 e window.va fica
    sendo o stub que só enfileira sem nunca ler — sem custo, sem quebra. */
-function evento(nome){
-  try{window.va&&window.va("event",{name:nome});}catch(e){}
+function evento(nome,dados){
+  try{window.va&&window.va("event",{name:nome,data:dados});}catch(e){}
 }
+/* Marca de tempo no carregamento do script — praticamente o mesmo instante
+   de evento("abriu") em boot(), sem depender do await de fetch() lá dentro
+   atrasar a marcação. É contra ela que terminou_luta_1 mede quanto tempo
+   passa até a primeira luta acabar (PLANO-LANCAMENTO.md fase 2). */
+const TEMPO_ABERTURA=Date.now();
 
 /* busca antecipada: dispara quando a luta COMEÇA e resolve durante a
    narração, que dura uns 12 segundos. Latência percebida vai a zero. */
@@ -3131,18 +3136,20 @@ function screenCriador(name){
     });
   }
 
-  const row=el("div","row");
-  const rand=el("button","btn btn-ghost","Sortear");
-  rand.onclick=()=>{SOM.toque();
+  const rostoAleatorio=()=>{
     const r=n=>Math.floor(Math.random()*n);
-    ROSTO={pele:r(PELES.length),cabelo:r(CABELO_TIPOS.length),corCabelo:r(CABELOS.length),
+    return{pele:r(PELES.length),cabelo:r(CABELO_TIPOS.length),corCabelo:r(CABELOS.length),
       barba:r(BARBAS.length),olho:r(OLHOS.length),corOlho:r(OLHOS_COR.length),
       sobrancelha:r(SOBRANCELHAS.length),boca:r(BOCAS.length),
       cicatriz:r(CICATRIZES.length),calcao:r(CALCOES.length),porte:r(3)};
-    desenha();corpo();};
+  };
   const dz=lerDesafio();
-  const ok=el("button","btn",dz?"Começar a carreira":"Escolher divisão");
-  ok.onclick=()=>{
+  /* pular() e ok.onclick avançam pro mesmo lugar — pular só decide o rosto
+     por sorteio em vez de deixar o jogador escolher. PLANO-LANCAMENTO.md
+     fase 2: quem clicou no anúncio tem uns 3 minutos, não 40; customizar 9
+     componentes antes da primeira luta é exatamente o tipo de passo que
+     sobra pra quem quer, e trava quem não quer. */
+  const avancar=()=>{
     const ni=document.getElementById("nomeIn");
     const n=(ni?ni.value:name||"").trim();
     if(!n){if(ni)ni.focus();return;}
@@ -3151,7 +3158,15 @@ function screenCriador(name){
     if(dz){DIVISION=dz.div;SEED=dz.seed;MODO=dz.modo;startDraft(n);}
     else screenDivisao(n);
   };
-  row.append(ok,rand);app.appendChild(row);
+
+  const row=el("div","row");
+  const rand=el("button","btn btn-ghost","Sortear");
+  rand.onclick=()=>{SOM.toque();ROSTO=rostoAleatorio();desenha();corpo();};
+  const pular=el("button","btn btn-ghost","Pular");
+  pular.onclick=()=>{ROSTO=rostoAleatorio();evento("pulou_criador");avancar();};
+  const ok=el("button","btn",dz?"Começar a carreira":"Escolher divisão");
+  ok.onclick=avancar;
+  row.append(ok,rand,pular);app.appendChild(row);
   desenha();corpo();
 }
 
@@ -3716,10 +3731,15 @@ function finishFight(opp,r,titleFight){
   }
   atualizarControles();renderFicha();
 
-  /* "Terminou a luta 5" e "terminou as 22" — eventos 3 e 4 de 4. fightNo já
+  /* "Terminou a luta 1", "terminou a luta 5" e "terminou as 22". fightNo já
      foi incrementado em lutar() antes de finishFight() rodar, então aqui já
-     reflete a luta que acabou de concluir. Fixo em 5, não "a cada 5" — o
-     funil da fase 0 quer um ponto de corte, não uma série. */
+     reflete a luta que acabou de concluir. Fixo nesses pontos, não "a cada
+     N" — o funil quer corte, não série. terminou_luta_1 é o que a fase 2 do
+     PLANO-LANCAMENTO.md precisa pra medir "abriu → primeira luta terminou":
+     sem ele só dava pra medir até o fim do draft (terminou_draft), que é
+     ANTES da primeira luta, ou até a luta 5, que é tarde demais pro corte
+     que a fase 2 quer (3 minutos de crédito de quem clicou no anúncio). */
+  if(fightNo===1)evento("terminou_luta_1",{segundos:Math.round((Date.now()-TEMPO_ABERTURA)/1000)});
   if(fightNo===5)evento("terminou_luta_5");
   if(fightNo>=TOTAL_FIGHTS)evento("terminou_22");
 

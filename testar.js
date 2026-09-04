@@ -186,6 +186,12 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     if (mexidas < 5) throw new Error("nem todas as categorias responderam");
     const campo = env.todos.filter(n => n.id === "nomeIn").pop();
     if (campo) campo.value = "TesteBot";
+    /* fase 2 do PLANO-LANCAMENTO.md: botão "Pular" tem que existir e estar
+       ligado — não clicamos nele aqui (o resto do teste segue customizando
+       de propósito, pra cobrir os dois caminhos: "ok" já é exercido por
+       este passo, "Pular" é conferido só por existir e ter onclick). */
+    const pularBtn = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Pular").pop();
+    if (!pularBtn || !pularBtn.onclick) throw new Error("botão 'Pular' não foi montado ou não está ligado");
     const btns = env.todos.filter(n => n.tagName === "button" && n.className === "btn" && n.onclick);
     if (!btns.length) throw new Error("botão de avançar não foi montado");
     btns[btns.length - 1].onclick();
