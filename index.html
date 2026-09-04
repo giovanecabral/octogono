@@ -1287,7 +1287,19 @@ const AI_PAUSA_MS=60000;
 let falhasRedeSeguidas=0;
 
 async function ai(kind,data,ms=9500){
-  if(!AI_URL||!aiVivo||Date.now()<aiPausadoAte)return null;
+  /* Achado jogando: "aceito" (dilema binário comum) caiu no fallback
+     genérico, e não tinha como saber POR QUÊ — ai() sempre devolvia null
+     pelos mesmos 5 motivos possíveis, indistinguíveis de fora. Investigado
+     na hora: nem piso de tamanho (não existe nenhum), nem falso positivo
+     de CONTEUDO_INSEGURO (testado, nenhuma das frases curtas bate), nem
+     falha de classificação (reproduzido ao vivo com a cena e resposta
+     exatas, funcionou normal) — sobrou circuito aberto (aiVivo/pausa), o
+     que bate com 429 tendo aparecido em 2 de 6 chamadas na medição. Este
+     evento não conserta nada sozinho, mas da próxima vez dá pra saber
+     qual dos 5 caminhos foi, em vez de reconstruir por eliminação. */
+  if(!AI_URL){evento("ia_null",{motivo:"sem_url",kind});return null;}
+  if(!aiVivo){evento("ia_null",{motivo:"desligado",kind});return null;}
+  if(Date.now()<aiPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   try{
@@ -1305,8 +1317,11 @@ async function ai(kind,data,ms=9500){
          falhou. */
       let corpo=null;
       try{corpo=await r.json();}catch(e){}
-      if(corpo&&corpo.status===429)aiPausadoAte=Date.now()+AI_PAUSA_MS;
-      else if(corpo&&corpo.transitorio===false)aiVivo=false;
+      if(corpo&&corpo.status===429){aiPausadoAte=Date.now()+AI_PAUSA_MS;
+        evento("ia_null",{motivo:"429",kind});}
+      else if(corpo&&corpo.transitorio===false){aiVivo=false;
+        evento("ia_null",{motivo:"erro_permanente",kind});}
+      else evento("ia_null",{motivo:"erro_transitorio",kind});
       return null;
     }
     const j=await r.json();
@@ -1315,6 +1330,7 @@ async function ai(kind,data,ms=9500){
     clearTimeout(t);
     falhasRedeSeguidas++;
     if(falhasRedeSeguidas>=2)aiVivo=false;
+    evento("ia_null",{motivo:"rede",kind});
     return null;
   }
 }

@@ -817,6 +817,32 @@ publicados juntos.
 node testar.js aivivo     # os 6 casos, sem rede: transitorio true/false/ausente, 429, falha de rede 1x/2x
 ```
 
+**`ai()` sempre devolvia `null` por um dos 5 motivos, indistinguíveis de
+fora.** Achado jogando: um dilema binário comum ("aceito") caiu no
+fallback genérico, sem explicação. Investigado antes de mexer em
+qualquer coisa: não é piso de tamanho (não existe nenhum, client ou
+prompt), não é falso positivo de `CONTEUDO_INSEGURO` (testado direto —
+nenhuma resposta curta legítima bate no regex), e não é falha de
+classificação — reproduzido ao vivo com a cena e a resposta exatas do
+relato, funcionou normal. Sobrou o circuito aberto (`aiVivo` desligado ou
+dentro da janela de `aiPausadoAte`), o que bate com **429 aparecendo em 2
+de 6 chamadas** na medição feita na hora (nota: parte da pressão de rate
+limit é do próprio processo de medir contra produção repetidas vezes
+nesta sessão — não necessariamente representa o tráfego normal do jogo).
+
+Não tem conserto de lógica pra fazer aqui — o circuito está funcionando
+como desenhado. O que faltava era conseguir DISTINGUIR qual dos 5 motivos
+disparou da próxima vez, em vez de reconstruir por eliminação como desta
+vez: `evento("ia_null",{motivo,kind})` marca cada um dos 5 caminhos
+(`sem_url`, `desligado`, `pausado`, `429`, `erro_permanente`,
+`erro_transitorio`, `rede`) — puramente diagnóstico, não muda
+comportamento nenhum. `node testar.js aivivo` cobre o cenário de 429 →
+`pausado` na chamada seguinte.
+
+**Segue aberto**: se 429 continuar aparecendo com essa frequência em
+tráfego real (não só em medição concentrada), `AI_PAUSA_MS=60000` — já
+marcado como não medido — é o primeiro lugar a remedir.
+
 ---
 
 ### Card de momento

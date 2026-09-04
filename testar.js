@@ -1791,6 +1791,15 @@ function testarAiVivo() {
 
   env.sandbox.__filaSet = (arr) => { fila = arr; };
   env.sandbox.__chamadasFetch = () => chamadasFetch;
+  /* Achado jogando: ai() sempre devolvia null pelos mesmos 5 motivos
+     possíveis (sem URL, desligado, pausado, erro do servidor, falha de
+     rede), indistinguíveis de fora — reconstruir qual foi virou
+     eliminação por investigação em vez de leitura direta. evento("ia_null",
+     {motivo}) marca qual caminho disparou; confere aqui que os dois
+     últimos motivos do cenário de 429 (o próprio 429, depois "pausado" na
+     chamada seguinte) saem certos. */
+  const eventosVa = [];
+  env.sandbox.window.va = (...args) => { eventosVa.push(args); };
 
   try {
     vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
@@ -1804,6 +1813,19 @@ function testarAiVivo() {
     for (const p of passos) {
       if (!p.ok) ok = false;
       console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    /* eventosVa acumulou TODO cenário do arquivo inteiro (não só o de 429)
+       — os dois últimos são exatamente a chamada que levou o 429 e a
+       chamada seguinte, dentro da janela de pausa (últimas duas do corpo). */
+    const motivos = eventosVa.map(([, obj]) => obj && obj.data && obj.data.motivo);
+    const ultimosDois = motivos.slice(-2);
+    const extras = [
+      ["evento ia_null: motivo \"429\" na chamada que recebeu 429", ultimosDois[0] === "429"],
+      ["evento ia_null: motivo \"pausado\" na chamada seguinte (dentro da janela)", ultimosDois[1] === "pausado"],
+    ];
+    for (const [nome, cond] of extras) {
+      if (!cond) ok = false;
+      console.log(`  ${cond ? verde("ok   ") : vermelho("fora ")} ${nome}`);
     }
     return ok && passos.length > 0;
   });
