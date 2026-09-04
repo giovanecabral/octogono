@@ -114,16 +114,17 @@ mensurável no meio, sem quebrar a calibração do motor.
 
 ---
 
-## 8. Portunhol nos dilemas — baixa prioridade, fica para o fim
+## 8. Portunhol nos dilemas — RESOLVIDO (parcial, ver números)
 
-Achado jogando: saiu "o promoter tá gritando pro fight semana que vem" e
-"escondendo do doctor" — inglês solto no meio de uma voz que é gíria de
-lutador brasileiro. É o prompt do `dilema` (a cena, não o julgamento) —
-`julgar` não tem esse sintoma nas medições feitas até aqui.
-
-**Pronto quando:** amostra de desfechos/cenas reais não mostra mistura de
-inglês solto (não é bug urgente, é polimento — cortar na frente de itens que
-mudam o resultado da carreira seria errado).
+`VOZ` (compartilhada) ganhou instrução explícita contra troca de palavra
+comum por inglês solto. Precisou de 3 rodadas de deploy+medição pra cair:
+50% (3/6, manager/coach ainda escapando com instrução genérica) → 22% (2/9,
+manager escapou de novo mesmo nomeado, gym apareceu sem estar na lista) →
+**0/7 na medição final**, depois de nomear as 5 palavras que mais escapavam
+(manager, coach, fight, doctor, gym) com instrução imperativa ("pare e
+troque antes de responder"). Amostra pequena — 0/7 não prova 0% em escala,
+só que a rodada final não flagrou nenhuma. Se reaparecer, a lista de
+palavras nomeadas é o primeiro lugar pra olhar, não o mecanismo.
 
 ---
 
