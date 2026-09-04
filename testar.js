@@ -1280,6 +1280,113 @@ function testarLesao() {
 }
 
 /* ================================================================== *
+ * 7a. COERÊNCIA — a ficha não pode mentir sobre o próprio estado
+ * ================================================================== */
+/* Item 5: auditor genérico pras classes de bug já encontradas jogando
+   (vermelho sem bloco de LESÃO, % que engorda com o treino, filtro
+   copiando o exemplo do prompt) — aqui a versão que dá pra checar sem
+   jogar: chama renderFicha() DE VERDADE contra `st`/`me` construídos à
+   mão, e audita o HTML resultante contra as regras. */
+function testarCoerencia() {
+  console.log("\n" + cinza("coerência da ficha: o que aparece na tela bate com o estado de verdade"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__coe=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  const semTags=h=>h.replace(/<[^>]+>/g," ");
+  try{
+    me={name:"TesteCoerencia",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    const stBase=()=>({treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,
+      streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,
+      events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:6,fan:5,followers:2400,
+      peakFollowers:2400,longestW:0,lostBeltFast:false,rares:[],momentos:[],
+      disputaLiberada:false,defesas:0,exCampeao:null,foiCampeao:false,lesao:null});
+
+    /* cenário A: baseline limpo — nenhuma perda, nenhuma lesão. Nada pode
+       aparecer vermelho, nem bloco LESÃO, nem negrito em atributo nenhum. */
+    st=stBase();
+    renderFicha();
+    let f=document.getElementById("ficha").innerHTML;
+    passo("baseline: sem perda nenhuma, nenhum atributo aparece vermelho (classe dn)",
+      !/class="dn"/.test(f));
+    passo("baseline: sem st.lesao, o bloco LESÃO não aparece",
+      !/<h4>Lesão<\\/h4>/.test(f));
+    passo("baseline: sem lesão, nenhum atributo vem em negrito",
+      !/style="font-weight:800"/.test(f));
+
+    /* regra 1 (vermelho ⟹ perda registrada): eventoMod real abaixo de 1,
+       SEM lesão nenhuma — tem que aparecer vermelho, e o número tem que
+       bater com o multiplicador de verdade (regra 4, junto). */
+    st=stBase();
+    st.eventoMod.strDef=0.85;         // -15% real, evento comum, não lesão
+    renderFicha();
+    f=document.getElementById("ficha").innerHTML;
+    const ganhoEsperado=Math.round((0.85-1)*100);
+    passo("regra 1: perda real (eventoMod) aparece vermelho (classe dn)",
+      /class="dn"/.test(f));
+    passo("regra 1: SEM lesão, nenhum atributo vem em negrito mesmo com perda vermelha",
+      !/style="font-weight:800"/.test(f));
+    passo("regra 4: o número exibido bate com base×treino×eventoMod (" + ganhoEsperado + "%)",
+      new RegExp('class="dn">' + ganhoEsperado + '%').test(f));
+
+    /* regra 2 (st.lesao ⟹ bloco na ficha): com lesão, o bloco tem que
+       existir e mostrar a magnitude FIXA (não a combinada com treino —
+       já regressão de testarLesao(), reconfirmado aqui como regra geral). */
+    st=stBase();
+    st.lesao={atributo:"durability",mult:0.70,permanente:false,desdeLuta:6,duracao:8,nome:"Joelho travado"};
+    renderFicha();
+    f=document.getElementById("ficha").innerHTML;
+    passo("regra 2: st.lesao presente ⟹ bloco LESÃO aparece",
+      /<h4>Lesão<\\/h4>/.test(f));
+    passo("regra 2: o atributo lesionado vem em negrito",
+      /style="font-weight:800">Queixo</.test(f));
+
+    /* regra 3 (nenhuma chave crua de atributo em texto visível): tira toda
+       tag (isso já remove os atributos class="..." junto) e procura pelas
+       chaves cruas no texto que sobrou — só o rótulo traduzido pode
+       aparecer, nunca "strDef"/"durability"/etc. literal. */
+    const texto=semTags(f);
+    const chavesCruas=ATTR_TREINAVEIS.concat(["reach"]).filter(k=>texto.includes(k));
+    passo("regra 3: nenhuma chave crua de atributo (" + ATTR_TREINAVEIS.join(",") + ") no texto visível",
+      chavesCruas.length===0);
+
+    /* regra 5 (nenhuma linha de efeito com valor exibido zero): ganho
+       exatamente 0 não pode desenhar "+0%"/"-0%" — tem que ficar mudo
+       (zona morta de |ganho|<=0.005 em renderFicha()). */
+    st=stBase();
+    st.treino.slpm=1.0; st.eventoMod.slpm=1.0;   // combinação neutra, ganho exatamente 0
+    renderFicha();
+    f=document.getElementById("ficha").innerHTML;
+    passo("regra 5: ganho exatamente 0 não desenha linha de efeito (nem +0% nem -0%)",
+      !/class="g">\\+0%/.test(f) && !/class="dn">-?0%/.test(f));
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__coe || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
+/* ================================================================== *
  * 7b. CARD DE MOMENTO — cada gatilho dispara na hora certa, uma vez só
  * ================================================================== */
 /* Chama finishFight()/aplicarDilema() DE VERDADE, igual testarCinturao e
@@ -2221,6 +2328,7 @@ try {
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");
+  else if (cmd === "coerencia") ok = testarCoerencia();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
