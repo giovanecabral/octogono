@@ -672,88 +672,105 @@ function impact(att,def,landed,rng){
   def.knockdowns=(def.knockdowns||0)+1;
   return rng()<TUNING.finishGivenKd?"ko":"kd";
 }
+/* Extraído de simulateFight() pra abrir uma fronteira real de round — item
+   1 do desenho de escolha na luta (PENDENCIAS/conversa), fase 1: SÓ a
+   refatoração, nenhuma escolha ainda. Comportamento tem que ficar
+   bit-a-bit idêntico — mesma ordem de rng(), mesmos pushes no log, mesmo
+   texto. `scores` é objeto (não par de primitivos) porque JS não passa
+   número por referência; sem isso o placar do round não voltaria pro
+   chamador. Retorna o resultado de fin() se a luta acabou NESTE round
+   (KO/finalização), ou `null` se o round terminou normal e a luta segue —
+   esse `null` é exatamente o ponto onde uma pausa pra escolha entraria
+   depois, sem mexer em mais nada aqui. */
+function simularRound(A,B,round,rng,push,fin,scores){
+  const tpr=TUNING.roundSeconds/TUNING.tickSeconds;
+  const snap={a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,
+              b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks};
+  let pos="STANDING",burst={a:0,b:0},since=0;
+  push(round,"5:00","rd",`Round ${round}`);
+
+  for(let t=0;t<tpr;t++){
+    const clock=fmtClock(TUNING.roundSeconds-t*TUNING.tickSeconds);
+    if(pos==="STANDING"){
+      for(const[att,def,tag]of[[A,B,"A"],[B,A,"B"]]){
+        const rate=(att.ref.tdAvg/clamp(att.ref.tdAcc,.1,1))/(900/TUNING.tickSeconds);
+        if(rng()<rate){
+          if(rng()<contest(att.ref.tdAcc*att.form,def.ref.tdDef*def.form)){
+            att.takedowns++;pos=tag==="A"?"GROUND_A":"GROUND_B";
+            push(round,clock,"big",`Queda de ${att.ref.name}. Levou pro chão.`);
+          }else push(round,clock,"",`${def.ref.name} defendeu a queda e voltou pra distância.`);
+          break;
+        }
+      }
+    }
+    if(pos==="STANDING"){
+      const la=exchange(A,B,rng),lb=exchange(B,A,rng);
+      burst.a+=la;burst.b+=lb;since++;
+      const ia=impact(A,B,la,rng);
+      if(ia==="ko")return fin(A,B,round,clock,"Nocaute");
+      if(ia==="kd")push(round,clock,"kd",`${B.ref.name} foi ao chão! Levantou cambaleando.`);
+      const ib=impact(B,A,lb,rng);
+      if(ib==="ko")return fin(B,A,round,clock,"Nocaute");
+      if(ib==="kd")push(round,clock,"kd",`${A.ref.name} foi ao chão! Levantou cambaleando.`);
+      if(since>=4){
+        if(burst.a+burst.b===0)push(round,clock,"",`Round estudado. Ninguém quer se abrir.`);
+        else if(burst.a>burst.b)push(round,clock,"",`${A.ref.name} acerta mais na troca, ${burst.a} a ${burst.b}.`);
+        else if(burst.b>burst.a)push(round,clock,"",`${B.ref.name} acerta mais na troca, ${burst.b} a ${burst.a}.`);
+        else push(round,clock,"",`Troca parelha, ${burst.a} a ${burst.b}.`);
+        burst={a:0,b:0};since=0;
+      }
+    }else{
+      const top=pos==="GROUND_A"?A:B,bot=pos==="GROUND_A"?B:A;
+      top.controlTicks++;
+      const landed=exchange(top,bot,rng,{ground:true});
+      const im=impact(top,bot,landed,rng);
+      if(im==="ko")return fin(top,bot,round,clock,"Nocaute técnico no chão");
+      if(landed>=3)push(round,clock,"big",`${top.ref.name} martelando por cima. ${bot.ref.name} só protege.`);
+      else if(top.controlTicks%3===0)push(round,clock,"",`${top.ref.name} controla a posição.`);
+      for(const[g,opp,mult]of[[top,bot,1.4],[bot,top,1.0]]){
+        const rate=(g.ref.subAvg/(900/TUNING.tickSeconds))*mult;
+        if(rng()<rate){
+          g.subAttempts++;
+          const p=contest(TUNING.subBase*clamp(g.ref.subAvg/2.5,.15,.9),opp.ref.tdDef);
+          if(rng()<p*3.6)return fin(g,opp,round,clock,"Finalização");
+          push(round,clock,"big",`${g.ref.name} tenta a finalização! ${opp.ref.name} escapa.`);
+        }
+      }
+      if(rng()<TUNING.standUpBase*(.5+bot.ref.tdDef)){
+        pos="STANDING";push(round,clock,"",`${bot.ref.name} conseguiu levantar.`);
+      }
+    }
+  }
+  const pa=(A.sigStrikes-snap.a)+(A.takedowns-snap.at)*6+(A.controlTicks-snap.ac)*.7;
+  const pb=(B.sigStrikes-snap.b)+(B.takedowns-snap.bt)*6+(B.controlTicks-snap.bc)*.7;
+  if(pa>pb){scores.sa+=10;scores.sb+=9;push(round,"0:00","rd",`Fim do round ${round} — ${A.ref.name} levou.`);}
+  else if(pb>pa){scores.sb+=10;scores.sa+=9;push(round,"0:00","rd",`Fim do round ${round} — ${B.ref.name} levou.`);}
+  else{scores.sa+=10;scores.sb+=10;push(round,"0:00","rd",`Fim do round ${round} — round dividido.`);}
+  A.damage*=.88;B.damage*=.88;
+  return null;
+}
+
 function simulateFight(fa,fb,{seed=1,rounds=3}={}){
   const rng=mulberry32(seed);
   const form=()=>1+(rng()+rng()+rng()-1.5)/1.5*TUNING.formSpread;
   const A=mkState(fa,form()),B=mkState(fb,form());
-  const tpr=TUNING.roundSeconds/TUNING.tickSeconds;
-  const log=[];let sa=0,sb=0;
+  const log=[];
   const push=(round,clock,kind,text)=>log.push({round,clock,kind,text});
   const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
   const fin=(w,l,round,clock,m)=>{
     push(round,clock,"fin",`${w.ref.name} vence por ${m.toLowerCase()}`);
     return{winner:w.ref.name,loser:l.ref.name,method:m,round,clock,cards:null,log,knockdowns:kds()};};
 
+  const scores={sa:0,sb:0};
   for(let round=1;round<=rounds;round++){
-    push(round,"5:00","rd",`Round ${round}`);
-    const snap={a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,
-                b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks};
-    let pos="STANDING",burst={a:0,b:0},since=0;
-
-    for(let t=0;t<tpr;t++){
-      const clock=fmtClock(TUNING.roundSeconds-t*TUNING.tickSeconds);
-      if(pos==="STANDING"){
-        for(const[att,def,tag]of[[A,B,"A"],[B,A,"B"]]){
-          const rate=(att.ref.tdAvg/clamp(att.ref.tdAcc,.1,1))/(900/TUNING.tickSeconds);
-          if(rng()<rate){
-            if(rng()<contest(att.ref.tdAcc*att.form,def.ref.tdDef*def.form)){
-              att.takedowns++;pos=tag==="A"?"GROUND_A":"GROUND_B";
-              push(round,clock,"big",`Queda de ${att.ref.name}. Levou pro chão.`);
-            }else push(round,clock,"",`${def.ref.name} defendeu a queda e voltou pra distância.`);
-            break;
-          }
-        }
-      }
-      if(pos==="STANDING"){
-        const la=exchange(A,B,rng),lb=exchange(B,A,rng);
-        burst.a+=la;burst.b+=lb;since++;
-        const ia=impact(A,B,la,rng);
-        if(ia==="ko")return fin(A,B,round,clock,"Nocaute");
-        if(ia==="kd")push(round,clock,"kd",`${B.ref.name} foi ao chão! Levantou cambaleando.`);
-        const ib=impact(B,A,lb,rng);
-        if(ib==="ko")return fin(B,A,round,clock,"Nocaute");
-        if(ib==="kd")push(round,clock,"kd",`${A.ref.name} foi ao chão! Levantou cambaleando.`);
-        if(since>=4){
-          if(burst.a+burst.b===0)push(round,clock,"",`Round estudado. Ninguém quer se abrir.`);
-          else if(burst.a>burst.b)push(round,clock,"",`${A.ref.name} acerta mais na troca, ${burst.a} a ${burst.b}.`);
-          else if(burst.b>burst.a)push(round,clock,"",`${B.ref.name} acerta mais na troca, ${burst.b} a ${burst.a}.`);
-          else push(round,clock,"",`Troca parelha, ${burst.a} a ${burst.b}.`);
-          burst={a:0,b:0};since=0;
-        }
-      }else{
-        const top=pos==="GROUND_A"?A:B,bot=pos==="GROUND_A"?B:A;
-        top.controlTicks++;
-        const landed=exchange(top,bot,rng,{ground:true});
-        const im=impact(top,bot,landed,rng);
-        if(im==="ko")return fin(top,bot,round,clock,"Nocaute técnico no chão");
-        if(landed>=3)push(round,clock,"big",`${top.ref.name} martelando por cima. ${bot.ref.name} só protege.`);
-        else if(top.controlTicks%3===0)push(round,clock,"",`${top.ref.name} controla a posição.`);
-        for(const[g,opp,mult]of[[top,bot,1.4],[bot,top,1.0]]){
-          const rate=(g.ref.subAvg/(900/TUNING.tickSeconds))*mult;
-          if(rng()<rate){
-            g.subAttempts++;
-            const p=contest(TUNING.subBase*clamp(g.ref.subAvg/2.5,.15,.9),opp.ref.tdDef);
-            if(rng()<p*3.6)return fin(g,opp,round,clock,"Finalização");
-            push(round,clock,"big",`${g.ref.name} tenta a finalização! ${opp.ref.name} escapa.`);
-          }
-        }
-        if(rng()<TUNING.standUpBase*(.5+bot.ref.tdDef)){
-          pos="STANDING";push(round,clock,"",`${bot.ref.name} conseguiu levantar.`);
-        }
-      }
-    }
-    const pa=(A.sigStrikes-snap.a)+(A.takedowns-snap.at)*6+(A.controlTicks-snap.ac)*.7;
-    const pb=(B.sigStrikes-snap.b)+(B.takedowns-snap.bt)*6+(B.controlTicks-snap.bc)*.7;
-    if(pa>pb){sa+=10;sb+=9;push(round,"0:00","rd",`Fim do round ${round} — ${A.ref.name} levou.`);}
-    else if(pb>pa){sb+=10;sa+=9;push(round,"0:00","rd",`Fim do round ${round} — ${B.ref.name} levou.`);}
-    else{sa+=10;sb+=10;push(round,"0:00","rd",`Fim do round ${round} — round dividido.`);}
-    A.damage*=.88;B.damage*=.88;
+    const resultado=simularRound(A,B,round,rng,push,fin,scores);
+    if(resultado)return resultado;
   }
-  const w=sa>sb?A:sb>sa?B:(rng()<.5?A:B),l=w===A?B:A;
+  const w=scores.sa>scores.sb?A:scores.sb>scores.sa?B:(rng()<.5?A:B),l=w===A?B:A;
   log.push({round:rounds,clock:"0:00",kind:"fin",
-    text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(sa,sb)}-${Math.min(sa,sb)}.`});
+    text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa,scores.sb)}-${Math.min(scores.sa,scores.sb)}.`});
   return{winner:w.ref.name,loser:l.ref.name,method:"Decisão",round:rounds,clock:"0:00",
-    cards:sa+"-"+sb,log,knockdowns:kds()};
+    cards:scores.sa+"-"+scores.sb,log,knockdowns:kds()};
 }
 
 /* =========================================================================
