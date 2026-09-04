@@ -567,6 +567,15 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 .momento-item .frase{font-size:13px;color:var(--ink);margin-bottom:8px}
 .momento-item .meta{font-size:11px;color:var(--faded);margin-bottom:8px}
 .painel-fechar{margin-top:4px}
+/* Conquistas: documento, não troféu ilustrado — sem ícone, sem imagem, sem
+   canto arredondado, mono herdado do body (sobrescreve o Oswald do h3
+   compartilhado com o painel de cards). */
+.painel-momentos.conquistas h3{font-family:inherit;font-weight:600}
+.conquista{border-bottom:1px solid var(--rule);padding:8px 0}
+.conquista:last-child{border-bottom:none}
+.conquista-nome{font-size:13px;color:var(--faded)}
+.conquista.ok .conquista-nome{color:var(--ink);font-weight:600}
+.conquista-desc{font-size:11px;color:var(--faded);margin-top:2px}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -947,6 +956,74 @@ const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o ad
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
 const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
 const FRASE_LESAO_VENCIDA=n=>`${n} entrou mancando e saiu com a mão levantada.`;
+
+/* =========================================================================
+   CONQUISTAS — troféu local, sem conta, sem IA. Cada check(st,modo) é
+   função pura sobre o estado que o motor já mantém — nenhuma delas lê
+   nada que a IA classificou (seguidores/fã são parcialmente influenciados
+   pela IA a cada dilema, mas a maior parte do número vem de hype de luta
+   real; todo o resto é 100% motor). Desbloqueio é PERMANENTE entre
+   carreiras — troféu de verdade não some quando você começa outra.
+
+   LIMIAR_IDOLO medido (180 carreiras, bot automático em 3 divisões):
+   mediana de seguidores no fim é 1,4M, p75 é 6,1M — 5M fica logo abaixo do
+   p75, top ~25% das carreiras, nem trivial nem quase impossível. */
+const LIMIAR_IDOLO=5000000;
+const CONQUISTAS=[
+ {id:"primeiro_sangue",nome:"Primeiro sangue",desc:"Vença sua primeira luta.",
+  check:st=>st.wins>=1},
+ {id:"invicto",nome:"Invicto",desc:"Termine a carreira sem nenhuma derrota.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.losses===0},
+ {id:"reinado",nome:"Reinado",desc:"Conquiste o cinturão e defenda 5 vezes seguidas.",
+  check:st=>(st.defesas||0)>=5},
+ {id:"fenix",nome:"Fênix",desc:"Perca o cinturão e reconquiste.",
+  check:st=>(st.vezesCampeao||0)>=2},
+ {id:"lenda_coroada",nome:"Lenda coroada",desc:"Ganhe o cinturão no modo Seja uma lenda.",
+  check:(st,modo)=>!!st.title&&modo==="lenda"},
+ {id:"nao_sente",nome:"Não sente",desc:"Vença uma luta lutando machucado.",
+  check:st=>(st.momentos||[]).some(m=>m.tipo==="lesao")},
+ {id:"nunca_finalizado",nome:"Nunca finalizado",desc:"Termine a carreira sem perder nenhuma luta por finalização.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&(st.subLosses||0)===0},
+ {id:"queixo_de_granito",nome:"Queixo de granito",desc:"Termine a carreira sem nenhum nocaute sofrido.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.koLosses===0},
+ {id:"fogo",nome:"Fogo",desc:"Emplace 8 vitórias seguidas.",
+  check:st=>st.longestW>=8},
+ {id:"levantou_de_novo",nome:"Levantou de novo",desc:"Vá ao chão 6 vezes na carreira e continue competindo.",
+  check:st=>st.kdTaken>=6},
+ {id:"zebra",nome:"Zebra",desc:"Vença como azarão, muito abaixo do favoritismo.",
+  check:st=>(st.momentos||[]).some(m=>m.tipo==="upset")},
+ {id:"mao_rapida",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round, abaixo de 1 minuto.",
+  check:st=>(st.momentos||[]).some(m=>m.tipo==="ko")},
+ {id:"prudente",nome:"Prudente",desc:"Recuse um risco físico real pelo menos uma vez.",
+  check:st=>!!st.evitouAlgumaVez},
+ {id:"topo_da_divisao",nome:"Topo da divisão",desc:"Chegue ao pico da divisão.",
+  check:st=>st.peak>=.98},
+ {id:"idolo",nome:"Ídolo",desc:"Termine a carreira com 5 milhões de seguidores ou mais.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.followers>=LIMIAR_IDOLO},
+];
+
+/* localStorage guarda só os ids desbloqueados, nunca o estado da carreira —
+   mesmo princípio de mudo/vol_musica/rosto: try/catch, sem IA nem conta,
+   sem derrubar a carreira se o navegador bloquear. */
+let CONQUISTAS_DESBLOQUEADAS=(()=>{
+  try{return new Set(JSON.parse(localStorage.getItem("conquistas")||"[]"));}
+  catch(e){return new Set();}
+})();
+function salvarConquistas(){
+  try{localStorage.setItem("conquistas",JSON.stringify([...CONQUISTAS_DESBLOQUEADAS]));}catch(e){}
+}
+/* Roda depois de toda luta (não só no fim) — desbloqueio acontece na hora,
+   igual card de momento. Retorna as que acabaram de desbloquear NESTA
+   checagem, pra quem quiser avisar o jogador sem reabrir o painel inteiro. */
+function verificarConquistas(){
+  const novas=[];
+  for(const c of CONQUISTAS){
+    if(CONQUISTAS_DESBLOQUEADAS.has(c.id))continue;
+    if(c.check(st,MODO)){CONQUISTAS_DESBLOQUEADAS.add(c.id);novas.push(c);}
+  }
+  if(novas.length)salvarConquistas();
+  return novas;
+}
 
 /* Em vez de rotular 28 eventos à mão (e errar quando alguém editar o texto),
    a direção sai do próprio efeito: aplica num clone e compara os atributos.
@@ -1440,7 +1517,7 @@ function aplicarDilema(box,d,txt,jBruto){
      neutra); o custo em ranking é mecânica nova — dilema nunca tocou
      st.standing antes de hoje — e por isso fica fixo aqui, não depende da
      IA lembrar de aplicar um número certo. */
-  if(j&&j.evitouLesao)st.standing=Math.max(.05,st.standing-.06);
+  if(j&&j.evitouLesao){st.standing=Math.max(.05,st.standing-.06);st.evitouAlgumaVez=true;}
 
   const antes=st.followers;
   st.followers=Math.max(120,Math.round(st.followers*(1+dSeg)));
@@ -2864,6 +2941,40 @@ function fecharPainelMomentos(){
   if(p)p.style.display="none";
 }
 
+/* Visual de documento, de propósito — sem ícone, sem imagem, sem canto
+   arredondado. A tipografia mono da página inteira já faz o trabalho. "✓"/
+   "·" são caracteres de texto, não ícone. Igual ao painel de cards: não
+   toca em playing/auto/dilemaAberto, o automático continua rodando por
+   baixo se o jogador não fechar. */
+function abrirPainelConquistas(){
+  const p=document.getElementById("painelConquistas");
+  p.innerHTML="";
+  const box=el("div","painel-momentos conquistas");
+  const n=CONQUISTAS_DESBLOQUEADAS.size,total=CONQUISTAS.length;
+  box.appendChild(el("h3","",`Conquistas (${n}/${total})`));
+  CONQUISTAS.forEach(c=>{
+    const ok=CONQUISTAS_DESBLOQUEADAS.has(c.id);
+    const item=el("div","conquista"+(ok?" ok":""));
+    item.appendChild(el("div","conquista-nome",(ok?"✓ ":"· ")+c.nome));
+    item.appendChild(el("div","conquista-desc",c.desc));
+    box.appendChild(item);
+  });
+  const plat=el("div","conquista"+(n>=total?" ok":""));
+  plat.appendChild(el("div","conquista-nome",(n>=total?"✓ ":"· ")+"PLATINA"));
+  plat.appendChild(el("div","conquista-desc",
+    n>=total?"Todas as conquistas desbloqueadas.":`Faltam ${total-n} pra completar.`));
+  box.appendChild(plat);
+  const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
+  fechar.onclick=fecharPainelConquistas;
+  box.appendChild(fechar);
+  p.appendChild(box);
+  p.style.display="flex";
+}
+function fecharPainelConquistas(){
+  const p=document.getElementById("painelConquistas");
+  if(p)p.style.display="none";
+}
+
 function urlDesafio(){
   const base=location.origin+location.pathname;
   /* O modo entra no link porque ele troca o pool: a mesma semente em modos
@@ -3432,7 +3543,8 @@ function startCareer(){
       standing:.18,peak:.18,events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,
       fan:5.0,followers:2400,peakFollowers:2400,
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
-      exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null};
+      exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
+      vezesCampeao:0,subLosses:0,evitouAlgumaVez:false};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -3447,12 +3559,17 @@ function startCareer(){
   /* O som saiu daqui: mudo e volume moram no painel da engrenagem. */
   const cardsb=el("button","btn btn-ghost btn-sm","Cards");cardsb.id="cardsb";
   cardsb.onclick=abrirPainelMomentos;
+  const conqb=el("button","btn btn-ghost btn-sm","Conquistas");conqb.id="conqb";
+  conqb.onclick=abrirPainelConquistas;
   const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  row.append(next,ab,sp,cardsb,hint);app.appendChild(row);
+  row.append(next,ab,sp,cardsb,conqb,hint);app.appendChild(row);
   /* overlay do card de momento: criado uma vez, escondido, nunca trava
      nextFight()/automático — ver painel-overlay no CSS. */
   const painel=el("div","painel-overlay");painel.id="painelMomentos";
   painel.style.display="none";app.appendChild(painel);
+  const painelC=el("div","painel-overlay");painelC.id="painelConquistas";
+  painelC.style.display="none";app.appendChild(painelC);
+  atualizarBadgeConquistas();
 
   const carr=el("div","carreira");
   const ficha=el("div","ficha");ficha.id="ficha";
@@ -3484,6 +3601,15 @@ function atualizarControles(){
   else if(cont)cont.textContent=`${fightNo} de ${TOTAL_FIGHTS} · ${st.wins}-${st.losses}`;
   const cb=document.getElementById("cardsb");
   if(cb){const n=(st.momentos||[]).length;cb.textContent=n?`Cards (${n})`:"Cards";}
+  atualizarBadgeConquistas();
+}
+/* Contagem é GLOBAL (localStorage), não da carreira atual — troféu não
+   zera quando você começa outra. */
+function atualizarBadgeConquistas(){
+  const b=document.getElementById("conqb");
+  if(!b)return;
+  const n=CONQUISTAS_DESBLOQUEADAS.size,total=CONQUISTAS.length;
+  b.textContent=`Conquistas (${n}/${total})`;
 }
 function cycleSpeed(){
   speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
@@ -3628,6 +3754,10 @@ function finishFight(opp,r,titleFight){
       if(st.title){
         st.defesas=(st.defesas||0)+1;
         if(RANKING&&RANKING.lista)st.desafianteIdx=Math.min((st.desafianteIdx||1)+1,RANKING.lista.length-1);
+      }else{
+        /* conta AQUISIÇÃO nova do cinturão (1ª vez ou reconquista), não
+           defesa — usado pela conquista "Fênix" (perder e reconquistar). */
+        st.vezesCampeao=(st.vezesCampeao||0)+1;
       }
       st.title=true;st.foiCampeao=true;st.exCampeao=null;
       if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
@@ -3642,6 +3772,7 @@ function finishFight(opp,r,titleFight){
   }else{
     st.losses++;st.streakL++;st.streakW=0;
     if(isKO)st.koLosses++;
+    if(r.method==="Finalização")st.subLosses=(st.subLosses||0)+1;
     if(titleFight&&st.title){
       /* defesas só incrementa em vitória (acima), então defesas===0 aqui
          significa que esta é a PRIMEIRA defesa perdida — só nesse caso o
@@ -3747,7 +3878,7 @@ function finishFight(opp,r,titleFight){
     atualizarControles();
     abrirDilema()
       .catch(()=>{})                       // falha do dilema não pode travar a carreira
-      .then(()=>{dilemaAberto=false;atualizarControles();renderFicha();});
+      .then(()=>{dilemaAberto=false;verificarConquistas();atualizarControles();renderFicha();});
   }else if(fightNo%2===0||finish){
     const d=drawEvent(st,rng,usedEvents,rareUsed);
     if(d){
@@ -3770,6 +3901,7 @@ function finishFight(opp,r,titleFight){
       }
     }
   }
+  verificarConquistas();
   atualizarControles();renderFicha();
 
   /* "Terminou a luta 1", "terminou a luta 5" e "terminou as 22". fightNo já

@@ -31,7 +31,7 @@ depois confere motor, draft, escolhas e treino.
 
 Partes: `interface`, `motor`, `draft`, `escolhas`, `treino`, `desafio`,
 `divisoes`, `pesos`, `cinturao`, `lesao`, `conteudo`, `aivivo`, `momentos`,
-`resultado`. A interface aceita divisão e modo:
+`resultado`, `conquistas`. A interface aceita divisão e modo:
 `node testar.js interface 6 lenda`.
 
 **`node --check` não basta.** Ele só valida sintaxe: uma função que não existe

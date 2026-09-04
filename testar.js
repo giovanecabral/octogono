@@ -1249,6 +1249,245 @@ function testarMomentos() {
 }
 
 /* ================================================================== *
+ * 7d. CONQUISTAS — cada check() na hora certa, no limite certo
+ * ================================================================== */
+/* st montado à mão pra cada conquista, nos dois lados do limite (a favor
+   do pedido explícito: "defendeu 4 não desbloqueia, defendeu 5 sim") — não
+   carreira simulada, porque o que se testa é a FUNÇÃO check(), pura sobre
+   st. A parte de fiação (verificarConquistas() persistindo em localStorage
+   de verdade, chamada depois de finishFight() real) tem um bloco à parte,
+   mais abaixo, com um localStorage falso injetado no sandbox. */
+function testarConquistas() {
+  console.log("\n" + cinza("conquistas: cada check() no limite certo, e a persistência de verdade"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__cq=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    /* fightNo:TOTAL_FIGHTS por padrão — a maioria dos limites testados aqui
+       é "no fim da carreira, X é verdade". Os 4 que dependem disso
+       (invicto, nunca_finalizado, queixo_de_granito, idolo) têm um teste
+       à parte provando que NO MEIO da carreira, mesmo com a condição já
+       satisfeita, ainda não desbloqueiam — achado testando: sem o
+       fightNo>=TOTAL_FIGHTS, "invicto" desbloqueava na luta 1. */
+    const base=()=>({wins:0,losses:0,defesas:0,vezesCampeao:0,title:false,
+      momentos:[],subLosses:0,koLosses:0,longestW:0,kdTaken:0,evitouAlgumaVez:false,
+      peak:0,followers:0,fightNo:TOTAL_FIGHTS});
+    const acha=id=>CONQUISTAS.find(c=>c.id===id);
+
+    let st1=base(); st1.wins=1;
+    passo("primeiro_sangue: 1 vitória desbloqueia", acha("primeiro_sangue").check(st1));
+    let st0=base(); st0.wins=0;
+    passo("primeiro_sangue: 0 vitórias NÃO desbloqueia", !acha("primeiro_sangue").check(st0));
+
+    passo("invicto: 0 derrotas desbloqueia", acha("invicto").check(base()));
+    let stL=base(); stL.losses=1;
+    passo("invicto: 1 derrota NÃO desbloqueia", !acha("invicto").check(stL));
+    let stMeio=base(); stMeio.fightNo=10;
+    passo("invicto: 0 derrotas NO MEIO da carreira (luta 10) NÃO desbloqueia — só no fim",
+      !acha("invicto").check(stMeio));
+
+    let st5=base(); st5.defesas=5;
+    passo("reinado: 5 defesas desbloqueia", acha("reinado").check(st5));
+    let st4=base(); st4.defesas=4;
+    passo("reinado: 4 defesas NÃO desbloqueia", !acha("reinado").check(st4));
+
+    let stF2=base(); stF2.vezesCampeao=2;
+    passo("fenix: 2ª conquista do cinturão desbloqueia", acha("fenix").check(stF2));
+    let stF1=base(); stF1.vezesCampeao=1;
+    passo("fenix: só 1ª conquista NÃO desbloqueia", !acha("fenix").check(stF1));
+
+    let stLC=base(); stLC.title=true;
+    passo("lenda_coroada: campeão no modo lenda desbloqueia", acha("lenda_coroada").check(stLC,"lenda"));
+    passo("lenda_coroada: campeão no modo normal NÃO desbloqueia", !acha("lenda_coroada").check(stLC,"normal"));
+    let stLC2=base(); stLC2.title=false;
+    passo("lenda_coroada: modo lenda SEM cinturão NÃO desbloqueia", !acha("lenda_coroada").check(stLC2,"lenda"));
+
+    let stNS=base(); stNS.momentos=[{tipo:"lesao"}];
+    passo("nao_sente: momento de lesão vencida desbloqueia", acha("nao_sente").check(stNS));
+    passo("nao_sente: sem momento de lesão NÃO desbloqueia", !acha("nao_sente").check(base()));
+
+    passo("nunca_finalizado: 0 finalizações sofridas desbloqueia", acha("nunca_finalizado").check(base()));
+    let stSL=base(); stSL.subLosses=1;
+    passo("nunca_finalizado: 1 finalização sofrida NÃO desbloqueia", !acha("nunca_finalizado").check(stSL));
+
+    passo("queixo_de_granito: 0 nocautes sofridos desbloqueia", acha("queixo_de_granito").check(base()));
+    let stKO=base(); stKO.koLosses=1;
+    passo("queixo_de_granito: 1 nocaute sofrido NÃO desbloqueia", !acha("queixo_de_granito").check(stKO));
+
+    let stW8=base(); stW8.longestW=8;
+    passo("fogo: sequência de 8 desbloqueia", acha("fogo").check(stW8));
+    let stW7=base(); stW7.longestW=7;
+    passo("fogo: sequência de 7 NÃO desbloqueia", !acha("fogo").check(stW7));
+
+    let stKd6=base(); stKd6.kdTaken=6;
+    passo("levantou_de_novo: 6 quedas sofridas desbloqueia", acha("levantou_de_novo").check(stKd6));
+    let stKd5=base(); stKd5.kdTaken=5;
+    passo("levantou_de_novo: 5 quedas sofridas NÃO desbloqueia", !acha("levantou_de_novo").check(stKd5));
+
+    let stZ=base(); stZ.momentos=[{tipo:"upset"}];
+    passo("zebra: momento de upset desbloqueia", acha("zebra").check(stZ));
+    passo("zebra: sem momento de upset NÃO desbloqueia", !acha("zebra").check(base()));
+
+    let stMR=base(); stMR.momentos=[{tipo:"ko"}];
+    passo("mao_rapida: momento de KO rápido desbloqueia", acha("mao_rapida").check(stMR));
+    passo("mao_rapida: sem momento de KO rápido NÃO desbloqueia", !acha("mao_rapida").check(base()));
+
+    let stP=base(); stP.evitouAlgumaVez=true;
+    passo("prudente: evitou risco físico desbloqueia", acha("prudente").check(stP));
+    passo("prudente: nunca evitou NÃO desbloqueia", !acha("prudente").check(base()));
+
+    let stT98=base(); stT98.peak=.98;
+    passo("topo_da_divisao: peak .98 desbloqueia", acha("topo_da_divisao").check(stT98));
+    let stT97=base(); stT97.peak=.97;
+    passo("topo_da_divisao: peak .97 NÃO desbloqueia", !acha("topo_da_divisao").check(stT97));
+
+    let stI5=base(); stI5.followers=LIMIAR_IDOLO;
+    passo("idolo: seguidores no limiar desbloqueia", acha("idolo").check(stI5));
+    let stI4=base(); stI4.followers=LIMIAR_IDOLO-1;
+    passo("idolo: 1 seguidor abaixo do limiar NÃO desbloqueia", !acha("idolo").check(stI4));
+
+    passo("15 conquistas cadastradas (mais a platina, calculada, não é uma delas)",
+      CONQUISTAS.length===15);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__cq || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+
+  /* Persistência de verdade: localStorage FALSO injetado (criarAmbiente()
+     não tem localStorage nenhum, de propósito — mesmo motivo do áudio).
+     Prova: 1) desbloqueia e grava; 2) não desbloqueia a mesma duas vezes
+     nem regrava à toa; 3) sobrevive a um "reload" (novo contexto, mesmo
+     localStorage); 4) sem localStorage nenhum (throw ao chamar), não
+     derruba a carreira. */
+  const fakeLS = (() => {
+    let dados = {};
+    return {
+      getItem: k => (k in dados ? dados[k] : null),
+      setItem: (k, v) => { dados[k] = String(v); },
+      _dump: () => dados,
+    };
+  })();
+  const env2 = criarAmbiente();
+  env2.sandbox.localStorage = fakeLS;
+  vm.createContext(env2.sandbox);
+  const corpo2 = `
+;globalThis.__cq2=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    rng=mulberry32(1); fightNo=1;
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:1,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
+        exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
+        vezesCampeao:0,subLosses:0,evitouAlgumaVez:false};
+    const opp={name:"Rival",rating:.5};
+
+    // ainda sem nada: painel vazio, badge em 0
+    passo("começa com 0 desbloqueadas", CONQUISTAS_DESBLOQUEADAS.size===0);
+
+    // vitória real, via finishFight() de verdade — finishFight() já chama
+    // verificarConquistas() sozinho (é o hook de produção), então o
+    // desbloqueio acontece DENTRO dela, não precisa chamar de novo aqui.
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("1ª vitória de verdade desbloqueia primeiro_sangue (via finishFight(), não chamada manual)",
+      CONQUISTAS_DESBLOQUEADAS.has("primeiro_sangue"));
+    passo("gravou em localStorage", JSON.parse(localStorage.getItem("conquistas")).includes("primeiro_sangue"));
+
+    // rodar de novo (chamada manual, redundante) NÃO desbloqueia a mesma outra vez
+    const novas2=verificarConquistas();
+    passo("checar de novo não repete a mesma conquista", !novas2.some(c=>c.id==="primeiro_sangue"));
+
+    // "reload": novo Set lido do MESMO localStorage
+    CONQUISTAS_DESBLOQUEADAS=new Set(JSON.parse(localStorage.getItem("conquistas")||"[]"));
+    passo("sobrevive a reload (novo Set, mesmo localStorage)",
+      CONQUISTAS_DESBLOQUEADAS.has("primeiro_sangue") && CONQUISTAS_DESBLOQUEADAS.size===1);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo2, env2.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  persistência: o cenário nem rodou: " + e.message));
+    return false;
+  }
+  const passos2 = env2.sandbox.__cq2 || [];
+  for (const p of passos2) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+
+  /* Sem localStorage NENHUM (getItem/setItem lançam, igual navegador que
+     bloqueia) — não pode derrubar a carreira. criarAmbiente() já não tem
+     localStorage, então isto roda no ambiente padrão mesmo. */
+  const env3 = criarAmbiente();
+  vm.createContext(env3.sandbox);
+  const corpo3 = `
+;globalThis.__cq3=(function(){
+  const passos=[];
+  try{
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    fightNo=1;
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:1,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
+        exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
+        vezesCampeao:1,subLosses:0,evitouAlgumaVez:false};
+    const novas=verificarConquistas();
+    passos.push({nome:"sem localStorage: verificarConquistas() não derruba (roda e retorna array)",
+      ok:Array.isArray(novas)});
+  }catch(e){
+    passos.push({nome:"sem localStorage: NÃO PODE LANÇAR — "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo3, env3.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  sem localStorage derrubou o script inteiro: " + e.message));
+    return false;
+  }
+  const passos3 = env3.sandbox.__cq3 || [];
+  for (const p of passos3) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+
+  return ok && passos.length > 0 && passos2.length > 0 && passos3.length > 0;
+}
+
+/* ================================================================== *
  * 7c. RESULTADO_LUTA — os buracos achados jogando ("KO" sem "nocaute",
  *     "médico parou" sem "árbitro") ficaram fechados sem abrir falso
  *     positivo? Sem rede — testa só o regex, que é REDE DE BAIXO (a defesa
@@ -1564,6 +1803,7 @@ try {
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
   else if (cmd === "momentos") ok = testarMomentos();
+  else if (cmd === "conquistas") ok = testarConquistas();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();

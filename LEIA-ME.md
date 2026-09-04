@@ -966,16 +966,44 @@ cd .. && pip3 install pandas && python3 atualizar-dados.py && node testar.js
 
 ## Dívidas conhecidas
 
-**O teste de escolhas reimplementa a seleção de adversário.** O `testar.js escolhas`
-copia a lógica de `candidatos()` em vez de chamar a função do jogo, e as duas
-divergem na contagem de vitórias. Medindo contra o código real (a escada de
-adversários no `index.html`), a ordem é a esperada: enfrentar fracos dá 18,4
-vitórias e leva ao topo em 12% das carreiras; enfrentar fortes dá 14,4 vitórias
-e leva ao topo em 97%. O teste mostra o inverso, então a cópia dele está errada.
+**RESOLVIDO — `testar.js escolhas` reimplementava a seleção de adversário.**
+Chamava `camp.fx(me)` (nunca existiu — o motor usa `camp.alvos` via
+`aplicarCamp()`) e reimplementava a escada em vez de chamar `candidatos()`.
+Reescrito pra chamar as funções reais (mesmo padrão de `testarCinturao`);
+volta a aprovar/reprovar em vez de só relatar. Medido com o código de
+verdade: acessível 28% chegam ao topo, parelho 89%, perigoso 99%.
 
-Por isso a contagem de vitórias virou só relatório, sem aprovar nem reprovar —
-um teste em que não se confia é pior que teste nenhum. A correção de verdade é
-expor `candidatos()` e chamar a original.
+## Conquistas
+
+Troféu local, `localStorage`, sem conta e sem backend — 15 conquistas mais
+uma platina calculada (todas desbloqueadas). Cada uma é uma função pura
+`check(st,modo)` sobre estado que o motor já mantém (`CONQUISTAS`, perto do
+RARE/LEGACY). Nenhuma depende de a IA ter classificado nada: `momentos`
+(usado por 3 delas — lesão vencida, zebra, KO rápido) já é decidido pelo
+motor, não pela IA; seguidores/fã têm uma fração pequena vinda de dilema,
+mas a maior parte é hype de luta real.
+
+**Achado escrevendo o teste, não jogando: 4 conquistas desbloqueavam no
+MEIO da carreira.** "Invicto" (`losses===0`) é trivialmente verdade antes
+da primeira derrota acontecer — sem guarda, desbloqueava na luta 1. Mesmo
+problema em "nunca finalizado", "queixo de granito" e "ídolo". As 4 ganharam
+`fightNo>=TOTAL_FIGHTS` — só valem no fim de verdade. As outras 11 são fatos
+permanentes assim que acontecem (defender 5 vezes, reconquistar, pico da
+divisão) e não precisam da guarda — desbloquear na hora é o comportamento
+certo pra elas.
+
+**Medido, não suposto (180 carreiras, bot varia dificuldade): 4,17/15
+desbloqueadas por carreira em média (28%)** — dentro do "menos da metade".
+Por conquista: `primeiro_sangue` 100% (deliberadamente quase garantida, é a
+de boas-vindas), `topo_da_divisao` 91% (alto demais pro que deveria ser
+"chegar perto do topo" — candidato a subir o limiar de `.98`, decisão do
+dono do projeto), `fogo` 62%, o resto entre 33% e 2% (`invicto`). `lesão`/
+`prudente`/`lenda` não têm amostra offline (dependem de IA ou de o bot
+rodar em modo lenda, que a medição não cobriu).
+
+```bash
+node testar.js conquistas   # cada check() no limite certo + persistência de verdade
+```
 
 ## O que falta
 
