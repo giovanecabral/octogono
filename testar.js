@@ -139,7 +139,8 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        uma closure lê o binding ao vivo toda vez que é chamada. */
     vm.runInContext(exportar(lerScript(), ["ready", "screenName", "screenReport", "DIVISOES"])
       + "\ntry{globalThis.__x.ranking=()=>RANKING;}catch(e){}"
-      + "\ntry{globalThis.__x.st=()=>st;}catch(e){}",
+      + "\ntry{globalThis.__x.st=()=>st;}catch(e){}"
+      + "\ntry{globalThis.__x.escolhaAberta=()=>escolhaAberta;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
     console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
@@ -307,6 +308,47 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     camps[n % 3].onclick();
     env.drenar(); await respirar(); env.drenar();     // narração + dilema assíncrono
 
+    /* item 3: escolha na luta, uma vez por luta (só quando o round 1 não
+       terminou o combate). Se apareceu, resolve com uma opção variando por
+       luta (mesma ideia do camp[n%3]) antes de seguir — senão o botão
+       "next" fica travado pra sempre (playing continua true) e reproduz
+       exatamente o "botão travado" que pegou esta refatoração na primeira
+       rodada de teste. */
+    const escBox = env.registro.escolhaLuta;
+    if (escBox && escBox.style.display !== "none") {
+      /* teste explícito pedido: escolha aberta, jogador aperta "Próxima
+         luta" e liga o automático — nada pode acontecer (mesma garantia
+         que testarEscolhaLuta() prova de forma isolada; aqui é a versão
+         de ponta a ponta, com a escolha de verdade na tela). */
+      const fightNoAntes = UI.st().fightNo;
+      env.registro.next.onclick();
+      env.drenar(); await respirar();
+      if (UI.st().fightNo !== fightNoAntes)
+        throw new Error("clicar 'próxima luta' com a escolha aberta avançou a luta");
+      if (escBox.style.display === "none")
+        throw new Error("clicar 'próxima luta' com a escolha aberta fechou o painel sozinho");
+      if (UI.escolhaAberta())
+        throw new Error("clicar 'próxima luta' com a escolha aberta reabriu a tela de adversário por baixo");
+      env.registro.autob.onclick();          // liga o automático com a escolha aberta
+      env.drenar(); await respirar();
+      if (UI.st().fightNo !== fightNoAntes)
+        throw new Error("ligar o automático com a escolha aberta avançou a luta");
+      if (escBox.style.display === "none")
+        throw new Error("ligar o automático com a escolha aberta fechou o painel sozinho");
+      if (UI.escolhaAberta())
+        throw new Error("ligar o automático com a escolha aberta reabriu a tela de adversário por baixo");
+      if (env.registro.autob.textContent !== "Parar automático")
+        throw new Error("automático não ligou (é só UI, deveria ligar mesmo com a escolha aberta)");
+      env.registro.autob.onclick();          // desliga de novo, não interfere no resto do teste
+
+      const opcoes = [env.registro.elPressionar, env.registro.elFechar, env.registro.elManter];
+      const op = opcoes[n % 3];
+      if (!op || !op.onclick) throw new Error("escolha na luta apareceu sem os 3 botões esperados");
+      op.onclick();
+      delete env.registro.elPressionar; delete env.registro.elFechar; delete env.registro.elManter;
+      env.drenar(); await respirar(); env.drenar();
+    }
+
     /* O dilema é montado via innerHTML e o DOM falso reaproveita o nó do
        dilema anterior. Só vale se o botão estiver ativo e sem resposta ainda. */
     const campo = achar("dilresp"), botao = achar("dilgo");
@@ -427,6 +469,65 @@ function testarMotor() {
     console.log(`  ${bom ? verde("ok   ") : vermelho("fora ")} ${x} ${pct.toFixed(0)}% x ${(100 - pct).toFixed(0)}% ${y}` +
       (bom ? "" : vermelho("  << determinístico demais, o draft deixa de importar")));
   }
+  return ok;
+}
+
+/* ================================================================== *
+ * 2b. DRIVER ROUND-A-ROUND — o item 3 ("escolha na luta") não muda a
+ *     calibração do motor. Mesma medida de testarMotor() (6.000 lutas,
+ *     mesmo alvo), só que rodando o driver round a round (o que lutar()
+ *     roda de verdade agora) em vez de simulateFight() numa chamada só.
+ *     mod=1 é o gancho inerte (item 3, condição A: "confirme KO/SUB/DEC
+ *     idêntico" ANTES de calibrar); um mod!==1 mede o efeito de um valor
+ *     de calibração candidato aplicado sempre, em toda luta.
+ * ================================================================== */
+function testarDriverMotor(mod = 1, N = 6000) {
+  console.log("\n" + cinza(`${N} lutas via driver round-a-round (mod ${mod}${mod === 1 ? " — gancho inerte" : ""})`));
+  const M = carregarMotor(), F = lerLutadores();
+  const ALVO = { KO: 33, SUB: 19, DEC: 48 };
+  const byDiv = {};
+  F.forEach(f => (byDiv[f.division] ||= []).push(f));
+  const divs = Object.keys(byDiv);
+
+  let m = {}, n = 0, kd = 0;
+  for (let i = 0; i < N; i++) {
+    const p = byDiv[divs[i % divs.length]];
+    const a = p[(i * 7919) % p.length], b = p[(i * 104729 + 3) % p.length];
+    if (a.name === b.name) continue;
+    const rng = M.mulberry32(i + 1);
+    const form = () => 1 + (rng() + rng() + rng() - 1.5) / 1.5 * M.TUNING.formSpread;
+    const A = M.mkState(a, form()), B = M.mkState(b, form());
+    const log = [];
+    const push = (round, clock, kind, text) => log.push({ round, clock, kind, text });
+    const kds = () => ({ [A.ref.name]: A.knockdowns, [B.ref.name]: B.knockdowns });
+    const fin = (w, l, round, clock, met) => {
+      push(round, clock, "fin", `${w.ref.name} vence por ${met.toLowerCase()}`);
+      return { winner: w.ref.name, loser: l.ref.name, method: met, round, clock, cards: null, log, knockdowns: kds() };
+    };
+    const scores = { sa: 0, sb: 0 };
+    let res = null;
+    for (let round = 1; round <= 3 && !res; round++) {
+      res = M.simularRound(A, B, round, rng, push, fin, scores);
+      if (round === 1 && !res) A.form *= mod;      // mesmo gancho de abrirEscolhaLuta()/lutar()
+    }
+    if (!res) {
+      const w = scores.sa > scores.sb ? A : scores.sb > scores.sa ? B : (rng() < .5 ? A : B), l = w === A ? B : A;
+      res = { winner: w.ref.name, loser: l.ref.name, method: "Decisão", round: 3, clock: "0:00",
+        cards: scores.sa + "-" + scores.sb, log, knockdowns: kds() };
+    }
+    const k = /ocaute/.test(res.method) ? "KO" : res.method === "Finalização" ? "SUB" : "DEC";
+    m[k] = (m[k] || 0) + 1; n++;
+    kd += Object.values(res.knockdowns || {}).reduce((x, y) => x + y, 0);
+  }
+  let ok = true;
+  for (const k of ["KO", "SUB", "DEC"]) {
+    const v = 100 * (m[k] || 0) / n, bom = Math.abs(v - ALVO[k]) <= 4;
+    if (!bom) ok = false;
+    console.log(`  ${bom ? verde("ok   ") : vermelho("fora ")} ${k.padEnd(4)} ${v.toFixed(0).padStart(3)}%  ${cinza("alvo " + ALVO[k] + "%")}`);
+  }
+  const q = kd / n, qok = q >= .40 && q <= .70;
+  if (!qok) ok = false;
+  console.log(`  ${qok ? verde("ok   ") : vermelho("fora ")} quedas por luta ${q.toFixed(2)}  ${cinza("faixa 0.40-0.70")}`);
   return ok;
 }
 
@@ -2024,6 +2125,7 @@ try {
   else if (cmd === "conquistas") ok = testarConquistas();
   else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
   else if (cmd === "driverluta") ok = testarDriverRodada();
+  else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();

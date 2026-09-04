@@ -3652,7 +3652,8 @@ function startCareer(){
   const stage=el("div","stage");stage.id="stage";stage.style.display="none";
   const live=el("div","live");live.id="live";
   const phone=el("div","phone");phone.id="phone";phone.style.visibility="hidden";
-  stage.append(live,phone);col.appendChild(stage);
+  const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
+  stage.append(live,phone,escLuta);col.appendChild(stage);
   const bouts=el("div","bouts");bouts.id="bouts";col.appendChild(bouts);
   renderFicha();
 }
@@ -3729,6 +3730,61 @@ function nextFight(){
   telaAdversario();
 }
 
+/* Gancho inerte de propósito neste commit (item 3, condição A): 1 = a
+   escolha não muda nada ainda, só prova que o driver round a round por si
+   só não desloca KO/SUB/DEC (node testar.js drivermotor 1 6000 — mesmos
+   34/19/46/0.59 de testarMotor()). Calibrado no PRÓXIMO commit via 1.200
+   lutas por opção, alvo 0,5-0,8 vitórias em 22 pra "sempre certa" contra
+   "sempre errada" (PENDENCIAS, item 3). */
+const MOD_ESCOLHA_LUTA=1;
+
+/* Escolha na luta — item 3: uma vez por luta, só depois do primeiro round
+   que ela alcança sem terminar nele. Texto ancorado no scouting REAL do
+   round (burst/queda/controle), não um menu solto. Automático nunca pausa
+   — sempre neutro (mod 1/1, sem gastar rng novo), igual ao jeito que ele já
+   escolhe adversário/camp sozinho. */
+function abrirEscolhaLuta(scouting,opp,onEscolher){
+  if(auto){onEscolher(1,1);return;}
+  const s=scouting||{burstA:0,burstB:0,tdA:0,tdB:0,ctrlA:0,ctrlB:0};
+  let cabecalho;
+  if(s.ctrlB>=3)cabecalho=`${opp.name} passou boa parte do round te segurando no chão.`;
+  else if(s.tdB>0)cabecalho=`${opp.name} te derrubou ${s.tdB===1?"uma vez":s.tdB+" vezes"} no primeiro round.`;
+  else if(s.burstB>=s.burstA+3)cabecalho=`${opp.name} acertou muito mais que você na troca — ${s.burstB} a ${s.burstA}.`;
+  else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca — ${s.burstA} a ${s.burstB}.`;
+  else cabecalho=`Round parelho, nada decidido ainda.`;
+
+  const box=document.getElementById("escolhaLuta");
+  box.innerHTML="";
+  box.style.display="";
+  box.appendChild(el("div","el-cab",cabecalho));
+  const opts=el("div","el-opts");
+  box.appendChild(opts);
+  const fechar=()=>{box.style.display="none";box.innerHTML="";};
+  const botao=(id,texto,modA,modB)=>{
+    const b=el("button","btn btn-ghost",texto);
+    b.id=id;
+    b.onclick=()=>{fechar();onEscolher(modA,modB);};
+    opts.appendChild(b);
+  };
+  botao("elPressionar","Pressionar mais",1+MOD_ESCOLHA_LUTA,1);
+  botao("elFechar","Fechar o jogo dele",1,1-MOD_ESCOLHA_LUTA);
+  botao("elManter","Manter o ritmo",1,1);
+}
+
+/* Dispara o prefetch do feed e entrega pra finishFight(). Antes disto era
+   uma chamada só (simulateFight() decidia a luta inteira ANTES de existir
+   round 1 na tela), então dava pra prefetchar no instante 0 e deixar
+   resolver nos ~12s de narração. Com o driver round a round (item 3) o
+   resultado só existe quando o ÚLTIMO round termina — perde parte da
+   sobreposição, mas ainda sobra o tempo de finishFight()/troca de tela
+   antes do feed aparecer de verdade. Cadência de chamada intacta: só
+   lutas pares ou com finish, ver testarDriverRodada() e o item 1. */
+function finalizarLuta(opp,res,titleFight,won0,kd0,kdt0){
+  const finish0=res.method!=="Decisão";
+  if(fightNo%2===0||finish0)
+    prefetchFeed(res,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
+  finishFight(opp,res,titleFight);
+}
 function lutar(escolhido,camp){
   escolhaAberta=false;
   fightNo++;st.fightNo=fightNo;
@@ -3744,23 +3800,77 @@ function lutar(escolhido,camp){
      ou pick automático. Recalcular aqui com tituloLiberado() de novo poderia
      consumir holdRng outra vez e discordar do que a tela mostrou. */
   const titleFight=!!st.tituloEstaLuta;
-  const r=simulateFight(comCamp,opp,{seed:Math.floor(rng()*1e9),rounds:titleFight?5:3});
-  const won0=r.winner===me.name;
-  const kd0=r.knockdowns[opp.name]||0, kdt0=r.knockdowns[me.name]||0;
-  /* dispara agora; resolve durante os ~12s de narração. Só chama a IA em
-     lutas pares ou com finish — mesma cadência que drawEvent() já usa pro
-     evento local (linha ~3948). O molde local de resolveFeed() já cobre
-     as lutas puladas sem quebra nenhuma; corta ~metade das chamadas de
-     feed, que medido é a maior fatia de ia_null (50/71 numa leva de 3
-     carreiras) sem perder nada nas lutas decisivas. */
-  const finish0=r.method!=="Decisão";
-  if(fightNo%2===0||finish0)
-    prefetchFeed(r,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
-  narrate(opp,r,titleFight);
+  const rounds=titleFight?5:3;
+
+  /* Driver round a round (item 3, "escolha na luta"): o que simulateFight()
+     fazia por dentro numa chamada só agora roda aqui, round a round, pra
+     abrir uma pausa real de escolha depois do primeiro round que a luta
+     alcança sem terminar nele. Consumo de rng NA MESMA ORDEM de antes — um
+     seed por luta, form pros dois lutadores, depois um round de cada vez —
+     provado bit a bit igual em testarDriverRodada() (node testar.js
+     driverluta): rodar simularRound() em loop com o mesmo rng/A/B/scores
+     bate exatamente com simulateFight() numa chamada só. */
+  const rngL=mulberry32(Math.floor(rng()*1e9));
+  const form=()=>1+(rngL()+rngL()+rngL()-1.5)/1.5*TUNING.formSpread;
+  const A=mkState(comCamp,form()),B=mkState(opp,form());
+  const log=[];
+  const push=(round,clock,kind,text)=>log.push({round,clock,kind,text});
+  const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
+  const fin=(w,l,round,clock,m)=>{
+    push(round,clock,"fin",`${w.ref.name} vence por ${m.toLowerCase()}`);
+    return{winner:w.ref.name,loser:l.ref.name,method:m,round,clock,cards:null,log,knockdowns:kds()};
+  };
+  const scores={sa:0,sb:0};
+
+  iniciarTelaLuta(opp,titleFight);
+
+  const montarDecisao=()=>{
+    const w=scores.sa>scores.sb?A:scores.sb>scores.sa?B:(rngL()<.5?A:B),l=w===A?B:A;
+    log.push({round:rounds,clock:"0:00",kind:"fin",
+      text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa,scores.sb)}-${Math.min(scores.sa,scores.sb)}.`});
+    return{winner:w.ref.name,loser:l.ref.name,method:"Decisão",round:rounds,clock:"0:00",
+      cards:scores.sa+"-"+scores.sb,log,knockdowns:kds()};
+  };
+  const encerrar=res=>{
+    const won0=res.winner===me.name;
+    const kd0=res.knockdowns[opp.name]||0,kdt0=res.knockdowns[me.name]||0;
+    finalizarLuta(opp,res,titleFight,won0,kd0,kdt0);
+  };
+
+  let round=1,marca=0;
+  const proximaRodada=()=>{
+    /* scouting do round 1: só interessa pra escolha, que só existe uma vez,
+       logo depois do primeiro round que a luta alcança sem terminar */
+    const antes=round===1?{a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,
+                            b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks}:null;
+    const res=simularRound(A,B,round,rngL,push,fin,scores);
+    const trecho=log.slice(marca);marca=log.length;
+    if(res){animarTrecho(trecho,()=>encerrar(res));return;}
+    const scouting=antes&&{burstA:A.sigStrikes-antes.a,burstB:B.sigStrikes-antes.b,
+      tdA:A.takedowns-antes.at,tdB:B.takedowns-antes.bt,
+      ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc};
+    animarTrecho(trecho,()=>{
+      if(round===1){
+        abrirEscolhaLuta(scouting,opp,(modA,modB)=>{
+          A.form*=modA;B.form*=modB;round++;proximaRodada();
+        });
+      }else if(round<rounds){
+        round++;proximaRodada();
+      }else{
+        encerrar(montarDecisao());
+      }
+    });
+  };
+  proximaRodada();
 }
-/* Narração completa: percorre o log tick a tick. O botão de velocidade só
-   divide o intervalo, nunca pula linha — nada de resultado escondido. */
-function narrate(opp,r,titleFight){
+/* Narração: cabeçalho monta UMA vez por luta (iniciarTelaLuta), o log
+   anima em PEDAÇOS (animarTrecho) — desde o item 3 ("escolha na luta"),
+   lutar() é um driver round a round que chama animarTrecho() de novo a
+   cada round, sem remontar o cabeçalho por baixo. animarTrecho() nunca
+   decide o que vem depois de um pedaço — só avisa quem chamou. O botão de
+   velocidade só divide o intervalo, nunca pula linha — nada de resultado
+   escondido. */
+function iniciarTelaLuta(opp,titleFight){
   playing=true;atualizarControles();
   const live=document.getElementById("live");
   document.getElementById("stage").style.display="";
@@ -3772,9 +3882,11 @@ function narrate(opp,r,titleFight){
       </span>
       <span class="rd" id="rdlabel">Round 1</span></div>
     <div class="play" id="play"></div>`;
-  const play=document.getElementById("play"),lines=r.log;let i=0;
+}
+function animarTrecho(lines,aoTerminar){
+  const play=document.getElementById("play");let i=0;
   const step=()=>{
-    if(i>=lines.length){finishFight(opp,r,titleFight);return;}
+    if(i>=lines.length){aoTerminar();return;}
     const L=lines[i++];
     if(L.kind==="rd"&&/^Round/.test(L.text))
       document.getElementById("rdlabel").textContent=`Round ${L.round}`;
