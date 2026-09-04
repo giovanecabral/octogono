@@ -3741,8 +3741,15 @@ function lutar(escolhido,camp){
   const r=simulateFight(comCamp,opp,{seed:Math.floor(rng()*1e9),rounds:titleFight?5:3});
   const won0=r.winner===me.name;
   const kd0=r.knockdowns[opp.name]||0, kdt0=r.knockdowns[me.name]||0;
-  /* dispara agora; resolve durante os ~12s de narração */
-  prefetchFeed(r,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
+  /* dispara agora; resolve durante os ~12s de narração. Só chama a IA em
+     lutas pares ou com finish — mesma cadência que drawEvent() já usa pro
+     evento local (linha ~3948). O molde local de resolveFeed() já cobre
+     as lutas puladas sem quebra nenhuma; corta ~metade das chamadas de
+     feed, que medido é a maior fatia de ia_null (50/71 numa leva de 3
+     carreiras) sem perder nada nas lutas decisivas. */
+  const finish0=r.method!=="Decisão";
+  if(fightNo%2===0||finish0)
+    prefetchFeed(r,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
   narrate(opp,r,titleFight);
 }
 /* Narração completa: percorre o log tick a tick. O botão de velocidade só
