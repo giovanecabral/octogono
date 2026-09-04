@@ -2157,19 +2157,50 @@ const CAMPS=[
   ganho:"queixo e poder",
   alvos:{durability:0.85,kdAvg:0.85},
   contra:["Queixo de ferro","Completo","Nocauteador"]},
+ {id:"fama",nome:"Focar em fama",desc:"Entrevista, patrocínio, rede social. Sem treino essa semana.",
+  ganho:"fama, sem ganho de treino",
+  fama:true,
+  contra:[]},
 ];
+/* Medido nesta leva (item 4): quanto de fã cada uso de "Focar em fama" dá.
+   O custo já é conhecido — é o treino perdido do ciclo (TETO_TREINO). Ver
+   PENDENCIAS item 4 e o relatório desta leva. */
+const GANHO_FAMA_CAMP=.5;
+/* Medidos nesta leva (item 4) — node testar.js dinheiro, 400 carreiras de
+   bot, candidatos()/aplicarCamp()/simulateFight() reais. Meta: treinador
+   melhor acessível entre a luta 6 e a 8 numa carreira mediana — bateu luta
+   7 (mediana), 0/400 carreiras nunca alcançaram. Ver PENDENCIAS item 4. */
+const RENDA_BASE=6000;
+const CUSTO_TREINADOR=54000;
+/* Efeito medido nesta leva (item 4), mesmo rigor de TETO_TREINO — par
+   pareado, 1.200 carreiras com/sem treinador (comprado na luta 7, a
+   mediana medida acima), mesmas seeds: 18,65 vitórias/22 sem, 18,70 com —
+   +0,05. Pequeno, e por um motivo estrutural, não de calibração: o
+   treinador acelera a MESMA curva de retorno decrescente do TETO_TREINO
+   (aplicarCamp() multiplica RITMO_TREINO por treinadorMult), e essa curva
+   já consome a maior parte do teto nos primeiros camps — testado até 3.0x
+   (triplo) e o efeito mal passa de +0,37/22. Aumentar o número aqui não
+   resolve; a mecânica em si tem pouco espaço pra crescer enquanto usar a
+   mesma fórmula. Registrado pro relatório desta leva, não decidido. */
+const MULT_TREINADOR=1.15;
 const ATTR_TREINAVEIS=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
 const RITMO_TREINO=0.30;      // fração do que falta para o teto, por camp
 
 function aplicarCamp(camp){
+  st.campHist=st.campHist||{};
+  st.campHist[camp.id]=(st.campHist[camp.id]||0)+1;
+  /* "Focar em fama" (item 4) pula o treino do ciclo inteiro — o custo É
+     não treinar, não precisa de número novo pra isso. */
+  if(camp.fama){
+    st.fan=Math.max(0,Math.min(10,(st.fan||0)+GANHO_FAMA_CAMP));
+    return;
+  }
   st.treino=st.treino||{};
   for(const [k,peso] of Object.entries(camp.alvos)){
     const atual=st.treino[k]||1;
     const falta=TETO_TREINO-atual;
-    st.treino[k]=atual+falta*RITMO_TREINO*peso;
+    st.treino[k]=atual+falta*RITMO_TREINO*(st.treinadorMult||1)*peso;
   }
-  st.campHist=st.campHist||{};
-  st.campHist[camp.id]=(st.campHist[camp.id]||0)+1;
 }
 /* valor efetivo = base do draft × multiplicador de treino × modificadores de evento */
 function statAtual(k){
@@ -2339,21 +2370,29 @@ function telaCamp(escolhido){
     <div class="camps" id="camps"></div>`;
   const g=document.getElementById("camps");
   CAMPS.forEach(c=>{
-    /* mostra quanto ainda RENDE: sem isso o jogador não percebe o retorno
-       decrescente e continua repetindo um camp que já saturou */
-    const alvos=Object.keys(c.alvos);
-    const restante=alvos.reduce((s,k)=>{
-      const at=(st.treino&&st.treino[k])||1;
-      return s+(TETO_TREINO-at)/(TETO_TREINO-1);
-    },0)/alvos.length;
-    const rot=restante>.72?"rende muito":restante>.4?"ainda rende":
-              restante>.15?"quase no teto":"saturado";
     const vezes=(st.campHist&&st.campHist[c.id])||0;
+    /* "Focar em fama" (item 4) não treina nada — sem barra de retorno
+       decrescente, mostra o ganho de fã fixo em vez disso. */
+    let barra;
+    if(c.fama){
+      barra=`<span class="camp-st">+${GANHO_FAMA_CAMP} de fã${vezes?` · feito ${vezes}x`:""}</span>`;
+    }else{
+      /* mostra quanto ainda RENDE: sem isso o jogador não percebe o retorno
+         decrescente e continua repetindo um camp que já saturou */
+      const alvos=Object.keys(c.alvos);
+      const restante=alvos.reduce((s,k)=>{
+        const at=(st.treino&&st.treino[k])||1;
+        return s+(TETO_TREINO-at)/(TETO_TREINO-1);
+      },0)/alvos.length;
+      const rot=restante>.72?"rende muito":restante>.4?"ainda rende":
+                restante>.15?"quase no teto":"saturado";
+      barra=`<span class="camp-bar"><i style="width:${Math.round(restante*100)}%"></i></span>
+        <span class="camp-st">${rot}${vezes?` · feito ${vezes}x`:""}</span>`;
+    }
     const b=el("button","camp",`<span class="t">${c.nome}</span>
       <span class="d">${c.desc}</span>
       <span class="g">${c.ganho}</span>
-      <span class="camp-bar"><i style="width:${Math.round(restante*100)}%"></i></span>
-      <span class="camp-st">${rot}${vezes?` · feito ${vezes}x`:""}</span>`);
+      ${barra}`);
     b.onclick=()=>{SOM.toque();box.style.display="none";box.innerHTML="";lutar(escolhido,c);};
     g.appendChild(b);
   });
@@ -3042,6 +3081,45 @@ function fecharPainelConquistas(){
   if(p)p.style.display="none";
 }
 
+/* Painel opcional (item 4): comprado uma vez por carreira, permanente até
+   a aposentadoria. Não toca me.__base — treinadorMult só acelera a MESMA
+   curva de RITMO_TREINO que aplicarCamp() já usa (ver comentário de
+   MULT_TREINADOR sobre o efeito ser pequeno de propósito estrutural). */
+function abrirPainelTreinador(){
+  const p=document.getElementById("painelTreinador");
+  p.innerHTML="";
+  const box=el("div","painel-momentos treinador");
+  box.appendChild(el("h3","","Treinador melhor"));
+  const comprado=(st.treinadorMult||1)>1;
+  box.appendChild(el("div","conquista-desc",
+    "Acelera todo camp futuro em "+Math.round((MULT_TREINADOR-1)*100)+"%. Não some no fim da carreira."));
+  box.appendChild(el("div","conquista-desc","Seu caixa: "+fmtNum(st.dinheiro||0)));
+  if(comprado){
+    box.appendChild(el("div","conquista-nome ok","✓ Contratado"));
+  }else{
+    const custo=el("div","conquista-desc","Custa "+fmtNum(CUSTO_TREINADOR));
+    box.appendChild(custo);
+    const buy=el("button","btn btn-sm","Contratar");
+    buy.disabled=(st.dinheiro||0)<CUSTO_TREINADOR;
+    buy.onclick=()=>{
+      if((st.dinheiro||0)<CUSTO_TREINADOR)return;
+      st.dinheiro-=CUSTO_TREINADOR;
+      st.treinadorMult=MULT_TREINADOR;
+      abrirPainelTreinador();          // redesenha já contratado
+    };
+    box.appendChild(buy);
+  }
+  const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
+  fechar.onclick=fecharPainelTreinador;
+  box.appendChild(fechar);
+  p.appendChild(box);
+  p.style.display="flex";
+}
+function fecharPainelTreinador(){
+  const p=document.getElementById("painelTreinador");
+  if(p)p.style.display="none";
+}
+
 function urlDesafio(){
   const base=location.origin+location.pathname;
   /* O modo entra no link porque ele troca o pool: a mesma semente em modos
@@ -3616,7 +3694,8 @@ function startCareer(){
       fan:5.0,followers:2400,peakFollowers:2400,
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
-      vezesCampeao:0,subLosses:0,evitouAlgumaVez:false};
+      vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
+      dinheiro:0,treinadorMult:1};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -3633,14 +3712,18 @@ function startCareer(){
   cardsb.onclick=abrirPainelMomentos;
   const conqb=el("button","btn btn-ghost btn-sm","Conquistas");conqb.id="conqb";
   conqb.onclick=abrirPainelConquistas;
+  const treinb=el("button","btn btn-ghost btn-sm","Treinador");treinb.id="treinb";
+  treinb.onclick=abrirPainelTreinador;
   const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  row.append(next,ab,sp,cardsb,conqb,hint);app.appendChild(row);
+  row.append(next,ab,sp,cardsb,conqb,treinb,hint);app.appendChild(row);
   /* overlay do card de momento: criado uma vez, escondido, nunca trava
      nextFight()/automático — ver painel-overlay no CSS. */
   const painel=el("div","painel-overlay");painel.id="painelMomentos";
   painel.style.display="none";app.appendChild(painel);
   const painelC=el("div","painel-overlay");painelC.id="painelConquistas";
   painelC.style.display="none";app.appendChild(painelC);
+  const painelT=el("div","painel-overlay");painelT.id="painelTreinador";
+  painelT.style.display="none";app.appendChild(painelT);
   atualizarBadgeConquistas();
 
   const carr=el("div","carreira");
@@ -3920,6 +4003,11 @@ function finishFight(opp,r,titleFight){
   const isKO=/ocaute/.test(r.method),finish=r.method!=="Decisão";
   const myKd=r.knockdowns[opp.name]||0,oppKd=r.knockdowns[me.name]||0;
   st.kdGiven+=myKd;st.kdTaken+=oppKd;
+  /* renda por luta (item 4) — paga em toda luta, vitória ou derrota, igual
+     bolsa de MMA de verdade. Sobe com standing: quem está mais alto na
+     divisão ganha mais por luta. st.dinheiro reseta por carreira (não é
+     progressão permanente, é caixa da temporada). */
+  st.dinheiro=(st.dinheiro||0)+RENDA_BASE+Math.round(RENDA_BASE*st.standing);
   /* estado ANTES desta luta — precisa pra saber se um evento é a PRIMEIRA
      vez (cinturão, lesão) e pro upset comparar com quem o jogador era antes
      de vencer, não depois. standing muda logo abaixo; os outros três não

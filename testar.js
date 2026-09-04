@@ -632,7 +632,9 @@ function testarTreino(div = "lightweight") {
   const M = carregarMotor();
   const teto = M.TETO_TREINO, ritmo = M.RITMO_TREINO;
   let ok = true;
-  for (const camp of M.CAMPS) {
+  /* "Focar em fama" (item 4) não treina nada — sem camp.alvos de propósito,
+     não é um camp de atributo, é o resto do sistema (medido em testarDinheiro()). */
+  for (const camp of M.CAMPS.filter(c => !c.fama)) {
     const tr = {};
     for (let i = 0; i < 22; i++)
       for (const [k, peso] of Object.entries(camp.alvos)) {
@@ -795,6 +797,98 @@ function medirPesos(div = "lightweight") {
   console.log("  const WEIGHTS={" + rows.filter(r => usados.includes(r.k))
     .map(r => `${r.k}:${(Math.abs(r.win - 50) / max).toFixed(2)}`).join(",") + "};\n");
   return true;
+}
+
+/* ================================================================== *
+ * 5b. DINHEIRO — item 4: treinador melhor tem que ficar acessível entre
+ *     a luta 6 e a 8 numa carreira mediana. renda_por_luta não depende do
+ *     camp escolhido (só de standing), então o bot aqui nunca escolhe
+ *     "fama" — o camp é irrelevante pra esta medida.
+ * ================================================================== */
+function testarDinheiro(div = "lightweight") {
+  console.log("\n" + cinza("400 carreiras de bot, quando o treinador melhor fica acessível"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__din=(function(){
+  ROSTER=rateAll(${JSON.stringify(lerLutadores())});
+  CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+  DIVISION=${JSON.stringify(div)}; MODO="normal";
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+
+  function draft(rng){
+    let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
+    const f={name:"P",division:DIVISION,sapm:3.2};
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rng,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
+    }
+    f.strAcc=f.strAcc||.45; f.tdAcc=f.tdAcc||.38;
+    return f;
+  }
+
+  function carreira(seed){
+    rng=mulberry32(seed); holdRng=mulberry32((seed^0x9E3779B9)>>>0);
+    me=draft(rng);
+    me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.18,peak:.18,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
+        tituloEstaLuta:false,dinheiro:0,treinadorMult:1};
+    fought=new Set(); usedEvents=new Set(); rareUsed=new Set();
+    const camps=CAMPS.filter(c=>!c.fama);
+    let primeiraLutaAcessivel=null;
+    for(let i=0;i<22;i++){
+      const opts=candidatos();
+      const escolhido=opts[Math.min(1,opts.length-1)];
+      const opp=escolhido.f; fought.add(opp.name);
+      aplicarCamp(camps[i%camps.length]);
+      const comCamp=lutadorEfetivo();
+      const r=simulateFight(comCamp,opp,{seed:Math.floor(rng()*1e9)});
+      if(r.winner===me.name){
+        st.wins++; st.standing=Math.min(1,st.standing+escolhido.ganho);
+      }else{
+        const g=escolhido.ganho;
+        st.standing=Math.max(.05,st.standing-(g<=.05?.13:g>=.12?.06:.09));
+      }
+      st.dinheiro+=RENDA_BASE+Math.round(RENDA_BASE*st.standing);
+      st.fightNo=i+1;
+      if(primeiraLutaAcessivel===null&&st.dinheiro>=CUSTO_TREINADOR)primeiraLutaAcessivel=i+1;
+    }
+    return {dinheiroFinal:st.dinheiro, primeiraLutaAcessivel};
+  }
+
+  const resultados=[];
+  for(let s=0;s<400;s++) resultados.push(carreira(9000+s));
+  return {RENDA_BASE,CUSTO_TREINADOR,resultados};
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  não rodou: " + e.message) + "\n" + cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const out = env.sandbox.__din;
+  if (!out) { console.log(vermelho("  sem resultado")); return false; }
+  const { RENDA_BASE, CUSTO_TREINADOR, resultados } = out;
+  const acessiveis = resultados.map(r => r.primeiraLutaAcessivel).filter(x => x != null).sort((a, b) => a - b);
+  const nunca = resultados.length - acessiveis.length;
+  const mediana = acessiveis.length ? acessiveis[Math.floor(acessiveis.length / 2)] : null;
+  const dentro = mediana !== null && mediana >= 6 && mediana <= 8;
+  console.log(`  ${cinza("RENDA_BASE=" + RENDA_BASE + "  CUSTO_TREINADOR=" + CUSTO_TREINADOR)}`);
+  console.log(`  ${dentro ? verde("ok   ") : vermelho("fora ")} luta mediana em que fica acessível: ${mediana}  ${cinza("alvo 6-8")}`);
+  console.log(`  ${cinza(nunca + " de " + resultados.length + " carreiras nunca alcançaram (ficaram sem standing suficiente)")}`);
+  return dentro;
 }
 
 /* ================================================================== *
@@ -2126,6 +2220,7 @@ try {
   else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
+  else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
