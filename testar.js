@@ -1808,7 +1808,7 @@ function testarConteudoInseguro() {
     passo("j inseguro: seguidores não mudou (não é 0.5 de ganho)", st.followers===followersAntes);
     passo("j inseguro: fã não mudou (não é +2.5)", st.fan===fanAntes);
     passo("j inseguro: desfecho cai numa das frases genéricas (não IA, não mais frase única)",
-      FALLBACK_NEUTRO.some(f=>box.innerHTML.includes(f)));
+      FALLBACK_NEUTRO.some(f=>box.innerHTML.includes(f(me.name))));
 
     /* Achado jogando: eu tinha dado variedade ao texto neutro DA IA (4
        exemplos no prompt) e deixado o fallback LOCAL — que é o caminho
@@ -1825,6 +1825,15 @@ function testarConteudoInseguro() {
     }
     passo("fallback local: 10 cortes produzem pelo menos 5 frases distintas (não 1 fixa)",
       vistas.size>=5);
+    /* achado jogando (2ª rodada): o fallback local era 2ª pessoa ("Você...")
+       enquanto o desfecho real da IA e o próprio molde neutro dela (prompt
+       de "julgar") são 3ª pessoa — pronome sozinho delatava qual caminho
+       gerou o texto, uma assinatura de filtro mais sutil que a repetição.
+       Corrigido: fallback local também em 3ª pessoa (usa me.name). */
+    /* \b não funciona depois de "ê" (não é \w em regex JS sem /u) — usa
+       espaço literal, não \b, senão o teste sempre passa sem checar nada */
+    passo("fallback local: nenhuma frase em 2ª pessoa (nenhuma começa com 'Você')",
+      [...vistas].every(t=>!/^Você /.test(t)));
     /* achado jogando: filtro certo, apresentação errada — efeito zero
        cravado (j nulo) desenhava "+0 seguidores" e "+0.0 de fã" em VERDE
        (dif>=0 é true pra zero), um padrão que uma resposta comum não

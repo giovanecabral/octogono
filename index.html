@@ -1452,18 +1452,24 @@ function conteudoInseguro(texto){
    "Conteúdo inseguro no dilema"). Em segunda pessoa, igual sempre foi —
    não confundir com o texto neutro que a própria IA gera (terceira
    pessoa) quando é ELA quem decide neutralizar. */
+/* Terceira pessoa de propósito — o desfecho REAL da IA (aplicarDilema()) e o
+   próprio molde neutro dela (api/ai.js, prompt de "julgar") narram na
+   terceira pessoa. Se este fallback local ficasse em segunda ("Você..."),
+   ficaria distinguível dos dois outros por pronome só — a mesma assinatura
+   de filtro, só mais sutil. Ver LEIA-ME "Conteúdo inseguro no dilema". */
 const FALLBACK_NEUTRO=[
-  "Você seguiu em frente e a semana passou sem grande consequência.",
-  "Você não deu muita importância e a rotina continuou normal.",
-  "Você mudou de assunto e ninguém comentou mais nada.",
-  "Você deixou pra lá e voltou pro treino sem alarde.",
-  "Você respondeu por cima e a semana seguiu tranquila.",
-  "Você desconversou e a semana passou sem barulho nenhum.",
-  "Você ficou na sua e nada mais aconteceu por causa disso.",
-  "Você não se estendeu no assunto e a rotina não mudou em nada.",
+  n=>`${n} mudou de assunto e ninguém insistiu.`,
+  n=>`${n} deu de ombros e voltou pro treino, sem clima.`,
+  n=>`A pergunta ficou no ar e a pauta virou outra coisa.`,
+  n=>`${n} não se estendeu no assunto e a rotina seguiu igual.`,
+  n=>`${n} respondeu por cima e a semana passou sem barulho.`,
+  n=>`Ninguém comentou mais nada e a rotina continuou normal.`,
+  n=>`${n} ficou na sua e nada mais aconteceu por causa disso.`,
+  n=>`${n} desconversou e a entrevista seguiu andando.`,
 ];
 function fraseFallback(){
-  return FALLBACK_NEUTRO[Math.floor((fraseRng?fraseRng():Math.random())*FALLBACK_NEUTRO.length)];
+  const f=FALLBACK_NEUTRO[Math.floor((fraseRng?fraseRng():Math.random())*FALLBACK_NEUTRO.length)];
+  return f(me&&me.name||"Ele");
 }
 
 async function abrirDilema(){
