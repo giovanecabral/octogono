@@ -550,6 +550,20 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
   border:0;border-radius:0}
 .cfg-range:disabled{cursor:default}
 
+/* Card de momento: sobrepõe, nunca trava. Sem display:none no #app nem
+   pausa de auto/nextFight — só um overlay que o jogador abre e fecha
+   quando quiser, inclusive com o automático rodando por baixo. */
+.painel-overlay{position:fixed;inset:0;background:rgba(6,9,14,.72);
+  display:flex;align-items:center;justify-content:center;z-index:40;padding:16px}
+.painel-momentos{background:var(--panel2);border:1px solid var(--rule);
+  max-width:480px;width:100%;max-height:82vh;overflow:auto;padding:18px}
+.painel-momentos h3{margin:0 0 12px;font-family:Oswald,sans-serif;font-size:18px;color:var(--ink)}
+.painel-momentos .vazio{color:var(--faded);font-size:13px}
+.momento-item{border:1px solid var(--rule);padding:10px 12px;margin-bottom:10px}
+.momento-item .frase{font-size:13px;color:var(--ink);margin-bottom:8px}
+.momento-item .meta{font-size:11px;color:var(--faded);margin-bottom:8px}
+.painel-fechar{margin-top:4px}
+
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
@@ -608,6 +622,11 @@ function contest(attack,defense){const a=clamp(attack,.02,.98),d=clamp(defense,.
 function poisson(l,rng){if(l<=0)return 0;const L=Math.exp(-l);let k=0,p=1;
   do{k++;p*=rng();}while(p>L);return k-1;}
 function fmtClock(s){return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
+/* inverso do fmtClock — precisa pro card de momento saber se um nocaute no
+   round 1 foi rápido: r.clock é o relógio REGRESSIVO (começa "5:00", desce),
+   então "rápido" é clock ALTO, não baixo — o oposto do que a leitura de
+   transmissão real sugere. Ver LEIA-ME "Card de momento". */
+function clockSeconds(s){const[m,ss]=s.split(":").map(Number);return m*60+ss;}
 
 function mkState(f,form){return{ref:f,form,damage:0,sigStrikes:0,takedowns:0,knockdowns:0,
   subAttempts:0,controlTicks:0};}
@@ -840,10 +859,17 @@ const EVENTS=[
  {t:n=>`${n} recusou uma luta por dinheiro e a internet não perdoou.`},
 ];
 /* RAROS EXTREMOS — só disparam fora da curva, uma vez cada */
+/* id em 4 entradas: referência estável pro card de momento (ver
+   criarMomentoRaro() e o gatilho de cinturão perdido em finishFight()),
+   sem depender de índice do array nem duplicar o texto. card:true marca as
+   3 que viram card de momento — deliberadamente NÃO é "tom==1": streakW>=8
+   ficou de fora por medição (62 de 119 raros positivos em 120 carreiras,
+   mais da metade sozinho — ver LEIA-ME "Card de momento"), e continua só no
+   relatório final. */
 const RARE=[
- {tom:1,when:s=>s.fightNo>=18&&s.losses===0,
+ {id:"invicto18",card:true,tom:1,when:s=>s.fightNo>=18&&s.losses===0,
   t:n=>`Dezoito e zero. Um repórter perguntou como é não conhecer a derrota. ${n} respondeu que conhece, só não dentro do octógono.`},
- {tom:1,when:s=>s.fightNo>=12&&s.losses===0,
+ {id:"invicto12",card:true,tom:1,when:s=>s.fightNo>=12&&s.losses===0,
   t:n=>`Doze lutas, doze vitórias. Começaram a dizer que a divisão está fraca, porque é mais fácil do que admitir que ${n} é bom demais.`},
  {tom:-1,when:s=>s.fightNo>=10&&s.wins===0,
   t:n=>`Dez derrotas em dez lutas. A comissão convocou ${n} pra uma conversa sobre continuar competindo.`},
@@ -853,11 +879,11 @@ const RARE=[
   t:n=>`Cinco derrotas em sequência. O ginásio esvaziou antes da luta de ${n} terminar.`},
  {tom:-1,when:s=>s.koLosses>=4,
   t:n=>`Quarto nocaute sofrido. O médico da comissão pediu tomografia e sugeriu, sem sugerir, que ${n} pensasse na vida.`},
- {tom:1,when:s=>s.fightNo>=8&&s.wins>=6&&s.finishes===s.wins,
+ {id:"finishStreak",card:true,tom:1,when:s=>s.fightNo>=8&&s.wins>=6&&s.finishes===s.wins,
   t:n=>`${n} nunca precisou de cartão de juiz. Todas as vitórias antes do apito.`},
  {when:s=>s.fightNo>=14&&s.wins>=7&&s.finishes===0,
   t:n=>`Sete vitórias, nenhuma antes do tempo. Chamam ${n} de chato. ${n} chama de eficiente.`},
- {tom:-1,when:s=>s.lostBeltFast,
+ {id:"lostBeltFast",tom:-1,when:s=>s.lostBeltFast,
   t:n=>`Perdeu o cinturão na primeira defesa. O reinado de ${n} durou menos que a fila da pesagem.`},
  {when:s=>s.kdTaken>=6,
   t:n=>`${n} já foi ao chão seis vezes na carreira e levantou nas seis. Isso vira lenda ou vira alerta, depende de quem conta.`},
@@ -891,6 +917,21 @@ const LEGACY=[
  {when:()=>true,
   t:n=>`Daqui a cinco anos ninguém vai lembrar de ${n}. Mas em algum lugar tem uma foto na parede de uma academia, e o dono dela sabe exatamente quem é.`},
 ];
+
+/* =========================================================================
+   CARD DE MOMENTO — congela um instante NO MEIO da carreira, não só no fim.
+   Mesma voz do RARE/LEGACY: seca, específica, sem adjetivo de comentarista.
+   st.momentos acumula silencioso (mesmo padrão de st.rares/st.events); nada
+   aqui interrompe a narração nem o automático — ver LEIA-ME "Card de
+   momento" pro porquê de cada gatilho ter sido cortado ou mantido, medido
+   em 120 carreiras antes de escrever uma linha desta seção. */
+function criarMomento(tipo,frase){
+  return{tipo,frase,cartel:`${st.wins}-${st.losses}`,luta:fightNo};
+}
+const FRASE_KO_RAPIDO=n=>`Round 1, menos de um minuto. ${n} nem precisou aquecer o cardio.`;
+const FRASE_PRIMEIRO_CINTURAO=n=>`${n} é campeão. Primeira vez, e ninguém tira essa da história.`;
+const FRASE_UPSET=(n,opp)=>`${n} entrou como azarão contra ${opp} e saiu com a mão levantada.`;
+const FRASE_LESAO_VENCIDA=n=>`Machucado, e venceu do mesmo jeito. ${n} não esperou o corpo se explicar.`;
 
 /* Em vez de rotular 28 eventos à mão (e errar quando alguém editar o texto),
    a direção sai do próprio efeito: aplica num clone e compara os atributos.
@@ -2641,6 +2682,112 @@ async function desenharCard(g){
   return cv;
 }
 
+/* rótulo curto pro carimbo do card de momento — mesma caixa rotativa do
+   desenharCard, só que com uma etiqueta de 1-2 palavras em vez da nota A-F
+   (nota não faz sentido pra carreira em andamento). */
+const ROTULO_MOMENTO={cinturao:"CAMPEÃO",cinturaoPerdido:"PERDEU",
+  ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO"};
+
+async function desenharCardMomento(m){
+  const cv=document.createElement("canvas");
+  cv.width=CARD_W;cv.height=CARD_H;
+  const x=cv.getContext("2d");
+  const M=72;
+
+  x.fillStyle=C.stock;x.fillRect(0,0,CARD_W,CARD_H);
+  x.fillStyle="rgba(255,255,255,.014)";
+  for(let y=0;y<CARD_H;y+=3)x.fillRect(0,y,CARD_W,1);
+
+  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
+  const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
+  const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
+
+  regra(M,4,C.line2);
+  x.fillStyle=C.ink;x.font=disp(46);x.textBaseline="alphabetic";
+  x.fillText("MOMENTO DA CARREIRA",M,M+72);
+  x.fillStyle=C.faded;x.font=mono(19,500);
+  const dv=(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION;
+  x.fillText(dv.toUpperCase()+` · LUTA ${m.luta} DE ${TOTAL_FIGHTS}`,M,M+104);
+  regra(M+126,2,C.rule);
+
+  let y=M+200;
+  x.fillStyle=C.ink;
+  let tam=76;
+  do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>CARD_W-M*2&&tam>30);
+  x.fillText(me.name.toUpperCase(),M,y);
+
+  y+=160;
+  x.font=disp(148);x.fillStyle=C.ink;
+  x.fillText(m.cartel,M,y);
+  x.font=mono(21,500);x.fillStyle=C.faded;
+  x.fillText("CARTEL NA HORA",M+5,y+34);
+
+  x.save();
+  x.translate(CARD_W-M-76,y-52);
+  x.rotate(-4*Math.PI/180);
+  x.strokeStyle=C.stamp;x.lineWidth=7;
+  x.strokeRect(-72,-72,144,144);
+  x.fillStyle=C.stamp;
+  const rot=ROTULO_MOMENTO[m.tipo]||"MOMENTO";
+  let tamR=48;
+  do{ x.font=disp(tamR); tamR-=3; }while(x.measureText(rot).width>128&&tamR>18);
+  x.textAlign="center";x.textBaseline="middle";
+  x.fillText(rot,0,6);
+  x.restore();
+  x.textAlign="left";x.textBaseline="alphabetic";
+
+  // frase — mesma carga emocional do LEGACY no card de fim de carreira
+  y+=140;
+  x.font=`italic 30px "IBM Plex Mono",monospace`;
+  const ls=quebrar(x,m.frase,CARD_W-M*2-32).slice(0,5);
+  x.fillStyle=C.stamp;x.fillRect(M,y-30,5,ls.length*42+14);
+  x.fillStyle=C.ink;
+  ls.forEach((l,i)=>x.fillText(l,M+28,y+i*42));
+
+  const yf=CARD_H-M-86;
+  regra(yf,4,C.line2);
+  x.fillStyle=C.ink;x.font=mono(24,600);
+  x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M,yf+46);
+  x.fillStyle=C.stamp;x.font=mono(26,600);
+  x.textAlign="right";
+  x.fillText("#"+SEED.toString(36).toUpperCase(),CARD_W-M,yf+46);
+  x.fillStyle=C.faded;x.font=mono(19,400);
+  x.fillText(location.host||"card de momento",CARD_W-M,yf+76);
+  x.textAlign="left";
+  return cv;
+}
+
+/* Abre por cima de tudo, sem tocar em playing/auto/dilemaAberto — o
+   automático continua rodando por baixo se o jogador não fechar. */
+function abrirPainelMomentos(){
+  const p=document.getElementById("painelMomentos");
+  p.innerHTML="";
+  const box=el("div","painel-momentos");
+  box.appendChild(el("h3","",`Cards da carreira (${st.momentos.length})`));
+  if(!st.momentos.length){
+    box.appendChild(el("p","vazio","Nenhum momento marcante ainda."));
+  }else{
+    st.momentos.forEach(m=>{
+      const item=el("div","momento-item");
+      item.appendChild(el("div","frase",m.frase));
+      item.appendChild(el("div","meta",`Luta ${m.luta} de ${TOTAL_FIGHTS} · ${m.cartel}`));
+      const btn=el("button","btn btn-sm","Salvar imagem");
+      btn.onclick=()=>compartilhar(m,btn,desenharCardMomento);
+      item.appendChild(btn);
+      box.appendChild(item);
+    });
+  }
+  const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
+  fechar.onclick=fecharPainelMomentos;
+  box.appendChild(fechar);
+  p.appendChild(box);
+  p.style.display="flex";
+}
+function fecharPainelMomentos(){
+  const p=document.getElementById("painelMomentos");
+  if(p)p.style.display="none";
+}
+
 function urlDesafio(){
   const base=location.origin+location.pathname;
   /* O modo entra no link porque ele troca o pool: a mesma semente em modos
@@ -2649,14 +2796,19 @@ function urlDesafio(){
   return `${base}?d=${DIVISION}&s=${SEED.toString(36)}${MODO==="lenda"?"&m=lenda":""}`;
 }
 
-async function compartilhar(g,btn){
+async function compartilhar(g,btn,desenhar=desenharCard){
   btn.disabled=true;const antes=btn.textContent;btn.textContent="Gerando…";
   try{
     if(document.fonts&&document.fonts.ready)await document.fonts.ready;
-    const cv=await desenharCard(g);
+    const cv=await desenhar(g);
     const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
     const arq=new File([blob],`${me.name.replace(/\s+/g,"-").toLowerCase()}.png`,{type:"image/png"});
-    const texto=`${me.name}: ${st.wins}-${st.losses}, nota ${g.letter}. Joga a mesma carreira:`;
+    /* g.frase só existe no card de momento (desenharCardMomento); g.letter
+       só no de fim de carreira (desenharCard) — texto do compartilhamento
+       segue o mesmo duck-typing em vez de mais um parâmetro. */
+    const texto=g.frase
+      ?`${me.name}: ${g.frase} Joga a mesma carreira:`
+      :`${me.name}: ${st.wins}-${st.losses}, nota ${g.letter}. Joga a mesma carreira:`;
     if(navigator.canShare&&navigator.canShare({files:[arq]})){
       await navigator.share({files:[arq],text:texto,url:urlDesafio()});
     }else{
@@ -3193,7 +3345,7 @@ function startCareer(){
       wins:0,losses:0,finishes:0,streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,
       standing:.18,peak:.18,events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,
       fan:5.0,followers:2400,peakFollowers:2400,
-      longestW:0,lostBeltFast:false,rares:[],disputaLiberada:false,
+      longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
@@ -3207,8 +3359,14 @@ function startCareer(){
   const ab=el("button","btn btn-ghost","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
   const sp=el("button","btn btn-ghost btn-sm","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
   /* O som saiu daqui: mudo e volume moram no painel da engrenagem. */
+  const cardsb=el("button","btn btn-ghost btn-sm","Cards");cardsb.id="cardsb";
+  cardsb.onclick=abrirPainelMomentos;
   const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  row.append(next,ab,sp,hint);app.appendChild(row);
+  row.append(next,ab,sp,cardsb,hint);app.appendChild(row);
+  /* overlay do card de momento: criado uma vez, escondido, nunca trava
+     nextFight()/automático — ver painel-overlay no CSS. */
+  const painel=el("div","painel-overlay");painel.id="painelMomentos";
+  painel.style.display="none";app.appendChild(painel);
 
   const carr=el("div","carreira");
   const ficha=el("div","ficha");ficha.id="ficha";
@@ -3238,6 +3396,8 @@ function atualizarControles(){
   if(cont&&dilemaAberto)cont.textContent="responda para continuar";
   else if(cont&&escolhaAberta)cont.textContent="escolha o adversário";
   else if(cont)cont.textContent=`${fightNo} de ${TOTAL_FIGHTS} · ${st.wins}-${st.losses}`;
+  const cb=document.getElementById("cardsb");
+  if(cb){const n=(st.momentos||[]).length;cb.textContent=n?`Cards (${n})`:"Cards";}
 }
 function cycleSpeed(){
   speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
@@ -3352,6 +3512,13 @@ function finishFight(opp,r,titleFight){
   const isKO=/ocaute/.test(r.method),finish=r.method!=="Decisão";
   const myKd=r.knockdowns[opp.name]||0,oppKd=r.knockdowns[me.name]||0;
   st.kdGiven+=myKd;st.kdTaken+=oppKd;
+  /* estado ANTES desta luta — precisa pra saber se um evento é a PRIMEIRA
+     vez (cinturão, lesão) e pro upset comparar com quem o jogador era antes
+     de vencer, não depois. standing muda logo abaixo; os outros três não
+     mudam aqui, mas capturar junto deixa claro que são "antes desta luta",
+     não "antes desta função". */
+  const standingPre=st.standing;
+  const foiCampeaoAntes=st.foiCampeao,lutandoMachucado=!!st.lesao;
   /* Antes de mexer no standing: é daqui que sai a seta de subiu/caiu na ficha. */
   const _rkAntes=posicaoDivisao();
   if(_rkAntes)st.rankAnt=_rkAntes.n;
@@ -3366,7 +3533,18 @@ function finishFight(opp,r,titleFight){
        pelo LEGACY). title é o status ATUAL, e É esse que zera na derrota
        abaixo — os dois precisam existir separados, senão reconquistar o
        cinturão não tem como ser distinguido de nunca tê-lo perdido. */
-    if(titleFight){if(st.title)st.defesas=(st.defesas||0)+1;st.title=true;st.foiCampeao=true;st.exCampeao=null;}
+    if(titleFight){
+      if(st.title)st.defesas=(st.defesas||0)+1;
+      st.title=true;st.foiCampeao=true;st.exCampeao=null;
+      if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",FRASE_PRIMEIRO_CINTURAO(me.name)));
+    }
+    /* rápido é clock ALTO nesta luta — ver clockSeconds() */
+    if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<60)
+      st.momentos.push(criarMomento("ko",FRASE_KO_RAPIDO(me.name)));
+    if(lutandoMachucado&&!st.lesao.venceuMachucado){
+      st.lesao.venceuMachucado=true;
+      st.momentos.push(criarMomento("lesao",FRASE_LESAO_VENCIDA(me.name)));
+    }
   }else{
     st.losses++;st.streakL++;st.streakW=0;
     if(isKO)st.koLosses++;
@@ -3375,7 +3553,13 @@ function finishFight(opp,r,titleFight){
          significa que esta é a PRIMEIRA defesa perdida — só nesse caso o
          evento raro "perdeu na primeira defesa" é verdade. Perder a 5ª
          defesa não é a mesma coisa e não pode usar o mesmo texto. */
-      if((st.defesas||0)===0)st.lostBeltFast=true;
+      if((st.defesas||0)===0){
+        st.lostBeltFast=true;
+        /* mesmo texto do RARE "lostBeltFast", achado por id — não duplica a
+           frase nem depende de índice do array (ver comentário no RARE). */
+        st.momentos.push(criarMomento("cinturaoPerdido",
+          RARE.find(rr=>rr.id==="lostBeltFast").t(me.name)));
+      }
       /* perder uma defesa custa o cinturão de verdade: title volta a false,
          exCampeao guarda quem tirou (a ficha e a próxima disputa passam a
          nomear essa pessoa, não mais o jogador), defesas zera (reinado novo
@@ -3417,7 +3601,12 @@ function finishFight(opp,r,titleFight){
 
   /* --- repercussão --- */
   const hype=hypeOf(r,won,opp,me,titleFight,myKd,oppKd);
-  const upset=won&&(opp.rating-st.standing)>.15;
+  /* upset compara com quem o jogador ERA antes de vencer — standingPre, não
+     st.standing (que essa altura do won já subiu). Usar o pós-luta fazia
+     "vitória sobre favorito" quase nunca disparar: o próprio salto de
+     standing da vitória encolhia a diferença que definia o upset. */
+  const upset=won&&(opp.rating-standingPre)>.15;
+  if(upset)st.momentos.push(criarMomento("upset",FRASE_UPSET(me.name,opp.name)));
   const alvo=Math.max(0,Math.min(10,1.3+hype*1.30));
   st.fan=Math.max(0,Math.min(10,st.fan*.62+alvo*.38));      /* média móvel */
   const delta=followerDelta(st.followers,hype,won,st.standing);
@@ -3455,7 +3644,10 @@ function finishFight(opp,r,titleFight){
       bouts.appendChild(el("div","event"+(d.rare?" rare":""),(d.rare?"":"— ")+d.e.t(me.name)));
       somDoEvento(d.e,lutadorEfetivo());
       st.events++;
-      if(d.rare)st.rares.push(d.e.t(me.name));
+      if(d.rare){
+        st.rares.push(d.e.t(me.name));
+        if(d.e.card)st.momentos.push(criarMomento("raro",d.e.t(me.name)));
+      }
       if(d.e.fx){
         /* o efeito entra numa camada separada: se fosse direto no atributo,
            ele apagaria a base e o treino perderia referência */

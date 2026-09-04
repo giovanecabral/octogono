@@ -700,6 +700,110 @@ node testar.js aivivo     # os 6 casos, sem rede: transitorio true/false/ausente
 
 ---
 
+### Card de momento
+
+`PLANO-LANCAMENTO.md` fase 1: o jogo não produzia nenhuma imagem pra
+anunciar — só a ficha de barrinhas, e o card compartilhável só existia no
+fim da carreira. `st.momentos` guarda instantes marcantes DURANTE a
+carreira (mesmo padrão silencioso de `st.rares`/`st.events`), com um card
+emoldurado próprio (`desenharCardMomento()`) pra cada um.
+
+**Os gatilhos não são os cinco óbvios — três foram medidos e cortados.**
+Harness com `candidatos()`/`finishFight()`/`simulateFight()` reais (mesmo
+jeito do `testarCinturao`), 120 carreiras simuladas, bot igual ao automático
+de verdade (sempre a opção do meio):
+
+| gatilho (como pedido) | méd/carreira | % carreiras ≥1 |
+|---|---|---|
+| KO round 1 <1min | 0,21 | 16% |
+| RARE (`st.rares`) | 1,52 | 83% |
+| cinturão ganho | 1,27 | 83% |
+| cinturão perdido | 0,95 | 69% |
+| upset | 0,00 | 0% |
+
+Cinturão ganho+perdido sozinho batia 44% do total — o "um gatilho responde
+pela maioria" que se pediu pra vigiar. Causa: `CHANCE_DISPUTA` (não medido)
+mais a disputa travando sempre no mesmo campeão/desafiante sem rotação
+(item 1b, pausado) faz o título trocar de mão várias vezes na mesma
+carreira. Conserto sem inventar número novo: usar o que o motor já sabe
+sobre "primeira vez" — `st.foiCampeao` (permanente, nunca reseta) e
+`st.lostBeltFast` (já existia, só readequado pra perda na 1ª defesa).
+Refeita a medição só com essas duas versões: 0,83/carreira (cinturão,
+capado em 1x por definição) e 0,27/carreira (perda rápida).
+
+`RARE` reaproveitado sem filtro tinha o mesmo problema por dentro: dos 119
+raros de tom positivo nas 120 carreiras, 62 eram só `streakW>=8` — mais da
+metade. Ficou de fora do card por decisão explícita (contrariando a
+recomendação inicial): "está pegando fogo" não é printável, é um contador
+alto sem imagem. Continua disparando RARE normal pro relatório final
+("Fora da curva"), só não vira card. As 3 entradas do `RARE` que viram card
+carregam `card:true` (18-0, 12-0, sequência de finalizações) — marcador
+próprio, não índice do array nem `tom==1` (`tom` sozinho incluiria o
+`streakW>=8` cortado). `lostBeltFast` ganhou `id:"lostBeltFast"` pra ser
+referenciado direto pelo gatilho de cinturão perdido sem duplicar o texto
+nem disparar duas vezes (uma vez pelo RARE normal, outra pelo card) — só
+entradas com `id` são referenciáveis assim; as outras não precisam.
+
+**Upset tinha bug real, achado medindo, não só cortado.** A fórmula
+original em `finishFight()` comparava `opp.rating` com `st.standing` DEPOIS
+da vitória já ter subido o standing — "vitória sobre favorito" tem que
+comparar com quem o jogador ERA antes de vencer, não depois. Com o bug, o
+próprio salto de standing da vitória encolhia a diferença que definia o
+upset, e por isso nunca disparava (0/120, mesmo formalmente elegível).
+Conserto: `standingPre` capturado na primeira linha de `finishFight()`,
+antes de qualquer mutação. Vale pro cálculo inteiro, não só pro card — quem
+mais usa `upset` (`buildFeed`) também estava lendo o número errado.
+Continua raro no automático puro (0/120 mesmo depois do conserto, porque o
+bot do automático sempre escolhe a carta do meio — nunca a faixa
+"perigosa", única onde o oponente teria rating alto o bastante). Mas
+**não é raro em geral**: o bot do `testarInterface` varia a dificuldade
+escolhida a cada luta (`opps[n%opps.length]`, não fixo no meio), e nesse
+regime upset chega a ser o gatilho DOMINANTE de uma carreira inteira (5 de 5
+cards numa das divisões testadas). Quem joga manual e arrisca a faixa
+perigosa vê upset com frequência real — o automático é só o piso.
+
+**`r.clock` é o relógio REGRESSIVO da luta** (começa em `"5:00"`, desce até
+`"0:00"` — ver `exchange()`), não o tempo decorrido que a leitura de
+transmissão real sugere. KO rápido (round 1, abaixo de 1 minuto decorrido) é
+clock ALTO (`"4:xx"`), não baixo — o oposto do que "clock baixo = luta
+curta" sugeriria à primeira vista. `clockSeconds()` (inverso do `fmtClock()`
+existente) mais `300-clockSeconds(r.clock)` fazem a conta certa.
+`node testar.js momentos` testa os dois lados dessa direção de propósito —
+foi o ponto onde um patch errado passaria batido em silêncio.
+
+**Lesão vencida dispara só na primeira vitória com a lesão ativa**, não a
+cada vitória durante os até 8 combates de janela — mesmo princípio do
+cinturão. A frequência real desse gatilho não dá pra medir offline: depende
+da IA classificar a cena como lesão E o jogador aceitar o risco, e o
+harness roda com `fetch` rejeitando de propósito (mesmo ambiente do
+`testar.js`), então nenhuma lesão nasce pelo caminho natural do dilema ali.
+
+**Não interrompe nada — nem no automático a 4x.** O ponto onde a próxima
+luta dispara sozinha (`setTimeout(...,1100/speed)`, ~275ms a 4x) não cabe
+um modal nem por um instante. O card não trava a tela: acumula em
+`st.momentos` e um contador no botão "Cards" (`atualizarControles()`) avisa
+que tem novidade — o jogador abre quando quiser, inclusive com o automático
+rodando por baixo (`abrirPainelMomentos()` não toca em
+`playing`/`auto`/`dilemaAberto`).
+
+**Reaproveita o canvas, não o conteúdo.** `desenharCard()`/`compartilhar()`
+(o card de fim de carreira) são moldados pro fim: nota A-F (`grade()`),
+cartel FINAL, citação do `LEGACY` (que só sintetiza carreira encerrada — não
+tem entrada pontual). `desenharCardMomento()` é função nova, mas reaproveita
+os helpers genéricos (`regra`, `mono`, `disp`, `quebrar`, `C`, textura,
+rodapé com semente) e a mesma caixa carimbada — só troca a nota A-F por um
+rótulo curto do tipo de momento (`ROTULO_MOMENTO`). `compartilhar()` ganhou
+um terceiro parâmetro opcional (`desenhar=desenharCard`) em vez de duplicar
+a lógica de blob/share/download inteira; o texto do compartilhamento
+distingue os dois pelo formato do objeto (`g.frase` só existe no card de
+momento, `g.letter` só no de fim de carreira).
+
+```bash
+node testar.js momentos   # cada gatilho na hora certa, uma vez só, sem rede
+```
+
+---
+
 ## Atualizar os dados
 
 O repositório `Greco1899/scrape_ufc_stats` roda scraping diário e commita os

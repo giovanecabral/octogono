@@ -138,7 +138,8 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        começar e exportar(nomes) captura só um instantâneo na hora do load —
        uma closure lê o binding ao vivo toda vez que é chamada. */
     vm.runInContext(exportar(lerScript(), ["ready", "screenName", "screenReport", "DIVISOES"])
-      + "\ntry{globalThis.__x.ranking=()=>RANKING;}catch(e){}",
+      + "\ntry{globalThis.__x.ranking=()=>RANKING;}catch(e){}"
+      + "\ntry{globalThis.__x.st=()=>st;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
     console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
@@ -366,6 +367,13 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     console.log("  " + falhas[0][1].stack.split("\n").slice(0, 3).join("\n  ") + "\n");
     return false;
   }
+  /* Card de momento: só relatório, não reprovação — uma carreira só é
+     amostra pequena demais pra virar limite fixo (medido em 120 carreiras
+     no desenho, não numa). Ver LEIA-ME "Card de momento". */
+  const momentos = (UI.st && UI.st().momentos) || [];
+  console.log(cinza(`  cards de momento: ${momentos.length}`)
+    + (momentos.length ? cinza(` (${momentos.map(m => m.tipo).join(", ")})`) : ""));
+
   console.log(verde(`  ok`) + cinza(`   caminho completo, ${nos} nós montados`));
   return true;
 }
@@ -702,7 +710,7 @@ function testarCinturao(div = "heavyweight") {
     st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:3,streakL:0,
         bestBeaten:0,bestWin:null,title:false,standing:.90,peak:.90,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:3,
-        lostBeltFast:false,rares:[],disputaLiberada:true,defesas:0};
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:true,defesas:0};
     fought=new Set();
 
     /* luta 1: disputa pelo título, contra o campeão nomeado — vence */
@@ -746,7 +754,7 @@ function testarCinturao(div = "heavyweight") {
     st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:3,streakL:0,
         bestBeaten:0,bestWin:null,title:false,standing:.90,peak:.90,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:3,
-        lostBeltFast:false,rares:[],disputaLiberada:true,defesas:0};
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:true,defesas:0};
 
     // vence o título
     st.tituloEstaLuta=tituloLiberado();
@@ -782,7 +790,7 @@ function testarCinturao(div = "heavyweight") {
     st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:3,streakL:0,
         bestBeaten:0,bestWin:null,title:false,standing:.90,peak:.90,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:3,
-        lostBeltFast:false,rares:[],disputaLiberada:true,defesas:0,exCampeao:null,foiCampeao:false};
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:true,defesas:0,exCampeao:null,foiCampeao:false};
 
     // 1ª disputa — PERDE, nunca chega a ser campeão
     st.tituloEstaLuta=tituloLiberado();
@@ -860,7 +868,7 @@ function testarLesao() {
     st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
         bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:3,fan:5,followers:2400,peakFollowers:2400,longestW:0,
-        lostBeltFast:false,rares:[],disputaLiberada:false,defesas:0,exCampeao:null,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,exCampeao:null,
         foiCampeao:false,lesao:null};
     st.eventoMod.slpm=1.08;  // evento comum anterior, nada a ver com a lesão
 
@@ -968,6 +976,150 @@ function testarLesao() {
 }
 
 /* ================================================================== *
+ * 7b. CARD DE MOMENTO — cada gatilho dispara na hora certa, uma vez só
+ * ================================================================== */
+/* Chama finishFight()/aplicarDilema() DE VERDADE, igual testarCinturao e
+   testarLesao — o `r` é construído pra forçar o cenário, quem decide o
+   resto (st.momentos) é o motor. Cobre exatamente os três detalhes sutis
+   que a medição de 120 carreiras (ver LEIA-ME "Card de momento") expôs:
+   clock é regressivo (rápido é ALTO, não baixo), upset tem que comparar
+   com o standing de ANTES da vitória, e streakW>=8 fica de fora do card
+   mesmo disparando RARE normal. */
+function testarMomentos() {
+  console.log("\n" + cinza("card de momento: cada gatilho dispara na hora certa, e só uma vez"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__mom=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  const stBase=()=>({treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,
+      streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,
+      events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,
+      peakFollowers:2400,longestW:0,lostBeltFast:false,rares:[],momentos:[],
+      disputaLiberada:false,defesas:0,exCampeao:null,foiCampeao:false,lesao:null});
+  try{
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    usedEvents=new Set();rareUsed=new Set();
+    rng=mulberry32(1);
+    const opp={name:"Rival",rating:.5};
+
+    /* --- KO rápido: clock é o relógio REGRESSIVO da luta (começa "5:00",
+       desce até "0:00"). Round 1 abaixo de 1 minuto ELAPSED é clock ALTO
+       ("4:xx"), não baixo — o oposto do que uma leitura ingênua sugere.
+       Testa os dois lados pra provar que a direção está certa. */
+    st=stBase(); st.fightNo=1; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"4:40"},false);
+    passo("KO round 1 a 20s (clock 4:40, ALTO) dispara koRapido",
+      st.momentos.some(m=>m.tipo==="ko"));
+
+    st=stBase(); st.fightNo=1; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"0:15"},false);
+    passo("KO round 1 a 285s (clock 0:15, BAIXO) NÃO dispara koRapido — não é rápido, é tarde no round",
+      !st.momentos.some(m=>m.tipo==="ko"));
+
+    /* --- primeiro cinturão: só a PRIMEIRA vez (foiCampeao permanente) */
+    st=stBase(); st.fightNo=7; st.ganhoEscolhido=.07; st.tituloEstaLuta=true;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},true);
+    passo("1º cinturão dispara card único",
+      st.momentos.filter(m=>m.tipo==="cinturao").length===1);
+    passo("1º cinturão: st.foiCampeao virou true (setup pro próximo passo)", st.foiCampeao===true);
+
+    // perde e reconquista — NÃO pode disparar um 2º card de "1º cinturão"
+    st.fightNo=8; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},true);
+    st.fightNo=9; st.ganhoEscolhido=.07; st.tituloEstaLuta=true;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},true);
+    passo("reconquista NÃO dispara um 2º card de primeiro cinturão",
+      st.momentos.filter(m=>m.tipo==="cinturao").length===1);
+
+    /* --- perda na 1ª defesa: dispara; perda numa defesa LATER, não */
+    st=stBase(); st.fightNo=1; st.title=true; st.foiCampeao=true; st.defesas=0;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},true);
+    passo("perda na 1ª defesa dispara cinturaoPerdido, com o texto do RARE (não duplicado)",
+      st.momentos.some(m=>m.tipo==="cinturaoPerdido"
+        && m.frase===RARE.find(r=>r.id==="lostBeltFast").t("TesteBot")));
+
+    st=stBase(); st.fightNo=1; st.title=true; st.foiCampeao=true; st.defesas=3;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},true);
+    passo("perda na 4ª defesa (não a 1ª) NÃO dispara cinturaoPerdido",
+      !st.momentos.some(m=>m.tipo==="cinturaoPerdido"));
+
+    /* --- upset: compara com o standing de ANTES da vitória. standingPre=.40,
+       opp.rating=.58 (diff .18>.15) — COM o bug antigo (comparar depois da
+       vitória subir o standing pra .47) a diferença cai pra .11 e não
+       dispararia. Prova que o conserto está no lugar certo. */
+    st=stBase(); st.fightNo=1; st.standing=.40; st.ganhoEscolhido=.07;
+    finishFight({name:"Favorito",rating:.58},
+      {winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("upset dispara comparando com o standing PRÉ-luta (.40), não o pós (.47)",
+      st.momentos.some(m=>m.tipo==="upset"));
+
+    /* --- lesão vencida: só a primeira vitória com a lesão ativa */
+    st=stBase(); st.fightNo=5;
+    const box=document.getElementById("caixaLesaoTeste");
+    aplicarDilema(box,{titulo:"Joelho travado",cena:"..."},"aceito lutar assim mesmo",
+      {desfecho:"...",seguidores:0,fa:0,
+       lesao:{permanente:false,atributo:"strDef",regiao:"Joelho"},evitouLesao:false});
+    passo("lesão aplicada (setup)", !!st.lesao);
+    st.fightNo=6; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    st.fightNo=7; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("2 vitórias machucado disparam só 1 card de lesão",
+      st.momentos.filter(m=>m.tipo==="lesao").length===1);
+
+    /* --- RARE: só as 3 marcadas card:true entram no card; streakW>=8
+       continua disparando RARE normal (relatório final) mas NÃO o card —
+       corte explícito do usuário, 62 de 119 raros positivos medidos vinham
+       só desse. */
+    /* reseed: rng vem sendo consumido desde o topo do script por todos os
+       cenários acima, e drawEvent() só puxa um RARE elegível com 85% de
+       chance — sem reseed, esse sorteio final dependeria de acaso e não do
+       código. mulberry32(1) começa em 0.627, que passa no <.85. */
+    /* fightNo (a variável GLOBAL, não st.fightNo) é quem decide dilema x
+       evento em finishFight() — 0%5===0 sempre, então sem setar ela junto
+       toda luta cairia no ramo do dilema e drawEvent() nunca rodaria. */
+    rng=mulberry32(1); usedEvents=new Set(); rareUsed=new Set();
+    st=stBase(); fightNo=8; st.fightNo=8; st.streakW=8; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("streakW>=8: dispara RARE (relatório final)",
+      st.rares.length>0);
+    passo("streakW>=8: NÃO dispara card de momento (cortado de propósito)",
+      st.momentos.length===0);
+
+    rng=mulberry32(1); usedEvents=new Set(); rareUsed=new Set();
+    st=stBase(); fightNo=18; st.fightNo=18; st.losses=0; st.wins=17; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("18-0: dispara card de momento (é um dos 3 marcados card:true)",
+      st.momentos.some(m=>m.tipo==="raro"));
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__mom || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
+/* ================================================================== *
  * 8. CONTEÚDO INSEGURO — o freio local pega o que já causou o problema?
  * ================================================================== */
 /* A defesa principal é a instrução no prompt (api/ai.js) — isto testa só a
@@ -1013,7 +1165,7 @@ function testarConteudoInseguro() {
     st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
         bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:1,fan:5,followers:2400,peakFollowers:2400,longestW:0,
-        lostBeltFast:false,rares:[],disputaLiberada:false,defesas:0,exCampeao:null,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,exCampeao:null,
         foiCampeao:false,lesao:null};
     const box=document.getElementById("caixaSegurancaTeste");
     const followersAntes=st.followers, fanAntes=st.fan;
@@ -1169,6 +1321,7 @@ try {
   else if (cmd === "pesos") ok = medirPesos(div || "lightweight");
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
+  else if (cmd === "momentos") ok = testarMomentos();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
