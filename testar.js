@@ -1170,6 +1170,65 @@ function testarMomentos() {
 }
 
 /* ================================================================== *
+ * 7c. RESULTADO_LUTA — os buracos achados jogando ("KO" sem "nocaute",
+ *     "médico parou" sem "árbitro") ficaram fechados sem abrir falso
+ *     positivo? Sem rede — testa só o regex, que é REDE DE BAIXO (a defesa
+ *     principal é a instrução em api/ai.js, ver julgar).
+ * ================================================================== */
+function testarResultadoLuta() {
+  console.log("\n" + cinza("RESULTADO_LUTA: os dois buracos achados jogando, mais controles de falso positivo"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__rl=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+
+  const gaps=[
+    "Ele venceu por KO no primeiro round e a plateia foi ao delírio.",
+    "O médico parou a luta depois do corte feio na sobrancelha.",
+    "A médica interrompeu o combate no segundo round.",
+  ];
+  for(const g of gaps)
+    passo("corta: \\""+g.slice(0,40)+"...\\"", semResultadoDeLuta(g)==="");
+
+  /* controles: nada aqui pode ser cortado. "KOch" (nome inventado grudado
+     em KO) prova que o \\\\b não deixa "ko" vazar pra dentro de outra
+     palavra; "médico" sem "parou" logo depois prova que o padrão novo não
+     vira gatilho de qualquer menção a médico. */
+  const controles=[
+    "Ele treinou pesado pra chegar afiado na próxima luta.",
+    "O médico da equipe revisou os exames de rotina antes do camp.",
+    "A vaquinha para o KOch, seu cachorro, rendeu mais que o esperado.",
+    "Ele foi ao médico fazer um check-up de rotina, nada demais.",
+    "Comprou um carro coreano, um Kia, com o dinheiro da bolsa.",
+    "O parceiro de treino nocauteou ele no sparring, mas isso não conta.",
+  ];
+  for(const c of controles)
+    passo("mantém: \\""+c.slice(0,40)+"...\\"", semResultadoDeLuta(c)===c);
+
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__rl || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
+/* ================================================================== *
  * 8. CONTEÚDO INSEGURO — o freio local pega o que já causou o problema?
  * ================================================================== */
 /* A defesa principal é a instrução no prompt (api/ai.js) — isto testa só a
@@ -1394,6 +1453,7 @@ try {
   else if (cmd === "lesao") ok = testarLesao();
   else if (cmd === "momentos") ok = testarMomentos();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
+  else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
   else if (cmd === "escolhas") ok = testarEscolhas(div || "lightweight");

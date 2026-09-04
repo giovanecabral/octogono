@@ -1281,8 +1281,17 @@ const DILEMA_LOCAL=[
    ou o desempenho de outra pessoa (parceiro de treino, adversário no
    passado) sem afirmar nada da carreira do jogador — "nocauteou o parceiro
    no sparring" não pode cair aqui. Medido em 40 desfechos reais da IA: 5%
-   das frases batem, sem falso positivo nos casos de terceiro. */
-const RESULTADO_LUTA=/\b(nocaute\w*|finaliz\w*(ou|ad[oa])|foi parad[oa] pelo árbitro|perdeu (a luta|o combate) por|venceu (a luta|o combate) por|(saiu|saí)\s+d[oa]\s+(oct[aáoó]gono|tatame|ringue)\s+(carregad\w*|derrotad\w*|chorando)|decis[ãa]o\s+(un[âa]nime|dividida|majorit[áa]ria))\b/i;
+   das frases batem, sem falso positivo nos casos de terceiro.
+
+   Dois buracos achados jogando, fechados depois: "venceu por KO" (sem a
+   palavra nocaute) e "o médico parou a luta"/"a médica interrompeu"
+   (resultado afirmado sem a palavra árbitro). `ko` sozinho na alternação
+   basta — o \b da regex inteira já impede grudar em outra palavra ("KOch"
+   não bate). O padrão de médico é restrito a "parou/interrompeu/
+   encerrou/deteve" logo depois, de propósito — "menção a médico" sozinha
+   sem isso (curativo de rotina, check-up) não pode virar corte.
+   `node testar.js resultado` cobre os dois buracos e 6 controles. */
+const RESULTADO_LUTA=/\b(nocaute\w*|ko|finaliz\w*(ou|ad[oa])|foi parad[oa] pelo árbitro|médic[oa]\s+(da comissão\s+)?(parou|interrompeu|encerrou|deteve)|perdeu (a luta|o combate) por|venceu (a luta|o combate) por|(saiu|saí)\s+d[oa]\s+(oct[aáoó]gono|tatame|ringue)\s+(carregad\w*|derrotad\w*|chorando)|decis[ãa]o\s+(un[âa]nime|dividida|majorit[áa]ria))\b/i;
 const CONTEXTO_TREINO=/\b(sparring|trein\w*)\b/i;
 function semResultadoDeLuta(texto){
   const frases=String(texto).split(/(?<=[.!?])\s+/).filter(Boolean);
