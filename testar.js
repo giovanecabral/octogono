@@ -110,7 +110,7 @@ function exportar(js, nomes) {
   return js + "\n;globalThis.__x={};\n" +
     nomes.map(n => `try{globalThis.__x.${n}=${n};}catch(e){}`).join("\n");
 }
-const API_MOTOR = ["simulateFight", "mulberry32", "rateAll", "makePercentiler",
+const API_MOTOR = ["simulateFight", "simularRound", "mkState", "mulberry32", "rateAll", "makePercentiler",
   "rollTable", "PAIRS", "WEIGHTS", "TOTAL_WEIGHT", "BUDGET_PCT", "TUNING",
   "EVENTS", "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
   "TETO_TREINO", "RITMO_TREINO", "ATTR_TREINAVEIS",
@@ -1347,6 +1347,83 @@ function testarEscolhaLuta() {
   return ok && passos.length > 0;
 }
 
+/* ================================================================== *
+ * ESCOLHA NA LUTA — FASE 2, ponto de pausa (escrito ANTES do código)
+ * ================================================================== */
+/* lutar() hoje chama simulateFight() UMA VEZ (a luta inteira decide antes
+   de narrate() animar a primeira linha) — uma pausa dentro de narrate()
+   seria cosmética, o round 2 já estaria decidido. A pausa real exige
+   lutar() virar um DRIVER round a round: chamar simularRound() um round
+   de cada vez, animar o pedaço, parar pra escolha, aplicar o modificador,
+   chamar o round seguinte. Este teste prova, com fighters e seed reais,
+   que esse driver é seguro ANTES de escrevê-lo em lutar():
+     1. chamar simularRound() em loop (mesmo rng, mesmo A/B, mesmo scores,
+        passando de round a round) reproduz BIT A BIT o que simulateFight()
+        devolve numa chamada só — o driver não muda nada sozinho.
+     2. um modificador FIXO (sem rng nova) aplicado em .form depois do
+        round 1 deixa o log do round 1 intocado (o round já fechou) e muda
+        o resultado dali pra frente — é o gancho que a escolha vai usar.
+     3. controle: modificador 1 (neutro) reproduz exatamente o mesmo
+        resultado que não aplicar nada — o gancho não é mágico, é inerte
+        na identidade. */
+function testarDriverRodada() {
+  console.log("\n" + cinza("driver round-a-round (fase 2, antes do código): simularRound() em loop bate com simulateFight()"));
+  const M = carregarMotor(), F = lerLutadores();
+  const a = F.find(f => f.name === "Jon Jones"), b = F.find(f => f.name === "Daniel Cormier");
+  if (!a || !b) { console.log(vermelho("  não achei os lutadores de referência")); return false; }
+  const seed = 6; // medido: só com este seed o combate vai aos 3 rounds sem terminar no round 1
+
+  function driver(seed, modA) {
+    const rng = M.mulberry32(seed);
+    const form = () => 1 + (rng() + rng() + rng() - 1.5) / 1.5 * M.TUNING.formSpread;
+    const A = M.mkState(a, form()), B = M.mkState(b, form());
+    const log = [];
+    const push = (round, clock, kind, text) => log.push({ round, clock, kind, text });
+    const kds = () => ({ [A.ref.name]: A.knockdowns, [B.ref.name]: B.knockdowns });
+    const fin = (w, l, round, clock, m) => {
+      push(round, clock, "fin", `${w.ref.name} vence por ${m.toLowerCase()}`);
+      return { winner: w.ref.name, loser: l.ref.name, method: m, round, clock, cards: null, log, knockdowns: kds() };
+    };
+    const scores = { sa: 0, sb: 0 };
+    let res = null, round1Log = null;
+    for (let round = 1; round <= 3 && !res; round++) {
+      res = M.simularRound(A, B, round, rng, push, fin, scores);
+      if (round === 1) { round1Log = log.slice(); if (!res && modA) A.form *= modA; }
+    }
+    if (!res) {
+      const w = scores.sa > scores.sb ? A : scores.sb > scores.sa ? B : (rng() < .5 ? A : B), l = w === A ? B : A;
+      log.push({ round: 3, clock: "0:00", kind: "fin",
+        text: `Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa, scores.sb)}-${Math.min(scores.sa, scores.sb)}.` });
+      res = { winner: w.ref.name, loser: l.ref.name, method: "Decisão", round: 3, clock: "0:00",
+        cards: scores.sa + "-" + scores.sb, log, knockdowns: kds() };
+    }
+    return { round1Log, log, res };
+  }
+
+  const direto = M.simulateFight(a, b, { seed, rounds: 3 });
+  const semEscolha = driver(seed, null);
+  const comEscolha = driver(seed, 1.15);   // escolha fictícia: +15% de form pro resto da luta
+  const neutro = driver(seed, 1);          // controle: modificador identidade
+
+  let ok = true;
+  const passo = (nome, cond) => { if (!cond) ok = false; console.log(`  ${cond ? verde("ok   ") : vermelho("fora ")} ${nome}`); };
+
+  passo("driver round-a-round bate bit a bit com simulateFight() numa chamada só",
+    JSON.stringify(direto.log) === JSON.stringify(semEscolha.log) &&
+    direto.winner === semEscolha.res.winner && direto.method === semEscolha.res.method && direto.cards === semEscolha.res.cards);
+
+  passo("modificador pós-round-1 não altera o log do round 1 já fechado",
+    JSON.stringify(semEscolha.round1Log) === JSON.stringify(comEscolha.round1Log));
+
+  passo("modificador pós-round-1 muda o resultado dali pra frente (o gancho funciona)",
+    JSON.stringify(semEscolha.res) !== JSON.stringify(comEscolha.res));
+
+  passo("controle: modificador neutro (×1) reproduz o mesmo resultado que não aplicar nada",
+    JSON.stringify(semEscolha.res) === JSON.stringify(neutro.res));
+
+  return ok;
+}
+
 function testarConquistas() {
   console.log("\n" + cinza("conquistas: cada check() no limite certo, e a persistência de verdade"));
   const env = criarAmbiente();
@@ -1937,6 +2014,7 @@ try {
   else if (cmd === "momentos") ok = testarMomentos();
   else if (cmd === "conquistas") ok = testarConquistas();
   else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
+  else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -1979,7 +2057,7 @@ try {
     else console.log(cinza("\n  interface quebrada — pulei o resto, conserte isso primeiro"));
     console.log("\n" + (ok ? verde("TUDO CERTO") : vermelho("ALGO SAIU DA FAIXA")) + "\n");
   } else {
-    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|conteudo|aivivo] [divisão] [normal|lenda]\n`);
+    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
     process.exit(0);
   }
 } catch (e) {
