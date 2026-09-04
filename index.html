@@ -3730,13 +3730,18 @@ function nextFight(){
   telaAdversario();
 }
 
-/* Gancho inerte de propósito neste commit (item 3, condição A): 1 = a
-   escolha não muda nada ainda, só prova que o driver round a round por si
-   só não desloca KO/SUB/DEC (node testar.js drivermotor 1 6000 — mesmos
-   34/19/46/0.59 de testarMotor()). Calibrado no PRÓXIMO commit via 1.200
-   lutas por opção, alvo 0,5-0,8 vitórias em 22 pra "sempre certa" contra
-   "sempre errada" (PENDENCIAS, item 3). */
-const MOD_ESCOLHA_LUTA=1;
+/* Medido nesta leva (item 3, condição B) — /tmp/calibrar_escolha.js,
+   1.200 lutas por opção, fighter pairs reais no esquema de testarMotor():
+   varrendo .02 a .25, o gap entre a opção mais forte e a mais fraca (sempre
+   escolhida, sozinha, contra o baseline neutro) cruza a faixa pedida
+   (0,5-0,8 vitórias em 22) entre .04 e .06. Escolhido .04 — mais perto do
+   piso da faixa, com folga: outra leva de 1.200 com seeds deslocadas deu
+   0,55 e 0,70 (a .05 deu 0,64 e 0,81, cruzando o teto). Confirmado com
+   node testar.js drivermotor 1.04 6000 / 0.96 6000 (pior caso: modificador
+   aplicado em TODA luta, não só quando o jogador escolhe) — KO/SUB/DEC
+   seguem dentro da tolerância de testarMotor(). Revisar se a sensação de
+   jogo pedir mais peso — o número é da medição, não do gosto. */
+const MOD_ESCOLHA_LUTA=.04;
 
 /* Escolha na luta — item 3: uma vez por luta, só depois do primeiro round
    que ela alcança sem terminar nele. Texto ancorado no scouting REAL do
