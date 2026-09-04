@@ -100,23 +100,21 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 
 ## O que falta
 
-**Eventos de carreira do UFC.** Hoje o cinturão dispara sozinho: `standing` acima
-de 0.88 com 3 vitórias e a próxima luta é de título. Não existe campeão nomeado,
-convite nem espera.
+**Feito**: campeão nomeado (`RANKING`/`buildRanking()`), reconquista, rotação
+de contender (`st.desafianteIdx`, cada defesa enfrenta um nome diferente do
+`RANKING.lista`) e bônus de performance da noite (`st.bonusNoite`, sem
+número novo — reaproveita `hype`, recorde relativo tipo `st.peak`). Ver
+LEIA-ME.md "O passo para o cinturão" e "Card de momento".
 
-O caminho real: entrar no ranking dos 15 → subir → top 5 → vencer um contender →
-**receber** a disputa (que pode não vir, por lesão do campeão ou política) →
-depois de campeão, defesa obrigatória contra o desafiante nº 1.
+**Contradição ainda de pé, deixada de propósito pra quando alguém for mexer
+aqui de novo:** a ficha mostra a posição na divisão inteira (`#48 de 236`,
+`posicaoDivisao()`) e o `passoCinturao()` anuncia "chegar ao top 5" nas
+mesmas faixas de `standing` — "top 5" é linguagem de ranking oficial
+(campeão + 15), o número é do dataset inteiro. As duas seções da ficha (a
+nova "Ranking", que nomeia o campeão de verdade, e a antiga "Posição na
+divisão") convivem sem se contradizer porque não citam número uma da
+outra — mas o TEXTO de `passoCinturao()` ainda promete "top 5" num momento
+em que a posição literal pode ser #48 de 236.
 
-Fazer direito significa **nomear o campeão atual** e manter um ranking visível,
-não só um `standing` invisível.
-
-Há uma contradição em tela hoje, deixada de propósito para ser resolvida aqui: a
-ficha mostra a posição na divisão (`#48 de 236`) e o `passoCinturao()` anuncia
-"chegou ao top 5" exatamente nesse #48. As palavras são de ranking oficial
-(campeão + 15) e o número é da divisão inteira do dataset. Ver a tabela no
-`LEIA-ME.md`.
-
-Outros eventos que merecem o mesmo tratamento: bônus de performance da noite ·
-cinturão interino quando o campeão se machuca · luta principal em evento
-numerado · queda no ranking por inatividade.
+Falta ainda: cinturão interino quando o campeão se machuca · luta principal
+em evento numerado · queda no ranking por inatividade.

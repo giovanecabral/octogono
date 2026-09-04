@@ -850,6 +850,55 @@ function testarCinturao(div = "heavyweight") {
     opts=candidatos();
     passo("cenário 3: 2ª disputa é 1 carta só, contra o MESMO campeão de antes",
       opts.length===1 && opts[0].f.name===alvoOriginal && opts[0].f.name===RANKING.campeao.name);
+
+    /* Quarto cenário: rotação de contender. Ganha o título, defende com
+       sucesso 3 vezes seguidas — cada defesa tem que ser contra um NOME
+       DIFERENTE (RANKING.lista[1], depois [2], depois [3]), não sempre o
+       mesmo desafiante nº1. Perder também roda (medido abaixo). */
+    fought=new Set();
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:3,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.90,peak:.90,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:true,defesas:0,
+        exCampeao:null,foiCampeao:false,desafianteIdx:1};
+
+    st.tituloEstaLuta=tituloLiberado();
+    opts=candidatos(); opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+    passo("rotação: venceu o título, desafianteIdx continua 1 (só avança em DEFESA)",
+      st.desafianteIdx===1);
+    passo("bônus da noite: luta de título marca st.bonusNoite (hype alto, sem número novo)",
+      st.bonusNoite && st.bonusNoite.luta===st.fightNo);
+
+    const vistos=[];
+    for(let i=0;i<3;i++){
+      st.tituloEstaLuta=tituloLiberado();
+      opts=candidatos();
+      vistos.push(opts[0].f.name);
+      opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+      finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+    }
+    passo("rotação: 3 defesas seguidas, 3 desafiantes DIFERENTES",
+      new Set(vistos).size===3);
+    passo("rotação: são exatamente RANKING.lista[1],[2],[3], nessa ordem",
+      vistos[0]===RANKING.lista[1].name && vistos[1]===RANKING.lista[2].name
+        && vistos[2]===RANKING.lista[3].name);
+    passo("rotação: desafianteIdx acompanhou (terminou em 4)", st.desafianteIdx===4);
+
+    // perder uma defesa TAMBÉM avança a rotação
+    st.tituloEstaLuta=tituloLiberado();
+    opts=candidatos(); opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+    passo("rotação: perder uma defesa TAMBÉM avança o índice (terminou em 5)",
+      st.desafianteIdx===5);
+
+    passo("rotação: os 16 do RANKING.lista inteiro (não só campeão+desafiante) ficam banidos das 3 bandas comuns — reservados",
+      (()=>{
+        st.tituloEstaLuta=false;
+        const normais=candidatos();
+        const nomesLista=new Set(RANKING.lista.map(f=>f.name));
+        return normais.every(o=>!nomesLista.has(o.f.name));
+      })());
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }

@@ -2083,12 +2083,20 @@ function candidatos(){
        (`node testar.js interface`/`cinturao`, ver LEIA-ME "O passo para o
        cinturão" pela explicação completa); repetir contra qualquer outra
        pessoa continua sendo bug. */
-    const alvo=st.title?RANKING.desafiante:RANKING.campeao;
+    /* Defendendo, o alvo roda pelo RANKING.lista (rotação de contender —
+       ver st.desafianteIdx em finishFight()); desafiando, é sempre o
+       campeão nomeado, que não roda (só existe um campeão de verdade). */
+    const idx=Math.min(st.desafianteIdx||1,RANKING.lista.length-1);
+    const alvo=st.title?RANKING.lista[idx]:RANKING.campeao;
     if(alvo)return[{f:alvo,ganho:st.title?.10:.15}];
   }
   const N=LADDER.length;
-  const reservados=new Set([RANKING&&RANKING.campeao&&RANKING.campeao.name,
-    RANKING&&RANKING.desafiante&&RANKING.desafiante.name].filter(Boolean));
+  /* Os 16 do RANKING.lista inteiro ficam de fora das 3 bandas comuns, não só
+     campeão+desafiante — com rotação, qualquer um deles pode vir a ser o
+     próximo desafiante trancado; medido antes de escrever (node testar.js
+     divisoes): pior caso é peso-pesado lenda, 49-16=33 sobrando pras 22
+     lutas, margem de 11. */
+  const reservados=new Set((RANKING&&RANKING.lista||[]).map(f=>f.name));
   /* No topo do ranking não existe "acima": a faixa perigosa colapsava num
      único adversário repetido e virava a opção MAIS fácil. Recuamos o centro
      para que as três faixas sempre tenham gente de verdade. */
@@ -2674,6 +2682,7 @@ async function desenharCard(g){
   linha("Seguidores",fmtNum(st.followers));
   linha("Medidor de fã",st.fan.toFixed(1)+" / 10");
   linha("Cinturão",st.title?"SIM":"não",st.title);
+  if(st.bonusNoite)linha("Bônus da noite",`Luta ${st.bonusNoite.luta}`,true);
 
   // legado — é a carga emocional do card, ganha o espaço que sobra
   y+=34;
@@ -3411,7 +3420,7 @@ function startCareer(){
       standing:.18,peak:.18,events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,
       fan:5.0,followers:2400,peakFollowers:2400,
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
-      exCampeao:null,foiCampeao:false,lesao:null};
+      exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -3599,7 +3608,15 @@ function finishFight(opp,r,titleFight){
        abaixo — os dois precisam existir separados, senão reconquistar o
        cinturão não tem como ser distinguido de nunca tê-lo perdido. */
     if(titleFight){
-      if(st.title)st.defesas=(st.defesas||0)+1;
+      /* rotação de contender: essa defesa (ganha) usou o desafiante da vez
+         — a próxima aponta pro próximo nome do RANKING.lista, não repete o
+         mesmo pra sempre. Só avança em DEFESA (st.title já true antes desta
+         linha) — desafiar o campeão nomeado não mexe na rotação, que é só
+         sobre quem desafia O JOGADOR. */
+      if(st.title){
+        st.defesas=(st.defesas||0)+1;
+        if(RANKING&&RANKING.lista)st.desafianteIdx=Math.min((st.desafianteIdx||1)+1,RANKING.lista.length-1);
+      }
       st.title=true;st.foiCampeao=true;st.exCampeao=null;
       if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
     }
@@ -3632,6 +3649,11 @@ function finishFight(opp,r,titleFight){
          a reconquista aproveitaria a concessão antiga do holdRng e nunca
          sortearia de novo (ver candidatos()/tituloLiberado()). */
       st.title=false;st.exCampeao=opp;st.defesas=0;st.disputaLiberada=false;
+      /* essa defesa (perdida) também usou o desafiante da vez — mesma
+         rotação da vitória acima. Reconquistar mais tarde enfrenta de novo
+         RANKING.campeao (não muda com rotação), mas ao voltar a DEFENDER o
+         próximo nome já está um passo adiante. */
+      if(RANKING&&RANKING.lista)st.desafianteIdx=Math.min((st.desafianteIdx||1)+1,RANKING.lista.length-1);
     }else if(titleFight&&!st.title){
       /* Perdeu a DISPUTA em si, antes de nunca ter sido campeão — st.title
          já era false, então o bloco acima não roda, mas o reset do
@@ -3666,6 +3688,13 @@ function finishFight(opp,r,titleFight){
 
   /* --- repercussão --- */
   const hype=hypeOf(r,won,opp,me,titleFight,myKd,oppKd);
+  /* Bônus de performance da noite: só rótulo, nenhum número novo — reaproveita
+     hype, que já existe e já alimenta fã/seguidor. Sem limiar pra calibrar:
+     é sempre a luta de MAIOR hype da carreira ATÉ AGORA, tipo st.bestWin/
+     st.peak — não precisa medir nada porque não é um corte absoluto, é
+     recorde relativo. Aparece no relatório final e no card compartilhável. */
+  if(!st.bonusNoite||hype>st.bonusNoite.hype)
+    st.bonusNoite={hype,luta:fightNo,adversario:opp.name,cartel:`${st.wins}-${st.losses}`};
   /* upset compara com quem o jogador ERA antes de vencer — standingPre, não
      st.standing (que essa altura do won já subiu). Usar o pós-luta fazia
      "vitória sobre favorito" quase nunca disparar: o próprio salto de
@@ -3792,7 +3821,8 @@ function screenReport(){
     row("Pico de seguidores",fmtNum(st.peakFollowers))+
     row("Medidor de fã final",st.fan.toFixed(1)+" / 10")+
     row("Momentos fora do octógono",st.events)+
-    row("Decisões que você tomou",st.dilemas||0);
+    row("Decisões que você tomou",st.dilemas||0)+
+    (st.bonusNoite?row("Bônus da noite",`Luta ${st.bonusNoite.luta} · vs ${st.bonusNoite.adversario}`):"");
   app.appendChild(tape);
 
   const v=el("div","verdict");

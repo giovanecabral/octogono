@@ -535,6 +535,33 @@ que o mecanismo não ia entregar.
 node testar.js cinturao     # ganha o título, perde a defesa seguinte, reconquista?
 ```
 
+**Rotação de contender.** Antes, toda defesa (venha quando vier) travava
+sempre no mesmo `RANKING.desafiante` (`lista[1]`) — repetir era esperado,
+mas repetir PRA SEMPRE não é rotação, é o mesmo furo do campeão fixo antes
+do `RANKING` existir. `st.desafianteIdx` (começa em 1) avança uma posição
+em `RANKING.lista` a cada defesa CONCLUÍDA, ganha ou perde — perder também
+"usa" o desafiante da vez, não só ganhar. Cap em `lista.length-1`: não dá
+pra rodar mais do que os 16 nomes que existem. Desafiar o campeão (jogador
+sem o cinturão) nunca mexe no índice — só existe um campeão de verdade,
+não rotaciona.
+
+Consequência que precisou de correção junto: `reservados`, em
+`candidatos()`, bania só campeão+desafiante das 3 bandas comuns. Com
+rotação, qualquer um dos 16 do `RANKING.lista` pode vir a ser o próximo
+travado — os 16 inteiros ficam de fora agora. Medido ANTES de escrever
+(`node testar.js divisoes`): pior caso é peso-pesado modo lenda, pool de
+49 menos 16 banidos = 33 sobrando pras 22 lutas da carreira, margem de 11
+— o mesmo cenário que já quebrou a escada silenciosamente uma vez (ver "A
+escada continua funcionando" acima).
+
+**Bônus de performance da noite.** Rótulo só, nenhum número novo —
+reaproveita `hype` (`hypeOf()`), que já decide fã/seguidor. `st.bonusNoite`
+guarda a luta de MAIOR hype da carreira até agora, tipo `st.peak`/
+`st.bestWin`: não precisa de limiar calibrado porque não é corte absoluto,
+é recorde relativo — sempre existe uma "melhor luta até agora" a partir da
+primeira. Aparece no relatório final (`screenReport()`) e no card
+compartilhável (`desenharCard()`).
+
 ## Som
 
 Quatro arquivos em `audio/`, gerados por síntese (`audio/sintetiza.py`):
