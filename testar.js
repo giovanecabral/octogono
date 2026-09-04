@@ -1257,6 +1257,96 @@ function testarMomentos() {
    st. A parte de fiação (verificarConquistas() persistindo em localStorage
    de verdade, chamada depois de finishFight() real) tem um bloco à parte,
    mais abaixo, com um localStorage falso injetado no sandbox. */
+
+/* ================================================================== *
+ * 7e. ESCOLHA NA LUTA — teste do ponto de pausa ANTES do ponto de pausa
+ * ================================================================== */
+/* Item 1 do desenho de escolha na luta, fase 2 preparatória: o ponto de
+   pausa ainda NÃO existe (é o próximo passo, não este commit). O que este
+   teste prova é a invariante que o ponto de pausa vai se apoiar em cima:
+   `playing` já bloqueia `nextFight()` sozinho, sem flag nova nenhuma —
+   ver o guard em nextFight() ("...||playing||...") e o de toggleAuto()
+   ("if(auto&&!playing)nextFight()"). É EXATAMENTE a classe do bug
+   histórico (clicar automático com o dilema aberto rodava nextFight() por
+   cima e travava a carreira — ver o comentário em testarInterface), só
+   que aplicada ao estado que o ponto de pausa vai herdar (`playing===true`
+   durante toda a narração) em vez de `dilemaAberto`.
+
+   Prova ANTES de escrever o ponto de pausa, contra o código de HOJE — se
+   isto já vale hoje, o ponto de pausa herda de graça, sem precisar de
+   nenhuma flag nova (`escolhaLutaAberta` ou parecido) só pra isso. */
+function testarEscolhaLuta() {
+  console.log("\n" + cinza("escolha na luta (fase 2 prep): playing já bloqueia nextFight() sozinho, sem flag nova"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__el=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,fightNo:5,standing:.5,
+        title:false,defesas:0,rares:[],momentos:[]};
+    fightNo=5; st.fightNo=5;
+    dilemaAberto=false; escolhaAberta=false; auto=false;
+
+    /* cenário 1: playing=true (é o que vale durante toda narração, e vai
+       valer durante a pausa de escolha também) — nextFight() tem que ser
+       no-op, sem incrementar fightNo nem chamar candidatos()/lutar(). */
+    playing=true;
+    const fightNoAntes=fightNo;
+    nextFight();
+    passo("playing=true: nextFight() não incrementa fightNo (não rodou por cima)",
+      fightNo===fightNoAntes);
+
+    /* cenário 2: exatamente o bug histórico, só que com playing em vez de
+       dilemaAberto — clicar "automático" NO MEIO de playing=true não pode
+       disparar nextFight() por baixo do pano. auto pode virar true (é só
+       um toggle de UI), mas nextFight() não pode rodar por causa disso. */
+    playing=true; auto=false;
+    const fightNoAntesToggle=fightNo;
+    toggleAuto();
+    passo("toggleAuto() durante playing=true: auto vira true normalmente (é só UI)",
+      auto===true);
+    passo("toggleAuto() durante playing=true: NÃO disparou nextFight() por baixo (fightNo intocado)",
+      fightNo===fightNoAntesToggle);
+
+    /* cenário 3 (controle): com playing=false e auto=true, toggleAuto()
+       PODE disparar nextFight() — é o comportamento normal fora da
+       narração, não pode ter quebrado. Só confirma que fightNo tentou
+       avançar (nextFight() chama candidatos(), que aqui não tem
+       RANKING/LADDER montado e lança — o que já prova que tentou rodar;
+       não é o alvo deste teste medir o resultado, só o disparo). */
+    playing=false; auto=false;
+    let tentouRodar=false;
+    try{ toggleAuto(); }catch(e){ tentouRodar=true; }
+    passo("controle: playing=false permite toggleAuto() tentar nextFight() (comportamento normal preservado)",
+      tentouRodar);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__el || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
 function testarConquistas() {
   console.log("\n" + cinza("conquistas: cada check() no limite certo, e a persistência de verdade"));
   const env = criarAmbiente();
@@ -1846,6 +1936,7 @@ try {
   else if (cmd === "lesao") ok = testarLesao();
   else if (cmd === "momentos") ok = testarMomentos();
   else if (cmd === "conquistas") ok = testarConquistas();
+  else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
