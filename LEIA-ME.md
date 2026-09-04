@@ -400,6 +400,29 @@ filtrados — é o que faz o caso filtrado se misturar com os comuns.
 nenhuma das duas linhas aparecer, e um efeito de verdade (não zero)
 continua aparecendo normal.
 
+**O texto também denunciava — em dois lugares, resolvidos em dois
+commits diferentes.** O exemplo único no prompt do `julgar` ("Ele não
+soube o que responder...") saía copiado LITERAL sempre que a IA decidia
+neutralizar — medido: 3 de 5 provocações voltaram com a string idêntica,
+char por char. Resolvido dando 4 exemplos de tom em vez de 1 frase pra
+copiar, com instrução explícita pra nunca repetir literalmente.
+
+Isso resolveu só a METADE que passa pela IA. O fallback LOCAL
+(`aplicarDilema()`, quando `j` vem nulo — filtro pré-chamada, pós-chamada,
+ou falha de rede pura, as três indistinguíveis de propósito) continuava
+com uma frase fixa única, `"Você seguiu em frente..."`, sempre a mesma —
+achado jogando, mesmo depois do conserto do lado da IA. `FALLBACK_NEUTRO`
+(8 frases, segunda pessoa, sorteadas por `fraseRng` — stream próprio,
+mesmo motivo do `holdRng`, pra não deslocar o link de desafio) resolve o
+outro lado. `node testar.js conteudo` mede 10 cortes locais e exige pelo
+menos 5 frases distintas.
+
+Residual conhecido, não resolvido: o fallback local sai em SEGUNDA pessoa
+("Você..."), o texto neutro da IA sai em TERCEIRA ("Ele..."). Um jogador
+atento pode notar a troca de pessoa gramatical entre os dois caminhos —
+sinal mais fraco que "frase idêntica sempre" (aqui são 3 causas reais
+diferentes competindo pelo mesmo texto, não 1), mas ainda é sinal.
+
 **A calibração é oposta à do `RESULTADO_LUTA` de propósito.** Lá, falso
 positivo custa perder uma frase boa, e a taxa foi medida pra ficar embaixo
 de ~5%. Aqui, falso positivo custa um desfecho genérico a mais — barato — e

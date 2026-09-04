@@ -1404,6 +1404,27 @@ const CONTEUDO_INSEGURO=/\b(automutila\w*|mutila\w*|amputa\w*|decepa\w*|cutelo|s
 function conteudoInseguro(texto){
   return CONTEUDO_INSEGURO.test(String(texto||""));
 }
+/* Fallback quando j vem nulo — filtro local (antes da chamada), rede pós-
+   chamada pegando o desfecho da IA, ou falha de rede pura: as três causas
+   caem aqui, indistinguíveis entre si de propósito. O que não pode
+   acontecer é UMA FRASE SÓ, sempre igual — isso vira assinatura do filtro
+   tão forte quanto a que já foi resolvida do lado da IA (ver LEIA-ME
+   "Conteúdo inseguro no dilema"). Em segunda pessoa, igual sempre foi —
+   não confundir com o texto neutro que a própria IA gera (terceira
+   pessoa) quando é ELA quem decide neutralizar. */
+const FALLBACK_NEUTRO=[
+  "Você seguiu em frente e a semana passou sem grande consequência.",
+  "Você não deu muita importância e a rotina continuou normal.",
+  "Você mudou de assunto e ninguém comentou mais nada.",
+  "Você deixou pra lá e voltou pro treino sem alarde.",
+  "Você respondeu por cima e a semana seguiu tranquila.",
+  "Você desconversou e a semana passou sem barulho nenhum.",
+  "Você ficou na sua e nada mais aconteceu por causa disso.",
+  "Você não se estendeu no assunto e a rotina não mudou em nada.",
+];
+function fraseFallback(){
+  return FALLBACK_NEUTRO[Math.floor((fraseRng?fraseRng():Math.random())*FALLBACK_NEUTRO.length)];
+}
 
 async function abrirDilema(){
   const bouts=document.getElementById("bouts");
@@ -1529,7 +1550,7 @@ function aplicarDilema(box,d,txt,jBruto){
   /* Filtra ANTES do slice: cortar frase por regex depois de truncar em 500
      poderia deixar uma frase pela metade sem o ponto final que a divide. */
   const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,500):"";
-  const desfecho=bruto||"Você seguiu em frente e a semana passou sem grande consequência.";
+  const desfecho=bruto||fraseFallback();
   box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
     <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
@@ -3013,7 +3034,7 @@ async function compartilhar(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,usedEvents=null,rareUsed=null,fought=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,usedEvents=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -3377,6 +3398,11 @@ function startDraft(name){
      principal, senão qualquer sorteio aqui deslocaria a sequência e link de
      desafio antigo pararia de reproduzir a mesma carreira. */
   holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
+  /* Mesmo motivo do holdRng, stream próprio: sorteia qual frase neutra do
+     fallback local aparece, sem tocar no rng principal — senão qualquer
+     dilema cortado localmente deslocaria a sequência e o link de desafio
+     pararia de reproduzir a mesma carreira. */
+  fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
   me={name,division:DIVISION};picks=[];
   budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
   remaining=[...PAIRS];

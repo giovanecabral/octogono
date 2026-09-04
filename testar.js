@@ -1627,6 +1627,7 @@ function testarConteudoInseguro() {
         kdTaken:0,kdGiven:0,fightNo:1,fan:5,followers:2400,peakFollowers:2400,longestW:0,
         lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,exCampeao:null,
         foiCampeao:false,lesao:null};
+    fraseRng=mulberry32(1); // determinístico, matando o Math.random() de defesa
     const box=document.getElementById("caixaSegurancaTeste");
     const followersAntes=st.followers, fanAntes=st.fan;
     aplicarDilema(box,{titulo:"T",cena:"C"},"corto meus dedos fora com um cutelo",
@@ -1636,8 +1637,24 @@ function testarConteudoInseguro() {
     passo("j inseguro: não vira lesão", st.lesao===null);
     passo("j inseguro: seguidores não mudou (não é 0.5 de ganho)", st.followers===followersAntes);
     passo("j inseguro: fã não mudou (não é +2.5)", st.fan===fanAntes);
-    passo("j inseguro: desfecho cai no texto genérico",
-      box.innerHTML.includes("Você seguiu em frente"));
+    passo("j inseguro: desfecho cai numa das frases genéricas (não IA, não mais frase única)",
+      FALLBACK_NEUTRO.some(f=>box.innerHTML.includes(f)));
+
+    /* Achado jogando: eu tinha dado variedade ao texto neutro DA IA (4
+       exemplos no prompt) e deixado o fallback LOCAL — que é o caminho
+       real de "corto meus dedos", cortado ANTES de chamar a IA — com uma
+       frase só, fixa, pra sempre. Repetição exata é a mesma assinatura de
+       filtro que já tinha sido resolvida do outro lado. Confere variedade
+       de verdade: 10 cortes locais, quantas frases distintas saem. */
+    fraseRng=mulberry32(7);
+    const vistas=new Set();
+    for(let i=0;i<10;i++){
+      aplicarDilema(box,{titulo:"T",cena:"C"},"corto meus dedos fora com um cutelo",null);
+      const m=/dil-o">([^<]+)</.exec(box.innerHTML);
+      if(m)vistas.add(m[1]);
+    }
+    passo("fallback local: 10 cortes produzem pelo menos 5 frases distintas (não 1 fixa)",
+      vistas.size>=5);
     /* achado jogando: filtro certo, apresentação errada — efeito zero
        cravado (j nulo) desenhava "+0 seguidores" e "+0.0 de fã" em VERDE
        (dif>=0 é true pra zero), um padrão que uma resposta comum não
