@@ -77,19 +77,14 @@ remedir — não redecidir de olho.
 
 ---
 
-## 5. `node testar.js escolhas` quebrado
+## 5. `node testar.js escolhas` quebrado — RESOLVIDO
 
-`camp.fx is not a function` — trava antes de chegar a medir qualquer coisa.
-Confirmado anterior a qualquer mudança recente: `CAMPS` nunca teve `fx`, o
-jogo real usa `camp.alvos` via `aplicarCamp()`. O teste reimplementa a
-seleção de adversário em vez de chamar `candidatos()` — a mesma dívida já
-documentada, só que agora manifesta como erro em vez de número errado.
-
-A correção é expor `candidatos()` e chamar a original, como já se faz com o
-resto do motor.
-
-**Pronto quando:** o teste chama a função do jogo, roda sem travar, e volta a
-aprovar/reprovar.
+Reescrito pra chamar `candidatos()`, `aplicarCamp()` e `simulateFight()` de
+verdade (mesmo padrão de `testarCinturao`/`testarMomentos`), em vez de
+reimplementar seleção de adversário e `camp.fx` (que nunca existiu — o jogo
+usa `camp.alvos` via `aplicarCamp()`). Volta a aprovar/reprovar:
+`duro.top > facil.top+30`. Medido: acessível 28% chegam ao topo, parelho
+89%, perigoso 99% — 300 carreiras por faixa, `node testar.js escolhas`.
 
 ---
 

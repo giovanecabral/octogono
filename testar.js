@@ -553,72 +553,102 @@ function testarTreino(div = "lightweight") {
 /* ================================================================== *
  * 5. ESCOLHAS — enfrentar os fortes tem que valer mais que os fracos
  * ================================================================== */
+/* Chama candidatos(), aplicarCamp() e simulateFight() DE VERDADE — a versão
+   antiga reimplementava a seleção de adversário (faixas por índice fixo) e
+   o camp (`camp.fx(me)`, que nunca existiu; o jogo usa `camp.alvos` via
+   aplicarCamp(), que escreve em st.treino permanente). As duas cópias
+   envelheceram e o teste travava (`camp.fx is not a function`) sem medir
+   nada. Ver PENDENCIAS.md item 5.
+
+   st.tituloEstaLuta fica travado em false o tempo todo: a pergunta aqui é
+   "a faixa de dificuldade escolhida muda o desfecho", e luta de título usa
+   ganho fixo (.10/.15) fora das 3 faixas — deixaria uma estratégia parecer
+   melhor só por sorte de bater título mais vezes, ruído que testarCinturao
+   já cobre à parte. */
 function testarEscolhas(div = "lightweight") {
   console.log("\n" + cinza("300 carreiras por estratégia, medindo se a escolha muda o desfecho"));
-  const M = carregarMotor(), F = lerLutadores();
-  const pool = F.filter(f => f.division === div);
-  const PCT = M.makePercentiler(pool);
-  const LADDER = [...pool].sort((a, b) => a.rating - b.rating);
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
 
-  const draft = rng => {
-    let left = M.TOTAL_WEIGHT * M.BUDGET_PCT, rem = [...M.PAIRS];
-    const f = { name: "P", division: div, sapm: 3.2 };
-    while (rem.length) {
-      const rows = M.rollTable(pool, rem, rng, PCT);
-      const aff = rows.filter(r => r.cost <= left);
-      const sh = aff.length ? aff : [rows.reduce((m, r) => r.cost < m.cost ? r : m)];
-      const r = sh[sh.reduce((b, x, i, a) => x.cost > a[b].cost ? i : b, 0)];
-      f[r.pair.a.key] = r.src[r.pair.a.key]; f[r.pair.b.key] = r.src[r.pair.b.key];
-      left -= r.cost; rem = rem.filter(p => p.id !== r.pair.id);
+  const corpo = `
+;globalThis.__esc=(function(){
+  ROSTER=rateAll(${JSON.stringify(lerLutadores())});
+  CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+  DIVISION=${JSON.stringify(div)}; MODO="normal";
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+
+  function draft(rng){
+    let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
+    const f={name:"P",division:DIVISION,sapm:3.2};
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rng,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
     }
-    f.strAcc = f.strAcc || .45; f.tdAcc = f.tdAcc || .38;
+    f.strAcc=f.strAcc||.45; f.tdAcc=f.tdAcc||.38;
     return f;
-  };
-  const carreira = (seed, k) => {
-    const rng = M.mulberry32(seed), me = draft(rng);
-    let standing = .18, peak = .18, wins = 0;
-    const vistos = new Set(), N = LADDER.length, larg = .20;
-    const faixas = [[-.16, -.07, .045], [-.03, .03, .075], [.08, larg, .125]];
-    for (let i = 0; i < 22; i++) {
-      const c = Math.floor(Math.min(standing, 1 - larg) * (N - 1));
-      const [lo, hi, ganho] = faixas[k];
-      const a = Math.max(0, Math.min(N - 1, c + Math.round(lo * N)));
-      const b = Math.max(a, Math.min(N - 1, c + Math.round(hi * N)));
-      let o = null;
-      for (let t = 0; t < 60; t++) {
-        const cd = LADDER[a + Math.floor(rng() * (b - a + 1))];
-        if (cd && !vistos.has(cd.name)) { o = cd; break; }
+  }
+
+  function carreira(seed,k){
+    rng=mulberry32(seed); holdRng=mulberry32((seed^0x9E3779B9)>>>0);
+    me=draft(rng);
+    me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.18,peak:.18,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
+        tituloEstaLuta:false};
+    fought=new Set(); usedEvents=new Set(); rareUsed=new Set();
+    for(let i=0;i<22;i++){
+      const opts=candidatos();       // real: 3 faixas (fácil/parelho/duro)
+      const escolhido=opts[k];
+      const opp=escolhido.f; fought.add(opp.name);
+      const camp=CAMPS[Math.floor(rng()*3)];
+      aplicarCamp(camp);             // real: escreve em st.treino, com teto
+      const comCamp=lutadorEfetivo();
+      const r=simulateFight(comCamp,opp,{seed:Math.floor(rng()*1e9)});
+      if(r.winner===me.name){
+        st.wins++; st.standing=Math.min(1,st.standing+escolhido.ganho);
+        st.peak=Math.max(st.peak,st.standing);
+      }else{
+        const g=escolhido.ganho;
+        st.standing=Math.max(.05,st.standing-(g<=.05?.13:g>=.12?.06:.09));
       }
-      if (!o) for (let i2 = a; i2 <= b; i2++) if (!vistos.has(LADDER[i2].name)) { o = LADDER[i2]; break; }
-      if (!o) o = LADDER[a];
-      vistos.add(o.name);
-      const camp = M.CAMPS[Math.floor(rng() * 3)];
-      const r = M.simulateFight(Object.assign({}, me, camp.fx(me)), o, { seed: Math.floor(rng() * 1e9) });
-      if (r.winner === me.name) { wins++; standing = Math.min(1, standing + ganho); peak = Math.max(peak, standing); }
-      else standing = Math.max(.05, standing - (ganho <= .05 ? .13 : ganho >= .12 ? .06 : .09));
     }
-    return { wins, peak };
+    return {wins:st.wins,peak:st.peak};
+  }
+
+  const med=k=>{
+    let w=0,top=0,n=300;
+    for(let s=0;s<n;s++){const r=carreira(s*97+5,k); w+=r.wins; if(r.peak>=.9)top++;}
+    return{w:w/n,top:100*top/n};
   };
-  const med = k => {
-    let w = 0, top = 0, n = 300;
-    for (let s = 0; s < n; s++) { const r = carreira(s * 97 + 5, k); w += r.wins; if (r.peak >= .9) top++; }
-    return { w: w / n, top: 100 * top / n };
-  };
-  const facil = med(0), duro = med(2);
+  const linhas=[0,1,2].map(k=>({k,...med(k)}));
+  return linhas;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const linhas = env.sandbox.__esc;
   const rots = ["acessível", "parelho", "perigoso"];
-  [0, 1, 2].forEach(k => {
-    const r = med(k);
-    console.log(`  ${rots[k].padEnd(10)} ${r.w.toFixed(1)} vitórias   chegou ao topo em ${r.top.toFixed(0)}% das carreiras`);
+  linhas.forEach(r => {
+    console.log(`  ${rots[r.k].padEnd(10)} ${r.w.toFixed(1)} vitórias   chegou ao topo em ${r.top.toFixed(0)}% das carreiras`);
   });
 
-  /* Só afirmamos o que este teste mede de forma confiável: a ESCADA.
-     A contagem de vitórias fica como relatório, sem aprovar nem reprovar,
-     porque esta função REIMPLEMENTA a seleção de adversário do jogo em vez de
-     chamar candidatos(). Quando as duas divergem, é esta cópia que está
-     errada — e um teste em que não se confia é pior que teste nenhum.
-     Consertar de verdade é expor candidatos() e chamar a original aqui. */
+  const facil = linhas[0], duro = linhas[2];
   const topoMaior = duro.top > facil.top + 30;
-  console.log(cinza("  (a contagem de vitórias é só relatório — ver DÍVIDAS no LEIA-ME)"));
   if (!topoMaior) console.log(vermelho("  fora  enfrentar fortes devia levar ao topo muito mais vezes"));
   else console.log(verde("  ok   ") + "enfrentar fortes leva ao topo muito mais vezes");
   return topoMaior;
