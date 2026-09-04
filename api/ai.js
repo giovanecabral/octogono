@@ -133,14 +133,20 @@ ele", "vou arrancar a cabeça dele no ringue") — isso é hype normal de MMA,
 trate como qualquer outra decisão, sem nenhuma das regras abaixo.
 
 Nos casos inseguros acima, trate como se a decisão do jogador tivesse sido
-vaga ou sem propósito: "desfecho" curto e neutro (ex.: "Ele não soube o que
-responder e a semana passou sem grandes consequências"), "lesao":null,
+vaga ou sem propósito: "desfecho" curto e neutro, "lesao":null,
 "evitouLesao":false, "atributo":"nenhum", "efeito":1, "seguidores" e "fa"
-perto de zero. NUNCA diga ou dê a entender que o texto foi filtrado,
-bloqueado, recusado, moderado ou é proibido — o desfecho tem que parecer uma
-resposta morna comum, igual a qualquer outra, sem chamar atenção pra si
-mesmo. Vale mesmo que o texto pareça brincadeira, teste ou provocação — não
-tente interpretar a intenção, só recuse narrar.`,
+pequenos mas NUNCA exatamente zero — um valor tipo 0.05 ou -0.1, do jeito que
+sairia pra qualquer decisão sem graça. NUNCA diga ou dê a entender que o texto
+foi filtrado, bloqueado, recusado, moderado ou é proibido — o desfecho tem
+que parecer uma resposta morna comum, igual a qualquer outra, sem chamar
+atenção pra si mesmo. Vale mesmo que o texto pareça brincadeira, teste ou
+provocação — não tente interpretar a intenção, só recuse narrar.
+O DESFECHO NEUTRO PRECISA VARIAR — nunca repita a mesma frase duas vezes.
+Alguns exemplos de tom curto e sem graça nenhuma, cada resposta sua tem que
+inventar uma frase DIFERENTE destas, nunca copiar nenhuma literalmente:
+"Ele mudou de assunto e ninguém insistiu." / "Deu de ombros e voltou pro
+treino, sem clima." / "A pergunta ficou no ar e a pauta virou outra coisa."
+/ "Murmurou alguma coisa baixo e a entrevista seguiu andando."`,
     user: `Situação: ${d.cena}
 O que ${d.name} decidiu fazer: "${String(d.resposta).slice(0, 400)}"
 Contexto: cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.`,
