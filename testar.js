@@ -968,6 +968,30 @@ function testarLesao() {
     passo("aplica lesão: eventoMod combina o -50% da lesão COM o +8% do evento (multiplicativo)",
       Math.abs(st.eventoMod.slpm-1.08*0.50)<1e-9);
 
+    /* Achado jogando: a % exibida por atributo comparava contra a base
+       CRUA (base×treino×eventoMod / base), então subia conforme o treino
+       subia — "-50%" virava "-13%" mesmo com a lesão intocada. O bloco
+       LESÃO agora mostra a magnitude fixa (st.lesao.mult), que não pode
+       se mexer com treino. Confere isso literalmente: renderiza a ficha
+       com treino baixo, sobe o treino MUITO, renderiza de novo — o número
+       no bloco LESÃO tem que ser bit-a-bit igual nas duas vezes. */
+    renderFicha();
+    const fichaAntes=document.getElementById("ficha").innerHTML;
+    passo("ficha: bloco LESÃO mostra a magnitude fixa (-50%)",
+      /lesao-mag">Volume\\s*-50%/.test(fichaAntes));
+    passo("marcador: nome do atributo machucado (Volume) vem em negrito",
+      /style="font-weight:800">Volume</.test(fichaAntes));
+    passo("marcador: atributo NÃO machucado (Poder) não leva negrito",
+      !/style="font-weight:800">Poder</.test(fichaAntes));
+
+    st.treino.slpm=1.26; // treino no teto — a % combinada mudaria, a da lesão não pode
+    renderFicha();
+    const fichaDepois=document.getElementById("ficha").innerHTML;
+    const norm=s=>((s.match(/lesao-mag">([^<]+)/)||[])[1]||"").replace(/\\s+/g," ").trim();
+    const magAntes=norm(fichaAntes), magDepois=norm(fichaDepois);
+    passo("ficha: magnitude da lesão não muda quando o treino sobe (era o bug)",
+      magAntes===magDepois && magAntes==="Volume -50%");
+
     // avança até a cura (desdeLuta 6 + duração 8 = cura depois da luta 14)
     for(let f=7; f<=14; f++){
       st.fightNo=f; st.ganhoEscolhido=.07;
@@ -1262,6 +1286,18 @@ function testarResultadoLuta() {
   ];
   for(const c of controles)
     passo("mantém: \\""+c.slice(0,40)+"...\\"", semResultadoDeLuta(c)===c);
+
+  /* Achado jogando: um evento local ("o joelho travou, o médico falou em
+     cirurgia") narrava lesão de verdade sem passar pelo st.lesao — mesma
+     classe deste teste, só que em EVENTS/RARE em vez do desfecho da IA.
+     Guarda de regressão barata: nenhuma frase local promete um sistema que
+     o efeito mecânico (fx) não aciona. Não é a regra geral (isso é o
+     "node testar.js coerencia" proposto, ainda não escrito) — só os dois
+     casos concretos já achados, pra não voltar por acidente. */
+  const vocabLesao=/médic[oa]|cirurgia|escondeu da comissão/i;
+  const doresProibidas=EVENTS.filter(e=>vocabLesao.test(e.t("X")));
+  passo("EVENTS: nenhuma frase promete lesão de verdade sem passar por st.lesao",
+    doresProibidas.length===0);
 
   return passos;
 })();

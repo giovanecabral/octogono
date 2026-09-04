@@ -211,6 +211,28 @@ lutas). A tabela usada:
 | temporária | -50% | 8 lutas | ~0,7-0,9 vitórias |
 | permanente | -25% | carreira toda | ~1,0 vitória |
 
+**Remedido com treino SOLTO (não congelado), achado jogando: o jogador viu a
+% cair sozinha e suspeitou de diluição.** 300 carreiras, camp fixo mirando o
+MESMO atributo da lesão (o cenário onde a suspeita seria mais provável de
+se confirmar): custo ficou em **1,06 vitórias em 22** — bate com a medição
+original, não diluiu. O multiplicador (`eventoMod`) nunca muda; o que
+mudava era só a EXIBIÇÃO — `ganho` comparava `statAtual()` (base×treino×
+eventoMod) contra a base CRUA, então conforme o treino sobe rumo ao teto
+(`TETO_TREINO`), esse número combinado sobe junto e enterra visualmente o
+efeito fixo da lesão. O bloco LESÃO na ficha agora mostra a magnitude
+travada (`st.lesao.mult`, nunca recalculada), separada do badge por
+atributo (que continua mostrando o combinado — informação legítima
+diferente, não substituição).
+
+**Vermelho não é exclusivo de lesão, de propósito — e o jogador achou isso
+ambíguo jogando.** Um evento comum negativo (dilema, evento aleatório)
+pinta o mesmo `.dn` vermelho que uma lesão pintaria, porque os dois são só
+`ganho<-0.5%`. Decisão: continua assim — esconder perda comum seria
+esconder informação real. O que faltava era uma SEGUNDA pista que não
+dependesse de cor: o nome do atributo (`.atr .r`) fica em negrito quando
+`st.lesao.atributo===k`, funciona pra quem não distingue vermelho de outra
+cor.
+
 Por isso a IA (`julgar`, em `api/ai.js`) só **classifica** — `permanente` (sim
 ou não) e qual `atributo` — e o jogo aplica o número da tabela acima. Deixar a
 magnitude com a IA não funcionava: em 40 desfechos reais medidos pro filtro de
@@ -243,6 +265,20 @@ de verdade (fã de MMA valoriza quem arrisca o corpo).
 **A ficha respeita quantas lutas realmente sobram.** Uma lesão de 8 lutas que
 começa na luta 18 (numa carreira de 22) não cabe — o texto mostra "dura até o
 fim da carreira" em vez de prometer uma cura que a carreira não alcança.
+
+**Dois eventos locais (`EVENTS`) narravam lesão de verdade sem passar por
+`st.lesao`.** Achado jogando: "o joelho de X travou no meio do camp, o
+médico falou em cirurgia" e "X machucou a mão e escondeu da comissão" —
+escritos antes do sistema de lesão existir, nunca migrados. Tinham efeito
+mecânico real (`fx`, um `eventoMod` comum), só que a narrativa prometia
+cirurgia/ocultação e o jogo nunca aplicava lesão nenhuma — mesma classe do
+`RESULTADO_LUTA`: texto afirmando o que o motor não produziu. Reescritos
+pra descrever fadiga/semana ruim de camp, sem palavra de lesão, mantendo o
+mesmo `fx`. `node testar.js resultado` ganhou uma checagem varrendo
+`EVENTS` inteiro contra um vocabulário de lesão (médico/cirurgia/escondeu
+da comissão) — não é a regra geral (isso seria o `node testar.js
+coerencia` proposto), só os dois casos concretos, pra não voltar por
+acidente.
 
 **Não existe portão `houveLesao` — e o motivo de ter sido tentado e revertido
 é o registro mais importante deste bloco.** Um jogador jogou uma carreira de

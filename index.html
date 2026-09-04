@@ -208,6 +208,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .rank .mov.cai{color:var(--stamp)}
 .rank-pico{margin-top:7px;font-size:11px;color:var(--faded)}
 .lesao-nome{font-family:Oswald,sans-serif;font-weight:600;font-size:13px;color:var(--ink)}
+.lesao-mag{margin-top:2px;font-size:12px;font-weight:600;color:var(--stamp)}
 .lesao-dur{margin-top:3px;font-size:11px;color:var(--stamp)}
 .atrs{display:grid;gap:7px}
 .atr{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:baseline}
@@ -840,7 +841,11 @@ const EVENTS=[
   t:n=>`${n} quitou a dívida do pai e não contou pra ninguém. Vazou mesmo assim.`},
  {when:s=>!s.lastWon,
   t:n=>`${n} perdeu o aniversário da filha por causa do corte de peso. Ela não falou com ele por uma semana.`},
- {t:n=>`O joelho de ${n} travou no meio do camp. O médico falou em cirurgia, ${n} falou em anti-inflamatório.`,
+ /* Antes descrevia lesão de verdade (joelho travando, médico falando em
+    cirurgia) sem passar pelo sistema de lesão — narrava um problema que o
+    motor nunca produziu, mesma classe do RESULTADO_LUTA. Reescrito pra não
+    prometer o que não acontece; o efeito mecânico continua o mesmo. */
+ {t:n=>`${n} passou a semana de camp mais cauteloso, sem forçar o ritmo. O volume caiu um pouco nos treinos.`,
   fx:f=>({tdAvg:f.tdAvg*.92,slpm:f.slpm*.92})},
  {t:n=>`O empresário de ${n} sumiu com a bolsa de duas lutas. Não valeu a pena processar.`},
  {t:n=>`${n} escorregou na entrada do octógono e caiu sentado. O clipe já tem trilha de circo em nove versões.`},
@@ -854,7 +859,7 @@ const EVENTS=[
  {t:n=>`${n} apareceu num podcast e disse que treina de madrugada porque de dia tem barulho.`},
  {t:n=>`${n} começou a treinar com um faixa-preta antigo. O camp foi brutal.`,
   fx:f=>({subAvg:f.subAvg*1.12,tdDef:Math.min(.92,f.tdDef*1.04)})},
- {t:n=>`${n} machucou a mão no camp e escondeu da comissão.`,fx:f=>({kdAvg:f.kdAvg*.88})},
+ {t:n=>`${n} teve uma semana de camp fraca, sem intensidade nos treinos. O treinador reclamou.`,fx:f=>({kdAvg:f.kdAvg*.88})},
  {t:n=>`${n} virou meme depois de dançar na encarada. Ganhou duzentos mil seguidores.`},
  {t:n=>`${n} passou o camp inteiro no boxe. A defesa melhorou.`,
   fx:f=>({strDef:Math.min(.85,f.strDef*1.06)})},
@@ -1903,8 +1908,13 @@ function renderFicha(){
     const ganho=b>0?(atual/b-1):0;
     const pct=Math.max(0,Math.min(1,PCT?PCT(k,atual):0.5));
     const pctBase=Math.max(0,Math.min(1,PCT?PCT(k,b):0.5));
+    /* Marcador de lesão não pode depender só de cor (vermelho já é usado por
+       qualquer perda comum, de propósito — ver LEIA-ME). Negrito no NOME do
+       atributo é uma segunda pista que não é cor: funciona igual pra quem
+       não distingue vermelho de outra coisa. */
+    const machucado=st.lesao&&st.lesao.atributo===k;
     return `<div class="atr">
-      <span class="r">${ROTULO_ATTR[k]||k}</span>
+      <span class="r"${machucado?' style="font-weight:800"':""}>${ROTULO_ATTR[k]||k}</span>
       <span class="v">${FMT_ATTR[k]?FMT_ATTR[k](atual):atual.toFixed(2)}${
         ganho>0.005?`<span class="g">+${Math.round(ganho*100)}%</span>`
         :ganho<-0.005?`<span class="dn">${Math.round(ganho*100)}%</span>`:""}</span>
@@ -1956,6 +1966,8 @@ function renderFicha(){
       <h4>Lesão</h4>
       <div class="lesao">
         <div class="lesao-nome">${st.lesao.nome}</div>
+        <div class="lesao-mag">${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo}
+          ${Math.round((st.lesao.mult-1)*100)}%</div>
         <div class="lesao-dur">${(()=>{
           if(st.lesao.permanente)return "Lesão permanente — não cura";
           const curaNaLuta=st.lesao.desdeLuta+st.lesao.duracao;
