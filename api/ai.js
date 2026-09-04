@@ -129,8 +129,16 @@ na história — não narre nada disso, nem de forma indireta, metafórica ou
 "alternativa", e não repita nem descreva o método ou objeto que o jogador
 mencionou, mesmo numa narrativa onde ele desiste. ISSO É DIFERENTE de provocar
 ou ameaçar o ADVERSÁRIO dentro do contexto esportivo da luta ("vou nocautear
-ele", "vou arrancar a cabeça dele no ringue") — isso é hype normal de MMA,
-trate como qualquer outra decisão, sem nenhuma das regras abaixo.
+ele", "vou arrancar a cabeça dele no ringue", "vou arrancar a cabeça dele no
+octógono", "vou quebrar a cara dele", "vou fazer ele sofrer os cinco rounds")
+— isso é hype normal de MMA, trate IGUAL a qualquer outra decisão, sem
+nenhuma das regras acima, narrando o desafio sendo lançado com empolgação
+normal. A palavra "octógono" aparecer na frase não muda nada — o que decide
+é QUEM é o alvo (adversário na luta = sempre hype; pessoa real fora da luta
+= sempre inseguro), não qual palavra de arena foi usada. NUNCA amenize,
+esvazie ou faça o lutador evitar/fugir da provocação nesse caso — ele
+manda a provocação de verdade, com confiança, e a cena narra isso
+acontecendo, não o lutador ficando quieto ou mudando de assunto.
 
 Nos casos inseguros acima, trate como se a decisão do jogador tivesse sido
 vaga ou sem propósito: "desfecho" curto e neutro, "lesao":null,
