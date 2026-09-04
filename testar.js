@@ -1275,7 +1275,7 @@ function testarConquistas() {
        fightNo>=TOTAL_FIGHTS, "invicto" desbloqueava na luta 1. */
     const base=()=>({wins:0,losses:0,defesas:0,vezesCampeao:0,title:false,
       momentos:[],subLosses:0,koLosses:0,longestW:0,kdTaken:0,evitouAlgumaVez:false,
-      peak:0,followers:0,fightNo:TOTAL_FIGHTS});
+      peak:0,followers:0,bestBeaten:0,fightNo:TOTAL_FIGHTS});
     const acha=id=>CONQUISTAS.find(c=>c.id===id);
 
     let st1=base(); st1.wins=1;
@@ -1340,10 +1340,13 @@ function testarConquistas() {
     passo("prudente: evitou risco físico desbloqueia", acha("prudente").check(stP));
     passo("prudente: nunca evitou NÃO desbloqueia", !acha("prudente").check(base()));
 
-    let stT98=base(); stT98.peak=.98;
-    passo("topo_da_divisao: peak .98 desbloqueia", acha("topo_da_divisao").check(stT98));
-    let stT97=base(); stT97.peak=.97;
-    passo("topo_da_divisao: peak .97 NÃO desbloqueia", !acha("topo_da_divisao").check(stT97));
+    /* era peak — trocado por bestBeaten depois de medir que peak satura
+       (91% desbloqueava, era teto de standing, não conquista de verdade).
+       bestBeaten>=.90 deu 31% na mesma medição (180 carreiras). */
+    let stBB90=base(); stBB90.bestBeaten=.90;
+    passo("topo_da_divisao: bestBeaten .90 desbloqueia", acha("topo_da_divisao").check(stBB90));
+    let stBB89=base(); stBB89.bestBeaten=.89;
+    passo("topo_da_divisao: bestBeaten .89 NÃO desbloqueia", !acha("topo_da_divisao").check(stBB89));
 
     let stI5=base(); stI5.followers=LIMIAR_IDOLO;
     passo("idolo: seguidores no limiar desbloqueia", acha("idolo").check(stI5));

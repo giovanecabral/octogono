@@ -996,8 +996,15 @@ const CONQUISTAS=[
   check:st=>(st.momentos||[]).some(m=>m.tipo==="ko")},
  {id:"prudente",nome:"Prudente",desc:"Recuse um risco físico real pelo menos uma vez.",
   check:st=>!!st.evitouAlgumaVez},
- {id:"topo_da_divisao",nome:"Topo da divisão",desc:"Chegue ao pico da divisão.",
-  check:st=>st.peak>=.98},
+ /* Era peak>=.98 — medido depois (180 carreiras): 91% desbloqueava,
+    "participação" não "conquista". st.standing tem teto em 1.0 e o bot
+    encosta nele (peak>=.999 já pegava 90%) — não é limiar errado, é a
+    MÉTRICA errada, satura pra quase todo mundo que vence a maioria das
+    lutas. bestBeaten (rating do melhor adversário REAL já batido, 0-1,
+    sem teto de progressão) discrimina de verdade: >=.90 deu 31% na mesma
+    medição — dentro da faixa das outras conquistas boas. */
+ {id:"topo_da_divisao",nome:"Topo da divisão",desc:"Vença um adversário com rating 0,90 ou mais.",
+  check:st=>st.bestBeaten>=.90},
  {id:"idolo",nome:"Ídolo",desc:"Termine a carreira com 5 milhões de seguidores ou mais.",
   check:st=>st.fightNo>=TOTAL_FIGHTS&&st.followers>=LIMIAR_IDOLO},
 ];

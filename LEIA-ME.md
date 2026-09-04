@@ -1018,11 +1018,19 @@ certo pra elas.
 **Medido, não suposto (180 carreiras, bot varia dificuldade): 4,17/15
 desbloqueadas por carreira em média (28%)** — dentro do "menos da metade".
 Por conquista: `primeiro_sangue` 100% (deliberadamente quase garantida, é a
-de boas-vindas), `topo_da_divisao` 91% (alto demais pro que deveria ser
-"chegar perto do topo" — candidato a subir o limiar de `.98`, decisão do
-dono do projeto), `fogo` 62%, o resto entre 33% e 2% (`invicto`). `lesão`/
+de boas-vindas), `fogo` 62%, o resto entre 33% e 2% (`invicto`). `lesão`/
 `prudente`/`lenda` não têm amostra offline (dependem de IA ou de o bot
 rodar em modo lenda, que a medição não cobriu).
+
+`topo_da_divisao` saiu em 91% na primeira versão (`peak>=.98`) — remedido
+depois: não era o limiar, era a MÉTRICA. `st.standing` tem teto em 1.0 e o
+bot encosta nele (`peak>=.999` já pegava 90% das carreiras) — qualquer
+limiar de `peak` cai nesse mesmo teto, porque a distribuição real é quase
+binária (satura ou não sobe quase nada, sem meio-termo). Trocado por
+`bestBeaten` (rating do melhor adversário REAL já batido, 0-1, sem teto de
+progressão do jogador): `>=.90` deu **31%** na mesma medição — dentro da
+faixa das outras conquistas boas, e semanticamente melhor ("bater alguém
+de elite de verdade" em vez de "seu próprio teto de standing").
 
 ```bash
 node testar.js conquistas   # cada check() no limite certo + persistência de verdade
