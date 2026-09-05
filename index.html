@@ -2733,7 +2733,15 @@ function bonecoSVG(c,{w=120,alt=null}={}){
   };
 
   const altura=alt||Math.round(w*1.2);
-  return `<svg viewBox="0 0 100 120" width="${w}" height="${altura}" class="boneco" aria-hidden="true">
+  /* xmlns explícito: sem ele, o navegador aceita o SVG normalmente quando
+     injetado direto no innerHTML (o parser de HTML já sabe que é SVG por
+     contexto), mas REJEITA como recurso de imagem autônomo — data: URI ou
+     Blob viram Image() que nunca carrega (onerror, sem mensagem útil).
+     Confirmado com teste real em Chrome: falha sem xmlns, carrega normal
+     com — é o que desenharCardMomento() precisa pra pôr o busto no canvas
+     (ver "Card de momento" no LEIA-ME). Inofensivo pro uso inline de
+     sempre, xmlns em SVG dentro de HTML é ignorado sem efeito. */
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="${w}" height="${altura}" class="boneco" aria-hidden="true">
   <defs>
     <clipPath id="cra${id}"><path d="${caminhoCranio(A)}"/></clipPath>
     <clipPath id="bar${id}"><path d="${caminhoCabeca(A)}"/></clipPath>
@@ -2943,6 +2951,23 @@ async function desenharCard(g){
 const ROTULO_MOMENTO={cinturao:"CAMPEÃO",cinturaoPerdido:"PERDEU",
   ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO",estreia:"MAIN CARD"};
 
+/* SVG do busto -> <img> carregável, pra desenhar no canvas com drawImage().
+   data: URI com encodeURIComponent (não btoa): bonecoSVG() é auto-contido —
+   só paths/gradientes/clipPaths INTERNOS (url(#id) aponta pra <defs> do
+   mesmo documento, nunca pra fora), width/height explícitos no <svg> raiz
+   (não só viewBox) — os dois requisitos que historicamente quebravam
+   SVG-em-canvas no Safari (tamanho 0 sem width/height; canvas "tainted" em
+   toDataURL() com referência externa). Não dá pra testar num iPhone de
+   verdade a partir daqui — conferir manualmente depois do deploy. */
+function svgParaImagem(svg){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>resolve(img);
+    img.onerror=reject;
+    img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+  });
+}
+
 async function desenharCardMomento(m){
   const cv=document.createElement("canvas");
   cv.width=CARD_W;cv.height=CARD_H;
@@ -2957,35 +2982,59 @@ async function desenharCardMomento(m){
   const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
   const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
 
-  regra(M,4,C.line2);
-  x.fillStyle=C.ink;x.font=disp(46);x.textBaseline="alphabetic";
-  x.fillText("MOMENTO DA CARREIRA",M,M+72);
-  x.fillStyle=C.faded;x.font=mono(19,500);
+  /* Cabeçalho de marca (item 5/6): nome do jogo + o que é, antes de
+     qualquer coisa — quem nunca jogou entende num olhar antes de reparar
+     no resultado. Única régua em C.stamp desta seção — o resto do card
+     usa C.line2/C.rule, cinza. */
+  regra(M,4,C.stamp);
+  x.fillStyle=C.ink;x.font=mono(26,600);x.textBaseline="alphabetic";
+  x.fillText("CORNER",M,M+32);
+  x.fillStyle=C.faded;x.font=`italic ${mono(19,400)}`;
+  x.fillText("Monte seu lutador de MMA. Jogue a carreira inteira.",M,M+58);
+  regra(M+78,2,C.rule);
+
+  x.fillStyle=C.faded;x.font=mono(18,500);
   const dv=(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION;
-  x.fillText(dv.toUpperCase()+` · LUTA ${m.luta} DE ${TOTAL_FIGHTS}`,M,M+104);
-  regra(M+126,2,C.rule);
+  x.fillText(dv.toUpperCase()+` · LUTA ${m.luta} DE ${TOTAL_FIGHTS}`,M,M+108);
+  regra(M+130,2,C.rule);
 
-  let y=M+200;
+  /* Avatar como protagonista (item 6): lado a lado com nome/cartel, não
+     empilhado — é a coisa mais distintiva do jogo (personalizado, os 1.527
+     lutadores reais não têm retrato) e hoje não aparecia no card nenhum. */
+  const avW=272, avH=Math.round(avW*120/100);
+  const avY=M+130+36;
+  try{
+    const img=await svgParaImagem(bonecoSVG(ROSTO||cfgPadrao(),{w:avW}));
+    x.drawImage(img,M,avY,avW,avH);
+  }catch(e){/* falhou carregar a imagem (SVG malformado, navegador exótico) —
+    card sai sem avatar em vez de quebrar o compartilhamento inteiro */}
+
+  /* txW reserva espaço do carimbo rotacionado (centro em CARD_W-M-76, meia
+     largura ~72 antes da rotação) — sem isso o nome comprido invade o
+     carimbo (visto renderizando de verdade, ver LEIA-ME "Card de momento"). */
+  const txX=M+avW+40, txW=(CARD_W-M-160)-txX;
+  let y=avY+64;
   x.fillStyle=C.ink;
-  let tam=76;
-  do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>CARD_W-M*2&&tam>30);
-  x.fillText(me.name.toUpperCase(),M,y);
+  let tam=52;
+  do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>txW&&tam>22);
+  quebrar(x,me.name.toUpperCase(),txW).slice(0,2).forEach((l,i)=>{
+    x.fillText(l,txX,y+i*(tam+7));
+  });
 
-  y+=160;
-  x.font=disp(148);x.fillStyle=C.ink;
-  x.fillText(m.cartel,M,y);
-  x.font=mono(21,500);x.fillStyle=C.faded;
-  x.fillText("CARTEL NA HORA",M+5,y+34);
+  x.font=disp(84);x.fillStyle=C.ink;
+  x.fillText(m.cartel,txX,avY+avH-24);
+  x.font=mono(17,500);x.fillStyle=C.faded;
+  x.fillText("CARTEL NA HORA",txX+3,avY+avH+2);
 
   x.save();
-  x.translate(CARD_W-M-76,y-52);
+  x.translate(CARD_W-M-76,M+130+112);
   x.rotate(-4*Math.PI/180);
   x.strokeStyle=C.stamp;x.lineWidth=7;
   x.strokeRect(-72,-72,144,144);
   x.fillStyle=C.stamp;
   const rot=ROTULO_MOMENTO[m.tipo]||"MOMENTO";
-  let tamR=48;
-  do{ x.font=disp(tamR); tamR-=3; }while(x.measureText(rot).width>128&&tamR>18);
+  let tamR=42;
+  do{ x.font=disp(tamR); tamR-=3; }while(x.measureText(rot).width>128&&tamR>16);
   x.textAlign="center";x.textBaseline="middle";
   x.fillText(rot,0,6);
   x.restore();
@@ -2995,7 +3044,7 @@ async function desenharCardMomento(m){
   // grande acima, então não repete aqui. Crescer essa lista vira planilha
   // (ver LEIA-ME "Card de momento"); se o card ainda parecer vazio, o
   // ajuste é a frase, não mais linha.
-  y+=74;
+  y=avY+avH+50;
   regra(y,2,C.rule);y+=46;
   const linha=(rot,val)=>{
     x.fillStyle=C.faded;x.font=mono(21,500);
@@ -3026,7 +3075,7 @@ async function desenharCardMomento(m){
   x.textAlign="right";
   x.fillText("#"+SEED.toString(36).toUpperCase(),CARD_W-M,yf+46);
   x.fillStyle=C.faded;x.font=mono(19,400);
-  x.fillText(location.host||"card de momento",CARD_W-M,yf+76);
+  x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
   x.textAlign="left";
   return cv;
 }
