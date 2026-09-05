@@ -217,20 +217,31 @@ Efeito pequeno confirmado (+0,05 vitórias/22 a 1.15x, mal passava de
 duração de lesão temporária pela metade em vez de acelerar treino. Ver
 LEIA-ME.md "Lesão" e o commit que trocou a mecânica.
 
-## 11. Cinturão interino — desenho, não implementado
+## 11. Cinturão interino — RESOLVIDO (implementado 2026-09-05)
 
-Tamanho real (confirmado nesta leva): comparável a uma feature média já
-construída nesta sessão (dinheiro, conquistas) — não é conserto pequeno.
-Precisa de: estado novo de disponibilidade do campeão nomeado (hoje
-`RANKING.campeao` é só um nome fixo, não tem noção de "machucado" ou
-"indisponível"), um segundo tipo de título (`st.cinturaoInterino`)
-distinto do de verdade em toda a UI que hoje só sabe "campeão sim/não"
-(ficha, momento cards, LEGACY/RARE), lógica de unificação (quando o
-campeão de verdade volta, a próxima defesa do interino vira luta de
-unificação), e uma medição nova (frequência do sorteio de
-indisponibilidade — não pode virar cinturão interino toda disputa, nem
-nunca acontecer). Desenho não escrito ainda — esperando decisão de
-prioridade antes de detalhar.
+Disputa pelo cinturão de verdade concedida a quem ainda não é campeão de
+nada tem `CHANCE_CINTURAO_INTERINO=.12` de o campeão nomeado
+(`RANKING.campeao`) estar indisponível — sorteio em `holdRng`, nunca
+`rng`. Indisponível vira disputa pelo interino contra `RANKING.desafiante`
+(nº1 do ranking); `RANKING.campeao` nunca muda, é ausência, não derrota.
+
+Ganhar o interino marca `st.title=true;st.cinturaoInterino=true`, mas
+NÃO `st.foiCampeao`/`st.vezesCampeao` — só a unificação (próxima luta,
+sempre travada contra o campeão de verdade, nunca a rotação normal de
+contender) conta como aquisição de verdade. Perder a unificação também
+não marca "perdeu na 1ª defesa" (nunca houve reinado indiscutido pra
+perder rápido). Ficha nunca mostra dois campeões: badge "Interino"
+enquanto não unifica, seção Ranking nomeia o campeão de verdade
+separado; `passoCinturao()` anuncia a unificação nomeando quem falta
+enfrentar.
+
+Medido (3.000 carreiras/valor, duas divisões): `.12` dá 10,4% das
+carreiras-que-chegam-a-disputa no peso-leve e 13,5% no peso-pesado (pool
+menor → mais redisputa → mais chances de rolar) — o alvo pedido era ~12%
+das carreiras, não por rolagem; as duas divisões testadas ficam nos dois
+lados, sem precisar de valor por divisão. `node testar.js cinturao` cobre
+aquisição do interino, unificação vencida e unificação perdida,
+checando o HTML real de `renderFicha()`, não uma cópia da fórmula.
 
 ## 12. Queda no ranking por inatividade — DESCARTADO
 
