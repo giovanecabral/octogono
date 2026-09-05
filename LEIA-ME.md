@@ -1093,9 +1093,68 @@ de elite de verdade" em vez de "seu próprio teto de standing").
 node testar.js conquistas   # cada check() no limite certo + persistência de verdade
 ```
 
-## O que falta
+## Contas
 
-**Não está no ar.** O deploy da Vercel que traz a chave publica o jogo junto.
+Jogar não exige conta — regra que não muda. A oferta de criar conta só
+aparece em `screenReport()`, depois das 22 lutas, pra não matar o funil
+(crescimento depende de gente chegar, jogar e printar antes de qualquer
+cadastro). `localStorage` continua sendo o cache de sempre; conta é
+sincronização por cima dele, nunca substitui.
+
+**Arquitetura**: Supabase (Postgres + Auth gerenciados, plano gratuito
+integra com Vercel sem servidor próprio) — auth por **link mágico**
+(e-mail, sem senha: menos atrito no cadastro, menos superfície de
+segurança). Tabela `conquistas_usuario` (`user_id`, `conquista_id`,
+`desbloqueada_em`), schema completo com Row Level Security em
+`supabase_schema.sql` — cada usuário só lê/grava as próprias linhas,
+garantido pelo Postgres via `auth.uid()`, não pelo client (que dá pra
+adulterar).
+
+**Configuração (uma vez, fora do código)**:
+1. Criar projeto em supabase.com, plano gratuito.
+2. Editor SQL do painel → colar e rodar `supabase_schema.sql`.
+3. **Configurar SMTP próprio antes de qualquer tráfego real.** O envio de
+   e-mail PADRÃO do Supabase é limitado a **2 e-mails por hora** — inviável
+   mesmo pra 100 usuários se dois tentarem entrar na mesma hora. Painel →
+   Authentication → Email → trocar pelo SMTP de um provedor (Resend, SES,
+   Postmark, o que for). Sem isso o link mágico simplesmente para de
+   mandar e-mail depois do segundo da hora, sem aviso nenhum pro jogador.
+4. Painel → Project Settings → API: copiar `Project URL` e `anon public
+   key`, colar em `SUPABASE_URL`/`SUPABASE_ANON_KEY` no `index.html`
+   (perto de `AI_URL`). A anon key é pública DE PROPÓSITO — é assim que o
+   Supabase funciona, a proteção de verdade é o RLS do passo 2, não o
+   segredo desta chave.
+
+Enquanto os dois campos ficarem vazios, `getSupabase()` devolve `null` e a
+caixa de "salvar conquistas" nem aparece — o jogo roda idêntico a hoje.
+
+**Custo estimado** (Supabase Free cobre as três faixas em MAU/banco — a
+tabela é minúscula, ~15 linhas por usuário no máximo; o que muda é o
+volume de e-mail, que sempre exige SMTP próprio):
+
+| usuários | Supabase | SMTP (Resend) | total/mês |
+|---|---|---|---|
+| 100 | Free — $0 | Free (3.000 e-mails/mês) — $0 | **$0** |
+| 1.000 | Free — $0 | Free, no limite (~1-2 mil e-mails/mês estimado) — $0, ou Pro $20 se picos concentrados | **$0-20** |
+| 10.000 | Free — $0 (ainda longe do teto de 50 mil MAU), ou Pro $25 quando envolver pagamento | Pro (50 mil e-mails/mês) — $20 | **$20-45** |
+
+Estimativa assume ~1-2 links mágicos por usuário/mês (cadastro + login
+ocasional — sessão persiste, não manda e-mail toda vez). Confirmado nos
+sites oficiais (supabase.com/pricing, resend.com/pricing,
+supabase.com/docs/guides/platform/going-into-prod) em 2026-09-06 — preço
+muda, conferir antes de decidir se já faz tempo.
+
+**Limitação conhecida, aceita por ora**: conquista é calculada no client
+(`verificarConquistas()`) e só depois enviada pro Supabase — dá pra abrir
+o DevTools e forjar um id de conquista direto no `localStorage` ou até
+inserir direto na tabela via `supabase.auth`/REST se a pessoa souber o
+próprio token. Validar de verdade exigiria rodar o motor no servidor, que
+não existe (o jogo é `index.html` estático, sem backend próprio além do
+proxy de IA). Vale resolver quando existir pagamento ou ranking global de
+verdade — hoje o custo de forjar (abrir DevTools, entender a estrutura)
+já filtra a imensa maioria, e não há prêmio nenhum em jogo.
+
+## O que falta
 
 **Ícones de amostra curta ficam de fora.** O filtro de 4 lutas e 25 minutos
 derruba Ronda Rousey e parecidos. Precisa de lista de override manual.

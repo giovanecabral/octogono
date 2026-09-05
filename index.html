@@ -15,6 +15,12 @@
 
 <script id="va-stub">window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script>
 <script defer src="/_vercel/insights/script.js"></script>
+<!-- Contas (item novo): SDK do Supabase, carregado com defer+src de propósito
+     (script sem atributo no <head> quebra testar.js — ver CLAUDE.md). Só
+     usado se SUPABASE_URL/SUPABASE_ANON_KEY estiverem preenchidos; sem
+     isso window.supabase existe mas getSupabase() no motor devolve null e
+     a conta fica invisível, o jogo roda igual. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -455,6 +461,10 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   border-left:3px solid var(--stamp);padding:8px 0 8px 12px;margin-left:32px}
 .legacy{border-left:3px solid var(--ink);padding:12px 0 12px 16px;margin:20px 0 6px;
   font-size:15px;line-height:1.6;font-style:italic}
+.conta-box{border:1px solid var(--line2);padding:12px 14px;margin:14px 0}
+.conta-box h4{margin:0 0 6px;font-family:Oswald,sans-serif;font-weight:700;
+  font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
+.conta-box input[type=email]{display:block;width:100%;max-width:260px;margin:8px 0}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 
 /* nocaute: a página leva o golpe */
@@ -1309,6 +1319,76 @@ const AI_URL="https://draft-ufc.vercel.app/api/ai";           /* ex: "https://se
    exportar sem perceber. Card é pra fora, tem que sempre apontar pro
    domínio de verdade, não de onde foi gerado. */
 const DOMINIO_JOGO="draft-ufc.vercel.app";
+
+/* ---------- Contas (opcional, só depois da carreira) ----------
+   Jogar não exige conta — a oferta só aparece em screenReport(), depois
+   das 22 lutas. localStorage continua sendo o cache de sempre; conta é
+   só sincronização/backup por cima dele, nunca substitui.
+
+   Preencher os dois valores abaixo depois de criar o projeto em
+   supabase.com (plano gratuito) e rodar supabase_schema.sql no editor
+   SQL do painel — ver LEIA-ME.md "Contas" pelo passo a passo completo.
+   Enquanto ficarem vazios, getSupabase() devolve null e a caixa de
+   "salvar conquistas" nem aparece — o jogo roda idêntico a antes.
+   anon key é pública DE PROPÓSITO (é assim que o Supabase funciona: o
+   navegador precisa dela pra falar com o banco) — a proteção de verdade
+   é Row Level Security no banco (supabase_schema.sql), não o segredo
+   desta chave. */
+const SUPABASE_URL="";
+const SUPABASE_ANON_KEY="";
+let supabaseClient=null;
+function getSupabase(){
+  if(!SUPABASE_URL||!SUPABASE_ANON_KEY)return null;
+  if(typeof window==="undefined"||!window.supabase)return null; // CDN com defer, pode não ter chegado ainda
+  if(!supabaseClient)supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  return supabaseClient;
+}
+
+/* Link mágico: sem senha, menos atrito e menos superfície de segurança.
+   emailRedirectTo volta pra MESMA página — o Supabase anexa a sessão no
+   hash da URL, e getSession() (chamado em sincronizarConquistasNaNuvem)
+   acha sozinho, sem código extra de callback. */
+async function enviarLinkMagico(email){
+  const sb=getSupabase();
+  if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
+  try{
+    const{error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.href}});
+    if(error)return{ok:false,erro:error.message};
+    return{ok:true};
+  }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
+}
+
+/* Roda toda vez que a caixa de conta aparece (fim de carreira). Se não
+   tem sessão, não faz nada (devolve null, mostra o formulário de
+   e-mail). Se tem — sessão nova vinda do link mágico, ou sessão antiga
+   que o Supabase já mantinha — sincroniza os dois lados: sobe o que só
+   existe local (upsert, idempotente — pode rodar toda vez sem duplicar
+   nem precisar de flag "já migrei"), baixa o que só existe na nuvem
+   (outro aparelho). Nunca apaga localStorage, só soma. */
+async function sincronizarConquistasNaNuvem(){
+  const sb=getSupabase();
+  if(!sb)return null;
+  let session;
+  try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){ return null; }
+  if(!session)return null;
+  const userId=session.user.id;
+  try{
+    const locais=[...CONQUISTAS_DESBLOQUEADAS];
+    if(locais.length){
+      const linhas=locais.map(id=>({user_id:userId,conquista_id:id}));
+      await sb.from("conquistas_usuario").upsert(linhas,{onConflict:"user_id,conquista_id",ignoreDuplicates:true});
+    }
+    const{data:remotas}=await sb.from("conquistas_usuario").select("conquista_id").eq("user_id",userId);
+    if(remotas){
+      let mudou=false;
+      remotas.forEach(r=>{if(!CONQUISTAS_DESBLOQUEADAS.has(r.conquista_id)){CONQUISTAS_DESBLOQUEADAS.add(r.conquista_id);mudou=true;}});
+      if(mudou)salvarConquistas();
+    }
+  }catch(e){/* sincronização falhou (rede, RLS, o que for) — localStorage
+    continua valendo, o jogador não perde nada por isso */}
+  return session.user.email;
+}
+
 let aiVivo=true;
 /* Timestamp (ms), não segundos: rate limit (429) é ESPERADO com tráfego
    real, não exceção — pausa com espera, não desliga a carreira inteira por
@@ -4457,6 +4537,40 @@ function screenReport(){
   app.appendChild(v);
 
   app.appendChild(el("div","legacy",LEGACY.find(l=>l.when(st)).t(me.name)));
+
+  /* Contas: só aparece aqui, fim de carreira — nunca antes de jogar (o
+     funil depende de gente chegar, jogar e printar antes de qualquer
+     cadastro). getSupabase() devolve null se não estiver configurado —
+     nesse caso a caixa nem aparece, sem placeholder vazio. */
+  if(getSupabase()){
+    const contaBox=el("div","conta-box");
+    contaBox.appendChild(el("h4","","Salvar conquistas"));
+    contaBox.appendChild(el("p","hint",
+      "Suas conquistas já estão salvas neste aparelho. Cria conta com e-mail pra não perder se trocar de aparelho — sem senha."));
+    app.appendChild(contaBox);
+    sincronizarConquistasNaNuvem().then(email=>{
+      contaBox.innerHTML="";
+      contaBox.appendChild(el("h4","","Salvar conquistas"));
+      if(email){
+        contaBox.appendChild(el("p","hint",`Conectado como <b>${email}</b>. Conquistas sincronizadas.`));
+        return;
+      }
+      contaBox.appendChild(el("p","hint",
+        "Suas conquistas já estão salvas neste aparelho. Cria conta com e-mail pra não perder se trocar de aparelho — sem senha."));
+      const inp=el("input","");inp.type="email";inp.placeholder="seu@email.com";
+      const btn=el("button","btn btn-ghost btn-sm","Mandar link mágico");
+      const msg=el("p","hint","");
+      btn.onclick=async()=>{
+        const email2=(inp.value||"").trim();
+        if(!email2){msg.textContent="Digita um e-mail primeiro.";return;}
+        btn.disabled=true;btn.textContent="Enviando...";
+        const r=await enviarLinkMagico(email2);
+        if(r.ok){msg.textContent="Link enviado. Confira seu e-mail.";}
+        else{msg.textContent=r.erro;btn.disabled=false;btn.textContent="Mandar link mágico";}
+      };
+      contaBox.append(inp,btn,msg);
+    });
+  }
 
   if(st.rares.length)
     app.appendChild(el("p","made-of","<b>Fora da curva:</b> "+st.rares.join(" &nbsp;·&nbsp; ")));

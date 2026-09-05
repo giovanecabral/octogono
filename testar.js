@@ -409,6 +409,10 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   });
 
   await passo("relatório final", () => UI.screenReport());
+  await passo("contas: sem SUPABASE_URL configurado, a caixa de conta nem aparece", () => {
+    if (env.todos.some(n => n.className === "conta-box"))
+      throw new Error("caixa de conta apareceu mesmo sem Supabase configurado");
+  });
 
   const nos = env.todos.length;
   if (nos < 200) falhas.push(["cobertura", new Error(`só ${nos} nós montados — alguma tela abortou`)]);
