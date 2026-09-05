@@ -1154,26 +1154,31 @@ proxy de IA). Vale resolver quando existir pagamento ou ranking global de
 verdade — hoje o custo de forjar (abrir DevTools, entender a estrutura)
 já filtra a imensa maioria, e não há prêmio nenhum em jogo.
 
-### Domínio próprio — passo a passo, pra quando registrar
+### Domínio próprio — octogono.fun, registrado (falta só apontar)
 
-O jogo é UM projeto Vercel (`draft-ufc.vercel.app`); trocar o domínio
-visível não exige mexer no projeto, só apontar um domínio novo pra ele:
+O jogo é UM projeto Vercel (`draft-ufc.vercel.app`); `DOMINIO_JOGO` e a
+marca dos cards já apontam pro nome novo (Octógono/octogono.fun,
+2026-09-05) — falta só o DNS de verdade. Passo a passo:
 
-1. Vercel → o projeto → Settings → Domains → Add → digitar o domínio novo.
-2. A Vercel devolve os registros de DNS pra criar no registrador do
-   domínio (não na Vercel): registro **A** apontando pro IP da Vercel se
-   for domínio raiz (ex. `corner.com`), ou **CNAME** pra
-   `cname.vercel-dns.com` se for subdomínio (ex. `www.corner.com`). A
-   Vercel mostra o valor exato na hora — não adianta copiar de outro lugar,
-   muda por caso.
-3. Esperar propagar (minutos a algumas horas) — a Vercel emite HTTPS
-   sozinha (Let's Encrypt) assim que o DNS resolver, sem passo manual.
-4. Decidir redirecionamento (`www` → raiz ou o contrário) no mesmo painel
-   de Domains — a Vercel oferece os dois sentidos com um clique.
-5. Trocar `DOMINIO_JOGO` no `index.html` pro domínio novo, commit, deploy.
-   `AI_URL` pode continuar apontando pro `draft-ufc.vercel.app` (mesmo
-   projeto, a rota `/api/ai` responde nos dois domínios) — só trocar se
-   quiser o endpoint com a cara do domínio novo também, não é obrigatório.
+1. Vercel → o projeto → **Settings → Domains → Add** → digitar
+   `octogono.fun`. Repetir com `www.octogono.fun` se quiser os dois
+   endereços funcionando (a Vercel deixa escolher qual é o principal e
+   redireciona o outro).
+2. A Vercel devolve os registros de DNS pra criar no PAINEL DO
+   REGISTRADOR (onde `octogono.fun` foi comprado, não na Vercel):
+   registro **A** apontando pro IP da Vercel pro domínio raiz
+   (`octogono.fun`), **CNAME** pra `cname.vercel-dns.com` pro `www`. A
+   Vercel mostra o valor exato na hora do Add — copiar de lá, não daqui,
+   o IP pode mudar.
+3. Esperar propagar (minutos a algumas horas, TTL do registrador manda).
+   A Vercel emite HTTPS sozinha (Let's Encrypt) assim que o DNS resolver
+   — sem passo manual, sem certificado pra comprar.
+4. No mesmo painel de Domains, escolher o sentido do redirecionamento
+   (`www.octogono.fun` → `octogono.fun`, ou o contrário) — um clique.
+5. Depois que resolver: abrir `https://octogono.fun` no navegador e
+   conferir cadeado (HTTPS) e o jogo carregando. `AI_URL` continua
+   apontando pro `draft-ufc.vercel.app` de propósito (mesmo projeto, a
+   rota `/api/ai` responde nos dois domínios) — não precisa trocar.
 
 ## O que falta
 
