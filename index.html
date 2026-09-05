@@ -665,17 +665,28 @@ function fmtClock(s){return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
    transmissão real sugere. Ver LEIA-ME "Card de momento". */
 function clockSeconds(s){const[m,ss]=s.split(":").map(Number);return m*60+ss;}
 
+/* mAttr: um multiplicador por eixo treinável (ATTR_TREINAVEIS), todos
+   neutros (1) até a escolha na luta escrever no eixo específico da ação
+   escolhida — ver abrirEscolhaLuta()/lutar() e o comentário em cima de
+   K_ESCOLHA_LUTA. Substitui o antigo A.form*=mod (mecanismo v1): aquele
+   lia .form em TRÊS pontos do motor ao mesmo tempo (acurácia, volume E
+   queda), então qualquer ação vazava pros três, inclusive nocaute, e só
+   K alto rendia gap perceptível — K alto estourava o KO. Com um slot por
+   eixo, uma ação de queda só toca queda; .form continua existindo, mas
+   agora é só a variação natural pré-luta (form()), nunca escrito pela
+   escolha. */
 function mkState(f,form){return{ref:f,form,damage:0,sigStrikes:0,takedowns:0,knockdowns:0,
-  subAttempts:0,controlTicks:0};}
+  subAttempts:0,controlTicks:0,
+  mAttr:{slpm:1,strDef:1,tdAvg:1,tdDef:1,subAvg:1,kdAvg:1,durability:1}};}
 
 function exchange(att,def,rng,opts={}){
   const A=att.ref,D=def.ref,minutes=TUNING.tickSeconds/60;
   const reachEdge=clamp(((A.reach??72)-(D.reach??72))*TUNING.reachPerInch,-TUNING.reachCap,TUNING.reachCap);
   const baseAcc=opts.ground?TUNING.gnpAccuracy:A.strAcc;
-  const baseDef=opts.ground?D.strDef*.45:D.strDef;
+  const baseDef=(opts.ground?D.strDef*.45:D.strDef)*def.mAttr.strDef;
   const effAcc=clamp(contest((baseAcc+reachEdge)*att.form,baseDef*def.form),.05,.95);
   const refAcc=clamp(contest(baseAcc,TUNING.leagueStrDef),.05,.95);
-  let lambda=A.slpm*minutes*(effAcc/refAcc)*att.form;
+  let lambda=A.slpm*minutes*(effAcc/refAcc)*att.form*att.mAttr.slpm;
   if(opts.ground)lambda*=TUNING.gnpVolume;
   lambda*=clamp(1-att.damage/220,.45,1);
   const landed=poisson(lambda,rng);
@@ -689,9 +700,13 @@ function exchange(att,def,rng,opts={}){
 function impact(att,def,landed,rng){
   if(!landed)return"";
   const power=TUNING.koPower[att.ref.division]??1;
-  const punch=clamp((att.ref.kdAvg??.36)/.36,.45,2.4);
+  const punch=clamp((att.ref.kdAvg??.36)/.36,.45,2.4)*att.mAttr.kdAvg;
+  /* durability é INVERSO — divide, nunca multiplica: mAttr.durability>1
+     (escolha casou) tem que dar p MENOR (mais resistente), igual o
+     durability real do lutador já faz. Multiplicar aqui inverteria o
+     sentido e a ação de queixo que "casa" passaria a fragilizar. */
   const p=TUNING.kdBase*power*punch*landed*
-    Math.pow(clamp(def.damage/100,0,2.5),1.6)/(def.ref.durability??1);
+    Math.pow(clamp(def.damage/100,0,2.5),1.6)/(def.ref.durability??1)/def.mAttr.durability;
   if(rng()>=clamp(p,0,.9))return"";
   def.knockdowns=(def.knockdowns||0)+1;
   return rng()<TUNING.finishGivenKd?"ko":"kd";
@@ -717,9 +732,9 @@ function simularRound(A,B,round,rng,push,fin,scores){
     const clock=fmtClock(TUNING.roundSeconds-t*TUNING.tickSeconds);
     if(pos==="STANDING"){
       for(const[att,def,tag]of[[A,B,"A"],[B,A,"B"]]){
-        const rate=(att.ref.tdAvg/clamp(att.ref.tdAcc,.1,1))/(900/TUNING.tickSeconds);
+        const rate=(att.ref.tdAvg/clamp(att.ref.tdAcc,.1,1))/(900/TUNING.tickSeconds)*att.mAttr.tdAvg;
         if(rng()<rate){
-          if(rng()<contest(att.ref.tdAcc*att.form,def.ref.tdDef*def.form)){
+          if(rng()<contest(att.ref.tdAcc*att.form,def.ref.tdDef*def.form*def.mAttr.tdDef)){
             att.takedowns++;pos=tag==="A"?"GROUND_A":"GROUND_B";
             push(round,clock,"big",`Queda de ${att.ref.name}. Levou pro chão.`);
           }else push(round,clock,"",`${def.ref.name} defendeu a queda e voltou pra distância.`);
@@ -752,7 +767,7 @@ function simularRound(A,B,round,rng,push,fin,scores){
       if(landed>=3)push(round,clock,"big",`${top.ref.name} martelando por cima. ${bot.ref.name} só protege.`);
       else if(top.controlTicks%3===0)push(round,clock,"",`${top.ref.name} controla a posição.`);
       for(const[g,opp,mult]of[[top,bot,1.4],[bot,top,1.0]]){
-        const rate=(g.ref.subAvg/(900/TUNING.tickSeconds))*mult;
+        const rate=(g.ref.subAvg/(900/TUNING.tickSeconds))*mult*g.mAttr.subAvg;
         if(rng()<rate){
           g.subAttempts++;
           const p=contest(TUNING.subBase*clamp(g.ref.subAvg/2.5,.15,.9),opp.ref.tdDef);
@@ -4083,25 +4098,28 @@ function sinalDoRound(s){
   return"parelho";
 }
 
-/* K=.16 (medição anterior) rebaixado pra .04 nesta leva seguinte: as
-   políticas extremas ("sempre casa"/"sempre erra") tinham dado KO
-   35,8%/35,3%, e o pedido foi checar com a política REALISTA — jogador
-   escolhendo às cegas entre as 3, sem ver o contest() escondido — antes
-   de aceitar como ruído. Não era ruído: 6.000 lutas com escolha aleatória
-   deram KO 35,73%/35,80% em K=.16, KO subindo monotonicamente com K
-   (34,76% em .04, 34,93% em .06, 35,08% em .05, 35,13%+ a partir de .08).
-   Regra explícita: acima de 35% o K está grande demais, baixa mesmo
-   custando gap. Baixado pra .04 — KO 34,76% na política realista, mais
-   perto do baseline sem escolha nenhuma (34%) que qualquer K testado
-   acima de .04. Custo aceito conscientemente: o gap "sempre casa" x
-   "sempre erra" cai pra 0,07-0,21 vitórias/22 (medido em 3.000 lutas,
-   duas levas de seed) — bem abaixo do alvo 0,5-0,8. Prioridade explícita
-   do usuário: disciplina de KO vem antes do tamanho do gap. Se o gap
-   pequeno demais incomodar jogando, o conserto é redesenhar o quanto
-   contest() amortece (ou a fórmula do modificador), não subir o K de
-   volta — já medido que subir o K sozinho estraga o KO antes de
-   resgatar o gap. */
-const K_ESCOLHA_LUTA=.04;
+/* Histórico (mecanismo v1, .form único pra tudo): K=.16 dava gap
+   0,5-0,8 mas estourava KO a 35,7-35,8% na política realista — o form
+   escrito por QUALQUER ação vazava pra acurácia, volume E queda ao
+   mesmo tempo, então nocaute subia mesmo quando a ação escolhida não
+   tinha nada a ver com poder. Baixado pra .04 na hora: KO voltava a
+   34,76%, mas o gap caía pra 0,07-0,21 — inerte.
+
+   Mecanismo v2 (este, por eixo — mAttr): cada ação só escreve no SEU
+   eixo (ver mkState()/exchange()/impact()), então uma ação de queda não
+   toca mais nocaute. Medido (2026-09-05) com o protocolo fiel — sinal
+   REAL do round 1, trio de 3 REALMENTE sorteado da pool (não a pool
+   inteira, que superestima o gap): KO fica achatado perto de 34,8% até
+   K=.50 (dentro de qualquer K testado até aí), sobe passando de 35% a
+   partir de K≈.53 (35,04% em .55, 35,21% em .60, 35,31% em .65). Fixado
+   em .50 — dentro da regra de nunca passar de 35% — que dá gap 0,38-0,47
+   vitórias/22 (duas levas de seed, 3.000 pares cada, node testar.js
+   gapescolha), ainda abaixo do alvo 0,5-0,8 mas 2-3x o mecanismo v1 na
+   mesma margem de segurança de KO. Sobra pouca margem de KO (0,21pp até
+   35%) pra fechar o resto só com K simétrico maior — se quiser fechar o
+   gap que falta, o próximo passo é K_CIMA/K_BAIXO assimétrico (aprovado
+   como ajuste secundário), não subir este K sozinho. */
+const K_ESCOLHA_LUTA=.50;
 
 /* modificador de uma ação: contest() (o mesmo do motor) entre o percentil
    do SEU atributo e o percentil do contra-atributo do adversário — não é
@@ -4158,7 +4176,7 @@ function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
     b.id="el_"+acao.id;
     b.innerHTML=`<span class="el-nome">${acao.nome}</span>
       <span class="el-attr">${ROTULO_ATTR[acao.attr]||acao.attr} <b>${valor}</b></span>`;
-    b.onclick=()=>{fechar();onEscolher(mod);};
+    b.onclick=()=>{fechar();onEscolher(mod,acao.attr);};
     opts.appendChild(b);
   });
 }
@@ -4243,8 +4261,9 @@ function lutar(escolhido,camp){
       ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc};
     animarTrecho(trecho,()=>{
       if(round===1){
-        abrirEscolhaLuta(scouting,A.ref,opp,mod=>{
-          A.form*=mod;round++;proximaRodada();
+        abrirEscolhaLuta(scouting,A.ref,opp,(mod,attr)=>{
+          if(attr)A.mAttr[attr]=mod;
+          round++;proximaRodada();
         });
       }else if(round<rounds){
         round++;proximaRodada();

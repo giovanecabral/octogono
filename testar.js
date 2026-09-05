@@ -114,7 +114,8 @@ const API_MOTOR = ["simulateFight", "simularRound", "mkState", "mulberry32", "ra
   "rollTable", "PAIRS", "WEIGHTS", "TOTAL_WEIGHT", "BUDGET_PCT", "TUNING",
   "EVENTS", "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
   "TETO_TREINO", "RITMO_TREINO", "ATTR_TREINAVEIS",
-  "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES"];
+  "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES",
+  "ACOES_LUTA", "COUNTER_ATTR", "sinalDoRound", "contest", "K_ESCOLHA_LUTA"];
 
 function carregarMotor() {
   const { sandbox } = criarAmbiente();
@@ -480,13 +481,13 @@ function testarMotor() {
 }
 
 /* ================================================================== *
- * 2b. DRIVER ROUND-A-ROUND — o item 3 ("escolha na luta") não muda a
- *     calibração do motor. Mesma medida de testarMotor() (6.000 lutas,
- *     mesmo alvo), só que rodando o driver round a round (o que lutar()
- *     roda de verdade agora) em vez de simulateFight() numa chamada só.
- *     mod=1 é o gancho inerte (item 3, condição A: "confirme KO/SUB/DEC
- *     idêntico" ANTES de calibrar); um mod!==1 mede o efeito de um valor
- *     de calibração candidato aplicado sempre, em toda luta.
+ * 2b. DRIVER ROUND-A-ROUND — o driver round a round (o que lutar() roda
+ *     de verdade) mantém a calibração do motor? Mesma medida de
+ *     testarMotor() (6.000 lutas, mesmo alvo). mod=1 é o gancho inerte;
+ *     um mod!==1 aqui é só um estresse genérico em .form (variação
+ *     pré-luta), NÃO o mecanismo real de escolha na luta — desde o
+ *     mecanismo por eixo (mAttr), a escolha não escreve mais em .form.
+ *     Pra medir a escolha de verdade, ver testarGapEscolha().
  * ================================================================== */
 function testarDriverMotor(mod = 1, N = 6000) {
   console.log("\n" + cinza(`${N} lutas via driver round-a-round (mod ${mod}${mod === 1 ? " — gancho inerte" : ""})`));
@@ -515,7 +516,7 @@ function testarDriverMotor(mod = 1, N = 6000) {
     let res = null;
     for (let round = 1; round <= 3 && !res; round++) {
       res = M.simularRound(A, B, round, rng, push, fin, scores);
-      if (round === 1 && !res) A.form *= mod;      // mesmo gancho de abrirEscolhaLuta()/lutar()
+      if (round === 1 && !res) A.form *= mod;      // estresse genérico em .form, não é o gancho da escolha (ver testarGapEscolha)
     }
     if (!res) {
       const w = scores.sa > scores.sb ? A : scores.sb > scores.sa ? B : (rng() < .5 ? A : B), l = w === A ? B : A;
@@ -535,6 +536,95 @@ function testarDriverMotor(mod = 1, N = 6000) {
   const q = kd / n, qok = q >= .40 && q <= .70;
   if (!qok) ok = false;
   console.log(`  ${qok ? verde("ok   ") : vermelho("fora ")} quedas por luta ${q.toFixed(2)}  ${cinza("faixa 0.40-0.70")}`);
+  return ok;
+}
+
+/* ================================================================== *
+ * 2c. GAP DA ESCOLHA NA LUTA (mecanismo v2, por eixo/mAttr) — mede o
+ *     que node testar.js acoesluta não mede: o tamanho REAL do efeito
+ *     no resultado da luta. Protocolo "fiel": sinal do round 1 sai do
+ *     scouting de verdade (não forçado), o trio de 3 é o mesmo sorteio
+ *     de abrirEscolhaLuta() (3 de dentro da pool do sinal), e
+ *     "sempre casa"/"sempre erra" escolhem entre ESSAS 3, nunca a pool
+ *     inteira — a pool inteira superestima o gap (medido: pool inteira
+ *     dava 0,5-0,7, o trio real dá 0,4-0,5 no mesmo K). K_ESCOLHA_LUTA
+ *     fixado em .50 nesta leva (2026-09-05): KO fica achatado ~34,8% até
+ *     K=.50, cruza 35% perto de K=.53 — gap correspondente 0,38-0,47
+ *     vitórias/22 (alvo do usuário era 0,5-0,8; ficou abaixo, mas 2-3x
+ *     o mecanismo v1 na mesma margem de KO — ver comentário em cima de
+ *     K_ESCOLHA_LUTA). */
+function testarGapEscolha(N = 3000) {
+  console.log("\n" + cinza(`${N} pares (sempre casa x sempre erra), sinal e trio reais — gap da escolha na luta`));
+  const M = carregarMotor(), F = lerLutadores();
+  const byDiv = {};
+  F.forEach(f => (byDiv[f.division] ||= []).push(f));
+  const divs = Object.keys(byDiv);
+  const pctPorDiv = {};
+  divs.forEach(d => pctPorDiv[d] = M.makePercentiler(byDiv[d]));
+
+  function modAcao(acao, jog, opp, PCT) {
+    const pJog = PCT(acao.attr, jog[acao.attr]);
+    const counter = M.COUNTER_ATTR[acao.attr];
+    const pOpp = PCT(counter, opp[counter]);
+    const matchup = M.contest(pJog, pOpp);
+    return 1 + M.K_ESCOLHA_LUTA * (matchup - .5) * 2;
+  }
+  function driver(a, b, seed, politica) {
+    const PCT = pctPorDiv[a.division];
+    const rng = M.mulberry32(seed);
+    const form = () => 1 + (rng() + rng() + rng() - 1.5) / 1.5 * M.TUNING.formSpread;
+    const A = M.mkState(a, form()), B = M.mkState(b, form());
+    const push = () => {};
+    const kds = () => ({ [A.ref.name]: A.knockdowns, [B.ref.name]: B.knockdowns });
+    const fin = (w, l, round, clock, met) => ({ winner: w.ref.name, loser: l.ref.name, method: met, round, clock, cards: null, log: [], knockdowns: kds() });
+    const scores = { sa: 0, sb: 0 };
+    let res = null;
+    for (let round = 1; round <= 3 && !res; round++) {
+      const antes = round === 1 ? { a: A.sigStrikes, at: A.takedowns, ac: A.controlTicks, b: B.sigStrikes, bt: B.takedowns, bc: B.controlTicks } : null;
+      res = M.simularRound(A, B, round, rng, push, fin, scores);
+      if (round === 1 && !res) {
+        const scouting = { burstA: A.sigStrikes - antes.a, burstB: B.sigStrikes - antes.b,
+          tdA: A.takedowns - antes.at, tdB: B.takedowns - antes.bt,
+          ctrlA: A.controlTicks - antes.ac, ctrlB: B.controlTicks - antes.bc };
+        const sinal = M.sinalDoRound(scouting);
+        const pool = M.ACOES_LUTA.filter(x => x.pools.includes(sinal));
+        const restante = [...pool], trio = [];
+        for (let i = 0; i < 3 && restante.length; i++) trio.push(restante.splice(Math.floor(rng() * restante.length), 1)[0]);
+        let acao;
+        if (politica === "realista") acao = trio[Math.floor(rng() * trio.length)];
+        else {
+          let melhor = null, pior = null;
+          for (const cand of trio) {
+            const mod = modAcao(cand, A.ref, B.ref, PCT);
+            if (!melhor || mod > melhor.mod) melhor = { cand, mod };
+            if (!pior || mod < pior.mod) pior = { cand, mod };
+          }
+          acao = politica === "sempreCasa" ? melhor.cand : pior.cand;
+        }
+        A.mAttr[acao.attr] = modAcao(acao, A.ref, B.ref, PCT);
+      }
+    }
+    if (!res) {
+      const w = scores.sa > scores.sb ? A : scores.sb > scores.sa ? B : (rng() < .5 ? A : B), l = w === A ? B : A;
+      res = { winner: w.ref.name, loser: l.ref.name, method: "Decisão", round: 3, clock: "0:00", cards: scores.sa + "-" + scores.sb, log: [], knockdowns: kds() };
+    }
+    return res;
+  }
+
+  let winsCasa = 0, winsErra = 0, pares = 0;
+  for (let i = 0; i < N; i++) {
+    const p = byDiv[divs[i % divs.length]];
+    const a = p[(i * 7919) % p.length], b = p[(i * 104729 + 3) % p.length];
+    if (a.name === b.name) continue;
+    const seed = i + 1;
+    if (M.simularRound(M.mkState(a, 1), M.mkState(b, 1), 1, M.mulberry32(seed), () => {}, () => null, { sa: 0, sb: 0 })) continue; // acabou no round 1, sem escolha nesse par
+    if (driver(a, b, seed, "sempreCasa").winner === a.name) winsCasa++;
+    if (driver(a, b, seed, "sempreErra").winner === a.name) winsErra++;
+    pares++;
+  }
+  const gap22 = (winsCasa - winsErra) / pares * 22;
+  const ok = gap22 > 0;   // teto/piso do alvo são decisão do usuário, não um "fora da faixa" automático
+  console.log(`  ${cinza("gap")} ${gap22.toFixed(3)} vitórias/22 (pares=${pares}) ${cinza("alvo do usuário: 0,5-0,8")}`);
   return ok;
 }
 
@@ -2092,6 +2182,54 @@ function testarAcoesLuta() {
       modificadorAcao(acaoVolume,jogadorFraco,oppForte)<1);
     passo("modificadorAcao(): os dois no meio da distribuição dá modificador ~1 (neutro)",
       Math.abs(modificadorAcao(acaoVolume,POOL[25],POOL[25])-1)<.02);
+
+    // mAttr: cada eixo escrito só mexe no seu ponto do motor, isolado dos
+    // outros — prova o diagnóstico do mecanismo v1 (A.form vazando pra
+    // acurácia+volume+queda ao mesmo tempo) ficou resolvido. Estatístico
+    // (N alto) porque exchange()/impact() rolam rng.
+    const ref=(x)=>Object.assign({name:"X",division:"lightweight",slpm:5,strAcc:.45,
+      strDef:.55,reach:72,durability:1,tdAvg:1,tdAcc:.4,tdDef:.5,subAvg:.5,kdAvg:.4},x);
+    function mediaLanded(mAttrAtt,mAttrDef,N){
+      let total=0;
+      for(let s=0;s<N;s++){
+        const rng=mulberry32(s+1);
+        const A=mkState(ref(),1),B=mkState(ref(),1);
+        Object.assign(A.mAttr,mAttrAtt); Object.assign(B.mAttr,mAttrDef);
+        total+=exchange(A,B,rng);
+      }
+      return total/N;
+    }
+    const N_ISOL=4000;
+    const baseL=mediaLanded({},{},N_ISOL);
+    const comSlpm=mediaLanded({slpm:1.5},{},N_ISOL);
+    const comTdAvgNoAtaque=mediaLanded({tdAvg:1.5},{},N_ISOL);
+    const comStrDefDef=mediaLanded({},{strDef:1.5},N_ISOL);
+    passo("mAttr.slpm no atacante muda volume de golpe (exchange())",
+      Math.abs(comSlpm-baseL)/baseL>.15);
+    passo("mAttr.tdAvg no atacante NÃO vaza pra volume de golpe (isolado, era o vazamento do v1)",
+      Math.abs(comTdAvgNoAtaque-baseL)/baseL<.03);
+    passo("mAttr.strDef no defensor reduz volume de golpe sofrido",
+      comStrDefDef<baseL*.97);
+
+    // durability é inverso — mAttr.durability MAIOR no defensor tem que dar
+    // MENOS nocaute/queda, não mais (fácil de inverter sem perceber, ver
+    // comentário em cima de impact()).
+    function taxaNocaute(mAttrDurDef,N){
+      let kos=0;
+      for(let s=0;s<N;s++){
+        const rng=mulberry32(s+1);
+        const A=mkState(ref({kdAvg:1.2}),1),B=mkState(ref(),1);
+        B.mAttr.durability=mAttrDurDef; B.damage=140;
+        const r=impact(A,B,3,rng);
+        if(r)kos++;
+      }
+      return kos/N;
+    }
+    const N_DUR=6000;
+    const durForte=taxaNocaute(1.6,N_DUR), durFraca=taxaNocaute(.6,N_DUR);
+    passo("mAttr.durability alto no defensor DIMINUI a chance de nocaute/queda ("+
+      (100*durForte).toFixed(1)+"% vs "+(100*durFraca).toFixed(1)+"% com o eixo fraco)",
+      durForte<durFraca);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -2863,6 +3001,7 @@ try {
   else if (cmd === "conquistas") ok = testarConquistas();
   else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
   else if (cmd === "acoesluta") ok = testarAcoesLuta();
+  else if (cmd === "gapescolha") ok = testarGapEscolha(Number(process.argv[3]) || 3000);
   else if (cmd === "escalonamento") ok = testarEscalonamentoDisputa();
   else if (cmd === "espera") ok = testarEspera(div || "lightweight");
   else if (cmd === "frequencia") ok = await testarFrequenciaMomentos(Number(div) || 30);
