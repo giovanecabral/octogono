@@ -1217,9 +1217,14 @@ function testarCinturao(div = "heavyweight") {
     finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},titleFight);
 
     passo("luta 2: perdeu — st.title virou false", st.title===false);
-    passo("luta 2: o campeão nomeado voltou a ser NPC, não o jogador",
-      (st.title?me.name:(st.exCampeao?st.exCampeao.name:(RANKING.campeao&&RANKING.campeao.name)))
-        !==me.name);
+    /* renderFicha() de verdade, não uma cópia da fórmula: a versão antiga
+       desta checagem comparava a MESMA expressão do template contra
+       me.name, então com st.title já false ela só conferia que
+       "TesteBot" (nome sintético) é diferente do nome de um lutador real
+       — sempre verdadeiro, nunca pegaria a ficha renderizando errado. */
+    renderFicha();
+    passo("luta 2: a ficha de verdade não mostra mais o jogador como Campeão",
+      !document.getElementById("ficha").innerHTML.includes("Campeão: <b>"+me.name+"</b>"));
     passo("luta 2: exCampeao é quem tirou o cinturão de verdade",
       st.exCampeao&&st.exCampeao.name===opp.name);
     passo("luta 2: lostBeltFast marcou (era a 1ª defesa, defesas===0 no momento)",

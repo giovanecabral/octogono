@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Corner</title>
+<title>Octógono</title>
 <!-- Vercel Web Analytics — sem backend, sem SDK (o projeto não tem build step).
      O stub deixa chamar va(...) antes do script real carregar (fila em vaq);
      script.js só existe/funciona se Analytics estiver ligado no projeto na
@@ -1340,7 +1340,7 @@ const AI_URL="https://draft-ufc.vercel.app/api/ai";           /* ex: "https://se
    direto) o rodapé do card compartilhável mostrava isso pro jogador
    exportar sem perceber. Card é pra fora, tem que sempre apontar pro
    domínio de verdade, não de onde foi gerado. */
-const DOMINIO_JOGO="draft-ufc.vercel.app";
+const DOMINIO_JOGO="octogono.fun";
 
 /* ---------- Contas (opcional, só depois da carreira) ----------
    Jogar não exige conta — a oferta só aparece em screenReport(), depois
@@ -3052,17 +3052,21 @@ async function desenharCard(g){
   const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
   const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
 
-  // cabeçalho
-  regra(M,4,C.line2);
-  x.fillStyle=C.ink;x.font=disp(46);x.textBaseline="alphabetic";
-  x.fillText("FICHA DO LUTADOR",M,M+72);
+  // cabeçalho — mesma marca do card de momento, uma linha só (este card já
+  // tem menos folga vertical, sem a tagline)
+  regra(M,4,C.stamp);
+  x.fillStyle=C.ink;x.font=mono(20,600);x.textBaseline="alphabetic";
+  x.fillText("OCTÓGONO",M,M+22);
+  regra(M+34,2,C.rule);
+  x.fillStyle=C.ink;x.font=disp(46);
+  x.fillText("FICHA DO LUTADOR",M,M+94);
   x.fillStyle=C.faded;x.font=mono(19,500);
   const dv=(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION;
-  x.fillText(dv.toUpperCase()+" · CARREIRA ENCERRADA",M,M+104);
-  regra(M+126,2,C.rule);
+  x.fillText(dv.toUpperCase()+" · CARREIRA ENCERRADA",M,M+126);
+  regra(M+148,2,C.rule);
 
   // nome — encolhe até caber na largura inteira, acima da linha do cartel
-  let y=M+200;
+  let y=M+222;
   x.fillStyle=C.ink;
   let tam=76;
   do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>CARD_W-M*2&&tam>30);
@@ -3181,7 +3185,7 @@ async function desenharCardMomento(m){
      usa C.line2/C.rule, cinza. */
   regra(M,4,C.stamp);
   x.fillStyle=C.ink;x.font=mono(26,600);x.textBaseline="alphabetic";
-  x.fillText("CORNER",M,M+32);
+  x.fillText("OCTÓGONO",M,M+32);
   x.fillStyle=C.faded;x.font=`italic ${mono(19,400)}`;
   x.fillText("Monte seu lutador de MMA. Jogue a carreira inteira.",M,M+58);
   regra(M+78,2,C.rule);

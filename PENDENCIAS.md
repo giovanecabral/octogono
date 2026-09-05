@@ -251,6 +251,23 @@ tempo que o jogador controle ou perceba entre uma e outra — não existe
 existe em lugar nenhum do resto do jogo só pra justificar este item.
 Descartado por decisão do usuário, não por medição.
 
+## 13. Escolha na luta — assimetria (K_CIMA/K_BAIXO) — PRÓXIMO PASSO DISPONÍVEL, NÃO IMPLEMENTADO
+
+Mecanismo v2 (por eixo, `mAttr`) mediu gap de 0,38-0,47 vitórias/22 em
+K=.50 (KO seguro, ≤35%) — alvo pedido era 0,5-0,8. Decisão explícita do
+usuário (2026-09-05): não fechar essa distância com K assimétrico agora.
+"0,38-0,47 contra 0,5 é distância que não se sente jogando, e K_CIMA/
+K_BAIXO são dois números para justificar onde um resolve."
+
+Registrado como disponível, não descartado: se o gap pequeno incomodar
+jogando de verdade, o próximo passo é separar `K_ESCOLHA_LUTA` em dois —
+K_CIMA pro lado que "casa" (matchup>.5), K_BAIXO pro lado que "erra" — em
+vez de subir o K simétrico (que já mediu esbarrar em 35% de KO perto de
+K≈.53, sem sobra de margem). Método de medição já existe e não muda:
+`node testar.js gapescolha` pro gap, `node testar.js acoesluta`/`node
+testar.js motor` (6.000 lutas, política realista) pro KO/SUB/DEC. Ver
+comentário em cima de `K_ESCOLHA_LUTA` em `index.html`.
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):
