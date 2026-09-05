@@ -7,29 +7,22 @@ Contexto de cada um está no `LEIA-ME.md`. Regras de trabalho, no `CLAUDE.md`.
 
 ---
 
-## 1. Lesão por nocaute
+## 1. Lesão por nocaute — RESOLVIDO
 
-**Escopo cortado de propósito do item de lesão visível — v1 (dilema) está
-feito, ver "Já feito" no fim.** Nocaute→lesão é "mais realista e mais cara",
-mas junto com o resto (schema novo no `julgar`, prompt, ficha) era palpite
-demais numa mudança só: a chance de acontecer (proposta inicial ~30%) nunca
-foi medida, e precisa de stream de `rng` próprio (`lesaoRng`, nunca o `rng`
-principal — mesmo motivo do `holdRng`, sorteia só em derrota por nocaute).
+Implementado com alvo explícito (0,3-0,5 vitórias/22 de custo total,
+dado depois do insumo medido — 1,60 nocautes sofridos/carreira, 77,3%
+sofrem ≥1). `lesaoRng` próprio, confirmado por `node testar.js desafio`.
 
-**Pronto quando:** chance medida (não chutada) em ≥400 carreiras, `lesaoRng`
-separado confirmado por `node testar.js desafio`, e `node testar.js` inteiro
-com KO/SUB/DEC na faixa.
-
-**Medido nesta leva (só o insumo pro chute de 30%, feature continua não
-implementada — escopo fechado, nada de feature nova pedida junto)**: 400
-carreiras, `st.koLosses` real — **média de 1,60 nocautes sofridos por
-carreira**, 77,3% das carreiras sofrem pelo menos 1. Com chance=.30
-(o chute original), isso daria ~0,48 lesões esperadas por carreira só
-dessa fonte — mesma ordem de grandeza das lesões de dilema já existentes,
-não parece um chute absurdo em retrospecto, mas continua sendo isso: um
-chute, sem alvo de custo-em-vitórias pra calibrar contra (diferente da
-duração de lesão do item 2 da leva anterior, que tinha 0,5-0,8 vitórias
-como alvo). Falta decidir o alvo antes de medir a chance de verdade.
+**Achado medindo direto (simulação de carreira inteira, não álgebra):**
+nem chance sozinha nem severidade sozinha bastavam. 100% de chance com
+a severidade de dilema (-50%/8 lutas) só chegava a 0,25 vitórias/22;
+-50% permanente pra sempre só chegava a 0,27 — o teto de 22 lutas
+limita quanto UMA lesão pode custar, não dá pra empurrar só com
+frequência. Severidade PRÓPRIA criada (`LESAO_NOCAUTE`, -70%/8 lutas,
+não reaproveita `LESAO_TIPOS.temporaria` — mudar o valor compartilhado
+mudaria o custo da lesão de dilema sem pedido) + `CHANCE_LESAO_NOCAUTE
+=.70` fechou o alvo com folga: 0,32 e 0,33 vitórias/22 em duas levas de
+seed (1.500 carreiras cada). `node testar.js lesaonocaute` cobre.
 
 ---
 
@@ -147,7 +140,7 @@ nomes aparecem no `fighters.json` e `node testar.js divisoes` segue 11/7.
 
 ---
 
-## 7. O meio da tabela não separa — medido, parado aqui (pedido explícito)
+## 7. O meio da tabela não separa — RESOLVIDO (queixa não procedia, pra seguidores)
 
 Fã e seguidores distinguem bem o topo — elite chega a 1,5M contra 20 mil — mas
 carreiras medianas ficam parecidas entre si. Causa suspeita: a escada de
@@ -171,6 +164,12 @@ range vem da cauda, não significa que o meio é raso). Fã, por ser escala
 0-10 limitada, comprime mais de verdade: p40 a p60 é só 1 ponto de
 diferença (6,58 a 7,60), contra 4,82-9,96 do p10 ao p99 — aí sim o meio
 fica com pouca banda pra se diferenciar.
+
+**Decisão: item fechado por medição.** A premissa original (o jogo não
+separa carreiras medianas) não procedia pra seguidores, que é a métrica
+mais visível/compartilhada — separa mesmo no meio. Só fã comprime, e é
+por construção da escala (0-10), não bug nem falta de calibração. Nada
+a mexer.
 
 Não mexi em nada — número trazido, decisão de o que fazer (se algo) fica
 pra depois.
