@@ -909,6 +909,160 @@ function testarDinheiro(div = "lightweight") {
    o vencedor que o cenário pede e entregamos pro finishFight() real decidir
    o resto — exatamente o "expor e chamar a original" que a dívida do
    testar.js escolhas pede. */
+/* ================================================================== *
+ * ESCALONAMENTO DO CHANCE_DISPUTA — cada recusa facilita a próxima,
+ * zera quando a elegibilidade cai, nunca passa do teto
+ * ================================================================== */
+function testarEscalonamentoDisputa() {
+  console.log("\n" + cinza("CHANCE_DISPUTA escalona por recusa, zera se sair da elegibilidade, respeita o teto"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  const corpo = `
+;globalThis.__esc2=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    st={standing:.90,streakW:3,title:false,disputaLiberada:false,disputaRecusas:0};
+    // holdRng fixo em .70: recusa a base (.65) mas aceita depois de 1 escalonamento (.65+.12=.77>.70)
+    holdRng=()=>.70;
+    const r1=tituloLiberado();
+    passo("1ª rolagem: chance base .65 < .70 -> recusa (não libera)", r1===false);
+    passo("1ª recusa: disputaRecusas vira 1", st.disputaRecusas===1);
+    const r2=tituloLiberado();
+    passo("2ª rolagem: chance escalada .65+.12=.77 > .70 -> libera", r2===true);
+    passo("liberou: disputaLiberada fica true", st.disputaLiberada===true);
+
+    // teto: recusas suficientes pra estourar .95 não podem passar de .95
+    st={standing:.90,streakW:3,title:false,disputaLiberada:false,disputaRecusas:10};
+    holdRng=()=>.94;
+    const rTeto=tituloLiberado();
+    passo("teto: com 10 recusas (base+.12*10 estouraria 1.85) a chance trava em .95, ainda libera com holdRng .94",
+      rTeto===true);
+    st={standing:.90,streakW:3,title:false,disputaLiberada:false,disputaRecusas:10};
+    holdRng=()=>.96;
+    const rTeto2=tituloLiberado();
+    passo("teto: holdRng .96 (acima do teto .95) continua recusando mesmo com 10 recusas acumuladas",
+      rTeto2===false);
+
+    // reset: perder elegibilidade (streak cai) zera as recusas acumuladas
+    st={standing:.90,streakW:3,title:false,disputaLiberada:false,disputaRecusas:5};
+    st.streakW=0; // perdeu o streak, não é mais elegível
+    tituloLiberado();
+    passo("saiu da elegibilidade: disputaRecusas zera (frustração é de UMA janela, não atravessa a carreira)",
+      st.disputaRecusas===0);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__esc2 || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
+/* ================================================================== *
+ * ESPERA PELA DISPUTA — mediana/p90/p95/p99/pior caso em lutas extras
+ * depois de ficar elegível (item 4, escalonamento do CHANCE_DISPUTA)
+ * ================================================================== */
+function testarEspera(div = "lightweight") {
+  console.log("\n" + cinza("2.000 carreiras: quanto se espera pela disputa depois de virar elegível"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  const corpo = `
+;globalThis.__x=(function(){
+  ROSTER=rateAll(${JSON.stringify(lerLutadores())});
+  CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+  DIVISION=${JSON.stringify(div)}; MODO="normal";
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+
+  function draft(rng){
+    let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
+    const f={name:"P",division:DIVISION,sapm:3.2};
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rng,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
+    }
+    f.strAcc=f.strAcc||.45; f.tdAcc=f.tdAcc||.38;
+    return f;
+  }
+
+  function carreira(seed){
+    rng=mulberry32(seed); holdRng=mulberry32((seed^0x9E3779B9)>>>0);
+    me=draft(rng);
+    me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,standing:.18,peak:.18,fightNo:0,
+        streakW:0,streakL:0,disputaLiberada:false,disputaRecusas:0,desafianteIdx:1,title:false};
+    fought=new Set();
+    let primeiraElegivel=null, primeiraEstreia=null;
+    for(let i=0;i<22;i++){
+      const elegivelAntes=st.standing>.88&&st.streakW>=3;
+      if(elegivelAntes&&primeiraElegivel===null)primeiraElegivel=i+1;
+      st.tituloEstaLuta=tituloLiberado();
+      if(st.tituloEstaLuta&&primeiraEstreia===null)primeiraEstreia=i+1;
+      const opts=candidatos();
+      const escolhido=opts[Math.min(1,opts.length-1)];
+      const opp=escolhido.f; fought.add(opp.name);
+      const r=simulateFight(me,opp,{seed:Math.floor(rng()*1e9),rounds:st.tituloEstaLuta?5:3});
+      const won=r.winner===me.name;
+      if(won){
+        st.wins++; st.streakW++; st.streakL=0;
+        if(st.tituloEstaLuta){ if(!st.title) st.title=true; else st.defesas=(st.defesas||0)+1; }
+        st.standing=Math.min(1,st.standing+(st.tituloEstaLuta?.05:escolhido.ganho));
+      }else{
+        st.losses++; st.streakL++; st.streakW=0;
+        if(st.tituloEstaLuta&&st.title){ st.title=false; }
+        const g=escolhido.ganho;
+        st.standing=Math.max(.05,st.standing-(st.tituloEstaLuta?.08:(g<=.05?.13:g>=.12?.06:.09)));
+      }
+    }
+    if(primeiraElegivel===null)return {tipo:"nunca_elegivel"};
+    if(primeiraEstreia===null)return {tipo:"elegivel_sem_disputa"};
+    return {tipo:"recebeu",espera:primeiraEstreia-primeiraElegivel};
+  }
+
+  const out=[];
+  for(let s=0;s<2000;s++) out.push(carreira(65000+s));
+  return out;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  não rodou: " + e.message) + "\n" + cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const resultados = env.sandbox.__x || [];
+  const nuncaElegivel = resultados.filter(r => r.tipo === "nunca_elegivel").length;
+  const elegivelSemDisputa = resultados.filter(r => r.tipo === "elegivel_sem_disputa").length;
+  const receberam = resultados.filter(r => r.tipo === "recebeu");
+  const esperas = receberam.map(r => r.espera).sort((a, b) => a - b);
+  const pct = p => esperas[Math.min(esperas.length - 1, Math.floor(p * esperas.length))];
+  console.log(`  ${cinza(`de ${resultados.length} carreiras: ${nuncaElegivel} nunca ficaram elegíveis, ` +
+    `${elegivelSemDisputa} elegíveis mas a carreira acabou antes da disputa vir, ${receberam.length} receberam`)}`);
+  console.log(`  ${cinza("espera em lutas extras depois de ficar elegível:")}`);
+  console.log(`    mediana ${pct(.50)}  p90 ${pct(.90)}  p95 ${pct(.95)}  p99 ${pct(.99)}  pior caso ${esperas[esperas.length - 1]}`);
+  return esperas.length > 0;
+}
+
 function testarCinturao(div = "heavyweight") {
   console.log("\n" + cinza("ganha o título, perde a defesa seguinte — o cinturão tem que trocar de mãos"));
   const env = criarAmbiente();
@@ -2463,6 +2617,8 @@ try {
   else if (cmd === "conquistas") ok = testarConquistas();
   else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
   else if (cmd === "acoesluta") ok = testarAcoesLuta();
+  else if (cmd === "escalonamento") ok = testarEscalonamentoDisputa();
+  else if (cmd === "espera") ok = testarEspera(div || "lightweight");
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");

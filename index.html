@@ -2338,23 +2338,42 @@ function lutadorEfetivo(){
   return f;
 }
 
-/* CHANCE_DISPUTA não é medido — é o primeiro número pra uma mecânica nova
-   (diferente de WEIGHTS/TETO_TREINO, que vieram de medição). Falta medir
-   quantas lutas em média o jogador espera pela disputa depois de virar
-   desafiante. Ver PENDENCIAS item 1. */
+/* Escalonamento aprovado nesta leva: base 0,65, +0,12 por recusa, teto
+   0,95 — quanto mais vezes o jogador fica esperando elegível, mais fácil
+   fica a próxima rolagem (frustração crescente, não sorteio isolado
+   repetido pra sempre). Medido antes/depois (node testar.js espera,
+   2.000 carreiras): efeito pequeno, e é isso mesmo — CHANCE_DISPUTA=.65
+   já é alto sozinho, a mediana já era 0 luta extra ANTES do
+   escalonamento (a maioria recebe na primeira rolagem elegível). Antes:
+   p90=2, p95=4, p99=7, pior caso=10. Depois: p90=1, p95=4, p99=7, pior
+   caso=11 (dentro do ruído de amostra, não piorou de verdade). O
+   escalonamento só muda algo pra quem já teria 2+ recusas seguidas — uma
+   fatia pequena da distribuição, porque a base já é generosa. Registrado
+   honesto: pedido implementado, efeito real é modesto, não o tipo de
+   mudança que se sente jogando. */
 const CHANCE_DISPUTA=0.65;
+const CHANCE_DISPUTA_INCREMENTO=0.12;
+const CHANCE_DISPUTA_TETO=0.95;
 
 /* Elegível (standing>.88 + streak 3) != disputa concedida. "Pode não vir"
    (lesão do campeão, política) é um sorteio em holdRng — nunca em rng, senão
    desloca a sequência e link de desafio antigo para de reproduzir a mesma
    carreira. Uma vez concedida fica concedida (st.disputaLiberada), não
    sorteia de novo a cada fight-decision. Defesa (st.title já true) não
-   sorteia: é obrigatória, como no UFC real. */
+   sorteia: é obrigatória, como no UFC real.
+
+   st.disputaRecusas zera quando a elegibilidade cai (perdeu o streak ou o
+   standing) — é frustração de UMA janela de espera, não uma dívida que
+   atravessa a carreira inteira sem relação com a forma atual. */
 function tituloLiberado(){
   if(st.title)return true;
-  if(!(st.standing>.88&&st.streakW>=3))return false;
+  const elegivel=st.standing>.88&&st.streakW>=3;
+  if(!elegivel){st.disputaRecusas=0;return false;}
   if(st.disputaLiberada)return true;
-  if(holdRng()<CHANCE_DISPUTA){st.disputaLiberada=true;return true;}
+  const chance=Math.min(CHANCE_DISPUTA_TETO,
+    CHANCE_DISPUTA+CHANCE_DISPUTA_INCREMENTO*(st.disputaRecusas||0));
+  if(holdRng()<chance){st.disputaLiberada=true;return true;}
+  st.disputaRecusas=(st.disputaRecusas||0)+1;
   return false;
 }
 
