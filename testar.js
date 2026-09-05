@@ -1753,6 +1753,160 @@ function testarMomentos() {
 }
 
 /* ================================================================== *
+ * 7c. FREQUÊNCIA DOS CARDS — carreiras de bot de ponta a ponta (auto,
+ *     dilema/escolha na luta resolvidos de verdade), quantos cards de
+ *     cada tipo saem de fato. Lento (~7s/carreira, o motor inteiro roda
+ *     via nextFight()/lutar()/finishFight() reais, não atalho) — item 8
+ *     da leva, harness que travava em ~10 lutas por carreira.
+ *
+ *     Causa do travamento: o DOM falso reaproveita o MESMO nó cacheado
+ *     pra "dilresp"/"dilgo" entre dilemas diferentes (mesmo bug que
+ *     testarInterface() já contornava deletando o registro depois de
+ *     cada dilema — comentário lá: "o DOM falso reaproveita o nó do
+ *     dilema anterior"). Sem apagar o cache, o 2º dilema (luta 10) nunca
+ *     resolvia — dilemaAberto ficava true pra sempre, nextFight() barrado
+ *     pelo guard (corretamente!) dali em diante, carreira travava em 10
+ *     lutas silenciosamente (sem erro, só parava de avançar). Corrigido
+ *     com o mesmo `delete registro[...]` que testarInterface() já usa. */
+function testarFrequenciaMomentos(N = 30) {
+  console.log("\n" + cinza(`${N} carreiras de ponta a ponta (auto), frequência real de cada card`));
+  const F = lerLutadores();
+  const noop = () => {};
+  function makeEl(tag) {
+    return {
+      tagName: tag, _html: "", textContent: "", id: "", className: "", style: {},
+      children: [], disabled: false, value: "",
+      classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      appendChild(c) { this.children.push(c); return c; }, append() {}, scrollIntoView: noop, focus: noop,
+      addEventListener: noop, remove: noop, querySelector: () => makeEl(), querySelectorAll: () => [],
+      getContext: () => null, get innerHTML() { return this._html; }, set innerHTML(v) { this._html = String(v); },
+    };
+  }
+  const respirar = () => new Promise(r => setImmediate(r));
+
+  function novoSandbox() {
+    const registro = {}; const timers = [];
+    const sb = {
+      console: { log: noop, warn: noop, error: noop },
+      document: {
+        getElementById: id => registro[id] || (registro[id] = makeEl()), createElement: t => makeEl(t),
+        querySelector: () => makeEl(), addEventListener: noop, removeEventListener: noop,
+      },
+      window: { matchMedia: () => ({ matches: true }) },
+      setTimeout: fn => { timers.push(fn); return timers.length; },
+      clearTimeout: noop, setInterval: noop, clearInterval: noop,
+      fetch: () => Promise.reject(new Error("offline")),
+      AbortController: class { constructor() { this.signal = null; } abort() {} },
+      Math, JSON, Date, Number, String, Array, Object, Promise, Set, Map, Error, isNaN,
+    };
+    sb.globalThis = sb;
+    vm.createContext(sb);
+    return { sb, registro, drenar: () => { let i = 0; while (timers.length && i++ < 200000) (timers.shift())(); } };
+  }
+
+  function montarCarreira(sb, seed) {
+    const corpo = `
+;globalThis.__x=(function(){
+  ROSTER=rateAll(${JSON.stringify(F)});
+  CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+  DIVISION="lightweight"; MODO="normal";
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+  SEED=${seed};
+  rng=mulberry32(SEED); holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
+  fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
+  escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
+  function draft(rngD){
+    let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
+    const f={name:"TesteBot",division:DIVISION,sapm:3.2};
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rngD,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
+    }
+    f.strAcc=f.strAcc||.45; f.tdAcc=f.tdAcc||.38;
+    return f;
+  }
+  me=draft(rng);
+  me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+  ROSTO=null;
+  st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+      bestBeaten:0,bestWin:null,title:false,standing:.18,peak:.18,events:0,koLosses:0,
+      kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+      lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,disputaRecusas:0,defesas:0,
+      exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,vezesCampeao:0,
+      subLosses:0,evitouAlgumaVez:false,dinheiro:0,treinadorComprado:false,estreouMainCard:false};
+  fought=new Set();usedEvents=new Set();rareUsed=new Set();
+  fightNo=0;auto=true;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;
+  document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
+  document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
+  document.getElementById("escolhaLuta").style.display="none";
+  document.getElementById("controls"); document.getElementById("next"); document.getElementById("autob");
+  globalThis.__ehPlaying=()=>playing;
+  globalThis.__ehDilema=()=>dilemaAberto;
+  globalThis.__campo=()=>document.getElementById("dilresp");
+  globalThis.__botao=()=>document.getElementById("dilgo");
+  return "ok";
+})();
+`;
+    vm.runInContext(lerScript() + corpo, sb, { filename: "index.html" });
+  }
+
+  async function resolverDilemaSeAberto(sb, drenar, registro) {
+    if (!sb.__ehDilema()) return;
+    const campo = sb.__campo(), botao = sb.__botao();
+    if (campo && botao && !campo.disabled && !botao.disabled) {
+      campo.value = "aceito, sem problema";
+      botao.onclick();
+      delete registro.dilresp; delete registro.dilgo; // nó cacheado do dilema anterior — sem isso o próximo nunca resolve
+      drenar(); await respirar(); drenar(); await respirar();
+      vm.runInContext("auto=true;", sb); // dilema desliga auto de propósito; religa pro bot seguir sozinho
+    }
+  }
+
+  async function rodarCarreira(seed) {
+    const { sb, drenar, registro } = novoSandbox();
+    montarCarreira(sb, seed);
+    for (let f = 0; f < 22; f++) {
+      let tentativas = 0;
+      while (sb.__ehPlaying() && tentativas++ < 100) await respirar();
+      await resolverDilemaSeAberto(sb, drenar, registro);
+      let t2 = 0;
+      while (sb.__ehDilema() && t2++ < 10) await resolverDilemaSeAberto(sb, drenar, registro);
+      vm.runInContext("nextFight();", sb);
+      drenar(); await respirar(); drenar(); await respirar();
+      await resolverDilemaSeAberto(sb, drenar, registro);
+    }
+    for (let k = 0; k < 15; k++) { drenar(); await respirar(); await resolverDilemaSeAberto(sb, drenar, registro); }
+    return { momentos: vm.runInContext("st.momentos", sb) || [], fightNo: vm.runInContext("fightNo", sb) };
+  }
+
+  return (async () => {
+    const contagem = { cinturao: 0, ko: 0, lesao: 0, cinturaoPerdido: 0, upset: 0, raro: 0, estreia: 0 };
+    let totalCards = 0, truncadas = 0;
+    for (let s = 0; s < N; s++) {
+      let r = { momentos: [], fightNo: 0 };
+      try { r = await rodarCarreira(80000 + s); }
+      catch (e) { console.log("  carreira " + s + " falhou: " + e.message); }
+      if (r.fightNo !== 22) truncadas++;
+      totalCards += r.momentos.length;
+      r.momentos.forEach(m => { if (contagem[m.tipo] != null) contagem[m.tipo]++; });
+    }
+    console.log(`  ${cinza(`${N} carreiras, ${totalCards} cards no total, média ${(totalCards / N).toFixed(2)}/carreira`)}`);
+    console.log(`  ${cinza("por tipo (% de carreiras com pelo menos 1):")}`);
+    for (const k of Object.keys(contagem))
+      console.log(`    ${k.padEnd(16)} ${contagem[k]} = ${(100 * contagem[k] / N).toFixed(1)}%`);
+    if (truncadas) console.log(`  ${vermelho(truncadas + " carreiras não chegaram na luta 22 — investigar antes de confiar no número")}`);
+    return truncadas === 0;
+  })();
+}
+
+/* ================================================================== *
  * 7d. CONQUISTAS — cada check() na hora certa, no limite certo
  * ================================================================== */
 /* st montado à mão pra cada conquista, nos dois lados do limite (a favor
@@ -2619,6 +2773,7 @@ try {
   else if (cmd === "acoesluta") ok = testarAcoesLuta();
   else if (cmd === "escalonamento") ok = testarEscalonamentoDisputa();
   else if (cmd === "espera") ok = testarEspera(div || "lightweight");
+  else if (cmd === "frequencia") ok = await testarFrequenciaMomentos(Number(div) || 30);
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");
