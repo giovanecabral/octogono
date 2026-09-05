@@ -341,11 +341,14 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
         throw new Error("automático não ligou (é só UI, deveria ligar mesmo com a escolha aberta)");
       env.registro.autob.onclick();          // desliga de novo, não interfere no resto do teste
 
-      const opcoes = [env.registro.elPressionar, env.registro.elFechar, env.registro.elManter];
-      const op = opcoes[n % 3];
+      /* item 6 (v2): ids dinâmicos ("el_"+id da ação, varia por round/pool),
+         não mais 3 nomes fixos — acha pelo prefixo. */
+      const idsOpcoes = Object.keys(env.registro).filter(k => k.startsWith("el_"));
+      if (idsOpcoes.length !== 3) throw new Error(`escolha na luta veio com ${idsOpcoes.length} opções, esperava 3`);
+      const op = env.registro[idsOpcoes[n % 3]];
       if (!op || !op.onclick) throw new Error("escolha na luta apareceu sem os 3 botões esperados");
       op.onclick();
-      delete env.registro.elPressionar; delete env.registro.elFechar; delete env.registro.elManter;
+      idsOpcoes.forEach(id => delete env.registro[id]);
       env.drenar(); await respirar(); env.drenar();
     }
 
@@ -1618,6 +1621,95 @@ function testarMomentos() {
    Prova ANTES de escrever o ponto de pausa, contra o código de HOJE — se
    isto já vale hoje, o ponto de pausa herda de graça, sem precisar de
    nenhuma flag nova (`escolhaLutaAberta` ou parecido) só pra isso. */
+/* ================================================================== *
+ * ESCOLHA NA LUTA v2 (item 6) — sinal do round, modificador por
+ * contest(), e o repertório em si (variedade, cobertura dos 7 eixos)
+ * ================================================================== */
+function testarAcoesLuta() {
+  console.log("\n" + cinza("ações na luta: sinal do round, modificador por contest(), repertório"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  const corpo = `
+;globalThis.__ac=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    passo("sinal: dominado no chão (ctrlB alto)",
+      sinalDoRound({burstA:0,burstB:0,tdA:0,tdB:0,ctrlA:0,ctrlB:4})==="dominado");
+    passo("sinal: dominado no chão (2+ quedas sofridas, mesmo sem controle alto)",
+      sinalDoRound({burstA:0,burstB:0,tdA:0,tdB:2,ctrlA:0,ctrlB:0})==="dominado");
+    passo("sinal: sofreu 1 queda só (não dominado)",
+      sinalDoRound({burstA:0,burstB:0,tdA:0,tdB:1,ctrlA:0,ctrlB:1})==="sofreu_queda");
+    passo("sinal: perdendo a troca",
+      sinalDoRound({burstA:2,burstB:6,tdA:0,tdB:0,ctrlA:0,ctrlB:0})==="perdendo_troca");
+    passo("sinal: vencendo a troca",
+      sinalDoRound({burstA:6,burstB:2,tdA:0,tdB:0,ctrlA:0,ctrlB:0})==="vencendo");
+    passo("sinal: parelho (sem diferença que bata os limiares)",
+      sinalDoRound({burstA:4,burstB:3,tdA:0,tdB:0,ctrlA:0,ctrlB:0})==="parelho");
+    passo("sinal: sem scouting nenhum (round-1 nunca aconteceu) cai em parelho, não quebra",
+      sinalDoRound(null)==="parelho");
+
+    // cobertura: todo ATTR_TREINAVEIS tem contra-atributo definido
+    const semContraAtributo=ATTR_TREINAVEIS.filter(a=>!COUNTER_ATTR[a]);
+    passo("COUNTER_ATTR cobre os 7 atributos treináveis",
+      semContraAtributo.length===0);
+
+    // cada pool de sinal tem pelo menos 5 ações (evita trio repetido cedo
+    // demais — C(5,3)=10 combinações mínimas por sinal)
+    const SINAIS=["dominado","sofreu_queda","perdendo_troca","vencendo","parelho"];
+    const poolPequeno=SINAIS.filter(s=>ACOES_LUTA.filter(a=>a.pools.includes(s)).length<5);
+    passo("todo sinal tem pool de pelo menos 5 ações ("+SINAIS.map(s=>s+":"+ACOES_LUTA.filter(a=>a.pools.includes(s)).length).join(", ")+")",
+      poolPequeno.length===0);
+
+    // nenhuma ação com mais de 4 palavras de conteúdo (regra do card lado a
+    // lado) — conta tudo que não é conectivo comum
+    const CONECTIVOS=new Set(["e","de","da","do","na","no","a","o","pro","por"]);
+    const longas=ACOES_LUTA.filter(a=>
+      a.nome.split(" ").filter(p=>!CONECTIVOS.has(p.toLowerCase())).length>4);
+    passo("nenhuma ação passa de 4 palavras de conteúdo ("+
+      (longas.map(a=>a.nome).join(" | ")||"nenhuma")+")", longas.length===0);
+
+    // modificadorAcao(): direção certa — jogador muito acima do adversário
+    // no eixo (e no contra-eixo dele) tem que dar modificador >1; o
+    // inverso tem que dar <1. Usa PCT de verdade (makePercentiler) pra não
+    // inventar percentil.
+    me={name:"Bot"};
+    POOL=[]; for(let i=0;i<50;i++) POOL.push({slpm:3+i*.1,strDef:.3+i*.01,tdAvg:1+i*.05,
+      tdDef:.3+i*.01,subAvg:.5+i*.05,kdAvg:.2+i*.02,durability:.8+i*.01});
+    PCT=makePercentiler(POOL);
+    const jogadorForte={slpm:8,strDef:.9,tdAvg:6,tdDef:.9,subAvg:3,kdAvg:1.5,durability:1.3};
+    const jogadorFraco={slpm:3,strDef:.3,tdAvg:1,tdDef:.3,subAvg:.5,kdAvg:.2,durability:.8};
+    const oppFraco={slpm:3,strDef:.3,tdAvg:1,tdDef:.3,subAvg:.5,kdAvg:.2,durability:.8};
+    const oppForte={slpm:8,strDef:.9,tdAvg:6,tdDef:.9,subAvg:3,kdAvg:1.5,durability:1.3};
+    const acaoVolume=ACOES_LUTA.find(a=>a.attr==="slpm");
+    passo("modificadorAcao(): jogador forte contra adversário fraco no contra-eixo dá modificador > 1",
+      modificadorAcao(acaoVolume,jogadorForte,oppFraco)>1);
+    passo("modificadorAcao(): jogador fraco contra adversário forte no contra-eixo dá modificador < 1",
+      modificadorAcao(acaoVolume,jogadorFraco,oppForte)<1);
+    passo("modificadorAcao(): os dois no meio da distribuição dá modificador ~1 (neutro)",
+      Math.abs(modificadorAcao(acaoVolume,POOL[25],POOL[25])-1)<.02);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__ac || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
 function testarEscolhaLuta() {
   console.log("\n" + cinza("escolha na luta (fase 2 prep): playing já bloqueia nextFight() sozinho, sem flag nova"));
   const env = criarAmbiente();
@@ -2366,6 +2458,7 @@ try {
   else if (cmd === "momentos") ok = testarMomentos();
   else if (cmd === "conquistas") ok = testarConquistas();
   else if (cmd === "escolhaluta") ok = testarEscolhaLuta();
+  else if (cmd === "acoesluta") ok = testarAcoesLuta();
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");

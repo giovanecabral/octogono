@@ -361,6 +361,20 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   color:var(--faded);margin-top:3px}
 .contra{border-left:3px solid var(--stamp);padding:8px 0 8px 11px;margin:9px 0 2px;
   font-size:12.5px;line-height:1.45}
+/* escolha na luta (item 6, v2): mesmo padrão visual dos camps — grid,
+   lado a lado, nunca empilhado, mesmo em tela estreita ele quebra em
+   linhas de 3 antes de virar coluna única */
+.escolha-luta{margin-top:10px}
+.el-cab{font-size:12.5px;color:var(--ink2);line-height:1.4;margin-bottom:10px}
+.el-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.el-opts button{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;
+  text-align:left;color:inherit;font-size:13px}
+.el-opts button:hover{background:var(--panel2);border-color:var(--line2);
+  transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
+.el-nome{display:block;color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;
+  font-size:13px;letter-spacing:.03em;text-transform:uppercase}
+.el-attr{display:block;font-size:11px;color:var(--faded);margin-top:4px}
+.el-attr b{color:var(--ink2);font-weight:600}
 .contra b{font-weight:600}
 
 /* ---------- dilema interativo ---------- */
@@ -3235,7 +3249,7 @@ async function compartilhar(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,usedEvents=null,rareUsed=null,fought=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,usedEvents=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -3604,6 +3618,7 @@ function startDraft(name){
      dilema cortado localmente deslocaria a sequência e o link de desafio
      pararia de reproduzir a mesma carreira. */
   fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
+  escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
   me={name,division:DIVISION};picks=[];
   budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
   remaining=[...PAIRS];
@@ -3890,26 +3905,105 @@ function nextFight(){
   telaAdversario();
 }
 
-/* Medido nesta leva (item 3, condição B) — /tmp/calibrar_escolha.js,
-   1.200 lutas por opção, fighter pairs reais no esquema de testarMotor():
-   varrendo .02 a .25, o gap entre a opção mais forte e a mais fraca (sempre
-   escolhida, sozinha, contra o baseline neutro) cruza a faixa pedida
-   (0,5-0,8 vitórias em 22) entre .04 e .06. Escolhido .04 — mais perto do
-   piso da faixa, com folga: outra leva de 1.200 com seeds deslocadas deu
-   0,55 e 0,70 (a .05 deu 0,64 e 0,81, cruzando o teto). Confirmado com
-   node testar.js drivermotor 1.04 6000 / 0.96 6000 (pior caso: modificador
-   aplicado em TODA luta, não só quando o jogador escolhe) — KO/SUB/DEC
-   seguem dentro da tolerância de testarMotor(). Revisar se a sensação de
-   jogo pedir mais peso — o número é da medição, não do gosto. */
-const MOD_ESCOLHA_LUTA=.04;
+/* Repertório da escolha na luta (item 6, v2) — 31 ações reais de MMA,
+   nenhuma exigindo mais de 4 palavras de conteúdo (cabe em card lado a
+   lado), vocabulário de gíria de esporte antes de descrição técnica
+   ("trocar queixo por queixo", não "resistir aos golpes recebidos").
+   Cada ação exige UM atributo (attr) e aparece só nos sinais de round
+   (pools) onde faz sentido — o scouting do round decide o trio, não um
+   menu solto. Cobre os 7 eixos treináveis do motor (ATTR_TREINAVEIS);
+   subAvg não tem "defesa de finalização" própria no motor, então usa
+   tdDef do adversário como proxy de scramble (ver COUNTER_ATTR). */
+const ACOES_LUTA=[
+  {id:"trocar_distancia",nome:"Trocar na distância",attr:"slpm",pools:["vencendo","parelho"]},
+  {id:"cortar_ringue",nome:"Cortar o ringue",attr:"slpm",pools:["vencendo","parelho"]},
+  {id:"meter_mao",nome:"Meter a mão",attr:"slpm",pools:["vencendo"]},
+  {id:"subir_ritmo",nome:"Subir o ritmo",attr:"slpm",pools:["parelho"]},
+  {id:"buscar_nocaute",nome:"Buscar o nocaute",attr:"kdAvg",pools:["vencendo"]},
+  {id:"castigar_perna",nome:"Castigar a perna",attr:"kdAvg",pools:["vencendo","parelho"]},
+  {id:"ir_com_tudo",nome:"Ir com tudo",attr:"kdAvg",pools:["vencendo"]},
+  {id:"chute_cabeca",nome:"Chute na cabeça",attr:"kdAvg",pools:["vencendo","parelho"]},
+  {id:"joelhada_clinch",nome:"Joelhada no clinch",attr:"kdAvg",pools:["perdendo_troca","parelho"]},
+  {id:"fechar_guarda",nome:"Fechar a guarda",attr:"strDef",pools:["perdendo_troca"]},
+  {id:"amarrar_clinch",nome:"Amarrar no clinch",attr:"strDef",pools:["perdendo_troca"]},
+  {id:"sair_linha",nome:"Sair de linha",attr:"strDef",pools:["perdendo_troca","parelho"]},
+  {id:"aguentar_devolver",nome:"Aguentar e devolver",attr:"durability",pools:["perdendo_troca"]},
+  {id:"queixo_por_queixo",nome:"Trocar queixo por queixo",attr:"durability",pools:["perdendo_troca","vencendo"]},
+  {id:"segurar_pressao",nome:"Segurar a pressão",attr:"durability",pools:["perdendo_troca","dominado","sofreu_queda"]},
+  {id:"esperar_revidar",nome:"Esperar e revidar",attr:"durability",pools:["perdendo_troca","parelho"]},
+  {id:"respirar_momento",nome:"Respirar e escolher o momento",attr:"durability",pools:["parelho"]},
+  {id:"buscar_dupla",nome:"Buscar a dupla",attr:"tdAvg",pools:["parelho","vencendo"]},
+  {id:"encurtar_derrubar",nome:"Encurtar e derrubar",attr:"tdAvg",pools:["parelho"]},
+  {id:"trocar_nivel",nome:"Trocar o nível",attr:"tdAvg",pools:["vencendo","parelho"]},
+  {id:"segurar_por_cima",nome:"Segurar por cima",attr:"tdAvg",pools:["vencendo"]},
+  {id:"buscar_montada",nome:"Buscar a montada",attr:"tdAvg",pools:["vencendo"]},
+  {id:"sprawl_sair",nome:"Sprawl e sair",attr:"tdDef",pools:["sofreu_queda","dominado"]},
+  {id:"postura_empurrar",nome:"Postura e empurrar de volta",attr:"tdDef",pools:["dominado","sofreu_queda"]},
+  {id:"cortar_angulo",nome:"Cortar o ângulo",attr:"tdDef",pools:["sofreu_queda","perdendo_troca"]},
+  {id:"raspar_levantar",nome:"Raspar e levantar",attr:"tdDef",pools:["dominado","sofreu_queda"]},
+  {id:"voltar_centro",nome:"Voltar pro centro",attr:"tdDef",pools:["dominado","sofreu_queda"]},
+  {id:"cacar_pescoco",nome:"Caçar o pescoço",attr:"subAvg",pools:["vencendo"]},
+  {id:"passar_guarda",nome:"Passar a guarda",attr:"subAvg",pools:["vencendo"]},
+  {id:"isolar_braco",nome:"Isolar o braço",attr:"subAvg",pools:["vencendo"]},
+  {id:"guilhotina_pe",nome:"Guilhotina em pé",attr:"subAvg",pools:["perdendo_troca","parelho"]},
+];
+/* Contra-atributo do ADVERSÁRIO que cada ação testa, escondido do
+   jogador de propósito (item 6: "não deixe a escolha ser óbvia" — a
+   opção que mais casa com você às vezes é a que ele defende melhor).
+   Pares recíprocos do próprio motor: volume x defesa de golpe, poder x
+   queixo, queda x defesa de queda. subAvg usa tdDef do adversário como
+   proxy de scramble (motor não tem "defesa de finalização" própria). */
+const COUNTER_ATTR={slpm:"strDef",kdAvg:"durability",tdAvg:"tdDef",
+  strDef:"slpm",durability:"kdAvg",tdDef:"tdAvg",subAvg:"tdDef"};
 
-/* Escolha na luta — item 3: uma vez por luta, só depois do primeiro round
-   que ela alcança sem terminar nele. Texto ancorado no scouting REAL do
-   round (burst/queda/controle), não um menu solto. Automático nunca pausa
-   — sempre neutro (mod 1/1, sem gastar rng novo), igual ao jeito que ele já
-   escolhe adversário/camp sozinho. */
-function abrirEscolhaLuta(scouting,opp,onEscolher){
-  if(auto){onEscolher(1,1);return;}
+function sinalDoRound(s){
+  if(!s)return"parelho";
+  if(s.ctrlB>=3||s.tdB>=2)return"dominado";
+  if(s.tdB>=1)return"sofreu_queda";
+  if(s.burstB>=s.burstA+3)return"perdendo_troca";
+  if(s.burstA>=s.burstB+3)return"vencendo";
+  return"parelho";
+}
+
+/* Medido nesta leva (item 6): sweep de K, "sempre casa" (maior contest()
+   entre as 3 oferecidas) contra "sempre erra" (menor), fighter pairs
+   reais. contest() amortece mais que percentil puro (é curva, não reta),
+   por isso o K precisou ser bem maior que o antigo MOD_ESCOLHA_LUTA=.04
+   fixo: em 1.200 lutas o gap só cruzava 0,5-0,8 vitórias/22 entre K=.13 e
+   K=.18 (bem acima de onde a versão fixa cruzava, .04-.06). Com ruído de
+   amostra grande nessa faixa (uma leva com seed deslocada caiu fora),
+   remedido em 3.000: K=.16 deu 0,52 e 0,67 nas duas levas de seed — mais
+   estável que .15/.18, que também funcionavam mas com mais variação.
+   KO/SUB/DEC em 6.000 lutas nas duas políticas reais (não extremo
+   teórico impossível): "certa" KO 35,8/SUB 18,8/DEC 45,4, "errada" KO
+   35,3/SUB 19,3/DEC 45,4 — as duas dentro da tolerância de testarMotor(),
+   perto do baseline sem escolha (KO 34,5/SUB 19,4/DEC 46,2). */
+const K_ESCOLHA_LUTA=.16;
+
+/* modificador de uma ação: contest() (o mesmo do motor) entre o percentil
+   do SEU atributo e o percentil do contra-atributo do adversário — não é
+   só "seu número", é uma disputa escondida, então a opção que mais casa
+   com você pode ainda sair cara se ele defende bem aquele eixo. */
+function modificadorAcao(acao,jogadorRef,oppRef){
+  if(!PCT)return 1;
+  const pJog=PCT(acao.attr,jogadorRef[acao.attr]);
+  const counter=COUNTER_ATTR[acao.attr];
+  const pOpp=PCT(counter,oppRef[counter]);
+  const matchup=contest(pJog,pOpp);
+  return 1+K_ESCOLHA_LUTA*(matchup-.5)*2;
+}
+
+/* Escolha na luta — item 3/6: uma vez por luta, só depois do primeiro
+   round que ela alcança sem terminar nele. Texto ancorado no scouting
+   REAL do round (burst/queda/controle) decide qual POOL de ações
+   aparece; escolhaRng (stream próprio, não mexe no rng principal — ver
+   node testar.js desafio) decide QUAIS 3 dessa pool. Card mostra seu
+   próprio valor no atributo, nunca o do adversário — é isso que mantém a
+   escolha uma leitura de round, não aritmética pura. Automático nunca
+   pausa — sempre neutro (mod 1, sem gastar rng), igual já escolhe
+   adversário/camp sozinho. */
+function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
+  if(auto){onEscolher(1);return;}
   const s=scouting||{burstA:0,burstB:0,tdA:0,tdB:0,ctrlA:0,ctrlB:0};
   let cabecalho;
   if(s.ctrlB>=3)cabecalho=`${opp.name} passou boa parte do round te segurando no chão.`;
@@ -3918,6 +4012,15 @@ function abrirEscolhaLuta(scouting,opp,onEscolher){
   else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca — ${s.burstA} a ${s.burstB}.`;
   else cabecalho=`Round parelho, nada decidido ainda.`;
 
+  const sinal=sinalDoRound(s);
+  const pool=ACOES_LUTA.filter(a=>a.pools.includes(sinal));
+  const restante=[...pool];
+  const trio=[];
+  for(let i=0;i<3&&restante.length;i++){
+    const idx=Math.floor((escolhaRng?escolhaRng():Math.random())*restante.length);
+    trio.push(restante.splice(idx,1)[0]);
+  }
+
   const box=document.getElementById("escolhaLuta");
   box.innerHTML="";
   box.style.display="";
@@ -3925,15 +4028,16 @@ function abrirEscolhaLuta(scouting,opp,onEscolher){
   const opts=el("div","el-opts");
   box.appendChild(opts);
   const fechar=()=>{box.style.display="none";box.innerHTML="";};
-  const botao=(id,texto,modA,modB)=>{
-    const b=el("button","btn btn-ghost",texto);
-    b.id=id;
-    b.onclick=()=>{fechar();onEscolher(modA,modB);};
+  trio.forEach(acao=>{
+    const mod=modificadorAcao(acao,jogadorRef,opp);
+    const valor=FMT_ATTR[acao.attr]?FMT_ATTR[acao.attr](jogadorRef[acao.attr]):jogadorRef[acao.attr];
+    const b=el("button","","");
+    b.id="el_"+acao.id;
+    b.innerHTML=`<span class="el-nome">${acao.nome}</span>
+      <span class="el-attr">${ROTULO_ATTR[acao.attr]||acao.attr} <b>${valor}</b></span>`;
+    b.onclick=()=>{fechar();onEscolher(mod);};
     opts.appendChild(b);
-  };
-  botao("elPressionar","Pressionar mais",1+MOD_ESCOLHA_LUTA,1);
-  botao("elFechar","Fechar o jogo dele",1,1-MOD_ESCOLHA_LUTA);
-  botao("elManter","Manter o ritmo",1,1);
+  });
 }
 
 /* Dispara o prefetch do feed e entrega pra finishFight(). Antes disto era
@@ -4016,8 +4120,8 @@ function lutar(escolhido,camp){
       ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc};
     animarTrecho(trecho,()=>{
       if(round===1){
-        abrirEscolhaLuta(scouting,opp,(modA,modB)=>{
-          A.form*=modA;B.form*=modB;round++;proximaRodada();
+        abrirEscolhaLuta(scouting,A.ref,opp,mod=>{
+          A.form*=mod;round++;proximaRodada();
         });
       }else if(round<rounds){
         round++;proximaRodada();
