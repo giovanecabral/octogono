@@ -155,10 +155,26 @@ for _, r in tott.iterrows():
 MIN_FIGHTS = 4
 MIN_MINUTES = 25
 
+# Item 7 (override de amostra curta): nomes famosos que o filtro acima
+# derruba injustamente por finalizarem rápido demais, não por terem lutado
+# pouco de menos pra existir de verdade. Conferido nos dados brutos
+# (data/ufc_fight_results.csv) antes de entrar aqui — cada um tem pelo
+# menos 2 lutas reais no UFC, não é gente com 1 luta isolada (esse caso
+# (ex.: James Toney, 1 luta, 3 minutos) fica de fora de propósito: amostra
+# de 1 luta é ruído, não dá pra ratear com confiança nenhuma).
+#   Ronda Rousey   8 lutas, 24.7min — perde só por MIN_MINUTES (por pouco)
+#   CM Punk        2 lutas, 17.2min
+#   Ben Askren     3 lutas, 17.3min
+#   Bas Rutten     2 lutas, 20.2min — resto da carreira foi Pancrase, fora deste dataset
+#   Genki Sudo     3 lutas, 25.1min — perde só por MIN_FIGHTS (por pouco)
+OVERRIDE_AMOSTRA_CURTA = {
+    "Ronda Rousey", "CM Punk", "Ben Askren", "Bas Rutten", "Genki Sudo",
+}
+
 fighters = []
 for name, a in acc.items():
     minutes = a["secs"] / 60
-    if len(a["fights"]) < MIN_FIGHTS or minutes < MIN_MINUTES:
+    if name not in OVERRIDE_AMOSTRA_CURTA and (len(a["fights"]) < MIN_FIGHTS or minutes < MIN_MINUTES):
         continue
     if not a["divs"]:
         continue
