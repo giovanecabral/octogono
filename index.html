@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ficha do Lutador</title>
+<title>Corner</title>
 <!-- Vercel Web Analytics — sem backend, sem SDK (o projeto não tem build step).
      O stub deixa chamar va(...) antes do script real carregar (fila em vaq);
      script.js só existe/funciona se Analytics estiver ligado no projeto na
@@ -1287,6 +1287,11 @@ function renderPhone(feed,fan,delta,followers){
    entregar as regras do jogo pra quem souber digitar.
    ========================================================================= */
 const AI_URL="https://draft-ufc.vercel.app/api/ai";           /* ex: "https://seu-projeto.vercel.app/api/ai" */
+/* Fixo, não location.host — testando local (localhost:8000, arquivo aberto
+   direto) o rodapé do card compartilhável mostrava isso pro jogador
+   exportar sem perceber. Card é pra fora, tem que sempre apontar pro
+   domínio de verdade, não de onde foi gerado. */
+const DOMINIO_JOGO="draft-ufc.vercel.app";
 let aiVivo=true;
 /* Timestamp (ms), não segundos: rate limit (429) é ESPERADO com tráfego
    real, não exceção — pausa com espera, não desliga a carreira inteira por
@@ -2917,7 +2922,7 @@ async function desenharCard(g){
   x.textAlign="right";
   x.fillText("#"+SEED.toString(36).toUpperCase(),CARD_W-M,yf+46);
   x.fillStyle=C.faded;x.font=mono(19,400);
-  x.fillText(location.host||"ficha do lutador",CARD_W-M,yf+76);
+  x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
   x.textAlign="left";
   return cv;
 }
@@ -2926,7 +2931,7 @@ async function desenharCard(g){
    desenharCard, só que com uma etiqueta de 1-2 palavras em vez da nota A-F
    (nota não faz sentido pra carreira em andamento). */
 const ROTULO_MOMENTO={cinturao:"CAMPEÃO",cinturaoPerdido:"PERDEU",
-  ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO"};
+  ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO",estreia:"MAIN CARD"};
 
 async function desenharCardMomento(m){
   const cv=document.createElement("canvas");
