@@ -1345,6 +1345,96 @@ function testarCinturao(div = "heavyweight") {
         const nomesLista=new Set(RANKING.lista.map(f=>f.name));
         return normais.every(o=>!nomesLista.has(o.f.name));
       })());
+
+    /* Cinturão interino: campeão indisponível (tituloInterinoLuta, forçado
+       aqui em vez de depender do sorteio do holdRng — a chance em si é
+       medição separada, node testar.js gapescolha não cobre isso, ver
+       comentário em cima de CHANCE_CINTURAO_INTERINO). Prova a máquina de
+       estados: alvo certo em cada fase, foiCampeao/vezesCampeao só na
+       unificação (não na aquisição do interino), e a ficha nunca mostra
+       dois campeões ao mesmo tempo. */
+    fought=new Set();
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:3,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.90,peak:.90,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:3,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:true,defesas:0,
+        exCampeao:null,foiCampeao:false,vezesCampeao:0,cinturaoInterino:false};
+
+    // campeão de verdade indisponível: disputa é pelo interino, contra o
+    // desafiante nº1 — não contra RANKING.campeao
+    st.tituloEstaLuta=tituloLiberado(); st.tituloInterinoLuta=true;
+    opts=candidatos();
+    passo("interino: campeão indisponível manda a carta contra o desafiante nº1, não o campeão",
+      opts.length===1 && opts[0].f.name===RANKING.desafiante.name);
+    opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+
+    passo("interino: vencer dá title=true", st.title===true);
+    passo("interino: vencer marca cinturaoInterino=true", st.cinturaoInterino===true);
+    passo("interino: NÃO conta como foiCampeao ainda — incompleto até unificar",
+      st.foiCampeao===false);
+    passo("interino: NÃO incrementa vezesCampeao ainda (Fênix não pode contar isso)",
+      st.vezesCampeao===0);
+    passo("interino: momento cinturaoInterino registrado, nomeando o campeão de verdade",
+      st.momentos.some(m=>m.tipo==="cinturaoInterino"));
+    /* renderFicha() de verdade, não uma cópia da fórmula — senão o teste só
+       prova que o texto do teste concorda consigo mesmo, nunca pegaria um
+       bug no HTML real (foi exatamente esse buraco que a 1ª versão deste
+       teste tinha: quebrei "Campeão" de propósito pra provar dente e ele
+       passou verde do mesmo jeito). */
+    renderFicha();
+    const htmlFicha=document.getElementById("ficha").innerHTML;
+    passo("interino: a ficha de verdade não mostra o jogador como Campeão enquanto só tem o interino",
+      !htmlFicha.includes("Campeão: <b>"+me.name+"</b>"));
+    passo("interino: a ficha de verdade nomeia o campeão real na seção Ranking",
+      htmlFicha.includes("Campeão: <b>"+RANKING.campeao.name+"</b>"));
+    passo("interino: a ficha de verdade rotula o cinturão do jogador como Interino, não Campeão",
+      htmlFicha.includes(">Interino<"));
+    passo("interino: passoCinturao() anuncia a unificação nomeando o campeão de verdade",
+      passoCinturao().includes(RANKING.campeao.name));
+
+    // próxima luta (já com o interino): SEMPRE contra o campeão de verdade,
+    // nunca a rotação normal de contender
+    st.tituloEstaLuta=tituloLiberado(); st.tituloInterinoLuta=false;
+    opts=candidatos();
+    passo("unificação: a carta trava no campeão de verdade, ignora a rotação",
+      opts.length===1 && opts[0].f.name===RANKING.campeao.name);
+
+    // ganha a unificação
+    opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+    const defesasAntesUnif=st.defesas;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+
+    passo("unificação (vitória): cinturaoInterino volta a false", st.cinturaoInterino===false);
+    passo("unificação (vitória): AGORA sim foiCampeao===true", st.foiCampeao===true);
+    passo("unificação (vitória): AGORA sim vezesCampeao incrementou", st.vezesCampeao===1);
+    passo("unificação (vitória): NÃO mexe em defesas (não veio da rotação)",
+      st.defesas===defesasAntesUnif);
+    passo("unificação (vitória): momento de 1º cinturão dispara aqui, não na aquisição do interino",
+      st.momentos.filter(m=>m.tipo==="cinturao").length===1);
+
+    // cenário B: ganha o interino de novo e PERDE a unificação
+    fought=new Set();
+    st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:3,streakL:0,
+        bestBeaten:0,bestWin:null,title:false,standing:.90,peak:.90,events:0,koLosses:0,
+        kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:3,
+        lostBeltFast:false,rares:[],momentos:[],disputaLiberada:true,defesas:0,
+        exCampeao:null,foiCampeao:false,vezesCampeao:0,cinturaoInterino:false};
+    st.tituloEstaLuta=tituloLiberado(); st.tituloInterinoLuta=true;
+    opts=candidatos(); opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+
+    st.tituloEstaLuta=tituloLiberado(); st.tituloInterinoLuta=false;
+    opts=candidatos(); opp=opts[0].f; fought.add(opp.name); st.ganhoEscolhido=opts[0].ganho;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},!!st.tituloEstaLuta);
+
+    passo("unificação (derrota): title volta a false", st.title===false);
+    passo("unificação (derrota): cinturaoInterino também volta a false (sem fantasma)",
+      st.cinturaoInterino===false);
+    passo("unificação (derrota): exCampeao é o campeão de verdade, quem venceu a unificação",
+      st.exCampeao&&st.exCampeao.name===RANKING.campeao.name);
+    passo("unificação (derrota): lostBeltFast NÃO marca — nunca houve reinado indiscutido pra perder rápido",
+      st.lostBeltFast===false);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -2444,11 +2534,16 @@ function testarConquistas() {
     let stF1=base(); stF1.vezesCampeao=1;
     passo("fenix: só 1ª conquista NÃO desbloqueia", !acha("fenix").check(stF1));
 
-    let stLC=base(); stLC.title=true;
+    let stLC=base(); stLC.title=true; stLC.foiCampeao=true;
     passo("lenda_coroada: campeão no modo lenda desbloqueia", acha("lenda_coroada").check(stLC,"lenda"));
     passo("lenda_coroada: campeão no modo normal NÃO desbloqueia", !acha("lenda_coroada").check(stLC,"normal"));
-    let stLC2=base(); stLC2.title=false;
+    let stLC2=base(); stLC2.title=false; stLC2.foiCampeao=false;
     passo("lenda_coroada: modo lenda SEM cinturão NÃO desbloqueia", !acha("lenda_coroada").check(stLC2,"lenda"));
+    // cinturão interino: title=true mas foiCampeao ainda false (não unificou) —
+    // não pode destrancar "ganhou o cinturão" com o cinturão errado
+    let stLC3=base(); stLC3.title=true; stLC3.cinturaoInterino=true; stLC3.foiCampeao=false;
+    passo("lenda_coroada: interino (title=true, foiCampeao=false) NÃO desbloqueia",
+      !acha("lenda_coroada").check(stLC3,"lenda"));
 
     let stNS=base(); stNS.momentos=[{tipo:"lesao"}];
     passo("nao_sente: momento de lesão vencida desbloqueia", acha("nao_sente").check(stNS));

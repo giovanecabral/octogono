@@ -1010,6 +1010,10 @@ function criarMomento(tipo,frase,opp,r){
 }
 const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o adversário.`;
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
+/* Interino é anunciado como incompleto de propósito — nomeia quem está
+   faltando enfrentar, não só "ganhou um cinturão". */
+const FRASE_CINTURAO_INTERINO=(n,campeao)=>`${n} é o novo campeão interino. ${campeao} segue como campeão de verdade — a unificação vem por aí.`;
+const FRASE_UNIFICACAO=(n,campeao)=>`${n} venceu ${campeao} e unificou os cinturões. Só existe um campeão agora, e é ${n}.`;
 const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
 const FRASE_LESAO_VENCIDA=n=>`${n} entrou mancando e saiu com a mão levantada.`;
 /* neutra de propósito — dispara em vitória OU derrota, é sobre chegar lá,
@@ -1038,7 +1042,10 @@ const CONQUISTAS=[
  {id:"fenix",nome:"Fênix",desc:"Perca o cinturão e reconquiste.",
   check:st=>(st.vezesCampeao||0)>=2},
  {id:"lenda_coroada",nome:"Lenda coroada",desc:"Ganhe o cinturão no modo Seja uma lenda.",
-  check:(st,modo)=>!!st.title&&modo==="lenda"},
+  /* foiCampeao, não title — interino não conta até unificar (ver
+     CHANCE_CINTURAO_INTERINO), senão esta conquista destrancaria com um
+     cinturão que nem é o de verdade ainda. */
+  check:(st,modo)=>!!st.foiCampeao&&modo==="lenda"},
  {id:"nao_sente",nome:"Não sente",desc:"Vença uma luta lutando machucado.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="lesao")},
  {id:"nunca_finalizado",nome:"Nunca finalizado",desc:"Termine a carreira sem perder nenhuma luta por finalização.",
@@ -2139,6 +2146,14 @@ function assinatura(){
    propósito — com 26 empatados no peso-leve, nomear ali fingiria uma
    precisão que a escala não tem. */
 function passoCinturao(){
+  /* Interino: o próximo passo é sempre nomeado e explícito — a unificação
+     é o que torna o interino incompleto até provar (ver
+     CHANCE_CINTURAO_INTERINO), então "campeão" sozinho, sem dizer contra
+     quem, esconderia isso. */
+  if(st.title&&st.cinturaoInterino){
+    const nm=RANKING&&RANKING.campeao?RANKING.campeao.name:"o campeão de verdade";
+    return `Você é o campeão interino. A unificação contra ${nm}, o campeão de verdade, vem na próxima luta`;
+  }
   if(st.title)return null;
   const s=st.standing;
   if(s<0.35)return "Vencer no card preliminar até entrar no ranking dos 15";
@@ -2221,13 +2236,15 @@ function renderFicha(){
     </div>
     <div class="ficha-sec">
       <h4>Cinturão</h4>
-      <div class="cint"><span class="b ${st.title?"sim":"nao"}">${st.title?"Campeão":"Não"}</span>
-        ${st.title?`<small>${st.defesas||0} defesa${(st.defesas||0)===1?"":"s"}</small>`:""}</div>
+      <div class="cint"><span class="b ${st.title?"sim":"nao"}">${st.title?(st.cinturaoInterino?"Interino":"Campeão"):"Não"}</span>
+        ${st.title&&!st.cinturaoInterino?`<small>${st.defesas||0} defesa${(st.defesas||0)===1?"":"s"}</small>`:""}
+        ${st.cinturaoInterino?`<small>unificação na próxima luta</small>`:""}</div>
       ${passo?`<div class="passo">${passo}</div>`:""}
     </div>
     ${RANKING&&RANKING.campeao?`<div class="ficha-sec">
       <h4>Ranking</h4>
-      <div class="rank-pico">Campeão: <b>${st.title?me.name:(st.exCampeao?st.exCampeao.name:RANKING.campeao.name)}</b></div>
+      <div class="rank-pico">Campeão: <b>${(st.title&&!st.cinturaoInterino)?me.name:(st.exCampeao?st.exCampeao.name:RANKING.campeao.name)}</b></div>
+      ${st.cinturaoInterino?`<div class="rank-pico">Interino: <b>${me.name}</b></div>`:""}
     </div>`:""}
     ${(()=>{
       const rk=posicaoDivisao();
@@ -2388,6 +2405,22 @@ const CHANCE_DISPUTA=0.65;
 const CHANCE_DISPUTA_INCREMENTO=0.12;
 const CHANCE_DISPUTA_TETO=0.95;
 
+/* Cinturão interino: quando a disputa pelo cinturão de verdade é concedida
+   (tituloLiberado()==true, jogador ainda não é campeão de nada), o campeão
+   nomeado (RANKING.campeao) pode estar indisponível — sorteio em holdRng,
+   nunca em rng (mesmo motivo do sorteio acima). Se sair indisponível, a
+   luta é pelo interino contra RANKING.desafiante (=RANKING.lista[1], o nº1
+   da divisão), não pelo cinturão de verdade — RANKING.campeao não muda,
+   é ausência, não derrota. Alvo do usuário: ~12% das CARREIRAS que chegam
+   a uma disputa (não 12% por rolagem — uma carreira pode rolar de novo se
+   perder a primeira disputa e for elegível outra vez, então o valor por
+   carreira sai maior que o valor por rolagem). Medido (2026-09-05, 3.000
+   carreiras por valor): .12 dá 10,4% no peso-leve (pool grande, poucas
+   redisputas) e 13,5% no peso-pesado (pool menor, mais redisputa) — as
+   duas divisões testadas ficam nos dois lados do alvo, sem precisar de
+   valor por divisão. */
+const CHANCE_CINTURAO_INTERINO=0.12;
+
 /* Elegível (standing>.88 + streak 3) != disputa concedida. "Pode não vir"
    (lesão do campeão, política) é um sorteio em holdRng — nunca em rng, senão
    desloca a sequência e link de desafio antigo para de reproduzir a mesma
@@ -2445,9 +2478,22 @@ function candidatos(){
        pessoa continua sendo bug. */
     /* Defendendo, o alvo roda pelo RANKING.lista (rotação de contender —
        ver st.desafianteIdx em finishFight()); desafiando, é sempre o
-       campeão nomeado, que não roda (só existe um campeão de verdade). */
-    const idx=Math.min(st.desafianteIdx||1,RANKING.lista.length-1);
-    const alvo=st.title?RANKING.lista[idx]:RANKING.campeao;
+       campeão nomeado, que não roda (só existe um campeão de verdade).
+       Duas exceções, cinturão interino (ver CHANCE_CINTURAO_INTERINO):
+       - desafiando com o campeão indisponível (tituloInterinoLuta): a
+         disputa é pelo interino, contra RANKING.desafiante (nº1 da
+         divisão), não contra o campeão que não apareceu.
+       - já com o interino (st.cinturaoInterino): a próxima luta NÃO
+         segue a rotação de contender — é a unificação, sempre contra
+         RANKING.campeao, nomeado. Interino não defende antes de unificar
+         (ver finishFight()): é incompleto até provar contra o de verdade. */
+    let alvo;
+    if(st.title&&st.cinturaoInterino) alvo=RANKING.campeao;
+    else if(!st.title&&st.tituloInterinoLuta) alvo=RANKING.desafiante;
+    else{
+      const idx=Math.min(st.desafianteIdx||1,RANKING.lista.length-1);
+      alvo=st.title?RANKING.lista[idx]:RANKING.campeao;
+    }
     if(alvo)return[{f:alvo,ganho:st.title?.10:.15}];
   }
   const N=LADDER.length;
@@ -3095,7 +3141,8 @@ async function desenharCard(g){
    desenharCard, só que com uma etiqueta de 1-2 palavras em vez da nota A-F
    (nota não faz sentido pra carreira em andamento). */
 const ROTULO_MOMENTO={cinturao:"CAMPEÃO",cinturaoPerdido:"PERDEU",
-  ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO",estreia:"MAIN CARD"};
+  ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO",estreia:"MAIN CARD",
+  cinturaoInterino:"INTERINO"};
 
 /* SVG do busto -> <img> carregável, pra desenhar no canvas com drawImage().
    data: URI com encodeURIComponent (não btoa): bonecoSVG() é auto-contido —
@@ -3920,7 +3967,8 @@ function startCareer(){
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
-      dinheiro:0,treinadorComprado:false,estreouMainCard:false};
+      dinheiro:0,treinadorComprado:false,estreouMainCard:false,
+      cinturaoInterino:false,tituloInterinoLuta:false};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -4026,6 +4074,16 @@ function nextFight(){
      luta, aqui, antes de existir tela ou pick automático — candidatos() e
      lutar() só leem st.tituloEstaLuta depois disso. */
   st.tituloEstaLuta=tituloLiberado();
+  /* Cinturão interino: só é sorteado no momento em que uma disputa pelo
+     cinturão de VERDADE é concedida a quem ainda não é campeão de nada —
+     reset todo fight pra não carregar um sorteio de uma disputa antiga
+     (mesmo raciocínio de st.tituloEstaLuta acima). Enquanto já se é
+     campeão (interino ou de verdade), tituloLiberado() devolve true
+     incondicionalmente e este bloco não roda — quem já tem cinturão não
+     rola disponibilidade de novo, só defende/unifica. */
+  st.tituloInterinoLuta=false;
+  if(st.tituloEstaLuta&&!st.title&&holdRng()<CHANCE_CINTURAO_INTERINO)
+    st.tituloInterinoLuta=true;
   if(auto){                                  // no automático a máquina escolhe o meio
     const opts=candidatos();
     /* opts tem 3 cartas normalmente, mas 1 só em luta de título/defesa
@@ -4365,21 +4423,32 @@ function finishFight(opp,r,titleFight){
        abaixo — os dois precisam existir separados, senão reconquistar o
        cinturão não tem como ser distinguido de nunca tê-lo perdido. */
     if(titleFight){
-      /* rotação de contender: essa defesa (ganha) usou o desafiante da vez
-         — a próxima aponta pro próximo nome do RANKING.lista, não repete o
-         mesmo pra sempre. Só avança em DEFESA (st.title já true antes desta
-         linha) — desafiar o campeão nomeado não mexe na rotação, que é só
-         sobre quem desafia O JOGADOR. */
-      if(st.title){
+      const eraUnificacao=st.title&&st.cinturaoInterino;
+      if(st.title&&!eraUnificacao){
+        /* rotação de contender: essa defesa (ganha) usou o desafiante da
+           vez — a próxima aponta pro próximo nome do RANKING.lista, não
+           repete o mesmo pra sempre. Unificação não veio da rotação (foi
+           sempre contra RANKING.campeao, travado), não empurra o índice. */
         st.defesas=(st.defesas||0)+1;
         if(RANKING&&RANKING.lista)st.desafianteIdx=Math.min((st.desafianteIdx||1)+1,RANKING.lista.length-1);
+        st.title=true;st.foiCampeao=true;st.exCampeao=null;
+      }else if(!st.title&&st.tituloInterinoLuta){
+        /* Cinturão interino: title=true pras regras que já existem (ficha,
+           EVENTS/RARE, passoCinturao()), mas foiCampeao/vezesCampeao/o
+           momento de 1º cinturão SÓ disparam na unificação, abaixo — é
+           isso que torna o interino incompleto até provar (ver
+           CHANCE_CINTURAO_INTERINO). */
+        st.title=true;st.cinturaoInterino=true;st.exCampeao=null;
+        st.momentos.push(criarMomento("cinturaoInterino",
+          FRASE_CINTURAO_INTERINO(me.name,RANKING.campeao?RANKING.campeao.name:"o campeão"),opp,r));
       }else{
-        /* conta AQUISIÇÃO nova do cinturão (1ª vez ou reconquista), não
-           defesa — usado pela conquista "Fênix" (perder e reconquistar). */
+        /* conta AQUISIÇÃO nova do cinturão de verdade (1ª vez, reconquista
+           ou unificação do interino) — usado pela conquista "Fênix". */
         st.vezesCampeao=(st.vezesCampeao||0)+1;
+        st.title=true;st.foiCampeao=true;st.exCampeao=null;st.cinturaoInterino=false;
+        if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",
+          eraUnificacao?FRASE_UNIFICACAO(me.name,opp.name):FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
       }
-      st.title=true;st.foiCampeao=true;st.exCampeao=null;
-      if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
     }
     /* rápido é clock ALTO nesta luta — ver clockSeconds() */
     if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<60)
@@ -4412,21 +4481,27 @@ function finishFight(opp,r,titleFight){
       /* defesas só incrementa em vitória (acima), então defesas===0 aqui
          significa que esta é a PRIMEIRA defesa perdida — só nesse caso o
          evento raro "perdeu na primeira defesa" é verdade. Perder a 5ª
-         defesa não é a mesma coisa e não pode usar o mesmo texto. */
-      if((st.defesas||0)===0){
+         defesa não é a mesma coisa e não pode usar o mesmo texto. Perder a
+         UNIFICAÇÃO (cinturaoInterino) fica de fora: nunca houve reinado
+         indiscutido pra "perder rápido" — o interino nem chega a defender,
+         vai direto pra unificação (ver candidatos()). */
+      if(!st.cinturaoInterino&&(st.defesas||0)===0){
         st.lostBeltFast=true;
         /* mesmo texto do RARE "lostBeltFast", achado por id — não duplica a
            frase nem depende de índice do array (ver comentário no RARE). */
         st.momentos.push(criarMomento("cinturaoPerdido",
           RARE.find(rr=>rr.id==="lostBeltFast").t(me.name),opp,r));
       }
-      /* perder uma defesa custa o cinturão de verdade: title volta a false,
-         exCampeao guarda quem tirou (a ficha e a próxima disputa passam a
-         nomear essa pessoa, não mais o jogador), defesas zera (reinado novo
-         começa do zero se reconquistar) e disputaLiberada reseta — sem isso
+      /* perder uma defesa (ou a unificação) custa o cinturão que se tinha:
+         title volta a false, exCampeao guarda quem tirou (opp — no caso da
+         unificação, é sempre RANKING.campeao, o campeão de verdade; a
+         ficha e a próxima disputa passam a nomear essa pessoa, não mais o
+         jogador), defesas zera (reinado novo começa do zero se
+         reconquistar), cinturaoInterino zera (sem isso ficaria um "campeão
+         interino" fantasma sem title) e disputaLiberada reseta — sem isso
          a reconquista aproveitaria a concessão antiga do holdRng e nunca
          sortearia de novo (ver candidatos()/tituloLiberado()). */
-      st.title=false;st.exCampeao=opp;st.defesas=0;st.disputaLiberada=false;
+      st.title=false;st.exCampeao=opp;st.defesas=0;st.disputaLiberada=false;st.cinturaoInterino=false;
       /* essa defesa (perdida) também usou o desafiante da vez — mesma
          rotação da vitória acima. Reconquistar mais tarde enfrenta de novo
          RANKING.campeao (não muda com rotação), mas ao voltar a DEFENDER o
