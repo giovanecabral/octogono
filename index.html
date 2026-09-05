@@ -3965,20 +3965,25 @@ function sinalDoRound(s){
   return"parelho";
 }
 
-/* Medido nesta leva (item 6): sweep de K, "sempre casa" (maior contest()
-   entre as 3 oferecidas) contra "sempre erra" (menor), fighter pairs
-   reais. contest() amortece mais que percentil puro (é curva, não reta),
-   por isso o K precisou ser bem maior que o antigo MOD_ESCOLHA_LUTA=.04
-   fixo: em 1.200 lutas o gap só cruzava 0,5-0,8 vitórias/22 entre K=.13 e
-   K=.18 (bem acima de onde a versão fixa cruzava, .04-.06). Com ruído de
-   amostra grande nessa faixa (uma leva com seed deslocada caiu fora),
-   remedido em 3.000: K=.16 deu 0,52 e 0,67 nas duas levas de seed — mais
-   estável que .15/.18, que também funcionavam mas com mais variação.
-   KO/SUB/DEC em 6.000 lutas nas duas políticas reais (não extremo
-   teórico impossível): "certa" KO 35,8/SUB 18,8/DEC 45,4, "errada" KO
-   35,3/SUB 19,3/DEC 45,4 — as duas dentro da tolerância de testarMotor(),
-   perto do baseline sem escolha (KO 34,5/SUB 19,4/DEC 46,2). */
-const K_ESCOLHA_LUTA=.16;
+/* K=.16 (medição anterior) rebaixado pra .04 nesta leva seguinte: as
+   políticas extremas ("sempre casa"/"sempre erra") tinham dado KO
+   35,8%/35,3%, e o pedido foi checar com a política REALISTA — jogador
+   escolhendo às cegas entre as 3, sem ver o contest() escondido — antes
+   de aceitar como ruído. Não era ruído: 6.000 lutas com escolha aleatória
+   deram KO 35,73%/35,80% em K=.16, KO subindo monotonicamente com K
+   (34,76% em .04, 34,93% em .06, 35,08% em .05, 35,13%+ a partir de .08).
+   Regra explícita: acima de 35% o K está grande demais, baixa mesmo
+   custando gap. Baixado pra .04 — KO 34,76% na política realista, mais
+   perto do baseline sem escolha nenhuma (34%) que qualquer K testado
+   acima de .04. Custo aceito conscientemente: o gap "sempre casa" x
+   "sempre erra" cai pra 0,07-0,21 vitórias/22 (medido em 3.000 lutas,
+   duas levas de seed) — bem abaixo do alvo 0,5-0,8. Prioridade explícita
+   do usuário: disciplina de KO vem antes do tamanho do gap. Se o gap
+   pequeno demais incomodar jogando, o conserto é redesenhar o quanto
+   contest() amortece (ou a fórmula do modificador), não subir o K de
+   volta — já medido que subir o K sozinho estraga o KO antes de
+   resgatar o gap. */
+const K_ESCOLHA_LUTA=.04;
 
 /* modificador de uma ação: contest() (o mesmo do motor) entre o percentil
    do SEU atributo e o percentil do contra-atributo do adversário — não é
