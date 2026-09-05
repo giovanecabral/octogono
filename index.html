@@ -1629,6 +1629,24 @@ const LESAO_TIPOS={
   permanente:{mult:.75,duracao:null},
 };
 
+/* Nocaute -> lesão (item cortado da v1, medido nesta leva): severidade
+   PRÓPRIA, não reaproveita LESAO_TIPOS.temporaria — um nocaute justifica
+   mais dano que uma decisão de dilema, e mudar o valor compartilhado
+   também mudaria o custo da lesão de dilema sem pedido pra isso. Alvo
+   dado: 0,3-0,5 vitórias em 22 de custo TOTAL desta fonte (não por
+   lesão isolada). Medido direto (simulação de carreira inteira com o
+   mecanismo probabilístico real, não algebra sobre o custo isolado —
+   a algebra superestimava: nocaute pode acontecer perto do fim da
+   carreira, sobrando pouco tempo pra lesão custar algo). Combinação
+   chance/severidade que fechou o alvo com folga nas duas pontas de
+   seed testadas (0,32 e 0,33 vitórias/22, 1.500 carreiras cada):
+   chance=.70, -70% (chance sozinha não bastava — 100% de chance com
+   -50%/8 lutas só chegava a 0,25; -50% permanente pra sempre só
+   chegava a 0,27 — o teto de 22 lutas limita quanto UMA lesão pode
+   custar, tem que ser mais severa, não só mais provável). */
+const CHANCE_LESAO_NOCAUTE=.70;
+const LESAO_NOCAUTE={mult:.30,duracao:8};
+
 function aplicarDilema(box,d,txt,jBruto){
   /* Rede de baixo do conteúdo inseguro (ver CONTEUDO_INSEGURO acima): um "j"
      cujo desfecho narrou automutilação/violência/sexual não é confiável em
@@ -3348,7 +3366,7 @@ async function compartilhar(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,usedEvents=null,rareUsed=null,fought=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,usedEvents=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -3718,6 +3736,7 @@ function startDraft(name){
      pararia de reproduzir a mesma carreira. */
   fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
   escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
+  lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
   me={name,division:DIVISION};picks=[];
   budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
   remaining=[...PAIRS];
@@ -4354,6 +4373,22 @@ function finishFight(opp,r,titleFight){
     st.losses++;st.streakL++;st.streakW=0;
     if(isKO)st.koLosses++;
     if(r.method==="Finalização")st.subLosses=(st.subLosses||0)+1;
+    /* Nocaute -> lesão (item cortado da v1): uma de cada vez, mesma regra
+       do dilema — não pode ter duas lesões ativas ao mesmo tempo. lesaoRng
+       é stream próprio, nunca o rng principal (mesmo motivo do holdRng —
+       senão desloca a sequência e link de desafio antigo para de
+       reproduzir a mesma carreira). Atributo sorteado, não escolhido —
+       nocaute não tem "cena" pra dizer QUAL parte do corpo bateu. */
+    if(isKO&&!st.lesao&&lesaoRng()<CHANCE_LESAO_NOCAUTE){
+      const ATTRS_LESAO_KO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
+      const atr=ATTRS_LESAO_KO[Math.floor(lesaoRng()*ATTRS_LESAO_KO.length)];
+      if(me[atr]!=null){
+        st.eventoMod=st.eventoMod||{};
+        st.eventoMod[atr]=(st.eventoMod[atr]||1)*LESAO_NOCAUTE.mult;
+        st.lesao={nome:"Sequela do nocaute",atributo:atr,mult:LESAO_NOCAUTE.mult,
+          permanente:false,desdeLuta:st.fightNo,duracao:LESAO_NOCAUTE.duracao};
+      }
+    }
     if(titleFight&&st.title){
       /* defesas só incrementa em vitória (acima), então defesas===0 aqui
          significa que esta é a PRIMEIRA defesa perdida — só nesse caso o

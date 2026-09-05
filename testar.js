@@ -1460,6 +1460,98 @@ function testarLesao() {
 }
 
 /* ================================================================== *
+ * NOCAUTE -> LESÃO — chance própria (CHANCE_LESAO_NOCAUTE), severidade
+ * própria (LESAO_NOCAUTE, não reaproveita LESAO_TIPOS.temporaria), uma
+ * de cada vez, lesaoRng nunca o rng principal
+ * ================================================================== */
+function testarLesaoNocaute() {
+  console.log("\n" + cinza("nocaute -> lesão: chance própria, uma de cada vez, stream isolado"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  const corpo = `
+;globalThis.__lesko=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    rng=mulberry32(1);
+    const opp={name:"Rival",rating:.5};
+    const stBase=()=>({treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,
+      streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,
+      events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:6,fan:5,followers:2400,
+      peakFollowers:2400,longestW:0,lostBeltFast:false,rares:[],momentos:[],
+      disputaLiberada:false,defesas:0,exCampeao:null,foiCampeao:false,lesao:null});
+    const rKO={winner:opp.name,loser:me.name,method:"Nocaute",round:1,clock:"3:00",
+      knockdowns:{[opp.name]:1,[me.name]:0}};
+    const rDecisao={winner:opp.name,loser:me.name,method:"Decisão",round:3,clock:"5:00",
+      knockdowns:{[opp.name]:0,[me.name]:0}};
+
+    /* lesaoRng fixo abaixo de CHANCE_LESAO_NOCAUTE (.70): tem que aplicar */
+    st=stBase(); lesaoRng=()=>.10;
+    finishFight(opp,rKO,false);
+    passo("nocaute + rolagem abaixo da chance: aplica lesão", !!st.lesao);
+    passo("severidade é a PRÓPRIA (LESAO_NOCAUTE.mult), não a de dilema (temporaria.mult)",
+      st.lesao && Math.abs(st.lesao.mult-LESAO_NOCAUTE.mult)<1e-9 && LESAO_NOCAUTE.mult!==LESAO_TIPOS.temporaria.mult);
+    passo("duração bate com LESAO_NOCAUTE.duracao", st.lesao && st.lesao.duracao===LESAO_NOCAUTE.duracao);
+    passo("não é permanente", st.lesao && st.lesao.permanente===false);
+
+    /* lesaoRng fixo ACIMA da chance: não aplica */
+    st=stBase(); lesaoRng=()=>.99;
+    finishFight(opp,rKO,false);
+    passo("nocaute + rolagem acima da chance: NÃO aplica lesão", st.lesao===null);
+
+    /* derrota por decisão (não é nocaute): nunca aplica, mesmo com rolagem favorável */
+    st=stBase(); lesaoRng=()=>.01;
+    finishFight(opp,rDecisao,false);
+    passo("derrota por decisão (não nocaute): NÃO aplica lesão mesmo com rolagem favorável",
+      st.lesao===null);
+
+    /* uma de cada vez: já machucado, novo nocaute não sobrescreve */
+    st=stBase();
+    st.lesao={nome:"Lesão anterior",atributo:"tdDef",mult:.5,permanente:false,desdeLuta:3,duracao:8};
+    lesaoRng=()=>.01;
+    const lesaoAntes=st.lesao;
+    finishFight(opp,rKO,false);
+    passo("já machucado: nocaute novo NÃO sobrescreve a lesão ativa",
+      st.lesao===lesaoAntes && st.lesao.atributo==="tdDef");
+
+    /* atributo sorteado por lesaoRng, não fixo — confere que varia entre chamadas */
+    const atributosVistos=new Set();
+    const seq=[0.02,0.05,0.02,0.20,0.02,0.35,0.02,0.50,0.02,0.65,0.02,0.80,0.02,0.95,0.02,0.99];
+    let n=0;
+    for(let i=0;i<8;i++){
+      st=stBase();
+      lesaoRng=()=>seq[(n++)%seq.length];
+      finishFight(opp,rKO,false);
+      if(st.lesao)atributosVistos.add(st.lesao.atributo);
+    }
+    passo("atributo da lesão varia (não é sempre o mesmo) — vistos: "+[...atributosVistos].join(","),
+      atributosVistos.size>=2);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__lesko || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
+/* ================================================================== *
  * 7a. COERÊNCIA — a ficha não pode mentir sobre o próprio estado
  * ================================================================== */
 /* Item 5: auditor genérico pras classes de bug já encontradas jogando
@@ -2774,6 +2866,7 @@ try {
   else if (cmd === "escalonamento") ok = testarEscalonamentoDisputa();
   else if (cmd === "espera") ok = testarEspera(div || "lightweight");
   else if (cmd === "frequencia") ok = await testarFrequenciaMomentos(Number(div) || 30);
+  else if (cmd === "lesaonocaute") ok = testarLesaoNocaute();
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");
