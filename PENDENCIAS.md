@@ -52,17 +52,35 @@ alguma vez", não "ainda é campeão no fim". Precisa medir os dois números
 (antes e depois) pra saber se essa mudança moveu o placar de verdade ou só
 corrigiu o texto.
 
-**Achado jogando, depois desta medição ter sido escrita: cinturão fácil
-demais.** Chegou ao título com o joelho lesionado — carreira que deveria
-estar carregando uma penalidade de verdade (ver item de lesão diluída pelo
-treino, "Já feito" no fim) ainda assim alcançou o topo. Suspeita: mesma causa
-raiz do item 4 (efeito do treino) e do item 7 (meio da tabela não separa) —
-a escada de adversários se auto-compensando pode estar apagando o custo de
-qualquer penalidade, lesão incluída. Esta medição (%) é o que decide se a
-suspeita procede; não redecidir de olho antes dela.
+**Medido (500 carreiras de bot, estratégia "parelho" fixa, candidatos()/
+aplicarCamp()/simulateFight() reais) — decomposição em 3 números, como
+pedido, sem tocar TUNING/WEIGHTS/TETO_TREINO:**
 
-**Pronto quando:** número medido em ≥400 carreiras, comparado ao
-comportamento pré-conserto, registrado aqui ou no `LEIA-ME.md`.
+- **Baseline: 69,6% conquistam o título.** (a suspeita de 80% batida jogando
+  pode ter vindo de uma estratégia de escolha diferente da "parelho fixo"
+  usada aqui — não é a mesma medição, mas confirma a mesma ordem de grandeza)
+- **Escada se autocompensar: efeito ~nulo, não é o vilão.** Trocando a banda
+  de adversário por uma faixa FIXA no meio do ladder (ignorando `st.standing`
+  por completo) o título saiu em 72,0% — dentro do ruído de N=500, se não
+  ligeiramente PRA CIMA. A hipótese de que a escada relativa esconde o custo
+  de qualquer penalidade não se sustenta nesta medição.
+- **CHANCE_DISPUTA: 96,0% dos elegíveis (448/500 ficaram elegíveis alguma
+  vez) acabam recebendo a disputa antes do fim da carreira.** Bate quase
+  exato com a suspeita de "95% recebendo" — é um sorteio por luta enquanto
+  elegível (`holdRng()<CHANCE_DISPUTA=0.65`), e a probabilidade composta ao
+  longo de várias lutas elegíveis vira quase garantia rápido (2 lutas
+  elegíveis já dá ~88%). Mas isso só entra em jogo DEPOIS de ficar elegível
+  — o gargalo real não é "receber a disputa", é "chegar" lá.
+- **Treino: de longe o fator dominante.** Congelando `st.treino` em 1.0 (sem
+  o crescimento permanente do `TETO_TREINO`) o título caiu de 69,6% pra
+  28,6% — uma queda de 41 pontos. É o treino permanente, não a escada nem a
+  disputa, que explica a maior parte da facilidade.
+
+**Parado aqui, sem decidir** (pedido explícito): não mexi em `TUNING`,
+`WEIGHTS` nem `TETO_TREINO`. Script de medição em `/tmp/medir_cinturao.js`
+(não commitado — throwaway, mas reproduzível: reimplementa `candidatos()`
+com banda fixa e pula `aplicarCamp()` como contra-fatuais, sem alterar o
+jogo de verdade).
 
 ---
 
@@ -88,16 +106,30 @@ usa `camp.alvos` via `aplicarCamp()`). Volta a aprovar/reprovar:
 
 ---
 
-## 6. Lista de override para lutadores de amostra curta
+## 6. Lista de override para lutadores de amostra curta — CÓDIGO PRONTO, VERIFICAÇÃO BLOQUEADA
 
-O filtro de 4 lutas e 25 minutos derruba Ronda Rousey e parecidos — gente que é
-nome grande mas tem pouca amostra no ufcstats. Também afeta o modo lenda: quem
-cai no filtro não existe no pool de lendas, por mais campeão que tenha sido.
+`OVERRIDE_AMOSTRA_CURTA` em `atualizar-dados.py`: Ronda Rousey (8 lutas,
+24,7min — perde só por `MIN_MINUTES`, por pouco), CM Punk (2/17,2min), Ben
+Askren (3/17,3min), Bas Rutten (2/20,2min — resto da carreira foi Pancrase,
+fora deste dataset), Genki Sudo (3/25,1min — perde só por `MIN_FIGHTS`).
+Números conferidos direto em `data/ufc_fight_results.csv`. James Toney (1
+luta, 3,3min) ficou de fora de propósito — amostra de 1 luta é ruído, não dá
+pra ratear com confiança nenhuma mesmo sendo nome famoso.
 
-Precisa de uma lista manual de exceções no `atualizar-dados.py`.
+**Bloqueado, não decidido:** não consegui rodar `python3 atualizar-dados.py`
+pra regenerar o `fighters.json` e confirmar `node testar.js divisoes` com
+11/7 depois do override — falta `data/ufc_fight_stats.csv` no repositório
+(nunca foi commitado; só `ufc_event_details.csv`, `ufc_fight_results.csv` e
+`ufc_fighter_tott.csv` estão versionados). O `fighters.json` atual foi
+gerado em outra máquina/sessão que tinha esse quarto arquivo local.
+`node testar.js divisoes` no `fighters.json` atual (sem o override, porque
+ele não afeta um dado que não foi regenerado) continua 11 jogáveis/7 lenda —
+confirma que a MUDANÇA DE CÓDIGO não quebra nada sozinha, não confirma o
+EFEITO do override.
 
-**Pronto quando:** os nomes da lista aparecem no `fighters.json` e
-`node testar.js divisoes` continua com 11 divisões jogáveis.
+**Pronto quando:** alguém com `data/ufc_fight_stats.csv` (ou uma nova raspagem
+via `scrape_ufc_stats`) rodar `python3 atualizar-dados.py` e conferir que os 5
+nomes aparecem no `fighters.json` e `node testar.js divisoes` segue 11/7.
 
 ---
 
@@ -114,19 +146,50 @@ mensurável no meio, sem quebrar a calibração do motor.
 
 ---
 
-## 8. Portunhol nos dilemas — RESOLVIDO (parcial, ver números)
+## 8. Portunhol nos dilemas — RESOLVIDO, confirmado em escala maior
 
 `VOZ` (compartilhada) ganhou instrução explícita contra troca de palavra
 comum por inglês solto. Precisou de 3 rodadas de deploy+medição pra cair:
-50% (3/6, manager/coach ainda escapando com instrução genérica) → 22% (2/9,
-manager escapou de novo mesmo nomeado, gym apareceu sem estar na lista) →
-**0/7 na medição final**, depois de nomear as 5 palavras que mais escapavam
-(manager, coach, fight, doctor, gym) com instrução imperativa ("pare e
-troque antes de responder"). Amostra pequena — 0/7 não prova 0% em escala,
-só que a rodada final não flagrou nenhuma. Se reaparecer, a lista de
-palavras nomeadas é o primeiro lugar pra olhar, não o mecanismo.
+50% (3/6) → 22% (2/9) → 0/7, depois de nomear as 5 palavras que mais
+escapavam (manager, coach, fight, doctor, gym) com instrução imperativa
+("pare e troque antes de responder").
+
+**Remedido com amostra maior, item explícito desta leva: 0/29 (0,0%) em 30
+cenas de dilema contra produção** (1 das 30 chamadas caiu em rate limit,
+não em portunhol — ver item de `ia_null`). Bem abaixo do alvo de 5%. O
+prompt segura em escala maior que os 7 da rodada anterior; nada a mudar.
 
 ---
+
+## 9. `ia_null` — rate limit do OpenRouter, alvo não batido (fora do nosso controle)
+
+Medido (3 carreiras completas em produção, ~/tmp/medir_ia_null.js):
+distribuição dos 5 motivos por carreira e por ponto (feed/dilema/julgar).
+Causa raiz definitiva via `vercel logs`: pool COMPARTILHADO do OpenRouter
+pra `qwen/qwen3.7-flash` via Alibaba (`is_byok:false` — a conta não usa
+chave própria), não é limite da conta nem do modelo isolado.
+
+Mitigação aplicada: `prefetchFeed()` só dispara em lutas pares ou com
+finish (mesma cadência que `drawEvent()` já usa) — corta o feed pela
+metade, que era a maior fatia de `ia_null` medida (50/71 = 70%). Resultado:
+78,9% → ~27% de chamadas com `ia_null` numa releva de 3 carreiras — grande
+melhora, mas **não bateu o alvo de <1/carreira**, porque a causa é externa
+(pool compartilhado), não volume de chamada nosso.
+
+**Pronto quando (fora do escopo desta leva):** alguém configurar uma chave
+própria em openrouter.ai/settings/integrations (Alibaba/Qwen, BYOK) pra sair
+do pool compartilhado — decisão de custo/conta, não de código.
+
+## 10. MULT_TREINADOR — efeito pequeno por motivo estrutural, registrado pra revisão
+
+Medido (par pareado, 1.200 carreiras com/sem treinador, mesmas seeds):
++0,05 vitórias/22 a 1.15x, testado até 3.0x (triplo) sem passar de +0,37/22.
+O treinador acelera a MESMA curva de retorno decrescente do `TETO_TREINO`
+(via `aplicarCamp()`), e essa curva já consome a maior parte do teto nos
+primeiros camps — aumentar o multiplicador não resolve, a mecânica em si
+tem pouco espaço pra crescer usando essa fórmula. Se o efeito precisar ser
+mais sentido, o caminho é uma mecânica DIFERENTE (não acelerar
+`RITMO_TREINO`), não um número maior aqui.
 
 ## Manutenção
 
@@ -160,6 +223,32 @@ normal depois, pra confirmar que continua no ~69º percentil.
 
 ## Já feito, não refazer
 
+- **Escolha na luta.** `lutar()` virou driver round a round (`simularRound()`
+  chamado round a round, não `simulateFight()` de uma vez), com uma pausa de
+  escolha depois do primeiro round que a luta alcança sem terminar nele — 3
+  opções ancoradas no scouting real do round (burst/queda/controle),
+  modificador fixo em `.form` (sem rng nova). Calibrado em `MOD_ESCOLHA_LUTA
+  =.04` (medido: 1.200 lutas por opção, gap de 0,55-0,70 vitórias/22 entre a
+  opção mais forte e a mais fraca, dentro do alvo 0,5-0,8). `playing` sozinho
+  já barra `nextFight()`/automático durante a pausa, sem flag nova — provado
+  de ponta a ponta em `testarInterface()` e isolado em `testarEscolhaLuta()`.
+- **Dinheiro e vida fora do octógono.** `renda_por_luta = RENDA_BASE +
+  round(RENDA_BASE*standing)`, paga toda luta, `st.dinheiro` reseta por
+  carreira. "Focar em fama" (5ª opção do camp) pula o treino do ciclo, dá
+  `GANHO_FAMA_CAMP=.5` de fã. "Treinador melhor" — painel opcional, compra
+  permanente, `MULT_TREINADOR` (ver item 10 pela limitação conhecida).
+  `RENDA_BASE=6000`/`CUSTO_TREINADOR=54000` calibrados pra mediana de acesso
+  na luta 7 (alvo 6-8), medido em 400 carreiras. Nada toca `me.__base`.
+- **Fallback local do dilema em 3ª pessoa.** O molde que aparece quando `j`
+  é null (filtro do cliente ou falha de rede) narrava em 2ª pessoa
+  ("Você..."), diferente da 3ª pessoa que a IA (real ou seu próprio molde
+  neutro) sempre usa — pronome sozinho delatava qual caminho gerou o texto.
+  `FALLBACK_NEUTRO` agora narra em 3ª pessoa com `me.name`, mesmo estilo do
+  prompt de "julgar".
+- **`node testar.js coerencia`.** Auditor que audita `renderFicha()` contra
+  o estado de verdade: vermelho só com perda real, `st.lesao` sempre mostra
+  o bloco, nenhuma chave crua de atributo em texto visível, delta exibido
+  bate com base×treino×eventoMod, nenhuma linha de efeito com valor zero.
 - **Conteúdo inseguro no dilema.** Texto do jogador filtrado (`conteudoInseguro()`)
   antes de sequer chamar `julgar` — mais barato, não depende da IA obedecer.
   Desfecho da IA filtrado de novo do outro lado, como rede. Se disparar em
