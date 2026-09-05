@@ -167,12 +167,43 @@ O treino é **permanente**, e por isso precisa de teto. Sem ele, 22 camps de +10
 viram +700% e a calibração toda vai embora.
 
 Cada atributo tem um multiplicador que começa em 1.00 e satura em
-`TETO_TREINO` (1.26). O ganho de cada camp é proporcional ao que **falta** para
-o teto, então o primeiro camp rende 7,8% e o décimo sexto rende 0,04% — evolução
-de atleta, não escada infinita.
+`TETO_TREINO`. O ganho de cada camp é proporcional ao que **falta** para
+o teto, então o primeiro camp rende a maior parte do ganho e os últimos quase
+nada — evolução de atleta, não escada infinita.
 
-Medido em 400 carreiras: treino dá **+1,9 vitórias em 22 lutas** e leva o pico de
-top 11% para top 2%. Progressão que se sente, sem quebrar o balanceamento.
+**`TETO_TREINO` era 1.26, baixado para 1.18 em 2026-09-06.** Motivo:
+investigando por que 69,6% das carreiras conquistavam o cinturão (medido em
+500 carreiras, sem tocar TUNING/WEIGHTS), a decomposição mostrou que nem a
+escada de adversários se autocompensando (efeito ~nulo, banda fixa deu
+72,0%) nem `CHANCE_DISPUTA` (96% dos elegíveis recebem a disputa, mas só
+depois de já estar elegível) explicavam a facilidade — era o treino:
+congelado em 1.0, o título caía pra 28,6%.
+
+Isso levantou a pergunta certa antes de decidir o conserto: a vantagem está
+no FORMATO da curva (retorno decrescente entrega quase tudo nos primeiros
+camps) ou na ALTURA do teto? Medido separando os dois — teto em 1.26/1.18/
+1.12 contra o primeiro camp cortado pela metade com o teto intacto — a
+resposta foi clara: cortar só o primeiro camp não mudou o título em nada
+(70,0% com e sem o corte, idêntico), enquanto baixar o teto teve efeito
+real e monotônico (1.26→70,0%, 1.18→60,6%, 1.12→51,0%). **A alavanca é a
+altura do teto, não o formato da curva.**
+
+Escolhido 1.18 (não 1.12): título continua acontecendo pra maioria das
+carreiras (60,6%), sem esvaziar a fantasia de progressão — 51% começaria a
+tornar o cinturão raro, não só difícil.
+
+Efeito em vitórias remedido no teto novo (400 carreiras, mesmo protocolo
+com/sem treino): **1.26 → +2,0 vitórias em 22** (reproduz o +1,9 já
+documentado, dentro da variação de amostra) · **1.18 → +1,5 vitórias em
+22**. `node testar.js pesos` confirmado sem mudança — `TETO_TREINO` não
+entra em `WEIGHTS`.
+
+A claim antiga "leva o pico de top 11% para top 2%" não foi remedida nem
+recolocada aqui: tentei, e `st.peak` satura em 1.0 pra boa parte das
+carreiras (mesmo achado que já tinha derrubado `topo_da_divisao` de
+`peak>=.98` pra `bestBeaten>=.90` — ver "Conquistas"), então percentil de
+`peak` não é régua confiável. Se precisar de novo, medir por `bestBeaten`
+ou standing médio, não por pico.
 
 ```bash
 node testar.js treino     # o teto segura no pior caso?

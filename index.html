@@ -2151,8 +2151,15 @@ function renderFicha(){
    Cada atributo tem um multiplicador acumulado que começa em 1.00 e satura em
    TETO_TREINO. O ganho de cada camp é proporcional ao que FALTA para o teto,
    então os primeiros treinos rendem muito e os últimos quase nada — que é como
-   evolução de atleta funciona de verdade. */
-const TETO_TREINO=1.26;
+   evolução de atleta funciona de verdade.
+
+   Baixado de 1.26 pra 1.18 nesta leva (decisão registrada em LEIA-ME.md,
+   seção "Progressão do lutador"): medido que a alavanca do cinturão fácil
+   demais era a ALTURA do teto, não o formato da curva (cortar o 1º camp
+   pela metade não mudava o título em nada, 70,0%=70,0%; baixar o teto de
+   1.26→1.18→1.12 tirava 9-10 pontos por passo). Efeito em vitórias
+   remedido no teto novo — ver LEIA-ME. */
+const TETO_TREINO=1.18;
 const CAMPS=[
  {id:"boxe",nome:"Boxe",desc:"Semanas na luva, cabeça saindo da linha.",
   ganho:"defesa de golpes e volume",
