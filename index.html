@@ -1565,10 +1565,15 @@ function aplicarDilema(box,d,txt,jBruto){
   if(lesaoValida){
     const tipo=LESAO_TIPOS[lesaoBruta.permanente?"permanente":"temporaria"];
     atr=lesaoBruta.atributo; mult=tipo.mult;
+    /* treinador melhor (item 2, trocado do treino pra cá): corta a
+       duração da lesão TEMPORÁRIA pela metade. Não mexe em permanente —
+       não existe "cura" pra acelerar ali. */
+    const duracao=(tipo.duracao!=null&&st.treinadorComprado)
+      ?Math.round(tipo.duracao*REDUCAO_CURA_TREINADOR):tipo.duracao;
     st.eventoMod=st.eventoMod||{};
     st.eventoMod[atr]=(st.eventoMod[atr]||1)*mult;
     st.lesao={nome:String(lesaoBruta.regiao||"Lesão").slice(0,40),atributo:atr,mult,
-      permanente:!!lesaoBruta.permanente,desdeLuta:st.fightNo,duracao:tipo.duracao};
+      permanente:!!lesaoBruta.permanente,desdeLuta:st.fightNo,duracao};
   }else{
     /* dilema comum (ou lesão bloqueada por já ter uma ativa): atributo/efeito
        seguem vindo da IA, travados no lim() de sempre — o bypass acima é só
@@ -2172,17 +2177,24 @@ const GANHO_FAMA_CAMP=.5;
    7 (mediana), 0/400 carreiras nunca alcançaram. Ver PENDENCIAS item 4. */
 const RENDA_BASE=6000;
 const CUSTO_TREINADOR=54000;
-/* Efeito medido nesta leva (item 4), mesmo rigor de TETO_TREINO — par
-   pareado, 1.200 carreiras com/sem treinador (comprado na luta 7, a
-   mediana medida acima), mesmas seeds: 18,65 vitórias/22 sem, 18,70 com —
-   +0,05. Pequeno, e por um motivo estrutural, não de calibração: o
-   treinador acelera a MESMA curva de retorno decrescente do TETO_TREINO
-   (aplicarCamp() multiplica RITMO_TREINO por treinadorMult), e essa curva
-   já consome a maior parte do teto nos primeiros camps — testado até 3.0x
-   (triplo) e o efeito mal passa de +0,37/22. Aumentar o número aqui não
-   resolve; a mecânica em si tem pouco espaço pra crescer enquanto usar a
-   mesma fórmula. Registrado pro relatório desta leva, não decidido. */
-const MULT_TREINADOR=1.15;
+/* Trocado nesta leva seguinte: acelerar RITMO_TREINO media +0,05
+   vitórias/22 (testado até 3x sem passar de +0,37) — a mesma curva de
+   retorno decrescente do TETO_TREINO limitava qualquer multiplicador,
+   comprar não mudava nada que se sentisse. Substituído por algo que o
+   treino não toca: reduz o tempo de recuperação de lesão TEMPORÁRIA pela
+   metade (não mexe em permanente — não tem "cura" pra acelerar ali).
+   Medido (protocolo do LEIA-ME "Lesão": 300 carreiras, camp fixo mirando o
+   atributo lesionado, lesão forçada na luta 6, mesmas seeds com/sem):
+   baseline (duração 8) custa 1,07 vitórias/22 — bate com o 1,06 já
+   documentado. Duração pela metade (4) recupera 0,37; duração num quarto
+   (2) recupera 0,66. Fica em metade — visível na ficha (o "Cura em N
+   lutas" desce mais rápido de verdade) sem zerar o custo da lesão, que é
+   o ponto dela existir. Comparado com a outra ideia medida (reduzir a
+   CHANCE da lesão acontecer, via rng próprio): a 50% de chance de evitar
+   recupera 0,55/22, mesma ordem de grandeza — mas invisível quando "quase
+   aconteceu" (nada pra mostrar), enquanto acelerar cura é um número que o
+   jogador vê contar mais rápido. Escolhido por isso, não só pela medição. */
+const REDUCAO_CURA_TREINADOR=0.5;
 const ATTR_TREINAVEIS=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
 const RITMO_TREINO=0.30;      // fração do que falta para o teto, por camp
 
@@ -2199,7 +2211,7 @@ function aplicarCamp(camp){
   for(const [k,peso] of Object.entries(camp.alvos)){
     const atual=st.treino[k]||1;
     const falta=TETO_TREINO-atual;
-    st.treino[k]=atual+falta*RITMO_TREINO*(st.treinadorMult||1)*peso;
+    st.treino[k]=atual+falta*RITMO_TREINO*peso;
   }
 }
 /* valor efetivo = base do draft × multiplicador de treino × modificadores de evento */
@@ -3081,18 +3093,19 @@ function fecharPainelConquistas(){
   if(p)p.style.display="none";
 }
 
-/* Painel opcional (item 4): comprado uma vez por carreira, permanente até
-   a aposentadoria. Não toca me.__base — treinadorMult só acelera a MESMA
-   curva de RITMO_TREINO que aplicarCamp() já usa (ver comentário de
-   MULT_TREINADOR sobre o efeito ser pequeno de propósito estrutural). */
+/* Painel opcional (item 4, mecânica trocada no item 2 da leva seguinte):
+   comprado uma vez por carreira, permanente até a aposentadoria. Não toca
+   me.__base — corta a duração de lesão TEMPORÁRIA pela metade
+   (REDUCAO_CURA_TREINADOR), não mexe em treino (ver comentário da
+   constante pela medição de por que trocou). */
 function abrirPainelTreinador(){
   const p=document.getElementById("painelTreinador");
   p.innerHTML="";
   const box=el("div","painel-momentos treinador");
   box.appendChild(el("h3","","Treinador melhor"));
-  const comprado=(st.treinadorMult||1)>1;
+  const comprado=!!st.treinadorComprado;
   box.appendChild(el("div","conquista-desc",
-    "Acelera todo camp futuro em "+Math.round((MULT_TREINADOR-1)*100)+"%. Não some no fim da carreira."));
+    "Corta pela metade o tempo de recuperação de lesão temporária. Não some no fim da carreira."));
   box.appendChild(el("div","conquista-desc","Seu caixa: "+fmtNum(st.dinheiro||0)));
   if(comprado){
     box.appendChild(el("div","conquista-nome ok","✓ Contratado"));
@@ -3104,7 +3117,7 @@ function abrirPainelTreinador(){
     buy.onclick=()=>{
       if((st.dinheiro||0)<CUSTO_TREINADOR)return;
       st.dinheiro-=CUSTO_TREINADOR;
-      st.treinadorMult=MULT_TREINADOR;
+      st.treinadorComprado=true;
       abrirPainelTreinador();          // redesenha já contratado
     };
     box.appendChild(buy);
@@ -3695,7 +3708,7 @@ function startCareer(){
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
-      dinheiro:0,treinadorMult:1};
+      dinheiro:0,treinadorComprado:false};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 

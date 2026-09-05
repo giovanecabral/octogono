@@ -843,7 +843,7 @@ function testarDinheiro(div = "lightweight") {
         bestBeaten:0,bestWin:null,title:false,standing:.18,peak:.18,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
         lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
-        tituloEstaLuta:false,dinheiro:0,treinadorMult:1};
+        tituloEstaLuta:false,dinheiro:0,treinadorComprado:false};
     fought=new Set(); usedEvents=new Set(); rareUsed=new Set();
     const camps=CAMPS.filter(c=>!c.fama);
     let primeiraLutaAcessivel=null;
@@ -1217,6 +1217,25 @@ function testarLesao() {
       st.lesao===primeiraLesao && st.lesao.atributo==="slpm");
     passo("2ª lesão: eventoMod.durability não foi tocado pela lesão bloqueada",
       st.eventoMod.durability==null);
+
+    /* item 2 (leva seguinte): treinador melhor agora corta a duração de
+       lesão TEMPORÁRIA pela metade — não mexe em treino nenhum. Confirma
+       os dois lados: comprado corta (8→4), permanente continua sem cura
+       (duracao null) mesmo comprado. */
+    st.eventoMod={}; st.lesao=null; st.treinadorComprado=true;
+    aplicarDilema(box,{titulo:"Joelho travado",cena:"..."},"aceito lutar assim mesmo",
+      {desfecho:"...",seguidores:0,fa:0,
+       lesao:{permanente:false,atributo:"slpm",regiao:"Joelho travado"},evitouLesao:false});
+    passo("treinador comprado: lesão temporária vem com duração pela metade (4, não 8)",
+      st.lesao&&st.lesao.duracao===4);
+
+    st.eventoMod={}; st.lesao=null;
+    aplicarDilema(box,{titulo:"Ombro deslocado",cena:"..."},"aceito lutar assim mesmo",
+      {desfecho:"...",seguidores:0,fa:0,
+       lesao:{permanente:true,atributo:"durability",regiao:"Ombro deslocado"},evitouLesao:false});
+    passo("treinador comprado: lesão permanente continua sem duração (null) — não tem cura pra acelerar",
+      st.lesao&&st.lesao.duracao===null);
+    st.treinadorComprado=false;
 
     /* evitouLesao: custo em standing, fixo, não vem da IA */
     st.eventoMod={}; st.lesao=null; st.standing=.5;
