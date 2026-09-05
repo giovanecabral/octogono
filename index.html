@@ -973,6 +973,9 @@ const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o ad
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
 const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
 const FRASE_LESAO_VENCIDA=n=>`${n} entrou mancando e saiu com a mão levantada.`;
+/* neutra de propósito — dispara em vitória OU derrota, é sobre chegar lá,
+   não sobre o resultado (ver "estreia no main card", item 8) */
+const FRASE_ESTREIA_MAIN_CARD=n=>`${n} entrou no octógono e o ginásio soube o nome.`;
 
 /* =========================================================================
    CONQUISTAS — troféu local, sem conta, sem IA. Cada check(st,modo) é
@@ -3713,7 +3716,7 @@ function startCareer(){
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
-      dinheiro:0,treinadorComprado:false};
+      dinheiro:0,treinadorComprado:false,estreouMainCard:false};
   usedEvents=new Set();rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -4021,6 +4024,18 @@ function finishFight(opp,r,titleFight){
   const isKO=/ocaute/.test(r.method),finish=r.method!=="Decisão";
   const myKd=r.knockdowns[opp.name]||0,oppKd=r.knockdowns[me.name]||0;
   st.kdGiven+=myKd;st.kdTaken+=oppKd;
+  /* Estreia no main card (item 8, já citado no item 1b): primeira vez que
+     o jogador pega uma luta de nível de campeonato — vitória ou derrota,
+     é o "chegou ao topo" que existe ANTES de "cinturao" (que só dispara
+     ganhando). Sem evento numerado de verdade ainda (não construído);
+     proxy: RANKING.lista (campeão+15) só aparece via a carta travada de
+     título/defesa (candidatos() bane esses 16 das bandas comuns), então
+     titleFight===true JÁ SIGNIFICA "adversário de main card" — não precisa
+     checar o nome contra a lista de novo. */
+  if(titleFight&&!st.estreouMainCard){
+    st.estreouMainCard=true;
+    st.momentos.push(criarMomento("estreia",FRASE_ESTREIA_MAIN_CARD(me.name),opp,r));
+  }
   /* renda por luta (item 4) — paga em toda luta, vitória ou derrota, igual
      bolsa de MMA de verdade. Sobe com standing: quem está mais alto na
      divisão ganha mais por luta. st.dinheiro reseta por carreira (não é

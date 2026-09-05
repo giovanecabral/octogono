@@ -1451,6 +1451,28 @@ function testarMomentos() {
     passo("KO round 1 a 285s (clock 0:15, BAIXO) NÃO dispara koRapido — não é rápido, é tarde no round",
       !st.momentos.some(m=>m.tipo==="ko"));
 
+    /* --- estreia no main card (item 8): dispara em titleFight===true,
+       VITÓRIA OU DERROTA (é sobre chegar lá, não sobre ganhar — diferente
+       de "cinturao", que só dispara ganhando), e só a primeira vez. */
+    st=stBase(); st.fightNo=8; st.ganhoEscolhido=.10;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
+    passo("titleFight vencido dispara estreia no main card",
+      st.momentos.some(m=>m.tipo==="estreia"));
+    const qtdApósVitoria=st.momentos.filter(m=>m.tipo==="estreia").length;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
+    passo("2ª luta de título (agora perdendo) NÃO dispara de novo — só a primeira vez",
+      st.momentos.filter(m=>m.tipo==="estreia").length===qtdApósVitoria);
+
+    st=stBase(); st.fightNo=8; st.ganhoEscolhido=.10;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
+    passo("titleFight PERDIDO também dispara estreia — é sobre chegar lá, não sobre ganhar",
+      st.momentos.some(m=>m.tipo==="estreia"));
+
+    st=stBase(); st.fightNo=8; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},false);
+    passo("luta comum (não titleFight) NÃO dispara estreia",
+      !st.momentos.some(m=>m.tipo==="estreia"));
+
     /* --- primeiro cinturão: só a PRIMEIRA vez (foiCampeao permanente) */
     st=stBase(); st.fightNo=7; st.ganhoEscolhido=.07; st.tituloEstaLuta=true;
     finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:5,clock:"5:00"},true);
