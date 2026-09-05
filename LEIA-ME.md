@@ -1154,6 +1154,27 @@ proxy de IA). Vale resolver quando existir pagamento ou ranking global de
 verdade — hoje o custo de forjar (abrir DevTools, entender a estrutura)
 já filtra a imensa maioria, e não há prêmio nenhum em jogo.
 
+### Domínio próprio — passo a passo, pra quando registrar
+
+O jogo é UM projeto Vercel (`draft-ufc.vercel.app`); trocar o domínio
+visível não exige mexer no projeto, só apontar um domínio novo pra ele:
+
+1. Vercel → o projeto → Settings → Domains → Add → digitar o domínio novo.
+2. A Vercel devolve os registros de DNS pra criar no registrador do
+   domínio (não na Vercel): registro **A** apontando pro IP da Vercel se
+   for domínio raiz (ex. `corner.com`), ou **CNAME** pra
+   `cname.vercel-dns.com` se for subdomínio (ex. `www.corner.com`). A
+   Vercel mostra o valor exato na hora — não adianta copiar de outro lugar,
+   muda por caso.
+3. Esperar propagar (minutos a algumas horas) — a Vercel emite HTTPS
+   sozinha (Let's Encrypt) assim que o DNS resolver, sem passo manual.
+4. Decidir redirecionamento (`www` → raiz ou o contrário) no mesmo painel
+   de Domains — a Vercel oferece os dois sentidos com um clique.
+5. Trocar `DOMINIO_JOGO` no `index.html` pro domínio novo, commit, deploy.
+   `AI_URL` pode continuar apontando pro `draft-ufc.vercel.app` (mesmo
+   projeto, a rota `/api/ai` responde nos dois domínios) — só trocar se
+   quiser o endpoint com a cara do domínio novo também, não é obrigatório.
+
 ## O que falta
 
 **Ícones de amostra curta ficam de fora.** O filtro de 4 lutas e 25 minutos

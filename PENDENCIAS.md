@@ -20,6 +20,17 @@ principal — mesmo motivo do `holdRng`, sorteia só em derrota por nocaute).
 separado confirmado por `node testar.js desafio`, e `node testar.js` inteiro
 com KO/SUB/DEC na faixa.
 
+**Medido nesta leva (só o insumo pro chute de 30%, feature continua não
+implementada — escopo fechado, nada de feature nova pedida junto)**: 400
+carreiras, `st.koLosses` real — **média de 1,60 nocautes sofridos por
+carreira**, 77,3% das carreiras sofrem pelo menos 1. Com chance=.30
+(o chute original), isso daria ~0,48 lesões esperadas por carreira só
+dessa fonte — mesma ordem de grandeza das lesões de dilema já existentes,
+não parece um chute absurdo em retrospecto, mas continua sendo isso: um
+chute, sem alvo de custo-em-vitórias pra calibrar contra (diferente da
+duração de lesão do item 2 da leva anterior, que tinha 0,5-0,8 vitórias
+como alvo). Falta decidir o alvo antes de medir a chance de verdade.
+
 ---
 
 ## 2. Link de desafio não reproduz a classificação de lesão da IA
@@ -44,7 +55,7 @@ caminho.
 
 ---
 
-## 3. % de carreiras que terminam com o cinturão — hoje vs. antes do conserto do `st.title`
+## 3. % de carreiras que terminam com o cinturão — RESOLVIDO (TETO_TREINO 1.26→1.18)
 
 Antes do conserto de título nesta sessão, `st.title` nunca voltava a `false`
 numa derrota — então "terminar com o cinturão" media só "chegou a ganhar
@@ -76,20 +87,23 @@ pedido, sem tocar TUNING/WEIGHTS/TETO_TREINO:**
   28,6% — uma queda de 41 pontos. É o treino permanente, não a escada nem a
   disputa, que explica a maior parte da facilidade.
 
-**Parado aqui, sem decidir** (pedido explícito): não mexi em `TUNING`,
-`WEIGHTS` nem `TETO_TREINO`. Script de medição em `/tmp/medir_cinturao.js`
-(não commitado — throwaway, mas reproduzível: reimplementa `candidatos()`
-com banda fixa e pula `aplicarCamp()` como contra-fatuais, sem alterar o
-jogo de verdade).
+**Decisão tomada na leva seguinte, depois de isolar formato vs altura da
+curva** (cortar o 1º camp pela metade não mudou o título em nada, 70,0%
+com e sem — a alavanca é a altura do teto, não o formato): `TETO_TREINO`
+baixado de 1.26 pra 1.18. Título agora sai em **60,6%** das carreiras
+("parelho" fixo) — escolhido por deixar o cinturão difícil sem ficar raro
+(1.12 daria 51,0%, começando a esvaziar a fantasia). Efeito em vitórias
+remedido: 1.26 dava +2,0/22, 1.18 dá +1,5/22. Ver LEIA-ME.md "Progressão
+do lutador" pelo relato completo com data e as duas medições lado a lado.
 
 ---
 
-## 4. Efeito do treino — remedir, se ainda incomodar
+## 4. Efeito do treino — RESOLVIDO (remedido junto com o item 3, TETO_TREINO 1.18)
 
-O `LEIA-ME.md` registra +1,9 vitórias / pico de top 11% pra top 2%, medido em
-400 carreiras. Se mudanças recentes (cinturão nomeado, lesão) tiverem mexido
-na trajetória de `standing` o bastante pra esse número parecer errado,
-remedir — não redecidir de olho.
+Remedido: 1.18 dá +1,5 vitórias em 22 (era +1,9-2,0 em 1.26). A claim de
+"pico top 11%→2%" não voltou — `st.peak` satura em 1.0, não é régua
+confiável (mesmo achado que já tinha trocado `topo_da_divisao` de `peak`
+pra `bestBeaten`). Ver LEIA-ME.md "Progressão do lutador".
 
 **Pronto quando:** remedido em ≥400 carreiras e comparado ao número antigo.
 
@@ -133,16 +147,33 @@ nomes aparecem no `fighters.json` e `node testar.js divisoes` segue 11/7.
 
 ---
 
-## 7. O meio da tabela não separa
+## 7. O meio da tabela não separa — medido, parado aqui (pedido explícito)
 
 Fã e seguidores distinguem bem o topo — elite chega a 1,5M contra 20 mil — mas
-carreiras medianas ficam parecidas entre si. Causa: a escada de adversários se
-auto-compensando (mesmo mecanismo que faz o modo lenda não pesar — ver
-"Opcional" abaixo). Balanceamento, não bug. Precisa de medição antes de
-qualquer mudança.
+carreiras medianas ficam parecidas entre si. Causa suspeita: a escada de
+adversários se auto-compensando.
 
-**Pronto quando:** a distribuição de seguidores no fim de carreira tem spread
-mensurável no meio, sem quebrar a calibração do motor.
+**Medido (1.000 carreiras, estratégia "parelho" fixa, candidatos()/
+simulateFight()/hypeOf()/followerDelta() reais)**:
+
+Seguidores no fim: p10=25.295 · p25=49.589 · p40=110.909 · p50=182.108 ·
+p60=279.647 · p75=647.277 · p90=2.051.488 · p99=16.321.846.
+
+Fã no fim (escala 0-10): p10=4,82 · p25=5,82 · p40=6,58 · p50=7,12 ·
+p60=7,60 · p75=8,37 · p90=9,24 · p99=9,96.
+
+**A suspeita original só se confirma pra FÃ, não pra seguidores.**
+Seguidores tem separação real mesmo no meio (p40=111 mil a p60=280 mil é
+quase 2,5×, nada "parecido") — o spread do miolo (p40-p60) é só 8,3% do
+spread total (p10-p90) em termos absolutos, mas isso é esperado de
+qualquer distribuição que cresce multiplicativamente (a maior parte do
+range vem da cauda, não significa que o meio é raso). Fã, por ser escala
+0-10 limitada, comprime mais de verdade: p40 a p60 é só 1 ponto de
+diferença (6,58 a 7,60), contra 4,82-9,96 do p10 ao p99 — aí sim o meio
+fica com pouca banda pra se diferenciar.
+
+Não mexi em nada — número trazido, decisão de o que fazer (se algo) fica
+pra depois.
 
 ---
 
@@ -180,16 +211,35 @@ melhora, mas **não bateu o alvo de <1/carreira**, porque a causa é externa
 própria em openrouter.ai/settings/integrations (Alibaba/Qwen, BYOK) pra sair
 do pool compartilhado — decisão de custo/conta, não de código.
 
-## 10. MULT_TREINADOR — efeito pequeno por motivo estrutural, registrado pra revisão
+## 10. MULT_TREINADOR — RESOLVIDO (trocado por REDUCAO_CURA_TREINADOR)
 
-Medido (par pareado, 1.200 carreiras com/sem treinador, mesmas seeds):
-+0,05 vitórias/22 a 1.15x, testado até 3.0x (triplo) sem passar de +0,37/22.
-O treinador acelera a MESMA curva de retorno decrescente do `TETO_TREINO`
-(via `aplicarCamp()`), e essa curva já consome a maior parte do teto nos
-primeiros camps — aumentar o multiplicador não resolve, a mecânica em si
-tem pouco espaço pra crescer usando essa fórmula. Se o efeito precisar ser
-mais sentido, o caminho é uma mecânica DIFERENTE (não acelerar
-`RITMO_TREINO`), não um número maior aqui.
+Efeito pequeno confirmado (+0,05 vitórias/22 a 1.15x, mal passava de
++0,37/22 mesmo a 3×) — trocado de mecânica: treinador agora corta a
+duração de lesão temporária pela metade em vez de acelerar treino. Ver
+LEIA-ME.md "Lesão" e o commit que trocou a mecânica.
+
+## 11. Cinturão interino — desenho, não implementado
+
+Tamanho real (confirmado nesta leva): comparável a uma feature média já
+construída nesta sessão (dinheiro, conquistas) — não é conserto pequeno.
+Precisa de: estado novo de disponibilidade do campeão nomeado (hoje
+`RANKING.campeao` é só um nome fixo, não tem noção de "machucado" ou
+"indisponível"), um segundo tipo de título (`st.cinturaoInterino`)
+distinto do de verdade em toda a UI que hoje só sabe "campeão sim/não"
+(ficha, momento cards, LEGACY/RARE), lógica de unificação (quando o
+campeão de verdade volta, a próxima defesa do interino vira luta de
+unificação), e uma medição nova (frequência do sorteio de
+indisponibilidade — não pode virar cinturão interino toda disputa, nem
+nunca acontecer). Desenho não escrito ainda — esperando decisão de
+prioridade antes de detalhar.
+
+## 12. Queda no ranking por inatividade — DESCARTADO
+
+Não faz sentido no jogo como existe: as 22 lutas são seguidas, sem gap de
+tempo que o jogador controle ou perceba entre uma e outra — não existe
+"ociosidade" pra punir. Precisaria inventar uma mecânica de tempo que não
+existe em lugar nenhum do resto do jogo só pra justificar este item.
+Descartado por decisão do usuário, não por medição.
 
 ## Manutenção
 
