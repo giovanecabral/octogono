@@ -212,11 +212,20 @@ técnico específico. A maioria dos eventos NÃO mexe em nada técnico:
 Se vier uma lista de "Eventos recentes desta carreira", o evento novo
 NÃO PODE repetir a mesma situação, o mesmo giro ou frase parecida com
 nenhum deles — nem com o tema trocado. Invente uma situação nova de
-verdade, mesmo que o tema de hoje seja igual ao de um evento recente.`,
-    user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.
-Luta ${d.fightNo} de ${d.totalFights}.${d.title ? " É campeão." : ""}
+verdade, mesmo que o tema de hoje seja igual ao de um evento recente.
+SEMPRE que fizer sentido pro tema pedido, ANCORE o evento no que está
+acontecendo de verdade na carreira deste lutador AGORA (posição no
+ranking, se está machucado, se acabou de perder o cinturão, quanto
+dinheiro tem) em vez de escrever algo genérico que serviria pra
+qualquer lutador em qualquer carreira — um evento específico da
+situação dele repete muito menos do que um evento genérico sobre o
+tema sozinho.`,
+    user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10, R$ ${d.dinheiro}.
+Luta ${d.fightNo} de ${d.totalFights}.${d.title ? " É campeão." : ""}${d.posicao ? ` Posição na divisão: ${d.posicao}.` : ""}
 Resultado da última luta: ${d.ganhou ? "venceu" : "perdeu"} por ${d.metodo}, round ${d.round}.${d.nocaute ? " Foi nocaute." : ""}
-Sequência atual: ${d.streakW > 0 ? d.streakW + " vitórias seguidas" : d.streakL > 0 ? d.streakL + " derrotas seguidas" : "sem sequência"}.
+Sequência atual: ${d.streakW > 0 ? d.streakW + " vitórias seguidas" : d.streakL > 0 ? d.streakL + " derrotas seguidas" : "sem sequência"}.${d.lesao ? `
+Está lutando/treinando machucado: ${d.lesao}.` : ""}${d.perdeuCinturaoAgora ? `
+Acabou de PERDER o cinturão nesta luta.` : ""}
 Tema desta vez: ${d.tema}.${Array.isArray(d.recentes) && d.recentes.length ? `
 Eventos recentes desta carreira (NÃO repita a situação de nenhum destes):
 ${d.recentes.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : ""}`,

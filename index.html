@@ -1474,6 +1474,26 @@ async function resolveFeed(fallback,rng){
 const EVENTO_TEMAS=["imprensa","dinheiro","família","rotina de treino",
   "patrocínio","redes sociais","saúde leve (nada grave)","vida pessoal",
   "reação do público","bastidor da academia"];
+/* Sorteio SEM reposição, não com reposição: com 10 temas e só ~18 lutas
+   elegíveis/carreira, sortear cada vez do zero podia repetir um tema
+   cedo (ex. duas vezes em 5 lutas) por puro acaso — não é a repetição
+   DENTRO do tema que foi medida (essa é o modelo, ver
+   st.eventosRecentes abaixo), mas é uma repetição EVITÁVEL de graça: os
+   10 primeiros sorteios de qualquer carreira são garantidos diferentes.
+   st.temasRestantes é a "cartela" da carreira, embaralhada uma vez com
+   eventoRng e consumida um a um; reembaralha (nova cartela) só quando
+   esgota — então o 11º tema pode repetir um dos 10 primeiros, mas nunca
+   antes disso. */
+function proximoTema(){
+  if(!st.temasRestantes||!st.temasRestantes.length){
+    st.temasRestantes=[...EVENTO_TEMAS];
+    for(let i=st.temasRestantes.length-1;i>0;i--){
+      const j=Math.floor((eventoRng?eventoRng():Math.random())*(i+1));
+      [st.temasRestantes[i],st.temasRestantes[j]]=[st.temasRestantes[j],st.temasRestantes[i]];
+    }
+  }
+  return st.temasRestantes.pop();
+}
 
 /* Evento de vida a cada luta (substitui o pool fixo de 28 frases, que
    repetia entre carreiras — ver o bloco "EVENTOS DE VIDA" logo acima de
@@ -1488,22 +1508,33 @@ const EVENTO_TEMAS=["imprensa","dinheiro","família","rotina de treino",
    (lutadorEfetivo() da luta em andamento já foi lido antes disso). */
 const ATTRS_EVENTO=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
 async function dispararEventoIA(bouts,opp,r){
-  const tema=EVENTO_TEMAS[Math.floor((eventoRng?eventoRng():Math.random())*EVENTO_TEMAS.length)];
-  /* Medido 2026-09-06: forçar o tema (acima) resolveu o COLAPSO ENTRE
-     temas (42% convergindo pra "vídeo viraliza" mesmo quando o tema
-     pedido era outro) — mas não resolve repetição DENTRO do mesmo tema:
-     o modelo tem uma história "padrão" pra cada tema e a repete quase
-     igual quando o mesmo tema volta na mesma carreira (achado: dois
-     eventos de "vida pessoal" saíram quase idênticos — "tão viciado na
-     rotina que esqueceu o aniversário da esposa e dorme no sofá" duas
-     vezes). st.eventosRecentes guarda os últimos 3 textos already
-     mostrados NESTA carreira; iam junto no prompt pra evitar repetir a
-     mesma situação — sem isso, cada chamada é cega pro que já foi dito. */
+  const tema=proximoTema();
+  /* Medido 2026-09-06: forçar o tema resolveu o COLAPSO ENTRE temas (42%
+     convergindo pra "vídeo viraliza" mesmo quando o tema pedido era
+     outro) — mas não resolve repetição DENTRO do mesmo tema: o modelo
+     tem uma história "padrão" pra cada tema e a repete quase igual
+     quando o tema volta na mesma carreira. st.eventosRecentes guarda os
+     últimos 3 textos já mostrados; vão no prompt pra evitar repetir a
+     mesma situação.
+
+     Contexto de carreira (posicao/lesao/perdeuCinturao/dinheiro): pedido
+     depois de medir que 40 chamadas isoladas não é a experiência do
+     jogador (ele vê 1 evento por luta, ao longo de ~40 minutos — duas
+     lutas de intervalo não incomoda do jeito que 40 lado a lado
+     parecem). Evento ANCORADO no que está acontecendo de verdade
+     (posição no ranking, se tá machucado, se acabou de perder o
+     cinturão) tem menos espaço de sobra pra cair na resposta genérica
+     "padrão" do tema — repete menos por construção, não por instrução. */
+  const pos=posicaoDivisao();
   const dados={name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
     ganhou:st.lastWon,metodo:st.lastMethod,round:st.lastRound,nocaute:st.lastKO,
     streakW:st.streakW,streakL:st.streakL,title:!!st.title,
-    fightNo,totalFights:TOTAL_FIGHTS,tema,recentes:(st.eventosRecentes||[]).slice(-3)};
+    fightNo,totalFights:TOTAL_FIGHTS,tema,recentes:(st.eventosRecentes||[]).slice(-3),
+    posicao:pos?`#${pos.n} de ${pos.de}`:null,
+    lesao:st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null,
+    perdeuCinturaoAgora:st.perdeuCinturaoNaLuta===fightNo,
+    dinheiro:fmtNum(st.dinheiro||0)};
   let j=await ai("evento",dados);
   /* Medido: 10% das respostas vêm com ok:true mas sem o campo "texto" no
      JSON (a IA às vezes não obedece o formato pedido). Uma retentativa
@@ -4580,6 +4611,10 @@ function finishFight(opp,r,titleFight){
          a reconquista aproveitaria a concessão antiga do holdRng e nunca
          sortearia de novo (ver candidatos()/tituloLiberado()). */
       st.title=false;st.exCampeao=opp;st.defesas=0;st.disputaLiberada=false;st.cinturaoInterino=false;
+      /* Guarda o número da luta em que perdeu — evento por IA usa isso
+         pra saber se foi NESTA luta (não é histórico permanente como
+         foiCampeao, é só "aconteceu agora"). Ver dispararEventoIA(). */
+      st.perdeuCinturaoNaLuta=st.fightNo;
       /* essa defesa (perdida) também usou o desafiante da vez — mesma
          rotação da vitória acima. Reconquistar mais tarde enfrenta de novo
          RANKING.campeao (não muda com rotação), mas ao voltar a DEFENDER o

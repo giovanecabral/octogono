@@ -3105,6 +3105,42 @@ function testarEventoIA() {
     await dispararEventoIA(bouts,opp,{});
     passo("controle: texto diferente dos recentes passa normal (a rede de baixo não é paranoica)",
       bouts.children.length===marca7+1);
+
+    // caso 8: sorteio SEM reposição — os 10 primeiros temas de uma
+    // carreira são os 10 de EVENTO_TEMAS, sem repetir nenhum antes de
+    // esgotar a cartela
+    st.temasRestantes=null; st.events=0;
+    const temasVistos=[];
+    ai=async(kind,data)=>{ temasVistos.push(data.tema); return{texto:"Evento "+temasVistos.length,atributo:"nenhum",efeito:1}; };
+    for(let i=0;i<10;i++) await dispararEventoIA(bouts,opp,{});
+    passo("10 sorteios seguidos cobrem os 10 temas, cada um exatamente 1 vez (sem reposição)",
+      new Set(temasVistos).size===10 && temasVistos.length===10 &&
+      EVENTO_TEMAS.every(t=>temasVistos.includes(t)));
+    // o 11º recomeça uma cartela nova — pode repetir o 1º, mas só a partir daqui
+    await dispararEventoIA(bouts,opp,{});
+    passo("11º sorteio vem de uma cartela nova (recomeçou, não trava vazio)",
+      temasVistos.length===11 && EVENTO_TEMAS.includes(temasVistos[10]));
+
+    // caso 9: contexto de carreira (posição/lesão/cinturão perdido/dinheiro) vai no data
+    LADDER=[{},{},{},{},{},{},{},{},{},{}]; // posicaoDivisao() precisa de LADDER de verdade
+    st.events=0; st.standing=.5; st.lesao={atributo:"tdDef",nome:"Joelho"};
+    st.perdeuCinturaoNaLuta=fightNo; st.dinheiro=12345;
+    let dadosRecebidos=null;
+    ai=async(kind,data)=>{ dadosRecebidos=data; return{texto:"Evento contextual.",atributo:"nenhum",efeito:1}; };
+    await dispararEventoIA(bouts,opp,{});
+    passo("posicao vai no data (posicaoDivisao() de verdade, não inventado)",
+      typeof dadosRecebidos.posicao==="string" && dadosRecebidos.posicao.startsWith("#"));
+    passo("lesao vai no data quando st.lesao existe",
+      dadosRecebidos.lesao&&dadosRecebidos.lesao.includes("machucado"));
+    passo("perdeuCinturaoAgora é true quando a perda foi NESTA luta (fightNo bate)",
+      dadosRecebidos.perdeuCinturaoAgora===true);
+    passo("dinheiro vai formatado (fmtNum) no data",
+      dadosRecebidos.dinheiro===fmtNum(12345));
+    // controle: lesão de OUTRA luta (perdeuCinturaoNaLuta não bate) não marca "agora"
+    st.perdeuCinturaoNaLuta=fightNo-3;
+    await dispararEventoIA(bouts,opp,{});
+    passo("perdeuCinturaoAgora é false quando a perda foi em luta ANTERIOR",
+      dadosRecebidos.perdeuCinturaoAgora===false);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }

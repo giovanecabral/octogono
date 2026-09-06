@@ -663,6 +663,30 @@ guarda a luta de MAIOR hype da carreira até agora, tipo `st.peak`/
 primeira. Aparece no relatório final (`screenReport()`) e no card
 compartilhável (`desenharCard()`).
 
+## Regra geral: restrição negativa no prompt não é garantia
+
+Achado testando o evento por IA (2026-09-06), mas vale pra QUALQUER
+prompt deste projeto, presente ou futuro: pedir pro modelo "não faça X"
+— não repita, não afirme, não mencione — reduz X, mas não impede X.
+Testado direto: mandado explicitamente "não repita a situação de
+nenhum destes 3 eventos recentes", com o texto exato do 1º na lista, a
+IA devolveu na 3ª chamada seguinte **o mesmo texto do 1º, palavra por
+palavra**, mesmo com a instrução ali na cara.
+
+Isso não é surpresa nova, é a mesma razão por trás de toda trava que já
+existe neste código: `CONTEUDO_INSEGURO` e `RESULTADO_LUTA` nunca
+dependeram só de pedir pro prompt pra não fazer algo — os dois SEMPRE
+vieram acompanhados de uma checagem no texto que a IA devolveu,
+descartando quando a instrução falha (ver "Conteúdo inseguro no
+dilema" e "Eventos por IA" abaixo). A diferença é que agora está
+escrito como regra, não só como padrão implícito repetido em cada
+filtro: **toda vez que o prompt disser "não faça X", o código do
+cliente também precisa verificar e descartar quando X acontecer mesmo
+assim — nunca só confiar na instrução.** Restrição POSITIVA ("responda
+neste formato", "escreva sobre este tema") é mais confiável — o "tema
+forçado" abaixo funcionou bem melhor que o "não repita" — mas mesmo
+essa vale conferir quando o custo de falhar for alto.
+
 ## Eventos por IA
 
 O pool fixo de 28 frases (`EVENTS`) repetia entre carreiras — sempre as
