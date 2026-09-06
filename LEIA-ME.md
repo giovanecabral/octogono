@@ -832,11 +832,33 @@ vercel --prod
 **4.** O `index.html` já vem com a URL preenchida:
 
 ```js
-const AI_URL="https://draft-ufc.vercel.app/api/ai";
+const AI_URL="https://octogono.fun/api/ai";
 ```
 
-**Se você renomear o projeto na Vercel, essa linha quebra** — o domínio muda
-junto. É o primeiro lugar a conferir se a IA parar de responder de repente.
+**Regra geral, não só pra renomear projeto: qualquer mudança de domínio
+principal na Vercel pode quebrar `AI_URL` se ele continuar apontando pro
+domínio antigo.** Renomear o projeto é um jeito de isso acontecer;
+**adicionar um domínio customizado e promover ele a principal é outro** —
+foi o que aconteceu de verdade aqui (2026-09-06): `octogono.fun` virou o
+domínio principal do projeto, e o alias antigo (`draft-ufc.vercel.app`)
+parou de resolver pra uma deployment válida, sem aviso nenhum. **O
+sintoma é traiçoeiro: o jogo inteiro continua "funcionando" — sem
+crash, sem erro visível pro jogador — porque `ai()` já foi desenhado
+pra cair em molde local quando a IA falha.** A IA fica morta em 100%
+das chamadas e ninguém percebe até alguém reparar que toda resposta de
+dilema saiu genérica. Não existe aviso automático pra isso; o único
+jeito de saber é testar. Depois de QUALQUER mudança de domínio (renomear
+projeto, adicionar domínio customizado, trocar qual é o principal),
+rodar:
+
+```bash
+curl -s -X POST https://SEUDOMINIO/api/ai -H "Content-Type: application/json" \
+  -d '{"kind":"julgar","data":{"name":"T","cena":"c","resposta":"r","record":"1-0","followers":"1mil","fan":"5"}}'
+```
+
+Resposta esperada: `{"ok":true,"result":{...}}`. Qualquer coisa diferente
+(404, HTML de erro, timeout) é este bug de novo — trocar `AI_URL` pro
+domínio que está de fato resolvendo, redeploy, testar de novo.
 
 O mesmo deploy publica o jogo e a API juntos.
 

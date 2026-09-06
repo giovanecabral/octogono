@@ -168,7 +168,14 @@ Contexto: cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.`,
   }),
 
   /* evento de vida da carreira, sem escolha do jogador — um por luta,
-     substitui o pool fixo de 28 frases que repetia entre carreiras */
+     substitui o pool fixo de 28 frases que repetia entre carreiras.
+     Medido (2026-09-06, 40 chamadas sem tema forçado): 42% dos textos
+     saíam com o mesmo esqueleto ("vídeo/clipe viraliza, família ou
+     empresário reage") — o prompt só SUGERIA temas e dava UM exemplo
+     ("o clipe viralizou"), o modelo convergiu pro exemplo em vez de usar
+     o menu inteiro. Conserto: o cliente agora sorteia o tema e MANDA no
+     "tema" (não sugere, não deixa o modelo escolher), e o prompt não dá
+     mais nenhum exemplo de frase copiável — só a regra. */
   evento: d => ({
     system: `${VOZ}
 Você narra um evento breve da vida de um lutador de MMA — fora do
@@ -178,15 +185,20 @@ Responda SOMENTE com JSON, sem markdown:
 {"texto":"1 a 2 frases contando o que aconteceu",
  "atributo":"slpm"|"strDef"|"tdAvg"|"tdDef"|"subAvg"|"kdAvg"|"durability"|"nenhum",
  "efeito":número entre 0.90 e 1.10}
-Varie o tema entre lutas e entre carreiras: imprensa, dinheiro, família,
-rotina de treino, patrocínio, redes sociais, saúde leve (nada grave),
-vida pessoal, reação do público, bastidor da academia. Nunca repita a
-mesma construção de frase duas vezes.
-NUNCA afirme o MÉTODO da luta (nocaute, finalização, decisão) nem quem
-venceu, mesmo sabendo o resultado — narre a REAÇÃO ou a CONSEQUÊNCIA, não
-o replay técnico: "o clipe viralizou", "o ginásio comemorou", "a família
-ligou emocionada" pode; "ele nocauteou o adversário" ou "venceu por
-decisão" não pode, em hipótese nenhuma.
+O evento tem que ser CONSTRUÍDO em cima do tema que o usuário vai dar
+("Tema desta vez") — não é sugestão, é o assunto central da frase. Fuja
+de qualquer construção do tipo "vídeo/clipe viraliza e [alguém] reage" a
+não ser que o tema seja literalmente redes sociais ou reação do público
+— mesmo nesses dois casos, varie o veículo (não precisa ser vídeo/clipe:
+pode ser áudio de zap, comentário ao vivo, revista, rádio, boato de
+academia, o que fizer sentido). Cada evento tem que soar como um
+momento diferente da vida, não uma fórmula reaproveitada com o tema
+trocado.
+Narre a REAÇÃO ou a CONSEQUÊNCIA do resultado, não o replay técnico —
+evite descrever o MÉTODO da luta (nocaute, finalização, decisão) como
+ação, tipo "ele nocauteou o adversário"; mencionar o fato já sabido de
+outro jeito (o barulho que isso causou, o que alguém comentou, o efeito
+prático) é permitido e nem sempre precisa ser evitado.
 "efeito" só se afasta de 1 quando "atributo" não é "nenhum" — alguma
 mudança plausível de rotina, motivação ou lesão leve que mexe num aspecto
 técnico específico. A maioria dos eventos NÃO mexe em nada técnico:
@@ -194,7 +206,8 @@ técnico específico. A maioria dos eventos NÃO mexe em nada técnico:
     user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.
 Luta ${d.fightNo} de ${d.totalFights}.${d.title ? " É campeão." : ""}
 Resultado da última luta: ${d.ganhou ? "venceu" : "perdeu"} por ${d.metodo}, round ${d.round}.${d.nocaute ? " Foi nocaute." : ""}
-Sequência atual: ${d.streakW > 0 ? d.streakW + " vitórias seguidas" : d.streakL > 0 ? d.streakL + " derrotas seguidas" : "sem sequência"}.`,
+Sequência atual: ${d.streakW > 0 ? d.streakW + " vitórias seguidas" : d.streakL > 0 ? d.streakL + " derrotas seguidas" : "sem sequência"}.
+Tema desta vez: ${d.tema}.`,
   }),
 };
 

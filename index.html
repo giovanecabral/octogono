@@ -1463,6 +1463,18 @@ async function resolveFeed(fallback,rng){
   }).filter(t=>t.text!=="...");
 }
 
+/* Temas do evento — mesma ideia do SEEDS do dilema (ver abaixo): sortear
+   um tema e MANDAR pro prompt, em vez de listar as opções e confiar que o
+   modelo varia sozinho. Medido (2026-09-06, 40 chamadas reais sem tema
+   forçado): 42% dos textos saíam com o mesmo esqueleto ("vídeo/clipe
+   viraliza, família ou empresário reage") — o prompt só SUGERIA os temas,
+   sem forçar nenhum por chamada, e o modelo convergia pro que "imprensa/
+   redes sociais" sozinho já cobria. eventoRng é stream próprio (mesmo
+   motivo do escolhaRng/lesaoRng — nunca desloca rng principal). */
+const EVENTO_TEMAS=["imprensa","dinheiro","família","rotina de treino",
+  "patrocínio","redes sociais","saúde leve (nada grave)","vida pessoal",
+  "reação do público","bastidor da academia"];
+
 /* Evento de vida a cada luta (substitui o pool fixo de 28 frases, que
    repetia entre carreiras — ver o bloco "EVENTOS DE VIDA" logo acima de
    RARE). SEM FALLBACK LOCAL, de propósito: se a chamada falhar ou o
@@ -1476,19 +1488,35 @@ async function resolveFeed(fallback,rng){
    (lutadorEfetivo() da luta em andamento já foi lido antes disso). */
 const ATTRS_EVENTO=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
 async function dispararEventoIA(bouts,opp,r){
-  const j=await ai("evento",{name:me.name,record:`${st.wins}-${st.losses}`,
+  const tema=EVENTO_TEMAS[Math.floor((eventoRng?eventoRng():Math.random())*EVENTO_TEMAS.length)];
+  const dados={name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
     ganhou:st.lastWon,metodo:st.lastMethod,round:st.lastRound,nocaute:st.lastKO,
     streakW:st.streakW,streakL:st.streakL,title:!!st.title,
-    fightNo,totalFights:TOTAL_FIGHTS});
+    fightNo,totalFights:TOTAL_FIGHTS,tema};
+  let j=await ai("evento",dados);
+  /* Medido: 10% das respostas vêm com ok:true mas sem o campo "texto" no
+     JSON (a IA às vezes não obedece o formato pedido). Uma retentativa
+     antes de desistir da luta — custo é 1 chamada extra em ~10% das ~18
+     lutas elegíveis/carreira, ~1,8 chamada a mais por carreira. Só pra
+     ESTE caso (json malformado); falha de rede/429/erro do servidor NÃO
+     tenta de novo aqui — ai() já tem sua própria disciplina de pausa/
+     desligamento pra essas, insistir por cima seria gastar chamada
+     fadada a repetir o mesmo erro. */
+  if(j&&!j.texto)j=await ai("evento",dados);
   if(!j||!j.texto)return;
-  /* Mesmos filtros do dilema, sem exceção (pedido explícito) — inclusive
-     RESULTADO_LUTA, que aqui pode cortar frase que seria verdadeira (o
-     resultado É conhecido, diferente do dilema). Consistência da trava
-     importa mais que aproveitar essa frase específica: mesma disciplina
-     em todo texto gerado, sem caso especial. */
+  /* CONTEUDO_INSEGURO continua (rede de baixo pra conteúdo impróprio,
+     igual ao dilema) — RESULTADO_LUTA NÃO se aplica aqui, de propósito
+     (corrigido 2026-09-06). Esse filtro foi desenhado pra impedir o
+     desfecho do DILEMA de afirmar o resultado de uma luta que ainda vai
+     acontecer (contradizer o motor). Evento narra uma luta que JÁ
+     terminou — "o clipe do nocaute viralizou" é um FATO conhecido, não
+     uma previsão, e o filtro cortava a frase inteira mesmo assim (~8%
+     dos eventos, medido). Aplicar o mesmo filtro nos dois lugares
+     confundia "onde ele foi desenhado pra proteger" com "todo texto que
+     a IA gera" — são problemas diferentes. */
   if(conteudoInseguro(j.texto))return;
-  const texto=semResultadoDeLuta(String(j.texto)).slice(0,300).trim();
+  const texto=String(j.texto).slice(0,300).trim();
   if(!texto)return;
   bouts.appendChild(el("div","event","— "+texto));
   const atr=ATTRS_EVENTO.includes(j.atributo)?j.atributo:null;
@@ -3431,7 +3459,7 @@ async function compartilhar(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,rareUsed=null,fought=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,eventoRng=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=false;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -3805,6 +3833,7 @@ function startDraft(name){
   fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
   escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
   lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
+  eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
   me={name,division:DIVISION};picks=[];
   budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
   remaining=[...PAIRS];

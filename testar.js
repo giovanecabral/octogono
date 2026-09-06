@@ -2976,6 +2976,17 @@ function testarConteudoInseguro() {
       box.innerHTML.includes("R$"));
     passo("item 2: dinheiro trava em ±1 bolsa (RENDA_BASE) — .4 de fração vira 40% dela",
       st.dinheiro===Math.round(RENDA_BASE*.4));
+
+    /* Regressão (2026-09-06): RESULTADO_LUTA saiu do evento (ver
+       testarEventoIA/dispararEventoIA), mas continua valendo pro
+       DESFECHO DO DILEMA — é onde ele foi desenhado pra proteger
+       (impedir a IA de afirmar resultado de uma luta que ainda vai
+       acontecer). Confere que aplicarDilema() ainda corta. */
+    aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
+      {desfecho:"Ele venceu por nocaute e a torcida foi ao delírio.",seguidores:.05,fa:.3,
+       atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
+    passo("RESULTADO_LUTA continua protegendo o desfecho do DILEMA (não removido daqui)",
+      !box.innerHTML.includes("Ele venceu por nocaute"));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -2997,6 +3008,99 @@ function testarConteudoInseguro() {
     console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
   }
   return ok && passos.length > 0;
+}
+
+/* ================================================================== *
+ * 8b. EVENTO POR IA — RESULTADO_LUTA não se aplica aqui (de propósito,
+ *     ver dispararEventoIA()), CONTEUDO_INSEGURO continua, e a
+ *     retentativa única de JSON malformado funciona. `ai` é sobrescrito
+ *     no próprio vm (é `function` de topo, mockável igual qualquer outra)
+ *     pra controlar a resposta sem rede — mesmo truque de sobrescrever
+ *     lesaoRng/fraseRng que os outros testes já usam.
+ * ================================================================== */
+function testarEventoIA() {
+  console.log("\n" + cinza("evento por IA: RESULTADO_LUTA não corta fato do passado, CONTEUDO_INSEGURO continua, retenta 1x se vier sem texto"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__evia=(async function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    st={treino:{},eventoMod:{},wins:5,losses:1,events:0,fightNo:6,
+        lastWon:true,lastMethod:"Nocaute",lastRound:1,lastKO:true,
+        streakW:2,streakL:0,title:false,followers:8000,fan:6};
+    fightNo=6; rareUsed=new Set(); eventoRng=()=>0.05;
+    const opp={name:"Rival",rating:.5};
+    const bouts=document.getElementById("bouts");
+
+    const ultimo=()=>bouts.children.length?bouts.children[bouts.children.length-1].innerHTML:"";
+
+    // caso 1: "nocaute" como FATO do passado — não pode sumir
+    ai=async(kind,data)=>({texto:"O clipe do nocaute rodou a semana inteira no grupo da academia.",atributo:"nenhum",efeito:1});
+    await dispararEventoIA(bouts,opp,{});
+    passo("evento com 'nocaute' de fato passado SOBREVIVE (RESULTADO_LUTA não se aplica aqui)",
+      ultimo().includes("clipe do nocaute rodou"));
+    passo("st.events incrementou", st.events===1);
+
+    // caso 2: CONTEUDO_INSEGURO continua valendo pro evento
+    const marca2=bouts.children.length; st.events=0;
+    ai=async(kind,data)=>({texto:"Ele pensou em se matar depois da derrota.",atributo:"nenhum",efeito:1});
+    await dispararEventoIA(bouts,opp,{});
+    passo("CONTEUDO_INSEGURO ainda bloqueia o evento (não é removido, só RESULTADO_LUTA saiu)",
+      bouts.children.length===marca2 && st.events===0);
+
+    // caso 3: retentativa — 1ª chamada vem sem "texto" (json malformado), 2ª vem certa
+    st.events=0;
+    let chamadas=0;
+    ai=async(kind,data)=>{
+      chamadas++;
+      if(chamadas===1)return{atributo:"nenhum",efeito:1}; // sem texto
+      return{texto:"Segunda tentativa deu certo.",atributo:"nenhum",efeito:1};
+    };
+    await dispararEventoIA(bouts,opp,{});
+    passo("1ª resposta sem 'texto' não desiste — tenta 1x mais", chamadas===2);
+    passo("2ª tentativa aparece de verdade", ultimo().includes("Segunda tentativa deu certo"));
+
+    // caso 4: retentativa também falha sem texto — desiste (sem 3ª chamada)
+    const marca4=bouts.children.length; st.events=0; chamadas=0;
+    ai=async(kind,data)=>{ chamadas++; return{atributo:"nenhum",efeito:1}; };
+    await dispararEventoIA(bouts,opp,{});
+    passo("as duas tentativas vierem sem texto: desiste (só 2 chamadas, não 3+)", chamadas===2);
+    passo("nenhum evento aparece quando as duas tentativas falham", bouts.children.length===marca4);
+
+    // caso 5: tema é mandado pro data da chamada (não é só sugestão no prompt)
+    st.events=0;
+    let temaRecebido=null;
+    ai=async(kind,data)=>{ temaRecebido=data.tema; return{texto:"Evento qualquer.",atributo:"nenhum",efeito:1}; };
+    await dispararEventoIA(bouts,opp,{});
+    passo("tema vai no data da chamada, sorteado de EVENTO_TEMAS",
+      EVENTO_TEMAS.includes(temaRecebido));
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  return env.sandbox.__evia.then((passos) => {
+    let ok = true;
+    for (const p of passos) {
+      if (!p.ok) ok = false;
+      console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    return ok && passos.length > 0;
+  });
 }
 
 /* ================================================================== *
@@ -3155,6 +3259,7 @@ try {
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");
   else if (cmd === "coerencia") ok = testarCoerencia();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
+  else if (cmd === "eventoia") ok = await testarEventoIA();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
