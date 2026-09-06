@@ -112,7 +112,7 @@ function exportar(js, nomes) {
 }
 const API_MOTOR = ["simulateFight", "simularRound", "mkState", "mulberry32", "rateAll", "makePercentiler",
   "rollTable", "PAIRS", "WEIGHTS", "TOTAL_WEIGHT", "BUDGET_PCT", "TUNING",
-  "EVENTS", "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
+  "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
   "TETO_TREINO", "RITMO_TREINO", "ATTR_TREINAVEIS",
   "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES",
   "ACOES_LUTA", "COUNTER_ATTR", "sinalDoRound", "contest", "K_ESCOLHA_LUTA"];
@@ -216,6 +216,30 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     if (divs.length < min) throw new Error(`só ${divs.length} divisões jogáveis, esperava ao menos ${min}`);
     marca = env.todos.length;          // marca ANTES do clique: é ele que monta o draft
     divs[divEscolhida % divs.length].onclick();
+  });
+
+  /* Item 3 ("Rolar novamente"): existe, funciona uma vez, desabilita de
+     verdade depois — não só visualmente. */
+  passo("reroll: botão existe e começa habilitado", () => {
+    const rb = env.registro.reroll;
+    if (!rb || !rb.onclick) throw new Error("botão de rolar novamente não foi montado");
+    if (rb.disabled) throw new Error("começou desabilitado — deveria valer na 1ª montagem");
+  });
+  passo("reroll: clicar re-rola a mesa (cartas novas aparecem)", () => {
+    const antesDoClique = env.todos.length;
+    env.registro.reroll.onclick();
+    const novasCartas = env.todos.slice(antesDoClique).filter(n => n.className === "card");
+    if (!novasCartas.length) throw new Error("clicar não montou cartas novas — renderDraft não rodou de novo");
+    marca = antesDoClique;             // as cartas re-roladas são "novas" pro 1º pick abaixo
+  });
+  passo("reroll: depois de usado, fica desabilitado de verdade (não só no texto)", () => {
+    if (!env.registro.reroll.disabled) throw new Error("reroll.disabled continua false depois de usar");
+  });
+  passo("reroll: clicar de novo desabilitado não re-rola outra vez", () => {
+    const antes = env.todos.length;
+    env.registro.reroll.onclick();
+    const depois = env.todos.slice(antes).filter(n => n.className === "card");
+    if (depois.length) throw new Error("2º clique desabilitado ainda montou cartas — não é 1 vez só na criação inteira");
   });
 
   for (let i = 1; i <= 4; i++) passo(`draft: escolha ${i} de 4`, () => {
@@ -667,28 +691,34 @@ function testarDraft(div = "lightweight") {
 }
 
 /* ================================================================== *
- * 4. DESAFIO — a mesma semente dá a mesma carreira?
+ * 4. DESAFIO — a mesma semente dá os mesmos adversários?
+ *
+ * A promessa MUDOU nesta leva: "Rolar novamente" (draft) consome rng sob
+ * demanda, então a mesma semente pode dar cartas DIFERENTES se o jogador
+ * usar o dado — e os eventos de vida agora vêm da IA, sem sorteio
+ * determinístico nenhum. Só os ADVERSÁRIOS continuam garantidos. O draft
+ * ainda roda aqui dentro de percorrer() (sem usar o dado) só pra consumir
+ * rng na mesma ORDEM da produção antes do sorteio de adversários — não é
+ * mais uma promessa que este teste prova, é só setup necessário.
  * ================================================================== */
 function testarDesafio(div = "lightweight") {
-  console.log("\n" + cinza("mesma semente tem que dar as mesmas cartas e os mesmos adversários"));
+  console.log("\n" + cinza("mesma semente tem que dar os mesmos adversários (draft não é mais garantido — rolar novamente consome rng)"));
   const M = carregarMotor(), F = lerLutadores();
   const pool = F.filter(f => f.division === div);
   const PCT = M.makePercentiler(pool);
   const ladder = [...pool].sort((a, b) => a.rating - b.rating);
 
-  /* reproduz o que a carreira faz: rola o draft e depois sorteia 22 adversários */
   function percorrer(seed) {
     const rng = M.mulberry32(seed);
-    const cartas = [], advs = [];
     let left = M.TOTAL_WEIGHT * M.BUDGET_PCT, rem = [...M.PAIRS];
     while (rem.length) {
       const rows = M.rollTable(pool, rem, rng, PCT);
-      cartas.push(rows.map(r => r.pair.id + ":" + r.src.name).join("|"));
       const aff = rows.filter(r => r.cost <= left);
       const shown = aff.length ? aff : [rows.reduce((m, r) => r.cost < m.cost ? r : m)];
       const r = shown[0];
       left -= r.cost; rem = rem.filter(p => p.id !== r.pair.id);
     }
+    const advs = [];
     let standing = .18; const vistos = new Set();
     for (let i = 0; i < 22; i++) {
       const c = Math.floor(standing * (ladder.length - 1));
@@ -702,15 +732,14 @@ function testarDesafio(div = "lightweight") {
       advs.push((esc || ladder[lo]).name);
       standing = Math.min(1, standing + .07);
     }
-    return { cartas: cartas.join("//"), advs: advs.join(",") };
+    return advs.join(",");
   }
 
   let ok = true;
   const a = percorrer(123456), b = percorrer(123456), c = percorrer(999999);
-  const igualCartas = a.cartas === b.cartas, igualAdvs = a.advs === b.advs;
-  const difere = a.cartas !== c.cartas && a.advs !== c.advs;
-  if (!igualCartas || !igualAdvs || !difere) ok = false;
-  console.log(`  ${igualCartas ? verde("ok   ") : vermelho("fora ")} mesma semente, mesmas cartas no draft`);
+  const igualAdvs = a === b;
+  const difere = a !== c;
+  if (!igualAdvs || !difere) ok = false;
   console.log(`  ${igualAdvs ? verde("ok   ") : vermelho("fora ")} mesma semente, mesmos adversários na mesma ordem`);
   console.log(`  ${difere ? verde("ok   ") : vermelho("fora ")} semente diferente gera carreira diferente`);
 
@@ -729,9 +758,13 @@ function testarTreino(div = "lightweight") {
   const M = carregarMotor();
   const teto = M.TETO_TREINO, ritmo = M.RITMO_TREINO;
   let ok = true;
-  /* "Focar em fama" (item 4) não treina nada — sem camp.alvos de propósito,
-     não é um camp de atributo, é o resto do sistema (medido em testarDinheiro()). */
-  for (const camp of M.CAMPS.filter(c => !c.fama)) {
+  /* "Focar em fama" removido de vez (achado em produção: pedido duas levas
+     atrás, nunca tinha saído) — guarda de regressão pra não voltar por
+     acidente. Só os 4 camps de atributo, nenhum com .fama. */
+  const semFama = M.CAMPS.every(c => !c.fama);
+  if (!semFama) ok = false;
+  console.log(`  ${semFama ? verde("ok   ") : vermelho("fora ")} "Focar em fama" removido — ${M.CAMPS.length} camps, nenhum .fama`);
+  for (const camp of M.CAMPS) {
     const tr = {};
     for (let i = 0; i < 22; i++)
       for (const [k, peso] of Object.entries(camp.alvos)) {
@@ -810,7 +843,7 @@ function testarEscolhas(div = "lightweight") {
         kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
         lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
         tituloEstaLuta:false};
-    fought=new Set(); usedEvents=new Set(); rareUsed=new Set();
+    fought=new Set(); rareUsed=new Set();
     for(let i=0;i<22;i++){
       const opts=candidatos();       // real: 3 faixas (fácil/parelho/duro)
       const escolhido=opts[k];
@@ -899,8 +932,7 @@ function medirPesos(div = "lightweight") {
 /* ================================================================== *
  * 5b. DINHEIRO — item 4: treinador melhor tem que ficar acessível entre
  *     a luta 6 e a 8 numa carreira mediana. renda_por_luta não depende do
- *     camp escolhido (só de standing), então o bot aqui nunca escolhe
- *     "fama" — o camp é irrelevante pra esta medida.
+ *     camp escolhido (só de standing) — o camp é irrelevante pra esta medida.
  * ================================================================== */
 function testarDinheiro(div = "lightweight") {
   console.log("\n" + cinza("400 carreiras de bot, quando o treinador melhor fica acessível"));
@@ -941,8 +973,8 @@ function testarDinheiro(div = "lightweight") {
         kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
         lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,defesas:0,
         tituloEstaLuta:false,dinheiro:0,treinadorComprado:false};
-    fought=new Set(); usedEvents=new Set(); rareUsed=new Set();
-    const camps=CAMPS.filter(c=>!c.fama);
+    fought=new Set(); rareUsed=new Set();
+    const camps=CAMPS;
     let primeiraLutaAcessivel=null;
     for(let i=0;i<22;i++){
       const opts=candidatos();
@@ -1871,7 +1903,7 @@ function testarMomentos() {
     me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
         tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
     me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
-    usedEvents=new Set();rareUsed=new Set();
+    rareUsed=new Set();
     rng=mulberry32(1);
     const opp={name:"Rival",rating:.5};
 
@@ -1985,7 +2017,7 @@ function testarMomentos() {
     /* fightNo (a variável GLOBAL, não st.fightNo) é quem decide dilema x
        evento em finishFight() — 0%5===0 sempre, então sem setar ela junto
        toda luta cairia no ramo do dilema e drawEvent() nunca rodaria. */
-    rng=mulberry32(1); usedEvents=new Set(); rareUsed=new Set();
+    rng=mulberry32(1); rareUsed=new Set();
     st=stBase(); fightNo=8; st.fightNo=8; st.streakW=8; st.ganhoEscolhido=.07;
     finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
     passo("streakW>=8: dispara RARE (relatório final)",
@@ -1993,7 +2025,7 @@ function testarMomentos() {
     passo("streakW>=8: NÃO dispara card de momento (cortado de propósito)",
       st.momentos.length===0);
 
-    rng=mulberry32(1); usedEvents=new Set(); rareUsed=new Set();
+    rng=mulberry32(1); rareUsed=new Set();
     st=stBase(); fightNo=18; st.fightNo=18; st.losses=0; st.wins=17; st.ganhoEscolhido=.07;
     finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
     passo("18-0: dispara card de momento (é um dos 3 marcados card:true)",
@@ -2118,7 +2150,7 @@ function testarFrequenciaMomentos(N = 30) {
       lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,disputaRecusas:0,defesas:0,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,vezesCampeao:0,
       subLosses:0,evitouAlgumaVez:false,dinheiro:0,treinadorComprado:false,estreouMainCard:false};
-  fought=new Set();usedEvents=new Set();rareUsed=new Set();
+  fought=new Set();rareUsed=new Set();
   fightNo=0;auto=true;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;
   document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
   document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
@@ -2645,7 +2677,7 @@ function testarConquistas() {
     me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
         tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
     me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
-    rng=mulberry32(1); fightNo=1;
+    rng=mulberry32(1); fightNo=1; rareUsed=new Set();
     st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
         bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,events:0,koLosses:0,
         kdTaken:0,kdGiven:0,fightNo:1,fan:5,followers:2400,peakFollowers:2400,longestW:0,
@@ -2660,6 +2692,12 @@ function testarConquistas() {
     // vitória real, via finishFight() de verdade — finishFight() já chama
     // verificarConquistas() sozinho (é o hook de produção), então o
     // desbloqueio acontece DENTRO dela, não precisa chamar de novo aqui.
+    // fightNo=1 agora cai no evento (item 1: um por luta, sem o throttle
+    // par/finish de antes) — sem AI_URL configurado aqui, ai() devolve
+    // null na hora (ver ai(): !AI_URL cai direto no motivo "sem_url"),
+    // dispararEventoIA() não faz nada com isso (sem fallback, por
+    // desenho) e a luta segue sem evento, exatamente como em produção
+    // quando a IA falha.
     finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
     passo("1ª vitória de verdade desbloqueia primeiro_sangue (via finishFight(), não chamada manual)",
       CONQUISTAS_DESBLOQUEADAS.has("primeiro_sangue"));
@@ -2773,17 +2811,15 @@ function testarResultadoLuta() {
   for(const c of controles)
     passo("mantém: \\""+c.slice(0,40)+"...\\"", semResultadoDeLuta(c)===c);
 
-  /* Achado jogando: um evento local ("o joelho travou, o médico falou em
-     cirurgia") narrava lesão de verdade sem passar pelo st.lesao — mesma
-     classe deste teste, só que em EVENTS/RARE em vez do desfecho da IA.
-     Guarda de regressão barata: nenhuma frase local promete um sistema que
-     o efeito mecânico (fx) não aciona. Não é a regra geral (isso é o
-     "node testar.js coerencia" proposto, ainda não escrito) — só os dois
-     casos concretos já achados, pra não voltar por acidente. */
-  const vocabLesao=/médic[oa]|cirurgia|escondeu da comissão/i;
-  const doresProibidas=EVENTS.filter(e=>vocabLesao.test(e.t("X")));
-  passo("EVENTS: nenhuma frase promete lesão de verdade sem passar por st.lesao",
-    doresProibidas.length===0);
+  /* Achado jogando (leva anterior): um evento local do pool EVENTS ("o
+     joelho travou, o médico falou em cirurgia") narrava lesão de verdade
+     sem passar pelo st.lesao. Guarda removida junto com o pool: EVENTS
+     saiu do caminho principal nesta leva (evento comum agora é gerado
+     pela IA, e passa pelos MESMOS filtros RESULTADO_LUTA/CONTEUDO_INSEGURO
+     já testados acima — não precisa de guarda de vocabulário própria).
+     RARE não herda esta checagem: seu vocabulário de "médico" é sobre tom
+     dramático (comissão sugerindo exame após 4 nocautes), não promessa de
+     efeito mecânico — teria dado falso positivo ao ser incluído aqui. */
 
   return passos;
 })();
@@ -2922,16 +2958,24 @@ function testarConteudoInseguro() {
       !box.innerHTML.includes("seguidores</span>"));
     passo("j inseguro: SEM linha de fã (efeito zero não vira linha)",
       !box.innerHTML.includes("de fã</span>"));
+    passo("j inseguro: SEM linha de dinheiro (item 2 — j descartado inteiro, número incluso)",
+      !box.innerHTML.includes("R$"));
+    passo("j inseguro: st.dinheiro não mudou (j descartado, dDinheiro cai no default 0)",
+      st.dinheiro===(st.dinheiro||0));
 
     // controle: efeito de verdade (não zero) continua aparecendo
     st.followers=2400; st.fan=5;
     aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
-      {desfecho:"Fez a escolha certa e ganhou uns seguidores.",seguidores:.05,fa:.3,
+      {desfecho:"Fez a escolha certa e ganhou uns seguidores.",seguidores:.05,fa:.3,dinheiro:.4,
        atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
     passo("efeito real (não zero): linha de seguidores aparece",
       box.innerHTML.includes("seguidores</span>"));
     passo("efeito real (não zero): linha de fã aparece",
       box.innerHTML.includes("de fã</span>"));
+    passo("efeito real (item 2): linha de dinheiro aparece, com R$",
+      box.innerHTML.includes("R$"));
+    passo("item 2: dinheiro trava em ±1 bolsa (RENDA_BASE) — .4 de fração vira 40% dela",
+      st.dinheiro===Math.round(RENDA_BASE*.4));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }

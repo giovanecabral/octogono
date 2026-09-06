@@ -92,6 +92,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 
 /* ---------- orçamento ---------- */
 .budget{display:flex;align-items:center;gap:12px;margin:14px 0 18px;flex-wrap:wrap}
+.reroll{width:100%;margin-bottom:14px}
 .budget-bar{flex:1;min-width:180px;height:12px;border:1px solid var(--ink);position:relative;background:transparent}
 .budget-fill{position:absolute;inset:1px auto 1px 1px;background:var(--ink);transition:width .35s ease}
 .budget-fill.low{background:var(--stamp)}
@@ -190,6 +191,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .ficha-top .nm{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;line-height:1.1;
   word-break:break-word}
 .ficha-top .sub{font-size:11px;color:var(--faded);margin-top:3px}
+.ficha-top .caixa{font-size:11px;color:var(--faded);margin-top:2px}
 .ficha-top .assin{font-size:11px;color:var(--gold);margin-top:4px;letter-spacing:.04em}
 .ficha-sec{padding:11px 14px;border-bottom:1px solid var(--line)}
 .ficha-sec:last-child{border-bottom:none}
@@ -879,58 +881,13 @@ function rateAll(roster){
 }
 
 /* =========================================================================
-   EVENTOS DE VIDA — quase todos disparados pelo que aconteceu na luta
+   EVENTOS DE VIDA — o pool fixo de 28 frases (repetia entre carreiras,
+   sempre as mesmas) saiu do caminho principal: a IA gera um evento por
+   luta agora (ver dispararEventoIA(), "evento" em api/ai.js). RARE
+   (abaixo) continua local — são calibrados à mão pra disparar fora da
+   curva, texto e efeito exatos importam pro card de momento/conquistas,
+   não é o tipo de coisa que se pede pra IA variar.
    ========================================================================= */
-const EVENTS=[
- {when:s=>s.lastKO&&s.lastWon&&s.lastRound===1,
-  t:n=>`O nocaute de ${n} em menos de cinco minutos viralizou. Quatro milhões de views em dois dias.`},
- {when:s=>s.lastKO&&s.lastWon,
-  t:n=>`${n} subiu no alambrado e gritou com o público. A imagem virou pôster.`},
- {when:s=>s.lastMethod==="Finalização"&&s.lastWon,
-  t:n=>`A academia postou o mata-leão de ${n} em câmera lenta. Virou aula em ringue do mundo inteiro.`},
- {when:s=>s.lastKO&&!s.lastWon,
-  t:n=>`${n} apagou no primeiro. O rosto dele virou figurinha de WhatsApp no dia seguinte.`,
-  fx:f=>({durability:f.durability*.96})},
- {when:s=>s.streakL>=3,
-  t:n=>`Terceira seguida. Perguntaram sobre aposentadoria e ${n} saiu da entrevista sem responder.`},
- {when:s=>s.streakL===2,
-  t:n=>`${n} trocou de academia. Disse que precisava recomeçar do zero.`,
-  fx:f=>({strDef:Math.min(.85,f.strDef*1.05)})},
- {when:s=>s.streakW>=5,
-  t:n=>`Cinco seguidas. A imprensa começou a chamar ${n} de próximo desafiante.`},
- {when:s=>s.streakW===3,
-  t:n=>`Um moleque de catorze anos apareceu no treino dizendo que quer ser igual a ${n}. Ele ficou sem saber o que responder.`},
- {when:s=>s.title||s.peak>.9,
-  t:n=>`${n} pagou a reforma da academia onde começou. Botou o nome do primeiro treinador na porta.`},
- {when:s=>s.lastWon&&s.fightNo>10,
-  t:n=>`${n} quitou a dívida do pai e não contou pra ninguém. Vazou mesmo assim.`},
- {when:s=>!s.lastWon,
-  t:n=>`${n} perdeu o aniversário da filha por causa do corte de peso. Ela não falou com ele por uma semana.`},
- /* Antes descrevia lesão de verdade (joelho travando, médico falando em
-    cirurgia) sem passar pelo sistema de lesão — narrava um problema que o
-    motor nunca produziu, mesma classe do RESULTADO_LUTA. Reescrito pra não
-    prometer o que não acontece; o efeito mecânico continua o mesmo. */
- {t:n=>`${n} passou a semana de camp mais cauteloso, sem forçar o ritmo. O volume caiu um pouco nos treinos.`,
-  fx:f=>({tdAvg:f.tdAvg*.92,slpm:f.slpm*.92})},
- {t:n=>`O empresário de ${n} sumiu com a bolsa de duas lutas. Não valeu a pena processar.`},
- {t:n=>`${n} escorregou na entrada do octógono e caiu sentado. O clipe já tem trilha de circo em nove versões.`},
- {t:n=>`${n} respondeu "sim" pra uma pergunta que não era de sim ou não. Virou áudio de status.`},
- {t:n=>`${n} postou um treino motivacional e esqueceu de cortar a parte em que cai da corda. Deixou no ar mesmo. Deu certo.`},
- {when:s=>s.title,t:n=>`${n} levou o cinturão pra casa dos pais e deixou lá, em cima da geladeira.`},
- {t:n=>`${n} insultou o adversário na coletiva e levou multa da comissão.`},
- {t:n=>`${n} gaguejou ao dizer o nome do próprio patrocinador. O corte viralizou.`},
- {t:n=>`${n} errou o peso por setecentos gramas. Perdeu vinte por cento da bolsa e a paciência do empresário.`},
- {t:n=>`Uma marca de açaí fechou patrocínio com ${n}. O logo ficou torto no calção.`},
- {t:n=>`${n} apareceu num podcast e disse que treina de madrugada porque de dia tem barulho.`},
- {t:n=>`${n} começou a treinar com um faixa-preta antigo. O camp foi brutal.`,
-  fx:f=>({subAvg:f.subAvg*1.12,tdDef:Math.min(.92,f.tdDef*1.04)})},
- {t:n=>`${n} teve uma semana de camp fraca, sem intensidade nos treinos. O treinador reclamou.`,fx:f=>({kdAvg:f.kdAvg*.88})},
- {t:n=>`${n} virou meme depois de dançar na encarada. Ganhou duzentos mil seguidores.`},
- {t:n=>`${n} passou o camp inteiro no boxe. A defesa melhorou.`,
-  fx:f=>({strDef:Math.min(.85,f.strDef*1.06)})},
- {t:n=>`${n} discutiu com o próprio treinador no córner. O vídeo vazou.`},
- {t:n=>`${n} recusou uma luta por dinheiro e a internet não perdoou.`},
-];
 /* RAROS EXTREMOS — só disparam fora da curva, uma vez cada */
 /* id em 4 entradas: referência estável pro card de momento (ver
    criarMomentoRaro() e o gatilho de cinturão perdido em finishFight()),
@@ -1015,7 +972,13 @@ const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra ne
 const FRASE_CINTURAO_INTERINO=(n,campeao)=>`${n} é o novo campeão interino. ${campeao} segue como campeão de verdade — a unificação vem por aí.`;
 const FRASE_UNIFICACAO=(n,campeao)=>`${n} venceu ${campeao} e unificou os cinturões. Só existe um campeão agora, e é ${n}.`;
 const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
+/* Duas frases, não uma — achado jogando em produção: o gatilho disparava
+   pra QUALQUER st.lesao ativo, nocaute incluso, e "entrou mancando" narra
+   uma escolha corajosa (aceitar lutar machucado) que não existe quando a
+   lesão veio de apanhar. origem:"dilema" pega a decisão de verdade;
+   origem:"nocaute" é sobre superar o próprio corpo, não uma escolha. */
 const FRASE_LESAO_VENCIDA=n=>`${n} entrou mancando e saiu com a mão levantada.`;
+const FRASE_LESAO_VENCIDA_NOCAUTE=n=>`${n} venceu ainda sentindo o nocaute da luta passada. O corpo lembrava, a mão levantou do mesmo jeito.`;
 /* neutra de propósito — dispara em vitória OU derrota, é sobre chegar lá,
    não sobre o resultado (ver "estreia no main card", item 8) */
 const FRASE_ESTREIA_MAIN_CARD=n=>`${n} entrou no octógono e o ginásio soube o nome.`;
@@ -1101,39 +1064,15 @@ function verificarConquistas(){
 /* Em vez de rotular 28 eventos à mão (e errar quando alguém editar o texto),
    a direção sai do próprio efeito: aplica num clone e compara os atributos.
    Evento sem efeito é neutro. */
-const EIXOS_SOM=["slpm","strDef","tdDef","tdAvg","subAvg","kdAvg","durability","reach"];
-function direcaoEvento(e,f){
-  if(e&&e.tom)return e.tom;        // marcado à mão: os raros não mexem em atributo
-  if(!e||!e.fx)return 0;
-  let antes=0,depois=0;
-  try{
-    const d=e.fx(f);
-    for(const k of EIXOS_SOM){
-      if(d[k]==null||f[k]==null)continue;
-      antes+=1; depois+=d[k]/f[k];
-    }
-  }catch(err){return 0;}
-  if(!antes)return 0;
-  const razao=depois/antes;
-  return razao>1.008?1:razao<0.992?-1:0;
-}
-function somDoEvento(e,f){
-  const d=direcaoEvento(e,f);
-  (d>0?SOM.bom:d<0?SOM.ruim:SOM.evento)();
-}
+/* som de evento: direção do efeito, não o valor — usado tanto pro RARE
+   (tom fixo, marcado à mão) quanto pro evento comum gerado pela IA (mult
+   perto de 1 = neutro, mesmo limiar .008 que sempre existiu aqui). */
+function tocarSom(dir){ (dir>0?SOM.bom:dir<0?SOM.ruim:SOM.evento)(); }
 
-function drawEvent(st,rng,used,rareUsed){
+function sortearRaro(st,rng,rareUsed){
   const rare=RARE.filter((e,i)=>!rareUsed.has(i)&&e.when(st));
-  if(rare.length&&rng()<.85){const e=rare[0];rareUsed.add(RARE.indexOf(e));return{e,rare:true};}
-  return _drawNormal(st,rng,used);
-}
-function _drawNormal(st,rng,used){
-  const pool=EVENTS.filter((e,i)=>!used.has(i)&&(!e.when||e.when(st)));
-  if(!pool.length)return null;
-  const trig=pool.filter(e=>e.when);
-  const from=(trig.length&&rng()<.72)?trig:pool;
-  const e=from[Math.floor(rng()*from.length)];
-  used.add(EVENTS.indexOf(e));return{e,rare:false};
+  if(rare.length&&rng()<.85){const e=rare[0];rareUsed.add(RARE.indexOf(e));return e;}
+  return null;
 }
 
 
@@ -1335,7 +1274,19 @@ function renderPhone(feed,fan,delta,followers){
    do jogador entra no prompt, então tratar a resposta como confiável seria
    entregar as regras do jogo pra quem souber digitar.
    ========================================================================= */
-const AI_URL="https://draft-ufc.vercel.app/api/ai";           /* ex: "https://seu-projeto.vercel.app/api/ai" */
+/* CAUSA RAIZ do bug "IA ignora a resposta" (achado em produção, 2026-09-06):
+   draft-ufc.vercel.app começou a devolver 404 DEPLOYMENT_NOT_FOUND em TODA
+   chamada (não intermitente — testado direto com curl, 100% das vezes),
+   provavelmente desde que octogono.fun virou o domínio principal do
+   projeto na Vercel. Não era rate limit: ai() tratava esse 404 (sem JSON
+   de verdade, corpo=null) como "erro_transitorio", nunca desligava aiVivo
+   nem dava sinal de que era permanente — toda luta com dilema caía direto
+   no fallback local (fraseFallback()), indistinguível de uma decisão
+   "sem graça" pro jogador. A suposição antiga ("mesma app, /api/ai
+   responde nos dois domínios") era falsa na prática — AI_URL TEM que
+   apontar pro domínio que está de fato servindo o site, não presumir que
+   o antigo continua vivo. */
+const AI_URL="https://octogono.fun/api/ai";
 /* Fixo, não location.host — testando local (localhost:8000, arquivo aberto
    direto) o rodapé do card compartilhável mostrava isso pro jogador
    exportar sem perceber. Card é pra fora, tem que sempre apontar pro
@@ -1512,6 +1463,45 @@ async function resolveFeed(fallback,rng){
   }).filter(t=>t.text!=="...");
 }
 
+/* Evento de vida a cada luta (substitui o pool fixo de 28 frases, que
+   repetia entre carreiras — ver o bloco "EVENTOS DE VIDA" logo acima de
+   RARE). SEM FALLBACK LOCAL, de propósito: se a chamada falhar ou o
+   filtro esvaziar o texto, a luta passa sem evento — nenhuma frase de
+   reserva, nenhum número inventado (RARE, acima em sortearRaro(), continua
+   cobrindo o fora-da-curva, local e síncrono, sem depender da IA).
+   Assíncrono e não bloqueia nextFight() nem a tela — mesmo padrão do
+   feed (prefetchFeed/resolveFeed): aparece quando fica pronto, sem
+   spinner, sem pausa; se o jogador já avançou pra próxima luta antes de
+   resolver, o efeito em st.eventoMod só vale a partir da luta seguinte
+   (lutadorEfetivo() da luta em andamento já foi lido antes disso). */
+const ATTRS_EVENTO=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
+async function dispararEventoIA(bouts,opp,r){
+  const j=await ai("evento",{name:me.name,record:`${st.wins}-${st.losses}`,
+    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
+    ganhou:st.lastWon,metodo:st.lastMethod,round:st.lastRound,nocaute:st.lastKO,
+    streakW:st.streakW,streakL:st.streakL,title:!!st.title,
+    fightNo,totalFights:TOTAL_FIGHTS});
+  if(!j||!j.texto)return;
+  /* Mesmos filtros do dilema, sem exceção (pedido explícito) — inclusive
+     RESULTADO_LUTA, que aqui pode cortar frase que seria verdadeira (o
+     resultado É conhecido, diferente do dilema). Consistência da trava
+     importa mais que aproveitar essa frase específica: mesma disciplina
+     em todo texto gerado, sem caso especial. */
+  if(conteudoInseguro(j.texto))return;
+  const texto=semResultadoDeLuta(String(j.texto)).slice(0,300).trim();
+  if(!texto)return;
+  bouts.appendChild(el("div","event","— "+texto));
+  const atr=ATTRS_EVENTO.includes(j.atributo)?j.atributo:null;
+  const mult=atr?lim(j.efeito,.90,1.10,1):1;
+  tocarSom(mult>1.008?1:mult<0.992?-1:0);
+  st.events++;
+  if(atr&&me[atr]!=null){
+    st.eventoMod=st.eventoMod||{};
+    st.eventoMod[atr]=(st.eventoMod[atr]||1)*mult;
+  }
+  renderFicha();
+}
+
 /* ---------- dilema: o jogador escreve o que faz, a IA julga ---------- */
 const SEEDS=["imprensa provocando","dinheiro curto","família cobrando",
   "lesão escondida","proposta de patrocínio duvidosa","polêmica nas redes",
@@ -1680,6 +1670,11 @@ function aplicarDilema(box,d,txt,jBruto){
      prompt, então nada que o modelo devolve é aceito sem trava. */
   const dSeg=lim(j&&j.seguidores,-.35,.60,0);
   const dFan=lim(j&&j.fa,-2.5,2.5,0);
+  /* Dinheiro do dilema (item 2): fração de UMA bolsa de luta (RENDA_BASE),
+     pra cima ou pra baixo — mesma âncora que "seguidores" já usa (fração
+     relativa, não número solto). ±1 bolsa inteira é o teto: um dilema é
+     evento situacional, não pode valer mais que uma luta inteira paga. */
+  const dDinheiro=Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0));
   const ATTRS_LESAO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
 
   /* Uma lesão de cada vez: st.lesao é objeto único, não lista. Se uma nova
@@ -1714,8 +1709,14 @@ function aplicarDilema(box,d,txt,jBruto){
       ?Math.round(tipo.duracao*REDUCAO_CURA_TREINADOR):tipo.duracao;
     st.eventoMod=st.eventoMod||{};
     st.eventoMod[atr]=(st.eventoMod[atr]||1)*mult;
+    /* origem:"dilema" — distingue de "nocaute" (ver finishFight()). Achado
+       jogando em produção: o momento "lesão aceita e vencida" disparava
+       pra QUALQUER st.lesao ativo, nocaute incluso — a frase ("entrou
+       mancando e saiu com a mão levantada") narra uma escolha corajosa
+       que o jogador nunca fez quando a lesão veio de apanhar, não de
+       decidir lutar machucado. */
     st.lesao={nome:String(lesaoBruta.regiao||"Lesão").slice(0,40),atributo:atr,mult,
-      permanente:!!lesaoBruta.permanente,desdeLuta:st.fightNo,duracao};
+      permanente:!!lesaoBruta.permanente,desdeLuta:st.fightNo,duracao,origem:"dilema"};
   }else{
     /* dilema comum (ou lesão bloqueada por já ter uma ativa): atributo/efeito
        seguem vindo da IA, travados no lim() de sempre — o bypass acima é só
@@ -1736,9 +1737,10 @@ function aplicarDilema(box,d,txt,jBruto){
   const antes=st.followers;
   st.followers=Math.max(120,Math.round(st.followers*(1+dSeg)));
   st.fan=Math.max(0,Math.min(10,st.fan+dFan));
+  st.dinheiro=Math.max(0,(st.dinheiro||0)+dDinheiro);
   const dif=st.followers-antes;
   /* aqui a direção é direta: os números já vieram limitados pelo lim() */
-  const peso=(dSeg*2.2)+(dFan*0.55);
+  const peso=(dSeg*2.2)+(dFan*0.55)+(dDinheiro/RENDA_BASE*1.4);
   (peso>0.12?SOM.bom:peso<-0.12?SOM.ruim:SOM.evento)();
   /* Filtra ANTES do slice: cortar frase por regex depois de truncar em 500
      poderia deixar uma frase pela metade sem o ponto final que a divide. */
@@ -1751,6 +1753,7 @@ function aplicarDilema(box,d,txt,jBruto){
     <div class="dil-fx">
       ${dif!==0?`<span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>`:""}
       ${Math.abs(dFan)>=0.05?`<span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>`:""}
+      ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}
       ${atr?`<span class="hint">${ROTULO_ATTR[atr]||atr} <span class="${mult>=1?"g":"dn"}">${
         mult>=1?"+":""}${Math.round((mult-1)*100)}%</span></span>`:""}</div>`;
   st.dilemas=(st.dilemas||0)+1;
@@ -2231,6 +2234,7 @@ function renderFicha(){
       <div class="id">
         <div class="nm">${me.name}</div>
         <div class="sub">${idadeAtual()} anos · ${st.wins}-${st.losses}</div>
+        <div class="caixa">R$ ${fmtNum(st.dinheiro||0)}</div>
         <div class="assin">${assinatura()}</div>
       </div>
     </div>
@@ -2321,15 +2325,7 @@ const CAMPS=[
   ganho:"queixo e poder",
   alvos:{durability:0.85,kdAvg:0.85},
   contra:["Queixo de ferro","Completo","Nocauteador"]},
- {id:"fama",nome:"Focar em fama",desc:"Entrevista, patrocínio, rede social. Sem treino essa semana.",
-  ganho:"fama, sem ganho de treino",
-  fama:true,
-  contra:[]},
 ];
-/* Medido nesta leva (item 4): quanto de fã cada uso de "Focar em fama" dá.
-   O custo já é conhecido — é o treino perdido do ciclo (TETO_TREINO). Ver
-   PENDENCIAS item 4 e o relatório desta leva. */
-const GANHO_FAMA_CAMP=.5;
 /* Medidos nesta leva (item 4) — node testar.js dinheiro, 400 carreiras de
    bot, candidatos()/aplicarCamp()/simulateFight() reais. Meta: treinador
    melhor acessível entre a luta 6 e a 8 numa carreira mediana — bateu luta
@@ -2360,12 +2356,6 @@ const RITMO_TREINO=0.30;      // fração do que falta para o teto, por camp
 function aplicarCamp(camp){
   st.campHist=st.campHist||{};
   st.campHist[camp.id]=(st.campHist[camp.id]||0)+1;
-  /* "Focar em fama" (item 4) pula o treino do ciclo inteiro — o custo É
-     não treinar, não precisa de número novo pra isso. */
-  if(camp.fama){
-    st.fan=Math.max(0,Math.min(10,(st.fan||0)+GANHO_FAMA_CAMP));
-    return;
-  }
   st.treino=st.treino||{};
   for(const [k,peso] of Object.entries(camp.alvos)){
     const atual=st.treino[k]||1;
@@ -2590,24 +2580,17 @@ function telaCamp(escolhido){
   const g=document.getElementById("camps");
   CAMPS.forEach(c=>{
     const vezes=(st.campHist&&st.campHist[c.id])||0;
-    /* "Focar em fama" (item 4) não treina nada — sem barra de retorno
-       decrescente, mostra o ganho de fã fixo em vez disso. */
-    let barra;
-    if(c.fama){
-      barra=`<span class="camp-st">+${GANHO_FAMA_CAMP} de fã${vezes?` · feito ${vezes}x`:""}</span>`;
-    }else{
-      /* mostra quanto ainda RENDE: sem isso o jogador não percebe o retorno
-         decrescente e continua repetindo um camp que já saturou */
-      const alvos=Object.keys(c.alvos);
-      const restante=alvos.reduce((s,k)=>{
-        const at=(st.treino&&st.treino[k])||1;
-        return s+(TETO_TREINO-at)/(TETO_TREINO-1);
-      },0)/alvos.length;
-      const rot=restante>.72?"rende muito":restante>.4?"ainda rende":
-                restante>.15?"quase no teto":"saturado";
-      barra=`<span class="camp-bar"><i style="width:${Math.round(restante*100)}%"></i></span>
-        <span class="camp-st">${rot}${vezes?` · feito ${vezes}x`:""}</span>`;
-    }
+    /* mostra quanto ainda RENDE: sem isso o jogador não percebe o retorno
+       decrescente e continua repetindo um camp que já saturou */
+    const alvos=Object.keys(c.alvos);
+    const restante=alvos.reduce((s,k)=>{
+      const at=(st.treino&&st.treino[k])||1;
+      return s+(TETO_TREINO-at)/(TETO_TREINO-1);
+    },0)/alvos.length;
+    const rot=restante>.72?"rende muito":restante>.4?"ainda rende":
+              restante>.15?"quase no teto":"saturado";
+    const barra=`<span class="camp-bar"><i style="width:${Math.round(restante*100)}%"></i></span>
+      <span class="camp-st">${rot}${vezes?` · feito ${vezes}x`:""}</span>`;
     const b=el("button","camp",`<span class="t">${c.nome}</span>
       <span class="d">${c.desc}</span>
       <span class="g">${c.ganho}</span>
@@ -3170,14 +3153,29 @@ async function desenharCardMomento(m){
   cv.width=CARD_W;cv.height=CARD_H;
   const x=cv.getContext("2d");
   const M=72;
-
-  x.fillStyle=C.stock;x.fillRect(0,0,CARD_W,CARD_H);
-  x.fillStyle="rgba(255,255,255,.014)";
-  for(let y=0;y<CARD_H;y+=3)x.fillRect(0,y,CARD_W,1);
-
-  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
   const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
   const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
+
+  /* Altura dinâmica — achado jogando em produção: com a frase curta (1-2
+     frases é o caso comum, não o pior caso de 5 linhas), sobrava até
+     ~250px vazios entre o bloco de 3 linhas e o rodapé, porque CARD_H era
+     fixo pro pior caso. Mede quanto a frase e o bloco de 3 linhas REALMENTE
+     ocupam antes de fixar a altura final — CARD_W nunca muda, só a altura
+     deste card (o de fim de carreira, desenharCard(), continua CARD_H
+     fixo, ele já preenche bem). */
+  x.font=`italic 30px "IBM Plex Mono",monospace`;
+  const lsFrase=quebrar(x,m.frase,CARD_W-M*2-32).slice(0,5);
+  const avW=272,avH=Math.round(avW*120/100);
+  const numLinhas=(m.adversario?1:0)+(m.resultado?1:0)+(m.posicao?1:0);
+  const yFrase=(M+130+36+avH+50)+46+53*numLinhas+34;
+  const CARD_H_M=Math.max(1060,yFrase+lsFrase.length*42+50+86+M);
+  cv.width=CARD_W;cv.height=CARD_H_M;      // reseta o canvas pro tamanho final (limpa o contexto, nada foi desenhado ainda)
+
+  x.fillStyle=C.stock;x.fillRect(0,0,CARD_W,CARD_H_M);
+  x.fillStyle="rgba(255,255,255,.014)";
+  for(let y=0;y<CARD_H_M;y+=3)x.fillRect(0,y,CARD_W,1);
+
+  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
 
   /* Cabeçalho de marca (item 5/6): nome do jogo + o que é, antes de
      qualquer coisa — quem nunca jogou entende num olhar antes de reparar
@@ -3197,8 +3195,8 @@ async function desenharCardMomento(m){
 
   /* Avatar como protagonista (item 6): lado a lado com nome/cartel, não
      empilhado — é a coisa mais distintiva do jogo (personalizado, os 1.527
-     lutadores reais não têm retrato) e hoje não aparecia no card nenhum. */
-  const avW=272, avH=Math.round(avW*120/100);
+     lutadores reais não têm retrato) e hoje não aparecia no card nenhum.
+     avW/avH já calculados lá em cima, pra decidir a altura do card. */
   const avY=M+130+36;
   try{
     const img=await svgParaImagem(bonecoSVG(ROSTO||cfgPadrao(),{w:avW}));
@@ -3257,14 +3255,15 @@ async function desenharCardMomento(m){
   if(m.posicao)linha("Posição na divisão",m.posicao);
   y+=34;
 
-  // frase — mesma carga emocional do LEGACY no card de fim de carreira
+  // frase — mesma carga emocional do LEGACY no card de fim de carreira.
+  // lsFrase já calculada lá em cima (mesma quebra, mesma largura), pra
+  // decidir a altura do card antes de desenhar.
   x.font=`italic 30px "IBM Plex Mono",monospace`;
-  const ls=quebrar(x,m.frase,CARD_W-M*2-32).slice(0,5);
-  x.fillStyle=C.stamp;x.fillRect(M,y-30,5,ls.length*42+14);
+  x.fillStyle=C.stamp;x.fillRect(M,y-30,5,lsFrase.length*42+14);
   x.fillStyle=C.ink;
-  ls.forEach((l,i)=>x.fillText(l,M+28,y+i*42));
+  lsFrase.forEach((l,i)=>x.fillText(l,M+28,y+i*42));
 
-  const yf=CARD_H-M-86;
+  const yf=CARD_H_M-M-86;
   regra(yf,4,C.line2);
   x.fillStyle=C.ink;x.font=mono(24,600);
   x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M,yf+46);
@@ -3432,8 +3431,8 @@ async function compartilhar(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,usedEvents=null,rareUsed=null,fought=null;
-let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,rareUsed=null,fought=null;
+let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=false;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
    clicar no automático chamava nextFight por cima do dilema, a promessa nunca
@@ -3588,9 +3587,9 @@ function screenName(){
     const d=DIVISOES.find(x=>x.id===desafio.div);
     app.appendChild(el("div","legend",
       `Alguém mandou a carreira dele pra você. <b>${d.nome}</b>${
-        desafio.modo==="lenda"?", no modo <b>Seja uma lenda</b>":""}, as mesmas
-       cartas no draft e os mesmos adversários na mesma ordem. Só as escolhas
-       são suas.`));
+        desafio.modo==="lenda"?", no modo <b>Seja uma lenda</b>":""}, com os
+       mesmos adversários, na mesma ordem. O draft (se rolar novamente) e os
+       eventos da carreira podem sair diferentes — o resto é você quem faz.`));
   }
   const p=el("p","",`Todo lutador começa com um nome numa ficha. Depois disso é só o que ele faz no octógono.`);
   const inp=el("input");inp.type="text";inp.placeholder="Nome do lutador";inp.maxLength=28;
@@ -3786,12 +3785,15 @@ function startDraft(name){
   PCT=makePercentiler(POOL);
   LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
   RANKING=buildRanking(POOL);
-  /* A semente controla TUDO que é sorteado: as cartas oferecidas no draft, os
-     adversários e a ordem deles. Duas pessoas com a mesma semente recebem a
-     mesma carreira e só diferem nas escolhas. É isso que torna o link um
-     desafio de verdade em vez de um print. */
+  /* A semente garante os ADVERSÁRIOS e a ordem deles — é isso que torna o
+     link um desafio de verdade em vez de um print. Não garante mais o
+     draft (o "Rolar novamente" consome rng sob demanda, uma vez por
+     criação) nem os eventos de vida (agora gerados pela IA, sem sorteio
+     determinístico nenhum) — ver PENDENCIAS.md e a tela de convite
+     (screenName()) pro texto exato da promessa. */
   SEED=SEED||((Math.random()*4294967295)>>>0);
   rng=mulberry32(SEED);
+  rerollUsado=false;
   /* Stream separado pra "a disputa pode não vir": nunca consome do rng
      principal, senão qualquer sorteio aqui deslocaria a sequência e link de
      desafio antigo pararia de reproduzir a mesma carreira. */
@@ -3911,7 +3913,25 @@ function renderDraft(){
     <div class="budget"><span class="budget-num">${budgetLeft.toFixed(2)}</span>
       <span class="budget-bar"><span class="budget-fill${pl<.3?" low":""}"
         style="width:calc(${(pl*100).toFixed(1)}% - 2px)"></span></span></div>
+    <button class="btn btn-ghost btn-sm reroll" id="reroll"></button>
     <div class="cards cards-scroll" id="cards" style="grid-template-columns:1fr"></div>`;
+  /* Item 3: uma rolagem nova da mesa atual, uma vez em toda a criação (não
+     por par) — desabilita globalmente com rerollUsado, não um contador por
+     tela. Consome rng (rollTable() chama rng() de novo pra sortear outra
+     vez), então a partir daqui o draft deixa de ser reprodutível pelo link
+     — só os ADVERSÁRIOS continuam garantidos pela semente (ver
+     startDraft() e screenName()). .disabled setado em JS, não só no texto
+     do template — mesmo padrão de go.disabled/inp.disabled em
+     abrirDilema(), é o que fica de fato desabilitado (clicável ou não),
+     não só visualmente cinza. */
+  const rerollBtn=document.getElementById("reroll");
+  rerollBtn.textContent=rerollUsado?"🎲 Já rolou":"🎲 Rolar novamente";
+  rerollBtn.disabled=rerollUsado;
+  rerollBtn.onclick=()=>{
+    if(rerollUsado)return;
+    rerollUsado=true;
+    renderDraft();
+  };
 
   const rows=rollTable(POOL,remaining,rng,PCT);
   const afford=rows.filter(r=>r.cost<=budgetLeft);
@@ -3973,7 +3993,7 @@ function startCareer(){
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
       dinheiro:0,treinadorComprado:false,estreouMainCard:false,
       cinturaoInterino:false,tituloInterinoLuta:false};
-  usedEvents=new Set();rareUsed=new Set();fought=new Set();
+  rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
   app.innerHTML="";
@@ -4403,8 +4423,11 @@ function finishFight(opp,r,titleFight){
   /* renda por luta (item 4) — paga em toda luta, vitória ou derrota, igual
      bolsa de MMA de verdade. Sobe com standing: quem está mais alto na
      divisão ganha mais por luta. st.dinheiro reseta por carreira (não é
-     progressão permanente, é caixa da temporada). */
-  st.dinheiro=(st.dinheiro||0)+RENDA_BASE+Math.round(RENDA_BASE*st.standing);
+     progressão permanente, é caixa da temporada). Guardado numa const —
+     precisa aparecer na linha do resultado lá embaixo, calculado ANTES do
+     standing desta luta mudar (mesmo valor que entrou no caixa). */
+  const rendaLuta=RENDA_BASE+Math.round(RENDA_BASE*st.standing);
+  st.dinheiro=(st.dinheiro||0)+rendaLuta;
   /* estado ANTES desta luta — precisa pra saber se um evento é a PRIMEIRA
      vez (cinturão, lesão) e pro upset comparar com quem o jogador era antes
      de vencer, não depois. standing muda logo abaixo; os outros três não
@@ -4438,7 +4461,7 @@ function finishFight(opp,r,titleFight){
         st.title=true;st.foiCampeao=true;st.exCampeao=null;
       }else if(!st.title&&st.tituloInterinoLuta){
         /* Cinturão interino: title=true pras regras que já existem (ficha,
-           EVENTS/RARE, passoCinturao()), mas foiCampeao/vezesCampeao/o
+           RARE, evento gerado pela IA, passoCinturao()), mas foiCampeao/vezesCampeao/o
            momento de 1º cinturão SÓ disparam na unificação, abaixo — é
            isso que torna o interino incompleto até provar (ver
            CHANCE_CINTURAO_INTERINO). */
@@ -4459,7 +4482,8 @@ function finishFight(opp,r,titleFight){
       st.momentos.push(criarMomento("ko",FRASE_KO_RAPIDO(me.name),opp,r));
     if(lutandoMachucado&&!st.lesao.venceuMachucado){
       st.lesao.venceuMachucado=true;
-      st.momentos.push(criarMomento("lesao",FRASE_LESAO_VENCIDA(me.name),opp,r));
+      const fraseLesao=st.lesao.origem==="nocaute"?FRASE_LESAO_VENCIDA_NOCAUTE:FRASE_LESAO_VENCIDA;
+      st.momentos.push(criarMomento("lesao",fraseLesao(me.name),opp,r));
     }
   }else{
     st.losses++;st.streakL++;st.streakW=0;
@@ -4478,7 +4502,7 @@ function finishFight(opp,r,titleFight){
         st.eventoMod=st.eventoMod||{};
         st.eventoMod[atr]=(st.eventoMod[atr]||1)*LESAO_NOCAUTE.mult;
         st.lesao={nome:"Sequela do nocaute",atributo:atr,mult:LESAO_NOCAUTE.mult,
-          permanente:false,desdeLuta:st.fightNo,duracao:LESAO_NOCAUTE.duracao};
+          permanente:false,desdeLuta:st.fightNo,duracao:LESAO_NOCAUTE.duracao,origem:"nocaute"};
       }
     }
     if(titleFight&&st.title){
@@ -4578,12 +4602,17 @@ function finishFight(opp,r,titleFight){
   const bouts=document.getElementById("bouts");
   const line=el("div","bout"+(titleFight?" title-fight":""));
   line.innerHTML=`<span class="no">${String(fightNo).padStart(2,"0")}</span>
-    <span><span class="opp">${opp.name}</span><br><span class="how">${r.method} · round ${r.round} ${r.clock}${r.cards?" · "+r.cards:""}${(myKd||oppKd)?` · quedas ${myKd}-${oppKd}`:""}</span></span>
+    <span><span class="opp">${opp.name}</span><br><span class="how">${r.method} · round ${r.round} ${r.clock}${r.cards?" · "+r.cards:""}${(myKd||oppKd)?` · quedas ${myKd}-${oppKd}`:""} · R$${fmtNum(rendaLuta)}</span></span>
     <span class="stamp${won?"":" d"}">${won?"Vitória":"Derrota"}</span>`;
   bouts.appendChild(line);
   (won?SOM.vitoria:SOM.derrota)();     // um só, no carimbo, seja qual for o método
 
-  /* dilema interativo a cada 5 lutas; nas outras, evento normal */
+  /* dilema interativo a cada 5 lutas; nas outras, evento — um por luta
+     agora (era só luta par ou com finish, throttle que existia pra poupar
+     índice do pool fixo; a IA não tem pool pra poupar, evento é chamada
+     de IA em TODA luta que não caiu em dilema). RARE continua local e
+     síncrono, checado primeiro (mesma prioridade de sempre); só o comum
+     virou IA, sem fallback — ver dispararEventoIA(). */
   if(fightNo%5===0&&fightNo<TOTAL_FIGHTS){
     dilemaAberto=true;
     if(auto){auto=false;clearTimeout(autoTimer);
@@ -4593,26 +4622,16 @@ function finishFight(opp,r,titleFight){
     abrirDilema()
       .catch(()=>{})                       // falha do dilema não pode travar a carreira
       .then(()=>{dilemaAberto=false;verificarConquistas();atualizarControles();renderFicha();});
-  }else if(fightNo%2===0||finish){
-    const d=drawEvent(st,rng,usedEvents,rareUsed);
-    if(d){
-      bouts.appendChild(el("div","event"+(d.rare?" rare":""),(d.rare?"":"— ")+d.e.t(me.name)));
-      somDoEvento(d.e,lutadorEfetivo());
+  }else{
+    const raro=sortearRaro(st,rng,rareUsed);
+    if(raro){
+      bouts.appendChild(el("div","event rare",raro.t(me.name)));
+      tocarSom(raro.tom||0);
       st.events++;
-      if(d.rare){
-        st.rares.push(d.e.t(me.name));
-        if(d.e.card)st.momentos.push(criarMomento("raro",d.e.t(me.name),opp,r));
-      }
-      if(d.e.fx){
-        /* o efeito entra numa camada separada: se fosse direto no atributo,
-           ele apagaria a base e o treino perderia referência */
-        const d2=d.e.fx(lutadorEfetivo());
-        st.eventoMod=st.eventoMod||{};
-        for(const k in d2){
-          const antes=statAtual(k)||1;
-          st.eventoMod[k]=(st.eventoMod[k]||1)*(d2[k]/antes);
-        }
-      }
+      st.rares.push(raro.t(me.name));
+      if(raro.card)st.momentos.push(criarMomento("raro",raro.t(me.name),opp,r));
+    }else{
+      dispararEventoIA(bouts,opp,r);   // assíncrono, não bloqueia nada — mesmo padrão do feed
     }
   }
   verificarConquistas();

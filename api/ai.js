@@ -90,12 +90,19 @@ Responda SOMENTE com JSON, sem markdown:
 {"desfecho":"2 a 4 frases contando o que aconteceu",
  "seguidores":número entre -0.35 e 0.60,
  "fa":número entre -2.5 e 2.5,
+ "dinheiro":número entre -1 e 1,
  "atributo":"slpm"|"strDef"|"durability"|"tdDef"|"subAvg"|"kdAvg"|"nenhum",
  "efeito":número entre 0.90 e 1.10,
  "lesao":{"permanente":true|false,"atributo":"slpm"|"strDef"|"durability"|"tdDef"|"subAvg"|"kdAvg","regiao":"3 a 5 palavras, ex. 'joelho travado'"}|null,
  "evitouLesao":true|false}
 "seguidores" é variação relativa. Seja severo quando a decisão for burra e
 generoso quando for corajosa ou esperta. Decisão morna dá números perto de zero.
+"dinheiro" é uma FRAÇÃO de uma bolsa de luta inteira (1 = ganhou o
+equivalente a uma bolsa cheia, -1 = perdeu o equivalente a uma bolsa
+cheia) — positivo em decisão que rende dinheiro de verdade (patrocínio
+fechado, negócio esperto, prêmio), negativo em decisão que custa dinheiro
+(multa, contrato ruim, golpe, gasto por impulso). A maioria das decisões
+não mexe em dinheiro nenhum — fica perto de 0, não é o padrão.
 Se a decisão do jogador foi recusar um risco físico — não lutar machucado, não
 arriscar o corpo — isso é PRUDENTE, não covardia: não é "decisão burra". Mesmo
 assim NÃO é neutra: fã de MMA valoriza quem arrisca o corpo, então isso ainda
@@ -158,6 +165,36 @@ treino, sem clima." / "A pergunta ficou no ar e a pauta virou outra coisa."
     user: `Situação: ${d.cena}
 O que ${d.name} decidiu fazer: "${String(d.resposta).slice(0, 400)}"
 Contexto: cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.`,
+  }),
+
+  /* evento de vida da carreira, sem escolha do jogador — um por luta,
+     substitui o pool fixo de 28 frases que repetia entre carreiras */
+  evento: d => ({
+    system: `${VOZ}
+Você narra um evento breve da vida de um lutador de MMA — fora do
+octógono, ou a repercussão/consequência da última luta dele. NÃO é uma
+escolha do jogador: é um fato que já aconteceu, você só conta.
+Responda SOMENTE com JSON, sem markdown:
+{"texto":"1 a 2 frases contando o que aconteceu",
+ "atributo":"slpm"|"strDef"|"tdAvg"|"tdDef"|"subAvg"|"kdAvg"|"durability"|"nenhum",
+ "efeito":número entre 0.90 e 1.10}
+Varie o tema entre lutas e entre carreiras: imprensa, dinheiro, família,
+rotina de treino, patrocínio, redes sociais, saúde leve (nada grave),
+vida pessoal, reação do público, bastidor da academia. Nunca repita a
+mesma construção de frase duas vezes.
+NUNCA afirme o MÉTODO da luta (nocaute, finalização, decisão) nem quem
+venceu, mesmo sabendo o resultado — narre a REAÇÃO ou a CONSEQUÊNCIA, não
+o replay técnico: "o clipe viralizou", "o ginásio comemorou", "a família
+ligou emocionada" pode; "ele nocauteou o adversário" ou "venceu por
+decisão" não pode, em hipótese nenhuma.
+"efeito" só se afasta de 1 quando "atributo" não é "nenhum" — alguma
+mudança plausível de rotina, motivação ou lesão leve que mexe num aspecto
+técnico específico. A maioria dos eventos NÃO mexe em nada técnico:
+"atributo":"nenhum","efeito":1 é o caso comum, não a exceção.`,
+    user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.
+Luta ${d.fightNo} de ${d.totalFights}.${d.title ? " É campeão." : ""}
+Resultado da última luta: ${d.ganhou ? "venceu" : "perdeu"} por ${d.metodo}, round ${d.round}.${d.nocaute ? " Foi nocaute." : ""}
+Sequência atual: ${d.streakW > 0 ? d.streakW + " vitórias seguidas" : d.streakL > 0 ? d.streakL + " derrotas seguidas" : "sem sequência"}.`,
   }),
 };
 
