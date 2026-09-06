@@ -1140,6 +1140,44 @@ parágrafo acima não apareceu nesta amostra).
 testar `AI_URL` com `curl` direto contra o endpoint — não presumir que o
 alias antigo continua respondendo só porque é "o mesmo projeto".
 
+**`aiVivo` compartilhado ficou perigoso quando evento parou de ter
+fallback (2026-09-07).** `aiVivo=false` sempre existiu como desligamento
+PERMANENTE (dentro da mesma carreira) pra `feed`/`dilema`/`julgar` — e
+sempre foi seguro, porque os três caem em molde local sem o jogador
+perceber (`resolveFeed()`, `DILEMA_LOCAL`, texto genérico do julgar).
+Quando o evento por IA (ver "Eventos por IA") foi construído SEM
+fallback — decisão explícita, "a luta passa sem evento" — ele passou a
+usar o MESMO `ai()`, o mesmo `aiVivo` compartilhado, sem ninguém
+perceber que a consequência de desligar tinha mudado de "invisível"
+pra "carreira inteira sem a mecânica". Medido rodando 20 carreiras
+reais de ponta a ponta: **3 em 20 (15%) perderam TODOS os eventos**
+porque uma falha de rede boba (2 seguidas, ou um erro do tipo
+`transitorio:false`) desligou `aiVivo` cedo na carreira, e nunca mais
+voltou (não existe "religar" dentro da mesma carreira).
+
+**Conserto: evento ganhou circuito PRÓPRIO** (`eventoPausadoAte`,
+`eventoFalhasSeguidas`), completamente separado de
+`aiVivo`/`aiPausadoAte`/`falhasRedeSeguidas`. A diferença de desenho:
+`feed`/`dilema`/`julgar` continuam podendo desistir de vez
+(`aiVivo=false`) — ainda é seguro, nada mudou pra eles. Evento NUNCA
+desiste de vez: todo motivo que desligaria o circuito compartilhado
+(`transitorio:false`, 2 falhas de rede seguidas) aqui só PAUSA por
+`AI_PAUSA_MS` (reaproveitado, não é número novo pra justificar) e tenta
+de novo depois — o pior caso pra evento agora é "algumas lutas sem
+evento", nunca "carreira inteira sem evento". `node testar.js aivivo`
+cobre os dois circuitos por separado e a ausência de contaminação
+cruzada entre eles (falha de `julgar` não pausa evento; falha de
+evento não desliga `aiVivo`).
+
+**Achado, não implementado ainda**: `aiVivo`/`aiPausadoAte`/
+`falhasRedeSeguidas` são `let` de topo, nunca resetados em
+`startCareer()` — se desligarem numa carreira, ficam desligados nas
+carreiras SEGUINTES da mesma aba/sessão também (só um F5 limpa). Não é
+o bug que motivou este conserto (que era sobre DENTRO de uma carreira),
+mas é da mesma família — vale considerar resetar os três no início de
+`startCareer()` se isso incomodar em sessões longas com várias
+carreiras seguidas.
+
 ---
 
 ### Card de momento

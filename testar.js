@@ -3233,8 +3233,62 @@ function testarAiVivo() {
     await ai("julgar",{}); // 3ª falha de rede, mas só a 1ª DEPOIS do reset
     passo("depois de zerar, uma falha de rede sozinha NÃO desliga", aiVivo===true);
 
+    /* cenário 7 (2026-09-07, antes do 6 de propósito — a checagem de
+       eventosVa logo abaixo assume que o cenário 6/429 é o ÚLTIMO do
+       corpo, pra ler só os 2 últimos eventos emitidos): evento tem
+       circuito PRÓPRIO — o mesmo motivo
+       que desligaria aiVivo pra sempre (transitorio:false, ou 2 falhas de
+       rede seguidas) só PAUSA evento por AI_PAUSA_MS. Achado medindo 20
+       carreiras reais: 3/20 perdiam TODOS os eventos por causa disso —
+       antes de evento existir, aiVivo=false só afetava feed/dilema, que
+       caem em molde local sem o jogador notar; evento não tem fallback,
+       então o mesmo desligamento virava carreira vazia. */
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    eventoPausadoAte=0; eventoFalhasSeguidas=0;
+    __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
+    await ai("evento",{});
+    passo("evento: transitorio:false NÃO desliga aiVivo (circuito próprio)", aiVivo===true);
+    passo("evento: transitorio:false PAUSA eventoPausadoAte (temporário, não pra sempre)",
+      eventoPausadoAte>Date.now());
+
+    eventoPausadoAte=0; eventoFalhasSeguidas=0;
+    __filaSet([{throw:true}]);
+    await ai("evento",{});
+    passo("evento: 1ª falha de rede seguida NÃO pausa ainda", eventoPausadoAte===0 && eventoFalhasSeguidas===1);
+    __filaSet([{throw:true}]);
+    await ai("evento",{});
+    passo("evento: 2ª falha de rede SEGUIDA pausa (não desliga aiVivo, nunca)",
+      eventoPausadoAte>Date.now() && aiVivo===true);
+
+    // pausado, a chamada seguinte de evento nem tenta rede — mas julgar/feed continuam livres
+    const chamadasAntesEvento=__chamadasFetch();
+    await ai("evento",{});
+    passo("evento pausado: não tenta rede (fetch não incrementa)",
+      __chamadasFetch()===chamadasAntesEvento);
+    __filaSet([{ok:true,json:async()=>({result:{desfecho:"ok"}})}]);
+    await ai("julgar",{});
+    passo("julgar continua livre mesmo com evento pausado (circuitos independentes)",
+      __chamadasFetch()===chamadasAntesEvento+1);
+
+    // cross-contaminação: falha de julgar/feed não pausa nem conta pro evento
+    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    eventoPausadoAte=0; eventoFalhasSeguidas=0;
+    __filaSet([{throw:true}]);
+    await ai("julgar",{});
+    __filaSet([{throw:true}]);
+    await ai("julgar",{}); // 2ª seguida — desliga aiVivo (comportamento de sempre)
+    passo("cross-contaminação: 2 falhas de julgar desligam aiVivo, mas NÃO tocam eventoFalhasSeguidas",
+      aiVivo===false && eventoFalhasSeguidas===0 && eventoPausadoAte===0);
+    // e evento continua tentando rede normalmente mesmo com aiVivo já false
+    __filaSet([{ok:true,json:async()=>({result:{texto:"ok"}})}]);
+    const chamadasAntes2=__chamadasFetch();
+    await ai("evento",{});
+    passo("evento continua tentando rede mesmo com aiVivo=false (nunca lê aiVivo)",
+      __chamadasFetch()===chamadasAntes2+1);
+
     // cenário 6: 429 pausa com espera, não desliga — e a pausa bloqueia
-    // chamada nova sem nem tentar rede
+    // chamada nova sem nem tentar rede. Por ÚLTIMO no corpo de propósito —
+    // a checagem de eventosVa logo abaixo lê só os 2 últimos eventos.
     aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
     const antesDe429=Date.now();
     __filaSet([{ok:false,body:{error:"upstream",status:429,transitorio:true}}]);

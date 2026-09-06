@@ -1378,6 +1378,21 @@ const AI_PAUSA_MS=60000;
    resposta de erro significa que a rede está de pé, só o proxy disse não. */
 let falhasRedeSeguidas=0;
 
+/* Circuito PRÓPRIO do evento (2026-09-07), nunca o compartilhado acima —
+   achado medindo 20 carreiras reais: 3/20 perderam TODOS os eventos por
+   causa de uma falha comum de rede. Antes de existir evento por IA,
+   aiVivo=false só desligava feed/dilema — imperceptível, os dois já caem
+   em molde local sem o jogador notar. Evento não tem molde local (decisão
+   explícita, sem fallback) — o mesmo desligamento que era invisível virou
+   "carreira inteira sem evento nenhum", ~15% dos jogadores por causa de
+   só 2 falhas de rede. Evento NUNCA desiste de vez: qualquer motivo que
+   desligaria o circuito compartilhado (erro_permanente, 2 falhas de rede
+   seguidas) aqui só PAUSA por AI_PAUSA_MS (mesma janela do 429 — não é
+   número novo pra justificar) e tenta de novo depois. Feed/dilema/julgar
+   continuam podendo desistir da carreira inteira; só evento não pode. */
+let eventoPausadoAte=0;
+let eventoFalhasSeguidas=0;
+
 async function ai(kind,data,ms=9500){
   /* Achado jogando: "aceito" (dilema binário comum) caiu no fallback
      genérico, e não tinha como saber POR QUÊ — ai() sempre devolvia null
@@ -1390,8 +1405,13 @@ async function ai(kind,data,ms=9500){
      evento não conserta nada sozinho, mas da próxima vez dá pra saber
      qual dos 5 caminhos foi, em vez de reconstruir por eliminação. */
   if(!AI_URL){evento("ia_null",{motivo:"sem_url",kind});return null;}
-  if(!aiVivo){evento("ia_null",{motivo:"desligado",kind});return null;}
-  if(Date.now()<aiPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
+  const ehEvento=kind==="evento";
+  if(ehEvento){
+    if(Date.now()<eventoPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
+  }else{
+    if(!aiVivo){evento("ia_null",{motivo:"desligado",kind});return null;}
+    if(Date.now()<aiPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
+  }
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   try{
@@ -1399,7 +1419,7 @@ async function ai(kind,data,ms=9500){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kind,data})});
     clearTimeout(t);
-    falhasRedeSeguidas=0;
+    if(ehEvento)eventoFalhasSeguidas=0; else falhasRedeSeguidas=0;
     if(!r.ok){
       /* O servidor já sabe o que aconteceu — não adivinha por status HTTP
          externo (502 cobre seis coisas diferentes, ver api/ai.js). Corpo
@@ -1409,19 +1429,26 @@ async function ai(kind,data,ms=9500){
          falhou. */
       let corpo=null;
       try{corpo=await r.json();}catch(e){}
-      if(corpo&&corpo.status===429){aiPausadoAte=Date.now()+AI_PAUSA_MS;
-        evento("ia_null",{motivo:"429",kind});}
-      else if(corpo&&corpo.transitorio===false){aiVivo=false;
-        evento("ia_null",{motivo:"erro_permanente",kind});}
-      else evento("ia_null",{motivo:"erro_transitorio",kind});
+      if(corpo&&corpo.status===429){
+        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS; else aiPausadoAte=Date.now()+AI_PAUSA_MS;
+        evento("ia_null",{motivo:"429",kind});
+      }else if(corpo&&corpo.transitorio===false){
+        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS; else aiVivo=false;
+        evento("ia_null",{motivo:"erro_permanente",kind});
+      }else evento("ia_null",{motivo:"erro_transitorio",kind});
       return null;
     }
     const j=await r.json();
     return j.result??null;
   }catch(e){
     clearTimeout(t);
-    falhasRedeSeguidas++;
-    if(falhasRedeSeguidas>=2)aiVivo=false;
+    if(ehEvento){
+      eventoFalhasSeguidas++;
+      if(eventoFalhasSeguidas>=2)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
+    }else{
+      falhasRedeSeguidas++;
+      if(falhasRedeSeguidas>=2)aiVivo=false;
+    }
     evento("ia_null",{motivo:"rede",kind});
     return null;
   }
