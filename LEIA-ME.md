@@ -795,6 +795,85 @@ Nenhuma medição acima tem alvo numérico oficial além do que o usuário
 já definiu (≤15% de repetição de estrutura) — ficam registradas pra
 decisão dele (ver `PENDENCIAS.md` item 18).
 
+### Medindo a coisa certa: 20 carreiras reais, não 40 chamadas isoladas
+
+A medição de 42%/45% acima tinha um problema de método, não só de
+resultado: 40 chamadas de `kind:"evento"` lado a lado, fácil de comparar
+uma com a outra, não é como o jogador experimenta a mecânica. Ele vê UM
+evento por luta, ao longo de umas 22 lutas e provavelmente várias
+sessões — duas frases parecidas na luta 3 e na luta 17 não chamam
+atenção nenhuma; duas parecidas na luta 8 e na luta 9 (ou 8 e 10) sim.
+O número que decide se incomoda é esse, não o de comparar tudo junto.
+
+**Dois consertos baratos antes de medir de novo** (mais baratos que
+detecção de similaridade semântica, que ficou reservada como último
+recurso):
+- **Sorteio de tema sem reposição**: `proximoTema()` embaralha uma
+  cartela com os 10 temas (`eventoRng`) e consome um a um, só
+  reembaralhando quando esgota. Antes, cada sorteio era independente e
+  podia repetir tema cedo por puro acaso — sem relação com a repetição
+  de esqueleto medida, mas uma repetição evitável de graça.
+- **Contexto real da carreira no prompt**: posição no ranking
+  (`posicaoDivisao()` de verdade), lesão ativa, se perdeu o cinturão
+  NESTA luta, dinheiro em caixa. A ideia: um evento ancorado no que
+  está acontecendo de verdade tem menos espaço de sobra pra cair na
+  resposta "padrão" genérica do tema — repete menos por construção.
+
+**Medido com um harness que roda a carreira de ponta a ponta de
+verdade** (`nextFight()`/`finishFight()`/`dispararEventoIA()` reais,
+`auto=true`, dilema resolvido com uma resposta fixa via fallback local
+— só `kind:"evento"` bate na API de produção; dilema/julgar/feed ficam
+desligados de propósito, sem custo, sem afetar a medição do que
+interessa aqui). Achado no caminho, dois problemas de MEDIÇÃO (não do
+código do jogo) que valem registrar caso alguém monte um harness
+parecido de novo:
+1. **Pacing**: `dispararEventoIA()` é fire-and-forget de propósito na
+   produção (não bloqueia a tela). Um harness automatizado que não
+   espera essa promessa de verdade antes de avançar pra próxima luta
+   dispara VÁRIOS eventos em rajada concorrente contra a API — isso
+   sim gera taxa de falha muito maior que o normal, sem ser culpa do
+   código do jogo. Precisa esperar `playing` voltar a `false` de
+   verdade (não um número fixo de ciclos) e, se um evento disparou
+   nessa luta, esperar a promessa dele terminar antes da próxima.
+2. **Circuito de falha compartilhado**: desligar dilema/julgar/feed
+   fazendo o `fetch` REJEITAR (throw) em vez de devolver uma resposta
+   não-ok incrementa `falhasRedeSeguidas` do lado do jogo — 2 rejeições
+   seguidas (dilema+julgar sempre andam juntos) desligam `aiVivo` PRA
+   CARREIRA INTEIRA, e daí em diante todo evento (inclusive os reais)
+   falha local sem nem tentar rede. Resolver com `ok:false,
+   transitorio:true` em vez de rejeitar evita isso.
+
+**Resultado, 20 carreiras completas:**
+- Distribuição de tema saudável: ~176 eventos apareceram nas 20
+  carreiras, os 10 temas saem bem distribuídos (16 a 20 ocorrências
+  cada) — sorteio sem reposição funcionando.
+- **Repetição de tema em lutas próximas (consecutiva ou 1 de
+  intervalo): 4 carreiras em 20 (20%)** — bem abaixo do 45% que a
+  medição isolada sugeria, mais perto do que o jogador notaria de
+  verdade. Inspecionado à mão: 3 dos 4 pares realmente compartilham o
+  giro narrativo (ex. "mãe liga cobrando conta" duas vezes); o 4º é só
+  o mesmo tema com desfechos opostos (patrocínio caindo vs. chegando),
+  que não incomodaria do mesmo jeito. Ainda acima do alvo de 15%, mas a
+  distância ficou pequena.
+- ⚠️ **Confundido pelo volume da própria sessão de medição**: a taxa de
+  sucesso geral das chamadas caiu pra ~54% nesta rodada (era 90-100% em
+  testes isolados horas antes) — quase certamente o pool compartilhado
+  do OpenRouter saturando pelo volume alto de chamadas que a sessão já
+  tinha feito antes desta medição (mesma causa do item "ia_null" nas
+  Dívidas Conhecidas). Menos eventos por carreira reduz mecanicamente a
+  chance de dois temas colidirem perto um do outro — **o 20% pode
+  estar subestimado**. Vale remedir num dia sem volume de teste
+  acumulado se a precisão final importar.
+- **Achado incidental, fora do escopo desta pergunta**: um erro de rede
+  real (não 429 — esse só pausa 60s — duas falhas de CONEXÃO seguidas)
+  desliga `aiVivo` permanentemente pro resto daquela carreira, e evento
+  compartilha esse circuito com dilema/julgar/feed. 3 das 20 carreiras
+  desta medição perderam TODOS os eventos por isso. Não é bug de hoje —
+  é um comportamento de `ai()` que já existia (ver "Quando a IA
+  falha"), só nunca tinha sido observado em produção porque nenhuma
+  medição anterior rodou uma carreira inteira contra a API real.
+  Registrado, não resolvido.
+
 ## Som
 
 Quatro arquivos em `audio/`, gerados por síntese (`audio/sintetiza.py`):

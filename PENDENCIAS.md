@@ -391,15 +391,67 @@ API real** (ver LEIA-ME.md "Eventos por IA" pro relato completo):
 **Causa da repetição dentro do tema, pra quem for mexer aqui de novo:**
 não é bug de prompt nem de contexto pobre — é que o modelo tem um número
 pequeno de "respostas típicas" por tema, e repetir o tema naturalmente
-resample a mesma resposta típica. `EVENTO_TEMAS` com 10 entradas, 22
-lutas, ~18 elegíveis a evento: cada tema sai em média 1,8x por carreira,
-então a maioria das carreiras nem sente isso — a medição de 40 chamadas
-lado a lado (fácil de comparar) provavelmente EXAGERA quão perceptível
-isso é jogando de verdade, uma luta de cada vez, ao longo de várias
-sessões. **Não implementado, registrado como próximo passo se incomodar
-jogando**: detecção de similaridade semântica (não só eco exato) ou
-`EVENTO_TEMAS` mais granular (sub-temas por tema, reduz quantas vezes o
-mesmo balde é sorteado).
+resample a mesma resposta típica.
+
+**Correção 2026-09-07: a medição de 40 chamadas lado a lado media a
+coisa errada** — não é a experiência do jogador, que vê 1 evento por
+luta ao longo de ~40 minutos, com narração entre eles. Duas correções
+implementadas antes de medir de novo, mais baratas que similaridade
+semântica:
+- **Sorteio sem reposição** (`proximoTema()`, cartela embaralhada com
+  `eventoRng`, consumida uma a uma): os 10 primeiros temas de qualquer
+  carreira são garantidos diferentes, elimina repetição de tema por
+  puro acaso de sorteio (não tinha relação com a repetição de esqueleto
+  medida, mas era uma repetição evitável de graça).
+- **Contexto real da carreira no prompt**: posição no ranking
+  (`posicaoDivisao()`), lesão ativa, se perdeu o cinturão NESTA luta
+  (`st.perdeuCinturaoNaLuta`), dinheiro em caixa — evento ancorado no
+  que está acontecendo de verdade repete menos por construção.
+
+**Medido depois dos dois consertos: 20 carreiras completas de ponta a
+ponta** (não 40 chamadas isoladas — `nextFight()`/`finishFight()`/
+`dispararEventoIA()` reais, só o kind `"evento"` batendo na API de
+produção, dilema/julgar/feed desligados sem custo pra não afetar a
+medição):
+- **Distribuição de tema saudável**: dos ~176 eventos que apareceram
+  nas 20 carreiras, os 10 temas saem bem distribuídos (16 a 20
+  ocorrências cada) — sem tema dominante, sorteio sem reposição
+  funcionando como esperado.
+- **Repetição de tema em lutas próximas (consecutiva ou 1 de
+  intervalo): 4 carreiras em 20 (20%)** tiveram pelo menos um par assim
+  — bem abaixo do "45% olhando lado a lado" da medição anterior, mais
+  perto do que o jogador realmente notaria. Inspecionado à mão: 3 dos 4
+  pares realmente compartilham o giro narrativo (mesmo tema E mesma
+  ideia — "mãe liga cobrando conta" duas vezes, por exemplo); 1 dos 4 é
+  só o mesmo tema com desfechos opostos (patrocínio caindo vs.
+  patrocínio chegando), não incomodaria do mesmo jeito. Ainda acima do
+  alvo de 15%, mas a distância ficou pequena.
+- ⚠️ **Confundido pelo próprio volume de medição desta sessão**: a taxa
+  de sucesso GERAL das chamadas caiu pra ~54% nesta rodada de 20
+  carreiras (era 90-100% em testes isolados horas antes, no mesmo dia)
+  — quase certamente o pool compartilhado do OpenRouter saturando pelo
+  volume alto de chamadas que a própria sessão de medição já tinha
+  feito antes desta (ver item 9/14). Isso reduz quantos eventos
+  aparecem por carreira, o que MECANICAMENTE reduz a chance de dois
+  temas colidirem perto um do outro — **o número de 20% pode estar
+  SUBESTIMADO**; com a taxa de sucesso real (~90%) e mais eventos por
+  carreira, a chance de colisão tende a subir. Vale remedir num dia sem
+  volume de teste acumulado antes, se a precisão importar pra decisão
+  final.
+- **Achado incidental, novo, fora do escopo desta pergunta**: uma
+  carreira que sofre um erro de rede real (não 429, que só pausa 60s —
+  uma FALHA de conexão de verdade, duas seguidas) desliga `aiVivo`
+  PERMANENTEMENTE pro resto daquela carreira, e evento compartilha esse
+  circuito com dilema/julgar/feed. Em 3 das 20 carreiras desta medição,
+  ISSO aconteceu e zerou os eventos daquela carreira inteira (0
+  eventos, todas as chamadas seguintes falhando local sem tentar rede).
+  Não é bug do conserto de hoje — é um comportamento de `ai()` que já
+  existia, só nunca tinha sido observado em produção porque nenhuma
+  medição anterior rodou uma carreira inteira contra a API real.
+  Registrado, não resolvido: `aiVivo=false` nunca volta a `true`
+  sozinho dentro da mesma carreira, então um azar cedo (2 falhas de
+  rede seguidas em QUALQUER chamada, não só evento) silencia todo o
+  resto. Considerar se vale a pena.
 
 **Dinheiro no dilema**: campo `"dinheiro"` no prompt de `julgar` (fração
 de -1 a 1 de `RENDA_BASE`, mesma âncora que `"seguidores"` já usa como
