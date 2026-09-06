@@ -687,39 +687,89 @@ passa sem evento — nenhuma frase de reserva, nenhum número inventado.
 RARE continua exatamente como era: local, síncrono, checado primeiro —
 só o evento COMUM virou dependente de IA.
 
-**Mesmos filtros do dilema, sem exceção** — `CONTEUDO_INSEGURO` derruba
-o objeto inteiro, `RESULTADO_LUTA` corta a frase que afirma resultado de
-luta. Isso custa uma frescura específica: a IA usa "nocaute" como
-SUBSTANTIVO verdadeiro com frequência ("o clipe do nocaute viralizou"),
-e `RESULTADO_LUTA` não distingue "afirmando o resultado de uma luta que
-ainda vai acontecer" (o problema real que o filtro resolve no dilema) de
-"comentando um resultado que JÁ aconteceu e é conhecido" (o caso comum
-aqui) — corta a frase inteira do mesmo jeito. Decisão consciente: a
-consistência da trava (mesmo filtro, sem caso especial por contexto)
-importa mais que aproveitar essa frase específica.
+**`CONTEUDO_INSEGURO` continua valendo — `RESULTADO_LUTA` NÃO (corrigido
+2026-09-06).** A primeira versão aplicava os dois filtros do dilema, sem
+exceção. Medido: `RESULTADO_LUTA` cortava ~8% dos eventos por engano.
+Motivo do engano: esse filtro foi desenhado pra impedir o DESFECHO DO
+DILEMA de afirmar o resultado de uma luta que AINDA vai acontecer
+(contradizer o motor). Evento narra uma luta que JÁ terminou — "o clipe
+do nocaute viralizou" é FATO conhecido, não previsão — e o filtro não
+distinguia isso, cortava a frase inteira do mesmo jeito. Aplicar o
+filtro em todo lugar que a IA escreve confundia "onde ele foi desenhado
+pra proteger" com "todo texto gerado" — problemas diferentes, merecem
+tratamento diferente. `RESULTADO_LUTA` continua protegendo o desfecho do
+DILEMA normalmente (regressão coberta em `node testar.js conteudo`).
 
-**Medido contra a API real** (2026-09-06, 40 chamadas, `kind:"evento"`,
-contextos variados — vitória/derrota, nocaute, sequências, campeão):
+**Retry único quando a IA devolve `ok:true` sem o campo `texto`.**
+Medido: ~10% das respostas vêm assim (JSON malformado, o modelo não
+obedeceu o formato — mesma classe do "array solto" que o `feed` já
+tratava). Não é falha de rede/429/erro do servidor — essas NÃO retentam
+aqui, `ai()` já tem sua própria disciplina de pausa/desligamento pra
+elas, insistir por cima seria gastar chamada fadada a repetir o mesmo
+erro. Custo do retry: ~1,8 chamada extra por carreira (10% de ~18
+lutas elegíveis).
 
-- 36/40 (90%) devolveram `texto` de verdade; 4/40 (10%) vieram com `ok:
-  true` mas sem o campo `texto` no JSON (a IA às vezes não obedece o
-  formato pedido — mesma classe de problema que o "array solto" do
-  `feed`, api/ai.js já tem parsing de último recurso pra isso, não
-  ajudou aqui porque o modelo simplesmente omitiu o campo).
-- Dos 36 com texto, `RESULTADO_LUTA` esvaziou mais 3 (o efeito
-  "nocaute como substantivo" acima) — 33/40 (82,5%) realmente aparecem
-  pro jogador. **~17,5% de falha efetiva.** Em ~18 lutas elegíveis por
-  carreira (22 menos as 4 de dilema), isso é **~3 lutas/22 sem evento
-  nenhum** — não é pouco, registrado pra decisão consciente, não
-  escondido.
-- Variedade: 15/36 (42%) seguem o mesmo esqueleto ("vídeo/clipe viraliza
-  + reação de família ou empresário"); 11/36 mencionam empresário,
-  13/36 dinheiro/patrocínio, 13/36 família. Temas pedidos no prompt mas
-  pouco usados: imprensa, bastidor de academia, saúde leve. A IA repete
-  tema menos que o pool fixo repetia frase — mas repete.
+**Resultado dos dois consertos acima, medido junto**: 40/40 chamadas
+reais sobreviveram (100%, contra 82,5% da primeira versão).
 
-Nenhuma das duas medições tem alvo numérico definido ainda; ficam
-registradas pra decisão do usuário (ver `PENDENCIAS.md` item 18).
+**Variedade — três iterações, medidas uma a uma, honesto sobre onde
+ficou:**
+
+1. *Sem tema forçado*: 42% dos eventos convergiam pro MESMO esqueleto
+   ("vídeo/clipe viraliza, família ou empresário reage"). Causa: o
+   prompt só SUGERIA 10 temas (imprensa, dinheiro, família, rotina de
+   treino, patrocínio, redes sociais, saúde leve, vida pessoal, reação
+   do público, bastidor da academia) e dava UM exemplo de frase
+   copiável ("o clipe viralizou") — o modelo ancorou no exemplo em vez
+   de usar o menu inteiro.
+2. *Tema forçado*: o cliente sorteia 1 dos 10 temas (`EVENTO_TEMAS`,
+   `eventoRng` próprio) e MANDA no prompt — não é mais sugestão, é o
+   assunto central exigido. O exemplo copiável saiu do prompt. Medido:
+   o colapso NUM ÚNICO esqueleto sumiu (a frase específica "vídeo do
+   nocaute viralizou" caiu de dominante pra 2/40 = 5%), cada tema
+   produz vocabulário genuinamente diferente. **Mas surgiu repetição
+   DENTRO de cada tema**: numa simulação de carreira (40 chamadas,
+   temas alternando, histórico real acumulando), alguns temas saíram
+   com o MESMO giro narrativo em 3 ou 4 das 4 vezes que apareceram —
+   "rotina de treino" deu "acorda com dor e treina mesmo assim" nas 4
+   vezes; "patrocínio" deu "regra de vestimenta inesperada" em 3/4;
+   "vida pessoal" deu "parceiro(a) reage mal" em 3/4. Contando qualquer
+   cluster de 2+ dentro do mesmo tema como repetição: **~45% dos 40
+   textos pertencem a algum cluster** — pior que o alvo de 15% pedido.
+3. *Recentes + instrução de não repetir*: `st.eventosRecentes` guarda
+   os últimos 3 textos da carreira, vão no prompt com "não repita a
+   situação de nenhum destes". Reduz repetição QUASE ADJACENTE, mas não
+   é garantia — testado direto (mesmo tema 3x seguidas, o 1º na lista
+   de "não repita"), a 3ª chamada saiu **idêntica à 1ª, palavra por
+   palavra**, apesar da instrução explícita. Modelo pequeno e rápido
+   não segue restrição negativa de forma confiável — sempre foi assim
+   com o modelo desta VOZ (ver Qwen3.7-flash acima), consistente com
+   por que os outros filtros (CONTEUDO_INSEGURO/RESULTADO_LUTA) nunca
+   confiaram só em pedir por prompt.
+4. *Rede de baixo* (mesma disciplina dos outros dois filtros): se o
+   texto novo bate EXATO (case-insensitive) com algum dos últimos 3,
+   descarta — sem fallback, a luta passa sem evento. Fecha o pior caso
+   (eco literal) mas não pega giro narrativo repetido com palavras
+   diferentes — isso exigiria similaridade semântica, não comparação de
+   string, e não foi construído.
+
+**Causa raiz da repetição dentro do tema, registrada pra quem for
+mexer aqui de novo**: não é prompt malfeito nem contexto pobre — é que
+o modelo tem um número pequeno de "respostas típicas" por tema, e pedir
+o mesmo tema de novo naturalmente resample a mesma resposta típica.
+Com 10 temas e ~18 eventos elegíveis por carreira, cada tema sai em
+média 1,8x — a maioria das carreiras nem chega a repetir um tema duas
+vezes, e mesmo quando repete, o jogador vive isso ao longo de várias
+sessões, uma luta de cada vez, não 40 textos lado a lado numa planilha
+fácil de comparar (que é como esta medição foi feita) — o número de
+45% provavelmente EXAGERA quão perceptível isso é jogando de verdade.
+Registrado como possível próximo passo, não implementado: detecção de
+similaridade semântica (não só eco exato), ou `EVENTO_TEMAS` mais
+granular (sub-temas, reduz quantas vezes o mesmo balde é sorteado).
+
+Nenhuma medição acima tem alvo numérico oficial além do que o usuário
+já definiu (≤15% de repetição de estrutura) — ficam registradas pra
+decisão dele (ver `PENDENCIAS.md` item 18).
 
 ## Som
 
