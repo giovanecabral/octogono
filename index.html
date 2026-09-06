@@ -1515,6 +1515,14 @@ async function dispararEventoIA(bouts,opp,r){
      fadada a repetir o mesmo erro. */
   if(j&&!j.texto)j=await ai("evento",dados);
   if(!j||!j.texto)return;
+  /* Medido: a instrução "não repita" em cima de "recentes" ajuda mas não
+     é garantia — o modelo às vezes ecoa um dos recentes quase palavra
+     por palavra mesmo assim (achado: pedido explícito de não repetir, e
+     saiu idêntico ao 1º evento de novo no 3º). Rede de baixo igual às
+     outras (CONTEUDO_INSEGURO/RESULTADO_LUTA): não confia só na
+     instrução, verifica e descarta — sem fallback, a luta passa sem
+     evento igual qualquer outra falha. */
+  if((st.eventosRecentes||[]).some(r=>r.toLowerCase()===String(j.texto).toLowerCase()))return;
   /* CONTEUDO_INSEGURO continua (rede de baixo pra conteúdo impróprio,
      igual ao dilema) — RESULTADO_LUTA NÃO se aplica aqui, de propósito
      (corrigido 2026-09-06). Esse filtro foi desenhado pra impedir o

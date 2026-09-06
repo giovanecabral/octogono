@@ -3090,6 +3090,21 @@ function testarEventoIA() {
       JSON.stringify(recentesRecebidos)===JSON.stringify(["primeiro","segundo","terceiro"]));
     passo("depois de aplicar, eventosRecentes guarda o novo e descarta o mais velho (máx 3)",
       JSON.stringify(st.eventosRecentes)===JSON.stringify(["segundo","terceiro","quarto"]));
+
+    // caso 7: rede de baixo — a IA ecoa um "recente" quase igual mesmo com
+    // a instrução de não repetir (achado real contra a API); o cliente
+    // tem que descartar, não confiar só no prompt
+    const marca7=bouts.children.length;
+    st.events=0; st.eventosRecentes=["Bot já viu essa história antes."];
+    ai=async(kind,data)=>({texto:"Bot já viu essa história antes.",atributo:"nenhum",efeito:1});
+    await dispararEventoIA(bouts,opp,{});
+    passo("eco EXATO de um recente é descartado (rede de baixo, não confia só na instrução)",
+      bouts.children.length===marca7 && st.events===0);
+    // controle: texto genuinamente novo (mesmo tema recorrente) passa normal
+    ai=async(kind,data)=>({texto:"Uma história completamente diferente desta vez.",atributo:"nenhum",efeito:1});
+    await dispararEventoIA(bouts,opp,{});
+    passo("controle: texto diferente dos recentes passa normal (a rede de baixo não é paranoica)",
+      bouts.children.length===marca7+1);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
