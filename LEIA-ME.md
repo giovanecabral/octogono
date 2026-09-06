@@ -103,13 +103,21 @@ importar: o jogo vira "escolher o maior número".
 No fim da carreira, **Compartilhar** gera uma imagem 1080x1350 e **Copiar desafio**
 copia um link como `?d=lightweight&s=2n9c`.
 
-Quem abre esse link recebe a **mesma carreira**: as mesmas cartas oferecidas no
-draft, os mesmos adversários na mesma ordem. Só as escolhas mudam. É isso que
-transforma o compartilhamento num desafio em vez de um print.
+Quem abre esse link recebe **os mesmos adversários, na mesma ordem**. É
+isso que transforma o compartilhamento num desafio em vez de um print.
 
-A semente controla tudo que é sorteado. Se você mexer na ordem em que o `rng` é
-consumido — sortear uma coisa a mais antes do draft, por exemplo — os links
-antigos deixam de reproduzir as carreiras antigas.
+**A promessa mudou (2026-09-06): a semente não garante mais o draft.**
+"Rolar novamente" (uma vez por criação, botão 🎲 acima da mesa) consome
+`rng` sob demanda pra sortear outra rodada de cartas — se o jogador usar,
+a mesma semente pode dar cartas diferentes de uma sessão pra outra. Os
+eventos de vida também não são mais determinísticos (vêm da IA agora, ver
+"Eventos por IA"). Só os adversários continuam garantidos, e é só isso
+que o texto do convite (`screenName()`) promete.
+
+A semente ainda controla tudo o mais que é sorteado (draft sem usar o
+dado, adversários, ordem deles). Se você mexer na ordem em que o `rng` é
+consumido — sortear uma coisa a mais antes do draft, por exemplo — os
+links antigos deixam de reproduzir os mesmos adversários.
 
 ```bash
 node testar.js desafio
@@ -309,7 +317,10 @@ mesmo `fx`. `node testar.js resultado` ganhou uma checagem varrendo
 `EVENTS` inteiro contra um vocabulário de lesão (médico/cirurgia/escondeu
 da comissão) — não é a regra geral (isso seria o `node testar.js
 coerencia` proposto), só os dois casos concretos, pra não voltar por
-acidente.
+acidente. **`EVENTS` foi removido inteiro em 2026-09-06** (substituído
+por eventos gerados pela IA, ver "Eventos por IA" mais abaixo) — a
+checagem específica saiu junto, o filtro que importa agora é o mesmo
+`CONTEUDO_INSEGURO`/`RESULTADO_LUTA` do dilema, aplicado à saída da IA.
 
 **Não existe portão `houveLesao` — e o motivo de ter sido tentado e revertido
 é o registro mais importante deste bloco.** Um jogador jogou uma carreira de
@@ -652,6 +663,64 @@ guarda a luta de MAIOR hype da carreira até agora, tipo `st.peak`/
 primeira. Aparece no relatório final (`screenReport()`) e no card
 compartilhável (`desenharCard()`).
 
+## Eventos por IA
+
+O pool fixo de 28 frases (`EVENTS`) repetia entre carreiras — sempre as
+mesmas 28 possibilidades, cedo ou tarde toda carreira via as mesmas
+piadas. Substituído (2026-09-06) por um evento gerado pela IA a cada
+luta que não cai em dilema: novo kind `"evento"` em `api/ai.js`,
+`dispararEventoIA()` no cliente.
+
+**Assíncrono, sem bloquear nada** — mesmo padrão do `feed`: dispara,
+não espera, aparece no log quando fica pronto. Diferente do `feed`
+(que dá pra prefetch no início da luta, antes do resultado existir), o
+evento só pode ser gerado DEPOIS do resultado (precisa saber se ganhou,
+como, sequência) — então dispara já em `finishFight()`, sem prefetch, e
+o jogador pode já ter clicado pra próxima luta antes dele resolver. Sem
+problema: o efeito em `st.eventoMod`, se chegar atrasado, só vale a
+partir da luta seguinte — a luta que já começou usa o estado que tinha
+no início dela.
+
+**Sem fallback local, decisão explícita.** Se a chamada falhar (qualquer
+um dos motivos de `ia_null`) ou os filtros esvaziarem o texto, a luta
+passa sem evento — nenhuma frase de reserva, nenhum número inventado.
+RARE continua exatamente como era: local, síncrono, checado primeiro —
+só o evento COMUM virou dependente de IA.
+
+**Mesmos filtros do dilema, sem exceção** — `CONTEUDO_INSEGURO` derruba
+o objeto inteiro, `RESULTADO_LUTA` corta a frase que afirma resultado de
+luta. Isso custa uma frescura específica: a IA usa "nocaute" como
+SUBSTANTIVO verdadeiro com frequência ("o clipe do nocaute viralizou"),
+e `RESULTADO_LUTA` não distingue "afirmando o resultado de uma luta que
+ainda vai acontecer" (o problema real que o filtro resolve no dilema) de
+"comentando um resultado que JÁ aconteceu e é conhecido" (o caso comum
+aqui) — corta a frase inteira do mesmo jeito. Decisão consciente: a
+consistência da trava (mesmo filtro, sem caso especial por contexto)
+importa mais que aproveitar essa frase específica.
+
+**Medido contra a API real** (2026-09-06, 40 chamadas, `kind:"evento"`,
+contextos variados — vitória/derrota, nocaute, sequências, campeão):
+
+- 36/40 (90%) devolveram `texto` de verdade; 4/40 (10%) vieram com `ok:
+  true` mas sem o campo `texto` no JSON (a IA às vezes não obedece o
+  formato pedido — mesma classe de problema que o "array solto" do
+  `feed`, api/ai.js já tem parsing de último recurso pra isso, não
+  ajudou aqui porque o modelo simplesmente omitiu o campo).
+- Dos 36 com texto, `RESULTADO_LUTA` esvaziou mais 3 (o efeito
+  "nocaute como substantivo" acima) — 33/40 (82,5%) realmente aparecem
+  pro jogador. **~17,5% de falha efetiva.** Em ~18 lutas elegíveis por
+  carreira (22 menos as 4 de dilema), isso é **~3 lutas/22 sem evento
+  nenhum** — não é pouco, registrado pra decisão consciente, não
+  escondido.
+- Variedade: 15/36 (42%) seguem o mesmo esqueleto ("vídeo/clipe viraliza
+  + reação de família ou empresário"); 11/36 mencionam empresário,
+  13/36 dinheiro/patrocínio, 13/36 família. Temas pedidos no prompt mas
+  pouco usados: imprensa, bastidor de academia, saúde leve. A IA repete
+  tema menos que o pool fixo repetia frase — mas repete.
+
+Nenhuma das duas medições tem alvo numérico definido ainda; ficam
+registradas pra decisão do usuário (ver `PENDENCIAS.md` item 18).
+
 ## Som
 
 Quatro arquivos em `audio/`, gerados por síntese (`audio/sintetiza.py`):
@@ -873,6 +942,28 @@ comportamento nenhum. `node testar.js aivivo` cobre o cenário de 429 →
 **Segue aberto**: se 429 continuar aparecendo com essa frequência em
 tráfego real (não só em medição concentrada), `AI_PAUSA_MS=60000` — já
 marcado como não medido — é o primeiro lugar a remedir.
+
+**O mesmo sintoma voltou (2026-09-06), causa completamente diferente.**
+"A IA ignora a resposta" de novo — desta vez com um texto claramente
+benigno ("respondo educadamente... pelo meu mérito"), o que já derrubava
+a hipótese de `CONTEUDO_INSEGURO` (conferido direto: nenhuma das duas
+palavras bate no regex). Testado com `curl` direto no endpoint —
+`https://draft-ufc.vercel.app/api/ai` devolvia **404
+`DEPLOYMENT_NOT_FOUND` em toda chamada**, não intermitente. Causa
+provável: `octogono.fun` virou domínio principal do projeto na Vercel e
+o alias antigo parou de resolver — a suposição registrada na seção de
+domínio ("mesmo projeto, `/api/ai` responde nos dois domínios") era
+falsa na prática. Como o 404 não vem com o JSON `transitorio` (nem é
+429), `ai()` classificava como `erro_transitorio` e nunca desligava
+`aiVivo` — o jogo tentava pra sempre, falhava pra sempre, cada dilema
+caía no fallback local. `AI_URL` corrigido pra `https://octogono.fun/
+api/ai`; verificado com `curl` (resposta contextual real, não fallback)
+e com 30 chamadas reais de `julgar` (100% ok, 0 falhas — o rate limit do
+parágrafo acima não apareceu nesta amostra).
+
+**Lição**: depois de qualquer mudança de domínio principal na Vercel,
+testar `AI_URL` com `curl` direto contra o endpoint — não presumir que o
+alias antigo continua respondendo só porque é "o mesmo projeto".
 
 ---
 
@@ -1154,31 +1245,37 @@ proxy de IA). Vale resolver quando existir pagamento ou ranking global de
 verdade — hoje o custo de forjar (abrir DevTools, entender a estrutura)
 já filtra a imensa maioria, e não há prêmio nenhum em jogo.
 
-### Domínio próprio — octogono.fun, registrado (falta só apontar)
+### Domínio próprio — octogono.fun, registrado E apontado (2026-09-06)
 
-O jogo é UM projeto Vercel (`draft-ufc.vercel.app`); `DOMINIO_JOGO` e a
-marca dos cards já apontam pro nome novo (Octógono/octogono.fun,
-2026-09-05) — falta só o DNS de verdade. Passo a passo:
+`octogono.fun` está no ar, servindo o jogo. `DOMINIO_JOGO` e `AI_URL`
+apontam pra ele. Passo a passo que foi seguido (documentado pra quando
+precisar mexer de novo, ex. trocar de domínio outra vez):
 
-1. Vercel → o projeto → **Settings → Domains → Add** → digitar
-   `octogono.fun`. Repetir com `www.octogono.fun` se quiser os dois
-   endereços funcionando (a Vercel deixa escolher qual é o principal e
-   redireciona o outro).
+1. Vercel → o projeto → **Settings → Domains → Add** → digitar o domínio.
 2. A Vercel devolve os registros de DNS pra criar no PAINEL DO
-   REGISTRADOR (onde `octogono.fun` foi comprado, não na Vercel):
-   registro **A** apontando pro IP da Vercel pro domínio raiz
-   (`octogono.fun`), **CNAME** pra `cname.vercel-dns.com` pro `www`. A
-   Vercel mostra o valor exato na hora do Add — copiar de lá, não daqui,
-   o IP pode mudar.
-3. Esperar propagar (minutos a algumas horas, TTL do registrador manda).
-   A Vercel emite HTTPS sozinha (Let's Encrypt) assim que o DNS resolver
-   — sem passo manual, sem certificado pra comprar.
-4. No mesmo painel de Domains, escolher o sentido do redirecionamento
-   (`www.octogono.fun` → `octogono.fun`, ou o contrário) — um clique.
-5. Depois que resolver: abrir `https://octogono.fun` no navegador e
-   conferir cadeado (HTTPS) e o jogo carregando. `AI_URL` continua
-   apontando pro `draft-ufc.vercel.app` de propósito (mesmo projeto, a
-   rota `/api/ai` responde nos dois domínios) — não precisa trocar.
+   REGISTRADOR (onde o domínio foi comprado, não na Vercel): registro
+   **A** apontando pro IP da Vercel pro domínio raiz, **CNAME** pra
+   `cname.vercel-dns.com` pro `www`. A Vercel mostra o valor exato na
+   hora do Add — copiar de lá, o IP pode mudar.
+3. Esperar propagar (minutos a algumas horas). A Vercel emite HTTPS
+   sozinha (Let's Encrypt) assim que o DNS resolver.
+4. No mesmo painel, escolher o sentido do redirecionamento (`www` →
+   raiz, ou o contrário).
+5. **Depois que resolver, testar `AI_URL` com `curl` direto — não
+   presumir.** `draft-ufc.vercel.app` (o alias antigo) parou de resolver
+   pra uma deployment válida assim que `octogono.fun` virou o domínio
+   principal — 404 `DEPLOYMENT_NOT_FOUND` em toda chamada, sem aviso
+   nenhum, e o jogo continuou "funcionando" (a IA só caía em fallback
+   local sempre, sem erro visível pro jogador). A suposição antiga
+   ("mesmo projeto, `/api/ai` responde nos dois domínios") era falsa na
+   prática. Trocar `AI_URL` pro domínio novo é OBRIGATÓRIO, não opcional
+   — ver "Quando a IA falha" pro caso real. Testar assim:
+   ```bash
+   curl -s -X POST https://SEUDOMINIO/api/ai -H "Content-Type: application/json" \
+     -d '{"kind":"julgar","data":{"name":"T","cena":"c","resposta":"r","record":"1-0","followers":"1mil","fan":"5"}}'
+   ```
+   Deve devolver `{"ok":true,"result":{...}}` — qualquer coisa diferente
+   (404, HTML de erro, timeout) é o mesmo bug de novo.
 
 ## O que falta
 

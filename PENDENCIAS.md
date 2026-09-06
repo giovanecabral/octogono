@@ -210,6 +210,38 @@ melhora, mas **não bateu o alvo de <1/carreira**, porque a causa é externa
 própria em openrouter.ai/settings/integrations (Alibaba/Qwen, BYOK) pra sair
 do pool compartilhado — decisão de custo/conta, não de código.
 
+**Atualização 2026-09-06 — não confundir com o item 14.** O rate limit
+acima é real e continua existindo, mas NÃO foi a causa do bug reportado em
+produção desta vez ("a IA ignora a resposta") — essa causa foi
+`AI_URL` apontando pro domínio errado, 100% de falha, ver item 14. Medido
+de novo depois do fix: 30 chamadas reais de `julgar`, 30 ok, 0 falhas —
+o rate limit compartilhado não apareceu nesta amostra (pode voltar a
+aparecer sob carga real, mas não é mais o suspeito nº1).
+
+## 14. AI_URL apontava pra domínio morto — RESOLVIDO (hotfix 2026-09-06)
+
+`draft-ufc.vercel.app` (valor de `AI_URL`) passou a devolver 404
+`DEPLOYMENT_NOT_FOUND` em TODA chamada — não intermitente, confirmado
+com `curl` direto no endpoint. Bug foi relatado como "a IA ignora a
+resposta do jogador" (mesmo sintoma do item 9, mas causa totalmente
+diferente): toda vez que `ai()` recebia esse 404 sem JSON de verdade,
+classificava como `erro_transitorio` e nunca desligava `aiVivo` — o
+jogo continuava tentando pra sempre, sempre falhando, sempre caindo no
+fallback neutro local. `CONTEUDO_INSEGURO` foi conferido e NÃO disparava
+em falso nos textos reportados ("mérito", "educadamente").
+
+Causa provável: `octogono.fun` virou o domínio principal do projeto na
+Vercel (ver item de domínio no LEIA-ME) e o alias antigo
+`draft-ufc.vercel.app` parou de resolver pra uma deployment válida — a
+suposição registrada antes ("mesmo projeto, `/api/ai` responde nos dois
+domínios") era falsa na prática. `AI_URL` corrigido pra
+`https://octogono.fun/api/ai`, verificado com curl real (200, resposta
+contextual de verdade) e com 30 chamadas de `julgar` (100% ok).
+
+**Lição pra não repetir:** depois de qualquer mudança de domínio
+principal na Vercel, testar `AI_URL` com curl direto, não presumir que o
+alias antigo continua vivo.
+
 ## 10. MULT_TREINADOR — RESOLVIDO (trocado por REDUCAO_CURA_TREINADOR)
 
 Efeito pequeno confirmado (+0,05 vitórias/22 a 1.15x, mal passava de
@@ -267,6 +299,78 @@ K≈.53, sem sobra de margem). Método de medição já existe e não muda:
 `node testar.js gapescolha` pro gap, `node testar.js acoesluta`/`node
 testar.js motor` (6.000 lutas, política realista) pro KO/SUB/DEC. Ver
 comentário em cima de `K_ESCOLHA_LUTA` em `index.html`.
+
+## 15. Momento "lesão vencida" narrava escolha que não existia — RESOLVIDO (2026-09-06)
+
+Achado em produção: badge "MACHUCADO", frase "entrou mancando e saiu com
+a mão levantada" (narra ACEITAR lutar machucado, uma escolha) disparando
+pra lesão de NOCAUTE (consequência de apanhar, sem escolha nenhuma).
+`st.lesao` ganhou campo `origem` ("dilema"|"nocaute"); o gatilho em
+`finishFight()` escolhe `FRASE_LESAO_VENCIDA` ou
+`FRASE_LESAO_VENCIDA_NOCAUTE` conforme a origem.
+
+## 16. Card de momento com metade vazia — RESOLVIDO (2026-09-06)
+
+Achado em produção: com frase curta (caso comum, 1-2 frases), sobrava
+até ~250px vazios entre o bloco de 3 linhas e o rodapé — `CARD_H` era
+fixo pro pior caso (frase de 5 linhas). `desenharCardMomento()` agora
+mede quanto a frase e o bloco de 3 linhas (que também varia — nem toda
+momento tem adversário/posição) realmente ocupam, e calcula a altura do
+canvas a partir disso, com piso de 1060px. Verificado com Chrome
+headless em 3 casos (frase curta, longa, bloco de 3 linhas incompleto) —
+sem sobra em nenhum.
+
+## 17. "Focar em fama" no CAMPS — RESOLVIDO (2026-09-06)
+
+Pedido "há duas levas" (nunca tinha saído, achado jogando). Removido de
+`CAMPS`, `aplicarCamp()` e `telaCamp()` por completo — 4 camps de
+atributo agora (Boxe/Wrestling/Jiu-jitsu/Físico), nenhum de fama.
+`node testar.js treino` ganhou guarda de regressão (`nenhum .fama`).
+
+## 18. Eventos de vida por IA, dinheiro no dilema, rolar novamente no draft, dinheiro na ficha — IMPLEMENTADO (2026-09-06)
+
+Quatro pedidos na mesma leva:
+
+**Eventos por IA** substitui o pool fixo de 28 frases (repetiam entre
+carreiras). Novo kind `"evento"` em `api/ai.js`; `dispararEventoIA()` no
+cliente, assíncrono, sem bloquear nada (mesmo padrão do feed). RARE
+continua local/síncrono (fora-da-curva, texto calibrado à mão). SEM
+FALLBACK, por decisão explícita: se a IA falhar ou os filtros
+(`CONTEUDO_INSEGURO`+`RESULTADO_LUTA`, os MESMOS do dilema, sem exceção)
+esvaziarem o texto, a luta passa sem evento. `usedEvents`/`EVENTS`/
+`_drawNormal()`/`direcaoEvento()`/`somDoEvento()` removidos (dead code).
+
+Medido contra a API real (30/40 chamadas — ver LEIA-ME.md "Eventos por
+IA" pros números completos):
+- **Falha efetiva: ~17,5%** (10% sem campo `texto` no JSON + ~8% adicional
+  cortado pelo `RESULTADO_LUTA` até ficar vazio — a IA usa "nocaute" como
+  SUBSTANTIVO verdadeiro com frequência, ex. "o clipe do nocaute
+  viralizou", e o filtro corta qualquer frase com a palavra,
+  contexto nenhum). Em ~18 lutas elegíveis a evento por carreira, isso é
+  **~3 lutas/22 sem evento nenhum**. Não é pouco — registrado pra decisão,
+  não escondido.
+- **Variedade: 15 de 36 textos (42%) seguem o mesmo esqueleto** ("vídeo/
+  clipe viraliza + reação de família ou empresário"); 11/36 mencionam
+  empresário, 13/36 dinheiro/patrocínio, 13/36 família. A IA repete tema
+  menos que o pool fixo repetia frase, mas repete.
+
+**Dinheiro no dilema**: campo `"dinheiro"` no prompt de `julgar` (fração
+de -1 a 1 de `RENDA_BASE`, mesma âncora que `"seguidores"` já usa como
+fração relativa), travado com `lim()`. Escolhido ±1 bolsa cheia porque um
+dilema é evento situacional, não pode valer mais que uma luta inteira.
+
+**Rolar novamente**: botão 🎲 acima da mesa do draft, uma vez em toda a
+criação (não por par), desabilita de verdade (`.disabled`, não só o
+texto). Consome `rng()` sob demanda — a partir de agora **a semente só
+garante os adversários**, não mais o draft. Texto do convite de desafio e
+`node testar.js desafio` atualizados pra essa promessa.
+
+**Dinheiro na ficha**: `R$ {fmtNum(st.dinheiro)}` no topo, junto do
+avatar/nome; ganho da luta atual (`RENDA_BASE+round(RENDA_BASE*standing)`)
+na linha de resultado do card de luta, junto com método e round.
+
+KO/SUB/DEC final (nenhuma destas mudanças toca o motor de combate):
+**KO 34% / SUB 19% / DEC 46%** — idêntico ao de sempre.
 
 ## Manutenção
 
