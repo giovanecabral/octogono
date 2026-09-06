@@ -438,20 +438,39 @@ medição):
   carreira, a chance de colisão tende a subir. Vale remedir num dia sem
   volume de teste acumulado antes, se a precisão importar pra decisão
   final.
-- **Achado incidental, novo, fora do escopo desta pergunta**: uma
-  carreira que sofre um erro de rede real (não 429, que só pausa 60s —
-  uma FALHA de conexão de verdade, duas seguidas) desliga `aiVivo`
-  PERMANENTEMENTE pro resto daquela carreira, e evento compartilha esse
-  circuito com dilema/julgar/feed. Em 3 das 20 carreiras desta medição,
-  ISSO aconteceu e zerou os eventos daquela carreira inteira (0
-  eventos, todas as chamadas seguintes falhando local sem tentar rede).
-  Não é bug do conserto de hoje — é um comportamento de `ai()` que já
-  existia, só nunca tinha sido observado em produção porque nenhuma
-  medição anterior rodou uma carreira inteira contra a API real.
-  Registrado, não resolvido: `aiVivo=false` nunca volta a `true`
-  sozinho dentro da mesma carreira, então um azar cedo (2 falhas de
-  rede seguidas em QUALQUER chamada, não só evento) silencia todo o
-  resto. Considerar se vale a pena.
+- ✅ **ACEITO (2026-09-07), sem mais trabalho por ora.** Usuário aceitou
+  os 20% mesmo sabendo que pode estar subestimado: a medição foi feita
+  do jeito certo (carreira real, não chamadas isoladas), o número caiu
+  de 45%→20% com dois consertos baratos, e 3 dos 4 pares eram repetição
+  de giro narrativo em CARREIRAS DIFERENTES (não incomoda o mesmo
+  jogador duas vezes). A distância pro alvo de 15% não justifica partir
+  pra similaridade semântica agora. **Método pronto pra remedir em dia
+  limpo** se incomodar jogando de verdade: harness de 20 carreiras
+  reais documentado no LEIA-ME.md "Medindo a coisa certa".
+- ✅ **RESOLVIDO (2026-09-07), não era incidental — era grave.** 3/20
+  carreiras (15%) perdiam TODOS os eventos porque uma falha de rede
+  comum desligava `aiVivo` PERMANENTEMENTE pro resto da carreira, e
+  evento compartilhava esse circuito com dilema/julgar/feed. Antes de
+  evento existir, `aiVivo=false` só afetava feed/dilema — imperceptível,
+  caem em molde local sem o jogador notar. Sem fallback (decisão
+  explícita do evento), o mesmo desligamento virou carreira inteira sem
+  a mecânica. Consequência direta de tirar o fallback, não bug
+  independente.
+
+  Conserto: evento ganhou circuito PRÓPRIO
+  (`eventoPausadoAte`/`eventoFalhasSeguidas`), separado de
+  `aiVivo`/`aiPausadoAte`/`falhasRedeSeguidas`. Feed/dilema/julgar
+  continuam podendo desistir de vez (seguro pra eles). Evento NUNCA
+  desiste: todo motivo que desligaria o circuito compartilhado só pausa
+  por `AI_PAUSA_MS` e tenta de novo depois. `node testar.js aivivo`
+  cobre os dois circuitos separados e a ausência de contaminação
+  cruzada, provado com dente.
+
+  **Medido depois do conserto, 20 carreiras reais**: carreiras com
+  MENOS de 10 eventos: **1/20 (5%)** (era 3/20 com ZERO antes). Carreiras
+  com ZERO eventos: **0/20**. Média: 15,7 eventos/carreira. A única
+  carreira degradada (4 eventos) mostra o circuito funcionando como
+  desenhado — pausou e voltou a tentar, não zerou a carreira inteira.
 
 **Dinheiro no dilema**: campo `"dinheiro"` no prompt de `julgar` (fração
 de -1 a 1 de `RENDA_BASE`, mesma âncora que `"seguidores"` já usa como

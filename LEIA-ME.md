@@ -1169,6 +1169,13 @@ cobre os dois circuitos por separado e a ausência de contaminação
 cruzada entre eles (falha de `julgar` não pausa evento; falha de
 evento não desliga `aiVivo`).
 
+**Medido depois do conserto, mesmas 20 carreiras (seeds 95000-95019):
+carreiras com ZERO eventos: 0/20 (era 3/20). Carreiras com MENOS de 10
+eventos: 1/20 (5%) — a carreira 4, degradada por 14/18 respostas com
+JSON malformado na API real naquele dia, mas nunca zerada: o circuito
+pausou e voltou a tentar, exatamente o comportamento desenhado. Média:
+15,7 eventos/carreira em 22 lutas.**
+
 **Achado, não implementado ainda**: `aiVivo`/`aiPausadoAte`/
 `falhasRedeSeguidas` são `let` de topo, nunca resetados em
 `startCareer()` — se desligarem numa carreira, ficam desligados nas
