@@ -1489,11 +1489,21 @@ const EVENTO_TEMAS=["imprensa","dinheiro","família","rotina de treino",
 const ATTRS_EVENTO=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
 async function dispararEventoIA(bouts,opp,r){
   const tema=EVENTO_TEMAS[Math.floor((eventoRng?eventoRng():Math.random())*EVENTO_TEMAS.length)];
+  /* Medido 2026-09-06: forçar o tema (acima) resolveu o COLAPSO ENTRE
+     temas (42% convergindo pra "vídeo viraliza" mesmo quando o tema
+     pedido era outro) — mas não resolve repetição DENTRO do mesmo tema:
+     o modelo tem uma história "padrão" pra cada tema e a repete quase
+     igual quando o mesmo tema volta na mesma carreira (achado: dois
+     eventos de "vida pessoal" saíram quase idênticos — "tão viciado na
+     rotina que esqueceu o aniversário da esposa e dorme no sofá" duas
+     vezes). st.eventosRecentes guarda os últimos 3 textos already
+     mostrados NESTA carreira; iam junto no prompt pra evitar repetir a
+     mesma situação — sem isso, cada chamada é cega pro que já foi dito. */
   const dados={name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
     ganhou:st.lastWon,metodo:st.lastMethod,round:st.lastRound,nocaute:st.lastKO,
     streakW:st.streakW,streakL:st.streakL,title:!!st.title,
-    fightNo,totalFights:TOTAL_FIGHTS,tema};
+    fightNo,totalFights:TOTAL_FIGHTS,tema,recentes:(st.eventosRecentes||[]).slice(-3)};
   let j=await ai("evento",dados);
   /* Medido: 10% das respostas vêm com ok:true mas sem o campo "texto" no
      JSON (a IA às vezes não obedece o formato pedido). Uma retentativa
@@ -1519,6 +1529,9 @@ async function dispararEventoIA(bouts,opp,r){
   const texto=String(j.texto).slice(0,300).trim();
   if(!texto)return;
   bouts.appendChild(el("div","event","— "+texto));
+  st.eventosRecentes=st.eventosRecentes||[];
+  st.eventosRecentes.push(texto);
+  if(st.eventosRecentes.length>3)st.eventosRecentes.shift();
   const atr=ATTRS_EVENTO.includes(j.atributo)?j.atributo:null;
   const mult=atr?lim(j.efeito,.90,1.10,1):1;
   tocarSom(mult>1.008?1:mult<0.992?-1:0);

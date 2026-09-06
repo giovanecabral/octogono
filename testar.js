@@ -3079,6 +3079,17 @@ function testarEventoIA() {
     await dispararEventoIA(bouts,opp,{});
     passo("tema vai no data da chamada, sorteado de EVENTO_TEMAS",
       EVENTO_TEMAS.includes(temaRecebido));
+
+    // caso 6: st.eventosRecentes acumula (máx 3) e vai no data — é o que
+    // evita repetir a mesma história dentro da mesma carreira
+    st.events=0; st.eventosRecentes=["primeiro","segundo","terceiro"];
+    let recentesRecebidos=null;
+    ai=async(kind,data)=>{ recentesRecebidos=data.recentes; return{texto:"quarto",atributo:"nenhum",efeito:1}; };
+    await dispararEventoIA(bouts,opp,{});
+    passo("recentes vai no data da chamada, com o histórico ANTES deste evento",
+      JSON.stringify(recentesRecebidos)===JSON.stringify(["primeiro","segundo","terceiro"]));
+    passo("depois de aplicar, eventosRecentes guarda o novo e descarta o mais velho (máx 3)",
+      JSON.stringify(st.eventosRecentes)===JSON.stringify(["segundo","terceiro","quarto"]));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }

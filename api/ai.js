@@ -173,9 +173,15 @@ Contexto: cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.`,
      saíam com o mesmo esqueleto ("vídeo/clipe viraliza, família ou
      empresário reage") — o prompt só SUGERIA temas e dava UM exemplo
      ("o clipe viralizou"), o modelo convergiu pro exemplo em vez de usar
-     o menu inteiro. Conserto: o cliente agora sorteia o tema e MANDA no
-     "tema" (não sugere, não deixa o modelo escolher), e o prompt não dá
-     mais nenhum exemplo de frase copiável — só a regra. */
+     o menu inteiro. Conserto 1: o cliente agora sorteia o tema e MANDA
+     no "tema" (não sugere, não deixa o modelo escolher), e o prompt não
+     dá mais nenhum exemplo de frase copiável — só a regra. Medido de
+     novo (40 chamadas, tema forçado): colapso ENTRE temas sumiu, mas
+     apareceu repetição DENTRO do mesmo tema — o modelo tem uma história
+     "padrão" por tema e repete quase igual quando o tema volta na mesma
+     carreira. Conserto 2: "recentes" manda os últimos 3 textos já
+     mostrados NESTA carreira, com instrução explícita de não repetir a
+     situação de nenhum deles. */
   evento: d => ({
     system: `${VOZ}
 Você narra um evento breve da vida de um lutador de MMA — fora do
@@ -202,12 +208,18 @@ prático) é permitido e nem sempre precisa ser evitado.
 "efeito" só se afasta de 1 quando "atributo" não é "nenhum" — alguma
 mudança plausível de rotina, motivação ou lesão leve que mexe num aspecto
 técnico específico. A maioria dos eventos NÃO mexe em nada técnico:
-"atributo":"nenhum","efeito":1 é o caso comum, não a exceção.`,
+"atributo":"nenhum","efeito":1 é o caso comum, não a exceção.
+Se vier uma lista de "Eventos recentes desta carreira", o evento novo
+NÃO PODE repetir a mesma situação, o mesmo giro ou frase parecida com
+nenhum deles — nem com o tema trocado. Invente uma situação nova de
+verdade, mesmo que o tema de hoje seja igual ao de um evento recente.`,
     user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores, fã ${d.fan}/10.
 Luta ${d.fightNo} de ${d.totalFights}.${d.title ? " É campeão." : ""}
 Resultado da última luta: ${d.ganhou ? "venceu" : "perdeu"} por ${d.metodo}, round ${d.round}.${d.nocaute ? " Foi nocaute." : ""}
 Sequência atual: ${d.streakW > 0 ? d.streakW + " vitórias seguidas" : d.streakL > 0 ? d.streakL + " derrotas seguidas" : "sem sequência"}.
-Tema desta vez: ${d.tema}.`,
+Tema desta vez: ${d.tema}.${Array.isArray(d.recentes) && d.recentes.length ? `
+Eventos recentes desta carreira (NÃO repita a situação de nenhum destes):
+${d.recentes.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : ""}`,
   }),
 };
 
