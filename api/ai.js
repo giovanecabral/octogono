@@ -69,17 +69,25 @@ ${d.upset ? "FOI ZEBRA, ninguém dava nada pelo jogador." : ""}
 Cartel atual: ${d.record}. Seguidores: ${d.followers}.`,
   }),
 
-  /* cria um dilema aberto pro jogador responder com texto livre */
+  /* cria um dilema aberto pro jogador responder com texto livre.
+     "recentes" (títulos já mostrados nesta carreira) é o mesmo mecanismo
+     que já existe no evento: reduz repetição, não garante — o cliente
+     tem a mesma rede de baixo (descarta se o título vier igual a um
+     recente), ver abrirDilema() em index.html. */
   dilema: d => ({
     system: `${VOZ}
 Você cria situações da vida de um lutador de MMA fora do octógono.
 Responda SOMENTE com JSON, sem markdown: {"titulo":"3 a 6 palavras","cena":"2 a 3 frases"}
 A cena termina numa encruzilhada, mas NÃO oferece opções — o jogador escreve
 o que vai fazer. Pode ser engraçada, boa ou ruim. Varie muito o tipo:
-imprensa, dinheiro, família, treino, patrocínio, redes sociais, adversário, lesão.`,
+imprensa, dinheiro, família, treino, patrocínio, redes sociais, adversário, lesão.
+Se vier uma lista de "Dilemas recentes desta carreira", o novo NÃO PODE
+repetir o título nem a situação de nenhum deles.`,
     user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores.
 Medidor de fã: ${d.fan} de 10. Situação: ${d.mood}.
-Tipo de situação para gerar desta vez: ${d.seed}`,
+Tipo de situação para gerar desta vez: ${d.seed}${Array.isArray(d.recentes)&&d.recentes.length?`
+Dilemas recentes desta carreira (NÃO repita o título nem a situação de nenhum destes):
+${d.recentes.map((t,i)=>`${i+1}. ${t}`).join("\n")}`:""}`,
   }),
 
   /* julga o que o jogador respondeu */

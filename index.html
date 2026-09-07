@@ -1614,6 +1614,24 @@ const SEEDS=["imprensa provocando","dinheiro curto","família cobrando",
   "lesão escondida","proposta de patrocínio duvidosa","polêmica nas redes",
   "adversário te humilhando","convite pra outro esporte","treinador querendo sair",
   "fã passando do limite","corte de peso dando errado","entrevista ao vivo"];
+/* Sorteio SEM reposição, mesmo desenho de proximoTema() (evento): com 12
+   tipos e só 4 dilemas por carreira, sortear cada vez do zero podia repetir
+   um tipo cedo por puro acaso — st.dilemaSeedsRestantes é a cartela da
+   carreira, embaralhada com dilemaRng (stream próprio, nunca o rng
+   principal — sortear aqui deslocaria a sequência e o link de desafio
+   antigo pararia de reproduzir os mesmos adversários) e consumida um a
+   um; com só 4 sorteios por carreira, a cartela de 12 nunca esgota — os 4
+   tipos de qualquer carreira são sempre diferentes entre si. */
+function proximoDilemaSeed(){
+  if(!st.dilemaSeedsRestantes||!st.dilemaSeedsRestantes.length){
+    st.dilemaSeedsRestantes=[...SEEDS];
+    for(let i=st.dilemaSeedsRestantes.length-1;i>0;i--){
+      const j=Math.floor((dilemaRng?dilemaRng():Math.random())*(i+1));
+      [st.dilemaSeedsRestantes[i],st.dilemaSeedsRestantes[j]]=[st.dilemaSeedsRestantes[j],st.dilemaSeedsRestantes[i]];
+    }
+  }
+  return st.dilemaSeedsRestantes.pop();
+}
 const DILEMA_LOCAL=[
  {titulo:"A pergunta na coletiva",cena:"Um repórter pergunta, ao vivo, se você não acha que só venceu porque o adversário estava machucado. O microfone está na sua frente e o ginásio inteiro escuta."},
  {titulo:"O patrocínio esquisito",cena:"Uma casa de apostas oferece o dobro do que você ganha por luta. Seu treinador fez cara feia quando ouviu. O contrato vence amanhã."},
@@ -1700,16 +1718,23 @@ async function abrirDilema(){
   bouts.appendChild(box);
   box.scrollIntoView({behavior:"smooth",block:"nearest"});
 
-  const seed=SEEDS[Math.floor(rng()*SEEDS.length)];
+  const seed=proximoDilemaSeed();
   const mood=st.streakW>=3?"em alta":st.streakL>=2?"em queda":"estável";
+  const recentes=(st.dilemaRecentes||[]).slice(-3);
   let d=await ai("dilema",{name:me.name,record:`${st.wins}-${st.losses}`,
-    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed});
+    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed,recentes});
   /* dilema não recebe texto do jogador — não dá pra provocar ele do jeito
      que dá pra provocar o julgar. Ainda assim, rede embaixo: se a IA gerar
      algo ruim sem provocação (improvável, mas não impossível), cai no
-     mesmo fallback que já existe pra quando ela falha. */
-  if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo))
+     mesmo fallback que já existe pra quando ela falha. Mesma rede pro
+     título repetir um dos recentes — a instrução de não repetir (acima,
+     no prompt) reduz mas não garante, mesma regra do evento. */
+  if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo)||
+    recentes.some(t=>t.toLowerCase()===String(d.titulo||"").toLowerCase()))
     d=DILEMA_LOCAL[Math.floor(rng()*DILEMA_LOCAL.length)];
+  st.dilemaRecentes=st.dilemaRecentes||[];
+  st.dilemaRecentes.push(String(d.titulo||"E agora?"));
+  if(st.dilemaRecentes.length>3)st.dilemaRecentes.shift();
 
   box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
@@ -3538,7 +3563,7 @@ async function compartilhar(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,eventoRng=null,rareUsed=null,fought=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,eventoRng=null,dilemaRng=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=false;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -3913,6 +3938,7 @@ function startDraft(name){
   escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
   lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
   eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
+  dilemaRng=mulberry32((SEED^0x4D1E8A63)>>>0);
   me={name,division:DIVISION};picks=[];
   budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
   remaining=[...PAIRS];

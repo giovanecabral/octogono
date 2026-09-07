@@ -3343,6 +3343,111 @@ function testarEventoIA() {
 }
 
 /* ================================================================== *
+ * 8c. DILEMA — mesmo tratamento anti-repetição do evento: sorteio sem
+ *     reposição do tipo, histórico de títulos recentes, rede de baixo
+ *     pro eco exato. Achado incidental medindo coerência (não pedido:
+ *     título "Cheque atrasado" saiu idêntico 2x em 30 chamadas isoladas
+ *     — dilema não tinha o mecanismo que o evento já tem, ver
+ *     PENDENCIAS.md item 20).
+ * ================================================================== */
+function testarDilemaMecanismo() {
+  console.log("\n" + cinza("dilema: tipo sem reposição (stream próprio, não toca o rng principal) e títulos recentes não repetem"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__dilm=(async function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot",division:"lightweight"};
+    st={treino:{},eventoMod:{},wins:5,losses:1,followers:8000,fan:6,streakW:0,streakL:0};
+    fightNo=6; document.getElementById("bouts");
+
+    // caso 1: sorteio sem reposição — 12 sorteios seguidos cobrem os 12
+    // tipos de SEEDS, cada um exatamente 1 vez
+    dilemaRng=mulberry32(1); st.dilemaSeedsRestantes=null;
+    const vistos=[];
+    for(let i=0;i<12;i++) vistos.push(proximoDilemaSeed());
+    passo("12 sorteios seguidos cobrem os 12 tipos, cada um 1 vez (sem reposição)",
+      new Set(vistos).size===12 && SEEDS.every(s=>vistos.includes(s)));
+    // o 13º recomeça uma cartela nova
+    const seed13=proximoDilemaSeed();
+    passo("13º sorteio vem de cartela nova (recomeçou, não trava vazio)",
+      SEEDS.includes(seed13));
+
+    // caso 2: dilemaRng é stream PRÓPRIO — proximoDilemaSeed() nunca pode
+    // tocar o rng principal, senão desloca a sequência de adversários e
+    // quebra link de desafio já compartilhado
+    dilemaRng=mulberry32(2); st.dilemaSeedsRestantes=null;
+    rng=()=>{throw new Error("proximoDilemaSeed() chamou o rng principal");};
+    let estourou=false;
+    try{ for(let i=0;i<13;i++) proximoDilemaSeed(); }catch(e){ estourou=true; }
+    passo("proximoDilemaSeed() nunca consome o rng principal (13 chamadas, inclusive reembaralhando)",
+      !estourou);
+    rng=mulberry32(1); // devolve um rng normal pro resto do teste
+
+    // caso 3: recentes acumula (máx 3) e vai no data da chamada — mesmo
+    // desenho de st.eventosRecentes
+    dilemaRng=mulberry32(3); st.dilemaSeedsRestantes=null; st.dilemaRecentes=null;
+    const bouts=document.getElementById("bouts");
+    const titulos=["Primeiro dilema","Segundo dilema","Terceiro dilema","Quarto dilema"];
+    const recebidos=[];
+    let idx=0;
+    ai=async(kind,data)=>{ recebidos.push(data.recentes); return{titulo:titulos[idx++],cena:"Uma cena qualquer que termina numa decisão."}; };
+    for(let i=0;i<4;i++){ abrirDilema(); for(let t=0;t<8;t++) await Promise.resolve(); }
+    passo("1º dilema não manda recentes nenhum (carreira começando)",
+      JSON.stringify(recebidos[0])==="[]");
+    passo("4º dilema manda os 3 últimos títulos, na ordem, sem o 1º (cap em 3)",
+      JSON.stringify(recebidos[3])===JSON.stringify(["Primeiro dilema","Segundo dilema","Terceiro dilema"]));
+    passo("st.dilemaRecentes guarda só os 3 últimos títulos depois de 4 dilemas",
+      JSON.stringify(st.dilemaRecentes)===JSON.stringify(["Segundo dilema","Terceiro dilema","Quarto dilema"]));
+
+    // caso 4: rede de baixo — título igual (mesmo com case diferente) a um
+    // recente cai no fallback local, não confia só na instrução do prompt
+    dilemaRng=mulberry32(4); st.dilemaSeedsRestantes=null;
+    st.dilemaRecentes=["Cheque atrasado"];
+    ai=async(kind,data)=>({titulo:"CHEQUE ATRASADO",cena:"Ecoou o mesmo título de novo, com case diferente."});
+    abrirDilema(); for(let t=0;t<8;t++) await Promise.resolve();
+    const ultimoTitulo=()=>{
+      const box=bouts.children[bouts.children.length-1];
+      const m=box.innerHTML.match(/dil-t">([^<]*)</);
+      return m?m[1]:null;
+    };
+    const titulosLocais=DILEMA_LOCAL.map(d=>d.titulo);
+    passo("eco do título (mesmo com case diferente) cai no fallback local, não confia só na instrução",
+      titulosLocais.includes(ultimoTitulo()));
+    // controle: título genuinamente novo passa normal
+    st.dilemaRecentes=["Cheque atrasado"];
+    ai=async(kind,data)=>({titulo:"Uma situação totalmente nova",cena:"Cena nova de verdade."});
+    abrirDilema(); for(let t=0;t<8;t++) await Promise.resolve();
+    passo("controle: título diferente dos recentes passa normal (rede de baixo não é paranoica)",
+      ultimoTitulo()==="Uma situação totalmente nova");
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  return env.sandbox.__dilm.then((passos) => {
+    let ok = true;
+    for (const p of passos) {
+      if (!p.ok) ok = false;
+      console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    return ok && passos.length > 0;
+  });
+}
+
+/* ================================================================== *
  * 9. AI VIVO — desliga exatamente onde deve, nunca onde não deve
  * ================================================================== */
 /* Sem rede nenhuma — alimenta ai() com respostas montadas à mão via um
@@ -3554,6 +3659,7 @@ try {
   else if (cmd === "coerencia") ok = testarCoerencia();
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "eventoia") ok = await testarEventoIA();
+  else if (cmd === "dilema") ok = await testarDilemaMecanismo();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");

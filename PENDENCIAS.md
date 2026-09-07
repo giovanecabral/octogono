@@ -550,12 +550,21 @@ original (sem o vocabulário positivo). 10% de cena esquisita numa
 carreira de 4 dilemas é raro o bastante pra aceitar sem mais trabalho.
 Registrado, não é pra remedir sem incomodar de novo jogando.
 
-**Achado incidental, separado, ESTE sim vale consertar**: título
+**Achado incidental, separado — RESOLVIDO (2026-09-06)**: título
 "Cheque atrasado" saiu IDÊNTICO duas vezes em 30 chamadas isoladas —
-dilema não tem o mecanismo de "recentes" que o evento já ganhou (item
-18). Só 4 dilemas por carreira torna repetição DENTRO de uma carreira
-improvável, mas ENTRE carreiras o jogador vê o mesmo título de novo.
-Ver implementação abaixo.
+dilema não tinha o mecanismo de "recentes" que o evento já ganhou
+(item 18), e sorteava o tipo COM reposição consumindo o rng principal.
+Mesmo tratamento do evento aplicado ao dilema: `proximoDilemaSeed()`
+sem reposição com stream próprio (`dilemaRng`, nunca o rng principal —
+protege o link de desafio), `st.dilemaRecentes` (últimos 3 títulos) no
+prompt com instrução de não repetir, rede de baixo cliente-side pro
+eco (cai no `DILEMA_LOCAL`). `node testar.js dilema`: sorteio sem
+reposição, isolamento do `dilemaRng` do rng principal, cap em 3 dos
+recentes, descarte por eco — todos provados com dente. Detalhes em
+`LEIA-ME.md` "Eventos por IA" → "Dilema: mesmo tratamento
+anti-repetição". Só 4 dilemas por carreira, sem reposição já garante
+os 4 tipos diferentes entre si; repetição ENTRE carreiras continua
+possível (mesma limitação do evento, não pedida pra resolver).
 
 ## Manutenção
 

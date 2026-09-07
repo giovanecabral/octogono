@@ -854,7 +854,10 @@ parecido de novo:
   giro narrativo (ex. "mãe liga cobrando conta" duas vezes); o 4º é só
   o mesmo tema com desfechos opostos (patrocínio caindo vs. chegando),
   que não incomodaria do mesmo jeito. Ainda acima do alvo de 15%, mas a
-  distância ficou pequena.
+  distância ficou pequena. ✅ **ACEITO (2026-09-06)** — a distância pro
+  alvo não justificou similaridade semântica agora; método pronto pra
+  remedir num dia sem volume de teste acumulado, se voltar a incomodar
+  jogando. Ver `PENDENCIAS.md` item 18.
 - ⚠️ **Confundido pelo volume da própria sessão de medição**: a taxa de
   sucesso geral das chamadas caiu pra ~54% nesta rodada (era 90-100% em
   testes isolados horas antes) — quase certamente o pool compartilhado
@@ -864,15 +867,47 @@ parecido de novo:
   chance de dois temas colidirem perto um do outro — **o 20% pode
   estar subestimado**. Vale remedir num dia sem volume de teste
   acumulado se a precisão final importar.
-- **Achado incidental, fora do escopo desta pergunta**: um erro de rede
-  real (não 429 — esse só pausa 60s — duas falhas de CONEXÃO seguidas)
-  desliga `aiVivo` permanentemente pro resto daquela carreira, e evento
-  compartilha esse circuito com dilema/julgar/feed. 3 das 20 carreiras
-  desta medição perderam TODOS os eventos por isso. Não é bug de hoje —
-  é um comportamento de `ai()` que já existia (ver "Quando a IA
-  falha"), só nunca tinha sido observado em produção porque nenhuma
-  medição anterior rodou uma carreira inteira contra a API real.
-  Registrado, não resolvido.
+- **Achado incidental, fora do escopo desta pergunta** (mas o mais
+  grave dos dois — consequência direta de tirar o fallback local do
+  evento): um erro de rede real (não 429 — esse só pausa 60s — duas
+  falhas de CONEXÃO seguidas) desligava `aiVivo` permanentemente pro
+  resto daquela carreira, e evento compartilhava esse circuito com
+  dilema/julgar/feed. 3 das 20 carreiras desta medição perderam TODOS
+  os eventos por isso — 15% dos jogadores com carreira vazia por duas
+  falhas de rede boba. ✅ **RESOLVIDO (2026-09-07)** — evento ganhou
+  circuito próprio, nunca mais desliga pra sempre. Detalhes e números
+  finais (0/20 carreiras zeradas, 1/20 com menos de 10 eventos) em
+  "Quando a IA falha", logo abaixo.
+
+### Dilema: mesmo tratamento anti-repetição, achado medindo coerência
+
+Medindo coerência de cena (não repetição — ver "Regra geral: restrição
+negativa..." acima pro achado de coerência em si, `PENDENCIAS.md` item
+20), apareceu de graça: título **"Cheque atrasado" saiu idêntico 2
+vezes em 30 chamadas isoladas**. Dilema nunca tinha o mecanismo que o
+evento já tem — sorteava o tipo com reposição (`SEEDS[Math.floor(rng()
+*SEEDS.length)]`, consumindo o rng PRINCIPAL a cada dilema) e não
+guardava histórico de títulos.
+
+**Mesmo tratamento do evento, aplicado ao dilema (2026-09-06)**:
+`proximoDilemaSeed()` sorteia sem reposição, cartela própria
+(`st.dilemaSeedsRestantes`) embaralhada com `dilemaRng` — stream PRÓPRIO,
+nunca o `rng` principal (mesmo motivo do `holdRng`/`eventoRng`: sortear
+aqui deslocaria a sequência e o link de desafio antigo pararia de
+reproduzir os mesmos adversários). `st.dilemaRecentes` guarda os
+últimos 3 títulos da carreira, vão no prompt com instrução de não
+repetir, e o cliente tem a mesma rede de baixo do evento: se o título
+vier igual a um recente (a instrução reduz, não garante — mesma regra
+de sempre), descarta e cai no fallback local (`DILEMA_LOCAL`), não
+segue com o eco. `node testar.js dilema` cobre sorteio sem reposição
+(12 tipos, 12 sorteios, nenhum repetido), isolamento do `dilemaRng` (o
+teste força o `rng` principal a lançar exceção se for chamado — prova
+que `proximoDilemaSeed()` nunca toca nele), acúmulo/corte em 3 dos
+recentes, e o descarte por eco (com controle: título novo passa
+normal). Só 4 dilemas por carreira — sem reposição já garante os 4
+tipos de uma carreira sempre diferentes entre si; repetição ENTRE
+carreiras (times diferentes, RNG diferente) continua possível, mesma
+limitação que o evento já tem e que ninguém pediu pra resolver.
 
 ## Som
 
