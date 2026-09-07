@@ -2528,6 +2528,183 @@ function testarDriverRodada() {
   return ok;
 }
 
+/* ================================================================== *
+ * DRIVER ROUND-A-ROUND — a linha de resultado tem que aparecer NA TELA
+ * ================================================================== */
+/* Achado jogando em produção: luta que vai aos cartões termina sem
+   nenhuma linha de resultado — nem "vence por decisão", nem cartões, nem
+   o carimbo de vitória/derrota. testarDriverRodada() (acima) já prova que
+   o LOG (array em memória) bate bit a bit com simulateFight(), mas nunca
+   prova que esse log vira TELA de verdade — e é exatamente aí que o bug
+   mora: montarDecisao() empurra a linha de decisão pro array `log` DEPOIS
+   que o último animarTrecho() já consumiu e renderizou o trecho do round
+   final. animarTrecho() nunca é chamado de novo com essa linha, então ela
+   fica presa no array e nunca chega no DOM. fin() (KO/finalização) não
+   tem esse problema: ele roda DENTRO de simularRound(), antes do
+   `trecho=log.slice(marca)` que alimenta animarTrecho() — por isso só
+   decisão quebra, nunca KO/finalização.
+   Carreira real de ponta a ponta (auto, nextFight()/lutar()/finishFight()
+   de verdade — mesmo harness de testarFrequenciaMomentos), não luta
+   isolada: sem isso não dá pra provar que finishFight() roda (cartel
+   avança, carimbo aparece no card da luta) mesmo quando a narração ao
+   vivo perde a linha — as duas coisas são independentes e o achado é
+   exatamente essa independência. */
+function testarNarracaoResultado(N = 8) {
+  console.log("\n" + cinza(`${N} carreiras reais: a linha de resultado aparece na narração ao vivo?`));
+  const F = lerLutadores();
+  const noop = () => {};
+  function makeEl(tag) {
+    return {
+      tagName: tag, _html: "", textContent: "", id: "", className: "", style: {},
+      children: [], disabled: false, value: "",
+      classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      appendChild(c) { this.children.push(c); return c; }, append() {}, scrollIntoView: noop, focus: noop,
+      addEventListener: noop, remove: noop, querySelector: () => makeEl(), querySelectorAll: () => [],
+      getContext: () => null, get innerHTML() { return this._html; }, set innerHTML(v) { this._html = String(v); },
+    };
+  }
+  const respirar = () => new Promise(r => setImmediate(r));
+
+  function novoSandbox() {
+    const registro = {}; const timers = [];
+    const sb = {
+      console: { log: noop, warn: noop, error: noop },
+      document: {
+        getElementById: id => registro[id] || (registro[id] = makeEl()), createElement: t => makeEl(t),
+        querySelector: () => makeEl(), addEventListener: noop, removeEventListener: noop,
+      },
+      window: { matchMedia: () => ({ matches: true }) },
+      setTimeout: fn => { timers.push(fn); return timers.length; },
+      clearTimeout: noop, setInterval: noop, clearInterval: noop,
+      fetch: () => Promise.reject(new Error("offline")),
+      AbortController: class { constructor() { this.signal = null; } abort() {} },
+      Math, JSON, Date, Number, String, Array, Object, Promise, Set, Map, Error, isNaN,
+    };
+    sb.globalThis = sb;
+    vm.createContext(sb);
+    return { sb, registro, drenar: () => { let i = 0; while (timers.length && i++ < 200000) (timers.shift())(); } };
+  }
+
+  function montarCarreira(sb, seed) {
+    const corpo = `
+;globalThis.__x=(function(){
+  ROSTER=rateAll(${JSON.stringify(F)});
+  CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+  DIVISION="lightweight"; MODO="normal";
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+  SEED=${seed};
+  rng=mulberry32(SEED); holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
+  fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
+  escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
+  lesaoRng=mulberry32((SEED^0x7F4A7C15)>>>0);
+  eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
+  function draft(rngD){
+    let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
+    const f={name:"TesteBot",division:DIVISION,sapm:3.2};
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rngD,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
+    }
+    f.strAcc=f.strAcc||.45; f.tdAcc=f.tdAcc||.38;
+    return f;
+  }
+  me=draft(rng);
+  me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+  ROSTO=null;
+  st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+      bestBeaten:0,bestWin:null,title:false,standing:.18,peak:.18,events:0,koLosses:0,
+      kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+      lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,disputaRecusas:0,defesas:0,
+      exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,vezesCampeao:0,
+      subLosses:0,evitouAlgumaVez:false,dinheiro:0,treinadorComprado:false,estreouMainCard:false};
+  fought=new Set();rareUsed=new Set();
+  fightNo=0;auto=true;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;
+  document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
+  document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
+  document.getElementById("escolhaLuta").style.display="none";
+  document.getElementById("controls"); document.getElementById("next"); document.getElementById("autob");
+  globalThis.__ehPlaying=()=>playing;
+  globalThis.__ehDilema=()=>dilemaAberto;
+  globalThis.__campo=()=>document.getElementById("dilresp");
+  globalThis.__botao=()=>document.getElementById("dilgo");
+  return "ok";
+})();
+`;
+    vm.runInContext(lerScript() + corpo, sb, { filename: "index.html" });
+  }
+
+  async function resolverDilemaSeAberto(sb, drenar, registro) {
+    if (!sb.__ehDilema()) return;
+    const campo = sb.__campo(), botao = sb.__botao();
+    if (campo && botao && !campo.disabled && !botao.disabled) {
+      campo.value = "aceito, sem problema";
+      botao.onclick();
+      delete registro.dilresp; delete registro.dilgo;
+      drenar(); await respirar(); drenar(); await respirar();
+      vm.runInContext("auto=true;", sb);
+    }
+  }
+
+  async function rodarCarreira(seed) {
+    const { sb, drenar, registro } = novoSandbox();
+    montarCarreira(sb, seed);
+    for (let f = 0; f < 22; f++) {
+      let tentativas = 0;
+      while (sb.__ehPlaying() && tentativas++ < 100) await respirar();
+      await resolverDilemaSeAberto(sb, drenar, registro);
+      let t2 = 0;
+      while (sb.__ehDilema() && t2++ < 10) await resolverDilemaSeAberto(sb, drenar, registro);
+      vm.runInContext("nextFight();", sb);
+      drenar(); await respirar(); drenar(); await respirar();
+      await resolverDilemaSeAberto(sb, drenar, registro);
+    }
+    for (let k = 0; k < 15; k++) { drenar(); await respirar(); await resolverDilemaSeAberto(sb, drenar, registro); }
+    const fightNo = vm.runInContext("fightNo", sb);
+    const wins = vm.runInContext("st.wins", sb), losses = vm.runInContext("st.losses", sb);
+    const boutsLinhas = (registro.bouts ? registro.bouts.children : []).map(c => c.innerHTML);
+    const playLinhas = (registro.play ? registro.play.children : []).map(c => c.innerHTML);
+    return { fightNo, wins, losses, boutsLinhas, playLinhas };
+  }
+
+  return (async () => {
+    let ok = true;
+    const passo = (nome, cond) => { if (!cond) ok = false; console.log(`  ${cond ? verde("ok   ") : vermelho("fora ")} ${nome}`); };
+    let totalDecisoes = 0, totalNarradasDecisao = 0, totalFinishes = 0, totalNarradasFinish = 0, carreirasCompletas = 0;
+    for (let s = 0; s < N; s++) {
+      const r = await rodarCarreira(60000 + s);
+      if (r.fightNo === 22 && r.wins + r.losses === 22) carreirasCompletas++;
+
+      const decisoesBout = r.boutsLinhas.filter(l => /Decisão/.test(l)).length;
+      const finishesBout = r.boutsLinhas.filter(l => /Nocaute|Finaliza/.test(l)).length;
+      /* fin() escreve "vence por nocaute"/"vence por finalização"/"vence por
+         nocaute técnico no chão"; montarDecisao() escreve "vence por decisão".
+         Casar por essas frases, não pelo `kind`, porque é exatamente o texto
+         que o jogador vê na tela ao vivo — o que importa aqui. */
+      const narradasDecisao = r.playLinhas.filter(l => /vence por decis/i.test(l)).length;
+      const narradasFinish = r.playLinhas.filter(l => /vence por (nocaute|finaliza)/i.test(l)).length;
+
+      totalDecisoes += decisoesBout; totalNarradasDecisao += narradasDecisao;
+      totalFinishes += finishesBout; totalNarradasFinish += narradasFinish;
+    }
+    passo(`${N} carreiras chegaram inteiras (22 lutas, cartel bate) — pré-condição da medição`,
+      carreirasCompletas === N);
+    passo(`pelo menos 1 decisão real na amostra (${totalDecisoes} no total) — senão a medição não vale nada`,
+      totalDecisoes > 0);
+    passo(`controle: KO/finalização SEMPRE narra a linha de resultado ao vivo (${totalNarradasFinish}/${totalFinishes})`,
+      totalFinishes > 0 && totalNarradasFinish === totalFinishes);
+    passo(`CONSERTO: decisão narra a linha de resultado ao vivo tantas vezes quanto o cartel registrou (${totalNarradasDecisao}/${totalDecisoes})`,
+      totalNarradasDecisao === totalDecisoes);
+    return ok;
+  })();
+}
+
 function testarConquistas() {
   console.log("\n" + cinza("conquistas: cada check() no limite certo, e a persistência de verdade"));
   const env = criarAmbiente();
@@ -3371,6 +3548,7 @@ try {
   else if (cmd === "frequencia") ok = await testarFrequenciaMomentos(Number(div) || 30);
   else if (cmd === "lesaonocaute") ok = testarLesaoNocaute();
   else if (cmd === "driverluta") ok = testarDriverRodada();
+  else if (cmd === "narracao") ok = await testarNarracaoResultado(Number(div) || 8);
   else if (cmd === "drivermotor") ok = testarDriverMotor(Number(process.argv[3]) || 1, Number(process.argv[4]) || 6000);
   else if (cmd === "dinheiro") ok = testarDinheiro(div || "lightweight");
   else if (cmd === "coerencia") ok = testarCoerencia();

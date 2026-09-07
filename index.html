@@ -4458,7 +4458,16 @@ function lutar(escolhido,camp){
       }else if(round<rounds){
         round++;proximaRodada();
       }else{
-        encerrar(montarDecisao());
+        /* montarDecisao() empurra a linha de resultado pro `log` DEPOIS que
+           o trecho do round final já foi consumido acima — sem reanimar
+           esse pedaço novo ela nunca chega na tela (achado jogando: luta
+           que vai aos cartões terminava sem nenhuma linha de resultado,
+           mesmo com finishFight() rodando certo por baixo). Mesma
+           assinatura do branch de cima (if(res){...}): monta o resultado,
+           fatia só o que ele acabou de empurrar, anima, só then encerra. */
+        const res=montarDecisao();
+        const trechoFinal=log.slice(marca);marca=log.length;
+        animarTrecho(trechoFinal,()=>encerrar(res));
       }
     });
   };
