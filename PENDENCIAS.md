@@ -612,14 +612,37 @@ de volta exatamente o que a leva anterior tirou pra consertar o
 cinturão fácil demais (1.26→1.18, duas rodadas de medição) — risco
 maior que o item vale.
 
-**Ainda por fazer nesta leva**: empresário financeiro (reduz pela
-metade o lado negativo de `dinheiro` no julgar do dilema), casa melhor
-(bônus permanente em `followerDelta`) — os dois aprovados, não
-"cosméticos": dinheiro compra equipamento (que muda vitória),
-seguidores é o placar que o jogador acompanha a carreira inteira. Falta
-também 1 item RECORRENTE (compra de novo, não só uma vez) — sem ele o
-dinheiro perde função depois que os permanentes acabam. Ver
-`LEIA-ME.md` "Loja" pra proposta e medição quando entrarem.
+**Empresário financeiro** — reduz pela metade só o lado NEGATIVO de
+`dDinheiro` no julgar do dilema (ganho não muda). `CUSTO_EMPRESARIO=
+24000`, mais barato que os outros dois de propósito — não muda
+vitória nenhuma, é rede de segurança de caixa. Efeito exato por
+construção (metade é metade, não precisa de simulação pra confirmar
+magnitude), mas card mostra "50%" em número, não só "metade" — mesmo
+formato dos outros itens.
+
+**Casa melhor** — bônus permanente em `followerDelta`, toda luta,
+vitória ou derrota. `CUSTO_CASA=30000`. Achado medindo: `followerDelta`
+já cresce PROPORCIONAL ao total de seguidores (composto luta a luta),
+então um multiplicador pequeno por luta AMPLIFICA muito ao longo de 22
+lutas — `+15%/luta` (primeiro chute) mediu **+160% de seguidores ao
+fim da carreira**, longe de "casa melhor", descartado sem entrar.
+Recalibrado pra **+3%/luta** (`CASA_FOLLOWER_MULT=1.03`), que mede
+**+21% de seguidores ao fim da carreira** — perceptível, não quebra a
+curva. 400 carreiras de bot, `candidatos()`/`simulateFight()`/
+`finishFight()` reais.
+
+Nenhum dos dois é "cosmético": dinheiro compra equipamento (que muda
+vitória), seguidores é o placar que o jogador acompanha a carreira
+inteira. Card de cada um diz o que faz em número, não um aviso de que
+"não afeta o resultado das lutas".
+
+`node testar.js loja` estendido: sem/com empresário (perda inteira vs.
+pela metade, ganho sempre inteiro), sem/com casa (delta de seguidores
+bate com `CASA_FOLLOWER_MULT`, dentro de arredondamento). Ambos
+provados com dente.
+
+**Item recorrente proposto, não implementado**: ver `LEIA-ME.md`
+"Loja" → "Item recorrente (proposta, não implementada)".
 
 ## Manutenção
 

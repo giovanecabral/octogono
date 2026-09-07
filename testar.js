@@ -2810,6 +2810,34 @@ function testarLoja() {
     botaoDe(linhas,"Treinador melhor").onclick();
     passo("clicar comprar sem dinheiro suficiente não desconta nem marca comprado",
       st.dinheiro===0 && st.treinadorComprado===false);
+
+    /* Casa melhor: bônus permanente no followerDelta, MESMO r/won/standing
+       — isola o efeito do item do resto do cálculo de hype. rng()
+       reseeded igual nos dois lados pra qualquer consumo dentro de
+       finishFight() (buildFeed etc.) não desalinhar as duas rodadas. */
+    const stBase=()=>({treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,
+      streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,standing:.5,peak:.5,
+      events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:6,fan:5,followers:10000,
+      peakFollowers:10000,longestW:0,lostBeltFast:false,rares:[],momentos:[],
+      disputaLiberada:false,defesas:0,exCampeao:null,foiCampeao:false,lesao:null,
+      dinheiro:0,casaComprada:false});
+    const opp={name:"Rival",rating:.5};
+    const rVit={winner:"TesteBot",loser:"Rival",method:"Decisão",round:3,clock:"5:00",knockdowns:{}};
+
+    fightNo=6; rng=mulberry32(1); rareUsed=new Set();
+    st=stBase(); st.casaComprada=false;
+    finishFight(opp,rVit,false);
+    const deltaSemCasa=st.followers-10000;
+
+    fightNo=6; rng=mulberry32(1); rareUsed=new Set();
+    st=stBase(); st.casaComprada=true;
+    finishFight(opp,rVit,false);
+    const deltaComCasa=st.followers-10000;
+
+    passo("casa melhor: delta de seguidores maior COM o item do que sem",
+      deltaComCasa>deltaSemCasa && deltaSemCasa>0);
+    passo("casa melhor: multiplicador bate com CASA_FOLLOWER_MULT (dentro de arredondamento)",
+      Math.abs(deltaComCasa-Math.round(deltaSemCasa*CASA_FOLLOWER_MULT))<=1);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -3281,6 +3309,31 @@ function testarConteudoInseguro() {
       box.innerHTML.includes("R$"));
     passo("item 2: dinheiro trava em ±1 bolsa (RENDA_BASE) — .4 de fração vira 40% dela",
       st.dinheiro===Math.round(RENDA_BASE*.4));
+
+    /* Empresário financeiro (loja, leva seguinte): reduz pela metade só o
+       lado NEGATIVO de dDinheiro. st.dinheiro alto ANTES (100000) pra não
+       deixar o piso Math.max(0,...) mascarar o efeito medido. */
+    st.dinheiro=100000; st.empresarioComprado=false;
+    aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
+      {desfecho:"Gastou tudo num golpe.",seguidores:0,fa:0,dinheiro:-.4,
+       atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
+    passo("sem empresário: perda de dinheiro é inteira (não reduzida)",
+      st.dinheiro===100000-Math.round(RENDA_BASE*.4));
+
+    st.dinheiro=100000; st.empresarioComprado=true;
+    aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
+      {desfecho:"Gastou tudo num golpe.",seguidores:0,fa:0,dinheiro:-.4,
+       atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
+    passo("com empresário: perda de dinheiro vem pela METADE",
+      st.dinheiro===100000-Math.round(Math.round(RENDA_BASE*.4)/2));
+
+    st.dinheiro=100000; st.empresarioComprado=true;
+    aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
+      {desfecho:"Fechou um patrocínio bom.",seguidores:0,fa:0,dinheiro:.4,
+       atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
+    passo("com empresário: GANHO de dinheiro continua inteiro (só perda é reduzida)",
+      st.dinheiro===100000+Math.round(RENDA_BASE*.4));
+    st.empresarioComprado=false;
 
     /* Regressão (2026-09-06): RESULTADO_LUTA saiu do evento (ver
        testarEventoIA/dispararEventoIA), mas continua valendo pro

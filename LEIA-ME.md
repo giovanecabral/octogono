@@ -735,6 +735,71 @@ pro treinador (acima); a segunda compraria de volta exatamente o que a
 leva do cinturão fácil demais tirou (`TETO_TREINO` 1.26→1.18, duas
 rodadas de medição). Ver `PENDENCIAS.md` item 21.
 
+### Empresário financeiro e Casa melhor (2026-09-07)
+
+Nenhum dos dois muda vitória — e por pedido explícito, nenhum dos dois
+é tratado como "cosmético" no card: dinheiro compra equipamento (que
+muda vitória), seguidores é o placar que o jogador acompanha a
+carreira inteira. O card diz o que o item faz em número, nunca um
+aviso de que "não afeta o resultado das lutas" (isso soaria como a
+compra ser inútil).
+
+**Empresário financeiro** (`CUSTO_EMPRESARIO=24000`, o mais barato dos
+quatro — coerente com não mudar combate): reduz pela metade só o lado
+NEGATIVO de `dDinheiro` no julgar do dilema (`aplicarDilema()`); ganho
+não muda. Efeito exato por construção (metade é metade), não precisou
+de simulação pra confirmar magnitude — só o card precisa dizer "50%",
+não só "metade", pro mesmo formato de número dos outros itens.
+
+**Casa melhor** (`CUSTO_CASA=30000`): bônus permanente em
+`followerDelta`, toda luta, vitória ou derrota. **Achado medindo**:
+`followerDelta()` já cresce PROPORCIONAL ao total de seguidores
+(crescimento composto luta a luta) — um multiplicador por luta parece
+pequeno isolado mas AMPLIFICA ao longo de 22 lutas. Primeiro chute,
+`+15%/luta`, mediu **+160% de seguidores ao fim da carreira** (400
+carreiras de bot, `candidatos()`/`simulateFight()`/`finishFight()`
+reais) — longe de "casa melhor", descartado antes de entrar em
+produção. Recalibrado pra `CASA_FOLLOWER_MULT=1.03` (+3%/luta), que
+mede **+21% ao fim da carreira** — perceptível, não quebra a curva.
+Lição: item que mexe numa grandeza que já cresce composta precisa
+medir o efeito ACUMULADO, não só o multiplicador isolado — a mesma
+armadilha que compostas de juros sempre escondem.
+
+`node testar.js loja` estendido cobre os dois: empresário (perda
+inteira sem o item, pela metade com ele, ganho sempre inteiro nos dois
+casos) e casa (delta de seguidores de uma luta batendo com
+`CASA_FOLLOWER_MULT`, mesmo `r`/mesmo `rng` reseedado nos dois lados
+pra isolar só o efeito do item). Ambos provados com dente.
+
+### Item recorrente (proposta, não implementada)
+
+Achado jogando: os quatro itens acima são compra única — depois da
+luta 10 (aproximadamente, com os quatro compráveis) o jogador já tem
+tudo e o dinheiro perde função pro resto da carreira. Falta pelo menos
+1 item que se compre DE NOVO, consumindo dinheiro continuamente.
+
+**Proposta: "Consultoria de mídia"**, recorrente, comprável a cada
+luta em que o jogador tiver o preço em caixa. Efeito: boost PONTUAL em
+`followerDelta` só NAQUELA luta (não permanente, ao contrário de "casa
+melhor") — reaproveita a mesma alavanca já medida e calibrada acima,
+então a medição é uma adaptação direta (mesmo cuidado com composição:
+medir o efeito em seguidores ao fim da carreira, não só o multiplicador
+isolado da luta).
+
+Não pisa no território já descartado ("Segundo técnico", que mexia em
+treino/vitória) — é economia/fama, mesma família de "casa melhor" e
+"empresário", só que recorrente em vez de permanente.
+
+**Muda a curva de renda calibrada?** Não deveria — `RENDA_BASE` e o
+ganho por `standing` continuam os mesmos; isto só abre mais um DESTINO
+pro dinheiro que já existe, não uma fonte nova. O único efeito lateral
+esperado é o jogador ter menos sobra pra guardar rumo ao próximo item
+permanente ainda não comprado, se decidir gastar em consultoria — é
+escolha de jogador, não descalibração. Precisa medir se essa
+competição por caixa atrasa a mediana de acesso aos outros itens
+(mesmo protocolo do `CUSTO_TREINADOR`/`CUSTO_EQUIPAMENTO`) antes de
+fechar o preço.
+
 ## Regra geral: restrição negativa no prompt não é garantia
 
 Achado testando o evento por IA (2026-09-06), mas vale pra QUALQUER

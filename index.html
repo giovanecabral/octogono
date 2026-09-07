@@ -1815,6 +1815,24 @@ const CHANCE_LESAO_NOCAUTE_EQUIP=.45;
    do alvo 6-8, na ponta cedo (é o item mais valioso da loja por
    vitória/22 até aqui: ver medição acima do "benefício da compra"). */
 const CUSTO_EQUIPAMENTO=42000;
+/* Empresário financeiro (loja): reduz pela metade o lado NEGATIVO de
+   dDinheiro no julgar do dilema — ver aplicarDilema() mais abaixo. Não
+   precisa de simulação pra "medir": é metade exata por construção, não
+   probabilística. Preço mais baixo que os outros dois — não muda
+   vitória nenhuma, é rede de segurança de caixa, coerente com custar
+   menos que algo que muda combate. */
+const CUSTO_EMPRESARIO=24000;
+/* Casa melhor (loja): bônus permanente no followerDelta de toda luta,
+   vitória ou derrota. followerDelta() já cresce PROPORCIONAL ao total de
+   seguidores (crescimento composto luta a luta) — um multiplicador
+   parece pequeno de cara mas AMPLIFICA ao longo de 22 lutas. Medido
+   (400 carreiras de bot, candidatos()/simulateFight()/finishFight()
+   reais): 1.15 (+15%/luta) chegou a +160% de seguidores ao fim da
+   carreira — descartado, exagerado demais pra "casa melhor". 1.03
+   (+3%/luta) fecha em +21% ao fim da carreira — perceptível, não
+   quebra a curva. */
+const CASA_FOLLOWER_MULT=1.03;
+const CUSTO_CASA=30000;
 
 function aplicarDilema(box,d,txt,jBruto){
   /* Rede de baixo do conteúdo inseguro (ver CONTEUDO_INSEGURO acima): um "j"
@@ -1831,7 +1849,13 @@ function aplicarDilema(box,d,txt,jBruto){
      pra cima ou pra baixo — mesma âncora que "seguidores" já usa (fração
      relativa, não número solto). ±1 bolsa inteira é o teto: um dilema é
      evento situacional, não pode valer mais que uma luta inteira paga. */
-  const dDinheiro=Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0));
+  /* Empresário financeiro (loja, item recém-medido): reduz pela metade o
+     lado NEGATIVO de dDinheiro — perda de dilema custa menos, ganho
+     continua o mesmo. Efeito aplicado no valor JÁ arredondado, não antes
+     de lim()/Math.round — mais simples de medir e não muda o teto de
+     ±1 bolsa que lim() já trava. */
+  const dDinheiroBruto=Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0));
+  const dDinheiro=(st.empresarioComprado&&dDinheiroBruto<0)?Math.round(dDinheiroBruto/2):dDinheiroBruto;
   const ATTRS_LESAO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
 
   /* Uma lesão de cada vez: st.lesao é objeto único, não lista. Se uma nova
@@ -3532,6 +3556,16 @@ const LOJA_ITENS=[
    desc:()=>"Bucal e luva de treino melhores: reduz a chance de lesão grave quando um nocaute te derruba.",
    efeito:()=>`Efeito: chance de lesão após nocaute cai de ${Math.round(CHANCE_LESAO_NOCAUTE*100)}% para ${Math.round(CHANCE_LESAO_NOCAUTE_EQUIP*100)}%.`,
    comprar:()=>{st.equipamentoComprado=true;}},
+  {id:"empresario",nome:"Empresário financeiro",custo:()=>CUSTO_EMPRESARIO,
+   comprado:()=>!!st.empresarioComprado,
+   desc:()=>"Alguém cuidando do seu contrato: perda de dilema pesa menos no seu caixa. Ganho continua o mesmo.",
+   efeito:()=>"Efeito: perdas de dinheiro em dilema custam 50% (metade). Ganhos não mudam.",
+   comprar:()=>{st.empresarioComprado=true;}},
+  {id:"casa",nome:"Casa melhor",custo:()=>CUSTO_CASA,
+   comprado:()=>!!st.casaComprada,
+   desc:()=>"Onde você mora agora combina com quem você virou: mais gente reparando na sua carreira.",
+   efeito:()=>`Efeito: +${Math.round((CASA_FOLLOWER_MULT-1)*100)}% de seguidores por luta, vitória ou derrota.`,
+   comprar:()=>{st.casaComprada=true;}},
 ];
 function abrirPainelTreinador(){
   const p=document.getElementById("painelTreinador");
@@ -4172,7 +4206,8 @@ function startCareer(){
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
-      dinheiro:0,treinadorComprado:false,equipamentoComprado:false,estreouMainCard:false,
+      dinheiro:0,treinadorComprado:false,equipamentoComprado:false,
+      empresarioComprado:false,casaComprada:false,estreouMainCard:false,
       cinturaoInterino:false,tituloInterinoLuta:false};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
@@ -4782,7 +4817,11 @@ function finishFight(opp,r,titleFight){
   if(upset)st.momentos.push(criarMomento("upset",FRASE_UPSET(me.name,opp.name),opp,r));
   const alvo=Math.max(0,Math.min(10,1.3+hype*1.30));
   st.fan=Math.max(0,Math.min(10,st.fan*.62+alvo*.38));      /* média móvel */
-  const delta=followerDelta(st.followers,hype,won,st.standing);
+  /* Casa melhor (loja): bônus permanente aplicado no delta já calculado,
+     vitória ou derrota — não entra em followerDelta() (função pura,
+     testada isolada) pra não misturar mecânica do motor com item de
+     compra opcional. */
+  const delta=Math.round(followerDelta(st.followers,hype,won,st.standing)*(st.casaComprada?CASA_FOLLOWER_MULT:1));
   st.followers=Math.max(120,st.followers+delta);
   st.peakFollowers=Math.max(st.peakFollowers,st.followers);
   st.lastDelta=delta;
