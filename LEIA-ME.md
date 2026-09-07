@@ -663,6 +663,78 @@ guarda a luta de MAIOR hype da carreira até agora, tipo `st.peak`/
 primeira. Aparece no relatório final (`screenReport()`) e no card
 compartilhável (`desenharCard()`).
 
+## Loja
+
+Compras permanentes até a aposentadoria, uma vez cada por carreira,
+pagas com `st.dinheiro` (que existe desde a leva do dinheiro por luta).
+`LOJA_ITENS` é a lista; `abrirPainelTreinador()` (nome antigo, o painel
+generalizou) renderiza uma acima da outra.
+
+**Regra que não muda**: nenhum item toca `me.__base`. Cada um escreve
+numa camada derivada que já existe — a mesma que a lesão usa
+(`eventoMod`) ou, no caso do equipamento, uma chance de probabilidade
+que já era constante do jogo. Item novo sem essa propriedade não entra.
+
+**Formato de exibição, todo item** (achado jogando: o treinador antigo
+não dizia o benefício, e por isso ninguém percebia que +0,05 vitórias
+era pouco — ver `PENDENCIAS.md` item 21): descrição em negrito,
+linguagem de jogador (classe `.item-desc`, "o que é") separada do
+efeito mecânico em negrito, verde escuro (`.item-efeito`, "o que muda e
+quanto", calculado das constantes de verdade — nunca um número escrito
+à mão que pode dessincronizar do código).
+
+**Regra de entrada**: todo item precisa de efeito MEDIDO (nunca
+chutado) de pelo menos 0,1 vitória em 22 numa simulação de carreira
+real (`candidatos()`/`simulateFight()`/`finishFight()`, não álgebra
+sobre o custo isolado — o teto de 22 lutas distorce estimativa
+algébrica, ver o comentário de `CHANCE_LESAO_NOCAUTE`). Preço ancorado
+em `RENDA_BASE`, calibrado pelo mesmo protocolo do `CUSTO_TREINADOR`
+(400 carreiras de bot ganancioso, luta em que o caixa acumulado
+alcança o preço — alvo mediana luta 6-8).
+
+### Treinador melhor
+
+`CUSTO_TREINADOR=54000`. Corta pela metade (`REDUCAO_CURA_TREINADOR`) a
+duração da lesão TEMPORÁRIA de dilema — não mexe em treino, não mexe em
+lesão permanente (não tem "cura" pra acelerar ali). Medido: baseline
+(duração 8) custa 1,07 vitórias/22; duração pela metade (4) recupera
+0,37. Escolhido no lugar de acelerar `RITMO_TREINO` (testado antes,
+nunca passou de +0,37/22 — teto de retorno decrescente do próprio
+`TETO_TREINO` limitava qualquer multiplicador) e no lugar de reduzir a
+CHANCE da lesão de dilema acontecer (50% de chance de evitar recuperava
+0,55/22, mesma ordem — mas invisível quando "quase aconteceu"; acelerar
+cura é um número que o jogador vê contar mais rápido).
+
+### Equipamento de proteção (2026-09-07)
+
+`CUSTO_EQUIPAMENTO=42000` (mediana luta 6, dentro do alvo). Reduz
+`CHANCE_LESAO_NOCAUTE` (a chance de lesão quando um NOCAUTE te derruba
+— não confundir com a lesão de dilema acima, severidade própria,
+`LESAO_NOCAUTE`) de .70 pra `CHANCE_LESAO_NOCAUTE_EQUIP` .45. Item
+separado de propósito: mexe na CHANCE, não na severidade/duração —
+essa combinação já foi calibrada pra fechar o alvo de custo (0,3-0,5
+vitórias/22 de custo TOTAL desta fonte, ver comentário da constante) e
+mexer nela mudaria o balanceamento medido sem pedido pra isso.
+
+**Medido (1.500 carreiras pareadas, mesma seed com/sem o item)**:
+benefício de **0,166 vitórias/22** — acima do corte de 0,1, entra na
+loja. Frequência não esvaziou: com o item, a lesão ainda ocorre em
+**31,8% dos KOs sofridos** (era 42,5% sem) — a mecânica continua
+presente pra quem compra.
+
+`node testar.js loja` cobre o formato de exibição (descrição+efeito
+separados, número de verdade) e o fluxo de compra (desconta, marca,
+desabilita sem dinheiro suficiente, rede de baixo no `onclick` — não
+confia só no `disabled`). `node testar.js lesaonocaute` estendido prova
+que é a CHANCE que muda: mesma rolagem de `lesaoRng` (.55) aplica sem o
+item e não aplica com ele. Ambos provados com dente.
+
+**Descartado: "Segundo técnico"** (acelerar `RITMO_TREINO` OU subir
+`TETO_TREINO` via compra) — a primeira rota já foi medida e descartada
+pro treinador (acima); a segunda compraria de volta exatamente o que a
+leva do cinturão fácil demais tirou (`TETO_TREINO` 1.26→1.18, duas
+rodadas de medição). Ver `PENDENCIAS.md` item 21.
+
 ## Regra geral: restrição negativa no prompt não é garantia
 
 Achado testando o evento por IA (2026-09-06), mas vale pra QUALQUER

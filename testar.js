@@ -1746,6 +1746,25 @@ function testarLesaoNocaute() {
     }
     passo("atributo da lesão varia (não é sempre o mesmo) — vistos: "+[...atributosVistos].join(","),
       atributosVistos.size>=2);
+
+    /* item de loja "Equipamento de proteção": reduz a MESMA chance (não
+       severidade/duração) quando comprado. Rolagem fixa em .55 — entre os
+       dois limiares (.45 do item, .70 sem ele) — separa os dois casos com
+       uma ÚNICA rolagem, sem depender de rng() diferente por cenário. */
+    st=stBase(); st.equipamentoComprado=false; lesaoRng=()=>.55;
+    finishFight(opp,rKO,false);
+    passo("sem equipamento: rolagem .55 (abaixo de .70) aplica lesão",
+      !!st.lesao);
+
+    st=stBase(); st.equipamentoComprado=true; lesaoRng=()=>.55;
+    finishFight(opp,rKO,false);
+    passo("com equipamento: MESMA rolagem .55 (acima de .45) NÃO aplica — a chance caiu, não a severidade",
+      st.lesao===null);
+
+    st=stBase(); st.equipamentoComprado=true; lesaoRng=()=>.30;
+    finishFight(opp,rKO,false);
+    passo("com equipamento: rolagem .30 (abaixo de .45) ainda aplica — não ficou impossível, só menos provável",
+      st.lesao && Math.abs(st.lesao.mult-LESAO_NOCAUTE.mult)<1e-9 && st.lesao.duracao===LESAO_NOCAUTE.duracao);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -2705,6 +2724,115 @@ function testarNarracaoResultado(N = 8) {
   })();
 }
 
+/* ================================================================== *
+ * LOJA — cada item mostra descrição (negrito) e efeito em número (negrito,
+ *     verde escuro) separados; comprar desconta, marca e não deixa comprar
+ *     2x; sem dinheiro, o botão vem desabilitado.
+ * ================================================================== */
+function testarLoja() {
+  console.log("\n" + cinza("loja: descrição e efeito separados por item, compra desconta e marca, sem dinheiro desabilita"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__loja=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot",division:"lightweight"};
+    st={treino:{},eventoMod:{},dinheiro:0,treinadorComprado:false,equipamentoComprado:false};
+    document.getElementById("app");
+
+    passo("loja tem pelo menos 2 itens (treinador, equipamento)",
+      LOJA_ITENS.length>=2);
+
+    const itensDe=p=>p.children[0].children.filter(c=>c.className==="loja-item");
+    const botaoDe=(linhas,nome)=>{
+      const l=linhas.find(x=>x.children[0].innerHTML===nome);
+      return l.children.find(c=>c.tagName==="button");
+    };
+
+    // caso 1: sem dinheiro nenhum, os dois botões vêm desabilitados
+    st.dinheiro=0;
+    abrirPainelTreinador();
+    let p=document.getElementById("painelTreinador");
+    let linhas=itensDe(p);
+    let botoes=linhas.map(l=>l.children.find(c=>c.tagName==="button")).filter(Boolean);
+    passo("sem dinheiro: nenhum botão de compra fica habilitado ("+botoes.length+" botões)",
+      botoes.length>=2 && botoes.every(b=>b.disabled));
+
+    // caso 2: formato pedido — descrição (item-desc) e efeito (item-efeito)
+    // aparecem SEPARADOS, um por item, ambos com texto de verdade
+    passo("cada item tem 1 bloco de descrição (item-desc) com texto",
+      linhas.every(l=>{
+        const d=l.children.find(c=>c.className==="item-desc");
+        return d && d.innerHTML.length>10;
+      }));
+    passo("cada item tem 1 bloco de efeito (item-efeito) com número",
+      linhas.every(l=>{
+        const e=l.children.find(c=>c.className==="item-efeito");
+        return e && /\\d/.test(e.innerHTML);
+      }));
+
+    // caso 3: dinheiro suficiente só pro equipamento (mais barato) — só o
+    // botão dele habilita, o do treinador continua travado
+    st.dinheiro=CUSTO_EQUIPAMENTO;
+    abrirPainelTreinador();
+    p=document.getElementById("painelTreinador");
+    linhas=itensDe(p);
+    passo("dinheiro só pro equipamento: botão do equipamento habilita",
+      !botaoDe(linhas,"Equipamento de proteção").disabled);
+    passo("dinheiro só pro equipamento: botão do treinador (mais caro) continua travado",
+      botaoDe(linhas,"Treinador melhor").disabled);
+
+    // caso 4: comprar desconta o preço certo, marca comprado, não deixa
+    // comprar de novo (item some da lista de compráveis, vira "Adquirido")
+    const dinheiroAntes=st.dinheiro;
+    botaoDe(linhas,"Equipamento de proteção").onclick();
+    passo("comprar desconta exatamente o custo do item",
+      st.dinheiro===dinheiroAntes-CUSTO_EQUIPAMENTO);
+    passo("comprar marca st.equipamentoComprado",
+      st.equipamentoComprado===true);
+    p=document.getElementById("painelTreinador");
+    linhas=itensDe(p);
+    const linhaEquip=linhas.find(l=>l.children[0].innerHTML==="Equipamento de proteção");
+    passo("depois de comprado, o item mostra 'Adquirido', não o botão de novo",
+      linhaEquip.children.some(c=>c.innerHTML==="✓ Adquirido") &&
+      !linhaEquip.children.some(c=>c.tagName==="button"));
+
+    // caso 5: clicar comprar sem dinheiro suficiente não desconta nem marca
+    // (rede de baixo — o disabled já devia impedir, mas o onclick não pode
+    // confiar só nisso)
+    st.dinheiro=0; st.treinadorComprado=false;
+    abrirPainelTreinador();
+    p=document.getElementById("painelTreinador");
+    linhas=itensDe(p);
+    botaoDe(linhas,"Treinador melhor").onclick();
+    passo("clicar comprar sem dinheiro suficiente não desconta nem marca comprado",
+      st.dinheiro===0 && st.treinadorComprado===false);
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__loja || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
 function testarConquistas() {
   console.log("\n" + cinza("conquistas: cada check() no limite certo, e a persistência de verdade"));
   const env = criarAmbiente();
@@ -3660,6 +3788,7 @@ try {
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "eventoia") ok = await testarEventoIA();
   else if (cmd === "dilema") ok = await testarDilemaMecanismo();
+  else if (cmd === "loja") ok = testarLoja();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");

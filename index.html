@@ -611,6 +611,8 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
    treinador antigo (+0,05 vitórias) que ninguém percebia que era inútil. */
 .item-desc{font-weight:700;color:var(--ink);font-size:12.5px;margin-top:6px}
 .item-efeito{font-weight:700;color:#1E8449;font-size:11.5px;margin-top:3px}
+.loja-item{border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:10px}
+.loja-item:last-of-type{border-bottom:none}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -1799,6 +1801,20 @@ const LESAO_TIPOS={
    custar, tem que ser mais severa, não só mais provável). */
 const CHANCE_LESAO_NOCAUTE=.70;
 const LESAO_NOCAUTE={mult:.30,duracao:8};
+/* Item de loja "Equipamento de proteção" (leva seguinte): reduz a MESMA
+   chance acima, não a severidade/duração — item separado de propósito
+   (severidade é o que fecha o alvo de custo, ver comentário acima; mexer
+   nela mudaria o balanceamento medido sem pedido pra isso). .45 escolhido
+   e medido em CHANCE_LESAO_NOCAUTE_EQUIP mais abaixo (node testar.js
+   equipamento) — não é chute, é fração testada contra 1.500 carreiras
+   pareadas com/sem, mesma seed, mesmo lesaoRng. */
+const CHANCE_LESAO_NOCAUTE_EQUIP=.45;
+/* Preço ancorado em RENDA_BASE, mesmo protocolo do CUSTO_TREINADOR (node
+   testar.js dinheiro): 400 carreiras de bot ganancioso, luta em que o
+   caixa acumulado alcança o preço. 42000 bate mediana na luta 6 — dentro
+   do alvo 6-8, na ponta cedo (é o item mais valioso da loja por
+   vitória/22 até aqui: ver medição acima do "benefício da compra"). */
+const CUSTO_EQUIPAMENTO=42000;
 
 function aplicarDilema(box,d,txt,jBruto){
   /* Rede de baixo do conteúdo inseguro (ver CONTEUDO_INSEGURO acima): um "j"
@@ -3494,39 +3510,57 @@ function fecharPainelConquistas(){
   if(p)p.style.display="none";
 }
 
-/* Painel opcional (item 4, mecânica trocada no item 2 da leva seguinte):
-   comprado uma vez por carreira, permanente até a aposentadoria. Não toca
-   me.__base — corta a duração de lesão TEMPORÁRIA pela metade
-   (REDUCAO_CURA_TREINADOR), não mexe em treino (ver comentário da
-   constante pela medição de por que trocou). */
+/* Loja: compras permanentes até a aposentadoria, uma vez cada por
+   carreira. Nenhuma mexe em me.__base — cada uma escreve numa camada
+   derivada que já existe (eventoMod, chance de lesão), do jeito que a
+   lesão faz. Cada item carrega descrição em linguagem de jogador
+   (negrito, "o que é") separada do efeito mecânico (negrito, verde
+   escuro, "o que muda e quanto") — sem isso o jogador compra no
+   escuro, mesmo problema do treinador antigo (+0,05 vitórias) que
+   ninguém percebia que era inútil (ver PENDENCIAS.md). */
+const LOJA_ITENS=[
+  {id:"treinador",nome:"Treinador melhor",custo:()=>CUSTO_TREINADOR,
+   comprado:()=>!!st.treinadorComprado,
+   desc:()=>"Fisioterapia particular: se machucar, você volta muito mais rápido. Não some no fim da carreira.",
+   efeito:()=>{
+     const antes=LESAO_TIPOS.temporaria.duracao,depois=Math.round(antes*REDUCAO_CURA_TREINADOR);
+     return `Efeito: lesão temporária dura ${depois} lutas em vez de ${antes} (recuperação, não muda a força da lesão).`;
+   },
+   comprar:()=>{st.treinadorComprado=true;}},
+  {id:"equipamento",nome:"Equipamento de proteção",custo:()=>CUSTO_EQUIPAMENTO,
+   comprado:()=>!!st.equipamentoComprado,
+   desc:()=>"Bucal e luva de treino melhores: reduz a chance de lesão grave quando um nocaute te derruba.",
+   efeito:()=>`Efeito: chance de lesão após nocaute cai de ${Math.round(CHANCE_LESAO_NOCAUTE*100)}% para ${Math.round(CHANCE_LESAO_NOCAUTE_EQUIP*100)}%.`,
+   comprar:()=>{st.equipamentoComprado=true;}},
+];
 function abrirPainelTreinador(){
   const p=document.getElementById("painelTreinador");
   p.innerHTML="";
   const box=el("div","painel-momentos treinador");
-  box.appendChild(el("h3","","Treinador melhor"));
-  const comprado=!!st.treinadorComprado;
-  const duracaoAntes=LESAO_TIPOS.temporaria.duracao;
-  const duracaoDepois=Math.round(duracaoAntes*REDUCAO_CURA_TREINADOR);
-  box.appendChild(el("div","item-desc",
-    "Fisioterapia particular: se machucar, você volta muito mais rápido. Não some no fim da carreira."));
-  box.appendChild(el("div","item-efeito",
-    `Efeito: lesão temporária dura ${duracaoDepois} lutas em vez de ${duracaoAntes} (recuperação, não muda a força da lesão).`));
+  box.appendChild(el("h3","","Loja"));
   box.appendChild(el("div","conquista-desc","Seu caixa: "+fmtNum(st.dinheiro||0)));
-  if(comprado){
-    box.appendChild(el("div","conquista-nome ok","✓ Contratado"));
-  }else{
-    const custo=el("div","conquista-desc","Custa "+fmtNum(CUSTO_TREINADOR));
-    box.appendChild(custo);
-    const buy=el("button","btn btn-sm","Contratar");
-    buy.disabled=(st.dinheiro||0)<CUSTO_TREINADOR;
-    buy.onclick=()=>{
-      if((st.dinheiro||0)<CUSTO_TREINADOR)return;
-      st.dinheiro-=CUSTO_TREINADOR;
-      st.treinadorComprado=true;
-      abrirPainelTreinador();          // redesenha já contratado
-    };
-    box.appendChild(buy);
-  }
+  LOJA_ITENS.forEach(item=>{
+    const linha=el("div","loja-item");
+    linha.appendChild(el("div","conquista-nome",item.nome));
+    linha.appendChild(el("div","item-desc",item.desc()));
+    linha.appendChild(el("div","item-efeito",item.efeito()));
+    const custo=item.custo();
+    if(item.comprado()){
+      linha.appendChild(el("div","conquista-nome ok","✓ Adquirido"));
+    }else{
+      linha.appendChild(el("div","conquista-desc","Custa "+fmtNum(custo)));
+      const buy=el("button","btn btn-sm","Comprar");
+      buy.disabled=(st.dinheiro||0)<custo;
+      buy.onclick=()=>{
+        if((st.dinheiro||0)<custo)return;
+        st.dinheiro-=custo;
+        item.comprar();
+        abrirPainelTreinador();        // redesenha já adquirido
+      };
+      linha.appendChild(buy);
+    }
+    box.appendChild(linha);
+  });
   const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
   fechar.onclick=fecharPainelTreinador;
   box.appendChild(fechar);
@@ -4138,7 +4172,7 @@ function startCareer(){
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
-      dinheiro:0,treinadorComprado:false,estreouMainCard:false,
+      dinheiro:0,treinadorComprado:false,equipamentoComprado:false,estreouMainCard:false,
       cinturaoInterino:false,tituloInterinoLuta:false};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
@@ -4156,7 +4190,7 @@ function startCareer(){
   cardsb.onclick=abrirPainelMomentos;
   const conqb=el("button","btn btn-ghost btn-sm","Conquistas");conqb.id="conqb";
   conqb.onclick=abrirPainelConquistas;
-  const treinb=el("button","btn btn-ghost btn-sm","Treinador");treinb.id="treinb";
+  const treinb=el("button","btn btn-ghost btn-sm","Loja");treinb.id="treinb";
   treinb.onclick=abrirPainelTreinador;
   const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
   row.append(next,ab,sp,cardsb,conqb,treinb,hint);app.appendChild(row);
@@ -4651,7 +4685,7 @@ function finishFight(opp,r,titleFight){
        senão desloca a sequência e link de desafio antigo para de
        reproduzir a mesma carreira). Atributo sorteado, não escolhido —
        nocaute não tem "cena" pra dizer QUAL parte do corpo bateu. */
-    if(isKO&&!st.lesao&&lesaoRng()<CHANCE_LESAO_NOCAUTE){
+    if(isKO&&!st.lesao&&lesaoRng()<(st.equipamentoComprado?CHANCE_LESAO_NOCAUTE_EQUIP:CHANCE_LESAO_NOCAUTE)){
       const ATTRS_LESAO_KO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
       const atr=ATTRS_LESAO_KO[Math.floor(lesaoRng()*ATTRS_LESAO_KO.length)];
       if(me[atr]!=null){

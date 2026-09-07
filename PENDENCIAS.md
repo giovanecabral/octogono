@@ -566,6 +566,61 @@ anti-repetição". Só 4 dilemas por carreira, sem reposição já garante
 os 4 tipos diferentes entre si; repetição ENTRE carreiras continua
 possível (mesma limitação do evento, não pedida pra resolver).
 
+## 21. Loja: mostrar efeito de cada item, mais itens — EM ANDAMENTO (2026-09-07)
+
+Jogada uma carreira inteira, achado real: o painel de compras não dizia
+o que cada item fazia em número — mesmo problema do treinador antigo
+(+0,05 vitórias/22) que ninguém percebia que era inútil, porque nada
+mostrava o efeito.
+
+**Formato adotado, todo item**: descrição em negrito, linguagem de
+jogador (`.item-desc`) + efeito mecânico em negrito, verde escuro
+(`.item-efeito`), calculado das constantes de verdade, nunca
+hardcoded. Painel generalizado de "Treinador melhor" (item único) pra
+"Loja" (`LOJA_ITENS`, lista), botão da UI renomeado.
+
+**Item novo: "Equipamento de proteção"** — reduz `CHANCE_LESAO_NOCAUTE`
+(.70→`CHANCE_LESAO_NOCAUTE_EQUIP` .45) quando comprado. Não mexe em
+severidade/duração (`LESAO_NOCAUTE`), não toca `me.__base`, mesma
+camada (`eventoMod`) que a lesão já usa. Preço `CUSTO_EQUIPAMENTO`
+42000, ancorado em `RENDA_BASE`, mesmo protocolo do `CUSTO_TREINADOR`
+(`node testar.js dinheiro`-style, 400 carreiras de bot: mediana luta 6,
+dentro do alvo 6-8).
+
+**Medido (1.500 carreiras pareadas, mesma seed com/sem, candidatos()/
+simulateFight()/finishFight() reais)**:
+- Benefício da compra: **0,166 vitórias/22** — acima do corte de 0,1,
+  entra.
+- Frequência da lesão não esvaziou: com o item, ainda ocorre em
+  **31,8% dos KOs sofridos** (era 42,5% sem) — a mecânica continua
+  presente pra quem compra, só menos provável.
+
+`node testar.js loja`: descrição+efeito separados por item, botão
+desabilita sem dinheiro suficiente (por item, independente), comprar
+desconta o valor certo/marca/não deixa comprar 2x, rede de baixo no
+`onclick` (não confia só no `disabled`). `node testar.js lesaonocaute`
+estendido: mesma rolagem de `lesaoRng` (.55) aplica sem o item e NÃO
+aplica com ele — prova que é a CHANCE que muda, não a severidade.
+Ambos provados com dente.
+
+**Descartado: "Segundo técnico" (acelerar `RITMO_TREINO` via compra)**.
+Motivo: já foi tentado e medido nesta rota antes (ver comentário de
+`REDUCAO_CURA_TREINADOR`) — nunca passou de +0,37/22, teto de retorno
+decrescente do próprio `TETO_TREINO` limita qualquer multiplicador de
+ritmo. A alternativa (subir o `TETO_TREINO` em vez do ritmo) compraria
+de volta exatamente o que a leva anterior tirou pra consertar o
+cinturão fácil demais (1.26→1.18, duas rodadas de medição) — risco
+maior que o item vale.
+
+**Ainda por fazer nesta leva**: empresário financeiro (reduz pela
+metade o lado negativo de `dinheiro` no julgar do dilema), casa melhor
+(bônus permanente em `followerDelta`) — os dois aprovados, não
+"cosméticos": dinheiro compra equipamento (que muda vitória),
+seguidores é o placar que o jogador acompanha a carreira inteira. Falta
+também 1 item RECORRENTE (compra de novo, não só uma vez) — sem ele o
+dinheiro perde função depois que os permanentes acabam. Ver
+`LEIA-ME.md` "Loja" pra proposta e medição quando entrarem.
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):
