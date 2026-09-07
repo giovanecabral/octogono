@@ -490,6 +490,73 @@ na linha de resultado do card de luta, junto com método e round.
 KO/SUB/DEC final (nenhuma destas mudanças toca o motor de combate):
 **KO 34% / SUB 19% / DEC 46%** — idêntico ao de sempre.
 
+## 19. Luta em decisão terminava sem linha de resultado — RESOLVIDO (2026-09-06)
+
+Achado jogando em produção: "FIM DO ROUND 3 — JJ LEVOU" aparecia, e
+nada depois disso — sem linha de decisão, sem cartões, sem carimbo de
+vitória. Causa: `montarDecisao()` empurra a linha de resultado pro
+array `log` DEPOIS que o `animarTrecho()` do round final já tinha
+consumido e renderizado o trecho — nada chamava a animação de novo
+pra essa linha nova, ela ficava presa no array sem nunca virar DOM.
+KO/finalização não tinham esse bug porque `fin()` escreve a linha
+DENTRO de `simularRound()`, antes do corte que alimenta a animação.
+
+`finishFight()` sempre rodou certo nesse caminho — cartel, ranking e o
+carimbo no card da luta (`bouts`) sempre bateram. O bug era só da
+narração ao vivo (`play`), estado nunca esteve errado.
+
+Conserto: o branch de decisão em `lutar()` agora monta o resultado,
+fatia só a linha nova, chama `animarTrecho()` com ela e só ENTÃO
+encerra — mesma forma do branch de KO/finalização logo acima.
+
+`node testar.js narracao`: 8 carreiras reais de ponta a ponta
+(`nextFight()`/`lutar()`/`finishFight()`, não atalho), 32 decisões
+reais. Antes do conserto: 0/32 narradas ao vivo. Depois: 32/32.
+Controle (KO/finalização): 144/144 sempre narrou, provando que o bug
+era específico de decisão.
+
+## 20. Dilema com cena incoerente ("Balança trapaceira") — MEDIDO, ACEITO (2026-09-06)
+
+Achado jogando: dilema de corte de peso ("Balança trapaceira") narrou
+"o juiz não me deu a luta" e "devendo o peso do cara" — juiz de MMA
+julga a luta, não a pesagem; a frase não faz sentido nenhum. Hipótese
+inicial (contexto novo do evento — posição/lesão/cinturão/dinheiro —
+confundindo o modelo) **descartada**: o prompt de `dilema` nunca
+recebeu esse contexto, só `name/record/followers/fan/mood/seed`, igual
+sempre foi.
+
+**Medido, prompt original**: 30 dilemas reais (produção), 27/30
+coerentes (90%). Os 3 incoerentes eram sempre PAPEL ERRADO na cena
+("juiz" na pesagem — devia ser comissão/médico/fiscal; "gerente do
+banco" cobrando aluguel — é o senhorio), não contexto demais.
+
+**Tentativa de conserto**: em vez de proibir o errado ("nunca diga
+juiz"), o prompt passou a listar POSITIVAMENTE quem existe em cada
+tipo de cena (pesagem: comissão/médico/fiscal/matchmaker; cobrança de
+aluguel: senhorio; carreira: empresário; imprensa: repórter) — pela
+regra já registrada aqui (restrição negativa não é garantia), vale
+tentar instrução positiva antes de desistir.
+
+**Medido de novo, prompt com o vocabulário positivo**: 27/30 (90%) —
+**taxa não subiu**. E o erro específico que a instrução mirava
+(banco/aluguel) **voltou a acontecer** ("O gerente do banco ligou...
+O aluguel tá atrasado"), mais dois incoerentes de outra natureza (frase
+gramaticalmente quebrada; "técnico de joias" — palavra sem sentido no
+contexto). Confirma a regra geral do LEIA-ME: instrução no prompt,
+positiva ou negativa, reduz mas não garante.
+
+**Decisão do usuário**: por não ter subido, prompt REVERTIDO pro
+original (sem o vocabulário positivo). 10% de cena esquisita numa
+carreira de 4 dilemas é raro o bastante pra aceitar sem mais trabalho.
+Registrado, não é pra remedir sem incomodar de novo jogando.
+
+**Achado incidental, separado, ESTE sim vale consertar**: título
+"Cheque atrasado" saiu IDÊNTICO duas vezes em 30 chamadas isoladas —
+dilema não tem o mecanismo de "recentes" que o evento já ganhou (item
+18). Só 4 dilemas por carreira torna repetição DENTRO de uma carreira
+improvável, mas ENTRE carreiras o jogador vê o mesmo título de novo.
+Ver implementação abaixo.
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):
