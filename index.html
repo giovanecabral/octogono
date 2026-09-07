@@ -203,9 +203,12 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .cint .b.sim{color:var(--gold)}
 .cint .b.nao{color:var(--faded)}
 .cint small{font-size:11px;color:var(--faded)}
-/* vermelho escuro: é aviso do que falta, não alarme */
-.passo{margin-top:8px;font-size:11.5px;line-height:1.45;color:#9E4238;
-  border-left:2px solid #6E3A38;padding-left:9px}
+/* laranja escuro: é objetivo (o que falta pra chegar lá), não prejuízo —
+   vermelho já é a cor de perda no resto da ficha (atributo caindo, lesão,
+   dinheiro negativo) e confundia os dois (achado jogando, 2026-09-07). */
+.passo-label{margin-top:8px;font-size:11px;color:var(--faded)}
+.passo{margin-top:2px;font-size:11.5px;line-height:1.45;color:#B5651D;
+  border-left:2px solid #8A4A15;padding-left:9px}
 /* Posição na divisão: o número é a informação, o movimento é o drama. */
 .rank{display:flex;align-items:baseline;gap:8px}
 .rank .pos{font-family:Oswald,sans-serif;font-weight:700;font-size:19px;
@@ -602,6 +605,12 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 .conquista-nome{font-size:13px;color:var(--faded)}
 .conquista.ok .conquista-nome{color:var(--ink);font-weight:600}
 .conquista-desc{font-size:11px;color:var(--faded);margin-top:2px}
+/* Painel de compras (treinador, e o que entrar depois): descrição em
+   linguagem de jogador (o que É) separada do efeito mecânico (o que MUDA
+   e quanto) — sem isso o jogador compra no escuro, mesmo problema do
+   treinador antigo (+0,05 vitórias) que ninguém percebia que era inútil. */
+.item-desc{font-weight:700;color:var(--ink);font-size:12.5px;margin-top:6px}
+.item-efeito{font-weight:700;color:#1E8449;font-size:11.5px;margin-top:3px}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -2375,7 +2384,7 @@ function renderFicha(){
       <div class="cint"><span class="b ${st.title?"sim":"nao"}">${st.title?(st.cinturaoInterino?"Interino":"Campeão"):"Não"}</span>
         ${st.title&&!st.cinturaoInterino?`<small>${st.defesas||0} defesa${(st.defesas||0)===1?"":"s"}</small>`:""}
         ${st.cinturaoInterino?`<small>unificação na próxima luta</small>`:""}</div>
-      ${passo?`<div class="passo">${passo}</div>`:""}
+      ${passo?`<div class="passo-label">Caminho até o cinturão</div><div class="passo">${passo}</div>`:""}
     </div>
     ${RANKING&&RANKING.campeao?`<div class="ficha-sec">
       <h4>Ranking</h4>
@@ -3496,8 +3505,12 @@ function abrirPainelTreinador(){
   const box=el("div","painel-momentos treinador");
   box.appendChild(el("h3","","Treinador melhor"));
   const comprado=!!st.treinadorComprado;
-  box.appendChild(el("div","conquista-desc",
-    "Corta pela metade o tempo de recuperação de lesão temporária. Não some no fim da carreira."));
+  const duracaoAntes=LESAO_TIPOS.temporaria.duracao;
+  const duracaoDepois=Math.round(duracaoAntes*REDUCAO_CURA_TREINADOR);
+  box.appendChild(el("div","item-desc",
+    "Fisioterapia particular: se machucar, você volta muito mais rápido. Não some no fim da carreira."));
+  box.appendChild(el("div","item-efeito",
+    `Efeito: lesão temporária dura ${duracaoDepois} lutas em vez de ${duracaoAntes} (recuperação, não muda a força da lesão).`));
   box.appendChild(el("div","conquista-desc","Seu caixa: "+fmtNum(st.dinheiro||0)));
   if(comprado){
     box.appendChild(el("div","conquista-nome ok","✓ Contratado"));
