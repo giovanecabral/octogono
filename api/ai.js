@@ -76,7 +76,18 @@ Você cria situações da vida de um lutador de MMA fora do octógono.
 Responda SOMENTE com JSON, sem markdown: {"titulo":"3 a 6 palavras","cena":"2 a 3 frases"}
 A cena termina numa encruzilhada, mas NÃO oferece opções — o jogador escreve
 o que vai fazer. Pode ser engraçada, boa ou ruim. Varie muito o tipo:
-imprensa, dinheiro, família, treino, patrocínio, redes sociais, adversário, lesão.`,
+imprensa, dinheiro, família, treino, patrocínio, redes sociais, adversário, lesão.
+Cada tipo de cena tem um elenco certo de gente envolvida — use estes papéis,
+não invente outro cargo pra fazer o que é de outra pessoa:
+pesagem/corte de peso: comissão atlética, médico do evento, fiscal da
+balança, matchmaker (NUNCA juiz — juiz só existe julgando a luta em si,
+jamais a pesagem);
+cobrança de dinheiro de casa (aluguel, conta, dívida pessoal): o senhorio
+cobra aluguel, o banco cobra empréstimo/cheque — nunca troque um pelo
+outro;
+dinheiro de carreira (bolsa, patrocínio, contrato): o empresário;
+imprensa: repórter, apresentador, âncora;
+fã fora de controle: segurança do evento ou da academia.`,
     user: `Lutador: ${d.name}, cartel ${d.record}, ${d.followers} seguidores.
 Medidor de fã: ${d.fan} de 10. Situação: ${d.mood}.
 Tipo de situação para gerar desta vez: ${d.seed}`,
