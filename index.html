@@ -1404,6 +1404,26 @@ let falhasRedeSeguidas=0;
 let eventoPausadoAte=0;
 let eventoFalhasSeguidas=0;
 
+/* Circuito PRÓPRIO de dilema+julgar (2026-09-09), nunca o de feed — achado
+   medindo com ritmo REALISTA (>60s entre chamadas, cada uma rede fresca):
+   67% dos dilemas perdiam consequência (8 de 12, 3 carreiras reais). O
+   circuito compartilhado antigo piorava isso — uma pausa de 60s disparada
+   por FEED (decorativo, três comentários de torcedor) bloqueava dilema (a
+   ÚNICA coisa que o jogador escreve) pelo mesmo tempo. Mesmo raciocínio já
+   aplicado ao evento: feed pode desistir de vez, dilema/julgar não podem
+   morrer junto com ele nem esperar a pausa dele passar.
+
+   REGRA À PARTE, mais forte que a do evento: JULGAR NUNCA RESPEITA A
+   PAUSA. Se a cena já apareceu na tela, o jogador já escreveu a resposta
+   — pausar o julgamento no meio é exatamente o "você seguiu em frente e
+   nada aconteceu" que motivou a investigação inteira. Só `dilema` (a
+   GERAÇÃO da cena, ainda ANTES de existir resposta do jogador) respeita
+   a pausa e cai no fallback local sem tentar rede. Os dois ainda
+   ATUALIZAM o mesmo contador de falha — um julgar que falhar pode pausar
+   o PRÓXIMO `dilema`, só nunca pausa A SI MESMO. */
+let dilemaPausadoAte=0;
+let dilemaFalhasSeguidas=0;
+
 async function ai(kind,data,ms=9500){
   /* Achado jogando: "aceito" (dilema binário comum) caiu no fallback
      genérico, e não tinha como saber POR QUÊ — ai() sempre devolvia null
@@ -1417,12 +1437,22 @@ async function ai(kind,data,ms=9500){
      qual dos 5 caminhos foi, em vez de reconstruir por eliminação. */
   if(!AI_URL){evento("ia_null",{motivo:"sem_url",kind});return null;}
   const ehEvento=kind==="evento";
+  const ehDilema=kind==="dilema"||kind==="julgar";
+  const ehJulgar=kind==="julgar";
   if(ehEvento){
     if(Date.now()<eventoPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
+  }else if(ehDilema){
+    if(!ehJulgar&&Date.now()<dilemaPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
   }else{
     if(!aiVivo){evento("ia_null",{motivo:"desligado",kind});return null;}
     if(Date.now()<aiPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
   }
+  return tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,true);
+}
+/* Extraído de ai() pra existir a retentativa (abaixo) sem duplicar a
+   chamada de fetch inteira. podeRetentar=false na 2ª tentativa — nunca
+   mais que 1 retry, senão um pool congestionado vira loop de espera. */
+async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   try{
@@ -1430,7 +1460,7 @@ async function ai(kind,data,ms=9500){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kind,data})});
     clearTimeout(t);
-    if(ehEvento)eventoFalhasSeguidas=0; else falhasRedeSeguidas=0;
+    if(ehEvento)eventoFalhasSeguidas=0; else if(ehDilema)dilemaFalhasSeguidas=0; else falhasRedeSeguidas=0;
     if(!r.ok){
       /* O servidor já sabe o que aconteceu — não adivinha por status HTTP
          externo (502 cobre seis coisas diferentes, ver api/ai.js). Corpo
@@ -1441,10 +1471,24 @@ async function ai(kind,data,ms=9500){
       let corpo=null;
       try{corpo=await r.json();}catch(e){}
       if(corpo&&corpo.status===429){
-        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS; else aiPausadoAte=Date.now()+AI_PAUSA_MS;
+        /* Retentativa única, só em 429, só dilema/julgar — pedido depois
+           de medir 67% de fallback, mesmo padrão já usado no evento pra
+           JSON malformado. Espera curta (2s, não AI_PAUSA_MS inteiro):
+           429 no pool compartilhado costuma ser blip momentâneo, uma
+           segunda tentativa logo depois tem chance real de sair fora da
+           MESMA janela de limite. */
+        if(ehDilema&&podeRetentar){
+          await new Promise(res=>setTimeout(res,2000));
+          return tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,false);
+        }
+        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
+        else if(ehDilema)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
+        else aiPausadoAte=Date.now()+AI_PAUSA_MS;
         evento("ia_null",{motivo:"429",kind});
       }else if(corpo&&corpo.transitorio===false){
-        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS; else aiVivo=false;
+        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
+        else if(ehDilema)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
+        else aiVivo=false;
         evento("ia_null",{motivo:"erro_permanente",kind});
       }else evento("ia_null",{motivo:"erro_transitorio",kind});
       return null;
@@ -1456,6 +1500,9 @@ async function ai(kind,data,ms=9500){
     if(ehEvento){
       eventoFalhasSeguidas++;
       if(eventoFalhasSeguidas>=2)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
+    }else if(ehDilema){
+      dilemaFalhasSeguidas++;
+      if(dilemaFalhasSeguidas>=2)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
     }else{
       falhasRedeSeguidas++;
       if(falhasRedeSeguidas>=2)aiVivo=false;

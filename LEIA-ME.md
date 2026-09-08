@@ -1314,9 +1314,28 @@ mesma disciplina de "Medindo a coisa certa" abaixo): **julgar caiu em
 fallback em 8 de 12 dilemas (67%) em 3 carreiras reais contra
 produção.** Não é o circuito do cliente cascateando — é o pool
 compartilhado do OpenRouter mesmo, agora, pior do que a medição de
-2026-09-06 sugeria (~27%). Ver `PENDENCIAS.md` item 9 pras opções de
-conserto levantadas (circuito próprio pra dilema/julgar, retentativa em
-429, BYOK) — nenhuma implementada ainda, aguardando decisão.
+2026-09-06 sugeria (~27%).
+
+**As três camadas pedidas, implementadas nesta ordem (2026-09-09)**:
+1. BYOK (fora do código — passo a passo de conta dado ao usuário, ataca
+   a causa raiz de verdade).
+2. Circuito PRÓPRIO de dilema+julgar (`dilemaPausadoAte`/
+   `dilemaFalhasSeguidas`), nunca o de feed — mesma ideia do evento,
+   com uma regra MAIS FORTE: **julgar nunca respeita a própria pausa**.
+   Se a cena já apareceu na tela, o jogador já escreveu — pausar o
+   julgamento no meio É o "você seguiu em frente e nada aconteceu" que
+   motivou tudo isso. Só `dilema` (a geração da cena, ANTES de existir
+   resposta) respeita a pausa; os dois ainda alimentam o mesmo contador
+   de falha (julgar pode pausar o PRÓXIMO dilema, nunca a si mesmo).
+3. Retentativa única em 429 (2s de espera), só dilema/julgar — mesmo
+   padrão do retry de JSON malformado no evento, aqui pro motivo mais
+   comum medido.
+
+`node testar.js aivivo` reescrito quase por inteiro: os cenários que
+testavam o circuito compartilhado usavam `kind:"julgar"` — com julgar
+saindo desse circuito, isso testava a variável errada. Trocado pra
+`kind:"feed"`. Ver `PENDENCIAS.md` item 9 pro detalhe completo e o
+número remedido depois do deploy (alvo pedido: <10%).
 
 **Falha sem resposta nenhuma (rede caiu, DNS falhou, timeout do
 `AbortController`) é outra categoria** — o proxy nem foi alcançado, não tem

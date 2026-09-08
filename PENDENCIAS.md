@@ -252,20 +252,42 @@ ver LEIA-ME.md "Medindo a coisa certa"):
   jogo agora**: o jogador escreve uma decisão de verdade e o jogo devolve
   frase neutra + zero número, sem avisar que algo falhou.
 
-**Ainda não implementado, opções levantadas, aguardando decisão**:
-1. Circuito PRÓPRIO pra dilema+julgar (como o evento já ganhou, ver
-   "aiVivo compartilhado"), separado de feed — reduz contaminação
-   cruzada (feed falhar não gasta a pausa de dilema), mas NÃO reduz a
-   taxa de 429 em si (o 429 medido bateu direto em dilema/julgar, não
-   veio de feed vazando pausa).
-2. Retentativa única em 429 especificamente pra julgar (mesmo padrão já
-   usado no evento pra JSON malformado) — 429 costuma ser blip momentâneo
-   no pool compartilhado, uma retentativa com pequeno atraso tem chance
-   real de sair fora da MESMA janela de limite.
-3. BYOK (chave própria Alibaba/Qwen em openrouter.ai/settings/
-   integrations) — a correção estrutural de verdade, decisão de
-   custo/conta, não de código. Dado o 67% medido agora, isto deixou de
-   ser "nice to have" — é o que realmente resolve, o resto é mitigação.
+**Implementado, as três camadas pedidas, nesta ordem (2026-09-09)**:
+
+1. **BYOK** — decisão de conta, não de código, passo a passo dado ao
+   usuário (correção real, ataca a causa: `is_byok:false` nos logs
+   confirma que os créditos ainda vêm do pool compartilhado mesmo com
+   `OPENROUTER_API_KEY` própria configurada — BYOK exige uma chave da
+   ALIBABA CLOUD/DASHSCOPE colada em Settings → Integrations do
+   OpenRouter, não é a mesma coisa que ter saldo na conta OpenRouter).
+   Fora do escopo de código — usuário decide se/quando configura.
+
+2. **Circuito PRÓPRIO pra dilema+julgar**, separado de feed
+   (`dilemaPausadoAte`/`dilemaFalhasSeguidas`, mesmo padrão do evento).
+   Regra MAIS FORTE que a do evento, pedida explícita: **julgar nunca
+   respeita a própria pausa** — se a cena já apareceu na tela, o
+   jogador já escreveu a resposta, pausar o julgamento é o que produz
+   "você seguiu em frente e nada aconteceu". Só `dilema` (a GERAÇÃO da
+   cena, antes de existir resposta) respeita a pausa e cai no fallback
+   local. Os dois ainda ATUALIZAM o mesmo contador de falha (um julgar
+   que falhar pausa o PRÓXIMO dilema), só nunca pausam A SI MESMOS.
+
+3. **Retentativa única em 429**, só dilema/julgar, espera de 2s antes
+   de desistir — mesmo padrão já usado no evento pra JSON malformado,
+   aqui pro motivo de falha mais comum medido (429, não JSON malformado).
+
+`node testar.js aivivo` reescrito quase por inteiro: os cenários que
+testavam o circuito COMPARTILHADO usavam `kind:"julgar"` como
+representante — com julgar saindo desse circuito, isso testava a
+variável errada. Trocado pra `kind:"feed"` (representante do
+compartilhado, que continua podendo desligar de vez) e adicionados
+cenários dedicados pro circuito de dilema/julgar e pro retry. 33
+asserções, todas provadas com dente (guard da pausa revertido → 2
+caem; bloco de retry removido → 5 caem).
+
+**Falta remedir depois do deploy** (alvo pedido: <10% de fallback em
+julgar, mesmo protocolo de ritmo realista >60s entre chamadas, 3
+carreiras reais) — ver resultado assim que confirmado.
 
 ## 14. AI_URL apontava pra domínio morto — RESOLVIDO (hotfix 2026-09-06)
 
