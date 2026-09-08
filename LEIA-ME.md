@@ -1665,6 +1665,30 @@ adulterar).
 Enquanto os dois campos ficarem vazios, `getSupabase()` devolve `null` e a
 caixa de "salvar conquistas" nem aparece — o jogo roda idêntico a hoje.
 
+**Estado desta instância (2026-09-08)**: passos 1, 2 e 4 feitos —
+schema rodado, chave preenchida e deployada, `getSupabase()` retorna
+cliente real em produção. **Passo 3 (SMTP próprio) NÃO feito ainda** —
+continua no e-mail padrão do Supabase, 2/hora. Não impede testar
+sozinho (1 e-mail por sessão de teste fica bem abaixo do limite), mas é
+**obrigatório antes de qualquer tráfego real** — sem isso o segundo
+jogador que tentar criar conta na mesma hora simplesmente não recebe
+e-mail, sem aviso nenhum pro jogador nem erro visível pra você. Ver
+`PENDENCIAS.md`.
+
+**Migração de chave pendente, registrada, sem pressa de código**: o
+painel do Supabase já marca a `anon key` (formato JWT, a que está em
+`SUPABASE_ANON_KEY` hoje) como legada, em favor de `sb_publishable_...`
+("Publishable API keys"). Confirmado (2026-09-08): `createClient()` do
+supabase-js v2 aceita as duas formas sem mudança de código nenhuma —
+RLS se comporta igual, é só trocar a string quando migrar. Ficou com a
+legada por decisão explícita ("funciona, não mexe"), mas **Supabase vai
+DESATIVAR anon/service_role até o fim de 2026** — isto TEM prazo, não é
+só recomendação. Quando migrar: painel → Project Settings → API Keys →
+copiar a `publishable key` nova, trocar só o valor de
+`SUPABASE_ANON_KEY` (nome da constante pode ficar, é só o conteúdo que
+muda). Fontes: supabase.com/docs/guides/getting-started/migrating-to-new-api-keys,
+github.com/orgs/supabase/discussions/29260.
+
 **Custo estimado** (Supabase Free cobre as três faixas em MAU/banco — a
 tabela é minúscula, ~15 linhas por usuário no máximo; o que muda é o
 volume de e-mail, que sempre exige SMTP próprio):

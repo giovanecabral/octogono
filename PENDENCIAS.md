@@ -705,6 +705,31 @@ recentes; cartela deprioriza sem excluir; integração real de 2
 vistos da 1ª); sobrevive sem `localStorage` nenhum (mesma garantia de
 `testarConquistas()`). Todos provados com dente.
 
+## 23. Contas (Supabase) ligadas em produção — FALTA SMTP ANTES DE TRÁFEGO (2026-09-08)
+
+`SUPABASE_URL`/`SUPABASE_ANON_KEY` preenchidos e deployados, schema
+(`supabase_schema.sql`, com RLS) já rodado no projeto. `getSupabase()`
+retorna cliente real, caixa "Salvar conquistas" aparece em produção
+depois das 22 lutas. Confirmado: `grep -rn "service_role"` no projeto
+não devolve nada — só a `anon` key está no cliente, como desenhado.
+
+**Bloqueante antes de qualquer tráfego real, ainda não feito**: SMTP
+próprio (painel Supabase → Authentication → Email). Sem isso, o e-mail
+padrão do Supabase manda só **2 por hora** — o segundo jogador que
+tentar criar conta na mesma hora não recebe link mágico, sem erro
+visível pra ninguém. Não bloqueia teste solo (1 sessão de teste fica
+bem abaixo do limite). Ver `LEIA-ME.md` "Contas" → "Estado desta
+instância".
+
+**Migração de chave, sem prazo de código mas com prazo real**: painel
+marca a `anon key` atual como legada, formato novo é `sb_publishable_
+...`. Confirmado (2026-09-08, docs oficiais): `createClient()` do
+supabase-js v2 aceita as duas formas sem mudar código — RLS igual.
+Decisão explícita: fica com a legada por ora. Mas Supabase desativa
+anon/service_role **até o fim de 2026** — não é recomendação, é prazo.
+Quando migrar: só trocar o valor de `SUPABASE_ANON_KEY` pela
+`publishable key` do painel. Ver `LEIA-ME.md` "Contas".
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):
