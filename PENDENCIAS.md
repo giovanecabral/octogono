@@ -218,6 +218,55 @@ de novo depois do fix: 30 chamadas reais de `julgar`, 30 ok, 0 falhas —
 o rate limit compartilhado não apareceu nesta amostra (pode voltar a
 aparecer sob carga real, mas não é mais o suspeito nº1).
 
+**Atualização 2026-09-08 — 3ª ocorrência de "IA ignora resposta", causa
+raiz DIFERENTE das duas anteriores (AI_URL errado, item 14) — investigado
+do zero como pedido, não presumido igual.** Checklist completo antes de
+qualquer conserto:
+- `CONTEUDO_INSEGURO` no texto do jogador ("Aceito, estou precisando de
+  dinheiro para investir na minha carreira"): testado direto contra a
+  regex, **não dispara**. Descartado com certeza, não suposição.
+- Teto de US$5 na chave OpenRouter: **descartado**. `vercel logs` mostra
+  o 429 vindo do PROVEDOR (`"provider_name":"Alibaba"`,`"is_byok":false`,
+  "temporarily rate-limited upstream") — pool compartilhado gratuito,
+  nada a ver com o gasto da conta (que estava em US$0,07).
+- `ia_null` reproduzido ao vivo, motivo capturado na hora: `429` (chamada
+  real que bateu no limite) seguido de `pausado` em cascata (a pausa de
+  60s do `AI_PAUSA_MS` compartilhada entre feed/dilema/julgar — nenhum
+  desligamento permanente, `aiVivo` continuava true).
+
+**Medido de novo, mesma causa raiz do topo deste item, gravidade muito
+maior do que a última medição sugeria.** Dois protocolos, de propósito
+diferentes (lição já registrada aqui: medir com o ritmo certo importa —
+ver LEIA-ME.md "Medindo a coisa certa"):
+- Ritmo comprimido (chamadas a cada 4s, sem esperar a pausa de 60s
+  esvaziar): 92% de fallback em dilema E julgar — inflado pelo teste
+  bater na PRÓPRIA pausa que ele mesmo disparou, não é a experiência
+  real do jogador.
+- **Ritmo realista (>60s entre dilemas, cada tentativa é uma tentativa
+  de rede FRESCA, não uma pausa reaproveitada)**: 3 carreiras reais
+  contra produção, 12 dilemas. **Julgar caiu em fallback em 8 de 12
+  (67%)** — carreira 1: 2/4, carreira 2: 4/4, carreira 3: 2/4. Mesmo
+  espaçado direito, 8 das 12 tentativas bateram 429 direto no provedor —
+  não é cascata do circuito do cliente, é o pool compartilhado mesmo,
+  agora. Muito acima do "mais de 1 em 4" que preocupava — **pior bug do
+  jogo agora**: o jogador escreve uma decisão de verdade e o jogo devolve
+  frase neutra + zero número, sem avisar que algo falhou.
+
+**Ainda não implementado, opções levantadas, aguardando decisão**:
+1. Circuito PRÓPRIO pra dilema+julgar (como o evento já ganhou, ver
+   "aiVivo compartilhado"), separado de feed — reduz contaminação
+   cruzada (feed falhar não gasta a pausa de dilema), mas NÃO reduz a
+   taxa de 429 em si (o 429 medido bateu direto em dilema/julgar, não
+   veio de feed vazando pausa).
+2. Retentativa única em 429 especificamente pra julgar (mesmo padrão já
+   usado no evento pra JSON malformado) — 429 costuma ser blip momentâneo
+   no pool compartilhado, uma retentativa com pequeno atraso tem chance
+   real de sair fora da MESMA janela de limite.
+3. BYOK (chave própria Alibaba/Qwen em openrouter.ai/settings/
+   integrations) — a correção estrutural de verdade, decisão de
+   custo/conta, não de código. Dado o 67% medido agora, isto deixou de
+   ser "nice to have" — é o que realmente resolve, o resto é mitigação.
+
 ## 14. AI_URL apontava pra domínio morto — RESOLVIDO (hotfix 2026-09-06)
 
 `draft-ufc.vercel.app` (valor de `AI_URL`) passou a devolver 404
@@ -729,6 +778,84 @@ Decisão explícita: fica com a legada por ora. Mas Supabase desativa
 anon/service_role **até o fim de 2026** — não é recomendação, é prazo.
 Quando migrar: só trocar o valor de `SUPABASE_ANON_KEY` pela
 `publishable key` do painel. Ver `LEIA-ME.md` "Contas".
+
+## 24. Card de momento: selo dizia categoria interna, dois gatilhos na mesma luta mostravam o errado — RESOLVIDO (2026-09-08)
+
+Achado jogando: ganhou o cinturão (finalização, virou #1 de 52) e o card
+mostrou selo "RARO" com frase de 12 vitórias seguidas — não o cinturão.
+
+**Investigado antes de consertar** (`node` direto contra o motor real,
+`finishFight()` de verdade): os DOIS gatilhos disparam na mesma luta —
+`cinturao` (correto, sempre dispara em título vencido pela 1ª vez) E
+`raro`/`invicto12` (cartel bate 12-0 exato nesta luta). Cinturão nunca
+deixou de disparar; os dois viravam CARDS SEPARADOS na galeria, e o
+jogador só reparou no errado (empurrado por último, rótulo genérico
+"RARO" não dava pista de que não era o card do título).
+
+**8 gatilhos** (`criarMomento`), rótulos ANTES → DEPOIS:
+| tipo | antes | depois |
+|---|---|---|
+| `cinturao` | CAMPEÃO | CINTURÃO |
+| `cinturaoInterino` | INTERINO | CINTURÃO INTERINO |
+| `cinturaoPerdido` | PERDEU | PERDEU O CINTURÃO |
+| `estreia` | MAIN CARD | ESTREIA NO MAIN CARD |
+| `upset` | ZEBRA | ZEBRA (já era fato) |
+| `ko` | NOCAUTE | NOCAUTE EM Ns (tempo de verdade, calculado na hora) |
+| `lesao` | MACHUCADO | VENCEU MACHUCADO |
+| `raro` | RARO (fixo) | o cartel de verdade (12-0/18-0) ou frase própria (finishStreak: "NUNCA FOI AOS CARTÕES") — 3 recordes diferentes não cabem num rótulo só |
+
+**Prioridade quando mais de um dispara na mesma luta** (`ORDEM_MOMENTO`,
+maior primeiro): `cinturao > cinturaoInterino > cinturaoPerdido >
+estreia > upset > ko > lesao > raro`. Só cinturão vs. o resto foi pedido
+explícito ("é o momento maior"); o resto da ordem é julgamento de
+importância narrativa, não medido — aberto a ajuste. Implementado no
+FIM de `finishFight()`: se mais de 1 momento nasceu NESTA chamada, fica
+só o de maior prioridade; os outros efeitos de cada gatilho (texto no
+feed, `st.rares`, `st.events`, flags como `st.estreouMainCard`) já
+rodaram antes e continuam valendo — só a disputa pelo CARD muda.
+
+`node testar.js momentos` estendido: reproduz o caso EXATO relatado
+(12-0 + cinturão por finalização na mesma luta) e confirma só 1 card
+sobra, é CINTURÃO, com a frase certa; rótulos dinâmicos (nocaute em
+40s, raro com cartel/frase própria); a flag de estreia continua
+marcando por baixo mesmo com o card suprimido. Provado com dente
+(bloco de prioridade removido → 3 asserções caem; rótulo do raro
+hardcoded pra "RARO" → 2 caem).
+
+## 25. Compartilhar/Salvar imagem gerava 2 arquivos idênticos — RESOLVIDO (2026-09-08)
+
+Achado jogando: "colei e vieram dois arquivos idênticos, mesmo nome,
+mesmo conteúdo". Suspeita do usuário: handler duplicado (padrão de
+`addEventListener` dentro de função que roda mais de uma vez).
+
+**Investigado antes de consertar**: grep no arquivo inteiro confirma
+NENHUM `addEventListener` nos botões de compartilhar/salvar (só
+`onclick=`, que nunca duplica sozinho — reatribuir substitui, não
+soma). Causa real, diferente da suspeita: `compartilhar()` ATRIBUÍA
+`btn.disabled=true` mas nunca CHECAVA o valor antes de rodar. Duas
+invocações que cheguem antes do 1º `await` resolver (toque duplo
+rápido — comum aqui, nada aparece na tela até "Gerando…" surgir)
+rodam as duas inteiras, cada uma gerando seu próprio arquivo com o
+MESMO nome determinístico (`${me.name}.png`, sem timestamp). Mesma
+CLASSE de bug que a suspeita (execução dupla de algo que devia rodar
+uma vez), causa mecânica diferente (guard ausente, não listener
+duplicado) — vale registrar a diferença porque o conserto teria sido
+outro se a suspeita original estivesse certa.
+
+Afeta os DOIS botões que passam por `compartilhar()` — "Salvar
+imagem" (galeria de cards) e "Compartilhar" (fim de carreira) — mesma
+função, mesmo bug, confirmado.
+
+Conserto: `if(btn.disabled)return;` como primeira linha da função —
+guard explícito, não confia só no `<button disabled>` nativo do
+navegador (mesmo raciocínio de sempre neste projeto: instrução/estado
+implícito não é garantia, checa).
+
+`node testar.js compartilhar` (novo): simula 2 chamadas seguidas sem
+esperar a 1ª terminar (o "toque duplo antes do disabled surtir
+efeito"), com `desenhar()` fake pra isolar só a reentrância (não
+precisa mockar o canvas real). Provado com dente: sem o guard, 2
+downloads disparados, ambos com o mesmo nome — com o guard, 1.
 
 ## Manutenção
 

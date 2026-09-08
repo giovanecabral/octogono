@@ -1300,6 +1300,24 @@ sem desligar; a chamada durante a pausa nem tenta rede, mas resume sozinha
 quando o relógio passar. `AI_PAUSA_MS=60000` é chute inicial, não medido —
 se 429 continuar aparecendo mesmo com a pausa, é isso que precisa remedir.
 
+**Confirmado que continua aparecendo, e pior do que se sabia (2026-09-08).**
+Achado jogando: dilema aceito ("Aceito, estou precisando de dinheiro para
+investir na minha carreira") devolveu frase neutra de fallback e R$0 —
+igual a IA nunca tivesse sido chamada. Investigado do zero (3ª ocorrência
+de "IA ignora resposta", causa raiz diferente das duas anteriores — ver
+LEIA-ME "AI_URL apontava..." e `PENDENCIAS.md` item 14): `CONTEUDO_INSEGURO`
+descartado (testado direto contra a regex, não bate), teto de gasto
+descartado (`vercel logs` mostra 429 vindo do PROVEDOR, `is_byok:false`,
+nada a ver com a conta). Medido com ritmo REALISTA (>60s entre chamadas,
+cada tentativa é rede fresca, não reaproveita a pausa de uma anterior —
+mesma disciplina de "Medindo a coisa certa" abaixo): **julgar caiu em
+fallback em 8 de 12 dilemas (67%) em 3 carreiras reais contra
+produção.** Não é o circuito do cliente cascateando — é o pool
+compartilhado do OpenRouter mesmo, agora, pior do que a medição de
+2026-09-06 sugeria (~27%). Ver `PENDENCIAS.md` item 9 pras opções de
+conserto levantadas (circuito próprio pra dilema/julgar, retentativa em
+429, BYOK) — nenhuma implementada ainda, aguardando decisão.
+
 **Falha sem resposta nenhuma (rede caiu, DNS falhou, timeout do
 `AbortController`) é outra categoria** — o proxy nem foi alcançado, não tem
 `transitorio` pra ler. Uma falha assim pode ser blip pontual; duas seguidas
@@ -1560,9 +1578,61 @@ depois de baixar. Falha ao gerar a miniatura não impede salvar (`try/catch`
 silencioso: a miniatura é conveniência, não pode derrubar o botão que
 importa).
 
+**Rótulo dizia categoria interna, não fato — e dois gatilhos na mesma luta
+disputavam o mesmo card silenciosamente (2026-09-08).** Achado jogando:
+ganhou o cinturão por finalização, cartel bateu 12-0 exato NESSA luta —
+`cinturao` e `raro`/`invicto12` disparam juntos, viram dois cards
+separados na galeria, e "RARO" não dava nenhuma pista de que aquele não
+era o card do título. `ROTULO_MOMENTO` reescrito pra dizer o FATO
+("CINTURÃO", "PERDEU O CINTURÃO", "ESTREIA NO MAIN CARD"), não a
+categoria; `raro` não tem rótulo fixo possível (cobre 3 recordes bem
+diferentes) — usa o cartel de verdade pra invicto12/18 (é literalmente
+`m.cartel`, já existia) ou frase própria pro `finishStreak`
+(`ROTULO_RARO`); `ko` ganhou o tempo exato calculado na hora
+(`m.segundosKO`, "NOCAUTE EM 40s"). `rotuloMomento(m)` decide qual
+caminho usar.
+
+**Prioridade (`ORDEM_MOMENTO`)** pra quando mais de um gatilho nasce na
+MESMA chamada de `finishFight()`: cinturão sempre ganha ("é o momento
+maior", pedido explícito) — resto da ordem
+(`cinturaoInterino>cinturaoPerdido>estreia>upset>ko>lesao>raro`) é
+julgamento de importância narrativa, não medido. Implementado no FIM da
+função: compara só os momentos NASCIDOS nesta chamada
+(`st.momentos.slice(momentosAntes)`), mantém o de maior prioridade,
+descarta os outros — mas só o CARD; o resto do efeito de cada gatilho
+(texto no feed, `st.rares`/`st.events`, flags como `st.estreouMainCard`)
+já rodou antes e continua valendo integralmente. `node testar.js
+momentos` reproduz o caso relatado byte a byte (12-0 + cinturão por
+finalização) e prova com dente que só 1 card sobra, com o rótulo e a
+frase certos.
+
 ```bash
 node testar.js momentos   # cada gatilho na hora certa, uma vez só, sem rede
 ```
+
+---
+
+### Compartilhar: um toque não pode virar dois arquivos (2026-09-08)
+
+Achado jogando: "colei e vieram dois arquivos idênticos, mesmo nome,
+mesmo conteúdo". Suspeita inicial (razoável, mesma classe de bug) era
+`addEventListener` duplicado — grep no arquivo inteiro descarta: os
+botões de compartilhar/salvar usam só `onclick=`, que nunca duplica
+sozinho (reatribuir substitui). Causa real: `compartilhar()` ATRIBUÍA
+`btn.disabled=true` mas nunca CHECAVA antes de rodar — duas chamadas
+que cheguem antes do 1º `await` resolver (toque duplo rápido, comum
+aqui porque nada muda na tela até "Gerando…" aparecer) rodam as duas
+inteiras, cada uma gerando seu próprio arquivo com o MESMO nome
+determinístico (`${me.name}.png`, sem timestamp). Afeta os dois botões
+que passam por `compartilhar()` — "Salvar imagem" (galeria) e
+"Compartilhar" (fim de carreira) — mesma função, mesmo bug.
+
+Conserto: `if(btn.disabled)return;` na primeira linha — guard
+explícito, não confia só no `<button disabled>` nativo (mesmo
+raciocínio de sempre aqui: estado implícito não é garantia).
+`node testar.js compartilhar` simula 2 chamadas seguidas sem esperar a
+1ª terminar, com um `desenhar()` fake (não precisa mockar canvas real
+pra provar reentrância) — sem o guard, 2 downloads; com o guard, 1.
 
 ---
 

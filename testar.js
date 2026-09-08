@@ -1944,18 +1944,26 @@ function testarMomentos() {
        VITÓRIA OU DERROTA (é sobre chegar lá, não sobre ganhar — diferente
        de "cinturao", que só dispara ganhando), e só a primeira vez. */
     st=stBase(); st.fightNo=8; st.ganhoEscolhido=.10;
-    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
-    passo("titleFight vencido dispara estreia no main card",
-      st.momentos.some(m=>m.tipo==="estreia"));
-    const qtdApósVitoria=st.momentos.filter(m=>m.tipo==="estreia").length;
     finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
-    passo("2ª luta de título (agora perdendo) NÃO dispara de novo — só a primeira vez",
-      st.momentos.filter(m=>m.tipo==="estreia").length===qtdApósVitoria);
+    passo("titleFight PERDIDO dispara estreia (sem cinturão pra competir, sobrevive sozinho)",
+      st.momentos.some(m=>m.tipo==="estreia"));
+    const qtdApósDerrota=st.momentos.filter(m=>m.tipo==="estreia").length;
+    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
+    passo("2ª luta de título (perdendo de novo) NÃO dispara estreia de novo — só a primeira vez",
+      st.momentos.filter(m=>m.tipo==="estreia").length===qtdApósDerrota);
 
+    /* Prioridade (achado jogando, 2026-09-08): título vencido NO DEBUT no
+       main card dispara estreia E cinturao na MESMA luta — cinturão é o
+       momento maior (ORDEM_MOMENTO), ganha a disputa pelo card. A flag
+       st.estreouMainCard continua marcando true por baixo (é o que
+       impede a PRÓXIMA luta de título de tentar empurrar "estreia" de
+       novo) mesmo com o card de estreia suprimido nesta. */
     st=stBase(); st.fightNo=8; st.ganhoEscolhido=.10;
-    finishFight(opp,{winner:opp.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
-    passo("titleFight PERDIDO também dispara estreia — é sobre chegar lá, não sobre ganhar",
-      st.momentos.some(m=>m.tipo==="estreia"));
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},true);
+    passo("título vencido no debut do main card: cinturão ganha a disputa, não estreia",
+      st.momentos.some(m=>m.tipo==="cinturao") && !st.momentos.some(m=>m.tipo==="estreia"));
+    passo("mesmo suprimido do card, a flag de estreia foi marcada por baixo",
+      st.estreouMainCard===true);
 
     st=stBase(); st.fightNo=8; st.ganhoEscolhido=.07;
     finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"0:00"},false);
@@ -2057,6 +2065,48 @@ function testarMomentos() {
     passo("card carrega adversário", ultimo.adversario==="Rival");
     passo("card carrega resultado (método · round · tempo)",
       ultimo.resultado==="Decisão · round 3 5:00");
+
+    /* Rótulos (achado jogando: "RARO" é categoria, não fato — quem vê o
+       print não entende por que virou card). Cada tipo tem que dizer o
+       QUE aconteceu, não a caixa interna onde mora. */
+    passo("rótulo do raro 18-0 é o cartel de verdade, não a palavra RARO",
+      rotuloMomento(ultimo)===ultimo.cartel && ultimo.cartel==="18-0");
+
+    rng=mulberry32(1); rareUsed=new Set();
+    // wins/finishes SOBEM 1 dentro de finishFight() (é vitória por nocaute) —
+    // parte de 5 pra fechar em 6-0, batendo wins>=6&&finishes===wins
+    st=stBase(); fightNo=8; st.fightNo=8; st.wins=5; st.losses=0; st.finishes=5; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:2,clock:"5:00"},false);
+    const finishStreakM=st.momentos.find(m=>m.tipo==="raro");
+    passo("finishStreak tem rótulo próprio, não confunde com o cartel (não é um placar)",
+      finishStreakM && rotuloMomento(finishStreakM)==="NUNCA FOI AOS CARTÕES");
+
+    st=stBase(); st.fightNo=3;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"4:20"},false);
+    const koM=st.momentos.find(m=>m.tipo==="ko");
+    passo("nocaute rápido: rótulo diz o TEMPO de verdade (clock 4:20 no round de 5min = 40s)",
+      koM && koM.segundosKO===40 && rotuloMomento(koM)==="NOCAUTE EM 40s");
+
+    passo("rótulo do cinturão diz CINTURÃO, não CAMPEÃO (achado jogando: usuário pediu o fato exato)",
+      ROTULO_MOMENTO.cinturao==="CINTURÃO");
+    passo("rótulo de perder o cinturão diz o fato inteiro",
+      ROTULO_MOMENTO.cinturaoPerdido==="PERDEU O CINTURÃO");
+    passo("rótulo de estreia diz o fato inteiro",
+      ROTULO_MOMENTO.estreia==="ESTREIA NO MAIN CARD");
+
+    /* Prioridade — reproduz o caso EXATO relatado: título vencido por
+       finalização, cartel bate 12-0 na mesma luta (invicto12 e cinturao
+       disparam juntos). Cinturão tem que ganhar, e o rótulo tem que
+       dizer CINTURÃO, não o cartel. */
+    st=stBase(); st.fightNo=11; st.wins=11; st.losses=0; st.ganhoEscolhido=.10;
+    st.tituloEstaLuta=true;
+    finishFight(opp,{winner:me.name,method:"Finalização",knockdowns:{},round:2,clock:"3:10"},true);
+    passo("caso relatado (12-0 + cinturão na mesma luta): só 1 card sobra",
+      st.momentos.length===1);
+    passo("caso relatado: o card que sobra é CINTURÃO, não RARO",
+      st.momentos[0].tipo==="cinturao" && rotuloMomento(st.momentos[0])==="CINTURÃO");
+    passo("caso relatado: a frase é a do cinturão, não a de doze vitórias",
+      st.momentos[0].frase===FRASE_PRIMEIRO_CINTURAO(me.name));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -2729,6 +2779,93 @@ function testarNarracaoResultado(N = 8) {
  *     verde escuro) separados; comprar desconta, marca e não deixa comprar
  *     2x; sem dinheiro, o botão vem desabilitado.
  * ================================================================== */
+/* ================================================================== *
+ * COMPARTILHAR — achado jogando: "colei e vieram dois arquivos
+ *     idênticos, mesmo nome, mesmo conteúdo". Não existe addEventListener
+ *     duplicado em lugar nenhum (só onclick=, que nunca duplica sozinho —
+ *     conferido por grep no arquivo inteiro). O que existe: compartilhar()
+ *     ATRIBUI btn.disabled=true mas nunca CHECA o valor antes de rodar —
+ *     duas invocações que cheguem antes do primeiro await resolver (toque
+ *     duplo rápido no mobile, sem feedback visual imediato) rodam as duas
+ *     inteiras, cada uma gerando seu próprio arquivo com o MESMO nome
+ *     determinístico (${me.name}.png, sem timestamp). Mesma classe de bug
+ *     que o usuário suspeitou (execução dupla de um handler que devia
+ *     rodar uma vez), causa raiz diferente (guard ausente, não listener
+ *     duplicado).
+ * ================================================================== */
+function testarCompartilhar() {
+  console.log("\n" + cinza("compartilhar(): dois toques antes do 1º await resolver não podem gerar dois arquivos"));
+  const env = criarAmbiente();
+  const origCreateElement = env.sandbox.document.createElement;
+  const cliques = [];
+  env.sandbox.document.createElement = t => {
+    const n = origCreateElement(t);
+    if (t === "a") n.click = () => cliques.push(n.href);
+    return n;
+  };
+  let chamadasShare = 0;
+  env.sandbox.navigator = {
+    canShare: () => false, // força o caminho de download (o outro navegador possível)
+    share: async () => { chamadasShare++; },
+    clipboard: { writeText: async () => {} },
+  };
+  env.sandbox.URL = { createObjectURL: () => "blob:fake", revokeObjectURL: () => {} };
+  env.sandbox.File = class { constructor(partes, nome, opts) { this.nome = nome; this.type = opts && opts.type; } };
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__comp=(async function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    me={name:"TesteBot"};
+    let chamadasDesenhar=0;
+    const desenharFake=async(g)=>{
+      chamadasDesenhar++;
+      return {toBlob:(cb)=>cb({fake:"blob",n:chamadasDesenhar})};
+    };
+    const btn=el("button","","Salvar imagem");
+    const m={frase:"Doze lutas, doze vitórias.",titulo:"Doze e zero"};
+
+    // toque duplo: chama o MESMO onclick que um clique real dispara, duas
+    // vezes seguidas, sem esperar a 1ª terminar — é isso que "clicar rápido
+    // duas vezes antes do disabled surtir efeito" produz na prática.
+    const onclick=()=>compartilhar(m,btn,desenharFake);
+    const p1=onclick();
+    const p2=onclick();
+    await Promise.all([p1,p2]);
+
+    passo("desenhar() rodou só 1 vez mesmo com 2 chamadas seguidas (reentrância bloqueada)",
+      chamadasDesenhar===1);
+
+    globalThis.__cliquesDownload = chamadasDesenhar; // exportado só pra clareza no log
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  return env.sandbox.__comp.then((passos) => {
+    let ok = true;
+    for (const p of passos) {
+      if (!p.ok) ok = false;
+      console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    console.log(`  ${cinza("downloads efetivamente disparados: " + cliques.length + ", chamadas a navigator.share: " + chamadasShare)}`);
+    ok = ok && cliques.length <= 1;
+    console.log(`  ${cliques.length<=1?verde("ok   "):vermelho("fora ")} no máximo 1 download real disparado (a(href).click())`);
+    return ok && passos.length > 0;
+  });
+}
+
 function testarLoja() {
   console.log("\n" + cinza("loja: descrição e efeito separados por item, compra desconta e marca, sem dinheiro desabilita"));
   const env = criarAmbiente();
@@ -3950,6 +4087,7 @@ try {
   else if (cmd === "dilema") ok = await testarDilemaMecanismo();
   else if (cmd === "memoria") ok = testarMemoriaEntreCarreiras();
   else if (cmd === "loja") ok = testarLoja();
+  else if (cmd === "compartilhar") ok = await testarCompartilhar();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");

@@ -3384,12 +3384,46 @@ async function desenharCard(g){
   return cv;
 }
 
-/* rótulo curto pro carimbo do card de momento — mesma caixa rotativa do
-   desenharCard, só que com uma etiqueta de 1-2 palavras em vez da nota A-F
-   (nota não faz sentido pra carreira em andamento). */
-const ROTULO_MOMENTO={cinturao:"CAMPEÃO",cinturaoPerdido:"PERDEU",
-  ko:"NOCAUTE",raro:"RARO",upset:"ZEBRA",lesao:"MACHUCADO",estreia:"MAIN CARD",
-  cinturaoInterino:"INTERINO"};
+/* Rótulo curto pro carimbo do card de momento — mesma caixa rotativa do
+   desenharCard, etiqueta de 1-2 palavras em vez da nota A-F. Achado
+   jogando (2026-09-08): "RARO" é nome interno de CATEGORIA, não fato —
+   quem vê o print não entende por que aquele momento virou card. Cada
+   rótulo agora diz o FATO ("CINTURÃO", "PERDEU O CINTURÃO", "ZEBRA",
+   "ESTREIA NO MAIN CARD"), não a categoria. Dois tipos não têm fato fixo
+   por design (o número muda a cada instância) — `ko` (tempo do nocaute)
+   e `raro` (qual recorde específico) — esses são resolvidos por
+   `rotuloMomento(m)`, não por esta tabela estática; entram aqui só como
+   documentação do que cada tipo SIGNIFICA quando a tabela é a fonte. */
+const ROTULO_MOMENTO={cinturao:"CINTURÃO",cinturaoPerdido:"PERDEU O CINTURÃO",
+  upset:"ZEBRA",lesao:"VENCEU MACHUCADO",estreia:"ESTREIA NO MAIN CARD",
+  cinturaoInterino:"CINTURÃO INTERINO"};
+/* raro é UMA categoria que cobre 3 recordes bem diferentes entre si (ver
+   RARE, card:true) — não dá pra ter 1 rótulo estático pra "raro", cada
+   id precisa dizer o recorde de verdade. invicto12/invicto18: o cartel
+   JÁ É o rótulo (m.cartel, montado em criarMomento() no instante certo,
+   antes do standing andar) — nenhuma tabela nova, reaproveita o que já
+   existe. finishStreak não tem um número óbvio pra mostrar (é sobre NÃO
+   ter ido aos cartões nenhuma vez), por isso ganha frase própria. */
+const ROTULO_RARO={finishStreak:"NUNCA FOI AOS CARTÕES"};
+/* Prioridade quando mais de um gatilho dispara NA MESMA LUTA (achado
+   jogando: cinturão + 12-0 na mesma luta gerava DOIS cards, e o jogador
+   só viu o card errado — raro, empurrado por último). Cinturão é o
+   momento maior da carreira, sempre ganha; da metade pra baixo é
+   julgamento de importância narrativa, não medido — cinturaoPerdido e
+   estreia nunca competem entre si nem com cinturao/cinturaoInterino na
+   prática (ramos won/lost são mutuamente exclusivos, e estreia só
+   dispara ANTES de existir cinturao na mesma luta em título vencido —
+   ver comentário de finishFight()), então só a ORDEM RELATIVA entre os
+   que realisticamente colidem importa: cinturao/interino > upset/ko/
+   lesao/raro (destaques de UMA luta) — cinturão continua sendo o fato
+   maior mesmo disputado contra favorito, vencido rápido, ou com lesão. */
+const ORDEM_MOMENTO=["cinturao","cinturaoInterino","cinturaoPerdido","estreia",
+  "upset","ko","lesao","raro"];
+function rotuloMomento(m){
+  if(m.tipo==="raro")return ROTULO_RARO[m.raroId]||m.cartel;
+  if(m.tipo==="ko"&&m.segundosKO!=null)return`NOCAUTE EM ${m.segundosKO}s`;
+  return ROTULO_MOMENTO[m.tipo]||"MOMENTO";
+}
 
 /* SVG do busto -> <img> carregável, pra desenhar no canvas com drawImage().
    data: URI com encodeURIComponent (não btoa): bonecoSVG() é auto-contido —
@@ -3487,7 +3521,7 @@ async function desenharCardMomento(m){
   x.strokeStyle=C.stamp;x.lineWidth=7;
   x.strokeRect(-72,-72,144,144);
   x.fillStyle=C.stamp;
-  const rot=ROTULO_MOMENTO[m.tipo]||"MOMENTO";
+  const rot=rotuloMomento(m);
   let tamR=42;
   do{ x.font=disp(tamR); tamR-=3; }while(x.measureText(rot).width>128&&tamR>16);
   x.textAlign="center";x.textBaseline="middle";
@@ -3694,6 +3728,16 @@ function urlDesafio(){
 }
 
 async function compartilhar(g,btn,desenhar=desenharCard){
+  /* Achado jogando: "colei e vieram dois arquivos idênticos, mesmo nome" —
+     a função ATRIBUÍA disabled=true mas nunca CHECAVA antes de rodar. Toque
+     duplo rápido (comum aqui: nada aparece na tela até "Gerando…" surgir,
+     sem feedback do 1º toque) chama esta função DUAS vezes antes do 1º
+     await resolver — as duas rodam inteiras, cada uma gera seu próprio
+     arquivo com o MESMO nome determinístico (${me.name}.png, sem
+     timestamp). Guard explícito, não confia só no <button disabled> nativo
+     — mesmo raciocínio de sempre neste projeto (nunca confiar só na
+     instrução/estado implícito, checar). */
+  if(btn.disabled)return;
   btn.disabled=true;const antes=btn.textContent;btn.textContent="Gerando…";
   try{
     if(document.fonts&&document.fonts.ready)await document.fonts.ready;
@@ -4708,6 +4752,7 @@ function animarTrecho(lines,aoTerminar){
 }
 function finishFight(opp,r,titleFight){
   playing=false;atualizarControles();
+  const momentosAntes=st.momentos.length;   // pra filtrar por prioridade no fim, ver ORDEM_MOMENTO
   const won=r.winner===me.name;
   const isKO=/ocaute/.test(r.method),finish=r.method!=="Decisão";
   const myKd=r.knockdowns[opp.name]||0,oppKd=r.knockdowns[me.name]||0;
@@ -4782,8 +4827,11 @@ function finishFight(opp,r,titleFight){
       }
     }
     /* rápido é clock ALTO nesta luta — ver clockSeconds() */
-    if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<60)
-      st.momentos.push(criarMomento("ko",FRASE_KO_RAPIDO(me.name),opp,r));
+    if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<60){
+      const mko=criarMomento("ko",FRASE_KO_RAPIDO(me.name),opp,r);
+      mko.segundosKO=300-clockSeconds(r.clock);      // pro rótulo "NOCAUTE EM Ns"
+      st.momentos.push(mko);
+    }
     if(lutandoMachucado&&!st.lesao.venceuMachucado){
       st.lesao.venceuMachucado=true;
       const fraseLesao=st.lesao.origem==="nocaute"?FRASE_LESAO_VENCIDA_NOCAUTE:FRASE_LESAO_VENCIDA;
@@ -4941,10 +4989,29 @@ function finishFight(opp,r,titleFight){
       tocarSom(raro.tom||0);
       st.events++;
       st.rares.push(raro.t(me.name));
-      if(raro.card)st.momentos.push(criarMomento("raro",raro.t(me.name),opp,r));
+      if(raro.card){
+        const mr=criarMomento("raro",raro.t(me.name),opp,r);
+        mr.raroId=raro.id;                            // pro rótulo dizer o recorde certo
+        st.momentos.push(mr);
+      }
     }else{
       dispararEventoIA(bouts,opp,r);   // assíncrono, não bloqueia nada — mesmo padrão do feed
     }
+  }
+  /* Prioridade entre gatilhos da MESMA luta (achado jogando: cinturão +
+     12-0 na mesma luta empurrava DOIS cards, o de raro por último — o
+     jogador só viu o errado). Mais de um momento pode nascer nesta
+     chamada (estreia+cinturao, cinturao+ko, cinturao+raro, etc.) — fica
+     só o de maior prioridade (ORDEM_MOMENTO); os outros são removidos
+     do CARD, mas o resto do efeito de cada gatilho (texto no feed,
+     st.rares, st.events, contadores de conquista) já rodou antes desta
+     linha e continua valendo — só a disputa por QUAL card aparece muda. */
+  if(st.momentos.length>momentosAntes+1){
+    const desdeAqui=st.momentos.slice(momentosAntes);
+    const melhor=desdeAqui.reduce((a,b)=>
+      ORDEM_MOMENTO.indexOf(a.tipo)<=ORDEM_MOMENTO.indexOf(b.tipo)?a:b);
+    st.momentos.length=momentosAntes;
+    st.momentos.push(melhor);
   }
   verificarConquistas();
   atualizarControles();renderFicha();
