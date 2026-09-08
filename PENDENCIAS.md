@@ -824,7 +824,7 @@ recentes; cartela deprioriza sem excluir; integração real de 2
 vistos da 1ª); sobrevive sem `localStorage` nenhum (mesma garantia de
 `testarConquistas()`). Todos provados com dente.
 
-## 23. Contas (Supabase) ligadas em produção — FALTA SMTP ANTES DE TRÁFEGO (2026-09-08)
+## 23. Contas (Supabase) ligadas em produção — FALTA SMTP/GOOGLE ANTES DE TRÁFEGO (2026-09-09)
 
 `SUPABASE_URL`/`SUPABASE_ANON_KEY` preenchidos e deployados, schema
 (`supabase_schema.sql`, com RLS) já rodado no projeto. `getSupabase()`
@@ -832,13 +832,36 @@ retorna cliente real, caixa "Salvar conquistas" aparece em produção
 depois das 22 lutas. Confirmado: `grep -rn "service_role"` no projeto
 não devolve nada — só a `anon` key está no cliente, como desenhado.
 
-**Bloqueante antes de qualquer tráfego real, ainda não feito**: SMTP
-próprio (painel Supabase → Authentication → Email). Sem isso, o e-mail
-padrão do Supabase manda só **2 por hora** — o segundo jogador que
-tentar criar conta na mesma hora não recebe link mágico, sem erro
-visível pra ninguém. Não bloqueia teste solo (1 sessão de teste fica
-bem abaixo do limite). Ver `LEIA-ME.md` "Contas" → "Estado desta
-instância".
+**Auth trocado de link mágico pra e-mail+senha, mais login Google
+(2026-09-09)** — decisão explícita: plano pago vem por aí, precisa de
+conta de verdade. `criarConta()`/`entrarComSenha()`/`entrarComGoogle()`
+em index.html, formulário único (`montarFormularioConta()`) reusado na
+tela Conta e na caixa de fim de carreira. `node testar.js inicial`
+(novo): Supabase falso, prova que os 3 fluxos chamam os métodos certos
+do Supabase com os argumentos certos, com dente.
+
+**Bloqueante antes de qualquer tráfego real, ainda não feito** — dois
+itens, não um:
+1. **SMTP próprio** (painel Supabase → Authentication → SMTP Settings).
+   Duas razões agora: o e-mail padrão manda só 2/hora, E (achado
+   2026-09-09, docs oficiais) desde junho de 2026 o Supabase Free NÃO
+   deixa mais editar o template de e-mail sem SMTP próprio — o
+   remetente "Supabase Auth" que pareceu golpe pro usuário SÓ some
+   com isso configurado. Passo a passo completo em `LEIA-ME.md`
+   "Contas" → item 3.
+2. **Google Provider** (painel Supabase → Authentication → Providers →
+   Google): precisa de client ID/secret de um projeto no Google Cloud
+   Console. Sem isso o botão "Entrar com Google" já aparece na tela
+   (o código está pronto) mas `signInWithOAuth` devolve erro na hora.
+
+Nenhum dos dois bloqueia teste solo por senha. Ver `LEIA-ME.md`
+"Contas" → "Estado desta instância".
+
+**Gap novo, não pedido nesta leva mas necessário antes de tráfego
+pago**: não existe "esqueci minha senha" (`resetPasswordForEmail`).
+Só com senha+Google, quem esquece a senha e não usou Google fica sem
+entrar. Depende do mesmo SMTP do item 1 (o template "Reset Password"
+é um dos que o SMTP libera editar).
 
 **Migração de chave, sem prazo de código mas com prazo real**: painel
 marca a `anon key` atual como legada, formato novo é `sb_publishable_
@@ -926,6 +949,37 @@ esperar a 1ª terminar (o "toque duplo antes do disabled surtir
 efeito"), com `desenhar()` fake pra isolar só a reentrância (não
 precisa mockar o canvas real). Provado com dente: sem o guard, 2
 downloads disparados, ambos com o mesmo nome — com o guard, 1.
+
+## 26. Tela inicial, Conta (senha+Google) e estrutura de Termos/Privacidade — IMPLEMENTADO (2026-09-09), Histórico PENDENTE DE APROVAÇÃO
+
+`boot()`/`ready()` iam direto pra tela de nome — sem menu, sem marca,
+sem link pra conta ou termos. `screenInicio()` é a nova primeira tela:
+OCTÓGONO grande (vermelho, `--stamp`), frase curta, menu à esquerda
+(Jogar/Opções/Conta/Histórico), rodapé (Termos/Privacidade/Contato).
+Link de desafio continua pulando direto pra `screenName()` (ver
+`LEIA-ME.md` "Tela inicial").
+
+Conta trocada de link mágico pra senha+Google — ver item 23.
+
+Termos/Privacidade: só estrutura (texto `[PENDENTE]`), páginas
+separadas (`screenTermos()`/`screenPrivacidade()`), rodapé + nota no
+formulário de conta linkando as duas. Registro de aceite formal
+(tabela + checkbox + versão) fica pra quando existir pagamento —
+proposta completa em `LEIA-ME.md`, não implementado (não tem checkout
+pra prender ainda).
+
+**Histórico — PENDENTE DE APROVAÇÃO, item no menu existe mas mostra só
+"em construção"**. Proposta enviada ao usuário (não escrita ainda):
+mostrar carreiras anteriores (nome do lutador, cartel final, nota,
+data) e/ou conquistas desbloqueadas, guardado numa tabela nova
+associada à conta — precisa de decisão do usuário sobre o que exibir
+antes de qualquer implementação.
+
+`node testar.js interface` estendido (clica "Jogar" de verdade, não
+pula a tela inicial mais). `node testar.js inicial` (novo, 14
+asserções): navegação dos 4 itens do menu, Supabase falso confirmando
+os 3 métodos de auth com os argumentos certos, páginas de
+Termos/Privacidade/Histórico. Tudo provado com dente.
 
 ## Manutenção
 

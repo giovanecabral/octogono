@@ -159,7 +159,13 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   };
 
   await passo("carregar e avaliar lutadores", () => UI.ready(lerLutadores()));
-  await passo("tela de nome", () => UI.screenName());
+  await passo("tela inicial: 4 itens de menu, clica Jogar (sem link de desafio, cai aqui de verdade)", () => {
+    const itens = env.todos.filter(n => n.className === "inicio-item");
+    if (itens.length !== 4) throw new Error(`esperava 4 itens no menu, achei ${itens.length}`);
+    const titulo = env.todos.filter(n => n.className === "inicio-titulo").pop();
+    if (!titulo || titulo.innerHTML !== "OCTÓGONO") throw new Error("título da tela inicial não é OCTÓGONO");
+    itens[0].onclick(); // "Jogar" -> screenName()
+  });
   await passo("digitar nome e avançar", () => {
     const inp = env.todos.filter(n => n.tagName === "input" && n.type === "text").pop();
     if (!inp) throw new Error("campo de nome não foi montado");
@@ -2866,6 +2872,161 @@ function testarCompartilhar() {
   });
 }
 
+/* ================================================================== *
+ * TELA INICIAL (2026-09-09) — menu, navegação, e o formulário de
+ *     login/cadastro com um Supabase FALSO (criarAmbiente() não tem
+ *     window.supabase nenhum, de propósito — mesmo motivo do áudio/
+ *     localStorage). location também é falso aqui (criarAmbiente() não
+ *     tem, e lerDesafio() só engole a exceção por causa disso — sem
+ *     location.reload() falso, o caminho de sucesso do login quebraria
+ *     o teste).
+ * ================================================================== */
+function testarTelaInicial() {
+  console.log("\n" + cinza("tela inicial: navegação do menu, link de desafio pula a tela, formulário de conta chama o Supabase certo"));
+  const env = criarAmbiente({ contarNos: true });
+
+  const chamadasAuth = [];
+  let sessaoFalsa = null;
+  const supabaseFalso = {
+    createClient: () => ({
+      auth: {
+        signUp: async ({ email, password }) => {
+          chamadasAuth.push(["signUp", email, password]);
+          return { data: { session: null }, error: null }; // precisa confirmar e-mail
+        },
+        signInWithPassword: async ({ email, password }) => {
+          chamadasAuth.push(["signInWithPassword", email, password]);
+          if (password === "errada") return { error: { message: "Credenciais inválidas" } };
+          sessaoFalsa = { user: { id: "u1", email } };
+          return { error: null };
+        },
+        signInWithOAuth: async ({ provider, options }) => {
+          chamadasAuth.push(["signInWithOAuth", provider, options && options.redirectTo]);
+          return { error: null };
+        },
+        signOut: async () => { sessaoFalsa = null; return { error: null }; },
+        getSession: async () => ({ data: { session: sessaoFalsa } }),
+      },
+      from: () => ({
+        upsert: async () => ({ data: [], error: null }),
+        select: () => ({ eq: async () => ({ data: [], error: null }) }),
+      }),
+    }),
+  };
+  env.sandbox.window.supabase = supabaseFalso;
+  env.sandbox.location = { href: "https://octogono.fun/", search: "", reload: () => {} };
+  vm.createContext(env.sandbox);
+
+  try {
+    vm.runInContext(exportar(lerScript(),
+      ["ready", "screenInicio", "screenName", "screenConta", "screenHistorico",
+        "screenTermos", "screenPrivacidade", "abrirConfig"])
+      + "\ntry{globalThis.__x.cfgAberto=()=>cfgAberto;}catch(e){}",
+      env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
+    return false;
+  }
+  const UI = env.sandbox.__x;
+  const respirar = () => new Promise(r => setImmediate(r));
+  const passos = [];
+  const passo = async (nome, fn) => {
+    try { await fn(); env.drenar(); await respirar(); env.drenar(); await respirar(); passos.push([nome, true]); }
+    catch (e) { passos.push([nome, false]); console.log(vermelho(`  falha  ${nome}`) + "\n         " + e.message); }
+  };
+  const marcado = (classe) => env.todos.filter(n => n.className === classe);
+  const ultimoTexto = (classe) => { const l = marcado(classe); return l.length ? l[l.length - 1].innerHTML : null; };
+
+  return (async () => {
+    await passo("carregar lutadores", () => UI.ready(lerLutadores()));
+    await passo("Opções: clica no item do menu, abre o overlay de config", () => {
+      const itens = marcado("inicio-item");
+      if (itens.length !== 4) throw new Error(`esperava 4 itens, achei ${itens.length}`);
+      itens[1].onclick(); // "Opções"
+      if (!UI.cfgAberto()) throw new Error("abrirConfig() não marcou cfgAberto");
+    });
+
+    // reabre a tela inicial (Opções é overlay, não troca de tela) e vai pra Conta
+    await passo("Conta (sem sessão): formulário de login/cadastro aparece", () => {
+      UI.screenInicio();
+      const itens = marcado("inicio-item");
+      itens[2].onclick(); // "Conta"
+    });
+    await passo("Conta: campos de e-mail/senha e os 3 botões existem", () => {
+      const email = env.todos.filter(n => n.type === "email").pop();
+      const senha = env.todos.filter(n => n.type === "password").pop();
+      if (!email || !senha) throw new Error("campos de e-mail/senha não foram montados");
+      const btns = env.todos.filter(n => n.tagName === "button" && ["Entrar", "Criar conta", "Entrar com Google"].includes(n.innerHTML));
+      if (btns.length !== 3) throw new Error(`esperava 3 botões (Entrar/Criar conta/Google), achei ${btns.length}`);
+    });
+    await passo("Conta: criar conta chama signUp com e-mail e senha certos", () => {
+      const email = env.todos.filter(n => n.type === "email").pop();
+      const senha = env.todos.filter(n => n.type === "password").pop();
+      email.value = "novo@teste.com"; senha.value = "senha123";
+      const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
+      btnCriar.onclick();
+    });
+    await passo("Conta: entrar com senha errada mostra o erro do Supabase, não trava", () => {
+      const ultimaChamada = chamadasAuth[chamadasAuth.length - 1];
+      if (!(ultimaChamada[0] === "signUp" && ultimaChamada[1] === "novo@teste.com" && ultimaChamada[2] === "senha123"))
+        throw new Error("signUp não recebeu e-mail/senha certos: " + JSON.stringify(ultimaChamada));
+    });
+
+    UI.screenInicio();
+    marcado("inicio-item")[2].onclick(); // Conta de novo, formulário fresco
+    await passo("Conta: entrar com senha certa chama signInWithPassword", () => {
+      const email = env.todos.filter(n => n.type === "email").pop();
+      const senha = env.todos.filter(n => n.type === "password").pop();
+      email.value = "existente@teste.com"; senha.value = "certa";
+      const btnEntrar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Entrar").pop();
+      btnEntrar.onclick();
+    });
+    await passo("Conta: Google chama signInWithOAuth com provider google e redirectTo", () => {
+      const chamada = chamadasAuth.find(c => c[0] === "signInWithOAuth");
+      if (!chamada) {
+        // ainda não clicou — clica agora, num formulário fresco
+        UI.screenInicio();
+        marcado("inicio-item")[2].onclick();
+      }
+    });
+    await passo("Conta: clica Google de verdade e confirma provider/redirectTo", () => {
+      const btnGoogle = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Entrar com Google").pop();
+      btnGoogle.onclick();
+    });
+
+    await passo("Histórico: placeholder aparece (proposta ainda não aprovada, ver LEIA-ME.md)", () => {
+      UI.screenHistorico();
+      const texto = env.todos.filter(n => n.tagName === "p" && n.className === "hint").pop();
+      if (!texto || !/em constru/i.test(texto.innerHTML)) throw new Error("placeholder de histórico não apareceu");
+    });
+    await passo("Termos de Uso: página existe, marcada como pendente", () => {
+      UI.screenTermos();
+      const texto = ultimoTexto("pagina-legal"); // conteúdo vem via innerHTML string, não vira nó rastreável
+      if (!texto || !/pendente/i.test(texto)) throw new Error("página de termos não mostra o aviso de pendente");
+    });
+    await passo("Política de Privacidade: página existe, marcada como pendente", () => {
+      UI.screenPrivacidade();
+      const texto = ultimoTexto("pagina-legal");
+      if (!texto || !/pendente/i.test(texto)) throw new Error("página de privacidade não mostra o aviso de pendente");
+    });
+
+    let ok = true;
+    for (const [nome, sucesso] of passos) {
+      if (!sucesso) ok = false;
+      console.log(`  ${sucesso ? verde("ok   ") : vermelho("fora ")} ${nome}`);
+    }
+    const chamouGoogleCerto = chamadasAuth.some(c => c[0] === "signInWithOAuth" && c[1] === "google" && c[2] === "https://octogono.fun/");
+    console.log(`  ${chamouGoogleCerto ? verde("ok   ") : vermelho("fora ")} Google: provider "google" e redirectTo == location.href`);
+    ok = ok && chamouGoogleCerto;
+
+    const entrouComSenhaCerta = chamadasAuth.some(c => c[0] === "signInWithPassword" && c[1] === "existente@teste.com" && c[2] === "certa");
+    console.log(`  ${entrouComSenhaCerta ? verde("ok   ") : vermelho("fora ")} signInWithPassword recebeu e-mail/senha certos`);
+    ok = ok && entrouComSenhaCerta;
+
+    return ok && passos.length > 0;
+  })();
+}
+
 function testarLoja() {
   console.log("\n" + cinza("loja: descrição e efeito separados por item, compra desconta e marca, sem dinheiro desabilita"));
   const env = criarAmbiente();
@@ -4184,6 +4345,7 @@ try {
   else if (cmd === "memoria") ok = testarMemoriaEntreCarreiras();
   else if (cmd === "loja") ok = testarLoja();
   else if (cmd === "compartilhar") ok = await testarCompartilhar();
+  else if (cmd === "inicial") ok = await testarTelaInicial();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");

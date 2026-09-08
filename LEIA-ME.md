@@ -1737,23 +1737,68 @@ cadastro). `localStorage` continua sendo o cache de sempre; conta é
 sincronização por cima dele, nunca substitui.
 
 **Arquitetura**: Supabase (Postgres + Auth gerenciados, plano gratuito
-integra com Vercel sem servidor próprio) — auth por **link mágico**
-(e-mail, sem senha: menos atrito no cadastro, menos superfície de
-segurança). Tabela `conquistas_usuario` (`user_id`, `conquista_id`,
-`desbloqueada_em`), schema completo com Row Level Security em
-`supabase_schema.sql` — cada usuário só lê/grava as próprias linhas,
-garantido pelo Postgres via `auth.uid()`, não pelo client (que dá pra
-adulterar).
+integra com Vercel sem servidor próprio). Tabela `conquistas_usuario`
+(`user_id`, `conquista_id`, `desbloqueada_em`), schema completo com Row
+Level Security em `supabase_schema.sql` — cada usuário só lê/grava as
+próprias linhas, garantido pelo Postgres via `auth.uid()`, não pelo
+client (que dá pra adulterar).
+
+**Auth: e-mail+senha, não link mágico (trocado 2026-09-09).** Decisão
+explícita: plano pago vem por aí, conta precisa existir de verdade
+(login em outro aparelho sem depender de e-mail chegando), não só uma
+sessão que o link mágico concede de passagem.
+`supabase.auth.signUp()`/`signInWithPassword()` — sem tabela nova, é a
+mesma auth gerenciada de sempre. **Login com Google** também
+(`signInWithOAuth({provider:"google"})`) — resolve o atrito do
+cadastro e não depende de e-mail chegando, o que importa especialmente
+enquanto o SMTP de marca própria (abaixo) não está pronto. Google
+exige configuração PRÓPRIA no painel (Authentication → Providers →
+Google: client ID/secret de um projeto no Google Cloud Console) — sem
+isso o botão aparece mas `signInWithOAuth` devolve erro.
+
+`montarFormularioConta()` (index.html) é o formulário único, usado nos
+dois lugares que pedem conta (tela "Conta" da tela inicial, e a caixa
+de fim de carreira) — mesmo markup, mesma lógica, sem duplicar.
+
+**Gap conhecido, não implementado nesta leva**: não existe "esqueci
+minha senha" (`resetPasswordForEmail`). Com só senha+Google, quem
+esquece a senha e não cadastrou por Google fica sem entrar. Vale
+adicionar antes de qualquer tráfego real com conta paga — depende do
+mesmo SMTP configurado abaixo (o template "Reset Password" é um dos
+que o SMTP próprio libera editar).
 
 **Configuração (uma vez, fora do código)**:
 1. Criar projeto em supabase.com, plano gratuito.
 2. Editor SQL do painel → colar e rodar `supabase_schema.sql`.
-3. **Configurar SMTP próprio antes de qualquer tráfego real.** O envio de
-   e-mail PADRÃO do Supabase é limitado a **2 e-mails por hora** — inviável
-   mesmo pra 100 usuários se dois tentarem entrar na mesma hora. Painel →
-   Authentication → Email → trocar pelo SMTP de um provedor (Resend, SES,
-   Postmark, o que for). Sem isso o link mágico simplesmente para de
-   mandar e-mail depois do segundo da hora, sem aviso nenhum pro jogador.
+3. **Configurar SMTP próprio antes de qualquer tráfego real.** Duas razões
+   agora, não só uma:
+   - Limite: o envio de e-mail PADRÃO do Supabase é **2 e-mails por
+     hora** — inviável mesmo pra 100 usuários se dois tentarem
+     cadastrar na mesma hora.
+   - **Marca: desde junho de 2026, projetos novos no gratuito da
+     Supabase NÃO PODEM MAIS editar o template de e-mail** (confirmado
+     nos docs oficiais, 2026-09-09) — o e-mail sai com o padrão deles
+     ("Supabase Auth" no remetente, sem jeito de mudar) até existir SMTP
+     próprio. Não é só feio, parece golpe — exatamente o que o usuário
+     notou jogando.
+
+   Passo a passo:
+   1. Painel → **Authentication → SMTP Settings**
+      (`/project/_/auth/smtp`): preencher Sender Email (ex.
+      `naoresponda@octogono.fun`), Sender Name (`Octógono`), e
+      Host/Port/User/Password do provedor (Resend, já escolhido na
+      tabela de custo abaixo).
+   2. No provedor de e-mail (Resend): verificar o domínio
+      `octogono.fun` — adiciona registros SPF/DKIM no DNS do domínio
+      (onde o domínio foi registrado, mesmo lugar do apontamento pro
+      Vercel). Sem isso o e-mail sai mas cai em spam com facilidade.
+   3. SÓ DEPOIS do SMTP configurado: painel → **Authentication →
+      Emails → Templates** (`/project/_/auth/templates`), uma aba por
+      tipo — "Confirm signup" e "Reset Password" são os dois que
+      importam agora (Magic Link não é mais usado, ver "Auth: e-mail+
+      senha" acima). Editor de HTML cru com variáveis Go
+      (`{{ .ConfirmationURL }}` etc.), sem WYSIWYG — trocar o texto e o
+      layout pela marca Octógono aqui.
 4. Painel → Project Settings → API: copiar `Project URL` e `anon public
    key`, colar em `SUPABASE_URL`/`SUPABASE_ANON_KEY` no `index.html`
    (perto de `AI_URL`). A anon key é pública DE PROPÓSITO — é assim que o
@@ -1763,15 +1808,15 @@ adulterar).
 Enquanto os dois campos ficarem vazios, `getSupabase()` devolve `null` e a
 caixa de "salvar conquistas" nem aparece — o jogo roda idêntico a hoje.
 
-**Estado desta instância (2026-09-08)**: passos 1, 2 e 4 feitos —
+**Estado desta instância (2026-09-09)**: passos 1, 2 e 4 feitos —
 schema rodado, chave preenchida e deployada, `getSupabase()` retorna
-cliente real em produção. **Passo 3 (SMTP próprio) NÃO feito ainda** —
-continua no e-mail padrão do Supabase, 2/hora. Não impede testar
-sozinho (1 e-mail por sessão de teste fica bem abaixo do limite), mas é
-**obrigatório antes de qualquer tráfego real** — sem isso o segundo
-jogador que tentar criar conta na mesma hora simplesmente não recebe
-e-mail, sem aviso nenhum pro jogador nem erro visível pra você. Ver
-`PENDENCIAS.md`.
+cliente real em produção, código trocado pra senha+Google. **Passo 3
+(SMTP próprio, incluindo Google Provider) NÃO feito ainda** — e-mail
+continua no padrão do Supabase (2/hora, "Supabase Auth" no remetente,
+template travado), e login com Google não funciona até o Provider ser
+configurado (Authentication → Providers → Google) mesmo com o botão já
+existindo na tela. Não impede testar login por senha sozinho, mas é
+**obrigatório antes de qualquer tráfego real**. Ver `PENDENCIAS.md`.
 
 **Migração de chave pendente, registrada, sem pressa de código**: o
 painel do Supabase já marca a `anon key` (formato JWT, a que está em
@@ -1812,6 +1857,76 @@ não existe (o jogo é `index.html` estático, sem backend próprio além do
 proxy de IA). Vale resolver quando existir pagamento ou ranking global de
 verdade — hoje o custo de forjar (abrir DevTools, entender a estrutura)
 já filtra a imensa maioria, e não há prêmio nenhum em jogo.
+
+## Tela inicial (2026-09-09)
+
+Antes, `boot()`/`ready()` iam direto pra tela de nome — sem menu, sem
+marca, sem link pra conta ou pra termos. `screenInicio()` é a nova
+primeira tela: `OCTÓGONO` grande (`--stamp`, o vermelho de sempre),
+frase curta embaixo, menu à esquerda (Jogar/Opções/Conta/Histórico,
+letras grandes brancas, hover desliza + muda pra vermelho — sem cor
+nova, dentro da paleta), rodapé com Termos/Privacidade/Contato. Mono,
+sem canto arredondado, sem gradiente — mesma linguagem visual do resto.
+
+**Link de desafio PULA a tela inicial de propósito** — `ready()` chama
+`lerDesafio()` antes de decidir a tela: se veio de um link de amigo
+(`?d=...&s=...`), vai direto pra `screenName()` como sempre foi; senão,
+`screenInicio()`. Quem clicou num link específico já sabe o que veio
+fazer aqui — forçar passar pelo menu primeiro seria atrito de graça.
+
+Menu: "Jogar" → `screenName()` (fluxo de sempre). "Opções" → mesmo
+`abrirConfig()` do ícone de engrenagem (que continua existindo, é
+overlay global, não muda). "Conta" → `screenConta()` (login/cadastro,
+ver "Contas" acima). "Histórico" → placeholder por ora, proposta
+pendente de aprovação (ver `PENDENCIAS.md`).
+
+`node testar.js interface` estendido pra clicar "Jogar" de verdade
+(era `UI.screenName()` chamado direto, contornando a tela inicial —
+com ela existindo agora, isso testaria o caminho errado).
+`node testar.js inicial` (novo): navegação dos 4 itens do menu, e o
+formulário de conta com um Supabase FALSO (`window.supabase.createClient`
+mockado — `criarAmbiente()` não tem de propósito, mesmo motivo do
+áudio/localStorage) confirmando que `criarConta()`/`entrarComSenha()`/
+`entrarComGoogle()` chamam os métodos certos do Supabase com os
+argumentos certos. Provado com dente.
+
+## Termos de Uso e Política de Privacidade — estrutura pronta, texto pendente
+
+Só a estrutura, por pedido explícito — texto jurídico fica de fora até
+o usuário adaptar de um modelo de provedor de pagamento.
+
+**Onde o texto fica**: página separada (`screenTermos()`/
+`screenPrivacidade()` em index.html, mesmo padrão de tela que o resto
+do jogo — SPA de arquivo único, não modal). Motivo de ser página e não
+modal: são páginas que fazem sentido linkar/compartilhar sozinhas, e
+modal empilhado sobre a tela inicial ficaria apertado pra texto longo.
+Hoje mostram só `[PENDENTE — texto ainda não inserido aqui]` — colar o
+texto final dentro de `screenPaginaLegal()`, uma função só pras duas
+(recebe o título, o corpo seria o próximo parâmetro quando existir).
+
+**Como chegar lá**: rodapé da tela inicial (Termos de Uso · Política de
+Privacidade · Contato) e uma nota abaixo do formulário de conta ("Ao
+criar conta, você concorda com os Termos de Uso e a Política de
+Privacidade") — ambos já linkados, sem depender do texto existir pra
+funcionar.
+
+**Aceite formal, quando existir pagamento — NÃO implementado ainda,
+proposta pra quando chegar lá**: nota de rodapé no cadastro é o padrão
+comum pré-pagamento (o que está aqui agora), mas não é registro
+jurídico de aceite. Quando existir checkout de verdade:
+- Tabela nova (`aceites_termos`: `user_id`, `versao_termos` ou hash do
+  texto, `aceito_em`), RLS igual às outras (usuário só lê o próprio).
+- Checkbox EXPLÍCITO (não pré-marcado) antes do botão de pagar,
+  bloqueando o checkout até marcado — a nota passiva de hoje não basta
+  mais nesse momento.
+- Gravar a VERSÃO/hash do texto aceito, não só um booleano — se os
+  termos mudarem depois, dá pra saber quem aceitou qual versão, e
+  reabrir o aceite pra quem está numa versão antiga (comum exigir
+  reaceite quando os termos mudam de forma relevante).
+- Momento do registro: no clique de "Confirmar pagamento", não no
+  cadastro da conta — cadastro e pagamento podem estar bem separados
+  no tempo, e o aceite que importa juridicamente é o de quando dinheiro
+  troca de mão.
 
 ### Domínio próprio — octogono.fun, registrado E apontado (2026-09-06)
 

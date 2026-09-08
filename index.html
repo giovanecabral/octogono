@@ -75,6 +75,8 @@ body{
 /* Botão NÃO herda color do body: usa o preto padrão do navegador. Sem esta
    linha, toda carta (que é <button>) fica com texto preto sobre fundo preto. */
 button{font-family:inherit;color:inherit;cursor:pointer}
+a{color:var(--ink2);text-decoration:underline}
+a:hover{color:var(--ink)}
 .btn{background:var(--ink);color:var(--bg);border:none;padding:11px 20px;
   font-family:Oswald,sans-serif;font-weight:500;font-size:15px;letter-spacing:.1em;
   text-transform:uppercase;transition:transform .08s ease,background .15s ease}
@@ -469,8 +471,32 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .conta-box{border:1px solid var(--line2);padding:12px 14px;margin:14px 0}
 .conta-box h4{margin:0 0 6px;font-family:Oswald,sans-serif;font-weight:700;
   font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
-.conta-box input[type=email]{display:block;width:100%;max-width:260px;margin:8px 0}
+.conta-box input[type=email],.conta-box input[type=password]{display:block;width:100%;max-width:260px;margin:8px 0}
+.conta-box .termos-nota{font-size:11px;margin-top:10px}
+.conta-box .termos-nota a{color:var(--ink2)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* ---------- tela inicial (2026-09-09) ---------- */
+/* Mesma linguagem visual do resto: mono, sem canto arredondado, sem
+   gradiente. Marca em cima, menu à esquerda embaixo, rodapé fixo. */
+.tela-inicio{min-height:calc(100vh - 60px);display:flex;flex-direction:column}
+.inicio-marca{padding:60px 0 40px;text-align:center}
+.inicio-titulo{font-family:Oswald,Impact,sans-serif;font-weight:700;
+  font-size:clamp(48px,9vw,96px);letter-spacing:.06em;color:var(--stamp);margin:0}
+.inicio-tagline{color:var(--faded);font-size:15px;margin:10px 0 0;font-style:italic}
+.inicio-menu{flex:1;display:flex;flex-direction:column;align-items:flex-start;
+  justify-content:center;gap:6px;max-width:420px}
+.inicio-item{background:none;border:none;padding:8px 4px;text-align:left;
+  font-family:Oswald,sans-serif;font-weight:500;font-size:32px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--ink);
+  transition:color .15s ease,transform .15s ease,font-weight .15s ease}
+.inicio-item:hover{color:var(--stamp);transform:translateX(10px)}
+.inicio-rodape{display:flex;gap:12px;flex-wrap:wrap;padding:20px 0 10px;
+  border-top:1px solid var(--line);font-size:12px}
+.inicio-rodape a{color:var(--faded)}
+.inicio-rodape a:hover{color:var(--ink)}
+.inicio-rodape span{color:var(--line2)}
+.pagina-legal{max-width:640px;line-height:1.7}
 
 /* nocaute: a página leva o golpe */
 @keyframes shake{
@@ -1328,24 +1354,201 @@ function getSupabase(){
   return supabaseClient;
 }
 
-/* Link mágico: sem senha, menos atrito e menos superfície de segurança.
-   emailRedirectTo volta pra MESMA página — o Supabase anexa a sessão no
-   hash da URL, e getSession() (chamado em sincronizarConquistasNaNuvem)
-   acha sozinho, sem código extra de callback. */
-async function enviarLinkMagico(email){
+/* E-mail+senha, não link mágico (2026-09-09) — decisão explícita: plano
+   pago vem por aí, e conta precisa existir de verdade (login em outro
+   aparelho sem depender de e-mail chegando), não só uma sessão que o
+   link mágico concede de passagem. supabase.auth já suporta as duas
+   nativamente, sem tabela nova. Confirmação de e-mail no cadastro
+   continua ativa por padrão no Supabase — é ela que precisa do SMTP
+   com a marca certa (ver LEIA-ME.md "Contas"), não é opcional só
+   porque trocou de link mágico pra senha. */
+async function criarConta(email,senha){
   const sb=getSupabase();
   if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
   try{
-    const{error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.href}});
+    const{data,error}=await sb.auth.signUp({email,password:senha});
+    if(error)return{ok:false,erro:error.message};
+    /* Supabase devolve sessão nula quando confirmação de e-mail está
+       ligada (o normal) — cadastro funcionou, só falta confirmar. */
+    return{ok:true,precisaConfirmar:!data.session};
+  }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
+}
+async function entrarComSenha(email,senha){
+  const sb=getSupabase();
+  if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
+  try{
+    const{error}=await sb.auth.signInWithPassword({email,password:senha});
     if(error)return{ok:false,erro:error.message};
     return{ok:true};
   }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
 }
+/* Google resolve o atrito do cadastro (sem senha nova pra lembrar) e não
+   depende de e-mail chegando — útil justamente porque o SMTP de marca
+   própria ainda está pendente (ver LEIA-ME.md "Contas"). Redireciona
+   pra fora e volta — precisa de OAuth client configurado no painel do
+   Supabase (Authentication → Providers → Google), não só código. */
+async function entrarComGoogle(){
+  const sb=getSupabase();
+  if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
+  try{
+    const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.href}});
+    if(error)return{ok:false,erro:error.message};
+    return{ok:true}; // navegador já está saindo da página aqui
+  }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
+}
+async function sairDaConta(){
+  const sb=getSupabase();
+  if(!sb)return;
+  try{ await sb.auth.signOut(); }catch(e){}
+}
+
+/* Formulário de login/cadastro, usado em 2 lugares (tela Conta e a caixa
+   de fim de carreira) — uma função só, pra não duplicar markup nem
+   lógica entre os dois. IDs fixos (não gerados por instância): as duas
+   telas nunca aparecem ao mesmo tempo, mesmo padrão já usado pelos
+   campos de dilema (`dilresp`/`dilgo`), reaproveitados por
+   `document.getElementById()` em vez de guardar referência local. */
+function montarFormularioConta(container,{compacto=false}={}){
+  container.innerHTML="";
+  if(!compacto)container.appendChild(el("p","hint",
+    "Entre ou crie uma conta pra salvar suas conquistas e continuar de onde parou em outro aparelho."));
+  const inpEmail=el("input");inpEmail.type="email";inpEmail.placeholder="seu@email.com";inpEmail.id="conta-email";
+  const inpSenha=el("input");inpSenha.type="password";inpSenha.placeholder="Senha";inpSenha.minLength=6;inpSenha.id="conta-senha";
+  const msg=el("p","hint","");
+  const btnEntrar=el("button","btn btn-sm","Entrar");
+  const btnCriar=el("button","btn btn-ghost btn-sm","Criar conta");
+  const linhaBtns=el("div","row");
+  linhaBtns.append(btnEntrar,btnCriar);
+  const btnGoogle=el("button","btn btn-ghost","Entrar com Google");
+  const trava=v=>{btnEntrar.disabled=v;btnCriar.disabled=v;btnGoogle.disabled=v;};
+
+  btnEntrar.onclick=async()=>{
+    const email=inpEmail.value.trim(),senha=inpSenha.value;
+    if(!email||!senha){msg.textContent="Preenche e-mail e senha.";return;}
+    trava(true);msg.textContent="Entrando…";
+    const r=await entrarComSenha(email,senha);
+    if(r.ok)location.reload();          // sessão nova — recarrega pra sincronizar tudo
+    else{msg.textContent=r.erro;trava(false);}
+  };
+  btnCriar.onclick=async()=>{
+    const email=inpEmail.value.trim(),senha=inpSenha.value;
+    if(!email||!senha){msg.textContent="Preenche e-mail e senha.";return;}
+    if(senha.length<6){msg.textContent="Senha precisa de pelo menos 6 caracteres.";return;}
+    trava(true);msg.textContent="Criando conta…";
+    const r=await criarConta(email,senha);
+    if(!r.ok){msg.textContent=r.erro;trava(false);return;}
+    if(r.precisaConfirmar){msg.textContent="Conta criada. Confirma seu e-mail pra entrar.";trava(false);}
+    else setTimeout(()=>location.reload(),1200);
+  };
+  btnGoogle.onclick=async()=>{
+    trava(true);msg.textContent="Redirecionando…";
+    const r=await entrarComGoogle();
+    if(!r.ok){msg.textContent=r.erro;trava(false);}
+  };
+
+  const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";linkTermos.id="conta-link-termos";
+  const linkPriv=el("a","","Política de Privacidade");linkPriv.href="#";linkPriv.id="conta-link-privacidade";
+  linkTermos.onclick=e=>{e.preventDefault();screenTermos();};
+  linkPriv.onclick=e=>{e.preventDefault();screenPrivacidade();};
+  const nota=el("p","hint termos-nota","Ao criar conta, você concorda com os ");
+  nota.append(linkTermos," e a ",linkPriv,".");
+
+  container.append(inpEmail,inpSenha,linhaBtns,el("p","hint","ou"),btnGoogle,msg,nota);
+}
+
+/* ---------- tela inicial ---------- */
+function screenInicio(){
+  app.innerHTML="";
+  const tela=el("div","tela-inicio");
+  const marca=el("div","inicio-marca");
+  marca.appendChild(el("h1","inicio-titulo","OCTÓGONO"));
+  marca.appendChild(el("p","inicio-tagline",
+    "Monte seu lutador draftando atributos de gente real. Jogue a carreira inteira, até a aposentadoria."));
+  tela.appendChild(marca);
+
+  const menu=el("nav","inicio-menu");
+  const item=(rot,aoClicar)=>{const b=el("button","inicio-item",rot);b.onclick=aoClicar;return b;};
+  menu.append(
+    item("Jogar",()=>screenName()),
+    item("Opções",()=>abrirConfig()),
+    item("Conta",()=>screenConta()),
+    item("Histórico",()=>screenHistorico()),
+  );
+  tela.appendChild(menu);
+
+  const rodape=el("footer","inicio-rodape");
+  const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";
+  linkTermos.onclick=e=>{e.preventDefault();screenTermos();};
+  const linkPriv=el("a","","Política de Privacidade");linkPriv.href="#";
+  linkPriv.onclick=e=>{e.preventDefault();screenPrivacidade();};
+  const linkContato=el("a","","Contato");linkContato.href="mailto:contato@octogono.fun";
+  rodape.append(linkTermos,el("span","","·"),linkPriv,el("span","","·"),linkContato);
+  tela.appendChild(rodape);
+
+  app.appendChild(tela);
+}
+function voltarInicio(){ screenInicio(); }
+
+/* ---------- tela conta ---------- */
+function screenConta(){
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow","Conta"));
+  const box=el("div","conta-box");
+  app.appendChild(box);
+  box.appendChild(el("p","hint","Verificando sessão…"));
+  sincronizarConquistasNaNuvem().then(email=>{
+    box.innerHTML="";
+    if(email){
+      box.appendChild(el("h4","",`Conectado como ${email}`));
+      box.appendChild(el("p","hint","Suas conquistas estão sincronizadas com esta conta."));
+      const sair=el("button","btn btn-ghost btn-sm","Sair");
+      sair.onclick=async()=>{ await sairDaConta(); location.reload(); };
+      box.appendChild(sair);
+    }else{
+      box.appendChild(el("h4","","Entrar ou criar conta"));
+      const formArea=el("div","");
+      box.appendChild(formArea);
+      montarFormularioConta(formArea,{compacto:false});
+    }
+  });
+  const voltar=el("button","btn btn-ghost","Voltar");
+  voltar.onclick=voltarInicio;
+  app.appendChild(voltar);
+}
+
+/* ---------- histórico — placeholder, ver LEIA-ME.md "Histórico" pra
+   proposta de conteúdo (aguardando aprovação antes de escrever) ---------- */
+function screenHistorico(){
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow","Histórico"));
+  app.appendChild(el("p","hint","Em construção. Em breve: suas carreiras anteriores e conquistas."));
+  const voltar=el("button","btn btn-ghost","Voltar");
+  voltar.onclick=voltarInicio;
+  app.appendChild(voltar);
+}
+
+/* ---------- Termos de Uso / Política de Privacidade ----------
+   Estrutura só — texto jurídico fica de fora de propósito (o usuário vai
+   colar de um modelo de provedor de pagamento e adaptar). Ver LEIA-ME.md
+   "Termos e Privacidade" pro que falta antes de existir pagamento
+   (registro de aceite). */
+function screenPaginaLegal(titulo){
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow",titulo));
+  app.appendChild(el("div","pagina-legal",
+    `<p class="hint">[PENDENTE — texto ainda não inserido aqui. Ver LEIA-ME.md "Termos e Privacidade".]</p>`));
+  const voltar=el("button","btn btn-ghost","Voltar");
+  voltar.onclick=voltarInicio;
+  app.appendChild(voltar);
+}
+function screenTermos(){ screenPaginaLegal("Termos de Uso"); }
+function screenPrivacidade(){ screenPaginaLegal("Política de Privacidade"); }
 
 /* Roda toda vez que a caixa de conta aparece (fim de carreira). Se não
    tem sessão, não faz nada (devolve null, mostra o formulário de
-   e-mail). Se tem — sessão nova vinda do link mágico, ou sessão antiga
-   que o Supabase já mantinha — sincroniza os dois lados: sobe o que só
+   login/cadastro). Se tem — sessão nova de login/cadastro, do Google,
+   ou sessão antiga que o Supabase já mantinha — sincroniza os dois
+   lados: sobe o que só
    existe local (upsert, idempotente — pode rodar toda vez sem duplicar
    nem precisar de flag "já migrei"), baixa o que só existe na nuvem
    (outro aparelho). Nunca apaga localStorage, só soma. */
@@ -3945,7 +4148,10 @@ function ready(data){
     PCT=makePercentiler(POOL);
     LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
     RANKING=buildRanking(POOL);
-    screenName();
+    /* Link de desafio pula a tela inicial de propósito — quem clicou
+       num link de amigo já sabe o que veio fazer aqui, forçar passar
+       pelo menu primeiro só atrapalharia. */
+    lerDesafio()?screenName():screenInicio();
   },30);
 }
 
@@ -5143,7 +5349,7 @@ function screenReport(){
     const contaBox=el("div","conta-box");
     contaBox.appendChild(el("h4","","Salvar conquistas"));
     contaBox.appendChild(el("p","hint",
-      "Suas conquistas já estão salvas neste aparelho. Cria conta com e-mail pra não perder se trocar de aparelho — sem senha."));
+      "Suas conquistas já estão salvas neste aparelho. Entra ou cria conta pra não perder se trocar de aparelho."));
     app.appendChild(contaBox);
     sincronizarConquistasNaNuvem().then(email=>{
       contaBox.innerHTML="";
@@ -5152,20 +5358,9 @@ function screenReport(){
         contaBox.appendChild(el("p","hint",`Conectado como <b>${email}</b>. Conquistas sincronizadas.`));
         return;
       }
-      contaBox.appendChild(el("p","hint",
-        "Suas conquistas já estão salvas neste aparelho. Cria conta com e-mail pra não perder se trocar de aparelho — sem senha."));
-      const inp=el("input","");inp.type="email";inp.placeholder="seu@email.com";
-      const btn=el("button","btn btn-ghost btn-sm","Mandar link mágico");
-      const msg=el("p","hint","");
-      btn.onclick=async()=>{
-        const email2=(inp.value||"").trim();
-        if(!email2){msg.textContent="Digita um e-mail primeiro.";return;}
-        btn.disabled=true;btn.textContent="Enviando...";
-        const r=await enviarLinkMagico(email2);
-        if(r.ok){msg.textContent="Link enviado. Confira seu e-mail.";}
-        else{msg.textContent=r.erro;btn.disabled=false;btn.textContent="Mandar link mágico";}
-      };
-      contaBox.append(inp,btn,msg);
+      const formArea=el("div","");
+      contaBox.appendChild(formArea);
+      montarFormularioConta(formArea,{compacto:true});
     });
   }
 
