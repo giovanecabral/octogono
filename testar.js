@@ -2887,6 +2887,7 @@ function testarTelaInicial() {
 
   const chamadasAuth = [];
   let sessaoFalsa = null;
+  let callbackAuthState = null;
   const supabaseFalso = {
     createClient: () => ({
       auth: {
@@ -2906,6 +2907,15 @@ function testarTelaInicial() {
         },
         signOut: async () => { sessaoFalsa = null; return { error: null }; },
         getSession: async () => ({ data: { session: sessaoFalsa } }),
+        resetPasswordForEmail: async (email, opts) => {
+          chamadasAuth.push(["resetPasswordForEmail", email, opts && opts.redirectTo]);
+          return { error: null };
+        },
+        updateUser: async ({ password }) => {
+          chamadasAuth.push(["updateUser", password]);
+          return { error: null };
+        },
+        onAuthStateChange: (cb) => { callbackAuthState = cb; },
       },
       from: () => ({
         upsert: async () => ({ data: [], error: null }),
@@ -2915,12 +2925,17 @@ function testarTelaInicial() {
   };
   env.sandbox.window.supabase = supabaseFalso;
   env.sandbox.location = { href: "https://octogono.fun/", search: "", reload: () => {} };
+  const dadosLS = {};
+  env.sandbox.localStorage = {
+    getItem: k => (k in dadosLS ? dadosLS[k] : null),
+    setItem: (k, v) => { dadosLS[k] = String(v); },
+  };
   vm.createContext(env.sandbox);
 
   try {
     vm.runInContext(exportar(lerScript(),
       ["ready", "screenInicio", "screenName", "screenConta", "screenHistorico",
-        "screenTermos", "screenPrivacidade", "abrirConfig"])
+        "screenTermos", "screenPrivacidade", "abrirConfig", "salvarCarreiraLocal"])
       + "\ntry{globalThis.__x.cfgAberto=()=>cfgAberto;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
@@ -2981,6 +2996,53 @@ function testarTelaInicial() {
       const btnEntrar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Entrar").pop();
       btnEntrar.onclick();
     });
+    await passo("Conta: 'Esqueci minha senha' sem e-mail preenchido não chama nada", () => {
+      const email = env.todos.filter(n => n.type === "email").pop();
+      email.value = "";
+      const linkEsqueci = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Esqueci minha senha").pop();
+      if (!linkEsqueci) throw new Error("link 'Esqueci minha senha' não foi montado");
+      linkEsqueci.onclick({ preventDefault(){} });
+    });
+    await passo("Conta: sem e-mail, resetPasswordForEmail NÃO foi chamado", () => {
+      if (chamadasAuth.some(c => c[0] === "resetPasswordForEmail"))
+        throw new Error("chamou resetPasswordForEmail sem e-mail preenchido");
+    });
+    await passo("Conta: 'Esqueci minha senha' com e-mail preenchido chama resetPasswordForEmail", () => {
+      const email = env.todos.filter(n => n.type === "email").pop();
+      email.value = "esqueci@teste.com";
+      const linkEsqueci = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Esqueci minha senha").pop();
+      linkEsqueci.onclick({ preventDefault(){} });
+    });
+    await passo("Conta: resetPasswordForEmail recebeu e-mail e redirectTo (location.href) certos", () => {
+      const chamada = chamadasAuth.find(c => c[0] === "resetPasswordForEmail");
+      if (!chamada || chamada[1] !== "esqueci@teste.com" || chamada[2] !== "https://octogono.fun/")
+        throw new Error("resetPasswordForEmail não recebeu os argumentos certos: " + JSON.stringify(chamada));
+    });
+    await passo("PASSWORD_RECOVERY: evento do Supabase abre a tela de nova senha sozinho, sem rota nem parâmetro na URL", () => {
+      if (!callbackAuthState) throw new Error("onAuthStateChange nunca foi registrado em getSupabase()");
+      callbackAuthState("PASSWORD_RECOVERY");
+    });
+    await passo("Nova senha: tela abriu com campo de senha", () => {
+      const eyebrow = env.todos.filter(n => n.className === "eyebrow" && n.innerHTML === "Nova senha").pop();
+      if (!eyebrow) throw new Error("tela de nova senha não abriu");
+      const inp = env.todos.filter(n => n.type === "password").pop();
+      if (!inp) throw new Error("campo de nova senha não foi montado");
+    });
+    await passo("Nova senha: salvar chama updateUser com a senha digitada", () => {
+      const inp = env.todos.filter(n => n.type === "password").pop();
+      inp.value = "novaSenha123";
+      const btn = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Salvar nova senha").pop();
+      if (!btn) throw new Error("botão 'Salvar nova senha' não foi montado");
+      btn.onclick();
+    });
+    await passo("Nova senha: updateUser recebeu a senha certa", () => {
+      const chamada = chamadasAuth.find(c => c[0] === "updateUser");
+      if (!chamada || chamada[1] !== "novaSenha123")
+        throw new Error("updateUser não recebeu a senha certa: " + JSON.stringify(chamada));
+    });
+
+    UI.screenInicio();
+    marcado("inicio-item")[2].onclick(); // Conta de novo, formulário fresco pro resto dos testes
     await passo("Conta: Google chama signInWithOAuth com provider google e redirectTo", () => {
       const chamada = chamadasAuth.find(c => c[0] === "signInWithOAuth");
       if (!chamada) {
@@ -2994,10 +3056,23 @@ function testarTelaInicial() {
       btnGoogle.onclick();
     });
 
-    await passo("Histórico: placeholder aparece (proposta ainda não aprovada, ver LEIA-ME.md)", () => {
+    await passo("Histórico vazio: abre a tela", () => { UI.screenHistorico(); });
+    await passo("Histórico vazio: mensagens de 'nenhuma ainda' pros dois blocos", () => {
+      const linhas = env.todos.filter(n => n.tagName === "p" && n.className === "hint").map(n => n.innerHTML);
+      if (!linhas.some(t => /nenhuma carreira/i.test(t))) throw new Error("não avisou 'nenhuma carreira ainda'");
+      if (!linhas.some(t => /nenhuma conquista/i.test(t))) throw new Error("não avisou 'nenhuma conquista ainda'");
+    });
+    await passo("Histórico com carreira salva: nome, cartel e nota aparecem", () => {
+      UI.salvarCarreiraLocal({ seed: 12345, nome: "TesteBot", cartel: "18-4", nota: "B", data: "2026-09-09T12:00:00.000Z" });
       UI.screenHistorico();
-      const texto = env.todos.filter(n => n.tagName === "p" && n.className === "hint").pop();
-      if (!texto || !/em constru/i.test(texto.innerHTML)) throw new Error("placeholder de histórico não apareceu");
+    });
+    await passo("Histórico com carreira salva: item aparece na tela com os dados certos", () => {
+      // conteúdo vem via innerHTML string (mesmo caso de Termos/Privacidade
+      // acima) — não vira nó rastreável, procura no innerHTML do "conquista"
+      const item = env.todos.filter(n => n.className === "conquista" && /TesteBot/.test(n.innerHTML)).pop();
+      if (!item) throw new Error("carreira salva não apareceu na tela");
+      if (!/18-4/.test(item.innerHTML) || !/nota B/.test(item.innerHTML))
+        throw new Error("cartel ou nota não aparecem certos: " + item.innerHTML);
     });
     await passo("Termos de Uso: página existe, marcada como pendente", () => {
       UI.screenTermos();

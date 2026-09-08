@@ -1350,7 +1350,19 @@ let supabaseClient=null;
 function getSupabase(){
   if(!SUPABASE_URL||!SUPABASE_ANON_KEY)return null;
   if(typeof window==="undefined"||!window.supabase)return null; // CDN com defer, pode não ter chegado ainda
-  if(!supabaseClient)supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  if(!supabaseClient){
+    supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    /* Só uma vez (dentro do if!supabaseClient) — senão cada getSupabase()
+       registraria outro listener e o evento dispararia N vezes. Recuperação
+       de senha chega por aqui: o link do e-mail volta pra ESTA página com
+       uma sessão de recuperação, o Supabase dispara PASSWORD_RECOVERY
+       sozinho, sem precisar de rota nem parâmetro na URL. */
+    try{
+      supabaseClient.auth.onAuthStateChange((event)=>{
+        if(event==="PASSWORD_RECOVERY")screenNovaSenha();
+      });
+    }catch(e){}
+  }
   return supabaseClient;
 }
 
@@ -1402,6 +1414,51 @@ async function sairDaConta(){
   try{ await sb.auth.signOut(); }catch(e){}
 }
 
+/* "Esqueci minha senha" (2026-09-09) — com conta por senha e plano pago
+   vindo, alguém esquece a senha no primeiro dia; sem isso a pessoa
+   perde acesso ao que pagou. resetPasswordForEmail() manda o e-mail;
+   quando a pessoa clica no link, o Supabase volta pra ESTA página com
+   uma sessão de recuperação e dispara o evento "PASSWORD_RECOVERY" —
+   é isso que getSupabase() escuta (abaixo) pra abrir screenNovaSenha()
+   sozinho, sem precisar de rota nem parâmetro novo na URL. */
+async function enviarRecuperacaoSenha(email){
+  const sb=getSupabase();
+  if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
+  try{
+    const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.href});
+    if(error)return{ok:false,erro:error.message};
+    return{ok:true};
+  }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
+}
+async function definirNovaSenha(novaSenha){
+  const sb=getSupabase();
+  if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
+  try{
+    const{error}=await sb.auth.updateUser({password:novaSenha});
+    if(error)return{ok:false,erro:error.message};
+    return{ok:true};
+  }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
+}
+function screenNovaSenha(){
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow","Nova senha"));
+  const box=el("div","conta-box");
+  box.appendChild(el("h4","","Escolher nova senha"));
+  const inp=el("input");inp.type="password";inp.placeholder="Nova senha";inp.minLength=6;
+  const btn=el("button","btn btn-sm","Salvar nova senha");
+  const msg=el("p","hint","");
+  btn.onclick=async()=>{
+    const senha=inp.value;
+    if(senha.length<6){msg.textContent="Senha precisa de pelo menos 6 caracteres.";return;}
+    btn.disabled=true;msg.textContent="Salvando…";
+    const r=await definirNovaSenha(senha);
+    if(r.ok){msg.textContent="Senha atualizada. Redirecionando…";setTimeout(()=>location.reload(),1200);}
+    else{msg.textContent=r.erro;btn.disabled=false;}
+  };
+  box.append(inp,btn,msg);
+  app.appendChild(box);
+}
+
 /* Formulário de login/cadastro, usado em 2 lugares (tela Conta e a caixa
    de fim de carreira) — uma função só, pra não duplicar markup nem
    lógica entre os dois. IDs fixos (não gerados por instância): as duas
@@ -1446,6 +1503,17 @@ function montarFormularioConta(container,{compacto=false}={}){
     if(!r.ok){msg.textContent=r.erro;trava(false);}
   };
 
+  const linkEsqueci=el("a","","Esqueci minha senha");linkEsqueci.href="#";linkEsqueci.id="conta-link-esqueci";
+  linkEsqueci.onclick=async e=>{
+    e.preventDefault();
+    const email=inpEmail.value.trim();
+    if(!email){msg.textContent="Digita seu e-mail primeiro.";return;}
+    trava(true);msg.textContent="Enviando…";
+    const r=await enviarRecuperacaoSenha(email);
+    msg.textContent=r.ok?"Link de recuperação enviado. Confira seu e-mail.":r.erro;
+    trava(false);
+  };
+
   const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";linkTermos.id="conta-link-termos";
   const linkPriv=el("a","","Política de Privacidade");linkPriv.href="#";linkPriv.id="conta-link-privacidade";
   linkTermos.onclick=e=>{e.preventDefault();screenTermos();};
@@ -1453,7 +1521,7 @@ function montarFormularioConta(container,{compacto=false}={}){
   const nota=el("p","hint termos-nota","Ao criar conta, você concorda com os ");
   nota.append(linkTermos," e a ",linkPriv,".");
 
-  container.append(inpEmail,inpSenha,linhaBtns,el("p","hint","ou"),btnGoogle,msg,nota);
+  container.append(inpEmail,inpSenha,linhaBtns,el("p","hint",""),linkEsqueci,el("p","hint","ou"),btnGoogle,msg,nota);
 }
 
 /* ---------- tela inicial ---------- */
@@ -1518,10 +1586,47 @@ function screenConta(){
 
 /* ---------- histórico — placeholder, ver LEIA-ME.md "Histórico" pra
    proposta de conteúdo (aguardando aprovação antes de escrever) ---------- */
+/* Histórico (2026-09-09): carreiras anteriores (nome, cartel, nota, data)
+   e conquistas desbloqueadas. Funciona sem conta (só localStorage, igual
+   sempre) — com conta, sincroniza primeiro pra trazer o que só existe
+   na nuvem (outro aparelho). */
 function screenHistorico(){
   app.innerHTML="";
   app.appendChild(el("div","eyebrow","Histórico"));
-  app.appendChild(el("p","hint","Em construção. Em breve: suas carreiras anteriores e conquistas."));
+  const box=el("div","");
+  app.appendChild(box);
+  box.appendChild(el("p","hint","Carregando…"));
+
+  const desenhar=()=>{
+    box.innerHTML="";
+    box.appendChild(el("h4","","Carreiras anteriores"));
+    const carreiras=lerCarreirasLocais().sort((a,b)=>new Date(b.data)-new Date(a.data));
+    if(!carreiras.length){
+      box.appendChild(el("p","hint","Nenhuma carreira concluída ainda."));
+    }else{
+      carreiras.forEach(c=>{
+        const data=new Date(c.data);
+        const dataFmt=isNaN(data)?c.data:data.toLocaleDateString("pt-BR");
+        box.appendChild(el("div","conquista",
+          `<div class="conquista-nome">${c.nome} · ${c.cartel} · nota ${c.nota}</div>
+           <div class="conquista-desc">${dataFmt}</div>`));
+      });
+    }
+    box.appendChild(el("h4","","Conquistas"));
+    const desbloqueadas=CONQUISTAS.filter(c=>CONQUISTAS_DESBLOQUEADAS.has(c.id));
+    if(!desbloqueadas.length){
+      box.appendChild(el("p","hint","Nenhuma conquista desbloqueada ainda."));
+    }else{
+      desbloqueadas.forEach(c=>{
+        box.appendChild(el("div","conquista ok",
+          `<div class="conquista-nome">✓ ${c.nome}</div><div class="conquista-desc">${c.desc}</div>`));
+      });
+    }
+  };
+
+  if(getSupabase())sincronizarCarreirasNaNuvem().then(desenhar).catch(desenhar);
+  else desenhar();
+
   const voltar=el("button","btn btn-ghost","Voltar");
   voltar.onclick=voltarInicio;
   app.appendChild(voltar);
@@ -1574,6 +1679,50 @@ async function sincronizarConquistasNaNuvem(){
   }catch(e){/* sincronização falhou (rede, RLS, o que for) — localStorage
     continua valendo, o jogador não perde nada por isso */}
   return session.user.email;
+}
+
+/* Histórico de carreiras (2026-09-09) — mesmo padrão de conquistas:
+   localStorage sempre, conta sincroniza por cima, nunca substitui.
+   `seed` já é único por carreira (mesmo número do link de desafio),
+   serve de chave sem precisar de id novo. */
+function lerCarreirasLocais(){
+  try{ const v=JSON.parse(localStorage.getItem("carreiras")); return Array.isArray(v)?v:[]; }
+  catch(e){ return []; }
+}
+function salvarCarreiraLocal(registro){
+  const lista=lerCarreirasLocais().filter(c=>c.seed!==registro.seed);
+  lista.push(registro);
+  try{ localStorage.setItem("carreiras",JSON.stringify(lista)); }catch(e){}
+}
+async function sincronizarCarreirasNaNuvem(){
+  const sb=getSupabase();
+  if(!sb)return;
+  let session;
+  try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){ return; }
+  if(!session)return;
+  const userId=session.user.id;
+  try{
+    const locais=lerCarreirasLocais();
+    if(locais.length){
+      const linhas=locais.map(c=>({user_id:userId,seed:c.seed,nome_lutador:c.nome,
+        cartel:c.cartel,nota:c.nota,concluida_em:c.data}));
+      await sb.from("carreiras_usuario").upsert(linhas,{onConflict:"user_id,seed",ignoreDuplicates:true});
+    }
+    const{data:remotas}=await sb.from("carreiras_usuario")
+      .select("seed,nome_lutador,cartel,nota,concluida_em").eq("user_id",userId);
+    if(remotas){
+      const atuais=lerCarreirasLocais();
+      const seedsConhecidos=new Set(atuais.map(c=>c.seed));
+      let mudou=false;
+      remotas.forEach(r=>{
+        if(!seedsConhecidos.has(r.seed)){
+          atuais.push({seed:r.seed,nome:r.nome_lutador,cartel:r.cartel,nota:r.nota,data:r.concluida_em});
+          mudou=true;
+        }
+      });
+      if(mudou)try{ localStorage.setItem("carreiras",JSON.stringify(atuais)); }catch(e){}
+    }
+  }catch(e){/* sincronização falhou — localStorage continua valendo */}
 }
 
 let aiVivo=true;
@@ -5308,6 +5457,11 @@ function grade(){
 }
 function screenReport(){
   const g=grade();
+  /* Histórico (2026-09-09): salva local sempre (mesmo sem conta, mesmo
+     padrão de conquistas), sincroniza com a nuvem embaixo se tiver
+     sessão (mesmo bloco que já sincroniza conquistas, ver adiante). */
+  salvarCarreiraLocal({seed:SEED,nome:me.name,cartel:`${st.wins}-${st.losses}`,
+    nota:g.letter,data:new Date().toISOString()});
   app.innerHTML="";
   app.appendChild(el("div","eyebrow","Encerramento de registro"));
   app.appendChild(el("div","",`<div style="text-align:center;margin:4px 0 10px">
@@ -5351,11 +5505,12 @@ function screenReport(){
     contaBox.appendChild(el("p","hint",
       "Suas conquistas já estão salvas neste aparelho. Entra ou cria conta pra não perder se trocar de aparelho."));
     app.appendChild(contaBox);
-    sincronizarConquistasNaNuvem().then(email=>{
+    sincronizarConquistasNaNuvem().then(async email=>{
       contaBox.innerHTML="";
       contaBox.appendChild(el("h4","","Salvar conquistas"));
       if(email){
-        contaBox.appendChild(el("p","hint",`Conectado como <b>${email}</b>. Conquistas sincronizadas.`));
+        await sincronizarCarreirasNaNuvem(); // mesma sessão, mesmo instante — sobe a carreira que acabou de terminar
+        contaBox.appendChild(el("p","hint",`Conectado como <b>${email}</b>. Conquistas e histórico sincronizados.`));
         return;
       }
       const formArea=el("div","");

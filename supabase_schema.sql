@@ -31,3 +31,33 @@ create policy "usuário grava só as próprias conquistas"
 -- sem policy de update nem delete, de propósito: conquista não se edita
 -- nem se desfaz depois de desbloqueada, só existe ou não existe. Menos
 -- superfície de RLS pra errar.
+
+-- ---------------------------------------------------------------------
+-- carreiras_usuario (2026-09-09) — histórico de carreiras concluídas,
+-- uma linha por carreira. `seed` já é único por carreira (é o mesmo
+-- número usado nos links de desafio, sorteado uma vez no início da
+-- carreira) — serve de chave sem precisar de id substituto novo.
+-- Mesmo padrão de RLS de conquistas_usuario acima.
+
+create table if not exists carreiras_usuario (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  seed bigint not null,
+  nome_lutador text not null,
+  cartel text not null,
+  nota text not null,
+  concluida_em timestamptz not null default now(),
+  primary key (user_id, seed)
+);
+
+alter table carreiras_usuario enable row level security;
+
+create policy "usuário lê só as próprias carreiras"
+  on carreiras_usuario for select
+  using (auth.uid() = user_id);
+
+create policy "usuário grava só as próprias carreiras"
+  on carreiras_usuario for insert
+  with check (auth.uid() = user_id);
+
+-- sem update/delete de propósito, mesmo raciocínio de conquistas:
+-- carreira concluída é história, não se edita depois.

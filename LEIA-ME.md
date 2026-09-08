@@ -1877,18 +1877,56 @@ fazer aqui — forçar passar pelo menu primeiro seria atrito de graça.
 Menu: "Jogar" → `screenName()` (fluxo de sempre). "Opções" → mesmo
 `abrirConfig()` do ícone de engrenagem (que continua existindo, é
 overlay global, não muda). "Conta" → `screenConta()` (login/cadastro,
-ver "Contas" acima). "Histórico" → placeholder por ora, proposta
-pendente de aprovação (ver `PENDENCIAS.md`).
+ver "Contas" acima). "Histórico" → `screenHistorico()` real (ver
+"Histórico" abaixo) — aprovado pelo usuário, não é mais placeholder
+("item de menu que não faz nada é pior que item que não existe").
+
+**Esqueci minha senha (2026-09-09)**: `resetPasswordForEmail()` manda
+o e-mail; o link volta pra ESTA página, o Supabase dispara o evento
+`PASSWORD_RECOVERY` sozinho (via `onAuthStateChange`, registrado uma
+vez dentro de `getSupabase()` na primeira chamada) e `screenNovaSenha()`
+abre — sem rota nem parâmetro na URL pra gerenciar. `definirNovaSenha()`
+chama `updateUser({password})`.
 
 `node testar.js interface` estendido pra clicar "Jogar" de verdade
 (era `UI.screenName()` chamado direto, contornando a tela inicial —
 com ela existindo agora, isso testaria o caminho errado).
-`node testar.js inicial` (novo): navegação dos 4 itens do menu, e o
-formulário de conta com um Supabase FALSO (`window.supabase.createClient`
-mockado — `criarAmbiente()` não tem de propósito, mesmo motivo do
-áudio/localStorage) confirmando que `criarConta()`/`entrarComSenha()`/
-`entrarComGoogle()` chamam os métodos certos do Supabase com os
-argumentos certos. Provado com dente.
+`node testar.js inicial` (novo, 24 asserções): navegação dos 4 itens do
+menu, formulário de conta com um Supabase FALSO
+(`window.supabase.createClient` mockado — `criarAmbiente()` não tem de
+propósito, mesmo motivo do áudio/localStorage) confirmando que
+`criarConta()`/`entrarComSenha()`/`entrarComGoogle()`/
+`enviarRecuperacaoSenha()`/`definirNovaSenha()` chamam os métodos
+certos do Supabase com os argumentos certos, incluindo o evento
+`PASSWORD_RECOVERY` disparado manualmente no teste (captura o callback
+que `onAuthStateChange` registrou, chama com `"PASSWORD_RECOVERY"`) e
+confirma que `screenNovaSenha()` abre sozinha. Provado com dente.
+
+## Histórico (2026-09-09) — aprovado, implementado
+
+Carreiras anteriores (nome, cartel, nota, data) e conquistas
+desbloqueadas. Mesmo padrão de conquistas: `localStorage` sempre
+(`lerCarreirasLocais()`/`salvarCarreiraLocal()`, chave `"carreiras"`),
+conta sincroniza por cima (`sincronizarCarreirasNaNuvem()`, mesmo
+upsert-local-sobe + baixa-o-que-só-existe-na-nuvem de
+`sincronizarConquistasNaNuvem()`). Funciona sem conta — carreiras
+concluídas neste aparelho aparecem mesmo offline.
+
+`seed` (o mesmo número usado nos links de desafio, sorteado uma vez no
+início da carreira) é a chave — já é único por carreira, sem precisar
+de id substituto novo. Tabela nova, `carreiras_usuario`
+(`supabase_schema.sql`, seção separada), mesmo padrão de RLS de
+`conquistas_usuario` (usuário só lê/grava as próprias linhas, sem
+policy de update/delete — carreira concluída é história, não se edita).
+
+`screenReport()` salva local a cada carreira concluída (`SEED`, nome,
+cartel, `grade().letter`, data); a caixa de fim de carreira sincroniza
+com a nuvem no mesmo instante que já sincroniza conquistas, se tiver
+sessão.
+
+`node testar.js inicial` cobre os dois estados (vazio: "nenhuma
+carreira/conquista ainda"; com dado: nome/cartel/nota aparecem certos
+na tela), provado com dente.
 
 ## Termos de Uso e Política de Privacidade — estrutura pronta, texto pendente
 

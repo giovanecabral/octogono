@@ -857,11 +857,15 @@ itens, não um:
 Nenhum dos dois bloqueia teste solo por senha. Ver `LEIA-ME.md`
 "Contas" → "Estado desta instância".
 
-**Gap novo, não pedido nesta leva mas necessário antes de tráfego
-pago**: não existe "esqueci minha senha" (`resetPasswordForEmail`).
-Só com senha+Google, quem esquece a senha e não usou Google fica sem
-entrar. Depende do mesmo SMTP do item 1 (o template "Reset Password"
-é um dos que o SMTP libera editar).
+**"Esqueci minha senha" — RESOLVIDO (2026-09-09)**. Link no formulário
+de login chama `resetPasswordForEmail()`; `onAuthStateChange` (dentro
+de `getSupabase()`, registrado uma vez) escuta `PASSWORD_RECOVERY` e
+abre `screenNovaSenha()` sozinha quando o link do e-mail volta pra
+página — sem rota nem parâmetro na URL. `definirNovaSenha()` chama
+`updateUser({password})`. Continua dependendo do mesmo SMTP do item 1
+pra o e-mail de verdade sair com a marca certa (o template "Reset
+Password" é um dos que o SMTP libera editar) — sem SMTP, o e-mail de
+recuperação ainda funciona, só sai feio.
 
 **Migração de chave, sem prazo de código mas com prazo real**: painel
 marca a `anon key` atual como legada, formato novo é `sb_publishable_
@@ -950,7 +954,7 @@ efeito"), com `desenhar()` fake pra isolar só a reentrância (não
 precisa mockar o canvas real). Provado com dente: sem o guard, 2
 downloads disparados, ambos com o mesmo nome — com o guard, 1.
 
-## 26. Tela inicial, Conta (senha+Google) e estrutura de Termos/Privacidade — IMPLEMENTADO (2026-09-09), Histórico PENDENTE DE APROVAÇÃO
+## 26. Tela inicial, Conta (senha+Google+recuperação), Histórico e estrutura de Termos/Privacidade — IMPLEMENTADO (2026-09-09)
 
 `boot()`/`ready()` iam direto pra tela de nome — sem menu, sem marca,
 sem link pra conta ou termos. `screenInicio()` é a nova primeira tela:
@@ -959,27 +963,34 @@ OCTÓGONO grande (vermelho, `--stamp`), frase curta, menu à esquerda
 Link de desafio continua pulando direto pra `screenName()` (ver
 `LEIA-ME.md` "Tela inicial").
 
-Conta trocada de link mágico pra senha+Google — ver item 23.
+Conta trocada de link mágico pra senha+Google, mais "esqueci minha
+senha" (`resetPasswordForEmail`/`updateUser`, evento `PASSWORD_RECOVERY`
+abre `screenNovaSenha()` sozinho) — ver item 23.
+
+**Histórico — aprovado e implementado** (não ficou "em construção":
+"item de menu que não faz nada é pior que item que não existe", pedido
+explícito). Carreiras anteriores (nome, cartel, nota, data) + conquistas
+desbloqueadas. Tabela nova `carreiras_usuario` em `supabase_schema.sql`
+(rodar de novo no editor SQL, mesmo RLS de `conquistas_usuario`) —
+`seed` como chave, já único por carreira. `localStorage` sempre
+funciona sem conta; sincroniza por cima com sessão. Ver `LEIA-ME.md`
+"Histórico".
 
 Termos/Privacidade: só estrutura (texto `[PENDENTE]`), páginas
 separadas (`screenTermos()`/`screenPrivacidade()`), rodapé + nota no
 formulário de conta linkando as duas. Registro de aceite formal
-(tabela + checkbox + versão) fica pra quando existir pagamento —
-proposta completa em `LEIA-ME.md`, não implementado (não tem checkout
-pra prender ainda).
-
-**Histórico — PENDENTE DE APROVAÇÃO, item no menu existe mas mostra só
-"em construção"**. Proposta enviada ao usuário (não escrita ainda):
-mostrar carreiras anteriores (nome do lutador, cartel final, nota,
-data) e/ou conquistas desbloqueadas, guardado numa tabela nova
-associada à conta — precisa de decisão do usuário sobre o que exibir
-antes de qualquer implementação.
+confirmado: registra no PAGAMENTO (não no cadastro), guardando a
+VERSÃO/hash do texto aceito junto — proposta completa em `LEIA-ME.md`,
+não implementado (não tem checkout pra prender ainda).
 
 `node testar.js interface` estendido (clica "Jogar" de verdade, não
-pula a tela inicial mais). `node testar.js inicial` (novo, 14
-asserções): navegação dos 4 itens do menu, Supabase falso confirmando
-os 3 métodos de auth com os argumentos certos, páginas de
-Termos/Privacidade/Histórico. Tudo provado com dente.
+pula a tela inicial mais). `node testar.js inicial` (novo, 24
+asserções): navegação dos 4 itens do menu, Supabase FALSO confirmando
+os 5 métodos de auth (login/cadastro/Google/recuperação/nova senha)
+com os argumentos certos, evento `PASSWORD_RECOVERY` disparado
+manualmente confirmando que `screenNovaSenha()` abre sozinha, Histórico
+nos dois estados (vazio e com dado), páginas de Termos/Privacidade.
+Tudo provado com dente.
 
 ## Manutenção
 
