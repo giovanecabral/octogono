@@ -1042,9 +1042,63 @@ teste força o `rng` principal a lançar exceção se for chamado — prova
 que `proximoDilemaSeed()` nunca toca nele), acúmulo/corte em 3 dos
 recentes, e o descarte por eco (com controle: título novo passa
 normal). Só 4 dilemas por carreira — sem reposição já garante os 4
-tipos de uma carreira sempre diferentes entre si; repetição ENTRE
-carreiras (times diferentes, RNG diferente) continua possível, mesma
-limitação que o evento já tem e que ninguém pediu pra resolver.
+tipos de uma carreira sempre diferentes entre si. Repetição ENTRE
+carreiras (RNG diferente a cada partida nova) era possível — resolvido
+abaixo, "Memória entre carreiras".
+
+### Memória entre carreiras (2026-09-08)
+
+Achado jogando: dilema **"A pergunta na coletiva" saiu palavra por
+palavra igual numa carreira nova**, já visto numa partida anterior.
+Sorteio sem reposição e "recentes" (acima) só valem DENTRO da
+carreira — cada carreira nova reembaralha do zero, sem memória do que
+o jogador já viu em partidas passadas.
+
+**Medido antes de escrever o conserto** (nunca chutar tamanho de
+pool): `SEEDS` (temas do dilema-IA) tem **12**, `EVENTO_TEMAS` tem
+**10** — mas o caso relatado não veio de nenhum dos dois. Veio do
+**fallback local** (`DILEMA_LOCAL`), que tinha só **3** itens e
+NENHUM histórico, nem dentro da mesma carreira
+(`Math.floor(rng()*DILEMA_LOCAL.length)`, sorteio cego). "A pergunta
+na coletiva" é `DILEMA_LOCAL[0]`, texto FIXO — repetir um texto fixo
+palavra por palavra é muito mais provável de 3 opções cegas do que de
+dois textos GERADOS pela IA coincidindo por acaso. Diagnóstico
+importa: persistir só o pool `SEEDS`/IA não teria resolvido este caso.
+
+**`DILEMA_LOCAL` cresceu de 3 pra 8** (lista aprovada em texto antes de
+escrever, mesmo padrão de `ACOES_LUTA`). 2 dos 3 antigos saíram por
+sobrepor tema com `SEEDS` ("A pergunta na coletiva" ≈ entrevista/
+imprensa; "O patrocínio esquisito" ≈ proposta de patrocínio duvidosa)
+— fallback parecia versão pobre do mesmo dilema, não situação nova. Um
+item proposto foi cortado ANTES de entrar, achado pelo usuário: uma
+cena sobre esconder dor no peito premiava ignorar sintoma cardíaco
+real num atleta de combate, sem a trava que lesão física tem
+(`LESAO_TIPOS`/`CHANCE_LESAO_NOCAUTE`) — diferente de lesão de queixo
+ou joelho, que têm mecânica de consequência; substituído por "Técnico
+querendo mudar seu estilo".
+
+**Mecanismo, os três pools** (`DILEMA_LOCAL`, `SEEDS`, `EVENTO_TEMAS`):
+`cartelaComMemoria()` monta a cartela da carreira com quem está na
+memória entre carreiras DEPRIORIZADO (vai por último), não excluído —
+a cartela nunca fica sem opção, mesmo se a memória um dia cobrisse o
+pool inteiro. `localStorage` (try/catch, como qualquer leitura/escrita
+no jogo) guarda só IDENTIFICADOR — tema ou título, nunca o texto
+inteiro, por pedido explícito (pouco espaço, não precisa do conteúdo
+pra evitar repetir). Tamanho da memória é **60% do pool, calculado**
+(`Math.round(pool.length*.6)`), não um número fixo — pool pequeno com
+memória fixa grande travaria a cartela inteira sem sobra livre pra
+escolher; 60% garante pelo menos 40% do pool sempre livre.
+
+**Bug pego pela própria bateria de testes nova, antes de deployar**: a
+primeira versão de `cartelaComMemoria()` colocava quem estava na
+memória PRIMEIRO no array — como o consumo é via `.pop()` (tira do
+FIM), isso fazia o oposto do pretendido, priorizando quem tinha
+acabado de aparecer. `node testar.js memoria` pegou na hora. Um
+segundo bug, no PRÓPRIO teste desta vez: a asserção de integração lia
+a memória DEPOIS do sorteio que estava tentando conferir — o sorteio
+já tinha marcado a si mesmo, mascarando o resultado. Corrigido lendo o
+"antes" antes de agir — lição geral pra qualquer teste que meça efeito
+de uma função que também muta o estado que o teste lê.
 
 ## Som
 

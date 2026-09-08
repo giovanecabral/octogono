@@ -1501,6 +1501,54 @@ async function resolveFeed(fallback,rng){
   }).filter(t=>t.text!=="...");
 }
 
+/* Memória ENTRE carreiras (2026-09-08): achado jogando — sorteio sem
+   reposição e "recentes" (abaixo) só valem DENTRO de uma carreira; toda
+   carreira nova reembaralha do zero, então o mesmo tema (ou, pro
+   fallback local, o mesmo texto fixo) pode voltar na carreira seguinte.
+   Quem joga várias carreiras seguidas via isso de verdade — inclusive um
+   caso de eco palavra por palavra do fallback local, só 3 itens sem
+   histórico nenhum (nem dentro da carreira). Guarda só IDENTIFICADOR
+   (tema ou título), nunca o texto inteiro — localStorage é pequeno e
+   não precisa do conteúdo pra evitar repetir. Tamanho da memória é
+   PROPORCIONAL ao pool (60%), não um número fixo: pool pequeno (ex. 8
+   itens) com memória fixa grande (ex. 30) bloquearia a cartela inteira
+   e o sorteio ficaria sem opção livre pra escolher — 60% garante que
+   sempre sobra pelo menos 40% do pool livre. */
+function lerMemoriaEntreCarreiras(chave){
+  try{
+    const v=JSON.parse(localStorage.getItem(chave));
+    return Array.isArray(v)?v:[];
+  }catch(e){ return []; }
+}
+function marcarMemoriaEntreCarreiras(chave,id,tamanhoMax){
+  const lista=lerMemoriaEntreCarreiras(chave).filter(x=>x!==id);
+  lista.push(id);
+  while(lista.length>tamanhoMax)lista.shift();
+  try{ localStorage.setItem(chave,JSON.stringify(lista)); }catch(e){}
+}
+/* Cartela nova pra carreira: itens que JÁ estão na memória entre
+   carreiras vêm por ÚLTIMO (embaralhados entre si), não são excluídos —
+   deprioriza sem nunca deixar a cartela sem opção, mesmo se a memória
+   um dia cobrir o pool inteiro (não deveria, é o que os 60% evitam). */
+function cartelaComMemoria(pool,rng,chave,tamanhoMax){
+  const vistos=new Set(lerMemoriaEntreCarreiras(chave));
+  const embaralhar=arr=>{
+    const a=[...arr];
+    for(let i=a.length-1;i>0;i--){
+      const j=Math.floor((rng?rng():Math.random())*(i+1));
+      [a[i],a[j]]=[a[j],a[i]];
+    }
+    return a;
+  };
+  const livres=pool.filter(x=>!vistos.has(x)),usados=pool.filter(x=>vistos.has(x));
+  /* quem consome (proximoTema()/proximoDilemaSeed()/proximoDilemaFallback())
+     tira do FIM com .pop() — "usados" (memória recente) precisa ficar no
+     COMEÇO do array (índice baixo) pra ser consumido POR ÚLTIMO; "livres"
+     no fim, consumido primeiro. Inverter isso faria o oposto do
+     pretendido: priorizar quem acabou de aparecer. */
+  return [...embaralhar(usados),...embaralhar(livres)];
+}
+
 /* Temas do evento — mesma ideia do SEEDS do dilema (ver abaixo): sortear
    um tema e MANDAR pro prompt, em vez de listar as opções e confiar que o
    modelo varia sozinho. Medido (2026-09-06, 40 chamadas reais sem tema
@@ -1522,15 +1570,14 @@ const EVENTO_TEMAS=["imprensa","dinheiro","família","rotina de treino",
    eventoRng e consumida um a um; reembaralha (nova cartela) só quando
    esgota — então o 11º tema pode repetir um dos 10 primeiros, mas nunca
    antes disso. */
+const MEM_EVENTO_TEMAS=Math.round(EVENTO_TEMAS.length*.6);
 function proximoTema(){
   if(!st.temasRestantes||!st.temasRestantes.length){
-    st.temasRestantes=[...EVENTO_TEMAS];
-    for(let i=st.temasRestantes.length-1;i>0;i--){
-      const j=Math.floor((eventoRng?eventoRng():Math.random())*(i+1));
-      [st.temasRestantes[i],st.temasRestantes[j]]=[st.temasRestantes[j],st.temasRestantes[i]];
-    }
+    st.temasRestantes=cartelaComMemoria(EVENTO_TEMAS,eventoRng,"memTemasEvento",MEM_EVENTO_TEMAS);
   }
-  return st.temasRestantes.pop();
+  const tema=st.temasRestantes.pop();
+  marcarMemoriaEntreCarreiras("memTemasEvento",tema,MEM_EVENTO_TEMAS);
+  return tema;
 }
 
 /* Evento de vida a cada luta (substitui o pool fixo de 28 frases, que
@@ -1633,21 +1680,53 @@ const SEEDS=["imprensa provocando","dinheiro curto","família cobrando",
    antigo pararia de reproduzir os mesmos adversários) e consumida um a
    um; com só 4 sorteios por carreira, a cartela de 12 nunca esgota — os 4
    tipos de qualquer carreira são sempre diferentes entre si. */
+const MEM_DILEMA_SEEDS=Math.round(SEEDS.length*.6);
 function proximoDilemaSeed(){
   if(!st.dilemaSeedsRestantes||!st.dilemaSeedsRestantes.length){
-    st.dilemaSeedsRestantes=[...SEEDS];
-    for(let i=st.dilemaSeedsRestantes.length-1;i>0;i--){
-      const j=Math.floor((dilemaRng?dilemaRng():Math.random())*(i+1));
-      [st.dilemaSeedsRestantes[i],st.dilemaSeedsRestantes[j]]=[st.dilemaSeedsRestantes[j],st.dilemaSeedsRestantes[i]];
-    }
+    st.dilemaSeedsRestantes=cartelaComMemoria(SEEDS,dilemaRng,"memDilemaSeeds",MEM_DILEMA_SEEDS);
   }
-  return st.dilemaSeedsRestantes.pop();
+  const seed=st.dilemaSeedsRestantes.pop();
+  marcarMemoriaEntreCarreiras("memDilemaSeeds",seed,MEM_DILEMA_SEEDS);
+  return seed;
 }
+/* Fallback local — só aparece quando a IA falha ou o texto dela é
+   descartado (sem cena, conteúdo inseguro, eco de um recente). Quem vê
+   isso já está numa sessão degradada, então cada cena tem que se
+   sustentar SOZINHA — nenhuma cita carreira, lesão ou cinturão, porque
+   o fallback não tem esse contexto disponível. Território DIFERENTE dos
+   12 SEEDS de propósito (achado jogando: os 3 antigos duplicavam tema
+   com "imprensa provocando"/"entrevista ao vivo" e "proposta de
+   patrocínio duvidosa" — parecia versão pobre do mesmo dilema, não uma
+   situação nova). Cortado desta leva: um dilema sobre esconder dor no
+   peito — sintoma cardíaco real num atleta de combate não é o mesmo
+   tipo de risco que uma lesão de queixo ou joelho (que têm mecânica
+   própria pra dar consequência, ver LESAO_TIPOS/CHANCE_LESAO_NOCAUTE);
+   esse especificamente premiava esconder o sintoma, sem trava nenhuma
+   no julgar depois. */
 const DILEMA_LOCAL=[
- {titulo:"A pergunta na coletiva",cena:"Um repórter pergunta, ao vivo, se você não acha que só venceu porque o adversário estava machucado. O microfone está na sua frente e o ginásio inteiro escuta."},
- {titulo:"O patrocínio esquisito",cena:"Uma casa de apostas oferece o dobro do que você ganha por luta. Seu treinador fez cara feia quando ouviu. O contrato vence amanhã."},
+ {titulo:"Parceiro de treino de olho na sua vaga",cena:"Seu parceiro de treino, o mesmo peso, vem ganhando confiança demais nos últimos rounds de sparring. Ele comentou, meio de brincadeira, que também merecia uma chance como a sua."},
+ {titulo:"O amigo de infância na aba",cena:"Um amigo de infância te chamou de lado, sem graça, pra pedir um empréstimo que ele nunca te pediu antes. Ele jurou que devolve, do jeito que sempre jura."},
+ {titulo:"Convite pra virar rosto de marca",cena:"Uma agência quer você posando pra uma campanha de roupa, nada a ver com luta. O dinheiro é bom e a exposição também, mas não é assim que você imaginou aparecer."},
+ {titulo:"Rumor no vestiário",cena:"Um preparador de outra academia comentou, baixinho, que viu algo estranho no protocolo do próximo adversário. Ele não teria motivo pra inventar isso, mas também não tem prova nenhuma."},
+ {titulo:"Câmera querendo te seguir",cena:"Uma produtora quer gravar sua rotina pra um documentário, câmera dentro da academia e tudo. Parece bom pro nome, mas ninguém ali costuma treinar sendo filmado."},
+ {titulo:"Festa na véspera errada",cena:"O casamento de um amigo caiu bem na pior semana possível pra sair de casa. Todo mundo vai entender se você faltar, e todo mundo vai notar do mesmo jeito."},
  {titulo:"O primo com ideia",cena:"Seu primo apareceu com um plano de abrir uma academia com seu nome. Ele quer que você entre com tudo e não trouxe nenhum papel."},
+ {titulo:"Técnico querendo mudar seu estilo",cena:"Seu técnico decidiu, do nada, que sua base inteira está errada e quer refazer sua postura da estaca zero, a poucas semanas de qualquer coisa. Ele jura que é pro seu bem, mas parece mais experimento do que plano."},
 ];
+const MEM_DILEMA_LOCAL=Math.round(DILEMA_LOCAL.length*.6);
+/* Sem reposição + memória entre carreiras, mesmo tratamento do resto —
+   o fallback não tinha NENHUM histórico antes (nem dentro da carreira),
+   com só 3 itens isso significava ~33% de chance de repetir palavra por
+   palavra a cada vez que disparava. */
+function proximoDilemaFallback(){
+  if(!st.dilemaFallbackRestante||!st.dilemaFallbackRestante.length){
+    const ordem=cartelaComMemoria(DILEMA_LOCAL.map(d=>d.titulo),dilemaRng,"memDilemaFallback",MEM_DILEMA_LOCAL);
+    st.dilemaFallbackRestante=ordem.map(t=>DILEMA_LOCAL.find(d=>d.titulo===t));
+  }
+  const d=st.dilemaFallbackRestante.pop();
+  marcarMemoriaEntreCarreiras("memDilemaFallback",d.titulo,MEM_DILEMA_LOCAL);
+  return d;
+}
 
 /* O lim() trava número que a IA devolve; isto trava TEXTO no mesmo espírito
    — a IA nunca é dependência. O desfecho do dilema é sobre a vida FORA do
@@ -1742,7 +1821,7 @@ async function abrirDilema(){
      no prompt) reduz mas não garante, mesma regra do evento. */
   if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo)||
     recentes.some(t=>t.toLowerCase()===String(d.titulo||"").toLowerCase()))
-    d=DILEMA_LOCAL[Math.floor(rng()*DILEMA_LOCAL.length)];
+    d=proximoDilemaFallback();
   st.dilemaRecentes=st.dilemaRecentes||[];
   st.dilemaRecentes.push(String(d.titulo||"E agora?"));
   if(st.dilemaRecentes.length>3)st.dilemaRecentes.shift();

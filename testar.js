@@ -3524,6 +3524,113 @@ function testarEventoIA() {
 }
 
 /* ================================================================== *
+ * 8b2. MEMÓRIA ENTRE CARREIRAS — sorteio sem reposição e "recentes" só
+ *      valiam DENTRO da carreira; achado jogando (dilema "A pergunta na
+ *      coletiva" repetido palavra por palavra em carreira nova, vindo do
+ *      fallback local — só 3 itens, sem histórico nem dentro da
+ *      carreira). localStorage FALSO injetado (criarAmbiente() não tem,
+ *      de propósito — mesmo padrão de testarConquistas()).
+ * ================================================================== */
+function testarMemoriaEntreCarreiras() {
+  console.log("\n" + cinza("memória entre carreiras: deprioriza (não bloqueia) quem já apareceu, tamanho proporcional ao pool, sobrevive sem localStorage"));
+  const fakeLS = (() => {
+    let dados = {};
+    return { getItem: k => (k in dados ? dados[k] : null), setItem: (k, v) => { dados[k] = String(v); }, _dump: () => dados };
+  })();
+  const env = criarAmbiente();
+  env.sandbox.localStorage = fakeLS;
+  vm.createContext(env.sandbox);
+
+  const corpo = `
+;globalThis.__mem=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    // caso 1: marcarMemoriaEntreCarreiras() capa em tamanhoMax, mantém os
+    // MAIS RECENTES (fila, não pilha)
+    ["a","b","c","d","e"].forEach(id=>marcarMemoriaEntreCarreiras("memTeste1",id,3));
+    passo("memória capa em tamanhoMax (3), guarda os 3 mais recentes, na ordem",
+      JSON.stringify(lerMemoriaEntreCarreiras("memTeste1"))===JSON.stringify(["c","d","e"]));
+
+    // caso 2: cartelaComMemoria() DEPRIORIZA quem está na memória — não
+    // exclui. Pop() tira do FIM, então os "livres" (não vistos) têm que
+    // vir consumidos ANTES dos "usados" (na memória).
+    marcarMemoriaEntreCarreiras("memTeste2","a",10);
+    marcarMemoriaEntreCarreiras("memTeste2","c",10);
+    rng=mulberry32(1);
+    const cartela=cartelaComMemoria(["a","b","c","d","e"],rng,"memTeste2",10);
+    passo("cartela tem os 5 itens (deprioriza, não bloqueia)",
+      new Set(cartela).size===5 && ["a","b","c","d","e"].every(x=>cartela.includes(x)));
+    const ultimosDoisPop=[cartela[0],cartela[1]]; // pop() tira daqui por último
+    passo("os 2 na memória (a,c) ficam nos 2 primeiros índices — consumidos por ÚLTIMO via pop()",
+      ultimosDoisPop.includes("a") && ultimosDoisPop.includes("c"));
+
+    // caso 3: integração real — DILEMA_LOCAL tem 8 itens agora (era 3);
+    // drena a carreira 1 inteira (8 sorteios, esgota a cartela), início
+    // da carreira 2 (mesmo localStorage, cartela nova) não repete os
+    // últimos vistos enquanto sobrar item livre.
+    passo("DILEMA_LOCAL cresceu (8 itens, não mais 3 — pool pequeno não ajudava nem com memória)",
+      DILEMA_LOCAL.length===8);
+    passo("MEM_DILEMA_LOCAL é 60% do pool (arredondado), não fixo",
+      MEM_DILEMA_LOCAL===Math.round(DILEMA_LOCAL.length*.6));
+
+    localStorage.setItem("memDilemaFallback","[]");
+    dilemaRng=mulberry32(11); st={dilemaFallbackRestante:null};
+    const vistosCarreira1=[];
+    for(let i=0;i<DILEMA_LOCAL.length;i++) vistosCarreira1.push(proximoDilemaFallback().titulo);
+    passo("carreira 1: 8 sorteios cobrem os 8 títulos, cada um 1 vez (sem reposição continua valendo)",
+      new Set(vistosCarreira1).size===8);
+
+    /* ler a memória ANTES do sorteio da carreira 2 — proximoDilemaFallback()
+       marca a PRÓPRIA memória ao sortear, então ler depois incluiria o
+       sorteio que estamos tentando conferir (bug de ordem já pego uma vez
+       aqui, corrigido: sempre ler o "antes" antes de agir). */
+    const ultimosDaCarreira1=lerMemoriaEntreCarreiras("memDilemaFallback");
+    passo("memória da carreira 1 capou em MEM_DILEMA_LOCAL (5), não guardou os 8",
+      ultimosDaCarreira1.length===MEM_DILEMA_LOCAL);
+
+    dilemaRng=mulberry32(22); st={dilemaFallbackRestante:null}; // "carreira 2" nova, mesmo localStorage
+    const primeiroCarreira2=proximoDilemaFallback().titulo;
+    passo("carreira 2: 1º sorteio NÃO é um dos últimos vistos na carreira 1 (memória funcionou entre carreiras)",
+      !ultimosDaCarreira1.includes(primeiroCarreira2));
+
+    // caso 4: sem localStorage NENHUM (throw) não derruba nada — mesma
+    // garantia de testarConquistas(), aplicada aqui
+    const semLS={};
+    const antigoLS=globalThis.localStorage;
+    globalThis.localStorage=undefined;
+    let jogou=true;
+    try{
+      dilemaRng=mulberry32(33); st={dilemaFallbackRestante:null};
+      proximoDilemaFallback();
+    }catch(e){ jogou=false; }
+    passo("sem localStorage nenhum (undefined): não derruba, mecanismo continua funcionando",
+      jogou);
+    globalThis.localStorage=antigoLS;
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__mem || [];
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
+}
+
+/* ================================================================== *
  * 8c. DILEMA — mesmo tratamento anti-repetição do evento: sorteio sem
  *     reposição do tipo, histórico de títulos recentes, rede de baixo
  *     pro eco exato. Achado incidental medindo coerência (não pedido:
@@ -3841,6 +3948,7 @@ try {
   else if (cmd === "conteudo") ok = testarConteudoInseguro();
   else if (cmd === "eventoia") ok = await testarEventoIA();
   else if (cmd === "dilema") ok = await testarDilemaMecanismo();
+  else if (cmd === "memoria") ok = testarMemoriaEntreCarreiras();
   else if (cmd === "loja") ok = testarLoja();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();

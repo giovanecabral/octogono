@@ -566,7 +566,7 @@ anti-repetição". Só 4 dilemas por carreira, sem reposição já garante
 os 4 tipos diferentes entre si; repetição ENTRE carreiras continua
 possível (mesma limitação do evento, não pedida pra resolver).
 
-## 21. Loja: mostrar efeito de cada item, mais itens — EM ANDAMENTO (2026-09-07)
+## 21. Loja: mostrar efeito de cada item, mais itens — RESOLVIDO (2026-09-07)
 
 Jogada uma carreira inteira, achado real: o painel de compras não dizia
 o que cada item fazia em número — mesmo problema do treinador antigo
@@ -643,6 +643,67 @@ provados com dente.
 
 **Item recorrente proposto, não implementado**: ver `LEIA-ME.md`
 "Loja" → "Item recorrente (proposta, não implementada)".
+
+## 22. Dilema/evento repetiam ENTRE carreiras — RESOLVIDO (2026-09-08)
+
+Achado jogando: dilema "A pergunta na coletiva" saiu palavra por
+palavra igual numa carreira nova, já visto numa carreira anterior.
+Sorteio sem reposição e "recentes" (item 20) só valem DENTRO da
+carreira — toda carreira nova reembaralha do zero, sem memória do que
+o jogador já viu em partidas passadas.
+
+**Medido antes de escrever qualquer conserto** (pedido explícito):
+- `SEEDS` (temas do dilema gerado por IA): **12**, 4 usados por
+  carreira.
+- `EVENTO_TEMAS`: **10** (já sabido de antes).
+- `DILEMA_LOCAL` (fallback local, só dispara quando a IA falha):
+  **3** — e é o que explica o caso relatado. "A pergunta na coletiva" é
+  `DILEMA_LOCAL[0]`, texto FIXO, sorteado sem histórico nenhum, nem
+  dentro da carreira (`Math.floor(rng()*DILEMA_LOCAL.length)`, sem
+  cartela, sem "recentes"). Repetir um texto fixo palavra por palavra é
+  muito mais provável vindo de 3 opções cegas do que de dois textos
+  gerados pela IA coincidindo por acaso — a persistência do pool
+  `SEEDS`/IA sozinha NÃO teria evitado este caso específico.
+
+**Conserto, três partes**:
+1. `DILEMA_LOCAL` cresceu de 3 pra **8** — lista nova, aprovada em texto
+   antes de escrever (padrão `ACOES_LUTA`). 2 dos 3 antigos removidos
+   por sobrepor tema com SEEDS ("A pergunta na coletiva" ≈ entrevista/
+   imprensa; "O patrocínio esquisito" ≈ proposta de patrocínio
+   duvidosa) — pool de fallback parecia versão pobre do mesmo dilema,
+   não situação nova. Um item proposto foi cortado ANTES de entrar
+   (achado do usuário, não medição): "esconder dor no peito" premiava
+   ignorar sintoma cardíaco real num atleta de combate, sem a mecânica
+   de consequência que lesão física tem (`LESAO_TIPOS`/
+   `CHANCE_LESAO_NOCAUTE`) — diferente de lesão de queixo/joelho, que
+   têm trava; substituído por "Técnico querendo mudar seu estilo".
+2. Fallback ganhou sorteio sem reposição (`proximoDilemaFallback()`),
+   que não tinha NENHUM histórico antes — nem dentro da carreira.
+3. **Memória entre carreiras** (`localStorage`, try/catch) pros três
+   pools (`DILEMA_LOCAL`, `SEEDS`, `EVENTO_TEMAS`): guarda só
+   IDENTIFICADOR (título ou tema), nunca o texto inteiro. Tamanho
+   PROPORCIONAL ao pool (60%, não fixo) — pool pequeno + memória fixa
+   grande travaria a cartela inteira sem opção livre pra escolher.
+   Item na memória é DEPRIORIZADO (vai por último na cartela nova), não
+   excluído — cartela nunca fica sem opção, mesmo se a memória um dia
+   cobrisse o pool inteiro.
+
+**Bug pego ANTES de deployar, pela própria bateria de testes nova**: a
+primeira versão da função que monta a cartela colocava quem estava na
+memória PRIMEIRO no array em vez de por último — como o consumo é via
+`.pop()` (tira do FIM), isso fazia o oposto do pretendido: priorizava
+quem tinha acabado de aparecer. `node testar.js memoria` pegou o erro
+de posição na hora (prova com dente: reverter de propósito derruba 2
+das 8 asserções). Um segundo bug, desta vez no PRÓPRIO teste (não no
+código): a asserção de integração entre carreiras lia a memória DEPOIS
+do sorteio da carreira 2, que já tinha marcado a si mesmo — mascarando
+o que devia provar. Corrigido lendo o "antes" antes de agir.
+
+`node testar.js memoria` (novo): cap da memória mantém os mais
+recentes; cartela deprioriza sem excluir; integração real de 2
+"carreiras" com o mesmo `localStorage` (a 2ª não repete os últimos
+vistos da 1ª); sobrevive sem `localStorage` nenhum (mesma garantia de
+`testarConquistas()`). Todos provados com dente.
 
 ## Manutenção
 
