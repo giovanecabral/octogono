@@ -1334,8 +1334,17 @@ compartilhado do OpenRouter mesmo, agora, pior do que a medição de
 `node testar.js aivivo` reescrito quase por inteiro: os cenários que
 testavam o circuito compartilhado usavam `kind:"julgar"` — com julgar
 saindo desse circuito, isso testava a variável errada. Trocado pra
-`kind:"feed"`. Ver `PENDENCIAS.md` item 9 pro detalhe completo e o
-número remedido depois do deploy (alvo pedido: <10%).
+`kind:"feed"`.
+
+**Remedido: 0/12 (0%) de fallback em julgar** — bem abaixo do alvo de
+<10%, mas medido ~4h depois da medição de 67%, horário diferente. Não
+dá pra atribuir a queda só ao conserto sem controlar por hora (pool
+compartilhado, demanda pode variar por região/horário sem relação com
+o código daqui). BYOK (camada 1) segurado por decisão do usuário — as
+outras duas já bateram o alvo — mas recomendado remedir de novo em
+horário bem diferente antes de tratar como fechado pra anúncio. Ver
+`PENDENCIAS.md` item 9 pro detalhe completo, o passo a passo do BYOK
+guardado pra quando precisar, e os horários exatos das duas medições.
 
 **Falha sem resposta nenhuma (rede caiu, DNS falhou, timeout do
 `AbortController`) é outra categoria** — o proxy nem foi alcançado, não tem

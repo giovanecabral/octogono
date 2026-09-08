@@ -254,13 +254,35 @@ ver LEIA-ME.md "Medindo a coisa certa"):
 
 **Implementado, as três camadas pedidas, nesta ordem (2026-09-09)**:
 
-1. **BYOK** — decisão de conta, não de código, passo a passo dado ao
-   usuário (correção real, ataca a causa: `is_byok:false` nos logs
-   confirma que os créditos ainda vêm do pool compartilhado mesmo com
-   `OPENROUTER_API_KEY` própria configurada — BYOK exige uma chave da
-   ALIBABA CLOUD/DASHSCOPE colada em Settings → Integrations do
-   OpenRouter, não é a mesma coisa que ter saldo na conta OpenRouter).
-   Fora do escopo de código — usuário decide se/quando configura.
+1. **BYOK — SEGURADO por ora (2026-09-09), decisão do usuário**: as
+   camadas 2+3 sozinhas já mediram 0/12 (0%) de fallback, bem abaixo do
+   alvo de <10% — BYOK exige conta separada na Alibaba Cloud, chave do
+   DashScope e configuração no painel do OpenRouter, trabalho real pra
+   um problema que já parece resolvido pelas outras duas camadas. Passo
+   a passo abaixo, pronto pra puxar se o 429 voltar a incomodar com
+   tráfego real:
+   1. Criar/ter conta na Alibaba Cloud, ativar Model Studio/DashScope.
+   2. Gerar uma API key do DashScope no console da Alibaba Cloud.
+   3. No OpenRouter: Settings → Integrations
+      (`openrouter.ai/settings/integrations`).
+   4. Achar o card de provedor Alibaba/DashScope, colar a chave como
+      "Prioritized key" (tentada antes do pool compartilhado).
+   5. Opcional: desativar "Shared capacity fallback" se quiser garantir
+      que NUNCA mais caia no pool compartilhado (troca por: uma
+      instabilidade na sua própria conta Alibaba derruba a chamada sem
+      fallback nenhum — deixar ligado é mais seguro).
+   6. Custo: 5% do preço normal do modelo na OpenRouter, debitado do
+      saldo OpenRouter; as primeiras 1M requisições/mês nesse esquema
+      são isentas dessa taxa. **NÃO é a mesma coisa que adicionar saldo
+      na conta OpenRouter** — sem a chave DashScope própria, mais saldo
+      não muda de qual pool a chamada sai (`is_byok:false` nos logs
+      confirma isso).
+
+   **Ressalva não confirmada**: não verifiquei se "Alibaba"/"DashScope"
+   já aparece HOJE como card na tela de Integrations do OpenRouter — os
+   docs oficiais listam Azure/AWS/Google Vertex com detalhe, Alibaba só
+   aparece genericamente ("dezenas de outras plataformas"). Confirmar
+   entrando na conta antes de seguir os passos 3-5.
 
 2. **Circuito PRÓPRIO pra dilema+julgar**, separado de feed
    (`dilemaPausadoAte`/`dilemaFalhasSeguidas`, mesmo padrão do evento).
@@ -285,9 +307,35 @@ cenários dedicados pro circuito de dilema/julgar e pro retry. 33
 asserções, todas provadas com dente (guard da pausa revertido → 2
 caem; bloco de retry removido → 5 caem).
 
-**Falta remedir depois do deploy** (alvo pedido: <10% de fallback em
-julgar, mesmo protocolo de ritmo realista >60s entre chamadas, 3
-carreiras reais) — ver resultado assim que confirmado.
+**Remedido depois do deploy confirmado** (mesmo protocolo: ritmo
+realista >60s entre chamadas, 3 carreiras reais, 12 dilemas):
+**0/12 (0%) de fallback em julgar** — nenhum 429 apareceu nesta rodada,
+bem abaixo do alvo de <10%.
+
+**Ressalva honesta**: 0 fallback também significa que o pool não estava
+congestionado NESTA janela de medição — nenhuma chamada bateu 429, então
+esta rodada não exercitou o retry nem a pausa em produção de verdade
+(só confirma "quando o pool está livre, tudo funciona", o que já era
+esperado). A garantia de que o MECANISMO funciona sob 429 real vem dos
+testes unitários (`node testar.js aivivo`, 33 asserções com dente,
+incluindo os cenários de retry-com-sucesso e retry-com-falha-dupla) —
+a medição em produção é ausência de evidência contrária, não prova
+positiva do retry em ação.
+
+**Achado do usuário, correto: as duas medições (67% e 0%) foram em
+horas DIFERENTES do mesmo dia, ~4h10min de intervalo** — 67% por volta
+de 01:40 UTC (09:40 horário da China, `vercel logs`), 0% terminando às
+05:49 UTC (13:49 horário da China). Os dois caem dentro do horário
+comercial chinês, não é claramente pico-vs-vazio por ESSE fuso — mas o
+pool é compartilhado globalmente, outras regiões podem dominar a
+demanda em horas diferentes, e uma amostra de 12 chamadas não separa
+"o conserto funcionou" de "a hora calhou de estar livre". **Não dá pra
+atribuir a queda de 67%→0% só ao conserto com o que foi medido até
+aqui.** Recomendado: remedir de novo num horário bem diferente deste
+(não precisa ser "pico" identificado — só outro ponto no tempo) antes
+de tratar como resolvido pra anúncio. Pool já mostrou variar bastante
+no mesmo dia mesmo antes do conserto (100% de falha numa chamada
+isolada de manhã, depois taxas menores minutos depois).
 
 ## 14. AI_URL apontava pra domínio morto — RESOLVIDO (hotfix 2026-09-06)
 
