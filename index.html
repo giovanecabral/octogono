@@ -1318,8 +1318,8 @@ const DOMINIO_JOGO="octogono.fun";
    navegador precisa dela pra falar com o banco) — a proteção de verdade
    é Row Level Security no banco (supabase_schema.sql), não o segredo
    desta chave. */
-const SUPABASE_URL="";
-const SUPABASE_ANON_KEY="";
+const SUPABASE_URL="https://kapdpipwqkumzschctnj.supabase.co";
+const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
 let supabaseClient=null;
 function getSupabase(){
   if(!SUPABASE_URL||!SUPABASE_ANON_KEY)return null;
