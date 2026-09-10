@@ -2893,11 +2893,12 @@ function testarTelaInicial() {
       auth: {
         signUp: async ({ email, password }) => {
           chamadasAuth.push(["signUp", email, password]);
+          if (email === "repetido@teste.com") return { error: { message: "User already registered" } };
           return { data: { session: null }, error: null }; // precisa confirmar e-mail
         },
         signInWithPassword: async ({ email, password }) => {
           chamadasAuth.push(["signInWithPassword", email, password]);
-          if (password === "errada") return { error: { message: "Credenciais inválidas" } };
+          if (password === "errada") return { error: { message: "Invalid login credentials" } };
           sessaoFalsa = { user: { id: "u1", email } };
           return { error: null };
         },
@@ -2935,7 +2936,8 @@ function testarTelaInicial() {
   try {
     vm.runInContext(exportar(lerScript(),
       ["ready", "screenInicio", "screenName", "screenConta", "screenHistorico",
-        "screenTermos", "screenPrivacidade", "abrirConfig", "salvarCarreiraLocal"])
+        "screenTermos", "screenPrivacidade", "abrirConfig", "salvarCarreiraLocal",
+        "SENHA_MIN", "traduzErroSupabase"])
       + "\ntry{globalThis.__x.cfgAberto=()=>cfgAberto;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
@@ -2962,36 +2964,139 @@ function testarTelaInicial() {
     });
 
     // reabre a tela inicial (Opções é overlay, não troca de tela) e vai pra Conta
-    await passo("Conta (sem sessão): formulário de login/cadastro aparece", () => {
+    await passo("Conta (sem sessão): abre no modo Entrar por padrão", () => {
       UI.screenInicio();
       const itens = marcado("inicio-item");
       itens[2].onclick(); // "Conta"
     });
-    await passo("Conta: campos de e-mail/senha e os 3 botões existem", () => {
-      const email = env.todos.filter(n => n.type === "email").pop();
-      const senha = env.todos.filter(n => n.type === "password").pop();
-      if (!email || !senha) throw new Error("campos de e-mail/senha não foram montados");
-      const btns = env.todos.filter(n => n.tagName === "button" && ["Entrar", "Criar conta", "Entrar com Google"].includes(n.innerHTML));
-      if (btns.length !== 3) throw new Error(`esperava 3 botões (Entrar/Criar conta/Google), achei ${btns.length}`);
+    await passo("Conta/Entrar: só e-mail + 1 senha + esqueci + link pra criar, SEM confirmar senha", () => {
+      const emails = env.todos.filter(n => n.type === "email");
+      const senhas = env.todos.filter(n => n.id === "conta-senha");
+      const confs = env.todos.filter(n => n.id === "conta-senha-conf");
+      if (!emails.pop()) throw new Error("campo de e-mail não foi montado");
+      if (!senhas.pop()) throw new Error("campo de senha não foi montado");
+      if (confs.length) throw new Error("modo Entrar não deveria ter campo de confirmar senha");
+      const h4 = env.todos.filter(n => n.tagName === "h4").pop();
+      if (h4.innerHTML !== "Entrar") throw new Error("título não é 'Entrar': " + h4.innerHTML);
+      const linkEsqueci = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Esqueci minha senha").pop();
+      if (!linkEsqueci) throw new Error("link 'Esqueci minha senha' não foi montado no modo Entrar");
+      const linkModo = env.todos.filter(n => n.id === "conta-link-modo").pop();
+      if (!linkModo || linkModo.innerHTML !== "Criar conta") throw new Error("link de trocar pro modo Criar não está certo: " + (linkModo && linkModo.innerHTML));
     });
-    await passo("Conta: criar conta chama signUp com e-mail e senha certos", () => {
+    await passo("traduzErroSupabase: cobre os erros comuns do painel, sem deixar nenhum passar cru", () => {
+      const casos = [
+        ["User already registered", "Este e-mail já está cadastrado."],
+        ["Invalid login credentials", "E-mail ou senha incorretos."],
+        ["Email not confirmed", null], // só precisa não ser o texto cru
+        ["Password should be at least 6 characters", null], // política do painel != client — vira mensagem genérica de senha
+        ["Rate limit exceeded", null],
+        ["Unable to validate email address: invalid format", null],
+        ["Network request failed", null],
+        ["algo nunca visto antes", null],
+      ];
+      for (const [bruto, esperado] of casos) {
+        const traduzido = UI.traduzErroSupabase(bruto);
+        if (!traduzido || traduzido === bruto) throw new Error(`"${bruto}" não foi traduzido: "${traduzido}"`);
+        if (esperado !== null && traduzido !== esperado) throw new Error(`"${bruto}" virou "${traduzido}", esperava "${esperado}"`);
+      }
+    });
+    const linksEsqueciAntesDeCriar = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Esqueci minha senha").length;
+    await passo("Conta: troca pro modo Criar conta pelo link", () => {
+      const linkModo = env.todos.filter(n => n.id === "conta-link-modo").pop();
+      linkModo.onclick({ preventDefault(){} });
+    });
+    await passo("Conta/Criar: título muda, ganha confirmar senha e as 2 regras, SEM esqueci, botão nasce desabilitado", () => {
+      const h4 = env.todos.filter(n => n.tagName === "h4").pop();
+      if (h4.innerHTML !== "Criar conta") throw new Error("título não é 'Criar conta': " + h4.innerHTML);
+      if (!env.todos.filter(n => n.id === "conta-senha-conf").pop()) throw new Error("modo Criar não montou o campo de confirmar senha");
+      const linksEsqueciDepoisDeCriar = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Esqueci minha senha").length;
+      if (linksEsqueciDepoisDeCriar !== linksEsqueciAntesDeCriar)
+        throw new Error("'Esqueci minha senha' não deveria aparecer no modo Criar (o render de Criar montou um novo)");
+      const regras = env.todos.filter(n => n.className && n.className.startsWith("regra-senha"));
+      if (regras.length < 2) throw new Error(`esperava 2 linhas de regra de senha, achei ${regras.length}`);
+      const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
+      if (!btnCriar.disabled) throw new Error("botão 'Criar conta' deveria nascer desabilitado, sem senha nenhuma digitada");
+    });
+    await passo("Conta/Criar: senha curta mostra 'faltam N caracteres' em vermelho, botão continua travado", () => {
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop();
+      senha.oninput();
+      senha.value = "abc"; senha.oninput();
+      const regraTam = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[0];
+      if (!/falta/.test(regraTam.className)) throw new Error("classe da regra de tamanho não virou 'falta': " + regraTam.className);
+      if (!new RegExp(`faltam ${UI.SENHA_MIN - 3} caractere`).test(regraTam.textContent))
+        throw new Error(`texto não mostra a contagem certa (esperava faltam ${UI.SENHA_MIN - 3}): ` + regraTam.textContent);
+      const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
+      if (!btnCriar.disabled) throw new Error("botão deveria continuar desabilitado com senha curta");
+    });
+    await passo("Conta/Criar: senha do tamanho certo mas confirmação diferente — regra de confere acusa, botão travado", () => {
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop();
+      const conf = env.todos.filter(n => n.id === "conta-senha-conf").pop();
+      senha.value = "a".repeat(UI.SENHA_MIN); senha.oninput();
+      conf.value = "b".repeat(UI.SENHA_MIN); conf.oninput();
+      const regraTam = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[0];
+      const regraConf = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[1];
+      if (!/ ok/.test(regraTam.className)) throw new Error("regra de tamanho deveria estar ok: " + regraTam.className);
+      if (!/falta/.test(regraConf.className)) throw new Error("regra de confirmação deveria acusar diferença: " + regraConf.className);
+      if (!/não conferem/.test(regraConf.textContent)) throw new Error("texto não avisa que as senhas não conferem: " + regraConf.textContent);
+      const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
+      if (!btnCriar.disabled) throw new Error("botão deveria continuar desabilitado com confirmação diferente");
+    });
+    await passo("Conta/Criar: as duas regras batem — ambas ok, botão habilita sozinho", () => {
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop();
+      const conf = env.todos.filter(n => n.id === "conta-senha-conf").pop();
+      conf.value = senha.value; conf.oninput();
+      const regraTam = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[0];
+      const regraConf = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[1];
+      if (!/ ok/.test(regraTam.className) || !/ ok/.test(regraConf.className))
+        throw new Error("as 2 regras deveriam estar ok: " + regraTam.className + " / " + regraConf.className);
+      const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
+      if (btnCriar.disabled) throw new Error("botão deveria habilitar sozinho com as duas regras ok");
+    });
+    await passo("Conta/Criar: 'Mostrar' na senha troca o type pra text e vira 'Ocultar'", () => {
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop();
+      const btnVer = env.todos.filter(n => n.id === "conta-senha-ver").pop();
+      if (!btnVer) throw new Error("botão 'Mostrar' (conta-senha-ver) não foi montado");
+      if (senha.type !== "password") throw new Error("campo deveria começar como password");
+      btnVer.onclick();
+      if (senha.type !== "text") throw new Error("clicar 'Mostrar' não trocou o type pra text");
+      if (btnVer.textContent !== "Ocultar") throw new Error("botão deveria virar 'Ocultar' depois de clicado");
+    });
+    await passo("Conta/Criar: e-mail repetido mostra erro em português, não o texto cru do Supabase", () => {
       const email = env.todos.filter(n => n.type === "email").pop();
-      const senha = env.todos.filter(n => n.type === "password").pop();
-      email.value = "novo@teste.com"; senha.value = "senha123";
+      email.value = "repetido@teste.com";
       const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
       btnCriar.onclick();
     });
-    await passo("Conta: entrar com senha errada mostra o erro do Supabase, não trava", () => {
-      const ultimaChamada = chamadasAuth[chamadasAuth.length - 1];
-      if (!(ultimaChamada[0] === "signUp" && ultimaChamada[1] === "novo@teste.com" && ultimaChamada[2] === "senha123"))
+    await passo("Conta/Criar: signUp recebeu e-mail/senha certos e a mensagem foi traduzida", () => {
+      const ultimaChamada = chamadasAuth.filter(c => c[0] === "signUp").pop();
+      if (!(ultimaChamada[1] === "repetido@teste.com" && ultimaChamada[2].length === UI.SENHA_MIN))
         throw new Error("signUp não recebeu e-mail/senha certos: " + JSON.stringify(ultimaChamada));
+      const msg = env.todos.filter(n => n.tagName === "p" && n.className === "hint msg-erro").pop();
+      if (!msg || msg.textContent !== "Este e-mail já está cadastrado.")
+        throw new Error("erro não foi traduzido pro português certo: " + (msg && msg.textContent));
     });
 
-    UI.screenInicio();
-    marcado("inicio-item")[2].onclick(); // Conta de novo, formulário fresco
-    await passo("Conta: entrar com senha certa chama signInWithPassword", () => {
+    await passo("Conta: volta pro modo Entrar pelo link ('Já tenho conta')", () => {
+      const linkModo = env.todos.filter(n => n.id === "conta-link-modo").pop();
+      if (linkModo.innerHTML !== "Já tenho conta") throw new Error("link deveria dizer 'Já tenho conta' no modo Criar: " + linkModo.innerHTML);
+      linkModo.onclick({ preventDefault(){} });
+    });
+    await passo("Conta/Entrar: senha errada mostra 'E-mail ou senha incorretos.' traduzido, e o botão mostra 'Entrando…' antes de resolver", () => {
       const email = env.todos.filter(n => n.type === "email").pop();
-      const senha = env.todos.filter(n => n.type === "password").pop();
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop();
+      email.value = "existente@teste.com"; senha.value = "errada";
+      const btnEntrar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Entrar").pop();
+      btnEntrar.onclick();
+      if (btnEntrar.textContent !== "Entrando…") throw new Error("botão não mostrou o estado de carregando antes de resolver: " + btnEntrar.textContent);
+    });
+    await passo("Conta/Entrar: mensagem de senha errada foi traduzida, não é o texto cru do Supabase", () => {
+      const msg = env.todos.filter(n => n.tagName === "p" && n.className === "hint msg-erro").pop();
+      if (!msg || msg.textContent !== "E-mail ou senha incorretos.")
+        throw new Error("erro de login não foi traduzido: " + (msg && msg.textContent));
+    });
+    await passo("Conta/Entrar: senha certa chama signInWithPassword", () => {
+      const email = env.todos.filter(n => n.type === "email").pop();
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop();
       email.value = "existente@teste.com"; senha.value = "certa";
       const btnEntrar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Entrar").pop();
       btnEntrar.onclick();

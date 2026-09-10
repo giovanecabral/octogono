@@ -474,6 +474,17 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .conta-box input[type=email],.conta-box input[type=password]{display:block;width:100%;max-width:260px;margin:8px 0}
 .conta-box .termos-nota{font-size:11px;margin-top:10px}
 .conta-box .termos-nota a{color:var(--ink2)}
+.conta-box h4{border-bottom:1px solid var(--line2);padding-bottom:6px;margin-bottom:10px}
+.campo-rot{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faded);margin-top:8px}
+.campo-rot button{background:none;border:none;color:var(--ink2);font-size:11px;
+  text-transform:none;letter-spacing:0;text-decoration:underline;padding:0}
+.regra-senha{font-size:11.5px;margin:3px 0 2px;color:var(--faded)}
+.regra-senha.ok{color:#1E8449;font-weight:600}
+.regra-senha.falta{color:var(--stamp)}
+.conta-box .msg-erro{color:var(--stamp)}
+.conta-box .msg-ok{color:#1E8449}
+.conta-modo-link{margin-top:12px;font-size:12.5px}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 
 /* ---------- tela inicial (2026-09-09) ---------- */
@@ -1366,6 +1377,40 @@ function getSupabase(){
   return supabaseClient;
 }
 
+/* Só tamanho, nada de exigir maiúscula/número/símbolo — regra complexa
+   demais no cadastro afasta gente (decisão explícita). Precisa bater
+   com o mínimo configurado no painel (Authentication → Providers →
+   Email) — as duas regras (client e Supabase) têm que concordar, senão
+   o client aceita uma senha que o servidor recusa (ou vice-versa). */
+const SENHA_MIN=8;
+
+/* Erros do Supabase chegam em inglês, texto cru — "User already
+   registered" não é o que se mostra pra alguém criando conta. Casa por
+   SUBSTRING (não código de erro — o client não recebe um código
+   estável em todas as versões, o texto é o que sempre vem), nunca deixa
+   o texto cru passar pro jogador. O bucket "password" cobre tanto
+   "should be at least N characters" quanto uma política de força do
+   painel que o client não tem como prever — mesma mensagem pros dois,
+   porque não dá pra saber qual regra faltou sem o Supabase dizer. */
+function traduzErroSupabase(msg){
+  const m=String(msg||"").toLowerCase();
+  if(m.includes("already registered")||m.includes("already exists"))
+    return "Este e-mail já está cadastrado.";
+  if(m.includes("invalid login credentials"))
+    return "E-mail ou senha incorretos.";
+  if(m.includes("email not confirmed"))
+    return "Confirma seu e-mail antes de entrar — veja sua caixa de entrada.";
+  if(m.includes("password"))
+    return "Sua senha não atende aos requisitos de segurança do site. Tenta uma senha diferente.";
+  if(m.includes("rate limit")||m.includes("too many requests")||m.includes("for security purposes"))
+    return "Muitas tentativas seguidas. Espera um pouco antes de tentar de novo.";
+  if(m.includes("invalid email")||m.includes("unable to validate email"))
+    return "Esse e-mail não parece válido.";
+  if(m.includes("network")||m==="failed to fetch")
+    return "Falha de rede. Tenta de novo.";
+  return "Não deu certo. Tenta de novo em instantes.";
+}
+
 /* E-mail+senha, não link mágico (2026-09-09) — decisão explícita: plano
    pago vem por aí, e conta precisa existir de verdade (login em outro
    aparelho sem depender de e-mail chegando), não só uma sessão que o
@@ -1444,16 +1489,16 @@ function screenNovaSenha(){
   app.appendChild(el("div","eyebrow","Nova senha"));
   const box=el("div","conta-box");
   box.appendChild(el("h4","","Escolher nova senha"));
-  const inp=el("input");inp.type="password";inp.placeholder="Nova senha";inp.minLength=6;
+  const inp=el("input");inp.type="password";inp.placeholder="Nova senha";inp.minLength=SENHA_MIN;
   const btn=el("button","btn btn-sm","Salvar nova senha");
   const msg=el("p","hint","");
   btn.onclick=async()=>{
     const senha=inp.value;
-    if(senha.length<6){msg.textContent="Senha precisa de pelo menos 6 caracteres.";return;}
-    btn.disabled=true;msg.textContent="Salvando…";
+    if(senha.length<SENHA_MIN){msg.className="hint msg-erro";msg.textContent=`Senha precisa de pelo menos ${SENHA_MIN} caracteres.`;return;}
+    btn.disabled=true;msg.className="hint";msg.textContent="Salvando…";
     const r=await definirNovaSenha(senha);
-    if(r.ok){msg.textContent="Senha atualizada. Redirecionando…";setTimeout(()=>location.reload(),1200);}
-    else{msg.textContent=r.erro;btn.disabled=false;}
+    if(r.ok){msg.className="hint msg-ok";msg.textContent="Senha atualizada. Redirecionando…";setTimeout(()=>location.reload(),1200);}
+    else{msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btn.disabled=false;}
   };
   box.append(inp,btn,msg);
   app.appendChild(box);
@@ -1465,63 +1510,134 @@ function screenNovaSenha(){
    telas nunca aparecem ao mesmo tempo, mesmo padrão já usado pelos
    campos de dilema (`dilresp`/`dilgo`), reaproveitados por
    `document.getElementById()` em vez de guardar referência local. */
-function montarFormularioConta(container,{compacto=false}={}){
-  container.innerHTML="";
-  if(!compacto)container.appendChild(el("p","hint",
-    "Entre ou crie uma conta pra salvar suas conquistas e continuar de onde parou em outro aparelho."));
-  const inpEmail=el("input");inpEmail.type="email";inpEmail.placeholder="seu@email.com";inpEmail.id="conta-email";
-  const inpSenha=el("input");inpSenha.type="password";inpSenha.placeholder="Senha";inpSenha.minLength=6;inpSenha.id="conta-senha";
-  const msg=el("p","hint","");
-  const btnEntrar=el("button","btn btn-sm","Entrar");
-  const btnCriar=el("button","btn btn-ghost btn-sm","Criar conta");
-  const linhaBtns=el("div","row");
-  linhaBtns.append(btnEntrar,btnCriar);
-  const btnGoogle=el("button","btn btn-ghost","Entrar com Google");
-  const trava=v=>{btnEntrar.disabled=v;btnCriar.disabled=v;btnGoogle.disabled=v;};
+function montarFormularioConta(container){
+  // dois modos (entrar/criar) em vez de um formulário só — quem já tem
+  // conta não deve ver confirmação de senha, quem está criando não
+  // precisa ver "esqueci minha senha". IDs fixos: as duas telas (conta e
+  // fim de carreira) nunca aparecem ao mesmo tempo, mesmo padrão de
+  // dilresp/dilgo.
+  let modo="entrar";
 
-  btnEntrar.onclick=async()=>{
-    const email=inpEmail.value.trim(),senha=inpSenha.value;
-    if(!email||!senha){msg.textContent="Preenche e-mail e senha.";return;}
-    trava(true);msg.textContent="Entrando…";
-    const r=await entrarComSenha(email,senha);
-    if(r.ok)location.reload();          // sessão nova — recarrega pra sincronizar tudo
-    else{msg.textContent=r.erro;trava(false);}
-  };
-  btnCriar.onclick=async()=>{
-    const email=inpEmail.value.trim(),senha=inpSenha.value;
-    if(!email||!senha){msg.textContent="Preenche e-mail e senha.";return;}
-    if(senha.length<6){msg.textContent="Senha precisa de pelo menos 6 caracteres.";return;}
-    trava(true);msg.textContent="Criando conta…";
-    const r=await criarConta(email,senha);
-    if(!r.ok){msg.textContent=r.erro;trava(false);return;}
-    if(r.precisaConfirmar){msg.textContent="Conta criada. Confirma seu e-mail pra entrar.";trava(false);}
-    else setTimeout(()=>location.reload(),1200);
-  };
-  btnGoogle.onclick=async()=>{
-    trava(true);msg.textContent="Redirecionando…";
-    const r=await entrarComGoogle();
-    if(!r.ok){msg.textContent=r.erro;trava(false);}
-  };
+  function campoSenha(rotulo,idBase,autocomplete){
+    const rot=el("label","campo-rot",rotulo);
+    const btnVer=el("button","","Mostrar");btnVer.type="button";btnVer.id=idBase+"-ver";
+    rot.appendChild(btnVer);
+    const inp=el("input");inp.type="password";inp.id=idBase;inp.placeholder=rotulo;inp.autocomplete=autocomplete;
+    btnVer.onclick=()=>{
+      const oculta=inp.type==="password";
+      inp.type=oculta?"text":"password";
+      btnVer.textContent=oculta?"Ocultar":"Mostrar";
+    };
+    const wrap=el("div","");wrap.append(rot,inp);
+    return{wrap,inp};
+  }
 
-  const linkEsqueci=el("a","","Esqueci minha senha");linkEsqueci.href="#";linkEsqueci.id="conta-link-esqueci";
-  linkEsqueci.onclick=async e=>{
-    e.preventDefault();
-    const email=inpEmail.value.trim();
-    if(!email){msg.textContent="Digita seu e-mail primeiro.";return;}
-    trava(true);msg.textContent="Enviando…";
-    const r=await enviarRecuperacaoSenha(email);
-    msg.textContent=r.ok?"Link de recuperação enviado. Confira seu e-mail.":r.erro;
-    trava(false);
-  };
+  function render(){
+    container.innerHTML="";
+    const msg=el("p","hint","");
+    const inpEmail=el("input");inpEmail.type="email";inpEmail.placeholder="seu@email.com";inpEmail.id="conta-email";inpEmail.autocomplete="email";
+    const campoS=campoSenha("Senha","conta-senha",modo==="criar"?"new-password":"current-password");
+    let campoC=null,regraTam=null,regraConf=null;
 
-  const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";linkTermos.id="conta-link-termos";
-  const linkPriv=el("a","","Política de Privacidade");linkPriv.href="#";linkPriv.id="conta-link-privacidade";
-  linkTermos.onclick=e=>{e.preventDefault();screenTermos();};
-  linkPriv.onclick=e=>{e.preventDefault();screenPrivacidade();};
-  const nota=el("p","hint termos-nota","Ao criar conta, você concorda com os ");
-  nota.append(linkTermos," e a ",linkPriv,".");
+    function formValido(){
+      if(modo==="entrar")return true;
+      const s=campoS.inp.value;
+      return s.length>=SENHA_MIN&&campoC.inp.value===s&&s.length>0;
+    }
+    function atualizaRegras(){
+      const s=campoS.inp.value;
+      const okTam=s.length>=SENHA_MIN;
+      regraTam.className="regra-senha "+(okTam?"ok":(s.length?"falta":""));
+      regraTam.textContent=okTam?`✓ mínimo de ${SENHA_MIN} caracteres`:
+        `faltam ${Math.max(0,SENHA_MIN-s.length)} caractere(s) para o mínimo de ${SENHA_MIN}`;
+      const c=campoC.inp.value;
+      const okConf=c.length>0&&c===s;
+      regraConf.className="regra-senha "+(okConf?"ok":(c.length?"falta":""));
+      regraConf.textContent=okConf?"✓ as senhas conferem":(c.length?"as senhas não conferem":"repete a senha para confirmar");
+      btnAcao.disabled=!formValido();
+    }
 
-  container.append(inpEmail,inpSenha,linhaBtns,el("p","hint",""),linkEsqueci,el("p","hint","ou"),btnGoogle,msg,nota);
+    const trava=v=>{
+      btnAcao.disabled=v||!formValido();
+      inpEmail.disabled=v;campoS.inp.disabled=v;btnGoogle.disabled=v;
+      if(campoC)campoC.inp.disabled=v;
+    };
+
+    const btnAcao=el("button","btn",modo==="entrar"?"Entrar":"Criar conta");
+    if(modo==="criar")btnAcao.disabled=true;
+    const btnGoogle=el("button","btn btn-ghost","Entrar com Google");
+
+    btnAcao.onclick=async()=>{
+      const email=inpEmail.value.trim(),senha=campoS.inp.value;
+      if(!email){msg.className="hint msg-erro";msg.textContent="Digita seu e-mail.";return;}
+      if(!senha){msg.className="hint msg-erro";msg.textContent="Digita sua senha.";return;}
+      if(modo==="criar"&&!formValido()){msg.className="hint msg-erro";msg.textContent="Confere as regras da senha acima.";return;}
+      msg.className="hint";
+      trava(true);
+      if(modo==="entrar"){
+        btnAcao.textContent="Entrando…";
+        const r=await entrarComSenha(email,senha);
+        if(r.ok)location.reload();          // sessão nova — recarrega pra sincronizar tudo
+        else{msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnAcao.textContent="Entrar";trava(false);}
+      }else{
+        btnAcao.textContent="Criando conta…";
+        const r=await criarConta(email,senha);
+        if(!r.ok){msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnAcao.textContent="Criar conta";trava(false);return;}
+        if(r.precisaConfirmar){msg.className="hint msg-ok";msg.textContent="Conta criada. Confirma seu e-mail pra entrar.";btnAcao.textContent="Criar conta";trava(false);}
+        else setTimeout(()=>location.reload(),1200);
+      }
+    };
+    btnGoogle.onclick=async()=>{
+      trava(true);msg.className="hint";msg.textContent="Redirecionando…";
+      const r=await entrarComGoogle();
+      if(!r.ok){msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);trava(false);}
+    };
+
+    container.append(el("h4","",modo==="entrar"?"Entrar":"Criar conta"),inpEmail,campoS.wrap);
+
+    if(modo==="criar"){
+      campoC=campoSenha("Confirmar senha","conta-senha-conf","new-password");
+      regraTam=el("p","regra-senha","");
+      regraConf=el("p","regra-senha","");
+      campoS.inp.oninput=atualizaRegras;
+      campoC.inp.oninput=atualizaRegras;
+      container.append(campoC.wrap,regraTam,regraConf);
+      atualizaRegras();
+    }else{
+      const linkEsqueci=el("a","","Esqueci minha senha");linkEsqueci.href="#";linkEsqueci.id="conta-link-esqueci";
+      linkEsqueci.onclick=async e=>{
+        e.preventDefault();
+        const email=inpEmail.value.trim();
+        if(!email){msg.className="hint msg-erro";msg.textContent="Digita seu e-mail primeiro.";return;}
+        trava(true);msg.className="hint";msg.textContent="Enviando…";
+        const r=await enviarRecuperacaoSenha(email);
+        msg.className="hint "+(r.ok?"msg-ok":"msg-erro");
+        msg.textContent=r.ok?"Link de recuperação enviado. Confira seu e-mail.":traduzErroSupabase(r.erro);
+        trava(false);
+      };
+      container.append(linkEsqueci);
+    }
+
+    container.append(btnAcao,el("p","hint","ou"),btnGoogle,msg);
+
+    const linkModo=el("p","conta-modo-link","");
+    const link=el("a","",modo==="entrar"?"Criar conta":"Já tenho conta");link.href="#";link.id="conta-link-modo";
+    link.onclick=e=>{e.preventDefault();modo=modo==="entrar"?"criar":"entrar";render();};
+    linkModo.append(modo==="entrar"?"Não tem conta? ":"Já tem conta? ",link);
+    container.appendChild(linkModo);
+
+    if(modo==="criar"){
+      const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";linkTermos.id="conta-link-termos";
+      const linkPriv=el("a","","Política de Privacidade");linkPriv.href="#";linkPriv.id="conta-link-privacidade";
+      linkTermos.onclick=e=>{e.preventDefault();screenTermos();};
+      linkPriv.onclick=e=>{e.preventDefault();screenPrivacidade();};
+      const nota=el("p","hint termos-nota","Ao criar conta, você concorda com os ");
+      nota.append(linkTermos," e a ",linkPriv,".");
+      container.appendChild(nota);
+    }
+  }
+
+  render();
 }
 
 /* ---------- tela inicial ---------- */
@@ -1573,10 +1689,9 @@ function screenConta(){
       sair.onclick=async()=>{ await sairDaConta(); location.reload(); };
       box.appendChild(sair);
     }else{
-      box.appendChild(el("h4","","Entrar ou criar conta"));
       const formArea=el("div","");
       box.appendChild(formArea);
-      montarFormularioConta(formArea,{compacto:false});
+      montarFormularioConta(formArea);
     }
   });
   const voltar=el("button","btn btn-ghost","Voltar");
@@ -5515,7 +5630,7 @@ function screenReport(){
       }
       const formArea=el("div","");
       contaBox.appendChild(formArea);
-      montarFormularioConta(formArea,{compacto:true});
+      montarFormularioConta(formArea);
     });
   }
 

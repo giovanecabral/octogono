@@ -824,7 +824,7 @@ recentes; cartela deprioriza sem excluir; integração real de 2
 vistos da 1ª); sobrevive sem `localStorage` nenhum (mesma garantia de
 `testarConquistas()`). Todos provados com dente.
 
-## 23. Contas (Supabase) ligadas em produção — FALTA SMTP/GOOGLE ANTES DE TRÁFEGO (2026-09-09)
+## 23. Contas (Supabase) ligadas em produção — RESOLVIDO, SMTP/GOOGLE CONFIGURADOS (2026-09-10)
 
 `SUPABASE_URL`/`SUPABASE_ANON_KEY` preenchidos e deployados, schema
 (`supabase_schema.sql`, com RLS) já rodado no projeto. `getSupabase()`
@@ -840,22 +840,11 @@ tela Conta e na caixa de fim de carreira. `node testar.js inicial`
 (novo): Supabase falso, prova que os 3 fluxos chamam os métodos certos
 do Supabase com os argumentos certos, com dente.
 
-**Bloqueante antes de qualquer tráfego real, ainda não feito** — dois
-itens, não um:
-1. **SMTP próprio** (painel Supabase → Authentication → SMTP Settings).
-   Duas razões agora: o e-mail padrão manda só 2/hora, E (achado
-   2026-09-09, docs oficiais) desde junho de 2026 o Supabase Free NÃO
-   deixa mais editar o template de e-mail sem SMTP próprio — o
-   remetente "Supabase Auth" que pareceu golpe pro usuário SÓ some
-   com isso configurado. Passo a passo completo em `LEIA-ME.md`
-   "Contas" → item 3.
-2. **Google Provider** (painel Supabase → Authentication → Providers →
-   Google): precisa de client ID/secret de um projeto no Google Cloud
-   Console. Sem isso o botão "Entrar com Google" já aparece na tela
-   (o código está pronto) mas `signInWithOAuth` devolve erro na hora.
-
-Nenhum dos dois bloqueia teste solo por senha. Ver `LEIA-ME.md`
-"Contas" → "Estado desta instância".
+**SMTP próprio (Resend) e Google Provider — RESOLVIDO (2026-09-10)**,
+confirmado pelo usuário ("Google e Resend configurados, login
+funcionando, conquistas gravando no banco com RLS"). Os dois
+bloqueantes que impediam tráfego real estão fechados. Ver
+`LEIA-ME.md` "Contas" → "Estado desta instância".
 
 **"Esqueci minha senha" — RESOLVIDO (2026-09-09)**. Link no formulário
 de login chama `resetPasswordForEmail()`; `onAuthStateChange` (dentro
@@ -991,6 +980,60 @@ com os argumentos certos, evento `PASSWORD_RECOVERY` disparado
 manualmente confirmando que `screenNovaSenha()` abre sozinha, Histórico
 nos dois estados (vazio e com dado), páginas de Termos/Privacidade.
 Tudo provado com dente.
+
+## 27. Formulário de conta refeito — dois modos (entrar/criar), não um formulário só — RESOLVIDO (2026-09-10)
+
+Pedido explícito: "hoje está simples demais para uma conta que vai ter
+valor" — quem já tem conta não deveria ver confirmação de senha, quem
+está criando não precisa ver "esqueci minha senha". Desenho aprovado
+antes de escrever (mesmo processo do card de momento): duas mensagens
+do usuário corrigiram um primeiro rascunho que ainda misturava Entrar
+e Criar conta no mesmo formulário.
+
+`montarFormularioConta()` reescrita com um `modo` interno
+("entrar"/"criar") e `render()` remontando o container inteiro a cada
+troca, alternada por um link no rodapé ("Criar conta" ⇄ "Já tenho
+conta"). O que mudou, item por item do pedido:
+
+- **Confirmar senha com validação em tempo real** — só no modo Criar,
+  `oninput` chama `atualizaRegras()` a cada tecla.
+- **Regra de senha visível, o que falta aparece digitando** — checklist
+  ao vivo ("faltam N caractere(s) para o mínimo de 8" em vermelho →
+  "✓ mínimo de 8 caracteres" em verde), não só erro depois de errar.
+- **Mostrar/ocultar senha** — botão ao lado de cada campo de senha
+  (`campoSenha()`), alterna `input.type` entre `password`/`text`.
+- **Erros em português, não o texto cru do Supabase** —
+  `traduzErroSupabase(msg)`, mapeamento por substring ("User already
+  registered" → "Este e-mail já está cadastrado.", etc.), aplicado em
+  todo caminho de erro, incluindo o caso em que o client valida 8
+  caracteres mas o painel do Supabase rejeita por outra política (cai
+  no bucket genérico de senha, não mostra erro cru).
+- **Estado de carregando no botão** ("Entrando…"/"Criando conta…"),
+  travando e-mail/senha/Google antes do primeiro `await` — sem duplo
+  clique.
+- **Botão desabilitado nunca fica sem explicação** — nasce desabilitado
+  no modo Criar, mas a regra em vermelho já está visível acima dele
+  (pedido explícito do usuário, resolvido sem precisar de tooltip).
+
+**Decisão explícita sobre política de senha**: `SENHA_MIN=8`, só
+tamanho — sem exigir maiúscula/número/símbolo ("regra complexa demais
+no cadastro afasta gente"). O usuário configura o MESMO mínimo (8),
+sem exigir classe de caractere, em Authentication → Providers → Email
+no painel — client e painel precisam concordar, e o gap dos dois
+divergirem já está coberto pelo bucket genérico de erro de senha
+acima.
+
+`node testar.js inicial` reescrito (34 asserções, até 2026-09-10):
+troca de modo, campos aparecendo/sumindo por modo, checklist ao vivo
+(tamanho e confirmação, separado), mostrar/ocultar, botão nascendo
+desabilitado e habilitando sozinho, tradução de erro (cadastro
+repetido e senha errada, mais uma tabela direta de
+`traduzErroSupabase()` cobrindo 8 mensagens do Supabase). Prova de
+dente feita ao vivo: quebrado `formValido()` de propósito (retornando
+sempre `true`), 3 testes caíram, restaurado.
+
+Detalhe completo em `LEIA-ME.md` "Contas" → "Formulário de conta
+redesenhado".
 
 ## Manutenção
 

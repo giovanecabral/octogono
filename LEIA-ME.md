@@ -1760,12 +1760,63 @@ isso o botão aparece mas `signInWithOAuth` devolve erro.
 dois lugares que pedem conta (tela "Conta" da tela inicial, e a caixa
 de fim de carreira) — mesmo markup, mesma lógica, sem duplicar.
 
-**Gap conhecido, não implementado nesta leva**: não existe "esqueci
-minha senha" (`resetPasswordForEmail`). Com só senha+Google, quem
-esquece a senha e não cadastrou por Google fica sem entrar. Vale
-adicionar antes de qualquer tráfego real com conta paga — depende do
-mesmo SMTP configurado abaixo (o template "Reset Password" é um dos
-que o SMTP próprio libera editar).
+**Recuperação de senha (2026-09-10)**: `enviarRecuperacaoSenha(email)`
+chama `resetPasswordForEmail(email,{redirectTo:location.href})`;
+`definirNovaSenha(novaSenha)` chama `updateUser({password})`. O
+listener `onAuthStateChange` é registrado uma única vez, dentro de
+`getSupabase()` (só na primeira criação do client), escutando o
+evento `PASSWORD_RECOVERY` — quando o Supabase manda a pessoa de volta
+pelo link do e-mail, o evento chega sozinho e abre `screenNovaSenha()`
+direto, sem rota nem parâmetro de URL pra tratar no client.
+
+**Formulário de conta redesenhado (2026-09-10) — dois modos, não um
+formulário só.** Motivo: quem já tem conta não deveria ver confirmação
+de senha, quem está criando não precisa ver "esqueci minha senha" —
+são dois momentos diferentes. `montarFormularioConta()` guarda um
+`modo` interno ("entrar"/"criar") e um `render()` que remonta o
+container inteiro a cada troca; a troca é um link no rodapé ("Criar
+conta" ⇄ "Já tenho conta"), sem rota nem parâmetro.
+
+- **Modo Entrar**: e-mail, 1 senha, "Esqueci minha senha", botão
+  "Entrar", "Entrar com Google". Sem confirmar senha, sem regras.
+- **Modo Criar**: e-mail, senha, confirmar senha, checklist ao vivo
+  (`atualizaRegras()`, rodada a cada `oninput`) mostrando o que falta
+  — "faltam N caractere(s) para o mínimo de 8" em vermelho até bater,
+  vira "✓ mínimo de 8 caracteres" em verde; mesma lógica pra
+  "as senhas não conferem" → "✓ as senhas conferem". O botão "Criar
+  conta" nasce **desabilitado** e só habilita quando as duas regras
+  batem (`formValido()`) — nunca fica morto sem explicação, porque o
+  motivo (a regra em vermelho) já está visível acima dele.
+- **Mostrar/ocultar senha**: cada campo de senha (`campoSenha()`) tem
+  um botão "Mostrar"/"Ocultar" ao lado do rótulo que alterna
+  `input.type` entre `password` e `text` — não é `type="text"` fixo,
+  some ao trocar de campo/modo.
+- **`SENHA_MIN=8`**: única regra de senha do client, de propósito —
+  "não vou exigir maiúscula/número/símbolo, só tamanho" (decisão
+  explícita: regra complexa no cadastro afasta gente). **O painel do
+  Supabase (Authentication → Providers → Email) tem política PRÓPRIA
+  de senha e precisa ter o MESMO mínimo (8), sem exigir classes de
+  caractere** — client e painel são duas validações independentes que
+  precisam concordar; se divergirem, quem passa no client mas falha no
+  painel cai no bucket genérico de erro de senha abaixo, não trava
+  quieto.
+- **`traduzErroSupabase(msg)`**: mapeia por substring (o Supabase não
+  garante código de erro estável entre versões) as mensagens cruas do
+  Supabase pra português — "User already registered" → "Este e-mail já
+  está cadastrado.", "Invalid login credentials" → "E-mail ou senha
+  incorretos.", "Email not confirmed", limite de taxa, e-mail inválido,
+  falha de rede, e um bucket genérico pra "password" que cobre TANTO
+  senha curta quanto rejeição pela política do painel (o client não
+  consegue distinguir qual das duas foi) — aplicado em todo caminho de
+  erro (`criarConta`, `entrarComSenha`, `entrarComGoogle`,
+  `enviarRecuperacaoSenha`, `definirNovaSenha`).
+- **Estado de carregando**: o botão de ação troca de texto
+  (`"Entrando…"`/`"Criando conta…"`) e trava e-mail/senha/Google
+  (`trava(true)`) assim que clicado, antes de qualquer `await` —
+  impede duplo clique, sem precisar de debounce.
+- Testado em `node testar.js inicial` (34 verificações), incluindo
+  troca de modo, checklist ao vivo, mostrar/ocultar, tradução de erro
+  e o botão nascendo desabilitado.
 
 **Configuração (uma vez, fora do código)**:
 1. Criar projeto em supabase.com, plano gratuito.
@@ -1808,15 +1859,13 @@ que o SMTP próprio libera editar).
 Enquanto os dois campos ficarem vazios, `getSupabase()` devolve `null` e a
 caixa de "salvar conquistas" nem aparece — o jogo roda idêntico a hoje.
 
-**Estado desta instância (2026-09-09)**: passos 1, 2 e 4 feitos —
-schema rodado, chave preenchida e deployada, `getSupabase()` retorna
-cliente real em produção, código trocado pra senha+Google. **Passo 3
-(SMTP próprio, incluindo Google Provider) NÃO feito ainda** — e-mail
-continua no padrão do Supabase (2/hora, "Supabase Auth" no remetente,
-template travado), e login com Google não funciona até o Provider ser
-configurado (Authentication → Providers → Google) mesmo com o botão já
-existindo na tela. Não impede testar login por senha sozinho, mas é
-**obrigatório antes de qualquer tráfego real**. Ver `PENDENCIAS.md`.
+**Estado desta instância (2026-09-10)**: passos 1-4 feitos — schema
+rodado (`conquistas_usuario` e `carreiras_usuario`, RLS confirmado
+gravando em produção), chave preenchida e deployada, SMTP próprio
+(Resend) e Google Provider configurados (confirmado pelo usuário,
+2026-09-10: "Google e Resend configurados, login funcionando"). Login
+por senha, por Google, recuperação de senha e histórico de carreiras
+todos em produção. Ver `PENDENCIAS.md`.
 
 **Migração de chave pendente, registrada, sem pressa de código**: o
 painel do Supabase já marca a `anon key` (formato JWT, a que está em
