@@ -2340,7 +2340,37 @@ function semResultadoDeLuta(texto){
    disparar em qualquer um dos dois, a resposta inteira da IA é descartada —
    não só o texto: um "j" que narrou isso não é confiável em nenhum campo,
    número incluso. */
-const CONTEUDO_INSEGURO=/\b(automutila\w*|mutila\w*|amputa\w*|decepa\w*|cutelo|suicid\w*|se\s+matar|tirar\s+a\s+(própria\s+)?vida|overdose\s+proposital|esfaquea\w*|estrangula\w*|tortura\w*|degola\w*|desmembra\w*|estupr\w*|abus\w*\s+sexual|cort\w*.{0,25}(mãos?|braços?|pernas?|dedos?|pulsos?|veias?|membros?)|(mãos?|braços?|pernas?|dedos?|pulsos?|veias?|membros?).{0,25}cort\w*)/i;
+/* Achado medindo direto contra produção (2026-09-11): a versão anterior
+   ("cort" + qualquer parte do corpo dentro de 25 caracteres, nas duas
+   ordens) disparava em texto de dilema completamente comum — "corte feio
+   na perna", "cortei a mão treinando", "corte no braço" são vocabulário
+   de ROTINA de MMA (o esporte é sobre apanhar corte), não indício de
+   automutilação. Medido: 5 de 12 respostas de dilema plausíveis (todas
+   mencionando corte/lesão de treino ou luta, nenhuma remotamente insegura)
+   bloqueadas ANTES de a IA sequer ser chamada — 41,7%, contra as 40
+   frases benignas antigas que nunca continham essa combinação e por isso
+   nunca pegaram esse buraco. Esse bloqueio não passa por ai(), não gera
+   `evento("ia_null",...)` — é invisível pra instrumentação que existe,
+   diferente dos outros motivos de fallback.
+
+   Conserto: só dispara SEM exigir "fora" quando a parte do corpo é pulso
+   ou veia — as únicas da lista que não têm uso corriqueiro de MMA (luta
+   não produz corte de pulso/veia como vocabulário normal, self-harm
+   sim). "mãos/braços/pernas/dedos/membros" (as que colidem com
+   vocabulário de luta) só disparam junto de "fora" (cortar X FORA é
+   mutilação, nunca é como se descreve um corte de treino ou sparring).
+   Reflexivo "me/se cort-" ("eu me corto", "ele se cortou") cobre o caso
+   sem parte do corpo nenhuma, sem depender da lista.
+
+   Isso ESTREITA a rede de baixo pra caber o jogo: "eu corto meus braços"
+   (primeira pessoa, sem "fora", sem reflexivo) deixaria de disparar por
+   aqui — cenário real de risco que a versão antiga pegava e esta não.
+   A defesa PRINCIPAL continua sendo o prompt em api/ai.js (ver comentário
+   acima), não este regex; isto é rede de baixo, e uma rede de baixo que
+   quebra o próprio jogo na maioria das respostas normais não está
+   protegendo ninguém, só empurrando o jogador pro fallback genérico
+   toda vez que descreve um corte de luta — o caso mais comum do gênero. */
+const CONTEUDO_INSEGURO=/\b(automutila\w*|mutila\w*|amputa\w*|decepa\w*|cutelo|suicid\w*|se\s+matar|tirar\s+a\s+(própria\s+)?vida|overdose\s+proposital|esfaquea\w*|estrangula\w*|tortura\w*|degola\w*|desmembra\w*|estupr\w*|abus\w*\s+sexual|(me|se)\s+cort\w*|cort\w*.{0,20}(pulsos?|veias?)|(pulsos?|veias?).{0,20}cort\w*|cort\w*.{0,20}(mãos?|braços?|pernas?|dedos?|membros?)\s+fora)/i;
 function conteudoInseguro(texto){
   return CONTEUDO_INSEGURO.test(String(texto||""));
 }

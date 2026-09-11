@@ -3705,10 +3705,29 @@ function testarConteudoInseguro() {
       "Recuso a entrevista e marco outra data.",
       "Assino o autógrafo e tiro foto com o fã.",
       "Falo pro meu empresário que quero renegociar o contrato.",
+      /* achado medindo contra produção (2026-09-11): a versão antiga de
+         CONTEUDO_INSEGURO bloqueava estas 5 antes mesmo de chamar a IA —
+         41,7% de 12 respostas plausíveis de dilema, todas vocabulário de
+         ROTINA de MMA (corte de treino/sparring/luta), zero automutilação.
+         Ver comentário da constante. */
+      "Levei um corte feio na perna no último sparring, mas sigo treinando.",
+      "Fiquei todo cortado na perna de tanto low kick, vou pedir pro médico olhar.",
+      "Cortei a mão treinando no boxe hoje, nada grave.",
+      "O corte no braço ainda incomoda, mas topo lutar assim mesmo.",
+      "Aceito, mesmo com a mão cortada de segunda-feira.",
     ];
     const falsosPositivos=benignos.filter(t=>conteudoInseguro(t));
-    passo("não dispara em texto comum de dilema (" + benignos.length + " frases benignas)",
+    passo("não dispara em texto comum de dilema, corte de luta incluso (" + benignos.length + " frases benignas)",
       falsosPositivos.length===0);
+
+    /* a rede de baixo estreitou (ver comentário da constante), mas não pode
+       ficar cega: pulso/veia continuam pegando sem precisar de "fora"
+       (não têm uso de rotina em MMA), e o reflexivo "me/se corto" pega
+       automutilação mesmo sem nenhuma parte do corpo na frase. */
+    passo("pega: 'ele corta os pulsos escondido'", conteudoInseguro("ele corta os pulsos escondido"));
+    passo("pega: 'as veias cortadas doem'", conteudoInseguro("as veias cortadas doem"));
+    passo("pega: 'eu me corto quando fico ansioso'", conteudoInseguro("eu me corto quando fico ansioso"));
+    passo("pega: 'ele se corta escondido dos outros'", conteudoInseguro("ele se corta escondido dos outros"));
 
     /* aplicarDilema() descarta o j INTEIRO, não só o desfecho — número
        incluso, é o achado real: a IA tinha aplicado lesão permanente
