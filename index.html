@@ -5592,15 +5592,23 @@ function finishFight(opp,r,titleFight){
     st.bonusNoiteMarco=true;
     st.momentos.push(criarMomento("bonusNoite",FRASE_BONUS_NOITE(me.name,opp.name),opp,r));
   }
-  /* Card de "número 1 da tabela" (2026-09-11) — posicaoDivisao() é a
-     posição na tabela INTEIRA que a ficha já mostra (não o RANKING
-     oficial de campeão+15, ver "Campeão nomeado" no LEIA-ME); reusa o
-     mesmo número, sem calibrar nada. Medido: 66,8%/67,6% das carreiras
-     (leve/pesado) chegam ao nº1 em algum momento, mediana na luta
-     15-16 — frequência parecida com "cinturao" (60,6%) e, como é flag
-     que trava (nunca dispara 2x na mesma carreira), continua marco
-     mesmo sendo comum. */
-  if(!st.topoDivisaoAlcancado){
+  /* Card de "número 1 da tabela" (2026-09-11, apertado no mesmo dia) —
+     posicaoDivisao() é a posição na tabela INTEIRA que a ficha já
+     mostra (não o RANKING oficial de campeão+15, ver "Campeão nomeado"
+     no LEIA-ME); reusa o mesmo número, sem calibrar nada.
+
+     1ª medição (qualquer luta): 66,8%/67,6% das carreiras (leve/pesado)
+     chegam ao nº1 em ALGUM momento — alto demais, fora da faixa dos
+     outros gatilhos de momento (2%-30%), o mesmo padrão já cortado em
+     "topo_da_divisao" (conquistas) e em streakW>=8 (RARE, ver "Card de
+     momento"). Remedido: exigir CEDO, não só "algum dia" — mediana de
+     "geral" já era luta 15-16, então até a luta 15 corta perto da
+     metade de quem chega. `fightNo<=15` (não invicto: invicto até o
+     topo caiu pra 8%/17%, longe demais pra baixo do alvo) fecha
+     25,2%/36,4% — dentro de 25%-40%. Continua travando em 1x só
+     (`st.topoDivisaoAlcancado`); depois da luta 15 o nº1 deixa de ser
+     "cedo" e para de contar como marco, mesmo que aconteça. */
+  if(!st.topoDivisaoAlcancado&&fightNo<=15){
     const posAtual=posicaoDivisao();
     if(posAtual&&posAtual.n===1){
       st.topoDivisaoAlcancado=true;

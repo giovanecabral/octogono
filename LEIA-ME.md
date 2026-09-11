@@ -1723,10 +1723,18 @@ carreiras/divisão, estratégia "parelho" fixa, `candidatos()`/
 
 | gatilho testado | resultado | decisão |
 |---|---|---|
-| topoDivisao (nº1 da tabela, 1ª vez) | 66,8%/67,6% das carreiras (leve/pesado), mediana luta 15-16 | vira card — trava em `st.topoDivisaoAlcancado`, mesma cadência de "cinturao" (60,6%) |
+| topoDivisao (nº1 da tabela, 1ª vez, qualquer luta) | 66,8%/67,6% das carreiras (leve/pesado) | **apertado de novo no mesmo dia** — fora da faixa dos outros gatilhos (2%-30%), mesmo padrão já cortado em "topo_da_divisao" (conquistas) e streakW>=8 (RARE) |
+| topoDivisao, só até a luta 15 (não "algum dia") | 25,2%/36,4% | escolhido — dentro de 25%-40% |
 | bonusNoite, TODO recorde vira card | 3,4/3,0 recordes por carreira em média | descartado — ruído, não é marco |
 | bonusNoite, só recordes da 2ª metade (luta≥12) | 78%/75% das carreiras batem ≥1 | ainda comum, descartado sozinho |
 | bonusNoite, 1º recorde da 2ª metade, TRAVADO (1x só) | por definição, ≤1/carreira | escolhido |
+
+Outros dois candidatos testados pro topoDivisao antes de fechar em
+"até a luta 15": **invicto até chegar ao topo** (perde a posição de
+"marco cedo" — cai pra 8,2%/16,8%, abaixo até do piso de 25%) e
+**streak de 3-5 vitórias ativo** (55%-66%, ainda alto demais). "Até a
+luta 15" foi o único dos quatro que caiu dentro da faixa nas duas
+divisões testadas ao mesmo tempo.
 
 `bonusNoite` trava em `st.bonusNoiteMarco` — dispara só no PRIMEIRO
 recorde de hype a partir da luta 12, nunca de novo na mesma carreira.

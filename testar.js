@@ -2044,6 +2044,16 @@ function testarMomentos() {
     passo("standing no meio da tabela NÃO dispara topoDivisao",
       !st.momentos.some(m=>m.tipo==="topoDivisao"));
 
+    /* Apertado no mesmo dia (2026-09-11): "chegar ao topo em algum momento"
+       media 67% das carreiras — alto demais, fora da faixa dos outros
+       gatilhos. Só conta se chegar CEDO (até a luta 15, ver comentário da
+       constante em index.html) — depois disso, mesmo standing===1 no topo,
+       não é mais "marco". */
+    st=stBase(); fightNo=16; st.fightNo=16; st.standing=1; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("standing no topo DEPOIS da luta 15 NÃO dispara topoDivisao (chegou tarde demais)",
+      !st.momentos.some(m=>m.tipo==="topoDivisao"));
+
     /* --- melhor atuação (bônus da noite): medido antes de escrever (ver
        comentário da constante em index.html) — "todo recorde vira card"
        dava 3+ cards por carreira, ruído. Só dispara 1x, no 1º recorde a
