@@ -559,6 +559,73 @@ de sempre: instrução nunca é garantia, só reduz. `node testar.js
 dilema`/jogar de verdade é o que confirma se ficou bom o bastante na
 prática.
 
+### A luta em si não pode ser narrada — nem sem a palavra do RESULTADO_LUTA (2026-09-11)
+
+Achado revisando o desfecho 1 da leva anterior (a que vazou do
+`RESULTADO_LUTA`): não era só a PALAVRA que faltava no regex — o
+desfecho narrava a luta inteira (rounds, domínio no grappling, o chute
+que fechou a conta, a derrota). `RESULTADO_LUTA` foi desenhado pra
+pegar palavra de um vocabulário fechado (ver "Conteúdo inseguro no
+dilema" abaixo); o problema de verdade era maior: a IA escrevendo uma
+luta que o motor ainda vai simular depois — se o jogador ganhar de
+verdade, o desfecho já tinha mentido sobre o próprio jogo dele.
+
+Prompt reescrito, escopo bem mais largo que "não afirme quem venceu":
+proibido narrar QUALQUER PARTE da luta seguinte — round, golpe
+decisivo, domínio de um lado, resultado — mesmo sem afirmar nada
+explicitamente, mesmo "mostrando em vez de contando" com vocabulário
+novo. O desfecho para ANTES da luta acontecer, mesmo em cenas que são
+literalmente sobre aceitar lutar (luta de última hora, revanche, lutar
+cansado) — narra o acordo, o preparo, a reação de quem tá em volta,
+nunca o que rola dentro do octógono. Sparring/treino continua liberado
+(não é a luta oficial, o motor não decide isso).
+
+**Medido: 40 chamadas reais (37 completaram, 3 caíram em 429 de
+verdade — rate limit real do pool compartilhado, não fallback
+silencioso, contabilizado fora). Triagem automática por palavra-chave
+(round, golpe, octógono, etc.) marcou 10 dos 37 pra revisão manual —
+nenhum dos 10, lido um por um, narrava a luta seguinte de verdade.**
+Todos os "achados" eram: sparring/treino (exemplo explícito da regra),
+referência a uma luta PASSADA já resolvida pelo motor (a cena
+perguntava sobre ela), ou menção abstrata/retórica a "o octógono" sem
+narrar ação nenhuma. **0/37 (0%) — bem abaixo do alvo de 5%.** Furo
+fechado.
+
+**A trava de 3ª pessoa, reforçada pra "vale a resposta inteira", ainda
+falha mais do que o esperado — achado só por ter lido os 37 por
+inteiro, não pela triagem automática.** A primeira tentativa de medir
+isso com regex (`\bvocê\b`) tinha um bug técnico que vale registrar:
+`\b` em JavaScript (sem a flag `/u`) usa a definição ASCII de "palavra"
+— `ê` não conta como `\w`, então `\bvocê\b` **nunca bate**, mesmo com
+"você" escrito líteral no texto (a checagem de fronteira depois do "ê"
+falha, porque nem "ê" nem o espaço seguinte contam como letra pro
+motor de regex). "vocês" (termina em "s", uma letra ASCII) não tinha
+esse problema — só "você" sozinho ficava invisível pra essa regex.
+Achado só porque a leitura manual dos 37 (pedida também pelo usuário)
+não depende de regex nenhuma.
+
+Contando à mão, separando fala citada (onde 1ª/2ª pessoa é CORRETA —
+é o personagem falando) de narração (onde só 3ª pessoa vale):
+**4 de 37 (≈11%) têm narração de verdade em 2ª pessoa**, fora de
+qualquer aspas — dois casos são graves, o desfecho INTEIRO troca pra
+"você"/"te" da primeira frase até a última, não só uma cláusula solta
+como no achado da rodada anterior. Exemplo grave (cena: acompanhar
+companheiro de treino machucado):
+
+> O carro parou na emergência e **você** saiu correndo, deixando o
+> empresário reclamando no banco de trás sobre os custos do Uber. O
+> médico **te** olhou de cima a baixo, anotou algo no prontuário e
+> disse que **seu** companheiro tinha fratura exposta [...] **Você**
+> pagou a taxa de atendimento à vista [...] mas **você** ignorou o
+> celular.
+
+**Não corrigido nesta leva — usuário pediu pra parar de medir depois
+destes dois itens.** Registrado pra quem for atacar isso depois: a
+mesma lição já provada nesta sessão pro diálogo (regra descrita não
+bastou, precisou de contraste certo/errado explícito) provavelmente se
+aplica aqui também — a trava atual só DESCREVE a regra ("sempre 3ª
+pessoa"), nunca mostra um exemplo ERRADO lado a lado pra comparar.
+
 ```bash
 node testar.js conteudo   # ainda cobre o RESULTADO_LUTA/CONTEUDO_INSEGURO do dilema
 ```
@@ -1691,16 +1758,28 @@ voltou (não existe "religar" dentro da mesma carreira).
 **Conserto: evento ganhou circuito PRÓPRIO** (`eventoPausadoAte`,
 `eventoFalhasSeguidas`), completamente separado de
 `aiVivo`/`aiPausadoAte`/`falhasRedeSeguidas`. A diferença de desenho:
-`feed`/`dilema`/`julgar` continuam podendo desistir de vez
-(`aiVivo=false`) — ainda é seguro, nada mudou pra eles. Evento NUNCA
-desiste de vez: todo motivo que desligaria o circuito compartilhado
-(`transitorio:false`, 2 falhas de rede seguidas) aqui só PAUSA por
-`AI_PAUSA_MS` (reaproveitado, não é número novo pra justificar) e tenta
-de novo depois — o pior caso pra evento agora é "algumas lutas sem
-evento", nunca "carreira inteira sem evento". `node testar.js aivivo`
-cobre os dois circuitos por separado e a ausência de contaminação
-cruzada entre eles (falha de `julgar` não pausa evento; falha de
-evento não desliga `aiVivo`).
+`feed`/`dilema`/`julgar` continuavam podendo desistir de vez
+(`aiVivo=false`) — considerado seguro na época, porque os três caíam
+em molde local sem o jogador notar. Evento NUNCA desiste de vez: todo
+motivo que desligaria o circuito compartilhado (`transitorio:false`, 2
+falhas de rede seguidas) aqui só PAUSA por `AI_PAUSA_MS` (reaproveitado,
+não é número novo pra justificar) e tenta de novo depois — o pior caso
+pra evento agora é "algumas lutas sem evento", nunca "carreira inteira
+sem evento". `node testar.js aivivo` cobre os dois circuitos por
+separado e a ausência de contaminação cruzada entre eles (falha de
+`julgar` não pausa evento; falha de evento não desliga `aiVivo`).
+
+**Atualização (2026-09-09 e 2026-09-11): a frase acima não é mais
+verdade — nenhum dos três continua podendo desistir de vez.** Dilema/
+julgar ganharam circuito próprio em 2026-09-09 (`dilemaPausadoAte`, ver
+"Desfecho mais longo" abaixo). `feed` foi o ÚLTIMO a ficar pra trás —
+corrigido só em 2026-09-11, achado JOGANDO (3 lutas seguidas sem linha
+de repercussão, não em medição): a suposição "é cosmético, ninguém
+nota" parou de ser verdade assim que alguém notou de verdade. Ganhou
+`feedPausadoAte`/`feedFalhasSeguidas`, mesmo padrão do evento — pausa,
+nunca desliga pra sempre. `aiVivo`/`aiPausadoAte`/`falhasRedeSeguidas`
+foram REMOVIDOS do código (só feed os usava, não sobrou nada pra eles
+protegerem).
 
 **Medido depois do conserto, mesmas 20 carreiras (seeds 95000-95019):
 carreiras com ZERO eventos: 0/20 (era 3/20). Carreiras com MENOS de 10
@@ -1709,14 +1788,45 @@ JSON malformado na API real naquele dia, mas nunca zerada: o circuito
 pausou e voltou a tentar, exatamente o comportamento desenhado. Média:
 15,7 eventos/carreira em 22 lutas.**
 
-**Achado, não implementado ainda**: `aiVivo`/`aiPausadoAte`/
-`falhasRedeSeguidas` são `let` de topo, nunca resetados em
-`startCareer()` — se desligarem numa carreira, ficam desligados nas
-carreiras SEGUINTES da mesma aba/sessão também (só um F5 limpa). Não é
-o bug que motivou este conserto (que era sobre DENTRO de uma carreira),
-mas é da mesma família — vale considerar resetar os três no início de
-`startCareer()` se isso incomodar em sessões longas com várias
-carreiras seguidas.
+**Achado antigo, RESOLVIDO por construção com o conserto do feed
+(2026-09-11), não precisou de código novo pra isso.** A preocupação
+era: `aiVivo`/`aiPausadoAte`/`falhasRedeSeguidas` são `let` de topo,
+nunca resetados em `startCareer()` — se desligassem numa carreira,
+ficavam desligados nas carreiras SEGUINTES da mesma aba também (só F5
+limpava). Isso só era um problema de verdade por causa do
+`aiVivo=false` ser BOOLEANO PERMANENTE, sem relógio. Agora que virou
+`feedPausadoAte` (timestamp) e nunca mais existe desligamento sem
+prazo, o problema não pode mais acontecer: mesmo que persista entre
+carreiras da mesma aba, a pausa é de 60s — muito menos do que o tempo
+que qualquer jogador leva pra terminar uma carreira e começar outra.
+
+**Medido depois do conserto do feed, 3 carreiras reais em produção
+(2026-09-11)** — mesmo protocolo de sempre, mas com um cuidado que
+precisa ficar registrado: o script de medição chama `ai("feed",...)`
+em sequência RÁPIDA (sem os ~12s de narração que um jogador de verdade
+gasta entre lutas), o que é justamente o tipo de rajada que aciona
+`feedPausadoAte` — a mesma lição de "medir no ritmo certo" já registrada
+pro dilema (ver "Desfecho mais longo" abaixo). O número mede se o
+CIRCUITO se recupera, não a experiência exata de quem joga no ritmo
+normal.
+
+| | resultado |
+|---|---|
+| lutas elegíveis pro feed (par ou finish) | 59/66 (89,4%) |
+| dessas, com feed real (não fallback) | 29/59 (49,2%) |
+| variação entre as 3 carreiras | 3/21 (14%) · 4/16 (25%) · 22/22 (100%) |
+
+A variação entre carreiras é o dado mais importante aqui, mais que a
+média: a carreira 3 bateu **100%** — prova que o circuito CONSEGUE
+entregar feed em toda luta elegível quando a janela de pausa não é
+autoinfligida pelo ritmo de teste. As carreiras 1 e 2 caíram numa
+sequência de pausas provavelmente por terem rodado rápido demais, ativando
+`feedPausadoAte` e não dando os 60s pra ele expirar antes da próxima
+tentativa — exatamente o comportamento NOVO e correto (pausa,
+recupera), só que testado num ritmo mais hostil que o de um jogador de
+verdade. O que o número PROVA sem ambiguidade: o bug antigo (zero feed
+pelo resto da carreira depois de 1 falha) sumiu — nenhuma das 3
+carreiras ficou em zero, e uma bateu 100%.
 
 ---
 
