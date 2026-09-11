@@ -399,10 +399,22 @@ Só o cap de exibição em JS precisou subir, de 500 pra 2000 caracteres
 é rede de segurança contra resposta fugindo do tamanho pedido, não um
 teto que o uso normal deveria tocar.
 
+**`usage` ecoado em toda resposta de sucesso do `api/ai.js` — ficou
+como diagnóstico permanente, não só desta medição.** Motivo de existir:
+é a única forma de acompanhar custo real por carreira sem abrir o
+painel do OpenRouter. Como ler: qualquer resposta `{ok:true,...}` do
+proxy vem com `usage:{prompt_tokens, completion_tokens, total_tokens,
+cost, ...}` — `cost` já vem em dólar, direto do OpenRouter, não precisa
+calcular a partir da tabela de preço do modelo (que muda se o `MODEL`
+mudar). Pra medir um `kind` específico: chamar `https://octogono.fun/api/ai`
+direto (`curl`/`fetch`, sem passar pelo jogo) com o `kind`/`data` de
+interesse e ler `j.usage.cost` da resposta — foi assim que a tabela
+abaixo saiu, sem tocar em `vercel logs` nem no painel do OpenRouter.
+Só diagnóstico: nada no client nem no proxy DECIDE nada a partir deste
+campo, é só o que sai ecoado de volta.
+
 **Custo em token, medido contra produção, antes e depois do deploy**
-(mesmo protocolo, chamadas reais de `julgar`, `api/ai.js` ganhou um
-campo `usage` ecoado na resposta só pra esta medição — ficou, é
-diagnóstico útil, não muda comportamento nenhum):
+(mesmo protocolo, chamadas reais de `julgar`):
 
 | | antes (2-4 frases) | depois (6-10 frases) | delta |
 |---|---|---|---|
@@ -465,6 +477,90 @@ remedir com N maior primeiro.
 
 ```bash
 node testar.js conteudo   # RESULTADO_LUTA continua cobrindo o dilema (regressão futura pegaria aqui)
+```
+
+**Remedido com N maior, mesmo dia — o vazamento de `RESULTADO_LUTA` era
+ruído baixo, não tendência.** Pedido explícito: 1 em 20 podia ser
+ruído, e ampliar o léxico do regex tem custo medido nesta sessão
+(`CONTEUDO_INSEGURO` largo bloqueou 41,7% de respostas normais — ver
+seção abaixo). Alvo: ≤5% deixa como está e registra; >15% force
+conversa, provavelmente resolvida no prompt, não no regex.
+
+**51 chamadas reais de `julgar` (rede caiu em 9 das 60 tentadas — falha
+de rede pura, contabilizada fora, não é motivo de fallback pra medir
+aqui), cenas variadas cobrindo os 8 temas de seed do dilema:**
+
+| medida | resultado | decisão |
+|---|---|---|
+| `RESULTADO_LUTA` vaza (narra resultado de luta fora da lista fechada) | 1/51 (≈2%) | dentro do alvo ≤5% — **deixa como está, registrado** |
+| muleta de atmosfera banida aparece (mesmo com a proibição explícita) | 2/51 (≈4%) | baixo, ambos isolados (1 frase de 7-8 no desfecho, resto concreto) — sem ação |
+| reabre a decisão do jogador antes de narrar | 0/51 (0%) | trava funcionando — melhor que o 1/20 da rodada anterior |
+
+Único novo caso de vazamento de `RESULTADO_LUTA` nesta leva (cena:
+sparring puxado, contexto de treino — `CONTEXTO_TREINO` já isenta essa
+frase de propósito, não é vazamento de verdade). O caso de fato contado
+na rodada anterior (aceitar luta de última hora, "despencou no tapete
+e não levantou no tempo certo") não se repetiu nesta amostra — 1/20 → 1/51
+no total combinado (72 chamadas), a taxa cai pra ≈1,4%, ainda visivelmente
+sob o alvo. **Decisão: `RESULTADO_LUTA` fica como está.** Ampliar a
+lista de palavras pra fechar 1 caso em 70+ chamadas custaria mais falso
+positivo (mesma lição do `CONTEUDO_INSEGURO`) do que vale o ganho.
+
+Único caso de muleta banida citado por inteiro, pra referência de quem
+remedir depois: *"Ninguém tentou conversar com ele no estacionamento,
+o clima estava pesado demais pra isso."* — frase de fechamento solta
+num desfecho de 7 frases, as outras 6 inteiramente concretas (repórter
+nomeado, pergunta citada, manchete, reação dividida da torcida).
+
+### Detalhe concreto, diálogo real, e nomear as coisas (2026-09-11, mesmo dia)
+
+Pedido seguinte, mesma leva: desfecho tava vago — "atmosfera" em vez de
+fato ("o clima ficou pesado", "olhar que dizia tudo") no lugar de quem
+disse o quê e o que mudou de verdade. Prompt ganhou três regras
+novas, nesta ordem de força:
+
+1. **Concreto, não atmosfera** — proibidas as 4 muletas nomeadas
+   explicitamente (silêncio pesado, olhar que diz tudo, clima que
+   muda, ar denso); pede consequência PRÁTICA (patrocínio perdido,
+   matéria publicada, reunião marcada) em vez de estado de humor.
+2. **Nomear as coisas** — repórter tem veículo (nome inventado vale),
+   treinador tem nome ou apelido, o que viraliza tem formato (vídeo,
+   print, áudio de zap) e lugar. Medido nos 51: a maioria nomeia bem —
+   `Zé da Luta` (treinador), `Combate Total`, `MMA Fight Zone`, `MMA
+   Fight Club`, `ESPN Brasil`, `UOL Esporte` aparecem como veículo
+   nomeado em boa parte das cenas com repórter.
+3. **Referência que a IA não reconhece = piada que não pegou**, nunca
+   drama inventado sobre o que ela não entende — pedido explícito do
+   usuário, sem medir (não tem como forçar o modelo a "não reconhecer"
+   algo de propósito num teste; fica pra confirmar jogando).
+
+**Achado testando ao vivo, não coberto pelo pedido original: diálogo
+sem fala nenhuma, e troca de pessoa gramatical no meio.** Cena com
+repórter saía como narração pura ("o jornalista ficou mudo"), nunca uma
+fala dele; e o desfecho as vezes ecoava a pessoa gramatical da cena/
+resposta (1ª pessoa) em vez de manter 3ª pessoa sempre. Dois conserto
+novos: exemplo completo de diálogo com fala entre aspas + trava
+explícita de 3ª pessoa sempre, **e depois** — porque a 1ª tentativa não
+bastou — regra reescrita de sugestão pra OBRIGATÓRIA.
+
+**Medido, duas rodadas — mostra que "dar exemplo" sozinho não bastou,
+precisou virar regra obrigatória:**
+
+| versão do prompt | fala citada quando a cena tem outra pessoa |
+|---|---|
+| regra condicional + 1 exemplo ("se ela reage, fala de verdade") | 13/51 (25%) |
+| regra OBRIGATÓRIA + contraste certo/errado explícito | 8/13 (62%), N pequeno, remedição rápida |
+
+Confirma o padrão já registrado em "Eventos por IA" e no `CLAUDE.md`:
+descrever o formato desejado (mesmo com exemplo) rende menos do que
+proibir com "NÃO BASTA" explícito e um par certo/errado lado a lado.
+62% é melhoria real (2,5x), não é 100% — resíduo esperado, mesma lição
+de sempre: instrução nunca é garantia, só reduz. `node testar.js
+dilema`/jogar de verdade é o que confirma se ficou bom o bastante na
+prática.
+
+```bash
+node testar.js conteudo   # ainda cobre o RESULTADO_LUTA/CONTEUDO_INSEGURO do dilema
 ```
 
 ### Conteúdo inseguro no dilema
