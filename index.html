@@ -1020,6 +1020,12 @@ const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra ne
 const FRASE_CINTURAO_INTERINO=(n,campeao)=>`${n} é o novo campeão interino. ${campeao} segue como campeão de verdade — a unificação vem por aí.`;
 const FRASE_UNIFICACAO=(n,campeao)=>`${n} venceu ${campeao} e unificou os cinturões. Só existe um campeão agora, e é ${n}.`;
 const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
+/* "Desbancar o nº1" é a posição na TABELA INTEIRA (posicaoDivisao(), a
+   mesma que a ficha já mostra como "#N de M"), não o RANKING oficial
+   (campeão+15, ver "Campeão nomeado" no LEIA-ME) — de propósito, pra não
+   inventar um número novo: reusa o que já existe e já é medido. */
+const FRASE_TOPO_DIVISAO=(n,total)=>`${n} é o nº 1 da tabela agora — o melhor entre ${total} lutadores da categoria.`;
+const FRASE_BONUS_NOITE=(n,opp)=>`A luta contra ${opp} foi a melhor atuação de ${n} até aqui.`;
 /* Duas frases, não uma — achado jogando em produção: o gatilho disparava
    pra QUALQUER st.lesao ativo, nocaute incluso, e "entrou mancando" narra
    uma escolha corajosa (aceitar lutar machucado) que não existe quando a
@@ -2513,6 +2519,23 @@ const CUSTO_EMPRESARIO=24000;
    quebra a curva. */
 const CASA_FOLLOWER_MULT=1.03;
 const CUSTO_CASA=30000;
+/* Consultoria de mídia (loja, item RECORRENTE — 2026-09-11): os quatro
+   itens acima são compra única, e por volta da luta 10 o jogador já tem
+   todos — dinheiro perde função pro resto da carreira (ver
+   PENDENCIAS.md "onde desperdiça trabalho já feito"). Reusa a MESMA
+   alavanca já medida/calibrada de "Casa melhor" (CASA_FOLLOWER_MULT),
+   só que PONTUAL (1 luta, não permanente) — nenhum multiplicador novo
+   pra calibrar. Preço testado em 4 pontos (400 carreiras/preço, bot
+   guloso comprando toda vez que tem caixa, candidatos()/simulateFight()/
+   finishFight() reais): 10000 rende 18,3 compras/carreira e +21,5% de
+   seguidores (empata com o permanente de Casa melhor — caro demais pro
+   item ficar redundante); 24000 (mesmo preço do Empresário, o mais
+   barato dos 4 originais) rende 7,8 compras/carreira e +9,5% — menos da
+   metade do +21% de Casa melhor, não compete com ele, e ainda dá pra
+   comprar bastante vez ao longo da carreira mesmo depois dos outros 4
+   itens levados. `node testar.js loja` cobre o consumo (1 luta só,
+   precisa comprar de novo) e o efeito medido. */
+const CUSTO_CONSULTORIA=24000;
 
 function aplicarDilema(box,d,txt,jBruto){
   /* Rede de baixo do conteúdo inseguro (ver CONTEUDO_INSEGURO acima): um "j"
@@ -3997,7 +4020,8 @@ async function desenharCard(g){
    documentação do que cada tipo SIGNIFICA quando a tabela é a fonte. */
 const ROTULO_MOMENTO={cinturao:"CINTURÃO",cinturaoPerdido:"PERDEU O CINTURÃO",
   upset:"ZEBRA",lesao:"VENCEU MACHUCADO",estreia:"ESTREIA NO MAIN CARD",
-  cinturaoInterino:"CINTURÃO INTERINO"};
+  cinturaoInterino:"CINTURÃO INTERINO",topoDivisao:"NÚMERO 1 DA TABELA",
+  bonusNoite:"MELHOR ATUAÇÃO"};
 /* raro é UMA categoria que cobre 3 recordes bem diferentes entre si (ver
    RARE, card:true) — não dá pra ter 1 rótulo estático pra "raro", cada
    id precisa dizer o recorde de verdade. invicto12/invicto18: o cartel
@@ -4018,8 +4042,14 @@ const ROTULO_RARO={finishStreak:"NUNCA FOI AOS CARTÕES"};
    que realisticamente colidem importa: cinturao/interino > upset/ko/
    lesao/raro (destaques de UMA luta) — cinturão continua sendo o fato
    maior mesmo disputado contra favorito, vencido rápido, ou com lesão. */
+/* bonusNoite por último de propósito: "melhor atuação até agora" é comum
+   (medido: 75-78% das carreiras batem pelo menos 1 recorde só na 2ª
+   metade) — se colidir com QUALQUER outro tipo na mesma luta (achado
+   escrevendo o teste: um 18-0 na luta 18 também é, por definição, a
+   1ª vez que st.bonusNoite existe, e por isso também "bate recorde"),
+   o outro tipo é sempre o fato mais especial. */
 const ORDEM_MOMENTO=["cinturao","cinturaoInterino","cinturaoPerdido","estreia",
-  "upset","ko","lesao","raro"];
+  "topoDivisao","upset","ko","lesao","raro","bonusNoite"];
 function rotuloMomento(m){
   if(m.tipo==="raro")return ROTULO_RARO[m.raroId]||m.cartel;
   if(m.tipo==="ko"&&m.segundosKO!=null)return`NOCAUTE EM ${m.segundosKO}s`;
@@ -4280,6 +4310,12 @@ const LOJA_ITENS=[
    desc:()=>"Onde você mora agora combina com quem você virou: mais gente reparando na sua carreira.",
    efeito:()=>`Efeito: +${Math.round((CASA_FOLLOWER_MULT-1)*100)}% de seguidores por luta, vitória ou derrota.`,
    comprar:()=>{st.casaComprada=true;}},
+  {id:"consultoria",nome:"Consultoria de mídia",custo:()=>CUSTO_CONSULTORIA,
+   recorrente:true,
+   comprado:()=>!!st.consultoriaAtiva,
+   desc:()=>"Assessoria de imprensa só pra próxima luta: mais gente vendo você entrar no octógono desta vez.",
+   efeito:()=>`Efeito: +${Math.round((CASA_FOLLOWER_MULT-1)*100)}% de seguidores, só na PRÓXIMA luta. Pode comprar de novo depois.`,
+   comprar:()=>{st.consultoriaAtiva=true;}},
 ];
 function abrirPainelTreinador(){
   const p=document.getElementById("painelTreinador");
@@ -4294,7 +4330,8 @@ function abrirPainelTreinador(){
     linha.appendChild(el("div","item-efeito",item.efeito()));
     const custo=item.custo();
     if(item.comprado()){
-      linha.appendChild(el("div","conquista-nome ok","✓ Adquirido"));
+      linha.appendChild(el("div","conquista-nome ok",
+        item.recorrente?"✓ Ativa para a próxima luta":"✓ Adquirido"));
     }else{
       linha.appendChild(el("div","conquista-desc","Custa "+fmtNum(custo)));
       const buy=el("button","btn btn-sm","Comprar");
@@ -4935,7 +4972,8 @@ function startCareer(){
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
       dinheiro:0,treinadorComprado:false,equipamentoComprado:false,
       empresarioComprado:false,casaComprada:false,estreouMainCard:false,
-      cinturaoInterino:false,tituloInterinoLuta:false};
+      cinturaoInterino:false,tituloInterinoLuta:false,
+      topoDivisaoAlcancado:false,bonusNoiteMarco:false,consultoriaAtiva:false};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -5536,6 +5574,39 @@ function finishFight(opp,r,titleFight){
      recorde relativo. Aparece no relatório final e no card compartilhável. */
   if(!st.bonusNoite||hype>st.bonusNoite.hype)
     st.bonusNoite={hype,luta:fightNo,adversario:opp.name,cartel:`${st.wins}-${st.losses}`};
+  /* Card de "melhor atuação" (2026-09-11) — o número acima já existia sem
+     virar card (ver LEIA-ME "Card de momento"/PENDENCIAS "onde
+     desperdiça trabalho"). Medido ANTES de decidir o gatilho (500
+     carreiras/divisão, estratégia "parelho" fixa, candidatos()/
+     simulateFight()/finishFight() reais): "todo novo recorde vira card"
+     dava 3,0-3,4 recordes por carreira em MÉDIA — ruído, deixaria de ser
+     marco. Restringir a só a 2ª metade (luta>=12) não bastou sozinho:
+     75-78% das carreiras batem pelo menos 1 recorde ali, ainda comum se
+     repetir. Conserto: dispara UMA vez só por carreira, no PRIMEIRO
+     recorde que a luta 12 em diante bate (`bonusNoiteMarco` trava,
+     nunca mais dispara na mesma carreira) — st.bonusNoite continua
+     sendo atualizado TODA luta, sem trava, então relatório final e card
+     compartilhável sempre mostram o recorde VERDADEIRO, mesmo que ele
+     seja batido de novo depois deste card. */
+  if(fightNo>=12&&!st.bonusNoiteMarco&&st.bonusNoite.luta===fightNo){
+    st.bonusNoiteMarco=true;
+    st.momentos.push(criarMomento("bonusNoite",FRASE_BONUS_NOITE(me.name,opp.name),opp,r));
+  }
+  /* Card de "número 1 da tabela" (2026-09-11) — posicaoDivisao() é a
+     posição na tabela INTEIRA que a ficha já mostra (não o RANKING
+     oficial de campeão+15, ver "Campeão nomeado" no LEIA-ME); reusa o
+     mesmo número, sem calibrar nada. Medido: 66,8%/67,6% das carreiras
+     (leve/pesado) chegam ao nº1 em algum momento, mediana na luta
+     15-16 — frequência parecida com "cinturao" (60,6%) e, como é flag
+     que trava (nunca dispara 2x na mesma carreira), continua marco
+     mesmo sendo comum. */
+  if(!st.topoDivisaoAlcancado){
+    const posAtual=posicaoDivisao();
+    if(posAtual&&posAtual.n===1){
+      st.topoDivisaoAlcancado=true;
+      st.momentos.push(criarMomento("topoDivisao",FRASE_TOPO_DIVISAO(me.name,posAtual.de),opp,r));
+    }
+  }
   /* upset compara com quem o jogador ERA antes de vencer — standingPre, não
      st.standing (que essa altura do won já subiu). Usar o pós-luta fazia
      "vitória sobre favorito" quase nunca disparar: o próprio salto de
@@ -5552,9 +5623,11 @@ function finishFight(opp,r,titleFight){
      vitória ou derrota — não entra em followerDelta() (função pura,
      testada isolada) pra não misturar mecânica do motor com item de
      compra opcional. */
-  const delta=Math.round(followerDelta(st.followers,hype,won,st.standing)*(st.casaComprada?CASA_FOLLOWER_MULT:1));
+  const delta=Math.round(followerDelta(st.followers,hype,won,st.standing)
+    *(st.casaComprada?CASA_FOLLOWER_MULT:1)*(st.consultoriaAtiva?CASA_FOLLOWER_MULT:1));
   st.followers=Math.max(120,st.followers+delta);
   st.peakFollowers=Math.max(st.peakFollowers,st.followers);
+  st.consultoriaAtiva=false;   // pontual — consumida nesta luta, precisa comprar de novo
   st.lastDelta=delta;
   const ph=document.getElementById("phone");
   if(ph){

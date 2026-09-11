@@ -771,34 +771,44 @@ casos) e casa (delta de seguidores de uma luta batendo com
 `CASA_FOLLOWER_MULT`, mesmo `r`/mesmo `rng` reseedado nos dois lados
 pra isolar só o efeito do item). Ambos provados com dente.
 
-### Item recorrente (proposta, não implementada)
+### Item recorrente — RESOLVIDO (2026-09-11)
 
 Achado jogando: os quatro itens acima são compra única — depois da
 luta 10 (aproximadamente, com os quatro compráveis) o jogador já tem
-tudo e o dinheiro perde função pro resto da carreira. Falta pelo menos
-1 item que se compre DE NOVO, consumindo dinheiro continuamente.
+tudo e o dinheiro perde função pro resto da carreira.
 
-**Proposta: "Consultoria de mídia"**, recorrente, comprável a cada
-luta em que o jogador tiver o preço em caixa. Efeito: boost PONTUAL em
-`followerDelta` só NAQUELA luta (não permanente, ao contrário de "casa
-melhor") — reaproveita a mesma alavanca já medida e calibrada acima,
-então a medição é uma adaptação direta (mesmo cuidado com composição:
-medir o efeito em seguidores ao fim da carreira, não só o multiplicador
-isolado da luta).
+**"Consultoria de mídia"**, `CUSTO_CONSULTORIA=24000`, recorrente —
+comprável de novo a cada luta em que o jogador tiver o preço em caixa
+(`recorrente:true` em `LOJA_ITENS`, painel mostra "Ativa para a
+próxima luta" em vez de "Adquirido" enquanto ativa, e volta a mostrar
+o botão Comprar depois que a luta consome o efeito). Efeito: boost
+PONTUAL em `followerDelta`, só NAQUELA luta — reaproveita o MESMO
+`CASA_FOLLOWER_MULT` de "Casa melhor" (nenhum multiplicador novo pra
+calibrar), só que consumido em vez de permanente.
 
 Não pisa no território já descartado ("Segundo técnico", que mexia em
 treino/vitória) — é economia/fama, mesma família de "casa melhor" e
 "empresário", só que recorrente em vez de permanente.
 
-**Muda a curva de renda calibrada?** Não deveria — `RENDA_BASE` e o
-ganho por `standing` continuam os mesmos; isto só abre mais um DESTINO
-pro dinheiro que já existe, não uma fonte nova. O único efeito lateral
-esperado é o jogador ter menos sobra pra guardar rumo ao próximo item
-permanente ainda não comprado, se decidir gastar em consultoria — é
-escolha de jogador, não descalibração. Precisa medir se essa
-competição por caixa atrasa a mediana de acesso aos outros itens
-(mesmo protocolo do `CUSTO_TREINADOR`/`CUSTO_EQUIPAMENTO`) antes de
-fechar o preço.
+**Preço medido, mesmo protocolo de "Casa melhor"** (400 carreiras/
+preço, bot guloso comprando toda vez que tem caixa, `candidatos()`/
+`simulateFight()`/`finishFight()` reais, cuidado de medir o efeito
+ACUMULADO em seguidores no fim, não o multiplicador isolado — mesma
+armadilha de composição já documentada acima): 10000 rende 18,3
+compras/carreira e +21,5% de seguidores — empata com o efeito
+PERMANENTE de "Casa melhor", preço baixo demais, o item ficaria
+redundante. 24000 (mesmo preço do "Empresário", o mais barato dos 4
+originais) rende 7,8 compras/carreira e +9,5% — menos da metade do
++21% de "Casa melhor", não compete com ele, e ainda dá pra comprar
+bastante ao longo da carreira mesmo depois dos outros 4 itens
+levados, resolvendo o "dinheiro perde função depois da luta 10".
+Escolhido 24000. `node testar.js loja` cobre o consumo (1 luta só,
+precisa comprar de novo) e o multiplicador (é o mesmo `CASA_FOLLOWER_MULT`,
+não um número novo).
+
+**Não mudou a curva de renda calibrada** — `RENDA_BASE` e o ganho por
+`standing` continuam os mesmos; isto só abriu mais um DESTINO pro
+dinheiro que já existe, não uma fonte nova.
 
 ## Regra geral: restrição negativa no prompt não é garantia
 
@@ -1412,6 +1422,65 @@ parágrafo acima não apareceu nesta amostra).
 testar `AI_URL` com `curl` direto contra o endpoint — não presumir que o
 alias antigo continua respondendo só porque é "o mesmo projeto".
 
+**4ª ocorrência (2026-09-11), causa numa categoria à parte das três
+anteriores — bloqueio LOCAL que nunca gera `ia_null`.** "IA ignora a
+resposta" de novo, descartadas as três causas já catalogadas (`AI_URL`
+correto e confirmado com `curl`; `dilemaPausadoAte`/`aiPausadoAte`
+separados, julgar não respeita pausa nenhuma; as duas frases benignas já
+testadas antes continuam sem bater no regex). Achado testando o regex
+direto: `CONTEUDO_INSEGURO` disparava em vocabulário de ROTINA de MMA —
+"corte feio na perna", "cortei a mão treinando", "corte no braço" — não
+automutilação nenhuma, só descrição comum de lesão de treino/luta.
+Medido contra produção: **5 de 12 respostas plausíveis de dilema
+bloqueadas (41,7%)**, todas mencionando corte de luta, zero conteúdo
+inseguro de verdade.
+
+**Por que as três investigações anteriores nunca acharam isto: o
+bloqueio acontece em `conteudoInseguro(txt)` (linha antes de chamar
+`ai()`, ver "Conteúdo inseguro no dilema" abaixo) — se disparar, a IA
+nunca é chamada, e `evento("ia_null",...)` só existe DENTRO de `ai()`/
+`tentarChamadaIA()`. Esse caminho de fallback não é um dos motivos
+que a instrumentação enumera (`sem_url`, `desligado`, `pausado`, `429`,
+`erro_permanente`, `erro_transitorio`, `rede`) — é um OITAVO caminho,
+silencioso, que não aparece em nenhuma contagem de `ia_null` por
+construção. A mesma lacuna existe no lado pós-chamada
+(`conteudoInseguro(jBruto.desfecho)` em `aplicarDilema()`) — um desfecho
+real da IA descartado por esse motivo também não gera `ia_null`. Quem
+for investigar "IA ignora a resposta" de novo: **rodar o texto do
+jogador direto contra `CONTEUDO_INSEGURO` é passo obrigatório antes de
+suspeitar de circuito ou rede** — não tem evento que aponte pra cá
+sozinho.
+
+Regex estreitado (ver comentário em cima da constante, `index.html`) —
+mãos/braços/pernas/dedos/membros só disparam junto de "fora"; pulso/veia
+continuam disparando sem isso; reflexivo "me/se corto" cobre o caso sem
+parte do corpo. Trade-off aceito e documentado no código: "eu corto meus
+braços" sem "fora" nem reflexivo deixa de disparar por aqui.
+
+**Remedido o lado da segurança depois do conserto (mesmo dia)**: 7
+categorias inseguras (automutilação explícita ×2 — pulsos e reflexivo,
+eufemismo sem palavra-gatilho, violência a terceiro com verbo fora do
+léxico do regex, ameaça vaga, sexual não consensual, autolesão em
+inglês) + 4 controles de trash talk normal, contra produção. Só as 2
+automutilações explícitas em português continuam pegas pelo regex LOCAL
+(pulsos/reflexivo, exatamente o que o conserto preservou de propósito);
+as outras 5 passam pro `julgar` — nas 5, a IA devolveu desfecho neutro,
+sem narrar detalhe gráfico, sem vazar menção a filtro/moderação (mesmo
+padrão da rodada 2 antiga, 7/7). Os 4 controles de hype: nenhum
+bloqueado, nenhum neutralizado à toa. **Nota**: as frases exatas das
+rodadas 1/2 originais nunca foram commitadas (só categoria + contagem
+ficaram registradas aqui) — esta remedição reconstrói uma frase por
+categoria, mesmo espírito, não é comparação char-a-char com o texto
+original.
+
+**Achado à parte, não corrigido nesta leva**: duas das 5 respostas
+neutras (sexual não consensual, autolesão em inglês) devolveram o
+MESMO texto literal ("Ele mudou de assunto e ninguém insistiu.") —
+mesma classe de assinatura de filtro que já motivou dar 4 exemplos de
+tom ao prompt em vez de 1 frase pra copiar (ver "Conteúdo inseguro no
+dilema" abaixo). Amostra de 2 é pouco pra agir; registrado pra quem for
+remedir com N maior.
+
 **`aiVivo` compartilhado ficou perigoso quando evento parou de ter
 fallback (2026-09-07).** `aiVivo=false` sempre existiu como desligamento
 PERMANENTE (dentro da mesma carreira) pra `feed`/`dilema`/`julgar` — e
@@ -1636,6 +1705,51 @@ frase certos.
 
 ```bash
 node testar.js momentos   # cada gatilho na hora certa, uma vez só, sem rede
+```
+
+**Dois gatilhos novos (2026-09-11): trabalho que já existia sem card
+nenhum.** `PENDENCIAS.md` "onde desperdiça trabalho já feito" apontou
+dois números que a ficha já calculava (ou o dataset já media) sem virar
+momento: `st.bonusNoite` (recorde de hype da carreira, existia desde a
+leva anterior, só aparecia no relatório final) e `posicaoDivisao()`
+(posição na tabela INTEIRA, a mesma que a ficha mostra como "#N de M" —
+não é o `RANKING` oficial de campeão+15, ver "Campeão nomeado" acima;
+as duas seções da ficha convivem sem citar número uma da outra, isto
+não muda essa convivência).
+
+Medido ANTES de decidir o gatilho (mesmo protocolo desta seção, 500
+carreiras/divisão, estratégia "parelho" fixa, `candidatos()`/
+`simulateFight()`/`finishFight()` reais):
+
+| gatilho testado | resultado | decisão |
+|---|---|---|
+| topoDivisao (nº1 da tabela, 1ª vez) | 66,8%/67,6% das carreiras (leve/pesado), mediana luta 15-16 | vira card — trava em `st.topoDivisaoAlcancado`, mesma cadência de "cinturao" (60,6%) |
+| bonusNoite, TODO recorde vira card | 3,4/3,0 recordes por carreira em média | descartado — ruído, não é marco |
+| bonusNoite, só recordes da 2ª metade (luta≥12) | 78%/75% das carreiras batem ≥1 | ainda comum, descartado sozinho |
+| bonusNoite, 1º recorde da 2ª metade, TRAVADO (1x só) | por definição, ≤1/carreira | escolhido |
+
+`bonusNoite` trava em `st.bonusNoiteMarco` — dispara só no PRIMEIRO
+recorde de hype a partir da luta 12, nunca de novo na mesma carreira.
+`st.bonusNoite` (o número de verdade) continua sendo atualizado TODA
+luta, sem trava nenhuma — o relatório final e o card compartilhável
+sempre mostram o recorde VERDADEIRO, mesmo que ele seja batido de novo
+depois do card já ter aparecido uma vez.
+
+**`bonusNoite` é o de MENOR prioridade em `ORDEM_MOMENTO`, descoberto
+escrevendo o próprio teste de regressão.** Um 18-0 na luta 18 também é,
+por definição, a primeira vez que `st.bonusNoite` existe (objeto começa
+null) — então testar "18-0 dispara card de raro" quebrou depois de
+`bonusNoite` entrar no meio da lista de prioridade: as duas condições
+bateram na MESMA luta, e a colisão escolhia a errada. Corrigido movendo
+`bonusNoite` pro fim de `ORDEM_MOMENTO` — qualquer outro tipo (raro
+incluso) é sempre o fato mais especial quando colide.
+
+`topoDivisao` entra na mesma faixa alta que `estreia` (é um marco de
+carreira, não destaque de uma luta só) — trava permanente, sem volta,
+mesmo padrão de `estreouMainCard`.
+
+```bash
+node testar.js loja   # consultoria de mídia: consumo de 1 luta, mesmo CASA_FOLLOWER_MULT
 ```
 
 ---

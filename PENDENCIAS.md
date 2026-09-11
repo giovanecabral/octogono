@@ -1035,6 +1035,71 @@ sempre `true`), 3 testes caíram, restaurado.
 Detalhe completo em `LEIA-ME.md` "Contas" → "Formulário de conta
 redesenhado".
 
+## 28. Trabalho já feito sem virar momento visível — RESOLVIDO PARCIAL (2026-09-11)
+
+Leitura crítica pedida ("onde o jogo desperdiça trabalho já feito?")
+apontou dois números que já existiam, medidos, sem aparecer como
+momento: `st.bonusNoite` (recorde de hype, só no relatório final) e a
+posição na tabela inteira (`posicaoDivisao()`, só texto pequeno da
+ficha). Implementados como card de momento — ver `LEIA-ME.md` "Card de
+momento" pro protocolo de medição (frequência de cada um ANTES de
+decidir o gatilho, mesmo cuidado de upset/raro) e o resultado.
+
+**Correção ao vivo, achado verificando antes de implementar**: a
+leitura original também listava "unificar o cinturão" como sem card —
+**não procede**. `finishFight()` já empurra `criarMomento("cinturao",
+FRASE_UNIFICACAO(...),...)` na unificação, desde a leva do cinturão
+interino (2026-09-05) — não fazia sentido reconstruir o que já existe.
+Só os outros dois entraram nesta leva.
+
+**Item recorrente da loja** (mesma leitura crítica, "faz o jogo mais
+dinâmico"): "Consultoria de mídia" implementado — ver item na seção
+"Loja" do `LEIA-ME.md`.
+
+**Pronto quando:** os outros dois pontos da leitura crítica (mundo
+congelado, compressão de fã) — ver itens 29 e 30 abaixo — forem
+decididos. Ficam para depois do lançamento por pedido explícito.
+
+## 29. Mundo congelado ao redor do jogador — PRIORIDADE Nº1 PÓS-LANÇAMENTO
+
+Da leitura crítica pedida sobre o jogo como produto (2026-09-11):
+`RANKING`/campeão nomeado/rotação de contender só se movem quando O
+JOGADOR luta — nenhuma carreira de NPC é simulada (já documentado em
+LEIA-ME.md "Campeão nomeado": "é estático"). Ninguém sobe, ninguém cai,
+ninguém perde o cinturão pro lado enquanto o jogador não luta.
+
+Maior alavanca de dinamismo identificada, e a mais cara: simular
+carreira alheia a cada luta do jogador é escopo de semana+, mexe em
+balanceamento (RANKING recalculado, possível feed de notícia, efeito
+em standing/economia a medir do zero). Decidido explicitamente: fica
+para depois do lançamento. Registrado aqui pra não se perder.
+
+**Pronto quando:** alguém decidir atacar isso e tiver medido, antes de
+escrever código, o que "carreira de NPC" significa em termos de custo
+computacional (a ficha já avalia 1.527 lutadores em 18 simulações cada
+no boot — rodar isso de novo, ou uma versão mais barata, a cada luta do
+jogador, precisa de orçamento de performance definido antes).
+
+## 30. Fã (escala 0-10) comprime no meio — aguardando medir se importa
+
+Item 7 (acima) já mediu: p40 a p60 de fã é só 1 ponto de diferença
+(6,58→7,60), contra 4,82-9,96 do p10 ao p99 — carreira mediana não se
+distingue em fã, ao contrário de seguidores (que separa bem até no
+meio). Fechado na hora como "não é bug, é a escala" — decisão que
+segue de pé — mas a leitura crítica de 2026-09-11 reabriu a pergunta
+por outro ângulo: vale a pena redesenhar a curva?
+
+**Decidido explicitamente: NÃO redesenhar ainda.** Falta o dado que
+decide se isso importa — quanto o jogador de fato OLHA o medidor de fã
+durante a carreira (contra seguidores, que já se sabe que é a métrica
+mais visível/compartilhada, ver item 7). Redesenhar uma escala que
+ninguém olha não muda nada pro jogador, só gasta um dia de trabalho.
+
+**Pronto quando:** alguém medir uso real (analytics de quanto tempo a
+barra de fã fica visível, ou perguntar direto a jogadores) e decidir,
+com esse número em mãos, se o redesenho (não-linear, mais banda no
+miolo) vale a pena. Sem essa medição, não mexer.
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):

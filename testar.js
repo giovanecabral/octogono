@@ -2025,6 +2025,52 @@ function testarMomentos() {
     passo("upset NÃO dispara antes da luta 6, mesmo com diferença de rating grande (piso)",
       !st.momentos.some(m=>m.tipo==="upset"));
 
+    /* --- número 1 da tabela: posicaoDivisao() só precisa de LADDER (pro
+       tamanho) e st.standing — reservado da 1ª vitória, sem RANKING/ROSTER
+       nenhum. Dispara só a 1ª vez (mesmo padrão de estreia/cinturao). */
+    LADDER=new Array(236);
+    st=stBase(); fightNo=10; st.fightNo=10; st.standing=1; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("standing no topo (posicaoDivisao().n===1) dispara topoDivisao",
+      st.momentos.some(m=>m.tipo==="topoDivisao"));
+    const qtdTopo=st.momentos.filter(m=>m.tipo==="topoDivisao").length;
+    fightNo=11; st.fightNo=11; st.standing=1;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("continuar no topo NÃO dispara topoDivisao de novo — só a 1ª vez",
+      st.momentos.filter(m=>m.tipo==="topoDivisao").length===qtdTopo);
+
+    st=stBase(); fightNo=10; st.fightNo=10; st.standing=.5; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("standing no meio da tabela NÃO dispara topoDivisao",
+      !st.momentos.some(m=>m.tipo==="topoDivisao"));
+
+    /* --- melhor atuação (bônus da noite): medido antes de escrever (ver
+       comentário da constante em index.html) — "todo recorde vira card"
+       dava 3+ cards por carreira, ruído. Só dispara 1x, no 1º recorde a
+       partir da luta 12; st.bonusNoite (o número de verdade, sem trava)
+       continua subindo depois disso. */
+    st=stBase(); fightNo=5; st.fightNo=5; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"4:00"},false);
+    passo("recorde de hype ANTES da luta 12 NÃO dispara bonusNoite",
+      !st.momentos.some(m=>m.tipo==="bonusNoite"));
+
+    /* fightNo múltiplo de 5 (15, depois 20): cai no ramo do DILEMA em
+       finishFight(), não no de sortearRaro() — isola o gatilho sob teste
+       do sorteio de RARE, que compete pelo mesmo card (ver comentário da
+       constante) e dependeria do estado de rng/rareUsed acumulado pelos
+       testes anteriores neste mesmo arquivo. */
+    st=stBase(); fightNo=15; st.fightNo=15; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"4:00"},false);
+    passo("1º recorde de hype a partir da luta 12 dispara bonusNoite",
+      st.momentos.some(m=>m.tipo==="bonusNoite"));
+    const hypeCard=st.bonusNoite.hype;
+    fightNo=20; st.fightNo=20; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{[opp.name]:2},round:1,clock:"4:00"},false);
+    passo("2º recorde (mais quedas, hype maior) NÃO dispara um 2º card",
+      st.momentos.filter(m=>m.tipo==="bonusNoite").length===1);
+    passo("mas st.bonusNoite (o número de verdade, sem trava) continua subindo",
+      st.bonusNoite.hype>hypeCard);
+
     /* --- lesão vencida: só a primeira vitória com a lesão ativa */
     st=stBase(); st.fightNo=5;
     const box=document.getElementById("caixaLesaoTeste");
@@ -3316,6 +3362,51 @@ function testarLoja() {
       deltaComCasa>deltaSemCasa && deltaSemCasa>0);
     passo("casa melhor: multiplicador bate com CASA_FOLLOWER_MULT (dentro de arredondamento)",
       Math.abs(deltaComCasa-Math.round(deltaSemCasa*CASA_FOLLOWER_MULT))<=1);
+
+    /* Consultoria de mídia: item RECORRENTE — precisa comprar de novo toda
+       vez (não "Adquirido" pra sempre), efeito só na luta em que foi
+       comprada, reusa o MESMO CASA_FOLLOWER_MULT (nenhum número novo). */
+    fightNo=6; rng=mulberry32(1); rareUsed=new Set();
+    st=stBase(); st.consultoriaAtiva=false;
+    finishFight(opp,rVit,false);
+    const deltaSemConsultoria=st.followers-10000;
+
+    fightNo=6; rng=mulberry32(1); rareUsed=new Set();
+    st=stBase(); st.consultoriaAtiva=true;
+    finishFight(opp,rVit,false);
+    const deltaComConsultoria=st.followers-10000;
+
+    passo("consultoria: delta de seguidores maior COM o item do que sem",
+      deltaComConsultoria>deltaSemConsultoria && deltaSemConsultoria>0);
+    passo("consultoria: multiplicador é o MESMO CASA_FOLLOWER_MULT (dentro de arredondamento)",
+      Math.abs(deltaComConsultoria-Math.round(deltaSemConsultoria*CASA_FOLLOWER_MULT))<=1);
+    passo("consultoria: consumida na luta — st.consultoriaAtiva volta a false",
+      st.consultoriaAtiva===false);
+
+    // painel: comprado() é true logo após comprar, mas mostra rótulo
+    // DIFERENTE de "Adquirido" e some (volta a comprável) depois da luta
+    st.dinheiro=CUSTO_CONSULTORIA; st.consultoriaAtiva=false;
+    abrirPainelTreinador();
+    p=document.getElementById("painelTreinador");
+    linhas=itensDe(p);
+    botaoDe(linhas,"Consultoria de mídia").onclick();
+    passo("consultoria: comprar desconta o preço", st.dinheiro===0);
+    p=document.getElementById("painelTreinador");
+    linhas=itensDe(p);
+    const linhaConsult=linhas.find(l=>l.children[0].innerHTML==="Consultoria de mídia");
+    passo("consultoria: ATIVA mostra rótulo próprio, não 'Adquirido' (é recorrente, não permanente)",
+      linhaConsult.children.some(c=>c.innerHTML==="✓ Ativa para a próxima luta") &&
+      !linhaConsult.children.some(c=>c.innerHTML==="✓ Adquirido"));
+
+    fightNo=6; rng=mulberry32(1); rareUsed=new Set();
+    st.followers=10000; st.fightNo=6;
+    finishFight(opp,rVit,false);       // consome a consultoria
+    st.dinheiro=CUSTO_CONSULTORIA;
+    abrirPainelTreinador();
+    p=document.getElementById("painelTreinador");
+    linhas=itensDe(p);
+    passo("consultoria: depois de consumida, volta a aparecer o botão Comprar (recomprável)",
+      !!botaoDe(linhas,"Consultoria de mídia") && !botaoDe(linhas,"Consultoria de mídia").disabled);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
