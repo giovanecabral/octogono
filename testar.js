@@ -2901,6 +2901,91 @@ function testarCompartilhar() {
       chamadasDesenhar===1);
 
     globalThis.__cliquesDownload = chamadasDesenhar; // exportado só pra clareza no log
+
+    /* ---------------------------------------------------------------
+       Achado jogando (2026-09-11): "a duplicação voltou". O teste acima
+       só prova que compartilhar() se protege quando CHAMADA direto — não
+       prova que os 3 caminhos de verdade (botão do painel de momentos,
+       botão do fim de carreira, e a miniatura clicável/copiável) estão
+       fiados certo. Daqui pra baixo roda a FIAÇÃO real —
+       abrirPainelMomentos()/screenReport() de verdade, achando o botão
+       pelo texto renderizado, não reconstruindo um onclick equivalente. */
+    function acharBotao(node,texto){
+      if(!node||!node.children)return null;
+      for(const c of node.children){
+        if(c.tagName==="button"&&c.innerHTML===texto)return c;
+        const achado=acharBotao(c,texto);
+        if(achado)return achado;
+      }
+      return null;
+    }
+    function acharPorClasse(node,cls){
+      if(!node||!node.children)return null;
+      for(const c of node.children){
+        if(c.className===cls)return c;
+        const achado=acharPorClasse(c,cls);
+        if(achado)return achado;
+      }
+      return null;
+    }
+
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38,stance:"Orthodox"};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    fightNo=22; SEED=12345; picks=[]; ROSTO=null; MODO="normal";
+    st={treino:{},eventoMod:{},campHist:{},wins:15,losses:7,finishes:9,streakW:2,streakL:0,
+        bestBeaten:.8,bestWin:"Rival Bravo",title:true,standing:.9,peak:.9,events:3,koLosses:1,
+        kdTaken:2,kdGiven:5,fightNo:22,fan:8,followers:500000,peakFollowers:520000,longestW:6,
+        lostBeltFast:false,rares:["Fora da curva"],momentos:[
+          {tipo:"cinturao",frase:"Levantou o cinturão.",cartel:"15-7",luta:14,
+           adversario:"Rival",resultado:"Decisão · round 5 5:00",posicao:"#1 de 236"}
+        ],disputaLiberada:false,defesas:2,exCampeao:null,foiCampeao:true,lesao:null,dinheiro:0};
+    fought=new Set(); rareUsed=new Set();
+
+    /* desenhar de verdade precisa de canvas/fonte reais que o ambiente
+       falso não tem — troca pela mesma técnica de 40 linhas acima, só que
+       reatribuindo o binding GLOBAL (as duas telas chamam pelo nome, sem
+       receber o desenhador por parâmetro — screenReport() nem tem esse
+       parâmetro). O que se prova aqui é a FIAÇÃO (o botão certo, achado no
+       DOM de verdade, chamado 2x), não o desenho em si. */
+    let chamadasCard=0,chamadasMomento=0;
+    desenharCard=async(g)=>{chamadasCard++;return{toBlob:(cb)=>cb({fake:"blob-card"})};};
+    desenharCardMomento=async(m)=>{chamadasMomento++;
+      return{toBlob:(cb)=>cb({fake:"blob-momento"}),toDataURL:()=>"data:image/png;base64,fake"};};
+
+    // ---------- caminho 1 e 3: painel de momentos ----------
+    await abrirPainelMomentos();
+    const painel=document.getElementById("painelMomentos");
+    const botaoPainel=acharBotao(painel,"Salvar imagem");
+    passo("caminho 1: achou o botão 'Salvar imagem' de verdade (fiação real de abrirPainelMomentos, não onclick reconstruído)",
+      !!botaoPainel);
+    const miniatura=acharPorClasse(painel,"momento-mini");
+    passo("miniatura NÃO é <canvas>/<img> — sem alvo pro 'Copiar imagem'/'Salvar imagem' nativo do navegador",
+      !!miniatura && miniatura.tagName!=="canvas" && miniatura.tagName!=="img");
+
+    chamadasMomento=0;
+    const q1=botaoPainel.onclick(), q2=botaoPainel.onclick();  // 2 cliques reais, mesmo botão
+    await Promise.all([q1,q2]);
+    passo("caminho 1 (botão real do painel): 2 cliques seguidos geram só 1 desenho",
+      chamadasMomento===1);
+
+    chamadasMomento=0;
+    const q3=miniatura.onclick(), q4=botaoPainel.onclick();    // miniatura + botão, mesmo card
+    await Promise.all([q3,q4]);
+    passo("caminho 3 (miniatura + botão do mesmo card): também gera só 1 desenho",
+      chamadasMomento===1);
+
+    // ---------- caminho 2: fim de carreira ----------
+    screenReport();
+    const botaoFim=acharBotao(app,"Compartilhar");
+    passo("caminho 2: achou o botão 'Compartilhar' de verdade (fiação real de screenReport)",
+      !!botaoFim);
+
+    chamadasCard=0;
+    const q5=botaoFim.onclick(), q6=botaoFim.onclick();
+    await Promise.all([q5,q6]);
+    passo("caminho 2 (botão real do fim de carreira): 2 cliques seguidos geram só 1 desenho",
+      chamadasCard===1);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -2922,8 +3007,13 @@ function testarCompartilhar() {
       console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
     }
     console.log(`  ${cinza("downloads efetivamente disparados: " + cliques.length + ", chamadas a navigator.share: " + chamadasShare)}`);
-    ok = ok && cliques.length <= 1;
-    console.log(`  ${cliques.length<=1?verde("ok   "):vermelho("fora ")} no máximo 1 download real disparado (a(href).click())`);
+    /* 4 cenários independentes agora (a chamada isolada original + os 3
+       caminhos reais abaixo), 2 cliques cada, 1 download por cenário —
+       4 é o número CERTO, não um vazamento. Duplicação de verdade
+       apareceria como múltiplo de 4 (8, 12...) ou downloads sobrando
+       depois de contar os cenários que ainda não rodaram nesta linha. */
+    ok = ok && cliques.length === 4;
+    console.log(`  ${cliques.length===4?verde("ok   "):vermelho("fora ")} 4 cenários, 1 download cada — nenhum duplicado (${cliques.length} no total)`);
     return ok && passos.length > 0;
   });
 }

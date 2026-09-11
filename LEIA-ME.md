@@ -1784,6 +1784,73 @@ raciocínio de sempre aqui: estado implícito não é garantia).
 1ª terminar, com um `desenhar()` fake (não precisa mockar canvas real
 pra provar reentrância) — sem o guard, 2 downloads; com o guard, 1.
 
+**"Voltou" (2026-09-11) — não era regressão do guard, era um caminho que
+nunca esteve no escopo do conserto acima.** Reportado como dois bugs
+juntos: cópia direto na miniatura do painel de momentos devolvia a
+miniatura em 140px, ilegível; e "a duplicação voltou".
+
+**Cópia da miniatura**: a miniatura era um `<canvas>` de verdade no DOM
+(`mini.getContext("2d").drawImage(cv,0,0,thumbW,thumbH)`), existe desde
+2026-09-03 — 5 dias ANTES do conserto de duplicação acima, nunca fez
+parte do escopo dele. Botão direito → "Copiar imagem" nesse elemento lê
+o PIXEL do canvas direto, sem passar por nenhum código nosso — não tem
+`onclick` que intercepte isso, "Copiar imagem" do menu do navegador não
+é evento de JS. Duas saídas possíveis: interceptar o clique (não
+resolve — o menu de contexto ignora onclick) ou trocar o elemento por
+algo que o navegador não ofereça "Copiar/Salvar imagem" nele.
+**Escolhida a segunda**: miniatura virou `<div>` com `background-image`
+(a mesma imagem, via `canvas.toDataURL()`) — Chrome/Firefox só mostram
+esses itens de menu pra `<img>`/`<canvas>`/`<svg>`, nunca pra fundo CSS.
+Clique esquerdo na miniatura também aciona `compartilhar()`, mesmo
+caminho do botão "Salvar imagem" — atalho de UX, não a defesa (a defesa
+é não ter mais um elemento copiável ali).
+
+**Duplicação "voltando"**: investigado se o guard de `btn.disabled`
+cobre os 3 caminhos que existem — botão do painel, botão do fim de
+carreira, e o próprio menu de contexto do navegador (que devolveria o
+caso acima como um SEGUNDO arquivo, de qualidade errada, se combinado
+com o botão de verdade). **Os dois botões continuavam protegidos** — a
+suspeita de regressão não se confirmou: `node testar.js compartilhar`
+ganhou 3 cenários novos que acham o botão de VERDADE no DOM renderizado
+por `abrirPainelMomentos()`/`screenReport()` (não um `onclick`
+reconstruído à mão, que é o que o teste original fazia — por isso não
+pegava esta classe de furo antes) e clicam nele 2x, igual usuário
+rápido faria. Prova com dente: guard removido de propósito → os 3
+cenários reprovam, 8 downloads em vez de 4; guard restaurado → 4/4,
+1 download por cenário. O terceiro caminho (menu de contexto) não dá
+pra simular clique de verdade num teste sem navegador — a prova aqui é
+estrutural: a miniatura não pode ser `<canvas>`/`<img>` (checado
+direto), o que por construção tira a opção "Copiar/Salvar imagem" do
+menu nativo.
+
+**O conserto de 2026-09-08 chegou a ser deployado.** O histórico de
+deploy da Vercel (`vercel ls`) mostra produção publicada antes desta
+sessão — a mais recente ~14h antes desta conversa começar, várias
+outras 3-5 dias antes. `vercel --prod` publica o diretório inteiro (não
+um diff), e não tem motivo pra suspeitar de checkout velho — não existe
+integração de git neste projeto (sem remote), então a Vercel não marca
+cada deploy com o SHA do commit, e não dá pra confirmar isso com 100%
+de certeza só pelo `vercel inspect`. Mas a evidência direta bate: o
+guard como está commitado desde 99191e0 (2026-09-08) É o mesmo código
+testado agora, e ele protege os dois botões de verdade quando exercido
+com dente. Não foi regressão de deploy — foi um caminho (a miniatura)
+que nunca tinha entrado no escopo do primeiro conserto, existente desde
+5 dias ANTES dele.
+
+**Residual conhecido, não corrigido nesta leva**: fechar o painel de
+momentos e reabri-lo NO MEIO de um salvamento em andamento cria um
+`<button>` novo (disabled=false) pro mesmo momento, enquanto a chamada
+antiga ainda roda no botão velho (agora fora do DOM) — clicar no botão
+novo nesse intervalo estreito dispara uma 2ª `compartilhar()`
+independente, sem o guard ver a outra (são objetos `btn` diferentes).
+Janela pequena (só existe enquanto `desenharCardMomento()`/fontes
+carregam) e não é o que foi reportado — registrado aqui pra não se
+perder, não resolvido.
+
+```bash
+node testar.js compartilhar   # reentrância isolada + os 3 caminhos reais + a miniatura não é canvas/img
+```
+
 ---
 
 ## Atualizar os dados

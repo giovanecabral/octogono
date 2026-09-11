@@ -628,7 +628,8 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 .painel-momentos .vazio{color:var(--faded);font-size:13px}
 .momento-item{border:1px solid var(--rule);padding:10px 12px;margin-bottom:10px;
   display:flex;gap:12px;align-items:flex-start}
-.momento-mini{flex:none;border:1px solid var(--rule)}
+.momento-mini{flex:none;border:1px solid var(--rule);background-size:cover;
+  background-position:center;cursor:pointer}
 .momento-texto{flex:1;min-width:0}
 .momento-item .frase{font-size:13px;color:var(--ink);margin-bottom:8px}
 .momento-item .meta{font-size:11px;color:var(--faded);margin-bottom:8px}
@@ -4213,22 +4214,34 @@ async function abrirPainelMomentos(){
   }else{
     for(const m of st.momentos){
       const item=el("div","momento-item");
-      /* miniatura: o mesmo canvas do card de verdade, reduzido — sem prévia
-         o jogador só descobre o que vai postar depois de baixar. */
-      try{
-        const cv=await desenharCardMomento(m);
-        const thumbW=140,thumbH=Math.round(thumbW*CARD_H/CARD_W);
-        const mini=document.createElement("canvas");
-        mini.width=thumbW;mini.height=thumbH;mini.className="momento-mini";
-        mini.getContext("2d").drawImage(cv,0,0,thumbW,thumbH);
-        item.appendChild(mini);
-      }catch(e){/* sem prévia não impede salvar — segue sem a miniatura */}
       const texto=el("div","momento-texto");
       texto.appendChild(el("div","frase",m.frase));
       texto.appendChild(el("div","meta",`Luta ${m.luta} de ${TOTAL_FIGHTS} · ${m.cartel}`));
       const btn=el("button","btn btn-sm","Salvar imagem");
       btn.onclick=()=>compartilhar(m,btn,desenharCardMomento);
       texto.appendChild(btn);
+      /* miniatura: o mesmo canvas do card de verdade, reduzido — sem prévia
+         o jogador só descobre o que vai postar depois de baixar.
+
+         Fundo CSS, não <canvas>/<img> (2026-09-11, achado jogando: botão
+         direito → "Copiar imagem" na miniatura copiava o canvas de 140px
+         DIRETO, ilegível — o navegador lê o pixel do elemento, nunca passa
+         pelo onclick). Interceptar o clique não resolve: "Copiar imagem"
+         do menu do navegador não é evento de JS, não tem como redirecionar
+         pra outra fonte. `background-image` também não some do "Salvar
+         imagem": Chrome/Firefox só oferecem esse item de menu pra
+         <img>/<canvas>/<svg> — um <div> com fundo CSS não é destino
+         desses itens. A miniatura também aciona compartilhar() no clique
+         esquerdo, mesmo caminho do botão abaixo — atalho, não a defesa. */
+      try{
+        const cv=await desenharCardMomento(m);
+        const thumbW=140,thumbH=Math.round(thumbW*CARD_H/CARD_W);
+        const mini=el("div","momento-mini");
+        mini.style.width=thumbW+"px";mini.style.height=thumbH+"px";
+        mini.style.backgroundImage=`url(${cv.toDataURL("image/png")})`;
+        mini.onclick=()=>compartilhar(m,btn,desenharCardMomento);
+        item.appendChild(mini);
+      }catch(e){/* sem prévia não impede salvar — segue sem a miniatura */}
       item.appendChild(texto);
       box.appendChild(item);
     }
