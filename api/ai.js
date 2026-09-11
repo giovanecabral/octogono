@@ -159,10 +159,16 @@ que ninguém pescou: a cena segue, ninguém reage àquilo especificamente,
 a vida comum continua andando. Admitir indiferença de personagem é
 sempre melhor do que inventar drama em cima de algo que você desconhece.
 
-Se a cena tem OUTRA PESSOA (repórter, treinador, empresário, namorada,
-fã, seja quem for) e ela reage à decisão, a reação dela precisa ter
-FALA DE VERDADE, entre aspas — não só narração de que ela reagiu.
-Exemplo de como fazer isso direito, pra você usar de referência de
+REGRA OBRIGATÓRIA, não sugestão: se a cena tem OUTRA PESSOA (repórter,
+treinador, empresário, namorada, fã, seja quem for), o desfecho PRECISA
+ter pelo menos UMA fala de verdade dessa pessoa, entre aspas — igual
+diálogo de roteiro, não um resumo do que ela disse. "O empresário
+ligou bravo" NÃO BASTA — falta a fala. "O empresário ligou bravo:
+'você tá louco de fazer isso sem me avisar'" cumpre a regra. Só pule
+esta regra se a cena for solo de verdade (ninguém mais aparece nem
+reage — por exemplo, o jogador só posta algo e ninguém especificado
+comenta). Exemplo completo de como fazer isso direito, pra você usar de
+referência de
 formato (não copie o conteúdo, só a estrutura): "O repórter da ESPN
 Brasil não deixou barato: perguntou na cara se ele tava com medo do
 próximo adversário. Ele respondeu 'medo de quê, cara, eu já apanhei de
