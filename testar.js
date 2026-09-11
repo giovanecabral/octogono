@@ -4432,7 +4432,7 @@ function testarDilemaMecanismo() {
    resposta 1x e 2x seguidas, e o contador zerando ao receber qualquer
    resposta no meio de duas falhas de rede. */
 function testarAiVivo() {
-  console.log("\n" + cinza("aiVivo/dilema/evento: três circuitos independentes, 429 pausa com retry (só dilema/julgar), nunca desliga sem a classe certa de erro"));
+  console.log("\n" + cinza("feed/dilema/evento: três circuitos independentes, 429 pausa com retry (só dilema/julgar), nenhum desliga pra sempre"));
   const env = criarAmbiente();
   /* Retentativa em 429 (2026-09-09) usa setTimeout(...,2000) de verdade —
      o setTimeout falso de criarAmbiente() só ENFILEIRA (precisa de
@@ -4461,55 +4461,59 @@ function testarAiVivo() {
   const passos=[];
   const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
   const zerarTudo=()=>{
-    aiVivo=true; aiPausadoAte=0; falhasRedeSeguidas=0;
+    feedPausadoAte=0; feedFalhasSeguidas=0;
     eventoPausadoAte=0; eventoFalhasSeguidas=0;
     dilemaPausadoAte=0; dilemaFalhasSeguidas=0;
   };
   try{
-    /* ---------- circuito COMPARTILHADO (feed) — o único que ainda pode
-       desligar de vez. Kind trocado de "julgar" pra "feed" nesta leva:
-       julgar saiu deste circuito (ver abaixo), testar com ele aqui
-       testaria a variável errada. ---------- */
+    /* ---------- circuito PRÓPRIO do feed (2026-09-11) — até esta leva era
+       o único que desistia da carreira inteira (aiVivo=false, sem
+       religar); achado jogando (3 lutas seguidas sem linha de feed)
+       provou que "cosmético, ninguém nota" não era mais verdade. Agora
+       segue o MESMO padrão do evento: pausa, nunca desliga pra sempre. */
     zerarTudo();
     __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
     await ai("feed",{});
-    passo("feed: transitorio:false desliga aiVivo na 1ª chamada", aiVivo===false);
+    passo("feed: transitorio:false PAUSA (não existe mais desligamento permanente)",
+      feedPausadoAte>Date.now());
 
     zerarTudo();
     __filaSet([{ok:false,body:{error:"upstream",status:503,transitorio:true}}]);
     await ai("feed",{});
-    passo("feed: transitorio:true NÃO desliga aiVivo", aiVivo===true);
+    passo("feed: transitorio:true NÃO pausa (instabilidade passageira)", feedPausadoAte===0);
 
     zerarTudo();
     __filaSet([{ok:false,body:{error:"upstream",status:401}}]);
     await ai("feed",{});
-    passo("feed: transitorio AUSENTE (servidor velho) NÃO desliga aiVivo", aiVivo===true);
+    passo("feed: transitorio AUSENTE (servidor velho) NÃO pausa", feedPausadoAte===0);
 
     zerarTudo();
     __filaSet([{throw:true}]);
     await ai("feed",{});
-    passo("feed: 1ª falha de rede seguida NÃO desliga", aiVivo===true && falhasRedeSeguidas===1);
+    passo("feed: 1ª falha de rede seguida NÃO pausa ainda",
+      feedPausadoAte===0 && feedFalhasSeguidas===1);
     __filaSet([{throw:true}]);
     await ai("feed",{});
-    passo("feed: 2ª falha de rede SEGUIDA desliga", aiVivo===false);
+    passo("feed: 2ª falha de rede SEGUIDA pausa (nunca desliga pra sempre)",
+      feedPausadoAte>Date.now());
 
     zerarTudo();
     __filaSet([{throw:true}]);
     await ai("feed",{});
     __filaSet([{ok:false,body:{error:"upstream",status:503,transitorio:true}}]);
     await ai("feed",{}); // respondeu (mesmo com erro) — zera o contador
-    passo("feed: contador zera ao receber resposta de erro (não só sucesso)", falhasRedeSeguidas===0);
+    passo("feed: contador zera ao receber resposta de erro (não só sucesso)",
+      feedFalhasSeguidas===0);
     __filaSet([{throw:true}]);
     await ai("feed",{});
-    passo("feed: depois de zerar, uma falha de rede sozinha NÃO desliga", aiVivo===true);
+    passo("feed: depois de zerar, uma falha de rede sozinha NÃO pausa", feedPausadoAte===0);
 
     zerarTudo();
     const antesDe429Feed=Date.now();
     const chamadasAntes429Feed=__chamadasFetch();
     __filaSet([{ok:false,body:{error:"upstream",status:429,transitorio:true}}]);
     await ai("feed",{});
-    passo("feed: 429 NÃO desliga aiVivo (permanece true)", aiVivo===true);
-    passo("feed: 429 seta pausa no futuro", aiPausadoAte>antesDe429Feed);
+    passo("feed: 429 seta pausa no futuro", feedPausadoAte>antesDe429Feed);
     passo("feed: 429 NÃO retenta (só 1 chamada de fetch nova — retry é só dilema/julgar)",
       __chamadasFetch()===chamadasAntes429Feed+1);
     const chamadasAntesFeed=__chamadasFetch();
@@ -4523,7 +4527,8 @@ function testarAiVivo() {
     const chamadasAntesEventoPerm=__chamadasFetch();
     __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
     await ai("evento",{});
-    passo("evento: transitorio:false NÃO desliga aiVivo (circuito próprio)", aiVivo===true);
+    passo("evento: transitorio:false não mexe no circuito do feed (independente)",
+      feedPausadoAte===0);
     passo("evento: transitorio:false PAUSA eventoPausadoAte (temporário, não pra sempre)",
       eventoPausadoAte>Date.now());
     passo("evento: erro_permanente NÃO retenta (só 1 chamada nova — retry é só dilema/julgar)",
@@ -4535,8 +4540,8 @@ function testarAiVivo() {
     passo("evento: 1ª falha de rede seguida NÃO pausa ainda", eventoPausadoAte===0 && eventoFalhasSeguidas===1);
     __filaSet([{throw:true}]);
     await ai("evento",{});
-    passo("evento: 2ª falha de rede SEGUIDA pausa (não desliga aiVivo, nunca)",
-      eventoPausadoAte>Date.now() && aiVivo===true);
+    passo("evento: 2ª falha de rede SEGUIDA pausa (nunca desliga nada pra sempre)",
+      eventoPausadoAte>Date.now());
 
     const chamadasAntesEvento=__chamadasFetch();
     await ai("evento",{});
@@ -4581,8 +4586,8 @@ function testarAiVivo() {
       dilemaPausadoAte===0 && dilemaFalhasSeguidas===1);
     __filaSet([{throw:true}]);
     await ai("dilema",{});
-    passo("dilema: 2ª falha de rede SEGUIDA pausa (nunca desliga aiVivo)",
-      dilemaPausadoAte>Date.now() && aiVivo===true);
+    passo("dilema: 2ª falha de rede SEGUIDA pausa (nunca desliga nada pra sempre)",
+      dilemaPausadoAte>Date.now());
 
     // julgar falhando (rede) ATUALIZA o MESMO contador do dilema, mesmo
     // sem respeitar a própria pausa — o círculo é compartilhado, só a
@@ -4606,13 +4611,13 @@ function testarAiVivo() {
     __filaSet([{throw:true}]);
     await ai("feed",{});
     __filaSet([{throw:true}]);
-    await ai("feed",{}); // 2 falhas de feed desligam aiVivo
-    passo("cross-contaminação: 2 falhas de FEED desligam aiVivo, mas NÃO tocam dilemaFalhasSeguidas",
-      aiVivo===false && dilemaFalhasSeguidas===0 && dilemaPausadoAte===0);
+    await ai("feed",{}); // 2 falhas de feed pausam SÓ o circuito dele
+    passo("cross-contaminação: 2 falhas de FEED pausam feedPausadoAte, mas NÃO tocam dilemaFalhasSeguidas",
+      feedPausadoAte>Date.now() && dilemaFalhasSeguidas===0 && dilemaPausadoAte===0);
     __filaSet([{ok:true,body:{result:{desfecho:"ok"}}}]);
     const chamadasAntesDilCross=__chamadasFetch();
     await ai("julgar",{});
-    passo("julgar continua tentando rede mesmo com aiVivo (do feed) já false",
+    passo("julgar continua tentando rede mesmo com feedPausadoAte (do feed) já setado",
       __chamadasFetch()===chamadasAntesDilCross+1);
 
     zerarTudo();
@@ -4620,8 +4625,8 @@ function testarAiVivo() {
     await ai("dilema",{});
     __filaSet([{throw:true}]);
     await ai("dilema",{}); // 2 falhas de dilema pausam o circuito dele
-    passo("cross-contaminação inversa: 2 falhas de DILEMA pausam dilemaPausadoAte, mas NÃO tocam aiVivo/aiPausadoAte",
-      dilemaPausadoAte>Date.now() && aiVivo===true && aiPausadoAte===0);
+    passo("cross-contaminação inversa: 2 falhas de DILEMA pausam dilemaPausadoAte, mas NÃO tocam feedPausadoAte",
+      dilemaPausadoAte>Date.now() && feedPausadoAte===0);
 
     /* ---------- retry em 429 (2026-09-09), só dilema/julgar ---------- */
     // dilema: 429 na 1ª, sucesso na retentativa — devolve resultado de

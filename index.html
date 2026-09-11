@@ -1904,34 +1904,38 @@ async function sincronizarCarreirasNaNuvem(){
   }catch(e){/* sincronização falhou — localStorage continua valendo */}
 }
 
-let aiVivo=true;
 /* Timestamp (ms), não segundos: rate limit (429) é ESPERADO com tráfego
    real, não exceção — pausa com espera, não desliga a carreira inteira por
    causa de 60s ruins. 60000 é chute inicial, não medido — não sei a janela
    real do limite do OpenRouter nesse plano; se 429 continuar comum mesmo
    com a pausa, é isso que precisa remedir, não o desenho. */
-let aiPausadoAte=0;
 const AI_PAUSA_MS=60000;
-/* Falha de rede pontual (sem resposta nenhuma — servidor não respondeu, não
-   é ele dizendo "não" com um status) merece nova tentativa; a 2ª seguida
-   sem resposta já é sinal de que o caminho está inalcançável, e continuar
-   tentando paga o timeout inteiro (9,5s) em toda chamada — pior que
-   qualquer erro rápido. Zera a cada resposta recebida, mesmo de erro:
-   resposta de erro significa que a rede está de pé, só o proxy disse não. */
-let falhasRedeSeguidas=0;
 
-/* Circuito PRÓPRIO do evento (2026-09-07), nunca o compartilhado acima —
-   achado medindo 20 carreiras reais: 3/20 perderam TODOS os eventos por
-   causa de uma falha comum de rede. Antes de existir evento por IA,
-   aiVivo=false só desligava feed/dilema — imperceptível, os dois já caem
-   em molde local sem o jogador notar. Evento não tem molde local (decisão
-   explícita, sem fallback) — o mesmo desligamento que era invisível virou
-   "carreira inteira sem evento nenhum", ~15% dos jogadores por causa de
-   só 2 falhas de rede. Evento NUNCA desiste de vez: qualquer motivo que
-   desligaria o circuito compartilhado (erro_permanente, 2 falhas de rede
-   seguidas) aqui só PAUSA por AI_PAUSA_MS (mesma janela do 429 — não é
-   número novo pra justificar) e tenta de novo depois. Feed/dilema/julgar
-   continuam podendo desistir da carreira inteira; só evento não pode. */
+/* Circuito PRÓPRIO do feed (2026-09-11) — até aqui, feed era o ÚLTIMO kind
+   que ainda desistia da carreira inteira (`aiVivo=false`, sem religar):
+   2 falhas de rede seguidas OU 1 erro `transitorio:false`, e nenhuma luta
+   mais teria linha de repercussão, do início ao fim. Achado jogando — 3
+   lutas seguidas sem feed, luta 1 e 3 eram nocaute (deveriam furar o
+   throttle par/finish em `finalizarLuta()`, e furavam: a condição
+   `fightNo%2===0||finish0` estava certa, não era o bug). O bug real era
+   este: bastava 1 falha ruim bem no início da carreira pra `aiVivo` cair
+   e nunca mais voltar — o "desliga pra sempre" que já tinha sido corrigido
+   pro evento (2026-09-07) e pro dilema/julgar (2026-09-09) nunca chegou
+   no feed, porque a suposição da época ("feed é decorativo, cai em molde
+   local sem o jogador notar") continuava parecendo verdade — só que
+   deixou de ser: o jogador SENTE falta das 3 falas de torcedor depois do
+   resultado, mesmo sendo cosmético. Mesmo padrão do evento: falha vira
+   PAUSA por `AI_PAUSA_MS`, nunca desligamento permanente — feed volta
+   sozinho depois da janela, sem religar manual. */
+let feedPausadoAte=0;
+let feedFalhasSeguidas=0;
+
+/* Circuito PRÓPRIO do evento (2026-09-07) — achado medindo 20 carreiras
+   reais: 3/20 perderam TODOS os eventos por causa de uma falha comum de
+   rede, porque evento não tem molde local (decisão explícita, sem
+   fallback) — o desligamento permanente que era invisível no feed virou
+   "carreira inteira sem evento nenhum". Mesmo remédio que o feed ganhou
+   depois: PAUSA por `AI_PAUSA_MS`, nunca desligamento permanente. */
 let eventoPausadoAte=0;
 let eventoFalhasSeguidas=0;
 
@@ -1975,8 +1979,8 @@ async function ai(kind,data,ms=9500){
   }else if(ehDilema){
     if(!ehJulgar&&Date.now()<dilemaPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
   }else{
-    if(!aiVivo){evento("ia_null",{motivo:"desligado",kind});return null;}
-    if(Date.now()<aiPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
+    // só "feed" chega aqui (os outros 3 kinds têm circuito próprio, acima)
+    if(Date.now()<feedPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
   }
   return tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,true);
 }
@@ -1991,7 +1995,7 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kind,data})});
     clearTimeout(t);
-    if(ehEvento)eventoFalhasSeguidas=0; else if(ehDilema)dilemaFalhasSeguidas=0; else falhasRedeSeguidas=0;
+    if(ehEvento)eventoFalhasSeguidas=0; else if(ehDilema)dilemaFalhasSeguidas=0; else feedFalhasSeguidas=0;
     if(!r.ok){
       /* O servidor já sabe o que aconteceu — não adivinha por status HTTP
          externo (502 cobre seis coisas diferentes, ver api/ai.js). Corpo
@@ -2014,12 +2018,19 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
         }
         if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
         else if(ehDilema)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
-        else aiPausadoAte=Date.now()+AI_PAUSA_MS;
+        else feedPausadoAte=Date.now()+AI_PAUSA_MS;
         evento("ia_null",{motivo:"429",kind});
       }else if(corpo&&corpo.transitorio===false){
+        /* erro_permanente (chave, crédito, permissão) NUNCA desliga pra
+           sempre em nenhum kind agora, feed incluso (2026-09-11) — só
+           pausa. Continuar tentando de qualquer jeito, mesmo sabendo que
+           é "permanente" pro estado atual da conta, é seguro: quem
+           resolve o problema (troca a chave, recarrega crédito) resolve
+           fora do jogo, e a próxima janela de pausa já volta tentando de
+           novo sozinha, sem precisar de reload. */
         if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
         else if(ehDilema)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
-        else aiVivo=false;
+        else feedPausadoAte=Date.now()+AI_PAUSA_MS;
         evento("ia_null",{motivo:"erro_permanente",kind});
       }else evento("ia_null",{motivo:"erro_transitorio",kind});
       return null;
@@ -2035,8 +2046,8 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
       dilemaFalhasSeguidas++;
       if(dilemaFalhasSeguidas>=2)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
     }else{
-      falhasRedeSeguidas++;
-      if(falhasRedeSeguidas>=2)aiVivo=false;
+      feedFalhasSeguidas++;
+      if(feedFalhasSeguidas>=2)feedPausadoAte=Date.now()+AI_PAUSA_MS;
     }
     evento("ia_null",{motivo:"rede",kind});
     return null;
