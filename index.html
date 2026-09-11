@@ -2627,9 +2627,15 @@ function aplicarDilema(box,d,txt,jBruto){
   /* aqui a direção é direta: os números já vieram limitados pelo lim() */
   const peso=(dSeg*2.2)+(dFan*0.55)+(dDinheiro/RENDA_BASE*1.4);
   (peso>0.12?SOM.bom:peso<-0.12?SOM.ruim:SOM.evento)();
-  /* Filtra ANTES do slice: cortar frase por regex depois de truncar em 500
-     poderia deixar uma frase pela metade sem o ponto final que a divide. */
-  const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,500):"";
+  /* Filtra ANTES do slice: cortar frase por regex depois de truncar
+     poderia deixar uma frase pela metade sem o ponto final que a divide.
+     2000 (era 500, 2026-09-11): desfecho virou 6-10 frases (pedido
+     explícito, "a cena respirar") — 500 cortava no meio da 3ª/4ª frase
+     em texto normal. 2000 é rede de segurança contra resposta fugindo do
+     tamanho pedido, não um limite que a resposta normal deveria tocar —
+     a caixa (.dil-o, sem max-height) já cresce com o texto, quem rola é
+     o container de narração (`box.scrollIntoView` já existe). */
+  const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,2000):"";
   const desfecho=bruto||fraseFallback();
   box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
