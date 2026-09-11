@@ -1453,6 +1453,22 @@ async function entrarComGoogle(){
     return{ok:true}; // navegador já está saindo da página aqui
   }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
 }
+/* Reenvia o e-mail de confirmação de cadastro — mesmo caminho do Supabase
+   que criarConta() já dispara na primeira vez, chamado de novo quando o
+   link caiu no spam ou expirou. `type:'signup'` é o que distingue esse
+   reenvio do de recuperação de senha (enviarRecuperacaoSenha, outro
+   endpoint). Rate limit do próprio Supabase é esperado se a pessoa clicar
+   demais — por isso a tela trava o botão por 60s no lado do cliente
+   também, pra não bater nesse limite antes mesmo de tentar. */
+async function reenviarConfirmacaoEmail(email){
+  const sb=getSupabase();
+  if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
+  try{
+    const{error}=await sb.auth.resend({type:"signup",email});
+    if(error)return{ok:false,erro:error.message};
+    return{ok:true};
+  }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
+}
 async function sairDaConta(){
   const sb=getSupabase();
   if(!sb)return;
@@ -1517,6 +1533,8 @@ function montarFormularioConta(container){
   // fim de carreira) nunca aparecem ao mesmo tempo, mesmo padrão de
   // dilresp/dilgo.
   let modo="entrar";
+  let emailPendente=null; // e-mail aguardando confirmação — não persiste:
+  // fechar a aba e voltar cai direto no formulário normal, de propósito.
 
   function campoSenha(rotulo,idBase,autocomplete){
     const rot=el("label","campo-rot",rotulo);
@@ -1532,7 +1550,46 @@ function montarFormularioConta(container){
     return{wrap,inp};
   }
 
+  /* Trava o botão de reenvio por N segundos com contagem visível — sem
+     isso a pessoa clica várias vezes seguidas e esbarra no rate limit do
+     Supabase antes mesmo de o primeiro reenvio ter chance de chegar. */
+  function travarReenvio(btn,seg){
+    let restante=seg;
+    btn.disabled=true;
+    btn.textContent=`Reenviar e-mail (${restante}s)`;
+    const iv=setInterval(()=>{
+      restante--;
+      if(restante<=0){clearInterval(iv);btn.disabled=false;btn.textContent="Reenviar e-mail";}
+      else btn.textContent=`Reenviar e-mail (${restante}s)`;
+    },1000);
+  }
+
+  function renderConfirmacao(){
+    container.innerHTML="";
+    const email=emailPendente;
+    container.appendChild(el("h4","","Confirme seu e-mail"));
+    const p=el("p","hint","");
+    p.append("Enviamos um link para ",el("b","",email),". Abra o link, volte aqui e entre com sua senha.");
+    const aviso=el("p","hint","Não achou? Confere a caixa de spam.");
+    const msg=el("p","hint","");
+    const btnEntrar=el("button","btn","Já confirmei — entrar");
+    btnEntrar.onclick=()=>{
+      emailPendente=null;modo="entrar";render();
+      const inp=document.getElementById("conta-email");
+      if(inp)inp.value=email;
+    };
+    const btnReenviar=el("button","btn btn-ghost","Reenviar e-mail");
+    btnReenviar.onclick=async()=>{
+      btnReenviar.disabled=true;msg.className="hint";msg.textContent="Reenviando…";
+      const r=await reenviarConfirmacaoEmail(email);
+      if(r.ok){msg.className="hint msg-ok";msg.textContent="E-mail reenviado.";travarReenvio(btnReenviar,60);}
+      else{msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnReenviar.disabled=false;}
+    };
+    container.append(p,aviso,btnEntrar,btnReenviar,msg);
+  }
+
   function render(){
+    if(emailPendente){renderConfirmacao();return;}
     container.innerHTML="";
     const msg=el("p","hint","");
     const inpEmail=el("input");inpEmail.type="email";inpEmail.placeholder="seu@email.com";inpEmail.id="conta-email";inpEmail.autocomplete="email";
@@ -1583,7 +1640,7 @@ function montarFormularioConta(container){
         btnAcao.textContent="Criando conta…";
         const r=await criarConta(email,senha);
         if(!r.ok){msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnAcao.textContent="Criar conta";trava(false);return;}
-        if(r.precisaConfirmar){msg.className="hint msg-ok";msg.textContent="Conta criada. Confirma seu e-mail pra entrar.";btnAcao.textContent="Criar conta";trava(false);}
+        if(r.precisaConfirmar){emailPendente=email;render();}
         else setTimeout(()=>location.reload(),1200);
       }
     };
