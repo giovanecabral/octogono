@@ -371,6 +371,102 @@ depois de subir. O deploy é do dono do projeto, não de quem edita o arquivo.
   roda sem rede, então não vê nada disso — é cego a essa classe de
   divergência por construção, com ou sem lesão. Ver `PENDENCIAS.md`.
 
+### Desfecho mais longo (2026-09-11)
+
+Pedido explícito: a consequência da escolha do jogador (`desfecho`, campo
+do `julgar`) é a parte mais interessante do jogo e estava curta demais —
+2 a 4 frases, limite herdado de quando precisava caber no card
+compartilhável. `j.desfecho` NUNCA aparece em nenhum card de imagem (só
+inline, na caixa `.dil-o` da narração — conferido antes de mexer, os
+cards de momento usam frases template próprias, não o texto da IA) —
+o limite de tamanho não tinha mais motivo pra existir.
+
+Prompt (`api/ai.js`, `julgar`) mudou de "2 a 4 frases" pra "6 a 10
+frases", com duas travas escritas explicitamente contra os dois jeitos
+de estragar espaço extra: proibido abrir resumindo/repetindo a decisão
+que o jogador já escreveu (a cena começa direto na consequência) e
+proibido "encher linguiça" — cada frase nova tem que adiantar a cena
+(reação de alguém, detalhe, complicação, virada), nunca repetir o mesmo
+fato com outras palavras. O ramo de conteúdo inseguro fica de fora da
+regra nova, de propósito (documentado no próprio prompt): esticar um
+desfecho vazio até 10 frases chamaria mais atenção que um curto, não
+menos — contradiria a razão de ser desse ramo.
+
+Cliente: `.dil-o` nunca teve `max-height` (cresce com o texto,
+container de narração já rola — `box.scrollIntoView()` já existia).
+Só o cap de exibição em JS precisou subir, de 500 pra 2000 caracteres
+— 500 cortava no meio da 3ª/4ª frase de um desfecho normal agora; 2000
+é rede de segurança contra resposta fugindo do tamanho pedido, não um
+teto que o uso normal deveria tocar.
+
+**Custo em token, medido contra produção, antes e depois do deploy**
+(mesmo protocolo, chamadas reais de `julgar`, `api/ai.js` ganhou um
+campo `usage` ecoado na resposta só pra esta medição — ficou, é
+diagnóstico útil, não muda comportamento nenhum):
+
+| | antes (2-4 frases) | depois (6-10 frases) | delta |
+|---|---|---|---|
+| `prompt_tokens` médio | 1882 (n=10) | 2113 (n=20) | +231 (+12%) — a instrução ficou maior |
+| `completion_tokens` médio | 98 | 196 | +98 (+100%) |
+| custo médio/chamada | $0,000036 | $0,000045 | +$0,000009 |
+
+**Por carreira, o número certo não é o "~25 chamadas" que apareceu no
+pedido** — esse total inclui `dilema` (gera a cena), `evento` (1-2
+frases, sem escolha) e `feed`, nenhum dos três mudou de tamanho.
+Só `julgar` ficou mais longo, e `julgar` roda **4 vezes por carreira**
+(uma por dilema — fightNo 5/10/15/20, `TOTAL_FIGHTS=22`, não 25).
+Custo adicional real: **4 × $0,000009 ≈ $0,000036 por carreira** — em
+cima de um total de carreira já medido em ~$0,0013 (`PLANO-LANCAMENTO.md`),
+é ~3% a mais, irrelevante pro teto de gasto.
+
+**Qualidade, não só tamanho — 20 desfechos reais julgados um a um**
+(critério: quantas frases NOVAS a resposta introduz — reação de
+terceiro, detalhe concreto, complicação, virada — contra quantas só
+repetem o mesmo fato já contado):
+
+- **17 de 20 (85%) usam o espaço de verdade** — múltiplos beats
+  distintos, sem repetir fato. Exemplo (cena: companheiro se machuca no
+  sparring): ambulância chega → jogador acompanha na maca → médico
+  examina → diagnóstico (fratura leve) → jogador paga a conta → volta
+  ao treino mais cuidadoso → torcida comenta a atitude. Sete fatos
+  diferentes, nenhum repetido.
+- **1 de 20 (5%) é enrolação de verdade** — cena "ignora a queda de
+  seguidores e segue postando normal": 8 frases dizendo a MESMA coisa
+  sete vezes com sinônimos diferentes ("não voltaram" / "ficou parada"
+  / "ninguém comentou" / "nem ligou" / "seguiu igual" / "se manteve
+  estática" / "nada novo aconteceu"). Isso é exatamente o risco que a
+  trava do prompt tentou evitar, e vazou numa decisão sem nada de
+  concreto pra narrar — hipótese: decisão "neutra" (sem consequência
+  real) é o cenário onde o modelo mais recorre a padding, porque não
+  tem fato novo genuíno disponível. Amostra de 1 é pouco pra confirmar,
+  registrado pra quem remedir com N maior.
+- **1 de 20 (5%) reabre a decisão antes de narrar** (a trava contra
+  isso não é absoluta) — cena da entrevista coletiva, a 2ª frase
+  basicamente reafirma a resposta que o jogador já tinha escrito antes
+  de seguir adiante. Único caso claro nos 20; o resto começa direto na
+  consequência.
+
+**Achado que importa mais que os dois acima, fora do que foi pedido
+medir, mas achado medindo isto: `RESULTADO_LUTA` vazou uma vez.** Cena
+de aceitar uma luta de última hora, desfecho de 9 frases — as duas
+últimas: *"No terceiro round, um soco limpo que ecoou na arena inteira.
+Ele despencou no tapete e não levantou no tempo certo."* Isso afirma o
+resultado de uma luta — exatamente o que `RESULTADO_LUTA` existe pra
+impedir — mas não bate na lista fechada de palavras do regex (nenhum
+"nocaute", "ko", "finalizou", "parou a luta" ali). Espaço extra deu
+espaço pra IA "mostrar, não contar" o nocaute com vocabulário novo, sem
+passar pela palavra que o filtro conhece. Achado com N pequeno (1 caso
+em 20), mas é o tipo de furo que a filosofia do próprio filtro já avisa
+que pode existir ("vocabulário fechado" é aposta, não garantia) —
+registrado aqui, **não corrigido nesta leva**: mexer em `RESULTADO_LUTA`
+é decisão sobre um filtro que já protege outra coisa (o próprio dilema
+antes desta mudança), fica pra quem decidir se corrige direto ou
+remedir com N maior primeiro.
+
+```bash
+node testar.js conteudo   # RESULTADO_LUTA continua cobrindo o dilema (regressão futura pegaria aqui)
+```
+
 ### Conteúdo inseguro no dilema
 
 O texto do jogador (`resposta`, no dilema) vai direto pro prompt do `julgar`
