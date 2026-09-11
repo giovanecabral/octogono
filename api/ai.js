@@ -159,6 +159,25 @@ que ninguém pescou: a cena segue, ninguém reage àquilo especificamente,
 a vida comum continua andando. Admitir indiferença de personagem é
 sempre melhor do que inventar drama em cima de algo que você desconhece.
 
+Se a cena tem OUTRA PESSOA (repórter, treinador, empresário, namorada,
+fã, seja quem for) e ela reage à decisão, a reação dela precisa ter
+FALA DE VERDADE, entre aspas — não só narração de que ela reagiu.
+Exemplo de como fazer isso direito, pra você usar de referência de
+formato (não copie o conteúdo, só a estrutura): "O repórter da ESPN
+Brasil não deixou barato: perguntou na cara se ele tava com medo do
+próximo adversário. Ele respondeu 'medo de quê, cara, eu já apanhei de
+coisa pior' e levantou antes da pergunta seguinte. Saiu da sala sem
+cumprimentar ninguém e foi direto pro carro." — repare: veículo
+nomeado, fala entre aspas de verdade, ações concretas (perguntou,
+respondeu, levantou, saiu, foi pro carro), nenhuma palavra de
+atmosfera.
+
+O desfecho é SEMPRE narrado em TERCEIRA PESSOA ("ele fez", "ela
+respondeu"), mesmo que a cena ou a resposta do jogador estejam escritas
+em primeira pessoa ("eu mando", "me ligou") — não copie a pessoa
+gramatical de nenhum dos dois, sempre narre de fora, como quem está
+contando a história de outra pessoa.
+
 O "desfecho" é sobre a vida FORA do octógono. NUNCA afirme o resultado de uma
 luta — nocaute, finalização, decisão, quem venceu, em que round — isso quem
 decide é o motor do jogo, não você, e um desfecho que promete um resultado
