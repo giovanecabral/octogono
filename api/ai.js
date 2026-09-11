@@ -355,7 +355,11 @@ export default async function handler(req, res) {
     if (Array.isArray(parsed))
       parsed = parsed.map(o => Array.isArray(o) ? { nome: o[0], texto: o[1] } : o);
 
-    return res.status(200).json({ ok: true, result: parsed });
+    /* usage ecoado pro client (2026-09-11): só diagnóstico, nada consome isto
+       pra decidir comportamento — é o que permite medir custo real de token
+       por `kind` sem precisar de vercel logs. Ver LEIA-ME.md "Desfecho mais
+       longo" pro antes/depois medido com isto. */
+    return res.status(200).json({ ok: true, result: parsed, usage: j.usage || null });
   } catch (e) {
     clearTimeout(timeout);
     const abortou = e.name === "AbortError";
