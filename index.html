@@ -433,20 +433,39 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   display:flex;flex-direction:column;gap:7px;transition:background .12s,transform .08s}
 .opp:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
 .opp:active{transform:none;box-shadow:none}
-.opp .nm{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:16px;letter-spacing:.03em;line-height:1.15}
+/* Faixa de dificuldade (Fase 6): sangra até a borda do card (margem
+   negativa cancelando o padding do .opp) — é o primeiro elemento que o
+   olho encontra, cor + palavra fazem o trabalho que 4 quadrados de 9px
+   não faziam sozinhos. Cor por currentColor: pips e texto herdam da
+   mesma declaração em .dN .dbanda, sem repetir a cor três vezes. */
+.opp .dbanda{margin:-12px -13px 8px;padding:8px 13px;display:flex;
+  justify-content:space-between;align-items:center;font-family:Oswald,sans-serif;
+  font-weight:700;font-size:13px;letter-spacing:.09em;text-transform:uppercase;
+  border-bottom:1px solid;background:rgba(255,255,255,.03)}
+.d1 .dbanda{color:var(--win-bright);background:rgba(111,196,134,.08)}
+.d2 .dbanda{color:#9FBF7C;background:rgba(159,191,124,.07)}
+.d3 .dbanda{color:#C08F52;background:rgba(192,143,82,.07)}
+.d4 .dbanda{color:var(--stamp);background:rgba(192,57,43,.1)}
+.pips{display:flex;gap:3px}
+.pips i{width:7px;height:7px;border:1px solid currentColor;opacity:.35;display:block}
+.pips i.on{background:currentColor;opacity:1}
+/* "SEU NOME vs ADVERSÁRIO" — nome do jogador pode ser bem mais longo que
+   os de teste ("Anderson Silva Junior" cabe nos 28 caracteres do
+   cadastro); sem quebra de linha aqui o card estoura em 380px. */
+.opp .vs{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--faded)}
+.opp .vs .quem{color:var(--ink2);font-weight:600;overflow-wrap:anywhere}
+.opp .vs .vslabel{font-style:italic;color:var(--faded)}
+.opp .nm{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:18px;
+  letter-spacing:.02em;line-height:1.15;overflow-wrap:anywhere}
 .opp .arq{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faded)}
 .opp .bio{font-size:11.5px;color:var(--faded);line-height:1.45;
   border-top:1px dotted var(--rule);padding-top:6px}
 .opp .bio b{color:var(--ink);font-weight:600}
-.opp .dif{display:flex;justify-content:space-between;align-items:center;gap:8px;
+.opp .stake{display:flex;justify-content:space-between;align-items:center;gap:8px;
   border-top:1px solid var(--ink);padding-top:7px;font-size:11px;
-  letter-spacing:.1em;text-transform:uppercase}
-.opp .dif b{font-family:Oswald,sans-serif;font-size:13px;letter-spacing:.06em}
-.d1 b{color:var(--win-bright)}.d2 b{color:#9FBF7C}.d3 b{color:#C08F52}.d4 b{color:#E05A48}
-.pips{display:flex;gap:3px}
-.pips i{width:9px;height:9px;border:1px solid var(--line2);display:block}
-.pips i.on{background:var(--ink2)}
-.d4 .pips i.on{background:var(--stamp);border-color:var(--stamp)}
+  letter-spacing:.1em;text-transform:uppercase;color:var(--faded)}
+.opp .stake b{font-family:Oswald,sans-serif;font-size:14px;letter-spacing:.04em;color:var(--win-bright)}
 .camps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .camp{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;text-align:left;
   display:flex;flex-direction:column;gap:5px;transition:background .12s,transform .08s}
@@ -454,9 +473,8 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .camp .t{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase}
 .camp .d{font-size:11.5px;color:var(--faded);line-height:1.4}
 .camp .g{font-size:11px;font-weight:600;color:var(--win-bright)}
-.camp-bar{display:block;height:5px;background:rgba(255,255,255,.08);margin-top:4px;position:relative}
-.camp-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--win);transition:width .3s ease}
-.camp-st{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+.camp .pctwrap{margin-top:4px}
+.camp-cap{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--faded);margin-top:3px}
 .contra{border-left:3px solid var(--stamp);padding:8px 0 8px 11px;margin:9px 0 2px;
   font-size:12.5px;line-height:1.45}
@@ -3637,16 +3655,24 @@ function telaAdversario(){
   box.innerHTML=`<div class="esc-hd">Luta ${fightNo+1} de ${TOTAL_FIGHTS} — escolha o adversário</div>
     <div class="opps" id="opps"></div>`;
   const g=document.getElementById("opps");
+  /* Fase 6 (2026-09-16): dificuldade vira faixa colorida no topo do card
+     (protagonista) em vez de 4 quadradinhos de 9px cuidando sozinhos da
+     decisão mais importante que o jogador toma fora da luta — os pips
+     continuam, só encolhem pra confirmação secundária dentro da faixa.
+     "+N" de ranking ganha rótulo ("se vencer") — é a aposta, não um
+     número solto. E o próprio jogador entra no card ("SEU NOME vs
+     ADVERSÁRIO") — é isso que faz a tela parecer anúncio de confronto
+     em vez de grade de botão. Nenhum dado novo: mesma dificuldade(),
+     bioLutador(), o.ganho de sempre — só reorganizado. */
   opts.forEach(o=>{
     const d=dificuldade(o.f);
     const b=el("button","opp d"+d.n,`
+      <span class="dbanda"><b>${d.rot}</b><span class="pips">${[1,2,3,4].map(i=>`<i class="${i<=d.pips?"on":""}"></i>`).join("")}</span></span>
+      <span class="vs"><span class="quem">${me.name}</span><span class="vslabel">vs</span></span>
       <span class="nm">${o.f.name}</span>
       <span class="arq">${o.f.arquetipo||"—"}</span>
       <span class="bio">${bioLutador(o.f)}</span>
-      <span class="dif"><span class="pips">${[1,2,3,4].map(i=>`<i class="${i<=d.pips?"on":""}"></i>`).join("")}</span>
-        <b>${d.rot}</b></span>
-      <span class="dif" style="border:none;padding-top:0"><span>ranking</span>
-        <b>+${Math.round(o.ganho*100)}</b></span>`);
+      <span class="stake"><span>se vencer</span><b>+${Math.round(o.ganho*100)} ranking</b></span>`);
     b.onclick=()=>{SOM.toque();telaCamp(o);};
     g.appendChild(b);
   });
@@ -3663,17 +3689,29 @@ function telaCamp(escolhido){
   const g=document.getElementById("camps");
   CAMPS.forEach(c=>{
     const vezes=(st.campHist&&st.campHist[c.id])||0;
-    /* mostra quanto ainda RENDE: sem isso o jogador não percebe o retorno
-       decrescente e continua repetindo um camp que já saturou */
+    /* Fase 6 (2026-09-16): a barra de 5px + rótulo categórico ("rende
+       muito"/"quase no teto") escondia a magnitude atrás de um
+       adjetivo — o jogador não tinha como ver que o 16º camp no mesmo
+       eixo rende ~0,03% contra ~5,4% do 1º. "restante" (fração 0-1 até
+       o teto) já existia; "ganhoPct" é novo, só de exibição — mesma
+       conta de aplicarCamp() (falta×RITMO_TREINO×peso por eixo,
+       mesma média por eixo que "restante" já fazia), sem chamar
+       aplicarCamp() nem gravar em st.treino. Reaproveita pctBar/pctClass
+       do draft (mesma barra, mesmas 5 cores) — dado diferente, mesma
+       linguagem visual. */
     const alvos=Object.keys(c.alvos);
-    const restante=alvos.reduce((s,k)=>{
+    let restante=0,ganhoPct=0;
+    alvos.forEach(k=>{
       const at=(st.treino&&st.treino[k])||1;
-      return s+(TETO_TREINO-at)/(TETO_TREINO-1);
-    },0)/alvos.length;
-    const rot=restante>.72?"rende muito":restante>.4?"ainda rende":
-              restante>.15?"quase no teto":"saturado";
-    const barra=`<span class="camp-bar"><i style="width:${Math.round(restante*100)}%"></i></span>
-      <span class="camp-st">${rot}${vezes?` · feito ${vezes}x`:""}</span>`;
+      const falta=TETO_TREINO-at;
+      restante+=falta/(TETO_TREINO-1);
+      ganhoPct+=falta*RITMO_TREINO*c.alvos[k]*100;
+    });
+    restante/=alvos.length; ganhoPct/=alvos.length;
+    const barra=`<span class="pctwrap ${pctClass(restante)}">
+        <span class="pctbar"><i style="width:${Math.max(2,Math.round(restante*100))}%"></i></span>
+        <span class="pctnum">+${ganhoPct.toFixed(1)}%</span></span>
+      <span class="camp-cap">ganho neste camp${vezes?` · feito ${vezes}x`:""}</span>`;
     const b=el("button","camp",`<span class="t">${c.nome}</span>
       <span class="d">${c.desc}</span>
       <span class="g">${c.ganho}</span>
