@@ -477,8 +477,12 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .dil-t{font-family:Oswald,sans-serif;font-weight:700;font-size:15px;
   letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
 .dil-c{font-size:13.5px;line-height:1.55}
-.dil-in{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
-.dil-in input{flex:1;min-width:180px;font-size:14px}
+.dil-in{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;align-items:flex-end}
+.dil-in textarea{flex:1;min-width:180px;font-family:inherit;font-size:14px;
+  line-height:1.4;background:transparent;color:var(--ink);
+  border:none;border-bottom:1.5px solid var(--ink);padding:6px 2px;
+  resize:none;overflow:hidden}
+.dil-in textarea:focus{outline:none;border-bottom-color:var(--stamp)}
 .dil-r{font-style:italic;color:var(--faded);font-size:13px;margin-top:10px;
   padding-left:12px;border-left:2px solid var(--rule)}
 .dil-o{font-size:13.5px;line-height:1.55;margin-top:9px;padding-top:9px;
@@ -2602,9 +2606,18 @@ async function abrirDilema(){
   box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
     <div class="dil-in">
-      <input type="text" id="dilresp" maxlength="200" placeholder="O que você faz?">
+      <textarea id="dilresp" maxlength="200" rows="3" placeholder="O que você faz?"></textarea>
       <button class="btn btn-sm" id="dilgo">Decidir</button></div>`;
   const inp=document.getElementById("dilresp"),go=document.getElementById("dilgo");
+  /* Textarea de verdade (2026-09-16), não <input> de uma linha — medido em
+     380px: um input só mostrava ~220px de um campo com 852px de conteúdo
+     pra uma resposta de duas frases, a pessoa não conseguia reler o que
+     escreveu. É o único lugar do jogo com texto livre, o diferencial
+     contra a concorrência — não podia ficar ruim no celular. Cresce com
+     o conteúdo (scrollHeight) em vez de rolar escondido por dentro.
+     Enter quebra linha, não envia — só o botão Decidir envia. */
+  const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
+  inp.addEventListener("input",cresce);
   inp.focus();
   const enviar=async()=>{
     const txt=inp.value.trim();
@@ -2618,7 +2631,6 @@ async function abrirDilema(){
     aplicarDilema(box,d,txt,j);
   };
   go.onclick=enviar;
-  inp.onkeydown=e=>{if(e.key==="Enter")enviar();};
   return new Promise(res=>{box.__done=res;});
 }
 /* Severidade e duração da lesão são do JOGO, medidas — não da IA. Medido em
