@@ -165,7 +165,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     // esse item some da contagem.
     const itens = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-item"));
     if (itens.length !== 4) throw new Error(`esperava 4 itens no menu, achei ${itens.length}`);
-    const titulo = env.todos.filter(n => n.className === "inicio-titulo").pop();
+    const titulo = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-titulo")).pop();
     if (!titulo || titulo.innerHTML !== "OCTÓGONO") throw new Error("título da tela inicial não é OCTÓGONO");
     itens[0].onclick(); // "Jogar" -> screenName()
   });
@@ -206,7 +206,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        este passo, "Pular" é conferido só por existir e ter onclick). */
     const pularBtn = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Pular").pop();
     if (!pularBtn || !pularBtn.onclick) throw new Error("botão 'Pular' não foi montado ou não está ligado");
-    const btns = env.todos.filter(n => n.tagName === "button" && n.className === "btn" && n.onclick);
+    const btns = env.todos.filter(n => n.tagName === "button" && (n.className || "").split(" ").includes("btn") && n.onclick);
     if (!btns.length) throw new Error("botão de avançar não foi montado");
     btns[btns.length - 1].onclick();
   });
@@ -240,7 +240,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   passo("reroll: clicar re-rola a mesa (cartas novas aparecem)", () => {
     const antesDoClique = env.todos.length;
     env.registro.reroll.onclick();
-    const novasCartas = env.todos.slice(antesDoClique).filter(n => n.className === "card");
+    const novasCartas = env.todos.slice(antesDoClique).filter(n => (n.className || "").split(" ").includes("card"));
     if (!novasCartas.length) throw new Error("clicar não montou cartas novas — renderDraft não rodou de novo");
     marca = antesDoClique;             // as cartas re-roladas são "novas" pro 1º pick abaixo
   });
@@ -250,12 +250,12 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   passo("reroll: clicar de novo desabilitado não re-rola outra vez", () => {
     const antes = env.todos.length;
     env.registro.reroll.onclick();
-    const depois = env.todos.slice(antes).filter(n => n.className === "card");
+    const depois = env.todos.slice(antes).filter(n => (n.className || "").split(" ").includes("card"));
     if (depois.length) throw new Error("2º clique desabilitado ainda montou cartas — não é 1 vez só na criação inteira");
   });
 
   for (let i = 1; i <= 4; i++) passo(`draft: escolha ${i} de 4`, () => {
-    const novas = env.todos.slice(marca).filter(n => n.className === "card" && n.onclick);
+    const novas = env.todos.slice(marca).filter(n => (n.className || "").split(" ").includes("card") && n.onclick);
     if (!novas.length) throw new Error("nenhuma carta montada — renderDraft abortou antes do grid");
     marca = env.todos.length;          // idem: a rodada seguinte nasce do clique abaixo
     novas[novas.length - 1].onclick();
@@ -310,7 +310,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
 
     /* duas escolhas novas por luta: adversário e camp. Normalmente 3 cartas;
        luta de título/defesa trava 1 só (oponente nomeado em RANKING). */
-    const opps = env.todos.slice(marcaLuta).filter(n2 => (n2.className||"").startsWith("opp ") && n2.onclick);
+    const opps = env.todos.slice(marcaLuta).filter(n2 => (n2.className||"").split(" ").includes("opp") && n2.onclick);
     if (opps.length !== 3 && opps.length !== 1)
       throw new Error(`esperava 1 (luta de título) ou 3 adversários, vieram ${opps.length}`);
     const m2 = env.todos.length;
@@ -340,7 +340,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     }
     escolhido.onclick();
     env.drenar(); await respirar();
-    const camps = env.todos.slice(m2).filter(n2 => n2.className === "camp" && n2.onclick);
+    const camps = env.todos.slice(m2).filter(n2 => (n2.className || "").split(" ").includes("camp") && n2.onclick);
     if (camps.length < 3) throw new Error(`esperava ao menos 3 camps, vieram ${camps.length}`);
     camps[n % 3].onclick();
     env.drenar(); await respirar(); env.drenar();     // narração + dilema assíncrono
@@ -447,7 +447,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
 
   await passo("relatório final", () => UI.screenReport());
   await passo("contas: sem SUPABASE_URL configurado, a caixa de conta nem aparece", () => {
-    if (env.todos.some(n => n.className === "conta-box"))
+    if (env.todos.some(n => (n.className || "").split(" ").includes("conta-box")))
       throw new Error("caixa de conta apareceu mesmo sem Supabase configurado");
   });
 
@@ -2928,7 +2928,7 @@ function testarCompartilhar() {
     function acharPorClasse(node,cls){
       if(!node||!node.children)return null;
       for(const c of node.children){
-        if(c.className===cls)return c;
+        if((c.className||"").split(" ").includes(cls))return c;
         const achado=acharPorClasse(c,cls);
         if(achado)return achado;
       }
@@ -3225,7 +3225,7 @@ function testarTelaInicial() {
       const ultimaChamada = chamadasAuth.filter(c => c[0] === "signUp").pop();
       if (!(ultimaChamada[1] === "repetido@teste.com" && ultimaChamada[2].length === UI.SENHA_MIN))
         throw new Error("signUp não recebeu e-mail/senha certos: " + JSON.stringify(ultimaChamada));
-      const msg = env.todos.filter(n => n.tagName === "p" && n.className === "hint msg-erro").pop();
+      const msg = env.todos.filter(n => n.tagName === "p" && ["hint", "msg-erro"].every(c => (n.className || "").split(" ").includes(c))).pop();
       if (!msg || msg.textContent !== "Este e-mail já está cadastrado.")
         throw new Error("erro não foi traduzido pro português certo: " + (msg && msg.textContent));
     });
@@ -3244,7 +3244,7 @@ function testarTelaInicial() {
       if (btnEntrar.textContent !== "Entrando…") throw new Error("botão não mostrou o estado de carregando antes de resolver: " + btnEntrar.textContent);
     });
     await passo("Conta/Entrar: mensagem de senha errada foi traduzida, não é o texto cru do Supabase", () => {
-      const msg = env.todos.filter(n => n.tagName === "p" && n.className === "hint msg-erro").pop();
+      const msg = env.todos.filter(n => n.tagName === "p" && ["hint", "msg-erro"].every(c => (n.className || "").split(" ").includes(c))).pop();
       if (!msg || msg.textContent !== "E-mail ou senha incorretos.")
         throw new Error("erro de login não foi traduzido: " + (msg && msg.textContent));
     });
@@ -3282,7 +3282,7 @@ function testarTelaInicial() {
       callbackAuthState("PASSWORD_RECOVERY");
     });
     await passo("Nova senha: tela abriu com campo de senha", () => {
-      const eyebrow = env.todos.filter(n => n.className === "eyebrow" && n.innerHTML === "Nova senha").pop();
+      const eyebrow = env.todos.filter(n => (n.className || "").split(" ").includes("eyebrow") && n.innerHTML === "Nova senha").pop();
       if (!eyebrow) throw new Error("tela de nova senha não abriu");
       const inp = env.todos.filter(n => n.type === "password").pop();
       if (!inp) throw new Error("campo de nova senha não foi montado");
@@ -3317,7 +3317,7 @@ function testarTelaInicial() {
 
     await passo("Histórico vazio: abre a tela", () => { UI.screenHistorico(); });
     await passo("Histórico vazio: mensagens de 'nenhuma ainda' pros dois blocos", () => {
-      const linhas = env.todos.filter(n => n.tagName === "p" && n.className === "hint").map(n => n.innerHTML);
+      const linhas = env.todos.filter(n => n.tagName === "p" && (n.className || "").split(" ").includes("hint")).map(n => n.innerHTML);
       if (!linhas.some(t => /nenhuma carreira/i.test(t))) throw new Error("não avisou 'nenhuma carreira ainda'");
       if (!linhas.some(t => /nenhuma conquista/i.test(t))) throw new Error("não avisou 'nenhuma conquista ainda'");
     });
@@ -3328,7 +3328,7 @@ function testarTelaInicial() {
     await passo("Histórico com carreira salva: item aparece na tela com os dados certos", () => {
       // conteúdo vem via innerHTML string (mesmo caso de Termos/Privacidade
       // acima) — não vira nó rastreável, procura no innerHTML do "conquista"
-      const item = env.todos.filter(n => n.className === "conquista" && /TesteBot/.test(n.innerHTML)).pop();
+      const item = env.todos.filter(n => (n.className || "").split(" ").includes("conquista") && /TesteBot/.test(n.innerHTML)).pop();
       if (!item) throw new Error("carreira salva não apareceu na tela");
       if (!/18-4/.test(item.innerHTML) || !/nota B/.test(item.innerHTML))
         throw new Error("cartel ou nota não aparecem certos: " + item.innerHTML);
@@ -3378,7 +3378,7 @@ function testarLoja() {
     passo("loja tem pelo menos 2 itens (treinador, equipamento)",
       LOJA_ITENS.length>=2);
 
-    const itensDe=p=>p.children[0].children.filter(c=>c.className==="loja-item");
+    const itensDe=p=>p.children[0].children.filter(c=>(c.className||"").split(" ").includes("loja-item"));
     const botaoDe=(linhas,nome)=>{
       const l=linhas.find(x=>x.children[0].innerHTML===nome);
       return l.children.find(c=>c.tagName==="button");
@@ -3397,12 +3397,12 @@ function testarLoja() {
     // aparecem SEPARADOS, um por item, ambos com texto de verdade
     passo("cada item tem 1 bloco de descrição (item-desc) com texto",
       linhas.every(l=>{
-        const d=l.children.find(c=>c.className==="item-desc");
+        const d=l.children.find(c=>(c.className||"").split(" ").includes("item-desc"));
         return d && d.innerHTML.length>10;
       }));
     passo("cada item tem 1 bloco de efeito (item-efeito) com número",
       linhas.every(l=>{
-        const e=l.children.find(c=>c.className==="item-efeito");
+        const e=l.children.find(c=>(c.className||"").split(" ").includes("item-efeito"));
         return e && /\\d/.test(e.innerHTML);
       }));
 

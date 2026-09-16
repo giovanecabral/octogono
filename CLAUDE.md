@@ -60,6 +60,18 @@ qualquer lugar antes do motor — precisa de um atributo (`id`, `defer` com
 - **Meça em vez de supor**, principalmente balanceamento. Se mexer no motor,
   rode `node testar.js pesos` e diga se os pesos mudaram.
 - **Diga quando algo não deve ser feito** e por quê, em vez de fazer mal feito.
+- **Em `testar.js`, nunca `n.className === "x"`.** Quebra assim que o
+  elemento ganha uma segunda classe — já aconteceu duas vezes (o botão
+  "Jogar" virou `inicio-item inicio-item-principal`; o botão "Montar o
+  lutador" ganhou peso visual na Fase 5) e as duas vezes o teste falhou
+  em silêncio até alguém notar. Use
+  `(n.className||"").split(" ").includes("x")` (ou `classList.contains`
+  num DOM de verdade) — confere o PAPEL do elemento, não a string exata
+  da classe. Vale pra classe nova em elemento redesenhado E pra classe
+  já existente que ainda não ganhou uma segunda: se o elemento é
+  candidato a redesign (qualquer coisa em `.painel`, `.card`, `.camp`,
+  `.btn`), escreva o teste token-based desde o início, não espere
+  quebrar pela terceira vez.
 - Português brasileiro, comentários no código em português.
 
 ## Decisões que NÃO devem ser revertidas
