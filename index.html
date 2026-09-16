@@ -40,11 +40,46 @@
   --stamp:#C0392B;
   --win:#4E9A62;
   --gold:#B9932F;
+  /* Variantes claras — antes cravadas em hex solto em ~15 lugares
+     (percentil do draft, delta de seguidores, feed, atributo em alta).
+     Mesma cor, um nome só: mudar o tom de "positivo"/"perigo" agora é
+     uma linha, não uma busca no arquivo inteiro. */
+  --win-bright:#6FC486;
+  --win-dim:#1E8449;   /* verde escuro — dinheiro, confirmação de formulário */
+  --stamp-bright:#D1584A;
+  --gold-bright:#D4B24C;
+  /* Aviso não é nem positivo nem negativo — "falta X pra chegar lá".
+     Antes era o mesmo laranja cravado só no bloco do cinturão. */
+  --warn:#B5651D;
+  --warn-dim:#8A4A15;
+  /* Escala de percentil do draft (pior→melhor) — eram 5 pares de hex
+     soltos (.p1-.p5), cada um com cor de barra E de texto. Consolidados
+     aqui: barra usa a cor cheia, texto usa a variante -bright/-dim. */
+  --tier-1:#C0392B; --tier-1-txt:#D1584A;
+  --tier-2:#B07A3A; --tier-2-txt:#C08F52;
+  --tier-3:#5E6B7E; --tier-3-txt:#8B99AC;
+  --tier-4:#5E8A4A; --tier-4-txt:#7CB069;
+  --tier-5:#4E9A62; --tier-5-txt:#6FC486;
   /* nomes antigos mantidos para não quebrar regras existentes */
   --stock:#0A0D13;
   --stock-2:#111722;
   --rule:#222C3C;
   --loss:#C0392B;
+
+  /* Escala tipográfica — os tamanhos já usados no CSS (26/17/15/14/13/
+     11.5/11/10.5px) não seguiam progressão nenhuma, cada tela inventava
+     o próprio número. Registrados aqui como referência pros componentes
+     NOVOS (Fases 1-3) — não é uma re-varredura de todo o CSS existente,
+     que continua funcionando com os valores que já tinha. */
+  --fs-display-lg:clamp(48px,9vw,96px); /* wordmark da tela de início */
+  --fs-display:26px;    /* título de tela (.doc-head h1) */
+  --fs-title:19px;      /* título de bloco/seção dentro da tela */
+  --fs-body:14px;       /* corpo padrão, igual ao body */
+  --fs-label:11px;      /* rótulo maiúsculo, uppercase+letter-spacing */
+  --fs-micro:10.5px;    /* nota de rodapé, eyebrow */
+
+  /* Escala de espaçamento — múltiplos de 4, pra componentes novos. */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -104,8 +139,11 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
 .card{border:1px solid var(--line2);background:var(--panel);padding:10px 11px;text-align:left;
   display:flex;flex-direction:column;gap:6px;transition:background .12s,transform .08s}
-.card:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
-.card:active{transform:none;box-shadow:none}
+/* .card e .div-c compartilham o mesmo hover "levanta e sombreia" — eram
+   2 declarações idênticas em lugares diferentes do arquivo, uma editada
+   sem a outra já teria divergido em silêncio. Um seletor só agora. */
+.card:hover,.div-c:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
+.card:active,.div-c:active{transform:none;box-shadow:none}
 .card .pair{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase}
 .card .src{font-size:11.5px;color:var(--faded);margin-top:-6px}
 .card .attr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
@@ -119,13 +157,29 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .pctnum{font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;
   white-space:nowrap;min-width:76px;text-align:right}
 /* escala: quanto mais verde, melhor que mais gente da divisão */
-.p1 i{background:#C0392B} .p1{color:#D1584A}
-.p2 i{background:#B07A3A} .p2{color:#C08F52}
-.p3 i{background:#5E6B7E} .p3{color:#8B99AC}
-.p4 i{background:#5E8A4A} .p4{color:#7CB069}
-.p5 i{background:#4E9A62} .p5{color:#6FC486}
+.p1 i{background:var(--tier-1)} .p1{color:var(--tier-1-txt)}
+.p2 i{background:var(--tier-2)} .p2{color:var(--tier-2-txt)}
+.p3 i{background:var(--tier-3)} .p3{color:var(--tier-3-txt)}
+.p4 i{background:var(--tier-4)} .p4{color:var(--tier-4-txt)}
+.p5 i{background:var(--tier-5)} .p5{color:var(--tier-5-txt)}
+
+/* ---------- badge: pílula pequena, uma receita só ----------
+   `.elite`, `.cint .b` e `.dossie .tag` já reimplementavam esta mesma
+   forma cada um do seu jeito (border+padding+uppercase pequeno) — só
+   `.elite` tinha cor cravada em hex, os outros dois já usavam var().
+   Componente novo pra qualquer badge que Fases 1-3 precisarem criar,
+   com 4 variantes de SIGNIFICADO, não de cor à toa: neutro =
+   informativo, positivo = bom mas comum, dourado = prestígio
+   (cinturão/campeão/conquista rara), perigo = atenção/risco. */
+.badge{display:inline-block;font-size:var(--fs-micro);letter-spacing:.12em;
+  text-transform:uppercase;font-weight:600;border:1px solid currentColor;
+  padding:0 5px;line-height:1.6;vertical-align:1px}
+.badge-neutral{color:var(--ink2)}
+.badge-win{color:var(--win-bright);border-color:var(--win)}
+.badge-gold{color:var(--gold-bright);border-color:var(--gold)}
+.badge-danger{color:var(--stamp-bright);border-color:var(--stamp)}
 .elite{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;
-  color:#6FC486;border:1px solid #4E9A62;padding:0 4px;margin-left:6px;vertical-align:1px}
+  color:var(--win-bright);border:1px solid var(--win);padding:0 4px;margin-left:6px;vertical-align:1px}
 .legend{border:1px dashed var(--line2);padding:10px 12px;margin:0 0 14px;
   font-size:12px;line-height:1.6;color:var(--ink2);background:var(--panel)}
 .legend b{color:var(--ink);font-weight:600}
@@ -173,8 +227,6 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .div-c{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;
   text-align:left;display:flex;flex-direction:column;gap:5px;
   transition:background .12s,transform .08s}
-.div-c:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
-.div-c:active{transform:none;box-shadow:none}
 .div-c .n{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:15px;
   letter-spacing:.04em;text-transform:uppercase}
 .div-c .lb{font-size:11px;color:var(--faded);letter-spacing:.08em}
@@ -193,7 +245,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .ficha-top .nm{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;line-height:1.1;
   word-break:break-word}
 .ficha-top .sub{font-size:11px;color:var(--faded);margin-top:3px}
-.ficha-top .caixa{font-size:11px;color:#1E8449;margin-top:2px}
+.ficha-top .caixa{font-size:11px;color:var(--win-dim);margin-top:2px}
 .ficha-top .assin{font-size:11px;color:var(--gold);margin-top:4px;letter-spacing:.04em}
 .ficha-sec{padding:11px 14px;border-bottom:1px solid var(--line)}
 .ficha-sec:last-child{border-bottom:none}
@@ -209,15 +261,15 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
    vermelho já é a cor de perda no resto da ficha (atributo caindo, lesão,
    dinheiro negativo) e confundia os dois (achado jogando, 2026-09-07). */
 .passo-label{margin-top:8px;font-size:11px;color:var(--faded)}
-.passo{margin-top:2px;font-size:11.5px;line-height:1.45;color:#B5651D;
-  border-left:2px solid #8A4A15;padding-left:9px}
+.passo{margin-top:2px;font-size:11.5px;line-height:1.45;color:var(--warn);
+  border-left:2px solid var(--warn-dim);padding-left:9px}
 /* Posição na divisão: o número é a informação, o movimento é o drama. */
 .rank{display:flex;align-items:baseline;gap:8px}
 .rank .pos{font-family:Oswald,sans-serif;font-weight:700;font-size:19px;
   letter-spacing:.03em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}
 .rank .de{font-size:11px;color:var(--faded)}
 .rank .mov{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;color:var(--faded)}
-.rank .mov.sobe{color:#6FC486}
+.rank .mov.sobe{color:var(--win-bright)}
 .rank .mov.cai{color:var(--stamp)}
 .rank-pico{margin-top:7px;font-size:11px;color:var(--faded)}
 .lesao-nome{font-family:Oswald,sans-serif;font-weight:600;font-size:13px;color:var(--ink)}
@@ -227,11 +279,11 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .atr{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:baseline}
 .atr .r{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faded)}
 .atr .v{font-size:11.5px;font-variant-numeric:tabular-nums;font-weight:600}
-.atr .g{font-size:10px;color:#6FC486;margin-left:4px}
+.atr .g{font-size:10px;color:var(--win-bright);margin-left:4px}
 .atr .dn{font-size:10px;color:var(--stamp);margin-left:4px}
 .atrbar{grid-column:1/-1;height:6px;background:rgba(255,255,255,.07);position:relative;margin-top:1px}
 .atrbar .base{position:absolute;left:0;top:0;bottom:0;background:var(--ink2);opacity:.55}
-.atrbar .gan{position:absolute;top:0;bottom:0;background:#4E9A62}
+.atrbar .gan{position:absolute;top:0;bottom:0;background:var(--win)}
 .atrbar .perda{position:absolute;top:0;bottom:0;background:var(--stamp);opacity:.55}
 @media (max-width:1080px){.carreira{grid-template-columns:1fr}.ficha{position:static}}
 
@@ -356,7 +408,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   border-top:1px solid var(--ink);padding-top:7px;font-size:11px;
   letter-spacing:.1em;text-transform:uppercase}
 .opp .dif b{font-family:Oswald,sans-serif;font-size:13px;letter-spacing:.06em}
-.d1 b{color:#6FC486}.d2 b{color:#9FBF7C}.d3 b{color:#C08F52}.d4 b{color:#E05A48}
+.d1 b{color:var(--win-bright)}.d2 b{color:#9FBF7C}.d3 b{color:#C08F52}.d4 b{color:#E05A48}
 .pips{display:flex;gap:3px}
 .pips i{width:9px;height:9px;border:1px solid var(--line2);display:block}
 .pips i.on{background:var(--ink2)}
@@ -367,9 +419,9 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .camp:hover{background:var(--panel2);border-color:var(--line2);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
 .camp .t{color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase}
 .camp .d{font-size:11.5px;color:var(--faded);line-height:1.4}
-.camp .g{font-size:11px;font-weight:600;color:#6FC486}
+.camp .g{font-size:11px;font-weight:600;color:var(--win-bright)}
 .camp-bar{display:block;height:5px;background:rgba(255,255,255,.08);margin-top:4px;position:relative}
-.camp-bar i{position:absolute;left:0;top:0;bottom:0;background:#4E9A62;transition:width .3s ease}
+.camp-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--win);transition:width .3s ease}
 .camp-st{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faded);margin-top:3px}
 .contra{border-left:3px solid var(--stamp);padding:8px 0 8px 11px;margin:9px 0 2px;
@@ -423,7 +475,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .tw .txt{display:block;font-size:12px;line-height:1.42;margin-top:3px}
 .tw .rt{display:block;font-size:10px;color:var(--faded);margin-top:6px;letter-spacing:.06em}
 .tw.hater .av{filter:saturate(.35)}
-.tw.hater .txt{color:#D1584A}
+.tw.hater .txt{color:var(--stamp-bright)}
 
 .meters{display:grid;gap:9px;margin:11px 0 0;padding:10px 8px 2px;border-top:1px solid var(--ink)}
 .meter{display:grid;gap:4px}
@@ -432,10 +484,10 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .meter-hd b{font-size:15px;font-family:Oswald,sans-serif;letter-spacing:.02em;color:var(--ink)}
 .fanbar{height:9px;background:rgba(255,255,255,.07);position:relative}
 .fanbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);transition:width .6s ease}
-.fanbar.hot i{background:#4E9A62}
+.fanbar.hot i{background:var(--win)}
 .fanbar.cold i{background:var(--stamp)}
 .delta{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
-.delta.up{color:#6FC486}.delta.down{color:var(--stamp)}
+.delta.up{color:var(--win-bright)}.delta.down{color:var(--stamp)}
 @media (max-width:900px){.stage{grid-template-columns:1fr}
   .phone{max-width:340px;margin:0 auto}}
 
@@ -480,29 +532,50 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .campo-rot button{background:none;border:none;color:var(--ink2);font-size:11px;
   text-transform:none;letter-spacing:0;text-decoration:underline;padding:0}
 .regra-senha{font-size:11.5px;margin:3px 0 2px;color:var(--faded)}
-.regra-senha.ok{color:#1E8449;font-weight:600}
+.regra-senha.ok{color:var(--win-dim);font-weight:600}
 .regra-senha.falta{color:var(--stamp)}
 .conta-box .msg-erro{color:var(--stamp)}
-.conta-box .msg-ok{color:#1E8449}
+.conta-box .msg-ok{color:var(--win-dim)}
 .conta-modo-link{margin-top:12px;font-size:12.5px}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 
-/* ---------- tela inicial (2026-09-09) ---------- */
+/* ---------- tela inicial (2026-09-09, recomposta 2026-09-15) ---------- */
 /* Mesma linguagem visual do resto: mono, sem canto arredondado, sem
-   gradiente. Marca em cima, menu à esquerda embaixo, rodapé fixo. */
-.tela-inicio{min-height:calc(100vh - 60px);display:flex;flex-direction:column}
-.inicio-marca{padding:60px 0 40px;text-align:center}
+   gradiente. Antes: marca e menu eram DUAS regiões flex independentes
+   (marca com padding-top fixo, menu centralizado no espaço que sobrava)
+   — em tela alta isso vira um vazio enorme entre os dois, sem relação
+   nenhuma. Agora marca+menu são UM bloco só, centralizado junto — o
+   vazio que sobra vira moldura pro octógono de fundo, não espaço morto. */
+.tela-inicio{min-height:calc(100vh - 60px);display:flex;flex-direction:column;
+  position:relative;overflow:hidden}
+/* Octógono de fundo — mesmo desenho de octogonoSVG() (tela de draft),
+   só que gigante e quase invisível: a forma vira assinatura visual que
+   se repete pelo jogo em vez de decoração nova inventada pra esta tela. */
+.inicio-oct{position:absolute;top:50%;right:-10%;width:min(720px,62vw);
+  aspect-ratio:1;transform:translateY(-50%);opacity:.07;pointer-events:none}
+.inicio-oct svg polygon{stroke:var(--ink2)}
+.inicio-conteudo{position:relative;flex:1;display:flex;flex-direction:column;
+  justify-content:center;gap:36px;max-width:620px}
+.inicio-marca{padding:0}
 .inicio-titulo{font-family:Oswald,Impact,sans-serif;font-weight:700;
-  font-size:clamp(48px,9vw,96px);letter-spacing:.06em;color:var(--stamp);margin:0}
-.inicio-tagline{color:var(--faded);font-size:15px;margin:10px 0 0;font-style:italic}
-.inicio-menu{flex:1;display:flex;flex-direction:column;align-items:flex-start;
-  justify-content:center;gap:6px;max-width:420px}
-.inicio-item{background:none;border:none;padding:8px 4px;text-align:left;
-  font-family:Oswald,sans-serif;font-weight:500;font-size:32px;letter-spacing:.04em;
-  text-transform:uppercase;color:var(--ink);
-  transition:color .15s ease,transform .15s ease,font-weight .15s ease}
-.inicio-item:hover{color:var(--stamp);transform:translateX(10px)}
-.inicio-rodape{display:flex;gap:12px;flex-wrap:wrap;padding:20px 0 10px;
+  font-size:clamp(48px,9vw,96px);letter-spacing:.06em;color:var(--stamp);margin:0;
+  line-height:.95}
+.inicio-tagline{color:var(--ink2);font-size:15px;margin:14px 0 0;max-width:460px;line-height:1.5}
+.inicio-menu{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+/* Primeiro item (Jogar) é a ação, o resto é navegação secundária — antes
+   os 4 tinham o MESMO peso visual, sem hierarquia nenhuma de "o que eu
+   faço agora". */
+.inicio-item{background:none;border:1px solid transparent;padding:10px 16px;
+  text-align:left;font-family:Oswald,sans-serif;font-weight:500;font-size:19px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
+  transition:color .15s ease,border-color .15s ease,background .15s ease}
+.inicio-item:hover{color:var(--ink);border-color:var(--line2)}
+.inicio-item-principal{font-size:26px;font-weight:700;color:var(--ink);
+  border-color:var(--ink);padding:14px 22px}
+.inicio-item-principal:hover{background:var(--stamp);border-color:var(--stamp);color:#fff}
+.inicio-fato{color:var(--faded);font-size:12px;letter-spacing:.04em;margin-top:2px}
+.inicio-fato b{color:var(--ink2);font-weight:600}
+.inicio-rodape{position:relative;display:flex;gap:12px;flex-wrap:wrap;padding:20px 0 10px;
   border-top:1px solid var(--line);font-size:12px}
 .inicio-rodape a{color:var(--faded)}
 .inicio-rodape a:hover{color:var(--ink)}
@@ -550,7 +623,7 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 #controls.travado{border-bottom-color:var(--stamp)}
 #controls.travado .aviso{color:var(--stamp);font-weight:600}
 .hint{font-size:11.5px;color:var(--faded)}
-.hint .g{color:#6FC486;font-weight:600}
+.hint .g{color:var(--win-bright);font-weight:600}
 .hint .dn{color:var(--stamp);font-weight:600}
 .hidden{display:none!important}
 .err{border:1.5px solid var(--stamp);padding:14px 16px;background:var(--stock-2)}
@@ -648,7 +721,7 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
    e quanto) — sem isso o jogador compra no escuro, mesmo problema do
    treinador antigo (+0,05 vitórias) que ninguém percebia que era inútil. */
 .item-desc{font-weight:700;color:var(--ink);font-size:12.5px;margin-top:6px}
-.item-efeito{font-weight:700;color:#1E8449;font-size:11.5px;margin-top:3px}
+.item-efeito{font-weight:700;color:var(--win-dim);font-size:11.5px;margin-top:3px}
 .loja-item{border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:10px}
 .loja-item:last-of-type{border-bottom:none}
 
@@ -661,6 +734,9 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
   .bout .stamp{grid-column:2;justify-self:start}
   .event{padding-left:36px}
   .verdict{flex-direction:column;align-items:flex-start;gap:14px}
+  .inicio-oct{width:85vw;opacity:.05}
+  .inicio-item{width:100%}
+  .inicio-item-principal{width:100%}
 }
 </style>
 </head>
@@ -1708,21 +1784,33 @@ function montarFormularioConta(container){
 function screenInicio(){
   app.innerHTML="";
   const tela=el("div","tela-inicio");
+
+  const oct=el("div","inicio-oct");
+  oct.innerHTML=octogonoSVG();
+  tela.appendChild(oct);
+
+  const conteudo=el("div","inicio-conteudo");
+
   const marca=el("div","inicio-marca");
   marca.appendChild(el("h1","inicio-titulo","OCTÓGONO"));
   marca.appendChild(el("p","inicio-tagline",
     "Monte seu lutador draftando atributos de gente real. Jogue a carreira inteira, até a aposentadoria."));
-  tela.appendChild(marca);
+  conteudo.appendChild(marca);
 
   const menu=el("nav","inicio-menu");
-  const item=(rot,aoClicar)=>{const b=el("button","inicio-item",rot);b.onclick=aoClicar;return b;};
+  const item=(rot,aoClicar,principal)=>{
+    const b=el("button","inicio-item"+(principal?" inicio-item-principal":""),rot);
+    b.onclick=aoClicar;return b;};
   menu.append(
-    item("Jogar",()=>screenName()),
+    item("Jogar",()=>screenName(),true),
     item("Opções",()=>abrirConfig()),
     item("Conta",()=>screenConta()),
     item("Histórico",()=>screenHistorico()),
   );
-  tela.appendChild(menu);
+  conteudo.appendChild(menu);
+  conteudo.appendChild(el("p","inicio-fato",
+    `<b>${ROSTER?ROSTER.length:1527}</b> lutadores reais, com estatística de verdade do octógono.`));
+  tela.appendChild(conteudo);
 
   const rodape=el("footer","inicio-rodape");
   const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";

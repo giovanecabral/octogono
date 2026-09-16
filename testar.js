@@ -160,7 +160,10 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
 
   await passo("carregar e avaliar lutadores", () => UI.ready(lerLutadores()));
   await passo("tela inicial: 4 itens de menu, clica Jogar (sem link de desafio, cai aqui de verdade)", () => {
-    const itens = env.todos.filter(n => n.className === "inicio-item");
+    // "Jogar" (o 1º) ganhou uma 2ª classe (inicio-item-principal) pra ter
+    // peso visual de ação primária — token, não igualdade exata, senão
+    // esse item some da contagem.
+    const itens = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-item"));
     if (itens.length !== 4) throw new Error(`esperava 4 itens no menu, achei ${itens.length}`);
     const titulo = env.todos.filter(n => n.className === "inicio-titulo").pop();
     if (!titulo || titulo.innerHTML !== "OCTÓGONO") throw new Error("título da tela inicial não é OCTÓGONO");
@@ -3097,7 +3100,9 @@ function testarTelaInicial() {
     try { await fn(); env.drenar(); await respirar(); env.drenar(); await respirar(); passos.push([nome, true]); }
     catch (e) { passos.push([nome, false]); console.log(vermelho(`  falha  ${nome}`) + "\n         " + e.message); }
   };
-  const marcado = (classe) => env.todos.filter(n => n.className === classe);
+  // token, não igualdade exata — um nó pode ter mais de uma classe
+  // (ex. "inicio-item inicio-item-principal") e ainda contar pra `classe`
+  const marcado = (classe) => env.todos.filter(n => (n.className || "").split(" ").includes(classe));
   const ultimoTexto = (classe) => { const l = marcado(classe); return l.length ? l[l.length - 1].innerHTML : null; };
 
   return (async () => {
