@@ -89,6 +89,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
+html{overflow-x:hidden}
 body{
   background:var(--stock);
   color:var(--ink);
@@ -139,7 +140,13 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .budget-bar{flex:1;min-width:180px;height:12px;border:1px solid var(--ink);position:relative;background:transparent}
 .budget-fill{position:absolute;inset:1px auto 1px 1px;background:var(--ink);transition:width .35s ease}
 .budget-fill.low{background:var(--stamp)}
-.budget-num{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+/* Rótulo (2026-09-16) — antes era só o número solto, sem dizer o que
+   é. Empilhado em vez de ao lado pra não brigar de largura com a
+   barra ao lado dele num .budget só 12px de gap. */
+.budget-num{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;
+  display:flex;flex-direction:column;gap:1px}
+.budget-num small{font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faded);font-weight:400}
 
 /* ---------- cartas do draft ---------- */
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
@@ -480,20 +487,20 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 
 /* ---------- celular: repercussão ---------- */
 .stage{display:grid;grid-template-columns:minmax(340px,1fr) 300px;gap:16px;align-items:start;margin:14px 0}
-/* Antes era um mockup literal de celular (canto de 22px + notch fake em
-   cima) — o único lugar do jogo inteiro com canto arredondado, direto
-   contra a regra do próprio CSS ("sem canto arredondado" é o que separa
-   documento de mockup de app). Vira boletim de imprensa: régua grossa
-   no topo como cabeçalho de telegrama/boletim de agência, texto como
-   dateline de despacho, zero raio — a mesma família visual do resto do
-   jogo, "quem comenta" em vez de "onde você olha isso". */
-.phone{border:1px solid var(--line2);border-top:3px solid var(--ink);
-  background:var(--panel);padding:0 8px 12px}
+/* Revertido (2026-09-16) — a rodada anterior trocou isto por um visual
+   de "boletim de imprensa" lendo a regra geral do CSS ("sem canto
+   arredondado") sem checar se este elemento era a exceção deliberada.
+   Era: o mockup de celular (canto arredondado + barrinha de notch) é
+   a ÚNICA exceção justificada no jogo inteiro — o painel de
+   repercussão PRECISA parecer "Twitter no telefone" pra fazer sentido
+   como conceito, o resto do jogo continua 100% sem raio. */
+.phone{border:2px solid var(--line2);border-radius:22px;background:var(--panel);
+  padding:9px 8px 12px;position:relative;box-shadow:3px 3px 0 rgba(0,0,0,.10)}
+.phone::before{content:"";display:block;width:52px;height:4px;border-radius:3px;
+  background:var(--rule);margin:0 auto 9px}
 .phone-hd{display:flex;justify-content:space-between;align-items:baseline;
-  padding:9px 6px 7px;margin:0 -8px 0;border-bottom:1px solid var(--rule);
-  font-family:Oswald,sans-serif;font-weight:600;font-size:11px;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--ink2)}
-.phone-hd span:last-child{color:var(--faded);font-weight:400;letter-spacing:.1em}
+  padding:0 6px 7px;border-bottom:1px solid var(--rule);
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faded)}
 .feed{max-height:340px;overflow-y:auto;padding:0 4px}
 .tw{display:grid;grid-template-columns:30px 1fr;gap:8px;padding:9px 4px;
   border-bottom:1px solid var(--rule);animation:pbpin .25s ease both}
@@ -783,7 +790,7 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 <body>
 <div class="wrap">
   <div class="doc-head">
-    <h1>Ficha do Lutador</h1>
+    <h1 id="dochead-h1">Ficha do Lutador</h1>
     <div class="meta" id="docmeta">Comissão Atlética · Registro</div>
   </div>
   <div id="app"></div>
@@ -1820,8 +1827,18 @@ function montarFormularioConta(container){
   render();
 }
 
+/* Título do cabeçalho persistente (2026-09-16): "Ficha do Lutador"
+   fixo no HTML competia com "OCTÓGONO" na home — as duas telas juntas
+   pareciam dois produtos com nomes diferentes. Escondido só na home;
+   qualquer outra tela restaura (a home é a única sem cabeçalho de
+   registro, faz sentido — as outras SÃO o registro). */
+function tituloDoc(mostrar){
+  const h=document.getElementById("dochead-h1");
+  if(h)h.style.display=mostrar?"":"none";
+}
 /* ---------- tela inicial ---------- */
 function screenInicio(){
+  tituloDoc(false);
   app.innerHTML="";
   const tela=el("div","tela-inicio");
 
@@ -1867,6 +1884,7 @@ function voltarInicio(){ screenInicio(); }
 
 /* ---------- tela conta ---------- */
 function screenConta(){
+  tituloDoc(true);
   app.innerHTML="";
   app.appendChild(el("div","eyebrow","Conta"));
   const box=el("div","conta-box");
@@ -1898,6 +1916,7 @@ function screenConta(){
    sempre) — com conta, sincroniza primeiro pra trazer o que só existe
    na nuvem (outro aparelho). */
 function screenHistorico(){
+  tituloDoc(true);
   app.innerHTML="";
   app.appendChild(el("div","eyebrow","Histórico"));
   const box=el("div","");
@@ -1945,6 +1964,7 @@ function screenHistorico(){
    "Termos e Privacidade" pro que falta antes de existir pagamento
    (registro de aceite). */
 function screenPaginaLegal(titulo){
+  tituloDoc(true);
   app.innerHTML="";
   app.appendChild(el("div","eyebrow",titulo));
   app.appendChild(el("div","pagina-legal",
@@ -4715,6 +4735,7 @@ function lerDesafio(){
   }catch(e){return null;}
 }
 function screenName(){
+  tituloDoc(true);
   app.innerHTML="";
   const desafio=lerDesafio();
   app.appendChild(el("div","eyebrow",desafio?"Você foi desafiado":"Abertura de registro"));
@@ -5065,7 +5086,7 @@ function renderDraft(){
 
   const pl=budgetLeft/(TOTAL_WEIGHT*BUDGET_PCT);
   esq.innerHTML=`<div class="col-t">Escolha o próximo par</div>
-    <div class="budget"><span class="budget-num">${budgetLeft.toFixed(2)}</span>
+    <div class="budget"><span class="budget-num"><small>Orçamento</small>${budgetLeft.toFixed(2)}</span>
       <span class="budget-bar"><span class="budget-fill${pl<.3?" low":""}"
         style="width:calc(${(pl*100).toFixed(1)}% - 2px)"></span></span></div>
     <button class="btn btn-ghost btn-sm reroll" id="reroll"></button>
@@ -5080,7 +5101,7 @@ function renderDraft(){
      abrirDilema(), é o que fica de fato desabilitado (clicável ou não),
      não só visualmente cinza. */
   const rerollBtn=document.getElementById("reroll");
-  rerollBtn.textContent=rerollUsado?"🎲 Já rolou":"🎲 Rolar novamente";
+  rerollBtn.textContent=rerollUsado?"Já rolou":"Rolar novamente";
   rerollBtn.disabled=rerollUsado;
   rerollBtn.onclick=()=>{
     if(rerollUsado)return;
