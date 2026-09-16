@@ -1,3 +1,9 @@
 .vercel
 .env*
 .claude/
+.DS_Store
+
+# Notas internas de lançamento/estado — não fazem parte do portfólio público.
+# Ficam locais de propósito, ver README.md.
+ESTADO-ATUAL.md
+PLANO-LANCAMENTO.md
