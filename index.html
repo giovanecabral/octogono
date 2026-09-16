@@ -52,6 +52,12 @@
      Antes era o mesmo laranja cravado só no bloco do cinturão. */
   --warn:#B5651D;
   --warn-dim:#8A4A15;
+  /* "Mira" — vermelho dessaturado, o destaque de hover que liga a carta
+     à posição no octógono e à célula do dossiê. Era 3 hex cravados
+     (var(--mira)/var(--mira-txt)/var(--mira-bg)) sem nome, cada um repetido 2-3 vezes. */
+  --mira:#6E3A38;
+  --mira-txt:#A8756E;
+  --mira-bg:#151A24;
   /* Escala de percentil do draft (pior→melhor) — eram 5 pares de hex
      soltos (.p1-.p5), cada um com cor de barra E de texto. Consolidados
      aqui: barra usa a cor cheia, texto usa a variante -bright/-dim. */
@@ -148,7 +154,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .card .src{font-size:11.5px;color:var(--faded);margin-top:-6px}
 .card .attr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
   border-top:1px dotted var(--rule);padding-top:6px}
-.card:hover .mira-attr .attr-l{color:#A8756E}
+.card:hover .mira-attr .attr-l{color:var(--mira-txt)}
 .card .attr-l{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faded)}
 .card .attr-v{font-variant-numeric:tabular-nums;font-weight:500}
 .pctwrap{display:flex;align-items:center;gap:6px;margin-top:2px}
@@ -334,10 +340,16 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .col-t{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--faded);
   margin-bottom:9px;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .painel{background:var(--panel);border:1px solid var(--line);padding:13px 14px}
+.painel-oct{display:flex;flex-direction:column;align-items:center}
+.painel-oct .col-t{align-self:stretch}
 /* O raio dos slots precisa deixar meia-largura de caixa para dentro, senão
-   eles vazam por cima das colunas vizinhas e do texto acima. */
-.oct-wrap{position:relative;width:100%;aspect-ratio:1/1;max-width:460px;margin:8px auto 0;
+   eles vazam por cima das colunas vizinhas e do texto acima. Max-width
+   subiu de 460 pra 560: a coluna do meio é 1fr (a mais larga da grade) e
+   460 deixava uma sobra vazia grande nos dois lados em tela ampla. */
+.oct-wrap{position:relative;width:100%;aspect-ratio:1/1;max-width:560px;margin:14px auto 0;
   padding:0}
+.oct-legenda{font-size:11.5px;line-height:1.5;color:var(--faded);text-align:center;
+  max-width:380px;margin:18px auto 0}
 .oct-wrap svg{position:absolute;inset:0;width:100%;height:100%}
 .slot{position:absolute;transform:translate(-50%,-50%);width:92px;z-index:2;
   background:var(--panel);border:1px solid var(--line);padding:7px 8px;text-align:center;
@@ -354,9 +366,9 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
    O salto roda a cada passada de mouse porque desenhaOctogono recria os nós,
    então a animação reinicia sozinha — é mais curto e mais fraco que o da
    escolha, que é o momento que realmente merece peso. */
-.slot.mira{border-color:#6E3A38;box-shadow:inset 0 0 0 1px rgba(192,57,43,.16);
+.slot.mira{border-color:var(--mira);box-shadow:inset 0 0 0 1px rgba(192,57,43,.16);
   animation:salta .34s cubic-bezier(.3,1.5,.5,1) both}
-.slot.mira .lab{color:#A8756E}
+.slot.mira .lab{color:var(--mira-txt)}
 @keyframes salta{
   0%{transform:translate(-50%,-50%) scale(1)}
   45%{transform:translate(-50%,-58%) scale(1.11)}
@@ -380,8 +392,8 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .dossie .cel{background:var(--panel2);padding:7px 9px}
 /* Mesma marcação dos slots do octógono: liga visualmente "estes dois atributos"
    com "estes dois lados". Sem isso o jogador não conecta os dois lados da tela. */
-.dossie .cel.mira{box-shadow:inset 0 0 0 1px #6E3A38;background:#151A24}
-.dossie .cel.mira small{color:#A8756E}
+.dossie .cel.mira{box-shadow:inset 0 0 0 1px var(--mira);background:var(--mira-bg)}
+.dossie .cel.mira small{color:var(--mira-txt)}
 .dossie .cel small{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faded)}
 .dossie .cel b{font-family:Oswald,sans-serif;font-weight:700;font-size:16px}
 .dossie .vazio{color:var(--faded);font-size:12.5px;line-height:1.6;padding:24px 0;text-align:center}
@@ -4967,9 +4979,20 @@ function desenhaOctogono(destacar){
 function mostraDossie(r){
   const d=document.getElementById("dossie");
   if(!d)return;
-  if(!r){d.innerHTML=`<div class="col-t">Seu lutador</div>
+  if(!r){
+    /* Antes disto era só retrato + 1 linha de instrução, com muito vazio
+       embaixo — o painel parecia quebrado antes do 1º hover. Nome e
+       divisão já são dados de verdade nesse ponto (vêm de screenName(),
+       antes do draft começar) — mostrar os dois já deixa o painel com a
+       cara de "dossiê ainda incompleto", não "painel vazio". */
+    const divNome=(DIVISOES.find(x=>x.id===DIVISION)||{}).nome||DIVISION;
+    d.innerHTML=`<div class="col-t">Seu lutador</div>
     <div style="text-align:center;padding:6px 0 2px">${bonecoSVG(ROSTO||cfgPadrao(),{w:130})}</div>
-    <div class="vazio" style="padding:8px 0">Passe o mouse numa carta<br>para ver o dossiê do lutador.</div>`;return;}
+    <div class="nm" style="text-align:center">${me.name||"—"}</div>
+    <div class="tags" style="justify-content:center"><span class="tag">${divNome}</span></div>
+    <div class="vazio" style="padding:10px 0 0">Passe o mouse numa carta<br>pra ver o dossiê de quem preenche ela.</div>`;
+    return;
+  }
   const f=r.src, t=f.titulos||{disputas:0,vitorias:0};
   const pa=PCT(r.pair.a.key,f[r.pair.a.key]), pb=PCT(r.pair.b.key,f[r.pair.b.key]);
   const tags=[`${f.fights} lutas`];
@@ -4999,9 +5022,16 @@ function renderDraft(){
 
   const arena=el("div","arena");
   const esq=el("div","painel");
-  const meio=el("div","");
+  /* Antes esta coluna não tinha painel/moldura nenhuma — as outras duas
+     tinham borda + título (.col-t) e esta só flutuava um diagrama sozinho
+     no meio da tela, com muito vazio em volta em qualquer viewport largo.
+     Mesma moldura das vizinhas agora, com título e legenda embaixo. */
+  const meio=el("div","painel painel-oct");
   const dir=el("div","painel dossie");dir.id="dossie";
-  meio.innerHTML=`<div class="oct-wrap" id="oct"></div>`;
+  meio.innerHTML=`<div class="col-t">Seu octógono</div>
+    <div class="oct-wrap" id="oct"></div>
+    <p class="oct-legenda">Cada vértice é um atributo do seu lutador — a carta
+      escolhida no momento pisca no vértice e na célula do dossiê que ela preenche.</p>`;
   arena.append(esq,meio,dir);
   app.appendChild(arena);
 
