@@ -584,6 +584,12 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .conta-box .msg-erro{color:var(--stamp)}
 .conta-box .msg-ok{color:var(--win-dim)}
 .conta-modo-link{margin-top:12px;font-size:12.5px}
+/* Bug achado testando Conta em 380px (2026-09-16): o link é <a> inline,
+   o botão "Entrar" logo depois é inline-block — sem texto/margem entre
+   os dois no DOM (el() não insere espaço), eles ficavam colados, largura
+   zero de vão, o botão em cima da última letra do link. Existia em
+   qualquer largura, só ficou visível testando esta tela pela 1ª vez. */
+#conta-link-esqueci{display:block;margin:6px 0 14px}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 
 /* ---------- tela inicial (2026-09-09, recomposta 2026-09-15) ---------- */

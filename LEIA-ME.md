@@ -2172,6 +2172,22 @@ cd .. && pip3 install pandas && python3 atualizar-dados.py && node testar.js
 
 ## Dívidas conhecidas
 
+**Remendo, não conserto — `html{overflow-x:hidden}` (2026-09-16).**
+Medido em 380px (auditoria mobile, Fase 4 do redesign): `#controls
+.row` (o bloco "Próxima luta / Modo automático / Conquistas / Loja",
+presente em toda tela de carreira) reporta `scrollWidth` 22px maior
+que `clientWidth` — 398 contra 376 — mesmo sendo `flex-wrap:wrap` e
+nenhum item individual passando da largura do container (medido:
+maior item 179px, container 340px). Provável quirk do Chrome com
+flex-wrap+gap, não confirmado contra outros motores. `overflow-x:hidden`
+no `html` esconde o sintoma (trava o usuário de arrastar a página pro
+lado) sem explicar por que `.row` calcula mais largura do que ocupa.
+Se o conteúdo desse bloco crescer de novo — mais um botão, texto mais
+longo — o overflow provavelmente cresce junto, só que agora invisível,
+sem scroll pra denunciar. **Quando mexer em `#controls` (Fase 6, que
+já vai tocar nos controles), vale isolar a causa raiz antes de
+adicionar/mudar qualquer coisa ali.**
+
 **RESOLVIDO — `testar.js escolhas` reimplementava a seleção de adversário.**
 Chamava `camp.fx(me)` (nunca existiu — o motor usa `camp.alvos` via
 `aplicarCamp()`) e reimplementava a escada em vez de chamar `candidatos()`.
