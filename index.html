@@ -245,14 +245,21 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 /* ---------- painel do lutador ---------- */
 .carreira{display:grid;grid-template-columns:262px minmax(0,1fr);gap:18px;align-items:start}
 .ficha{background:var(--panel);border:1px solid var(--line);position:sticky;top:72px}
-.ficha-top{padding:13px 14px 11px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:center}
-.ficha-top .boneco{flex:0 0 auto}
-.ficha-top .id{min-width:0}
-.ficha-top .nm{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;line-height:1.1;
+/* Antes: retrato pequeno (64px) ao lado do nome, os dois competindo com o
+   mesmo espaço de 262px de coluna. O lutador é o protagonista da
+   carreira (pedido explícito) — retrato maior, sozinho, centralizado
+   como um busto de vestiário/cartaz de luta, nome grande embaixo dele
+   em vez de ao lado. */
+.ficha-top{padding:18px 14px 14px;border-bottom:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;text-align:center}
+.ficha-top .boneco{flex:0 0 auto;margin-bottom:10px}
+.ficha-top .id{min-width:0;width:100%}
+.ficha-top .nm{font-family:Oswald,sans-serif;font-weight:700;font-size:21px;line-height:1.1;
   word-break:break-word}
-.ficha-top .sub{font-size:11px;color:var(--faded);margin-top:3px}
-.ficha-top .caixa{font-size:11px;color:var(--win-dim);margin-top:2px}
-.ficha-top .assin{font-size:11px;color:var(--gold);margin-top:4px;letter-spacing:.04em}
+.ficha-top .sub{font-size:12px;color:var(--ink2);margin-top:4px;letter-spacing:.03em}
+.ficha-top .caixa{font-size:12px;color:var(--win-dim);margin-top:6px;font-weight:600}
+.ficha-top .assin{font-size:10.5px;color:var(--gold);margin-top:5px;letter-spacing:.06em;
+  text-transform:uppercase}
 .ficha-sec{padding:11px 14px;border-bottom:1px solid var(--line)}
 .ficha-sec:last-child{border-bottom:none}
 .ficha-sec h4{margin:0 0 8px;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
@@ -260,7 +267,10 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .cint{display:flex;align-items:center;gap:9px}
 .cint .b{font-family:Oswald,sans-serif;font-weight:700;font-size:15px;letter-spacing:.05em;
   text-transform:uppercase;border:2px solid currentColor;padding:2px 9px}
-.cint .b.sim{color:var(--gold)}
+/* Segurar o cinturão de verdade precisa parecer diferente de "não" — antes
+   os dois estados eram o MESMO contorno, só trocando a cor do texto.
+   Prestígio ganha preenchimento sólido, não só um texto colorido. */
+.cint .b.sim{color:var(--bg);background:var(--gold);border-color:var(--gold)}
 .cint .b.nao{color:var(--faded)}
 .cint small{font-size:11px;color:var(--faded)}
 /* laranja escuro: é objetivo (o que falta pra chegar lá), não prejuízo —
@@ -470,13 +480,20 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 
 /* ---------- celular: repercussão ---------- */
 .stage{display:grid;grid-template-columns:minmax(340px,1fr) 300px;gap:16px;align-items:start;margin:14px 0}
-.phone{border:2px solid var(--line2);border-radius:22px;background:var(--panel);
-  padding:9px 8px 12px;position:relative;box-shadow:3px 3px 0 rgba(0,0,0,.10)}
-.phone::before{content:"";display:block;width:52px;height:4px;border-radius:3px;
-  background:var(--rule);margin:0 auto 9px}
+/* Antes era um mockup literal de celular (canto de 22px + notch fake em
+   cima) — o único lugar do jogo inteiro com canto arredondado, direto
+   contra a regra do próprio CSS ("sem canto arredondado" é o que separa
+   documento de mockup de app). Vira boletim de imprensa: régua grossa
+   no topo como cabeçalho de telegrama/boletim de agência, texto como
+   dateline de despacho, zero raio — a mesma família visual do resto do
+   jogo, "quem comenta" em vez de "onde você olha isso". */
+.phone{border:1px solid var(--line2);border-top:3px solid var(--ink);
+  background:var(--panel);padding:0 8px 12px}
 .phone-hd{display:flex;justify-content:space-between;align-items:baseline;
-  padding:0 6px 7px;border-bottom:1px solid var(--rule);
-  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faded)}
+  padding:9px 6px 7px;margin:0 -8px 0;border-bottom:1px solid var(--rule);
+  font-family:Oswald,sans-serif;font-weight:600;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink2)}
+.phone-hd span:last-child{color:var(--faded);font-weight:400;letter-spacing:.1em}
 .feed{max-height:340px;overflow-y:auto;padding:0 4px}
 .tw{display:grid;grid-template-columns:30px 1fr;gap:8px;padding:9px 4px;
   border-bottom:1px solid var(--rule);animation:pbpin .25s ease both}
@@ -513,6 +530,17 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .bout .opp{font-weight:500}
 .bout .how{font-size:11.5px;color:var(--faded);letter-spacing:.04em}
 .bout.title-fight .opp::after{content:" ★";color:var(--gold)}
+/* O resultado mais recente pesa mais que o histórico — antes as 22 linhas
+   do cartel tinham o MESMO peso visual, então "acabei de ganhar o
+   cinturão" e "venci a luta 3" pareciam a mesma coisa na tela. A última
+   luta ganha respiro e o carimbo cresce; assim que a próxima é lutada,
+   ela "esfria" pro tamanho de histórico normal — o próprio DOM decide
+   isso sozinho (:last-child), sem estado novo pra manter. */
+.bout:last-child{padding:16px 12px;margin:2px -12px;background:var(--panel2);
+  border-bottom-color:var(--line2)}
+.bout:last-child .opp{font-size:15.5px}
+.bout:last-child .how{font-size:12.5px;color:var(--ink2)}
+.bout:last-child .stamp{font-size:19px;padding:4px 13px;letter-spacing:.16em}
 
 /* ---------- o carimbo (elemento assinatura) ---------- */
 .stamp{font-family:Oswald,sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
@@ -3232,7 +3260,7 @@ function renderFicha(){
 
   box.innerHTML=`
     <div class="ficha-top">
-      ${bonecoSVG(ROSTO||cfgPadrao(),{w:64})}
+      ${bonecoSVG(ROSTO||cfgPadrao(),{w:92})}
       <div class="id">
         <div class="nm">${me.name}</div>
         <div class="sub">${idadeAtual()} anos · ${st.wins}-${st.losses}</div>
