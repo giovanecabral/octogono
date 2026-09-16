@@ -173,7 +173,10 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     const inp = env.todos.filter(n => n.tagName === "input" && n.type === "text").pop();
     if (!inp) throw new Error("campo de nome não foi montado");
     inp.value = "TesteBot";                       // sem isso o botão volta sem fazer nada
-    const btn = env.todos.filter(n => n.tagName === "button" && n.className === "btn" && n.onclick).pop();
+    // classe exata quebrou quando o botão ganhou peso visual de ação
+    // primária (Fase 5, mesmo padrão do "Jogar" da tela inicial) — acha
+    // pelo texto, que é o que realmente identifica este botão.
+    const btn = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Montar o lutador" && n.onclick).pop();
     btn.onclick();
     if (!btn) throw new Error("botão 'Montar o lutador' não foi montado");
     btn.onclick();

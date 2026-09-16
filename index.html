@@ -224,17 +224,21 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .btn-sm{padding:7px 13px;font-size:13px}
 
 /* ---------- escolha de divisão ---------- */
-/* ---------- seletor de modo ---------- */
-.modos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:9px;
-  margin:14px 0 10px}
-.modo{border:1px solid var(--line);background:var(--stock-2);padding:10px 12px;
-  display:flex;flex-direction:column;gap:4px;text-align:left}
-.modo:hover{border-color:var(--line2)}
-.modo.on{border-color:var(--stamp);background:var(--panel2)}
+/* ---------- seletor de modo (Fase 5, 2026-09-16: virou peça segmentada —
+   Carreira/Seja uma lenda são UMA escolha, não dois botões independentes,
+   então um bloco só com a opção ativa preenchida deixa isso claro) ---------- */
+.modos{display:flex;border:1px solid var(--ink);margin:14px 0 10px}
+.modo{flex:1;border:none;background:none;padding:12px 14px;
+  display:flex;flex-direction:column;gap:4px;text-align:left;
+  transition:background .15s ease,color .15s ease}
+.modo+.modo{border-left:1px solid var(--ink)}
+.modo:not(.on):hover{background:var(--panel2)}
+.modo.on{background:var(--ink)}
 .modo .n{font-family:Oswald,sans-serif;font-weight:700;font-size:13px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--faded)}
-.modo.on .n{color:var(--stamp)}
+  text-transform:uppercase;color:var(--ink)}
+.modo.on .n{color:var(--bg)}
 .modo .d{font-size:11px;color:var(--faded);line-height:1.45}
+.modo.on .d{color:var(--ink2)}
 .modo-nota{font-size:11px;color:var(--faded);line-height:1.6;margin:0 0 12px}
 .divs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:9px}
 .div-c{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;
@@ -315,6 +319,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .palco{background:var(--panel);border:1px solid var(--line);padding:22px 18px;text-align:center;
   position:sticky;top:70px;
   background-image:radial-gradient(ellipse at 50% 32%,rgba(255,255,255,.045),transparent 62%)}
+.palco .col-t{text-align:left}
 .palco .boneco{display:block;margin:0 auto;max-width:100%;height:auto}
 .palco .nomebox{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .palco .nomebox small{display:block;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
@@ -638,6 +643,16 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .inicio-rodape a:hover{color:var(--ink)}
 .inicio-rodape span{color:var(--line2)}
 .pagina-legal{max-width:640px;line-height:1.7}
+
+/* ---------- tela nome (Fase 5, 2026-09-16) ---------- */
+/* Reaproveita o octógono de fundo e o peso do botão "Jogar" da Início —
+   é a tela seguinte no funil, faz sentido continuar a mesma identidade
+   em vez de cair num formulário burocrático genérico. */
+.tela-registro{position:relative;overflow:hidden}
+.registro-form{position:relative;display:flex;flex-direction:column;
+  align-items:flex-start;gap:16px;max-width:620px;margin-top:14px}
+.registro-form .inicio-tagline{max-width:none}
+.input-hero{font-size:20px;padding:10px 4px}
 
 /* nocaute: a página leva o golpe */
 @keyframes shake{
@@ -4765,10 +4780,18 @@ function screenName(){
        mesmos adversários, na mesma ordem. O draft (se rolar novamente) e os
        eventos da carreira podem sair diferentes — o resto é você quem faz.`));
   }
-  const p=el("p","",`Todo lutador começa com um nome numa ficha. Depois disso é só o que ele faz no octógono.`);
-  const inp=el("input");inp.type="text";inp.placeholder="Nome do lutador";inp.maxLength=28;
-  const row=el("div","row");
-  const go=el("button","btn","Montar o lutador");
+  /* Reaproveita a identidade da Início (octógono de fundo, peso do botão
+     "Jogar") em vez de cair num formulário burocrático genérico — é a
+     tela seguinte no funil, mesma frase de "isto é o Octógono".
+     Frase cortada pra uma linha (2026-09-16): quem clicou em Jogar já
+     quer jogar, não ler duas frases antes do primeiro campo. */
+  const tela=el("div","tela-registro");
+  const oct=el("div","inicio-oct");oct.innerHTML=octogonoSVG();
+  const form=el("div","registro-form");
+  const p=el("p","inicio-tagline",`Todo lutador começa com um nome — o resto é luta.`);
+  const inp=el("input");inp.type="text";inp.className="input-hero";
+  inp.placeholder="Nome do lutador";inp.maxLength=28;
+  const go=el("button","inicio-item inicio-item-principal","Montar o lutador");
   go.onclick=()=>{
     const n=inp.value.trim();
     if(!n){inp.focus();return;}
@@ -4778,8 +4801,9 @@ function screenName(){
     else{SEED=0;MODO="normal";screenCriador(n);}
   };
   inp.onkeydown=e=>{if(e.key==="Enter")go.click();};
-  row.appendChild(go);
-  app.append(p,inp,row);
+  form.append(p,inp,go);
+  tela.append(oct,form);
+  app.appendChild(tela);
   inp.focus();
 }
 
@@ -4815,7 +4839,7 @@ function screenCriador(name){
   wrap.append(palco,pain);app.appendChild(wrap);
 
   const desenha=()=>{
-    palco.innerHTML=bonecoSVG(ROSTO,{w:250})+
+    palco.innerHTML=`<div class="col-t">Seu lutador</div>`+bonecoSVG(ROSTO,{w:250})+
       `<div class="nomebox"><small>Nome do lutador</small>
         <input type="text" id="nomeIn" maxlength="28" value="${(name||"").replace(/"/g,"&quot;")}"></div>`;
     const ni=document.getElementById("nomeIn");
