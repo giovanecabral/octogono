@@ -480,8 +480,16 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   font-size:12.5px;line-height:1.45}
 /* escolha na luta (item 6, v2): mesmo padrão visual dos camps — grid,
    lado a lado, nunca empilhado, mesmo em tela estreita ele quebra em
-   linhas de 3 antes de virar coluna única */
-.escolha-luta{margin-top:10px}
+   linhas de 3 antes de virar coluna única.
+   Fase 7 (2026-09-17): acontece no meio do round, narração parada
+   esperando — o oposto do momento calmo do camp que ela pegava
+   emprestado. Tarja vermelha no topo (mesma cor do dilema, --stamp,
+   como FORMA diferente — borda lateral é "preste atenção", tarja no
+   topo é "agora"). E o atributo que decide a ação vira o segundo
+   elemento mais visível do botão (número grande, tabular-nums, cor de
+   destaque) em vez de legenda cinza de 11px — é a informação que
+   separa leitura de chute, tem que dar pra ler de relance. */
+.escolha-luta{margin-top:10px;border-top:3px solid var(--stamp);padding-top:9px}
 .el-cab{font-size:12.5px;color:var(--ink2);line-height:1.4;margin-bottom:10px}
 .el-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .el-opts button{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;
@@ -490,13 +498,26 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--line2)}
 .el-nome{display:block;color:var(--ink);font-family:Oswald,sans-serif;font-weight:700;
   font-size:13px;letter-spacing:.03em;text-transform:uppercase}
-.el-attr{display:block;font-size:11px;color:var(--faded);margin-top:4px}
-.el-attr b{color:var(--ink2);font-weight:600}
+.el-attr{display:block;font-size:10.5px;color:var(--faded);margin-top:7px;
+  letter-spacing:.06em;text-transform:uppercase;padding-top:6px;
+  border-top:1px solid var(--line)}
+.el-attr b{display:block;color:var(--win-bright);font-weight:700;font-size:17px;
+  font-variant-numeric:tabular-nums;letter-spacing:.02em;margin-top:2px}
 .contra b{font-weight:600}
 
 /* ---------- dilema interativo ---------- */
-.dilema{border:1.5px solid var(--line2);background:var(--panel);
-  padding:13px 15px;margin:10px 0 12px;animation:fade .4s ease both}
+/* Fase 7 (2026-09-17): dilema é o único texto livre do jogo, o
+   diferencial contra a concorrência — vinha com o mesmo peso visual
+   de qualquer .bout/.event no feed. Borda esquerda grossa vermelha
+   (--stamp) marca "preste atenção nisto", mesma cor já usada no
+   carimbo de derrota/passo do cinturão/card de momento — não é raro
+   virar comum, é a cor de "isso importa" ficando consistente. */
+.dilema{border:1.5px solid var(--line2);border-left:3px solid var(--stamp);
+  background:var(--panel);padding:13px 15px 13px 13px;margin:10px 0 12px;
+  animation:fade .4s ease both}
+.dil-eyebrow{font-family:Oswald,sans-serif;font-weight:700;font-size:10px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--stamp);
+  margin-bottom:6px}
 .dil-t{font-family:Oswald,sans-serif;font-weight:700;font-size:15px;
   letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
 .dil-c{font-size:13.5px;line-height:1.55}
@@ -508,8 +529,13 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
 .dil-in textarea:focus{outline:none;border-bottom-color:var(--stamp)}
 .dil-r{font-style:italic;color:var(--faded);font-size:13px;margin-top:10px;
   padding-left:12px;border-left:2px solid var(--rule)}
-.dil-o{font-size:13.5px;line-height:1.55;margin-top:9px;padding-top:9px;
-  border-top:1px dotted var(--rule)}
+/* dil-o (o desfecho, 6-10 frases com diálogo): linha mais alta, e um teto
+   de largura pra ler como texto escrito, não campo de dado esticado.
+   62ch só amarra em tela larga — num container mais estreito que isso
+   (todo 380px é) o max-width nunca chega a valer, o texto continua
+   ocupando 100% da caixa, sem coluna estreita nem margem lateral. */
+.dil-o{font-size:13.5px;line-height:1.7;margin-top:9px;padding-top:9px;
+  border-top:1px dotted var(--rule);max-width:62ch}
 .dil-fx{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap;align-items:baseline}
 
 /* ---------- celular: repercussão ---------- */
@@ -2636,7 +2662,8 @@ async function abrirDilema(){
   st.dilemaRecentes.push(String(d.titulo||"E agora?"));
   if(st.dilemaRecentes.length>3)st.dilemaRecentes.shift();
 
-  box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
+  box.innerHTML=`<div class="dil-eyebrow">Decisão</div>
+    <div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
     <div class="dil-in">
       <textarea id="dilresp" maxlength="200" rows="3" placeholder="O que você faz?"></textarea>
@@ -2872,9 +2899,11 @@ function aplicarDilema(box,d,txt,jBruto){
      o container de narração (`box.scrollIntoView` já existe). */
   const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,2000):"";
   const desfecho=bruto||fraseFallback();
-  box.innerHTML=`<div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
+  box.innerHTML=`<div class="dil-eyebrow">Decisão</div>
+    <div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
     <div class="dil-c">${String(d.cena).slice(0,400)}</div>
     <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
+    <div class="dil-eyebrow">O desfecho</div>
     <div class="dil-o">${desfecho}</div>
     <div class="dil-fx">
       ${dif!==0?`<span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>`:""}
