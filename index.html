@@ -2769,7 +2769,20 @@ function aplicarDilema(box,d,txt,jBruto){
      continua o mesmo. Efeito aplicado no valor JÁ arredondado, não antes
      de lim()/Math.round — mais simples de medir e não muda o teto de
      ±1 bolsa que lim() já trava. */
-  const dDinheiroBruto=Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0));
+  /* Rede de baixo pro mesmo problema do "não repita" (LEIA-ME.md, "Regra
+     geral: restrição negativa no prompt não é garantia"): pedir no prompt
+     pra só preencher "dinheiro" quando o desfecho narra um evento
+     financeiro de verdade reduz, mas não impede, a IA inventar um valor
+     sem nenhum r$/multa/contrato/prêmio no texto (medido: 4 de 20
+     desfechos tinham "dinheiro" não-zero sem NENHUMA palavra de dinheiro
+     na narração). Checagem mecânica, não sentimento — só confere se o
+     TEXTO menciona algo financeiro; não tenta decidir se a cena foi boa
+     ou ruim (isso é frágil demais em texto livre com gíria, não vale a
+     pena arriscar falso positivo). Sem acento de propósito (semAcento):
+     não depender de a IA ter acentuado igual. */
+  const semAcento=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+  const mencionaDinheiro=/r\$|\breais?\b|multa|patrocinio|contrato|premio|bolsa|cache|pagou|pagamento|recebeu|indeniza|aposta|salario|\bpix\b|divida|emprestou|emprestar/.test(semAcento(j&&j.desfecho));
+  const dDinheiroBruto=mencionaDinheiro?Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0)):0;
   const dDinheiro=(st.empresarioComprado&&dDinheiroBruto<0)?Math.round(dDinheiroBruto/2):dDinheiroBruto;
   const ATTRS_LESAO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
 

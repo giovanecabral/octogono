@@ -141,7 +141,23 @@ escreveu menciona um valor em reais (livre, não precisa vir da cena —
 "ganhou R$300 de patrocínio", "pagou R$50 de multa"), "dinheiro" TEM
 que corresponder EXATAMENTE a esse valor dividido por R$${d.rendaBase||6000} — faça essa
 conta antes de responder, nunca escreva um valor em reais no desfecho
-que não bata com "dinheiro" depois de multiplicado pela bolsa.
+que não bata com "dinheiro" depois de multiplicado pela bolsa. REGRA
+MECÂNICA, sem exceção: se o desfecho que você escreveu NÃO menciona
+nenhum valor em reais nem nenhum evento financeiro concreto — contrato
+assinado ou cancelado, multa paga, prêmio recebido, patrocínio fechado
+ou perdido, aposta paga — "dinheiro" é 0, ponto. Não invente um valor
+só porque a cena foi boa ou ruim de um jeito que não é financeiro (uma
+provocação que viralizou, uma vergonha pública, um machucado no
+treino, uma discussão de relacionamento): fama e corpo têm os próprios
+números (seguidores, fa, atributo/efeito), dinheiro não é o "resumo
+geral" de como a decisão foi. E diferencie PERDER dinheiro de verdade
+(já tinha ou já ia receber e não recebeu por causa de multa,
+cancelamento, calote) de simplesmente NÃO GANHAR uma oportunidade que
+era incerta desde o início (recusou uma proposta, perdeu a confiança
+de alguém que talvez indicasse ele no futuro, ficou sem padrinho pra
+uma chance) — o segundo caso é sobre reputação/oportunidade futura,
+não é dinheiro saindo do bolso dele agora: "dinheiro" fica 0 nesses
+casos, quem carrega o custo é "seguidores"/"fa".
 Se a decisão do jogador foi recusar um risco físico — não lutar machucado, não
 arriscar o corpo — isso é PRUDENTE, não covardia: não é "decisão burra". Mesmo
 assim NÃO é neutra: fã de MMA valoriza quem arrisca o corpo, então isso ainda
