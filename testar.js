@@ -3327,8 +3327,10 @@ function testarTelaInicial() {
     });
     await passo("Histórico com carreira salva: item aparece na tela com os dados certos", () => {
       // conteúdo vem via innerHTML string (mesmo caso de Termos/Privacidade
-      // acima) — não vira nó rastreável, procura no innerHTML do "conquista"
-      const item = env.todos.filter(n => (n.className || "").split(" ").includes("conquista") && /TesteBot/.test(n.innerHTML)).pop();
+      // acima) — não vira nó rastreável, procura no innerHTML do "carreira-item".
+      // Fase 8: carreira passada parou de usar a classe "conquista" — era a
+      // mesma classe do troféu de verdade, na mesma tela, linha debaixo.
+      const item = env.todos.filter(n => (n.className || "").split(" ").includes("carreira-item") && /TesteBot/.test(n.innerHTML)).pop();
       if (!item) throw new Error("carreira salva não apareceu na tela");
       if (!/18-4/.test(item.innerHTML) || !/nota B/.test(item.innerHTML))
         throw new Error("cartel ou nota não aparecem certos: " + item.innerHTML);
@@ -3379,9 +3381,13 @@ function testarLoja() {
       LOJA_ITENS.length>=2);
 
     const itensDe=p=>p.children[0].children.filter(c=>(c.className||"").split(" ").includes("loja-item"));
+    // Fase 8: preço/botão/badge de "adquirido" moram dentro de .loja-rodape
+    // agora (pra alinhar nas pontas, preço à esquerda e ação à direita) —
+    // não são mais filhos diretos de .loja-item. Um nível a mais de busca.
+    const filhosENetos=l=>l.children.flatMap(c=>[c, ...(c.children||[])]);
     const botaoDe=(linhas,nome)=>{
       const l=linhas.find(x=>x.children[0].innerHTML===nome);
-      return l.children.find(c=>c.tagName==="button");
+      return filhosENetos(l).find(c=>c.tagName==="button");
     };
 
     // caso 1: sem dinheiro nenhum, os dois botões vêm desabilitados
@@ -3389,7 +3395,7 @@ function testarLoja() {
     abrirPainelTreinador();
     let p=document.getElementById("painelTreinador");
     let linhas=itensDe(p);
-    let botoes=linhas.map(l=>l.children.find(c=>c.tagName==="button")).filter(Boolean);
+    let botoes=linhas.map(l=>filhosENetos(l).find(c=>c.tagName==="button")).filter(Boolean);
     passo("sem dinheiro: nenhum botão de compra fica habilitado ("+botoes.length+" botões)",
       botoes.length>=2 && botoes.every(b=>b.disabled));
 
@@ -3429,8 +3435,8 @@ function testarLoja() {
     linhas=itensDe(p);
     const linhaEquip=linhas.find(l=>l.children[0].innerHTML==="Equipamento de proteção");
     passo("depois de comprado, o item mostra 'Adquirido', não o botão de novo",
-      linhaEquip.children.some(c=>c.innerHTML==="✓ Adquirido") &&
-      !linhaEquip.children.some(c=>c.tagName==="button"));
+      filhosENetos(linhaEquip).some(c=>c.innerHTML==="✓ Adquirido") &&
+      !filhosENetos(linhaEquip).some(c=>c.tagName==="button"));
 
     // caso 5: clicar comprar sem dinheiro suficiente não desconta nem marca
     // (rede de baixo — o disabled já devia impedir, mas o onclick não pode
@@ -3503,8 +3509,8 @@ function testarLoja() {
     linhas=itensDe(p);
     const linhaConsult=linhas.find(l=>l.children[0].innerHTML==="Consultoria de mídia");
     passo("consultoria: ATIVA mostra rótulo próprio, não 'Adquirido' (é recorrente, não permanente)",
-      linhaConsult.children.some(c=>c.innerHTML==="✓ Ativa para a próxima luta") &&
-      !linhaConsult.children.some(c=>c.innerHTML==="✓ Adquirido"));
+      filhosENetos(linhaConsult).some(c=>c.innerHTML==="✓ Ativa para a próxima luta") &&
+      !filhosENetos(linhaConsult).some(c=>c.innerHTML==="✓ Adquirido"));
 
     fightNo=6; rng=mulberry32(1); rareUsed=new Set();
     st.followers=10000; st.fightNo=6;

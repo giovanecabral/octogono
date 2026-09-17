@@ -817,7 +817,13 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 .painel-momentos .vazio{color:var(--faded);font-size:13px}
 .momento-item{border:1px solid var(--rule);padding:10px 12px;margin-bottom:10px;
   display:flex;gap:12px;align-items:flex-start}
-.momento-mini{flex:none;border:1px solid var(--rule);background-size:cover;
+/* Moldura passe-partout (Fase 8): borda externa grossa + respiro (o
+   "mat") + a borda fina que a miniatura já tinha — duas linhas com vão
+   entre elas, não uma borda dupla colada. .momento-mini continua o
+   MESMO <div> de fundo CSS (confirmado: não virou <canvas>/<img>). */
+.momento-moldura{flex:none;padding:5px;border:2px solid var(--line2);
+  background:var(--stock-2)}
+.momento-mini{border:1px solid var(--rule);background-size:cover;
   background-position:center;cursor:pointer}
 .momento-texto{flex:1;min-width:0}
 .momento-item .frase{font-size:13px;color:var(--ink);margin-bottom:8px}
@@ -832,13 +838,56 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 .conquista-nome{font-size:13px;color:var(--faded)}
 .conquista.ok .conquista-nome{color:var(--ink);font-weight:600}
 .conquista-desc{font-size:11px;color:var(--faded);margin-top:2px}
+/* Carreira passada (Fase 8, 2026-09-17): é registro, não troféu — parou de
+   usar .conquista (a MESMA classe da lista de conquistas de verdade, logo
+   abaixo nesta tela). Linha de ficha: nome + cartel/nota alinhados nas
+   pontas, data embaixo, tabular-nums pro cartel. Sem media query: .carreira-
+   nome tem largura mínima e .carreira-stats nunca quebra por dentro (é UM
+   item flex) — se não cabem lado a lado, o grupo inteiro (cartel+nota) desce
+   pra linha de baixo, nome sozinho em cima. Testado em 380px. */
+.carreira-item{border-bottom:1px solid var(--rule);padding:9px 0}
+.carreira-item:last-child{border-bottom:none}
+.carreira-linha{display:flex;flex-wrap:wrap;justify-content:space-between;
+  align-items:baseline;gap:2px 14px}
+.carreira-nome{font-family:Oswald,sans-serif;font-weight:700;font-size:13.5px;
+  color:var(--ink);flex:1 1 auto;min-width:120px}
+.carreira-stats{display:flex;gap:10px;align-items:baseline;flex:0 0 auto;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.carreira-stats b{font-size:13px;color:var(--ink)}
+.carreira-nota{font-size:11.5px;color:var(--faded)}
+.carreira-data{font-size:11px;color:var(--faded);margin-top:3px}
 /* Painel de compras (treinador, e o que entrar depois): descrição em
    linguagem de jogador (o que É) separada do efeito mecânico (o que MUDA
    e quanto) — sem isso o jogador compra no escuro, mesmo problema do
-   treinador antigo (+0,05 vitórias) que ninguém percebia que era inútil. */
-.item-desc{font-weight:700;color:var(--ink);font-size:12.5px;margin-top:6px}
-.item-efeito{font-weight:700;color:var(--win-dim);font-size:11.5px;margin-top:3px}
+   treinador antigo (+0,05 vitórias) que ninguém percebia que era inútil.
+   Fase 8 (2026-09-17): item de loja é produto, não conquista — parou de
+   usar .conquista-nome/.conquista-desc (a MESMA classe que o histórico
+   usa pra carreira passada, na mesma tela que conquista de verdade,
+   logo abaixo). O efeito (item-efeito) sobe de legenda de 11.5px pra
+   ser a informação que decide a compra — mesmo texto que efeito() já
+   devolvia, só parando de ser pequeno. */
+.loja-nome{font-family:Oswald,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.03em;color:var(--ink)}
+/* item-desc: era bold 700 (mesmo peso do nome, competindo por atenção).
+   Fase 8: peso normal — descrição é apoio, o efeito é quem decide. */
+.item-desc{font-weight:400;color:var(--ink2);font-size:12.5px;
+  line-height:1.45;margin-top:4px}
+.loja-efeito-lb{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faded);margin-top:10px}
+.item-efeito{font-weight:700;color:var(--win-dim);font-size:13.5px;
+  line-height:1.4;margin-top:2px}
+.loja-rodape{display:flex;justify-content:space-between;align-items:center;
+  gap:10px;margin-top:11px;padding-top:10px;border-top:1px dotted var(--rule)}
+.loja-preco{font-family:Oswald,sans-serif;font-weight:700;font-size:14px;color:var(--ink)}
+/* Comprado: nome/descrição perdem contraste (a decisão já foi tomada,
+   não precisam competir com os itens ainda à venda) mas continuam
+   --faded, não escurecem mais que isso — "já comprei isso" tem que
+   continuar legível. O efeito (item-efeito) fica como está, sem
+   escurecer: saber o que o item comprado FAZ continua sendo
+   informação útil, só o preço/botão vira o badge verde sólido. */
+.loja-item.comprado .loja-nome,.loja-item.comprado .item-desc{color:var(--faded)}
 .loja-item{border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:10px}
+.loja-item:last-child{border-bottom:none;margin-bottom:0}
 .loja-item:last-of-type{border-bottom:none}
 
 @media (prefers-reduced-motion:reduce){
@@ -2002,9 +2051,12 @@ function screenHistorico(){
       carreiras.forEach(c=>{
         const data=new Date(c.data);
         const dataFmt=isNaN(data)?c.data:data.toLocaleDateString("pt-BR");
-        box.appendChild(el("div","conquista",
-          `<div class="conquista-nome">${c.nome} · ${c.cartel} · nota ${c.nota}</div>
-           <div class="conquista-desc">${dataFmt}</div>`));
+        box.appendChild(el("div","carreira-item",
+          `<div class="carreira-linha">
+             <span class="carreira-nome">${c.nome}</span>
+             <span class="carreira-stats"><b>${c.cartel}</b><span class="carreira-nota">nota ${c.nota}</span></span>
+           </div>
+           <div class="carreira-data">${dataFmt}</div>`));
       });
     }
     box.appendChild(el("h4","","Conquistas"));
@@ -4526,11 +4578,17 @@ async function abrirPainelMomentos(){
       try{
         const cv=await desenharCardMomento(m);
         const thumbW=140,thumbH=Math.round(thumbW*CARD_H/CARD_W);
+        /* Moldura (Fase 8, 2026-09-17): passe-partout ao redor da miniatura
+           — .momento-moldura é só padding+borda, .momento-mini continua o
+           MESMO <div> de fundo CSS de sempre, tamanho/onclick/background
+           intactos. Não é <canvas>/<img> antes nem depois. */
         const mini=el("div","momento-mini");
         mini.style.width=thumbW+"px";mini.style.height=thumbH+"px";
         mini.style.backgroundImage=`url(${cv.toDataURL("image/png")})`;
         mini.onclick=()=>compartilhar(m,btn,desenharCardMomento);
-        item.appendChild(mini);
+        const moldura=el("div","momento-moldura");
+        moldura.appendChild(mini);
+        item.appendChild(moldura);
       }catch(e){/* sem prévia não impede salvar — segue sem a miniatura */}
       item.appendChild(texto);
       box.appendChild(item);
@@ -4627,16 +4685,21 @@ function abrirPainelTreinador(){
   box.appendChild(el("h3","","Loja"));
   box.appendChild(el("div","conquista-desc","Seu caixa: "+fmtNum(st.dinheiro||0)));
   LOJA_ITENS.forEach(item=>{
-    const linha=el("div","loja-item");
-    linha.appendChild(el("div","conquista-nome",item.nome));
+    const comprado=item.comprado();
+    const linha=el("div","loja-item"+(comprado?" comprado":""));
+    linha.appendChild(el("div","loja-nome",item.nome));
     linha.appendChild(el("div","item-desc",item.desc()));
-    linha.appendChild(el("div","item-efeito",item.efeito()));
+    linha.appendChild(el("div","loja-efeito-lb","Efeito medido"));
+    /* mesmo texto de efeito() de sempre, só sem repetir "Efeito:" — o
+       rótulo acima já diz isso, copy nenhuma nova. */
+    linha.appendChild(el("div","item-efeito",item.efeito().replace(/^Efeito:\s*/,"")));
     const custo=item.custo();
-    if(item.comprado()){
-      linha.appendChild(el("div","conquista-nome ok",
+    const rodape=el("div","loja-rodape");
+    if(comprado){
+      rodape.appendChild(el("span","badge badge-win",
         item.recorrente?"✓ Ativa para a próxima luta":"✓ Adquirido"));
     }else{
-      linha.appendChild(el("div","conquista-desc","Custa "+fmtNum(custo)));
+      rodape.appendChild(el("span","loja-preco",fmtNum(custo)));
       const buy=el("button","btn btn-sm","Comprar");
       buy.disabled=(st.dinheiro||0)<custo;
       buy.onclick=()=>{
@@ -4645,8 +4708,9 @@ function abrirPainelTreinador(){
         item.comprar();
         abrirPainelTreinador();        // redesenha já adquirido
       };
-      linha.appendChild(buy);
+      rodape.appendChild(buy);
     }
+    linha.appendChild(rodape);
     box.appendChild(linha);
   });
   const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
