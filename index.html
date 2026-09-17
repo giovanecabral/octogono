@@ -2781,7 +2781,18 @@ function aplicarDilema(box,d,txt,jBruto){
      pena arriscar falso positivo). Sem acento de propósito (semAcento):
      não depender de a IA ter acentuado igual. */
   const semAcento=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
-  const mencionaDinheiro=/r\$|\breais?\b|multa|patrocinio|contrato|premio|bolsa|cache|pagou|pagamento|recebeu|indeniza|aposta|salario|\bpix\b|divida|emprestou|emprestar/.test(semAcento(j&&j.desfecho));
+  /* Raiz de palavra (\w*), não forma exata: medido contra os 20 desfechos
+     reais da leva anterior, "pagou"/"recebeu" sozinhos perderam "não PAGA
+     a segunda parcela"/"sem RECEBER o resto" (conjugação diferente) — só
+     não incomodou aquela vez porque o padrão (zera quando não acha) deu
+     por acaso o resultado certo. Ampliado pra não depender de sorte. */
+  /* Conta a CENA também, não só o desfecho: medido (v2 dos 20 casos) — quando
+     a cena já estabelece a oferta ("R$500 pra postar isso"), o desfecho às
+     vezes narra só o desdobramento e nunca repete o valor, porque já foi
+     dito antes. Checar só o desfecho zerava um "dinheiro" certo (0.083,
+     batendo com os R$500 da cena) por engano. */
+  const mencionaDinheiro=/r\$|\breais?\b|multas?|patrocin\w*|contrat\w*|premi\w*|bolsas?|cache|\bpag(a|as|ou|am|ando|amento|amentos|ar|avel|aveis)\b|receb\w*|indeniza\w*|apost\w*|salari\w*|\bpix\b|divida\w*|emprest\w*|dinheiro/
+    .test(semAcento((j&&j.desfecho||"")+" "+(d&&d.cena||"")));
   const dDinheiroBruto=mencionaDinheiro?Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0)):0;
   const dDinheiro=(st.empresarioComprado&&dDinheiroBruto<0)?Math.round(dDinheiroBruto/2):dDinheiroBruto;
   const ATTRS_LESAO=["slpm","strDef","durability","tdDef","subAvg","kdAvg"];
