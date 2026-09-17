@@ -130,9 +130,16 @@ a:hover{color:var(--ink)}
 .btn-ghost.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
 :focus-visible{outline:2px solid var(--stamp);outline-offset:2px}
 
-input[type=text]{font-family:inherit;font-size:16px;background:transparent;
+/* Fase 9 (2026-09-17): a receita já existia só pra type=text — os campos
+   de e-mail/senha da tela Conta (type=email/password) nunca tinham sido
+   incluídos aqui, caíam no estilo nativo do navegador (caixa branca) no
+   meio de um documento mono/quase-preto. Não é composição nova, é a
+   mesma regra estendida pros dois tipos que faltavam. */
+input[type=text],input[type=email],input[type=password]{font-family:inherit;
+  font-size:16px;background:transparent;
   border:none;border-bottom:1.5px solid var(--ink);padding:6px 2px;color:var(--ink);width:min(320px,100%)}
-input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
+input[type=text]:focus,input[type=email]:focus,input[type=password]:focus{
+  outline:none;border-bottom-color:var(--stamp)}
 
 /* ---------- orçamento ---------- */
 .budget{display:flex;align-items:center;gap:12px;margin:14px 0 18px;flex-wrap:wrap}
@@ -631,7 +638,7 @@ input[type=text]:focus{outline:none;border-bottom-color:var(--stamp)}
   font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faded);margin-top:8px}
 .campo-rot button{background:none;border:none;color:var(--ink2);font-size:11px;
   text-transform:none;letter-spacing:0;text-decoration:underline;padding:0}
-.regra-senha{font-size:11.5px;margin:3px 0 2px;color:var(--faded)}
+.regra-senha{font-size:12.5px;margin:3px 0 2px;color:var(--faded)}
 .regra-senha.ok{color:var(--win-dim);font-weight:600}
 .regra-senha.falta{color:var(--stamp)}
 .conta-box .msg-erro{color:var(--stamp)}
@@ -1841,6 +1848,12 @@ function montarFormularioConta(container){
     container.innerHTML="";
     const msg=el("p","hint","");
     const inpEmail=el("input");inpEmail.type="email";inpEmail.placeholder="seu@email.com";inpEmail.id="conta-email";inpEmail.autocomplete="email";
+    /* Rótulo visível (Fase 9): Senha já tem um (campoSenha() monta um
+       <label class="campo-rot">), e-mail só tinha o placeholder — some
+       assim que a pessoa digita. Mesma classe que Senha já usa, sem o
+       botão Mostrar (não é senha, não faz sentido aqui). */
+    const wrapEmail=el("div","");
+    wrapEmail.append(el("label","campo-rot","E-mail"),inpEmail);
     const campoS=campoSenha("Senha","conta-senha",modo==="criar"?"new-password":"current-password");
     let campoC=null,regraTam=null,regraConf=null;
 
@@ -1898,7 +1911,7 @@ function montarFormularioConta(container){
       if(!r.ok){msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);trava(false);}
     };
 
-    container.append(el("h4","",modo==="entrar"?"Entrar":"Criar conta"),inpEmail,campoS.wrap);
+    container.append(el("h4","",modo==="entrar"?"Entrar":"Criar conta"),wrapEmail,campoS.wrap);
 
     if(modo==="criar"){
       campoC=campoSenha("Confirmar senha","conta-senha-conf","new-password");
