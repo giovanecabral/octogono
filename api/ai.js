@@ -103,14 +103,45 @@ Responda SOMENTE com JSON, sem markdown:
  "efeito":número entre 0.90 e 1.10,
  "lesao":{"permanente":true|false,"atributo":"slpm"|"strDef"|"durability"|"tdDef"|"subAvg"|"kdAvg","regiao":"3 a 5 palavras, ex. 'joelho travado'"}|null,
  "evitouLesao":true|false}
-"seguidores" é variação relativa. Seja severo quando a decisão for burra e
-generoso quando for corajosa ou esperta. Decisão morna dá números perto de zero.
-"dinheiro" é uma FRAÇÃO de uma bolsa de luta inteira (1 = ganhou o
-equivalente a uma bolsa cheia, -1 = perdeu o equivalente a uma bolsa
-cheia) — positivo em decisão que rende dinheiro de verdade (patrocínio
-fechado, negócio esperto, prêmio), negativo em decisão que custa dinheiro
-(multa, contrato ruim, golpe, gasto por impulso). A maioria das decisões
-não mexe em dinheiro nenhum — fica perto de 0, não é o padrão.
+
+ORDEM OBRIGATÓRIA, não sugestão: escreva "desfecho" primeiro, até o
+fim, como se os números nem existissem ainda. só depois de terminar de
+escrever o desfecho inteiro, releia o que você ACABOU de escrever e
+preencha seguidores/fa/dinheiro/atributo/efeito olhando pra ISSO — não
+pra decisão do jogador direto, não pra uma impressão geral de "foi uma
+decisão boa ou ruim". Os números são a TRADUÇÃO EM NÚMERO do desfecho
+que está ali em cima, não um segundo julgamento independente. Regra
+mecânica, sem exceção: se o desfecho que você escreveu narra algo
+claramente ruim acontecendo pro lutador (constrangimento público,
+punição, prejuízo, perda de reputação, banimento, multa, fracasso,
+humilhação) — seguidores, fa E dinheiro não podem ser positivos, não
+importa se a DECISÃO em si parecia corajosa ou esperta antes de dar
+errado; o que decide o número é o que ACONTECEU na história, não a
+intenção por trás dela. Se o desfecho narra algo claramente bom, os
+três não podem ser negativos. Se o desfecho é neutro ou morno, os três
+ficam perto de zero. Isto vale igual pra "atributo"/"efeito": se o
+desfecho não menciona nenhuma consequência física ou técnica de
+verdade, "atributo" é "nenhum" e "efeito" é 1 — não invente um efeito
+técnico que o texto não sustenta.
+"seguidores" é variação relativa. Seja severo quando o DESFECHO mostrar
+a decisão saindo errada e generoso quando mostrar ela dando certo.
+Decisão morna, sem consequência narrada, dá números perto de zero.
+"dinheiro" é uma FRAÇÃO de uma bolsa de luta inteira, que vale R$${d.rendaBase||6000}
+(1 = ganhou o equivalente a uma bolsa cheia, -1 = perdeu o equivalente
+a uma bolsa cheia) — positivo em decisão que rende dinheiro de verdade
+(patrocínio fechado, negócio esperto, prêmio), negativo em decisão que
+custa dinheiro (multa, contrato ruim, golpe, gasto por impulso). A
+maioria das decisões não mexe em dinheiro nenhum — fica perto de 0,
+não é o padrão. Se a CENA abaixo já menciona um valor específico em
+reais (uma oferta, uma aposta, um prêmio), o desfecho não pode inventar
+outro número — usa o mesmo valor da cena, a menos que a decisão do
+jogador tenha mudado esse valor explicitamente (negociou pra mais,
+recusou parte, perdeu metade). E se o PRÓPRIO desfecho que você
+escreveu menciona um valor em reais (livre, não precisa vir da cena —
+"ganhou R$300 de patrocínio", "pagou R$50 de multa"), "dinheiro" TEM
+que corresponder EXATAMENTE a esse valor dividido por R$${d.rendaBase||6000} — faça essa
+conta antes de responder, nunca escreva um valor em reais no desfecho
+que não bata com "dinheiro" depois de multiplicado pela bolsa.
 Se a decisão do jogador foi recusar um risco físico — não lutar machucado, não
 arriscar o corpo — isso é PRUDENTE, não covardia: não é "decisão burra". Mesmo
 assim NÃO é neutra: fã de MMA valoriza quem arrisca o corpo, então isso ainda

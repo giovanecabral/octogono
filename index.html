@@ -2660,7 +2660,8 @@ async function abrirDilema(){
        chamada inteira) e não depende de o julgar ter obedecido a instrução
        de conteúdo inseguro — o texto nunca sai daqui. */
     const j=conteudoInseguro(txt)?null:await ai("julgar",{name:me.name,cena:d.cena,resposta:txt,
-      record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1)});
+      record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
+      rendaBase:RENDA_BASE});
     aplicarDilema(box,d,txt,j);
   };
   go.onclick=enviar;
