@@ -106,6 +106,21 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   `--scope` dá "Not authorized", o projeto está sob um time. Commit antes de
   todo deploy. Deploy obrigatório sempre que `api/ai.js` mudar, antes de
   qualquer medição contra a API real.
+- **Commit não é push, e push não é deploy — os três são passos separados,
+  nenhum substitui o outro.** `git commit` só grava local. `git push` sobe
+  pro GitHub (`octogono`, repositório público de portfólio — ver
+  PENDENCIAS.md/README.md). `vercel --prod --scope
+  giovanecpiresg-4823s-projects` publica o jogo em produção a partir dos
+  arquivos locais, sem tocar o git remoto nenhuma vez — os dois nunca
+  estiveram conectados (confirmado direto no painel da Vercel). Rodar
+  deploy não sobe commit nenhum pro GitHub, e dar push não publica nada em
+  produção. **Todo `git commit` termina em `git push` no mesmo fôlego** —
+  9 commits (Fases 6 a 9 + o ajuste de tamanho do dilema) ficaram só
+  locais numa sessão inteira porque o hábito de empurrar pro GitHub não
+  sobreviveu ao `git filter-repo` que reescreveu o histórico (rewrite
+  quebra o rastreamento de upstream da branch às vezes) — o site em
+  produção seguia atualizado o tempo todo (deploy é independente), mas o
+  portfólio público no GitHub ficou desatualizado sem ninguém perceber.
 - **A semente controla tudo que é sorteado.** Qualquer mudança que altere o
   consumo de `rng` quebra os links de desafio já compartilhados. Rode
   `node testar.js desafio` depois de mexer em draft ou seleção de adversário.
