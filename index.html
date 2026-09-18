@@ -208,6 +208,13 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus{
 .card .cost{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--faded);border-top:1px solid var(--ink);padding-top:7px}
 .card .cost b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* Carta selecionada aguardando o 2º toque (sem hover, ver renderDraft()).
+   Cor sozinha não é sinal suficiente — o texto em .confirma é o que
+   ensina o padrão de 2 toques, que ninguém já conhece de cara. */
+.card.sel{border-color:var(--stamp);background:var(--panel2);transform:scale(1.015)}
+.card .confirma{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  font-weight:600;color:var(--stamp-bright);text-align:center;
+  border-top:1px dashed var(--stamp);padding-top:6px}
 
 /* ---------- luta ao vivo ---------- */
 .live{border:1px solid var(--ink);background:var(--stock-2);margin:14px 0}
@@ -350,12 +357,16 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus{
   font-size:11.5px;padding:5px 10px;transition:all .12s}
 .chip:hover{border-color:var(--ink2);color:var(--ink)}
 .chip.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
-.swatches{display:flex;flex-wrap:wrap;gap:6px}
-.sw{width:28px;height:28px;border:1px solid var(--line2);padding:0;transition:transform .1s}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw{width:40px;height:40px;border:1px solid var(--line2);padding:0;transition:transform .1s}
 .sw:hover{transform:scale(1.12)}
 .sw.on{outline:2px solid var(--stamp);outline-offset:2px}
 @media (max-width:860px){.criador{grid-template-columns:1fr}.palco{position:static}
-  .aba{font-size:9.5px;padding:9px 4px}}
+  /* Largura apertada exigia fonte/padding horizontal menor pra caber as 6
+     abas numa linha só — mas ALTURA pequena é exatamente o problema de
+     alvo de toque (era ~27px, abaixo do mínimo de 44px). Encolhe só
+     largura, cresce só altura: linha continua cabendo, toque fica bom. */
+  .aba{font-size:9.5px;padding:16px 4px}}
 
 /* ---------- tabuleiro do octógono ---------- */
 .arena{display:grid;grid-template-columns:270px minmax(340px,1fr) 290px;gap:16px;
@@ -765,11 +776,11 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
    esconde o rótulo até o max-width crescer o bastante pra revelar. */
 .cfg-btn{position:fixed;top:14px;right:14px;z-index:50;
   display:flex;align-items:center;justify-content:flex-end;
-  height:36px;max-width:36px;overflow:hidden;
+  height:44px;max-width:44px;overflow:hidden;
   padding:0;background:var(--bg);border:1px solid var(--line);color:var(--faded);
   transition:max-width .22s ease,border-color .15s ease,color .15s ease}
 .cfg-btn:hover,.cfg-btn:focus-visible{max-width:180px;color:var(--ink);border-color:var(--line2)}
-.cfg-btn svg{flex:none;width:17px;height:17px;margin:0 9px}
+.cfg-btn svg{flex:none;width:17px;height:17px;margin:0 13px}
 .cfg-btn .cfg-lbl{flex:none;padding-left:12px;white-space:nowrap;
   font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
   opacity:0;transform:translateX(6px);
@@ -4864,6 +4875,14 @@ const DIVISOES=[
  {id:"w_featherweight",  nome:"Peso-pena",       lbs:145,f:true},
 ];
 const reduceMotion=()=>window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* Padrão do projeto pra distinguir toque de mouse: NUNCA por largura de
+   tela (existe tablet com mouse, notebook com tela de toque) — por
+   capacidade real de hover + ponteiro fino. Decide tanto texto ("passe o
+   mouse" vs "toque") quanto MODELO de interação onde clique de mouse e
+   toque não podem ser o mesmo gesto (ver renderDraft(): sem hover, toque
+   precisa de 2 passos — 1º seleciona/mostra, 2º confirma — porque toque
+   não tem estado de "passando por cima" pra pré-visualizar de graça). */
+const semHover=()=>!window.matchMedia("(hover:hover) and (pointer:fine)").matches;
 
 const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;
   if(h!==undefined)n.innerHTML=h;return n;};
@@ -5254,7 +5273,9 @@ function mostraDossie(r){
     <div style="text-align:center;padding:6px 0 2px">${bonecoSVG(ROSTO||cfgPadrao(),{w:130})}</div>
     <div class="nm" style="text-align:center">${me.name||"—"}</div>
     <div class="tags" style="justify-content:center"><span class="tag">${divNome}</span></div>
-    <div class="vazio" style="padding:10px 0 0">Passe o mouse numa carta<br>pra ver o dossiê de quem preenche ela.</div>`;
+    <div class="vazio" style="padding:10px 0 0">${semHover()
+      ?"Toque numa carta<br>pra ver o dossiê de quem preenche ela."
+      :"Passe o mouse numa carta<br>pra ver o dossiê de quem preenche ela."}</div>`;
     return;
   }
   const f=r.src, t=f.titulos||{disputas:0,vitorias:0};
@@ -5328,6 +5349,22 @@ function renderDraft(){
   const afford=rows.filter(r=>r.cost<=budgetLeft);
   const shown=afford.length?afford:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
   const grid=document.getElementById("cards");
+  /* Sem hover, o toque não tem "passar por cima de graça" — o 1º toque faz
+     o que o mouseenter fazia (mostra dossiê/octógono) e SÓ o 2º toque na
+     MESMA carta comita (pick). Precisa de sinal inequívoco na carta
+     selecionada (classe .sel + rótulo .confirma) — cor sozinha não basta,
+     ninguém espera esse padrão de cara. Tocar outra carta troca a seleção
+     sem comitar (equivalente a mover o mouse); tocar fora desseleciona
+     (equivalente a tirar o mouse de cima) — ver toqueForaDesseleciona()
+     abaixo, testado com rolagem de verdade pra rolar não desselecionar. */
+  let selecionado=null;
+  const desmarcar=()=>{
+    if(!selecionado)return;
+    selecionado.el.classList.remove("sel");
+    const lbl=selecionado.el.querySelector(".confirma");
+    if(lbl)lbl.remove();
+    selecionado=null;
+  };
   shown.forEach(r=>{
     const pa=PCT(r.pair.a.key,r.src[r.pair.a.key]),pb=PCT(r.pair.b.key,r.src[r.pair.b.key]);
     const attr=(d,p)=>`<span class="attr mira-attr" style="display:block">
@@ -5340,15 +5377,37 @@ function renderDraft(){
       <span class="src"><b style="color:var(--ink);font-weight:600;font-size:12.5px">${r.src.name}</b> · ${r.src.fights} lutas</span>
       ${attr(r.pair.a,pa)}${attr(r.pair.b,pb)}
       <span class="cost"><span>custo</span><b>${r.cost.toFixed(2)}</b></span>`);
-    c.onclick=()=>pick(r);
-    c.onmouseenter=()=>{mostraDossie(r);desenhaOctogono(r.pair.id);};
-    c.onfocus=c.onmouseenter;
+    if(semHover()){
+      c.onclick=()=>{
+        if(selecionado&&selecionado.r===r){pick(r);return;}
+        desmarcar();
+        selecionado={r,el:c};
+        c.classList.add("sel");
+        c.appendChild(el("span","confirma","toque de novo pra confirmar"));
+        mostraDossie(r);desenhaOctogono(r.pair.id);
+      };
+    }else{
+      c.onclick=()=>pick(r);
+      c.onmouseenter=()=>{mostraDossie(r);desenhaOctogono(r.pair.id);};
+      c.onfocus=c.onmouseenter;
+    }
     grid.appendChild(c);
   });
   desenhaOctogono(null);
   mostraDossie(null);
-  if(picks.length===0)app.appendChild(el("div","legend",
-    `A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
+  if(semHover()){
+    /* Clique (não toque bruto): um arrasto de rolagem que termina fora de
+       qualquer carta NÃO dispara "click" no navegador — só um toque sem
+       deslocamento dispara. Rolar a lista não passa por aqui. */
+    const toqueForaDesseleciona=e=>{if(e.target===grid||e.target===esq)desmarcar();};
+    grid.onclick=toqueForaDesseleciona;
+    esq.onclick=toqueForaDesseleciona;
+  }
+  if(picks.length===0)app.appendChild(el("div","legend",semHover()
+    ?`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
+     naquele atributo. Toque numa carta pra ver os dois lados que ela preenche —
+     toque de novo pra confirmar.`
+    :`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
      naquele atributo. Passe o mouse numa carta para ver os dois lados que ela preenche.`));
 }
 function pick(r){

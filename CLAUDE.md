@@ -124,6 +124,17 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **A semente controla tudo que é sorteado.** Qualquer mudança que altere o
   consumo de `rng` quebra os links de desafio já compartilhados. Rode
   `node testar.js desafio` depois de mexer em draft ou seleção de adversário.
+- **Toque vs. mouse se distingue por capacidade, nunca por largura de
+  tela.** `semHover()` (perto de `reduceMotion()`) usa
+  `matchMedia("(hover:hover) and (pointer:fine)")` — não `'ontouchstart' in
+  window` (falso positivo em híbrido) nem breakpoint de CSS (existe tablet
+  com mouse, notebook com tela de toque). Um resultado, dois usos: o texto
+  muda ("toque" vs "passe o mouse") e, onde o gesto de mouse depende de
+  hover pra pré-visualizar de graça antes de comitar (cards do draft,
+  `renderDraft()`), o MODELO de interação também muda — sem hover, o toque
+  vira 2 passos (1º mostra, 2º confirma) em vez de comitar direto no
+  primeiro toque. Vai reaparecer em qualquer tela nova que hoje usa
+  `onmouseenter` como preview antes do `onclick` comitar.
 
 ## O que falta
 
