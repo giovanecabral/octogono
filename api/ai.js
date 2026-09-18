@@ -95,7 +95,7 @@ ${d.recentes.map((t,i)=>`${i+1}. ${t}`).join("\n")}`:""}`,
     system: `${VOZ}
 Você julga o que um lutador de MMA decidiu fazer numa situação e narra o desfecho.
 Responda SOMENTE com JSON, sem markdown:
-{"desfecho":"6 a 10 frases contando o que aconteceu, com espaço pra cena respirar",
+{"desfecho":"4 a 6 frases contando o que aconteceu, com espaço pra cena respirar",
  "seguidores":número entre -0.35 e 0.60,
  "fa":número entre -2.5 e 2.5,
  "dinheiro":número entre -1 e 1,
@@ -175,16 +175,22 @@ a gravidade da lesão, deixe "atributo":"nenhum","efeito":1 nesse caso.
 jogador foi evitá-lo (a lesão não aconteceu por causa disso); false em
 qualquer outro caso, inclusive quando não havia risco físico na cena.
 
-O "desfecho" ficou mais longo de propósito (6 a 10 frases) — não é licença
-pra enrolar. NÃO comece resumindo ou repetindo a decisão que o jogador
-tomou ("ele decidiu treinar mesmo com dor..." é o que ELE acabou de
-escrever, o jogador não precisa ler de novo) — narre a CONSEQUÊNCIA
-acontecendo, direto, a partir da primeira frase. Cada frase nova tem que
-ADIANTAR a cena — uma reação de alguém, um detalhe concreto, uma
-complicação, uma virada, um fato novo — nunca dizer de novo o mesmo fato
-já contado, só com outras palavras. Se você chegar na 4ª ou 5ª frase sem
-ter mais NADA novo pra contar, para aí — curto e sem enrolação é sempre
-melhor que longo e repetido.
+O "desfecho" tem 4 a 6 frases — nem parágrafo corrido nem telegrama.
+Voltado de 6-10 pra 4-6 (medido: virava parede de texto na tela,
+principalmente no celular) — mas o que fazia o desfecho bom continua
+valendo com a mesma força, só em menos espaço: diálogo de verdade com
+fala entre aspas, detalhe concreto, consequência em cadeia. NÃO comece
+resumindo ou repetindo a decisão que o jogador tomou ("ele decidiu
+treinar mesmo com dor..." é o que ELE acabou de escrever, o jogador não
+precisa ler de novo) — narre a CONSEQUÊNCIA acontecendo, direto, a
+partir da primeira frase. Cada frase tem que ADIANTAR a cena — uma
+reação de alguém, um detalhe concreto, uma complicação, uma virada, um
+fato novo — nunca dizer de novo o mesmo fato já contado, só com outras
+palavras. Se sobrar só UMA frase de fôlego no final (a cena "assentando",
+sem fato novo nenhum), essa é a frase pra cortar — o fato concreto e o
+diálogo vêm sempre antes do fecho atmosférico. Se você chegar na 3ª ou
+4ª frase sem ter mais NADA novo pra contar, para aí — curto e sem
+enrolação é sempre melhor que longo e repetido.
 
 O desfecho tem que ser CONCRETO, nunca atmosfera. Proibidas frases do
 tipo "o clima ficou pesado", "silêncio pesado no vestiário", "um olhar
@@ -271,7 +277,7 @@ manda a provocação de verdade, com confiança, e a cena narra isso
 acontecendo, não o lutador ficando quieto ou mudando de assunto.
 
 Nos casos inseguros acima, trate como se a decisão do jogador tivesse sido
-vaga ou sem propósito: "desfecho" curto e neutro (a regra de 6 a 10 frases
+vaga ou sem propósito: "desfecho" curto e neutro (a regra de 4 a 6 frases
 acima NÃO vale aqui — esticar uma resposta vazia só pra bater o tamanho
 chamaria mais atenção, não menos), "lesao":null,
 "evitouLesao":false, "atributo":"nenhum", "efeito":1, "seguidores" e "fa"

@@ -2956,13 +2956,17 @@ function aplicarDilema(box,d,txt,jBruto){
   (peso>0.12?SOM.bom:peso<-0.12?SOM.ruim:SOM.evento)();
   /* Filtra ANTES do slice: cortar frase por regex depois de truncar
      poderia deixar uma frase pela metade sem o ponto final que a divide.
-     2000 (era 500, 2026-09-11): desfecho virou 6-10 frases (pedido
-     explícito, "a cena respirar") — 500 cortava no meio da 3ª/4ª frase
-     em texto normal. 2000 é rede de segurança contra resposta fugindo do
-     tamanho pedido, não um limite que a resposta normal deveria tocar —
-     a caixa (.dil-o, sem max-height) já cresce com o texto, quem rola é
-     o container de narração (`box.scrollIntoView` já existe). */
-  const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,2000):"";
+     1200 (era 2000, 2026-09-18; e 500 antes disso, 2026-09-11): desfecho
+     voltou de 6-10 pra 4-6 frases — virava parede de texto na tela,
+     sobretudo no celular. Medido antes de escolher o número (20
+     desfechos reais de 6-10 frases, sessão anterior): média 595-687
+     caracteres, máximo observado 953 pra ~9-10 frases — pra 4-6 frases
+     o esperado é bem menor que isso. 1200 é rede de segurança contra
+     resposta fugindo do tamanho pedido, não um limite que a resposta
+     normal deveria tocar — a caixa (.dil-o, max-width mas sem
+     max-height) já cresce com o texto, quem rola é o container de
+     narração (`box.scrollIntoView` já existe). */
+  const bruto=(j&&j.desfecho)?semResultadoDeLuta(String(j.desfecho)).slice(0,1200):"";
   const desfecho=bruto||fraseFallback();
   box.innerHTML=`<div class="dil-eyebrow">Decisão</div>
     <div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
