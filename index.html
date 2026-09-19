@@ -812,6 +812,7 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
   padding:5px 13px}
 .cfg-toggle.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
 .cfg-nota{font-size:11px;color:var(--faded);line-height:1.6;margin:13px 0 0}
+.menu-item{display:block;width:100%;text-align:left;margin-top:8px;min-height:44px}
 /* Barra sem canto arredondado e polegar retangular: o resto da página não tem
    um único raio de canto, uma barra padrão de navegador destoaria. */
 .cfg-range{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:18px;
@@ -920,6 +921,75 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
   .inicio-oct{width:85vw;opacity:.05}
   .inicio-item{width:100%}
   .inicio-item-principal{width:100%}
+}
+.mobile-only{display:none}   /* padrão desktop — a media query logo abaixo reabre em ≤1080px; precisa vir ANTES dela no arquivo, mesma especificidade de classe única, empate de cascata resolve por ordem de leitura */
+/* ---------- carreira no celular: 3 estados, não 3 colunas ----------
+   html[data-estado-carreira] vem de atualizarEstadoCarreira() (ponto
+   único, chamado de dentro de atualizarControles()) — três valores:
+   "ocioso" (ficha/histórico em aba), "escolhendo" (#escolha domina),
+   "lutando" (narração domina). Documentado no mock aprovado antes de
+   escrever: as colunas sempre foram 2 (ficha + coluna que já empilhava
+   escolha/narração/histórico) — o problema nunca foi 3 colunas brigando,
+   foi falta de hierarquia DENTRO da coluna. Acima de 1080px nada disto
+   se aplica: desktop ignora estado/aba, as duas colunas convivem como
+   sempre (só a tipografia da narração muda, ver bloco @media min-width
+   logo abaixo). */
+@media (max-width:1080px){
+  .mobile-only{display:inline-flex;min-height:44px;align-items:center}
+  #cardsb,#conqb,#treinb{display:none}         /* saem da barra — só no "Mais" */
+  .abas-carreira{margin-bottom:10px}
+  html:not([data-estado-carreira="ocioso"]) .abas-carreira{display:none}
+
+  /* ocioso: aba manda quem aparece, #ficha e #bouts nunca empilhados */
+  html[data-estado-carreira="ocioso"][data-aba-carreira="historico"] #ficha{display:none}
+  html[data-estado-carreira="ocioso"][data-aba-carreira="ficha"] #bouts,
+  html[data-estado-carreira="ocioso"][data-aba-carreira="ficha"] #stage{display:none}
+
+  /* escolhendo/lutando: #ficha começa escondida, "Ver ficha" alterna —
+     nunca toca playing/stage, só CSS por cima (ver onclick de verFichaBtn
+     em startCareer()) — narração/escolha continuam rodando atrás. */
+  html[data-estado-carreira="escolhendo"] #ficha,
+  html[data-estado-carreira="lutando"] #ficha{display:none}
+  html.mostrar-ficha[data-estado-carreira="escolhendo"] #ficha,
+  html.mostrar-ficha[data-estado-carreira="lutando"] #ficha{
+    display:block;position:fixed;left:10px;right:10px;top:60px;bottom:76px;
+    overflow:auto;z-index:45;box-shadow:0 6px 0 rgba(0,0,0,.4)}
+  html:not([data-estado-carreira="escolhendo"]):not([data-estado-carreira="lutando"]) #verFichaBtn{display:none}
+
+  /* "Próxima luta" vira barra fixa no polegar, só faz sentido ocioso —
+     durante escolha/luta o card/narração já É a ação, barra some. */
+  html[data-estado-carreira="ocioso"] #next{
+    position:fixed;left:0;right:0;bottom:0;z-index:40;display:block;
+    height:56px;font-size:15px;letter-spacing:.08em;
+    padding-bottom:env(safe-area-inset-bottom)}
+  html:not([data-estado-carreira="ocioso"]) #next{display:none}
+  #controls{padding-bottom:64px}   /* não deixa o resto do conteúdo passar embaixo da barra fixa */
+
+  /* Lutando: Automático + Velocidade sobem pro topo, junto da narração —
+     únicos dois controles que agem no que está na tela agora. #controls
+     em si vira a barra fixa (mesmo elemento, sem mover nó nenhum no DOM —
+     só reposiciona via CSS, então onclick/disabled continuam os mesmos). */
+  html[data-estado-carreira="lutando"] #controls{
+    position:fixed;top:0;left:0;right:0;z-index:40;display:flex;
+    background:var(--bg);border-bottom:1px solid var(--ink);
+    padding:8px 10px;gap:8px}
+  html[data-estado-carreira="lutando"] #next,
+  html[data-estado-carreira="lutando"] #counter,
+  html[data-estado-carreira="lutando"] #maisb{display:none}
+  html:not([data-estado-carreira="lutando"]) #autob,
+  html:not([data-estado-carreira="lutando"]) #speedb{display:none}
+}
+/* ---------- carreira no desktop: narração precisa dominar de verdade ----------
+   Medido antes de mexer: .pbp (linha da narração) tinha font-size:13px,
+   .bout .opp (nome no histórico) herdava os 14px do body em peso 500 — o
+   HISTÓRICO já lia mais forte que a AÇÃO, o oposto do que devia. */
+@media (min-width:1081px){
+  .abas-carreira{display:none}   /* aba é solução de empilhamento — desktop nunca empilhou */
+  .pbp{font-size:15px}
+  .live-head{font-size:15px}
+  .live{border-width:2px}
+  #bouts{font-size:12.5px}
+  .bout .opp{font-size:13px}
 }
 </style>
 </head>
@@ -3338,6 +3408,40 @@ function fecharConfig(){
   cx.style.display="none";
   cx.innerHTML="";
 }
+/* Botão "Mais" (só existe em ≤1080px, ver #maisb no CSS): Cards/
+   Conquistas/Loja saíram da barra principal do celular. Reaproveita o
+   MESMO overlay #cfg de abrirConfig() — mesma trava cfgAberto (um overlay
+   por vez), mesmo fechar-tocando-fora — só com título e gatilho próprios,
+   pra não confundir "ajuste de som" com "loja/conquistas" dentro do mesmo
+   rótulo "Configurações". Lê o texto (com contador) direto dos botões
+   originais, que continuam existindo escondidos — sempre atualizados por
+   atualizarControles()/atualizarBadgeConquistas(), nunca duplicados. */
+function abrirMenuCarreira(){
+  const cx=document.getElementById("cfg");
+  if(!cx||cfgAberto)return;
+  cfgAberto=true;
+  cx.innerHTML="";
+  const p=el("div","cfg-painel");
+  const topo=el("div","cfg-top","<h2>Mais</h2>");
+  const fechar=el("button","cfg-x","&#10005;");
+  fechar.type="button";fechar.setAttribute("aria-label","Fechar");
+  fechar.onclick=()=>{SOM.toque();fecharConfig();};
+  topo.appendChild(fechar);
+  const item=(origId,onAbrir)=>{
+    const orig=document.getElementById(origId);
+    const b=el("button","btn btn-ghost menu-item",orig?orig.textContent:"");
+    b.onclick=()=>{SOM.toque();fecharConfig();onAbrir();};
+    return b;
+  };
+  p.append(topo,
+    item("cardsb",abrirPainelMomentos),
+    item("conqb",abrirPainelConquistas),
+    item("treinb",abrirPainelTreinador));
+  cx.onclick=e=>{ if(!e||e.target===cx)fecharConfig(); };
+  p.onclick=e=>{ if(e&&e.stopPropagation)e.stopPropagation(); };
+  cx.appendChild(p);
+  cx.style.display="flex";
+}
 function armarConfig(){
   const b=document.getElementById("cfgbtn");
   if(b)b.onclick=()=>{ SOM.toque(); cfgAberto?fecharConfig():abrirConfig(); };
@@ -4808,6 +4912,7 @@ let speed=1,playing=false,playTimer=null;
    resolvia e a carreira travava de vez. */
 let dilemaAberto=false;
 let escolhaAberta=false;
+let abaCarreira="ficha";     // "ficha"|"historico" — só importa em ≤1080px, estado ocioso
 const TOTAL_FIGHTS=22,SPEEDS=[1,2,4];
 let DIVISION="lightweight";
 let SEED=0;
@@ -5464,7 +5569,21 @@ function startCareer(){
   const treinb=el("button","btn btn-ghost btn-sm","Loja");treinb.id="treinb";
   treinb.onclick=abrirPainelTreinador;
   const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  row.append(next,ab,sp,cardsb,conqb,treinb,hint);app.appendChild(row);
+  /* Só existem/aparecem em ≤1080px (ver @media perto de .carreira). "Mais"
+     reaproveita o MESMO #cfg/cfgAberto de abrirConfig() — gatilho e título
+     próprios (abrirMenuCarreira()), mas a trava de "um overlay por vez" e o
+     fechar-tocando-fora são os de sempre, sem duplicar mecanismo. "Ver
+     ficha" não navega: só alterna a classe mostrar-ficha em <html>, então
+     nunca toca em playing/stage — a narração roda igual, ficha por cima. */
+  const maisb=el("button","btn btn-ghost btn-sm mobile-only","Mais");maisb.id="maisb";
+  maisb.onclick=abrirMenuCarreira;
+  const verFichaBtn=el("button","btn btn-ghost btn-sm mobile-only","Ver ficha");
+  verFichaBtn.id="verFichaBtn";
+  verFichaBtn.onclick=()=>{
+    const on=document.documentElement.classList.toggle("mostrar-ficha");
+    verFichaBtn.textContent=on?"Fechar ficha":"Ver ficha";
+  };
+  row.append(next,ab,sp,cardsb,conqb,treinb,maisb,verFichaBtn,hint);app.appendChild(row);
   /* overlay do card de momento: criado uma vez, escondido, nunca trava
      nextFight()/automático — ver painel-overlay no CSS. */
   const painel=el("div","painel-overlay");painel.id="painelMomentos";
@@ -5474,6 +5593,22 @@ function startCareer(){
   const painelT=el("div","painel-overlay");painelT.id="painelTreinador";
   painelT.style.display="none";app.appendChild(painelT);
   atualizarBadgeConquistas();
+
+  /* Abas Ficha/Histórico: só têm efeito em ≤1080px e só no estado ocioso
+     (ver atualizarEstadoCarreira()) — no desktop e durante escolha/luta a
+     CSS ignora abaCarreira de propósito, os dois painéis convivem como
+     sempre. Reaproveita o componente .abas/.aba do criador (já com alvo de
+     toque de 44px+), não é elemento novo. */
+  abaCarreira="ficha";
+  const abas=el("div","abas abas-carreira");
+  ["ficha","historico"].forEach(id=>{
+    const b=el("button","aba"+(id===abaCarreira?" on":""),id==="ficha"?"Ficha":"Histórico");
+    b.onclick=()=>{SOM.toque();abaCarreira=id;
+      abas.querySelectorAll(".aba").forEach(x=>x.classList.toggle("on",x===b));
+      atualizarEstadoCarreira();};
+    abas.appendChild(b);
+  });
+  app.appendChild(abas);
 
   const carr=el("div","carreira");
   const ficha=el("div","ficha");ficha.id="ficha";
@@ -5488,6 +5623,32 @@ function startCareer(){
   stage.append(live,phone,escLuta);col.appendChild(stage);
   const bouts=el("div","bouts");bouts.id="bouts";col.appendChild(bouts);
   renderFicha();
+  atualizarEstadoCarreira();
+}
+/* Ponto único da CAMADA de layout mobile (data-estado no <html>): qual dos
+   3 estados do jogo está ativo, pra CSS decidir sozinha o que mostrar —
+   nenhuma outra função escreve nesse atributo. Chamada de dentro de
+   atualizarControles(), que já é o ponto único do ESTADO dos botões e já
+   roda em toda transição relevante (nextFight, toggleAuto, finishFight via
+   atualizarControles no fim, etc.) — não precisa de chamada extra
+   espalhada pelo código, só reagir ao mesmo lugar que já reage. */
+function atualizarEstadoCarreira(){
+  const h=document.documentElement;
+  h.dataset.estadoCarreira=playing?"lutando":escolhaAberta?"escolhendo":"ocioso";
+  /* dilema nasce DENTRO de #bouts (abrirDilema() em bouts.appendChild) e só
+     depois que a narração já terminou (finishFight() roda como callback do
+     último animarTrecho(), com playing=false já setado antes de qualquer
+     dilema disparar — sem conflito de dilema atropelando luta em
+     andamento). Mas se a aba ativa for "ficha", #bouts fica display:none —
+     o dilema nasceria escondido, e é a ÚNICA coisa que o jogador escreve
+     na carreira inteira. Força a aba pra histórico quando ele abre; a
+     escolha da pessoa (ficha vs. histórico) volta a valer na próxima vez
+     que ela mexer nas abas, não fica travada em histórico pra sempre. */
+  if(dilemaAberto)abaCarreira="historico";
+  h.dataset.abaCarreira=abaCarreira||"ficha";
+  const abas=document.querySelector(".abas-carreira");
+  if(abas)abas.querySelectorAll(".aba").forEach(b=>
+    b.classList.toggle("on",b.textContent===(abaCarreira==="ficha"?"Ficha":"Histórico")));
 }
 /* Ponto único que decide o estado dos botões. Antes isso estava espalhado em
    quatro lugares e um deles esquecia o automático. */
@@ -5497,6 +5658,7 @@ function atualizarControles(){
   const ctrl=document.getElementById("controls");
   const cont=document.getElementById("counter");
   if(!next||!ab)return;
+  atualizarEstadoCarreira();
   const fim=fightNo>=TOTAL_FIGHTS;
   next.disabled=dilemaAberto||escolhaAberta||playing||auto||fim;
   ab.disabled=dilemaAberto||fim;

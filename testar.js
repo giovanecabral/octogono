@@ -57,6 +57,7 @@ function criarAmbiente({ contarNos = false } = {}) {
       style: {}, children: [], disabled: false, value: "",
       onclick: null, onkeydown: null, onchange: null, type: "", maxLength: 0,
       classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      dataset: {},
       appendChild(c) { this.children.push(c); if (c && c.id) registro[c.id] = c; return c; },
       append(...cs) { cs.forEach(c => this.appendChild(c)); },
       scrollIntoView: noop, focus: noop, addEventListener: noop, remove: noop,
@@ -85,6 +86,9 @@ function criarAmbiente({ contarNos = false } = {}) {
   const sandbox = {
     console: { log: noop, warn: noop, error: noop },
     document: {
+      /* html[data-estado-carreira]/[data-aba-carreira] (atualizarEstadoCarreira())
+         precisa de um nó estável — sem isto, undefined.dataset explode. */
+      documentElement: makeEl(),
       /* o nó criado sob demanda precisa carregar o id, senão o teste não
          consegue achar elementos que a interface monta via innerHTML */
       getElementById: id => registro[id] || (registro[id] = Object.assign(makeEl(), { id })),
@@ -2223,6 +2227,7 @@ function testarFrequenciaMomentos(N = 30) {
       tagName: tag, _html: "", textContent: "", id: "", className: "", style: {},
       children: [], disabled: false, value: "",
       classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      dataset: {},
       appendChild(c) { this.children.push(c); return c; }, append() {}, scrollIntoView: noop, focus: noop,
       addEventListener: noop, remove: noop, querySelector: () => makeEl(), querySelectorAll: () => [],
       getContext: () => null, get innerHTML() { return this._html; }, set innerHTML(v) { this._html = String(v); },
@@ -2235,6 +2240,7 @@ function testarFrequenciaMomentos(N = 30) {
     const sb = {
       console: { log: noop, warn: noop, error: noop },
       document: {
+        documentElement: makeEl(),
         getElementById: id => registro[id] || (registro[id] = makeEl()), createElement: t => makeEl(t),
         querySelector: () => makeEl(), addEventListener: noop, removeEventListener: noop,
       },
@@ -2695,6 +2701,7 @@ function testarNarracaoResultado(N = 8) {
       tagName: tag, _html: "", textContent: "", id: "", className: "", style: {},
       children: [], disabled: false, value: "",
       classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      dataset: {},
       appendChild(c) { this.children.push(c); return c; }, append() {}, scrollIntoView: noop, focus: noop,
       addEventListener: noop, remove: noop, querySelector: () => makeEl(), querySelectorAll: () => [],
       getContext: () => null, get innerHTML() { return this._html; }, set innerHTML(v) { this._html = String(v); },
@@ -2707,6 +2714,7 @@ function testarNarracaoResultado(N = 8) {
     const sb = {
       console: { log: noop, warn: noop, error: noop },
       document: {
+        documentElement: makeEl(),
         getElementById: id => registro[id] || (registro[id] = makeEl()), createElement: t => makeEl(t),
         querySelector: () => makeEl(), addEventListener: noop, removeEventListener: noop,
       },
