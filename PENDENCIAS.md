@@ -1100,7 +1100,83 @@ barra de fã fica visível, ou perguntar direto a jogadores) e decidir,
 com esse número em mãos, se o redesenho (não-linear, mais banda no
 miolo) vale a pena. Sem essa medição, não mexer.
 
-## 31. Rótulo de raridade das conquistas — texto por faixa hoje, porcentagem real quando existir jogador
+## 31. Rótulo de raridade das conquistas — RESOLVIDO (2026-09-21); lista de conquistas dobrou; ícones implementados
+
+**Atualização 2026-09-21, segunda passada — as três partes do redesign
+estão implementadas.** 15 → 29 conquistas (uma caiu na medição, ver
+abaixo). Ícones (parte 1, `iconeConquista()`/`GLIFO_CONQUISTA`) e rótulo
+de raridade (parte 2, `raridadeConquista()`/`TAXA_MEDIDA_CONQUISTAS`)
+implementados na mesma sessão, depois de fechar a leva de conquistas
+novas. Ícone: moldura de octógono (o selo do jogo) + 1 glifo traçado por
+CATEGORIA (9 ao todo — punho/cinturão/escudo/coração/chama/alvo/
+balança/estrela/queda), não por conquista — cresce sem desenho novo.
+Rótulo: badge reaproveitado (`.badge-neutral/win/danger/gold`, já
+existiam pra outro fim), texto só ("Comum"/"Incomum"/"Raro"/"Lendário"),
+nenhuma porcentagem visível — só o comentário no código guarda o número
+medido, pra trocar por Supabase depois sem mudar a lógica.
+
+`node testar.js conquistas` ganhou 16 asserções novas cobrindo isto:
+todo `cat` tem glifo, todo ícone carrega a moldura do octógono, os 4
+limites exatos de `raridadeDeTaxa()` (60/30/10, testados nos dois lados
+de cada um), `prudente` sem rótulo (única exceção, de propósito),
+`lenda_coroada` com rótulo (medido em modo lenda separado).
+
+**Não verificado no navegador nesta sessão** — a extensão do Chrome
+ficou desconectada na hora de checar visualmente. Validação que rodou:
+`iconeConquista()` chamado pra cada uma das 9 categorias via
+`vm.runInContext`, SVG com brackets balanceados e moldura presente nos
+9 casos, mais a suíte de testes acima. Vale abrir o painel de
+conquistas no navegador de verdade na próxima sessão pra confirmar o
+tamanho/alinhamento visual — a lógica está provada, o layout não foi
+visto.
+
+**As 14 novas, medidas com `node testar.js freqconquistas` antes de
+entrar** (150 carreiras modo normal, 80 modo lenda): `chegada_relampago`
+(topo do ranking até a luta 15, campo que já existia sem uso — 29,3%/
+26,3%), `vidro` (4+ nocautes sofridos — 4,7%/21,3%), `ex_campeao`
+(perdeu o cinturão depois de tê-lo — 38,7%/26,3%), `zero_de_22` (0
+vitórias — 0,0%/0,0%, ressalva de viés do bot abaixo), `sequencia_feia`
+(5+ derrotas seguidas, campo novo `st.longestL` espelhando `st.longestW`
+— 0,7%/1,3%), `cinturao_interino` (campo novo `st.foiCinturaoInterino`
+— 7,3%/13,8%), `nocauteado_do_trono` (perdeu o cinturão por nocaute,
+campo novo `st.perdeuCinturaoPorNocaute` — 16,0%/18,8%),
+`nunca_precisou_do_juiz` (7+ vitórias, todas finalizadas — 6,0%/30,0%),
+`chato_mas_eficaz` (7+ vitórias, nenhuma finalizada — 0,0%/0,0%, mesma
+ressalva), `nunca_foi_ao_chao` (0 quedas sofridas — 21,3%/11,3%),
+`grande_queda` (15+ quedas aplicadas — 49,3%/61,3%, ver abaixo),
+`nunca_aplicou_queda` (0 quedas aplicadas — 0,0%/1,3%), `recusou_a_chance`
+(campo novo `st.maxDisputaRecusas` — 37,3%/36,3%), `decisao_de_campeao`
+(ganhou o cinturão indo aos cartões, campo novo `st.tituloPorDecisao` —
+9,3%/2,5%).
+
+**Uma caiu na medição, tirada, não forçada:** `noite_marcante`
+(`st.bonusNoiteMarco`) deu 66,7% no modo normal — acima do teto de 60%
+que a própria leva se propôs a respeitar. É flag booleana, sem limiar
+pra apertar (não é "N vezes", é "aconteceu ou não") — a correção certa
+era tirar, não regredir o critério pra caber um número redondo de 15.
+Ficou 14 + as 15 originais = 29.
+
+**Achado medindo, não corrigido ainda — três conquistas passam de 60%
+só no modo lenda:** `fogo` (68,0% normal — já sinalizado antes do
+redesign, ainda não corrigido), `lenda_coroada` (66,3%, mas esse é
+esperado — só desbloqueia em modo lenda mesmo), e agora `grande_queda`
+(49,3% normal, correto, mas 61,3% em modo lenda). Padrão maior que
+`zebra` já mostrava (0% normal, 92,5% lenda): **o bot em modo lenda
+produz carreiras sistematicamente mais "quentes"** — mais quedas, mais
+upsets, mais tudo — não é limiar errado de UMA conquista, é a
+calibração do modo lenda inteiro rodando mais extrema que o normal.
+Consertar isso decente exigiria remedir e potencialmente reequilibrar
+o modo lenda como um todo, escopo maior que "adicionar conquista" —
+registrado aqui, não vira decisão sozinha.
+
+**Contagem geral, medida:** 5,26/29 (18,1%) no modo normal, 7,65/29
+(26,4%) no modo lenda — as duas bem abaixo de metade, dentro do pedido
+("se passar de metade, estão fáceis demais"). Baseline anterior (só as
+15 originais, remedido no mesmo pull): 3,06/15 (20,4%) normal — o
+`LEIA-ME.md` tinha 4,17/15 (28%), desatualizado desde que `TETO_TREINO`
+baixou de 1.26 pra 1.18; corrigir lá também.
+
+---
 
 Redesign de conquistas (pedido explícito, 2026-09-20): mostrar dificuldade
 sem inventar número. Não existe jogador de verdade ainda — uma "% de quem

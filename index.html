@@ -869,13 +869,26 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
 .momento-item .frase{font-size:13px;color:var(--ink);margin-bottom:8px}
 .momento-item .meta{font-size:11px;color:var(--faded);margin-bottom:8px}
 .painel-fechar{margin-top:4px}
-/* Conquistas: documento, não troféu ilustrado — sem ícone, sem imagem, sem
-   canto arredondado, mono herdado do body (sobrescreve o Oswald do h3
-   compartilhado com o painel de cards). */
+/* Conquistas: documento, não troféu ilustrado. Regra original (só texto,
+   zero ícone) reconsiderada de propósito em 2026-09-21, pedido
+   explícito, depois de o motivo original ficar registrado: o ícone que
+   entrou não é troféu colorido nem emoji — é a moldura do octógono (o
+   selo do próprio jogo) com um traço monocromático dentro, apagado até
+   desbloquear. Continua sem canto arredondado, mono herdado do body
+   (sobrescreve o Oswald do h3 compartilhado com o painel de cards). */
 .painel-momentos.conquistas h3{font-family:inherit;font-weight:600}
-.conquista{border-bottom:1px solid var(--rule);padding:8px 0}
+.conquista{border-bottom:1px solid var(--rule);padding:8px 0;
+  display:flex;align-items:flex-start;gap:10px}
 .conquista:last-child{border-bottom:none}
-.conquista-nome{font-size:13px;color:var(--faded)}
+.conquista-icone{width:34px;height:34px;flex:none;color:var(--line2);
+  transition:color .15s ease}
+.conquista.ok .conquista-icone{color:var(--stamp)}
+.conquista-icone .ic-moldura{fill:none;stroke:currentColor;stroke-width:5}
+.conquista-icone .ic-glifo{fill:none;stroke:currentColor;stroke-width:6;
+  stroke-linecap:round;stroke-linejoin:round}
+.conquista-texto{min-width:0;flex:1}
+.conquista-nome{font-size:13px;color:var(--faded);display:flex;
+  align-items:center;flex-wrap:wrap;gap:6px}
 .conquista.ok .conquista-nome{color:var(--ink);font-weight:600}
 .conquista-desc{font-size:11px;color:var(--faded);margin-top:2px}
 /* Carreira passada (Fase 8, 2026-09-17): é registro, não troféu — parou de
@@ -1412,34 +1425,34 @@ const FRASE_ESTREIA_MAIN_CARD=n=>`${n} entrou no octógono e o ginásio soube o 
    p75, top ~25% das carreiras, nem trivial nem quase impossível. */
 const LIMIAR_IDOLO=5000000;
 const CONQUISTAS=[
- {id:"primeiro_sangue",nome:"Primeiro sangue",desc:"Vença sua primeira luta.",
+ {id:"primeiro_sangue",cat:"punho",nome:"Primeiro sangue",desc:"Vença sua primeira luta.",
   check:st=>st.wins>=1},
- {id:"invicto",nome:"Invicto",desc:"Termine a carreira sem nenhuma derrota.",
+ {id:"invicto",cat:"escudo",nome:"Invicto",desc:"Termine a carreira sem nenhuma derrota.",
   check:st=>st.fightNo>=TOTAL_FIGHTS&&st.losses===0},
- {id:"reinado",nome:"Reinado",desc:"Conquiste o cinturão e defenda 5 vezes seguidas.",
+ {id:"reinado",cat:"cinturao",nome:"Reinado",desc:"Conquiste o cinturão e defenda 5 vezes seguidas.",
   check:st=>(st.defesas||0)>=5},
- {id:"fenix",nome:"Fênix",desc:"Perca o cinturão e reconquiste.",
+ {id:"fenix",cat:"cinturao",nome:"Fênix",desc:"Perca o cinturão e reconquiste.",
   check:st=>(st.vezesCampeao||0)>=2},
- {id:"lenda_coroada",nome:"Lenda coroada",desc:"Ganhe o cinturão no modo Seja uma lenda.",
+ {id:"lenda_coroada",cat:"cinturao",nome:"Lenda coroada",desc:"Ganhe o cinturão no modo Seja uma lenda.",
   /* foiCampeao, não title — interino não conta até unificar (ver
      CHANCE_CINTURAO_INTERINO), senão esta conquista destrancaria com um
      cinturão que nem é o de verdade ainda. */
   check:(st,modo)=>!!st.foiCampeao&&modo==="lenda"},
- {id:"nao_sente",nome:"Não sente",desc:"Vença uma luta lutando machucado.",
+ {id:"nao_sente",cat:"coracao",nome:"Não sente",desc:"Vença uma luta lutando machucado.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="lesao")},
- {id:"nunca_finalizado",nome:"Nunca finalizado",desc:"Termine a carreira sem perder nenhuma luta por finalização.",
+ {id:"nunca_finalizado",cat:"escudo",nome:"Nunca finalizado",desc:"Termine a carreira sem perder nenhuma luta por finalização.",
   check:st=>st.fightNo>=TOTAL_FIGHTS&&(st.subLosses||0)===0},
- {id:"queixo_de_granito",nome:"Queixo de granito",desc:"Termine a carreira sem nenhum nocaute sofrido.",
+ {id:"queixo_de_granito",cat:"escudo",nome:"Queixo de granito",desc:"Termine a carreira sem nenhum nocaute sofrido.",
   check:st=>st.fightNo>=TOTAL_FIGHTS&&st.koLosses===0},
- {id:"fogo",nome:"Fogo",desc:"Emplace 8 vitórias seguidas.",
+ {id:"fogo",cat:"chama",nome:"Fogo",desc:"Emplace 8 vitórias seguidas.",
   check:st=>st.longestW>=8},
- {id:"levantou_de_novo",nome:"Levantou de novo",desc:"Vá ao chão 6 vezes na carreira e continue competindo.",
+ {id:"levantou_de_novo",cat:"coracao",nome:"Levantou de novo",desc:"Vá ao chão 6 vezes na carreira e continue competindo.",
   check:st=>st.kdTaken>=6},
- {id:"zebra",nome:"Zebra",desc:"Vença como azarão, muito abaixo do favoritismo.",
+ {id:"zebra",cat:"alvo",nome:"Zebra",desc:"Vença como azarão, muito abaixo do favoritismo.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="upset")},
- {id:"mao_rapida",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round, abaixo de 1 minuto.",
+ {id:"mao_rapida",cat:"punho",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round, abaixo de 1 minuto.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="ko")},
- {id:"prudente",nome:"Prudente",desc:"Recuse um risco físico real pelo menos uma vez.",
+ {id:"prudente",cat:"balanca",nome:"Prudente",desc:"Recuse um risco físico real pelo menos uma vez.",
   check:st=>!!st.evitouAlgumaVez},
  /* Era peak>=.98 — medido depois (180 carreiras): 91% desbloqueava,
     "participação" não "conquista". st.standing tem teto em 1.0 e o bot
@@ -1448,11 +1461,131 @@ const CONQUISTAS=[
     lutas. bestBeaten (rating do melhor adversário REAL já batido, 0-1,
     sem teto de progressão) discrimina de verdade: >=.90 deu 31% na mesma
     medição — dentro da faixa das outras conquistas boas. */
- {id:"topo_da_divisao",nome:"Topo da divisão",desc:"Vença um adversário com rating 0,90 ou mais.",
+ {id:"topo_da_divisao",cat:"estrela",nome:"Topo da divisão",desc:"Vença um adversário com rating 0,90 ou mais.",
   check:st=>st.bestBeaten>=.90},
- {id:"idolo",nome:"Ídolo",desc:"Termine a carreira com 5 milhões de seguidores ou mais.",
+ {id:"idolo",cat:"estrela",nome:"Ídolo",desc:"Termine a carreira com 5 milhões de seguidores ou mais.",
   check:st=>st.fightNo>=TOTAL_FIGHTS&&st.followers>=LIMIAR_IDOLO},
+
+ /* Leva 2 (2026-09-21) — pedido explícito: 15 é pouco pra 11 divisões,
+    dois modos, lesão, cinturão interino, loja e dinheiro. Cada uma
+    medida com o bot de ponta a ponta (`node testar.js freqconquistas`)
+    antes de entrar — nenhuma herda número inventado. As que precisavam
+    de estado novo (longestL, foiCinturaoInterino,
+    perdeuCinturaoPorNocaute, maxDisputaRecusas, tituloPorDecisao) ganham
+    o campo espelhando um padrão que já existia (longestW, foiCampeao)
+    — não é mecânica nova, é a MESMA mecânica guardando o dado que
+    faltava. Nenhuma depende de j.* (campo que só a IA de verdade
+    preenche) — regra explícita do pedido. */
+ {id:"chegada_relampago",cat:"estrela",nome:"Chegada relâmpago",
+  desc:"Alcance o topo do ranking da divisão até a 15ª luta.",
+  check:st=>!!st.topoDivisaoAlcancado},
+ {id:"vidro",cat:"coracao",nome:"Vidro",desc:"Sofra 4 nocautes ou mais na carreira.",
+  check:st=>st.koLosses>=4},
+ {id:"ex_campeao",cat:"cinturao",nome:"Ex-campeão",desc:"Perca o cinturão depois de tê-lo conquistado.",
+  check:st=>!!st.exCampeao},
+ {id:"zero_de_22",cat:"coracao",nome:"Zero de 22",desc:"Termine a carreira sem nenhuma vitória.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.wins===0},
+ {id:"sequencia_feia",cat:"coracao",nome:"Sequência feia",desc:"Perca 5 lutas seguidas.",
+  check:st=>(st.longestL||0)>=5},
+ {id:"cinturao_interino",cat:"cinturao",nome:"Interino",desc:"Conquiste o cinturão interino.",
+  check:st=>!!st.foiCinturaoInterino},
+ {id:"nocauteado_do_trono",cat:"cinturao",nome:"Nocauteado do trono",desc:"Perca o cinturão por nocaute.",
+  check:st=>!!st.perdeuCinturaoPorNocaute},
+ {id:"nunca_precisou_do_juiz",cat:"punho",nome:"Nunca precisou do juiz",
+  desc:"Termine com 7 vitórias ou mais, todas antes do tempo.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.wins>=7&&st.finishes===st.wins},
+ {id:"chato_mas_eficaz",cat:"escudo",nome:"Chato mas eficaz",
+  desc:"Termine com 7 vitórias ou mais, nenhuma antes do tempo.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.wins>=7&&st.finishes===0},
+ {id:"nunca_foi_ao_chao",cat:"escudo",nome:"Nunca foi ao chão",
+  desc:"Termine a carreira sem sofrer nenhuma queda.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.kdTaken===0},
+ /* Era >=6, espelhando levantou_de_novo (kdTaken>=6) — medido depois
+    (60 carreiras): kdGiven>=6 dava 90%, muito comum (derrubar o
+    adversário é bem mais fácil pro bot do que SOBREVIVER 6 quedas).
+    Percentil de verdade: p25=8, p50=13, p75=20. >=15 deu 46,7% —
+    dentro da faixa, perto do p75. */
+ {id:"grande_queda",cat:"queda",nome:"Grande queda",desc:"Derrube o adversário 15 vezes ou mais na carreira.",
+  check:st=>st.kdGiven>=15},
+ {id:"nunca_aplicou_queda",cat:"queda",nome:"Nas mãos, só",
+  desc:"Termine a carreira sem derrubar o adversário nenhuma vez.",
+  check:st=>st.fightNo>=TOTAL_FIGHTS&&st.kdGiven===0},
+ {id:"recusou_a_chance",cat:"balanca",nome:"Recusou a chance",
+  desc:"Recuse a disputa do título pelo menos uma vez, estando elegível.",
+  check:st=>(st.maxDisputaRecusas||0)>=1},
+ {id:"decisao_de_campeao",cat:"cinturao",nome:"Decisão de campeão",
+  desc:"Conquiste o cinturão indo aos cartões.",
+  check:st=>!!st.tituloPorDecisao},
 ];
+
+/* Ícones de conquista (redesign 2026-09-21): moldura do octógono — o
+   mesmo símbolo do jogo, reaproveitado como selo — mais um glifo
+   pequeno por CATEGORIA (campo `cat` de cada conquista acima), não por
+   conquista. ~9 traços cobrem as 29 de hoje; conquista nova só escolhe
+   qual já existe encaixa, sem desenho novo. SVG traçado (stroke, sem
+   preenchimento — "traçado" era pedido explícito), monocromático via
+   currentColor: quem pinta é o CSS (.conquista-icone{color:var(--line2)}
+   travada, .conquista.ok .conquista-icone{color:var(--stamp)}
+   desbloqueada), a marcação não escolhe cor nenhuma. */
+const GLIFO_CONQUISTA={
+  punho:`<rect x="36" y="46" width="28" height="20" rx="6"/><line x1="42" y1="46" x2="42" y2="38"/><line x1="50" y1="46" x2="50" y2="34"/><line x1="58" y1="46" x2="58" y2="38"/>`,
+  cinturao:`<rect x="26" y="46" width="48" height="8" rx="2"/><rect x="42" y="40" width="16" height="20" rx="3"/>`,
+  escudo:`<path d="M50 28 L70 36 L70 54 Q70 72 50 80 Q30 72 30 54 L30 36 Z"/>`,
+  coracao:`<polyline points="26,54 38,54 43,38 49,68 55,46 60,54 74,54"/>`,
+  chama:`<path d="M50 26 Q64 44 58 58 Q56 66 50 66 Q44 66 42 58 Q36 44 50 26 Z"/>`,
+  alvo:`<circle cx="50" cy="50" r="18"/><circle cx="50" cy="50" r="9"/>`,
+  balanca:`<line x1="50" y1="30" x2="50" y2="68"/><line x1="30" y1="38" x2="70" y2="38"/><path d="M22 46 Q30 56 38 46"/><path d="M62 46 Q70 56 78 46"/>`,
+  estrela:`<polygon points="50,26 57,44 76,44 61,56 66,74 50,63 34,74 39,56 24,44 43,44"/>`,
+  queda:`<line x1="50" y1="28" x2="50" y2="62"/><polyline points="38,50 50,64 62,50"/>`,
+};
+function iconeConquista(cat){
+  return `<svg class="conquista-icone" viewBox="0 0 100 100" aria-hidden="true">
+    <polygon class="ic-moldura" points="30,6 70,6 94,30 94,70 70,94 30,94 6,70 6,30"/>
+    <g class="ic-glifo">${GLIFO_CONQUISTA[cat]||""}</g>
+  </svg>`;
+}
+
+/* Rótulo de dificuldade, não porcentagem de jogador (pedido explícito):
+   mostrar "% de quem tem" hoje seria decorativo fingindo estatística —
+   ninguém jogou ainda, e número inventado exibido como fato destrói
+   confiança quando descoberto, principalmente num jogo que vai cobrar.
+   Faixas por cima de MEDIÇÃO REAL do bot (`node testar.js
+   freqconquistas`, ver LEIA-ME.md "Conquistas" pros números completos e
+   a data de cada leva) — combinadas: acima de 60% Comum, 30-60%
+   Incomum, 10-30% Raro, abaixo de 10% Lendário. Quando existir jogador
+   de verdade, troca a FONTE deste objeto por consulta ao Supabase
+   (`conquistas_usuario`, count(*) group by conquista_id) — raridadeDeTaxa()
+   não muda, só de onde a taxa vem (ver PENDENCIAS.md item 31). */
+const TAXA_MEDIDA_CONQUISTAS={   // % de carreiras do bot que desbloqueiam — modo normal, salvo nota
+  primeiro_sangue:100, invicto:1.3, reinado:10.0, fenix:10.0,
+  nao_sente:44.0, nunca_finalizado:11.3, queixo_de_granito:37.3, fogo:68.0,
+  levantou_de_novo:5.3, zebra:0.0, mao_rapida:2.7, topo_da_divisao:4.7, idolo:11.3,
+  chegada_relampago:29.3, vidro:4.7, ex_campeao:38.7, zero_de_22:0.0,
+  sequencia_feia:0.7, cinturao_interino:7.3, nocauteado_do_trono:16.0,
+  nunca_precisou_do_juiz:6.0, chato_mas_eficaz:0.0, nunca_foi_ao_chao:21.3,
+  grande_queda:49.3, nunca_aplicou_queda:0.0, recusou_a_chance:37.3,
+  decisao_de_campeao:9.3,
+  lenda_coroada:66.3,   // só desbloqueia em modo lenda — a taxa É a de lenda, não a de normal (que dá 0% sempre)
+  // prudente: FORA de propósito — depende de j.evitouLesao (a IA de verdade),
+  // o bot offline nunca preenche esse campo, medir aqui seria inventar 0%.
+};
+function raridadeDeTaxa(pct){
+  if(pct>60)return "Comum";
+  if(pct>30)return "Incomum";
+  if(pct>=10)return "Raro";
+  return "Lendário";
+}
+function raridadeConquista(id){
+  const pct=TAXA_MEDIDA_CONQUISTAS[id];
+  return pct==null?null:raridadeDeTaxa(pct);
+}
+/* Reaproveita o componente .badge já existente (4 variantes de
+   SIGNIFICADO, não de cor à toa — ver comentário original do .badge)
+   em vez de inventar cor nova pra raridade: dourado já é "prestígio/
+   conquista rara" no resto do jogo, perigo(--stamp) já é "atenção",
+   positivo já é "bom mas comum" — o mapeamento não é decoração, é o
+   mesmo vocabulário de cor que a ficha inteira já fala. */
+const RARIDADE_BADGE={"Comum":"neutral","Incomum":"win","Raro":"danger","Lendário":"gold"};
 
 /* localStorage guarda só os ids desbloqueados, nunca o estado da carreira —
    mesmo princípio de mudo/vol_musica/rosto: try/catch, sem IA nem conta,
@@ -4154,6 +4287,7 @@ function tituloLiberado(){
     CHANCE_DISPUTA+CHANCE_DISPUTA_INCREMENTO*(st.disputaRecusas||0));
   if(holdRng()<chance){st.disputaLiberada=true;return true;}
   st.disputaRecusas=(st.disputaRecusas||0)+1;
+  st.maxDisputaRecusas=Math.max(st.maxDisputaRecusas||0,st.disputaRecusas);  // disputaRecusas zera quando a elegibilidade cai; isto não
   return false;
 }
 
@@ -5126,11 +5260,15 @@ function fecharPainelMomentos(){
   if(p)p.style.display="none";
 }
 
-/* Visual de documento, de propósito — sem ícone, sem imagem, sem canto
-   arredondado. A tipografia mono da página inteira já faz o trabalho. "✓"/
-   "·" são caracteres de texto, não ícone. Igual ao painel de cards: não
-   toca em playing/auto/dilemaAberto, o automático continua rodando por
-   baixo se o jogador não fechar. */
+/* Visual de documento — sem canto arredondado, "✓"/"·" continuam
+   caracteres de texto na frente do nome, não substituídos pelo ícone
+   (redundância de propósito, não custa nada e ajuda quem não distingue
+   a cor do glifo). O ícone (iconeConquista(), moldura+glifo por
+   categoria) e o rótulo de raridade (raridadeConquista(), badge
+   reaproveitado) entraram em 2026-09-21 — ver comentário perto de
+   CONQUISTAS/TAXA_MEDIDA_CONQUISTAS pro raciocínio completo. Igual ao
+   painel de cards: não toca em playing/auto/dilemaAberto, o automático
+   continua rodando por baixo se o jogador não fechar. */
 function abrirPainelConquistas(){
   const p=document.getElementById("painelConquistas");
   p.innerHTML="";
@@ -5140,14 +5278,21 @@ function abrirPainelConquistas(){
   CONQUISTAS.forEach(c=>{
     const ok=CONQUISTAS_DESBLOQUEADAS.has(c.id);
     const item=el("div","conquista"+(ok?" ok":""));
-    item.appendChild(el("div","conquista-nome",(ok?"✓ ":"· ")+c.nome));
-    item.appendChild(el("div","conquista-desc",c.desc));
+    item.innerHTML=iconeConquista(c.cat);
+    const raridade=raridadeConquista(c.id);
+    const texto=el("div","conquista-texto",`
+      <div class="conquista-nome">${(ok?"✓ ":"· ")+c.nome}${
+        raridade?` <span class="badge badge-${RARIDADE_BADGE[raridade]}">${raridade}</span>`:""}</div>
+      <div class="conquista-desc">${c.desc}</div>`);
+    item.appendChild(texto);
     box.appendChild(item);
   });
   const plat=el("div","conquista"+(n>=total?" ok":""));
-  plat.appendChild(el("div","conquista-nome",(n>=total?"✓ ":"· ")+"PLATINA"));
-  plat.appendChild(el("div","conquista-desc",
-    n>=total?"Todas as conquistas desbloqueadas.":`Faltam ${total-n} pra completar.`));
+  plat.innerHTML=iconeConquista("estrela");
+  const platTexto=el("div","conquista-texto",`
+    <div class="conquista-nome">${(n>=total?"✓ ":"· ")+"PLATINA"}</div>
+    <div class="conquista-desc">${n>=total?"Todas as conquistas desbloqueadas.":`Faltam ${total-n} pra completar.`}</div>`);
+  plat.appendChild(platTexto);
   box.appendChild(plat);
   const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
   fechar.onclick=fecharPainelConquistas;
@@ -5949,7 +6094,9 @@ function startCareer(){
       dinheiro:0,treinadorComprado:false,equipamentoComprado:false,
       empresarioComprado:false,casaComprada:false,estreouMainCard:false,
       cinturaoInterino:false,tituloInterinoLuta:false,
-      topoDivisaoAlcancado:false,bonusNoiteMarco:false,consultoriaAtiva:false};
+      topoDivisaoAlcancado:false,bonusNoiteMarco:false,consultoriaAtiva:false,
+      longestL:0,foiCinturaoInterino:false,perdeuCinturaoPorNocaute:false,
+      maxDisputaRecusas:0,tituloPorDecisao:false};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -6498,13 +6645,14 @@ function finishFight(opp,r,titleFight){
            momento de 1º cinturão SÓ disparam na unificação, abaixo — é
            isso que torna o interino incompleto até provar (ver
            CHANCE_CINTURAO_INTERINO). */
-        st.title=true;st.cinturaoInterino=true;st.exCampeao=null;
+        st.title=true;st.cinturaoInterino=true;st.exCampeao=null;st.foiCinturaoInterino=true;
         st.momentos.push(criarMomento("cinturaoInterino",
           FRASE_CINTURAO_INTERINO(me.name,RANKING.campeao?RANKING.campeao.name:"o campeão"),opp,r));
       }else{
         /* conta AQUISIÇÃO nova do cinturão de verdade (1ª vez, reconquista
            ou unificação do interino) — usado pela conquista "Fênix". */
         st.vezesCampeao=(st.vezesCampeao||0)+1;
+        if(r.method==="Decisão")st.tituloPorDecisao=true;   // permanente — ganhou o cinturão indo aos cartões, alguma vez
         st.title=true;st.foiCampeao=true;st.exCampeao=null;st.cinturaoInterino=false;
         if(!foiCampeaoAntes)st.momentos.push(criarMomento("cinturao",
           eraUnificacao?FRASE_UNIFICACAO(me.name,opp.name):FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
@@ -6523,6 +6671,7 @@ function finishFight(opp,r,titleFight){
     }
   }else{
     st.losses++;st.streakL++;st.streakW=0;
+    st.longestL=Math.max(st.longestL||0,st.streakL);   // mesmo padrão de longestW, espelhado
     if(isKO)st.koLosses++;
     if(r.method==="Finalização")st.subLosses=(st.subLosses||0)+1;
     /* Nocaute -> lesão (item cortado da v1): uma de cada vez, mesma regra
@@ -6565,6 +6714,7 @@ function finishFight(opp,r,titleFight){
          interino" fantasma sem title) e disputaLiberada reseta — sem isso
          a reconquista aproveitaria a concessão antiga do holdRng e nunca
          sortearia de novo (ver candidatos()/tituloLiberado()). */
+      if(isKO)st.perdeuCinturaoPorNocaute=true;   // permanente — não zera se reconquistar depois
       st.title=false;st.exCampeao=opp;st.defesas=0;st.disputaLiberada=false;st.cinturaoInterino=false;
       /* Guarda o número da luta em que perdeu — evento por IA usa isso
          pra saber se foi NESTA luta (não é histórico permanente como

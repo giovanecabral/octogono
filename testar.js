@@ -3881,7 +3881,10 @@ function testarConquistas() {
        fightNo>=TOTAL_FIGHTS, "invicto" desbloqueava na luta 1. */
     const base=()=>({wins:0,losses:0,defesas:0,vezesCampeao:0,title:false,
       momentos:[],subLosses:0,koLosses:0,longestW:0,kdTaken:0,evitouAlgumaVez:false,
-      peak:0,followers:0,bestBeaten:0,fightNo:TOTAL_FIGHTS});
+      peak:0,followers:0,bestBeaten:0,fightNo:TOTAL_FIGHTS,
+      topoDivisaoAlcancado:false,exCampeao:null,longestL:0,foiCinturaoInterino:false,
+      perdeuCinturaoPorNocaute:false,kdGiven:0,maxDisputaRecusas:0,tituloPorDecisao:false,
+      finishes:0});
     const acha=id=>CONQUISTAS.find(c=>c.id===id);
 
     let st1=base(); st1.wins=1;
@@ -3964,8 +3967,111 @@ function testarConquistas() {
     let stI4=base(); stI4.followers=LIMIAR_IDOLO-1;
     passo("idolo: 1 seguidor abaixo do limiar NÃO desbloqueia", !acha("idolo").check(stI4));
 
-    passo("15 conquistas cadastradas (mais a platina, calculada, não é uma delas)",
-      CONQUISTAS.length===15);
+    // ---------- leva 2 (2026-09-21): as 15 novas, mesmo padrão dos dois
+    // lados do limite das 15 originais acima ----------
+    let stCR1=base(); stCR1.topoDivisaoAlcancado=true;
+    passo("chegada_relampago: alcançou o topo desbloqueia", acha("chegada_relampago").check(stCR1));
+    passo("chegada_relampago: nunca alcançou NÃO desbloqueia", !acha("chegada_relampago").check(base()));
+
+    let stVD1=base(); stVD1.koLosses=4;
+    passo("vidro: 4 nocautes sofridos desbloqueia", acha("vidro").check(stVD1));
+    let stVD0=base(); stVD0.koLosses=3;
+    passo("vidro: 3 nocautes sofridos NÃO desbloqueia", !acha("vidro").check(stVD0));
+
+    let stEC1=base(); stEC1.exCampeao={name:"Rival"};
+    passo("ex_campeao: exCampeao preenchido desbloqueia", acha("ex_campeao").check(stEC1));
+    passo("ex_campeao: exCampeao null NÃO desbloqueia", !acha("ex_campeao").check(base()));
+
+    let stZ22=base(); stZ22.wins=0;
+    passo("zero_de_22: 0 vitórias no fim desbloqueia", acha("zero_de_22").check(stZ22));
+    let stZ22b=base(); stZ22b.wins=1;
+    passo("zero_de_22: 1 vitória NÃO desbloqueia", !acha("zero_de_22").check(stZ22b));
+    let stZ22c=base(); stZ22c.wins=0; stZ22c.fightNo=10;
+    passo("zero_de_22: 0 vitórias NO MEIO da carreira NÃO desbloqueia — só no fim",
+      !acha("zero_de_22").check(stZ22c));
+
+    let stSF1=base(); stSF1.longestL=5;
+    passo("sequencia_feia: 5 derrotas seguidas (pico) desbloqueia", acha("sequencia_feia").check(stSF1));
+    let stSF0=base(); stSF0.longestL=4;
+    passo("sequencia_feia: 4 derrotas seguidas NÃO desbloqueia", !acha("sequencia_feia").check(stSF0));
+
+    let stCI1=base(); stCI1.foiCinturaoInterino=true;
+    passo("cinturao_interino: foiCinturaoInterino desbloqueia", acha("cinturao_interino").check(stCI1));
+    passo("cinturao_interino: nunca foi NÃO desbloqueia", !acha("cinturao_interino").check(base()));
+
+    let stNT1=base(); stNT1.perdeuCinturaoPorNocaute=true;
+    passo("nocauteado_do_trono: flag marcada desbloqueia", acha("nocauteado_do_trono").check(stNT1));
+    passo("nocauteado_do_trono: nunca perdeu por nocaute NÃO desbloqueia", !acha("nocauteado_do_trono").check(base()));
+
+    let stNJ1=base(); stNJ1.wins=7; stNJ1.finishes=7;
+    passo("nunca_precisou_do_juiz: 7 vitórias, todas finalizadas/nocauteadas desbloqueia",
+      acha("nunca_precisou_do_juiz").check(stNJ1));
+    let stNJ0=base(); stNJ0.wins=7; stNJ0.finishes=6;
+    passo("nunca_precisou_do_juiz: 1 das 7 foi decisão NÃO desbloqueia", !acha("nunca_precisou_do_juiz").check(stNJ0));
+    let stNJ2=base(); stNJ2.wins=6; stNJ2.finishes=6;
+    passo("nunca_precisou_do_juiz: só 6 vitórias NÃO desbloqueia (precisa de 7)", !acha("nunca_precisou_do_juiz").check(stNJ2));
+
+    let stCE1=base(); stCE1.wins=7; stCE1.finishes=0;
+    passo("chato_mas_eficaz: 7 vitórias, nenhuma finalizada/nocauteada desbloqueia",
+      acha("chato_mas_eficaz").check(stCE1));
+    let stCE0=base(); stCE0.wins=7; stCE0.finishes=1;
+    passo("chato_mas_eficaz: 1 das 7 foi finalização/nocaute NÃO desbloqueia", !acha("chato_mas_eficaz").check(stCE0));
+
+    let stNC1=base(); stNC1.kdTaken=0;
+    passo("nunca_foi_ao_chao: 0 quedas sofridas no fim desbloqueia", acha("nunca_foi_ao_chao").check(stNC1));
+    let stNC0=base(); stNC0.kdTaken=1;
+    passo("nunca_foi_ao_chao: 1 queda sofrida NÃO desbloqueia", !acha("nunca_foi_ao_chao").check(stNC0));
+
+    let stGQ1=base(); stGQ1.kdGiven=15;
+    passo("grande_queda: 15 quedas aplicadas desbloqueia", acha("grande_queda").check(stGQ1));
+    let stGQ0=base(); stGQ0.kdGiven=14;
+    passo("grande_queda: 14 quedas aplicadas NÃO desbloqueia", !acha("grande_queda").check(stGQ0));
+
+    let stNQ1=base(); stNQ1.kdGiven=0;
+    passo("nunca_aplicou_queda: 0 quedas aplicadas no fim desbloqueia", acha("nunca_aplicou_queda").check(stNQ1));
+    let stNQ0=base(); stNQ0.kdGiven=1;
+    passo("nunca_aplicou_queda: 1 queda aplicada NÃO desbloqueia", !acha("nunca_aplicou_queda").check(stNQ0));
+
+    let stRC1=base(); stRC1.maxDisputaRecusas=1;
+    passo("recusou_a_chance: recusou 1 vez (pico) desbloqueia", acha("recusou_a_chance").check(stRC1));
+    passo("recusou_a_chance: nunca recusou NÃO desbloqueia", !acha("recusou_a_chance").check(base()));
+
+    let stDC1=base(); stDC1.tituloPorDecisao=true;
+    passo("decisao_de_campeao: tituloPorDecisao desbloqueia", acha("decisao_de_campeao").check(stDC1));
+    passo("decisao_de_campeao: nunca ganhou por decisão NÃO desbloqueia", !acha("decisao_de_campeao").check(base()));
+
+    /* 29, não 30: "Noite marcante" (bonusNoiteMarco) entrou na leva 2 e
+       caiu na MEDIÇÃO — 66,7% no modo normal, acima do teto de 60% que a
+       própria leva 2 se propôs a respeitar. É flag booleana (não tem
+       limiar pra apertar, só existe ou não), então a correção certa era
+       tirar, não forçar 15 pra bater um número redondo. */
+    passo("29 conquistas cadastradas (leva 1: 15 + leva 2 de 2026-09-21: +14; mais a platina, calculada, não é uma delas)",
+      CONQUISTAS.length===29);
+    passo("cada id de CONQUISTAS é único (sem duplicata escondida na leva 2)",
+      new Set(CONQUISTAS.map(c=>c.id)).size===CONQUISTAS.length);
+
+    // ---------- ícones e rótulo de raridade (2026-09-21) ----------
+    passo("toda conquista tem cat definido e o glifo daquela categoria existe (sem ícone quebrado silencioso)",
+      CONQUISTAS.every(c=>c.cat&&GLIFO_CONQUISTA[c.cat]));
+    passo("iconeConquista() sempre devolve moldura de octógono (mesmo selo do jogo, não troféu novo)",
+      CONQUISTAS.every(c=>iconeConquista(c.cat).includes('class="ic-moldura"')));
+
+    passo("raridadeDeTaxa: 61% (acima do teto) = Comum", raridadeDeTaxa(61)==="Comum");
+    passo("raridadeDeTaxa: 60% (limite, não acima) = Incomum, não Comum", raridadeDeTaxa(60)==="Incomum");
+    passo("raridadeDeTaxa: 31% = Incomum", raridadeDeTaxa(31)==="Incomum");
+    passo("raridadeDeTaxa: 30% (limite) = Raro, não Incomum", raridadeDeTaxa(30)==="Raro");
+    passo("raridadeDeTaxa: 10% (limite) = Raro", raridadeDeTaxa(10)==="Raro");
+    passo("raridadeDeTaxa: 9.9% = Lendário", raridadeDeTaxa(9.9)==="Lendário");
+    passo("raridadeDeTaxa: 0% = Lendário", raridadeDeTaxa(0)==="Lendário");
+
+    passo("prudente NÃO tem rótulo (depende da IA, medir daria 0% inventado)",
+      raridadeConquista("prudente")===null);
+    passo("lenda_coroada TEM rótulo (medido em modo lenda separado, não em normal)",
+      raridadeConquista("lenda_coroada")!==null);
+    passo("toda conquista, menos prudente, tem rótulo de raridade (nenhuma esquecida na tabela)",
+      CONQUISTAS.filter(c=>c.id!=="prudente").every(c=>raridadeConquista(c.id)!==null));
+    passo("cada raridade calculada tem badge mapeado (RARIDADE_BADGE cobre as 4)",
+      CONQUISTAS.map(c=>raridadeConquista(c.id)).filter(Boolean).every(r=>!!RARIDADE_BADGE[r]));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }

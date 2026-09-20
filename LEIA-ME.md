@@ -2197,13 +2197,15 @@ verdade: acessível 28% chegam ao topo, parelho 89%, perigoso 99%.
 
 ## Conquistas
 
-Troféu local, `localStorage`, sem conta e sem backend — 15 conquistas mais
-uma platina calculada (todas desbloqueadas). Cada uma é uma função pura
-`check(st,modo)` sobre estado que o motor já mantém (`CONQUISTAS`, perto do
-RARE/LEGACY). Nenhuma depende de a IA ter classificado nada: `momentos`
-(usado por 3 delas — lesão vencida, zebra, KO rápido) já é decidido pelo
-motor, não pela IA; seguidores/fã têm uma fração pequena vinda de dilema,
-mas a maior parte é hype de luta real.
+Troféu local, `localStorage`, sem conta e sem backend — 29 conquistas
+(15 originais + 14 da leva de 2026-09-21) mais uma platina calculada
+(todas desbloqueadas). Cada uma é uma função pura `check(st,modo)`
+sobre estado que o motor já mantém (`CONQUISTAS`, perto do RARE/LEGACY).
+Nenhuma depende de a IA ter classificado nada: `momentos` (usado por 3
+delas — lesão vencida, zebra, KO rápido) já é decidido pelo motor, não
+pela IA; seguidores/fã têm uma fração pequena vinda de dilema, mas a
+maior parte é hype de luta real. A leva 2 seguiu a mesma regra
+explicitamente — nenhuma checa campo que só a IA preenche (`j.*`).
 
 **Achado escrevendo o teste, não jogando: 4 conquistas desbloqueavam no
 MEIO da carreira.** "Invicto" (`losses===0`) é trivialmente verdade antes
@@ -2214,12 +2216,36 @@ permanentes assim que acontecem (defender 5 vezes, reconquistar, pico da
 divisão) e não precisam da guarda — desbloquear na hora é o comportamento
 certo pra elas.
 
-**Medido, não suposto (180 carreiras, bot varia dificuldade): 4,17/15
-desbloqueadas por carreira em média (28%)** — dentro do "menos da metade".
-Por conquista: `primeiro_sangue` 100% (deliberadamente quase garantida, é a
-de boas-vindas), `fogo` 62%, o resto entre 33% e 2% (`invicto`). `lesão`/
-`prudente`/`lenda` não têm amostra offline (dependem de IA ou de o bot
-rodar em modo lenda, que a medição não cobriu).
+**Medido, não suposto — remedido em 2026-09-21 (150 carreiras modo normal,
+80 modo lenda, `node testar.js freqconquistas N [modo]`, mesmo bot de
+ponta a ponta dos gatilhos de card):**
+
+- Só as 15 originais: **3,06/15 (20,4%)** normal. O número antigo aqui
+  (4,17/15, 28%) ficou desatualizado quando `TETO_TREINO` baixou de
+  1.26 pra 1.18 (ver "Progressão do lutador") — carreira ficou mais
+  dura, conquista também.
+- As 29 de hoje: **5,26/29 (18,1%)** normal, **7,65/29 (26,4%)** lenda —
+  as duas bem abaixo de metade.
+- `primeiro_sangue` 100% (deliberadamente quase garantida). `fogo` 68%
+  normal — acima do teto de 60% que o redesign de 2026-09-21 adotou pra
+  qualquer conquista nova; não corrigido ainda, sinalizado no
+  `PENDENCIAS.md` item 31.
+- `nao_sente` (lesão vencida): **NÃO é IA-dependente**, achado remedindo
+  pro redesign — lesão tem caminho por nocaute (`lesaoRng`, 100% local)
+  além do caminho por dilema (IA). A frase anterior aqui embaixo estava
+  errada.
+- Só duas seguem de fato sem taxa offline: `prudente` (depende de
+  `j.evitouLesao`, só a IA de verdade preenche) e `lenda_coroada` (não é
+  IA, é modo — precisa de leva separada em modo lenda, já medida acima:
+  66,3%, também acima do teto de 60%, mas esperado — só desbloqueia
+  jogando lenda mesmo). Detalhe de cada uma no `PENDENCIAS.md` item 31.
+- **Achado novo, maior que qualquer conquista isolada**: o bot em modo
+  lenda roda sistematicamente mais "quente" que o normal — `zebra` vai
+  de 0% (normal) pra 92,5% (lenda), `grande_queda` (leva 2) de 49,3%
+  pra 61,3%. Não é limiar errado de uma conquista, é a calibração do
+  modo lenda inteiro — reequilibrar isso é trabalho maior que
+  "adicionar conquista", registrado no `PENDENCIAS.md`, não decidido
+  sozinho.
 
 `topo_da_divisao` saiu em 91% na primeira versão (`peak>=.98`) — remedido
 depois: não era o limiar, era a MÉTRICA. `st.standing` tem teto em 1.0 e o
@@ -2231,8 +2257,36 @@ progressão do jogador): `>=.90` deu **31%** na mesma medição — dentro da
 faixa das outras conquistas boas, e semanticamente melhor ("bater alguém
 de elite de verdade" em vez de "seu próprio teto de standing").
 
+**As 14 novas da leva de 2026-09-21**, com taxa normal/lenda medida antes
+de entrar (uma 15ª, "Noite marcante"/`bonusNoiteMarco`, foi proposta e
+caiu na medição — 66,7% normal, acima do teto — tirada, não forçada):
+
+| id | gatilho | normal | lenda |
+|---|---|---|---|
+| `chegada_relampago` | topo do ranking até a luta 15 (`topoDivisaoAlcancado`, campo que já existia sem uso) | 29,3% | 26,3% |
+| `vidro` | 4+ nocautes sofridos | 4,7% | 21,3% |
+| `ex_campeao` | perdeu o cinturão depois de tê-lo | 38,7% | 26,3% |
+| `zero_de_22` | 0 vitórias no fim | 0,0%* | 0,0%* |
+| `sequencia_feia` | 5+ derrotas seguidas (`st.longestL`, novo, espelha `st.longestW`) | 0,7% | 1,3% |
+| `cinturao_interino` | conquistou o interino (`st.foiCinturaoInterino`, novo) | 7,3% | 13,8% |
+| `nocauteado_do_trono` | perdeu o cinturão por nocaute (`st.perdeuCinturaoPorNocaute`, novo) | 16,0% | 18,8% |
+| `nunca_precisou_do_juiz` | 7+ vitórias, todas finalizadas | 6,0% | 30,0% |
+| `chato_mas_eficaz` | 7+ vitórias, nenhuma finalizada | 0,0%* | 0,0%* |
+| `nunca_foi_ao_chao` | 0 quedas sofridas no fim | 21,3% | 11,3% |
+| `grande_queda` | 15+ quedas aplicadas (era 6, dava 90%+ — remedido, ver acima) | 49,3% | 61,3%† |
+| `nunca_aplicou_queda` | 0 quedas aplicadas no fim | 0,0%* | 1,3% |
+| `recusou_a_chance` | recusou a disputa 1+ vez, elegível (`st.maxDisputaRecusas`, novo) | 37,3% | 36,3% |
+| `decisao_de_campeao` | ganhou o cinturão indo aos cartões (`st.tituloPorDecisao`, novo) | 9,3% | 2,5% |
+
+\* Zero no bot "parelho" não é zero garantido pro jogador — mesma
+ressalva de `zebra`, o bot evita risco desnecessário, jogador real com
+sorte ruim ou escolha deliberada chega lá.
+† Acima do teto de 60%, só no modo lenda — ver "achado novo" acima,
+não é bug desta conquista específica.
+
 ```bash
-node testar.js conquistas   # cada check() no limite certo + persistência de verdade
+node testar.js conquistas      # cada check() no limite certo + persistência de verdade
+node testar.js freqconquistas [N] [normal|lenda]   # frequência real de qualquer conquista, bot de ponta a ponta
 ```
 
 ## Contas
