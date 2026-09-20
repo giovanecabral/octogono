@@ -705,6 +705,13 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus{
 .inicio-rodape a:hover{color:var(--ink)}
 .inicio-rodape span{color:var(--line2)}
 .pagina-legal{max-width:640px;line-height:1.7}
+.pagina-legal h3{font-family:Oswald,sans-serif;font-weight:600;font-size:13px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink);margin:26px 0 8px}
+.pagina-legal h3:first-child{margin-top:0}
+.pagina-legal p{margin:0 0 12px}
+.pagina-legal ul{margin:0 0 12px;padding-left:20px}
+.pagina-legal li{margin-bottom:6px}
+.pagina-legal .rev{color:var(--faded);font-size:11px;margin-bottom:22px}
 
 /* ---------- tela nome (Fase 5, 2026-09-16) ---------- */
 /* Reaproveita o octógono de fundo e o peso do botão "Jogar" da Início —
@@ -2174,22 +2181,310 @@ function screenHistorico(){
 }
 
 /* ---------- Termos de Uso / Política de Privacidade ----------
-   Estrutura só — texto jurídico fica de fora de propósito (o usuário vai
-   colar de um modelo de provedor de pagamento e adaptar). Ver LEIA-ME.md
-   "Termos e Privacidade" pro que falta antes de existir pagamento
-   (registro de aceite). */
-function screenPaginaLegal(titulo){
+   Texto próprio, não modelo colado de provedor de pagamento — pesquisado
+   e escrito em cima do que o jogo REALMENTE faz (grep no código, não
+   suposição): Supabase Auth (e-mail+senha ou Google) pra conta opcional,
+   localStorage pra tudo que não precisa de conta, texto livre do dilema
+   saindo pro provedor de IA via api/ai.js, Vercel Analytics sem cookie
+   (window.va, ver evento()). Ainda NÃO existe botão de autoatendimento
+   pra exportar/apagar dado (LEIA-ME.md já registrava isso antes de este
+   texto existir) — a política diz isso direto, não finge ferramenta que
+   não existe. Registro de aceite formal (tabela + checkbox no checkout)
+   continua proposta pra quando existir pagamento, não implementado aqui
+   — ver LEIA-ME.md "Termos de Uso e Política de Privacidade". */
+function screenPaginaLegal(titulo,corpo){
   tituloDoc(true);
   app.innerHTML="";
   app.appendChild(el("div","eyebrow",titulo));
-  app.appendChild(el("div","pagina-legal",
-    `<p class="hint">[PENDENTE — texto ainda não inserido aqui. Ver LEIA-ME.md "Termos e Privacidade".]</p>`));
+  app.appendChild(el("div","pagina-legal",corpo));
   const voltar=el("button","btn btn-ghost","Voltar");
   voltar.onclick=voltarInicio;
   app.appendChild(voltar);
 }
-function screenTermos(){ screenPaginaLegal("Termos de Uso"); }
-function screenPrivacidade(){ screenPaginaLegal("Política de Privacidade"); }
+function screenTermos(){
+  screenPaginaLegal("Termos de Uso",`
+    <p class="rev">Versão 2 — última revisão: 19 de setembro de 2026.</p>
+
+    <h3>1. Aceitação e objeto</h3>
+    <p>Estes Termos de Uso ("Termos") regem o acesso e a utilização do
+    Octógono ("Jogo", "Serviço"), aplicativo de simulação de carreira de
+    artes marciais mistas (MMA) disponibilizado gratuitamente pela
+    internet. Ao acessar ou utilizar o Serviço, o usuário declara ter lido,
+    compreendido e aceitado integralmente estes Termos e a Política de
+    Privacidade a eles vinculada. Quem não concordar com qualquer
+    disposição destes Termos deve interromper o uso do Serviço.</p>
+
+    <h3>2. Descrição do serviço</h3>
+    <p>O Octógono é um jogo eletrônico de um único jogador, sem
+    multijogador e sem interação entre usuários. O jogador monta um
+    lutador fictício selecionando atributos de lutadores reais e conduz
+    uma carreira simulada de até 22 lutas. O Serviço é mantido por
+    desenvolvedor pessoa física, a título de projeto independente, sem
+    estrutura de atendimento ao consumidor em tempo integral.</p>
+
+    <h3>3. Elegibilidade e idade mínima</h3>
+    <p>O Serviço é destinado a qualquer pessoa, observadas as regras do
+    Estatuto da Criança e do Adolescente (Lei nº 8.069/1990): o uso por
+    crianças (até 12 anos incompletos) e adolescentes (entre 12 e 18 anos)
+    deve ocorrer sob supervisão e com autorização de pai, mãe ou
+    responsável legal, especialmente quanto à criação de conta e ao
+    fornecimento de dados pessoais (ver Política de Privacidade, seção 9).
+    A criação de conta pressupõe capacidade civil ou representação/
+    assistência conforme a legislação civil brasileira.</p>
+
+    <h3>4. Conta de usuário</h3>
+    <p>A criação de conta é facultativa. O Serviço opera integralmente sem
+    conta: carreira em andamento, conquistas e preferências ficam
+    armazenadas localmente no navegador do usuário. A conta (por e-mail e
+    senha, ou por autenticação Google) tem finalidade exclusiva de
+    sincronizar esse histórico entre aparelhos diferentes. O usuário é
+    responsável pela guarda de suas credenciais e por toda atividade
+    realizada em sua conta.</p>
+
+    <h3>5. Ausência de valores monetários e de aposta</h3>
+    <p>O "orçamento" utilizado na montagem do lutador e o "dinheiro"
+    recebido a cada luta são unidades fictícias internas ao Jogo, sem
+    valor monetário, sem lastro, sem conversibilidade em moeda real e sem
+    qualquer mecanismo de aposta, prêmio ou sorteio. O Serviço não
+    processa pagamento nem cobrança na presente versão. Caso isso venha a
+    mudar, estes Termos serão atualizados previamente, com nova
+    manifestação de aceite do usuário antes de qualquer cobrança.</p>
+
+    <h3>6. Lutadores reais e conteúdo gerado por inteligência artificial</h3>
+    <p>O Jogo utiliza nomes e estatísticas públicas de desempenho
+    esportivo de 1.527 lutadores reais de MMA, dado histórico de natureza
+    pública. Nenhum desses lutadores reais recebe retrato ou representação
+    visual gerada pelo Jogo — apenas o lutador criado pelo próprio usuário
+    possui aparência gerada. Essa distinção é deliberada: estatística
+    esportiva é fato público; a imagem de uma pessoa é direito da própria
+    pessoa, protegido pelo art. 5º, X, da Constituição Federal e pelo
+    Código Civil.</p>
+    <p>Dilemas, eventos narrativos e a "repercussão" simulada em rede
+    social fictícia dentro do Jogo são produzidos por modelo de
+    inteligência artificial a partir do estado da carreira do usuário e do
+    texto por ele inserido. Trata-se de conteúdo de ficção interativa: não
+    constitui notícia, informação factual, opinião real ou retrato da
+    conduta de qualquer lutador citado, e pode conter imprecisão típica de
+    texto gerado por IA.</p>
+
+    <h3>7. Conteúdo inserido pelo usuário</h3>
+    <p>Nos dilemas de carreira, o usuário insere texto livre descrevendo a
+    conduta de seu lutador. Esse texto é transmitido a provedor de
+    inteligência artificial terceirizado para geração do desfecho da cena
+    (ver Política de Privacidade). O usuário não deve inserir dado pessoal
+    sensível, próprio ou de terceiros, nesse campo. É vedado o envio de
+    conteúdo ilícito, discriminatório, que configure discurso de ódio, ou
+    tentativa deliberada de contornar os filtros de segurança do Jogo; a
+    constatação de tais condutas autoriza a geração de desfecho neutro
+    automático e, em caso de reincidência, o bloqueio do acesso do
+    usuário ao Serviço.</p>
+
+    <h3>8. Propriedade intelectual</h3>
+    <p>O código-fonte, o motor de simulação, a interface e os textos
+    originais do Jogo são de titularidade do desenvolvedor, protegidos
+    pela Lei nº 9.610/1998 (direitos autorais) e, quanto ao software,
+    pela Lei nº 9.609/1998. Nomes, recordes e estatísticas de lutadores
+    reais pertencem às respectivas pessoas ou organizações e são
+    utilizados exclusivamente como dado histórico de domínio público,
+    sem qualquer vínculo, endosso, patrocínio ou associação com o Jogo.</p>
+
+    <h3>9. Isenção de garantias e limitação de responsabilidade</h3>
+    <p>O Serviço é fornecido "no estado em que se encontra" ("as is"),
+    sem garantia de disponibilidade contínua, ausência de erros ou
+    adequação a finalidade específica. Por se tratar de projeto pessoal
+    mantido sem estrutura corporativa, o Serviço pode ser interrompido,
+    alterado de forma incompatível ou descontinuado a qualquer tempo,
+    mediante aviso razoável quando possível. Na máxima extensão permitida
+    pela legislação aplicável, o desenvolvedor não responde por perda de
+    progresso, indisponibilidade temporária ou permanente, nem por danos
+    indiretos, incidentais ou consequenciais decorrentes do uso ou da
+    impossibilidade de uso do Serviço.</p>
+
+    <h3>10. Rescisão</h3>
+    <p>O usuário pode encerrar sua conta a qualquer momento, mediante
+    solicitação ao contato indicado na seção 13. O desenvolvedor pode
+    suspender ou encerrar o acesso de usuário que violar estes Termos,
+    especialmente a seção 7.</p>
+
+    <h3>11. Alterações destes Termos</h3>
+    <p>Estes Termos podem ser alterados para refletir a evolução do
+    Serviço, sobretudo na eventual introdução de cobrança — hipótese em
+    que passará a ser exigido aceite explícito e registrado, distinto da
+    disponibilização desta página. A data de revisão no topo sempre
+    corresponde à versão vigente; alterações relevantes serão comunicadas
+    de forma destacada dentro do Jogo.</p>
+
+    <h3>12. Legislação aplicável e foro</h3>
+    <p>Estes Termos são regidos pelas leis da República Federativa do
+    Brasil, incluindo a Lei nº 12.965/2014 (Marco Civil da Internet), a
+    Lei nº 13.709/2018 (Lei Geral de Proteção de Dados) e, no que
+    couber, a Lei nº 8.078/1990 (Código de Defesa do Consumidor). Fica
+    eleito o foro do domicílio do usuário para dirimir controvérsias
+    oriundas destes Termos, sem prejuízo da tentativa prévia de solução
+    amigável pelo contato abaixo.</p>
+
+    <h3>13. Contato</h3>
+    <p>Dúvidas, denúncias de conteúdo ou solicitações relacionadas a
+    estes Termos: <a href="mailto:contato@octogono.fun">contato@octogono.fun</a>.</p>
+  `);
+}
+function screenPrivacidade(){
+  screenPaginaLegal("Política de Privacidade",`
+    <p class="rev">Versão 2 — última revisão: 19 de setembro de 2026.</p>
+
+    <p>Esta Política de Privacidade descreve, em conformidade com a Lei
+    nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais — "LGPD"),
+    como o Octógono trata dados pessoais de seus usuários.</p>
+
+    <h3>1. Controlador e encarregado</h3>
+    <p>O controlador dos dados pessoais tratados no Octógono é o
+    desenvolvedor responsável pelo Jogo, pessoa física, que também
+    exerce, para os fins desta política, a função de encarregado pelo
+    tratamento de dados pessoais (art. 41 da LGPD). Canal único de
+    contato para ambas as funções:
+    <a href="mailto:contato@octogono.fun">contato@octogono.fun</a>.
+    Buscamos responder solicitações em até 15 dias úteis.</p>
+
+    <h3>2. Dados tratados, finalidade e base legal</h3>
+    <p>A lista abaixo indica, para cada dado pessoal efetivamente
+    tratado, a finalidade do tratamento e a hipótese legal que o
+    autoriza, conforme o art. 7º da LGPD.</p>
+    <ul>
+      <li><b>E-mail</b> (ao criar conta) — finalidade: autenticação e
+      comunicação sobre a conta. Base legal: execução de contrato (art.
+      7º, V) — é o meio de identificação necessário à relação contratual
+      destes Termos de Uso.</li>
+      <li><b>Senha</b> (ao criar conta por e-mail) — armazenada com hash
+      criptográfico pelo Supabase; o desenvolvedor não tem acesso à senha
+      em texto plano. Finalidade e base legal: idênticas ao e-mail.</li>
+      <li><b>Nome e e-mail da conta Google</b> (ao entrar com Google) —
+      finalidade: autenticação alternativa. Base legal: execução de
+      contrato (art. 7º, V), mediante o consentimento fornecido pelo
+      próprio usuário ao Google no momento da autorização (art. 7º, I).</li>
+      <li><b>Nome do lutador, cartel e nota da carreira concluída,
+      conquistas desbloqueadas</b> (só se houver conta) — finalidade:
+      sincronizar o progresso do jogador entre aparelhos. Base legal:
+      execução de contrato (art. 7º, V).</li>
+      <li><b>Texto livre digitado nos dilemas</b> — finalidade: gerar a
+      narrativa da carreira por meio de inteligência artificial, a
+      pedido do próprio usuário ao usar essa função do Jogo. Base legal:
+      execução de contrato/fornecimento do serviço solicitado (art. 7º,
+      V) e consentimento tácito ao utilizar voluntariamente a
+      funcionalidade (art. 7º, I).</li>
+      <li><b>Endereço IP e identificação do navegador</b> — coletados de
+      forma padrão pela infraestrutura de hospedagem (Vercel), não pelo
+      código do Jogo. Finalidade: segurança, prevenção a fraude e
+      cumprimento da obrigação de guarda de registros de acesso a
+      aplicações imposta pelo art. 15 do Marco Civil da Internet (Lei nº
+      12.965/2014). Base legal: cumprimento de obrigação legal (art. 7º,
+      II) e legítimo interesse de segurança (art. 7º, IX).</li>
+      <li><b>Métricas agregadas de uso</b> (ex.: quantas sessões concluem
+      o draft ou a carreira) — coletadas sem identificador pessoal e sem
+      cookie, via Vercel Analytics. Finalidade: entender uso do Jogo em
+      caráter estatístico. Base legal: legítimo interesse (art. 7º, IX),
+      por não haver tratamento de dado pessoal identificável.</li>
+    </ul>
+
+    <h3>3. Dados que permanecem apenas no dispositivo do usuário</h3>
+    <p>Carreira em andamento, conquistas desbloqueadas, preferência de
+    volume e a aparência do lutador do usuário ficam salvos no
+    <b>localStorage</b> do navegador — não são transmitidos a nenhum
+    servidor e são apagados caso o usuário limpe os dados do site em seu
+    próprio navegador. Esse armazenamento local funciona integralmente
+    sem necessidade de conta e não depende de cookie.</p>
+
+    <h3>4. Compartilhamento com operadores</h3>
+    <p>Os dados acima descritos são compartilhados exclusivamente com os
+    seguintes operadores (art. 5º, VII, da LGPD), cada qual recebendo
+    somente o dado necessário à função que executa, sem finalidade
+    própria de uso dos dados e sem venda a terceiros:</p>
+    <ul>
+      <li><b>Supabase</b> — autenticação de conta e banco de dados onde
+      ficam armazenados e-mail, histórico de carreiras e conquistas.</li>
+      <li><b>Vercel</b> — hospedagem do site, da função que intermedeia a
+      chamada de inteligência artificial, e registros técnicos de
+      acesso.</li>
+      <li><b>Provedor de inteligência artificial, via OpenRouter</b> —
+      processa o texto inserido pelo usuário e o estado da carreira para
+      gerar dilemas, eventos e a repercussão simulada.</li>
+    </ul>
+    <p>Não há veiculação de publicidade no Jogo e, por consequência, não
+    há compartilhamento de dado para fins publicitários.</p>
+
+    <h3>5. Transferência internacional de dados</h3>
+    <p>Supabase, Vercel e o provedor de inteligência artificial operam
+    infraestrutura fora do território brasileiro, o que pode implicar
+    transferência internacional dos dados descritos na seção 2, nos
+    termos do art. 33 da LGPD. Essas empresas publicam seus próprios
+    compromissos contratuais de proteção de dados (incluindo cláusulas-padrão
+    reconhecidas internacionalmente); o Octógono não realiza
+    tratamento adicional desses dados fora dos operadores aqui listados.</p>
+
+    <h3>6. Cookies e tecnologias semelhantes</h3>
+    <p>O Jogo não utiliza cookie próprio. A sessão de autenticação, quando
+    o usuário cria conta, é mantida via localStorage do navegador, não
+    via cookie. O Vercel Analytics utilizado para métricas agregadas
+    opera sem cookie, por desenho do próprio provedor.</p>
+
+    <h3>7. Retenção e eliminação</h3>
+    <p>Os dados vinculados a uma conta são mantidos enquanto a conta
+    existir. Ainda não há, na interface do Jogo, funcionalidade de
+    autoatendimento para exclusão ou exportação de dados — solicitações
+    nesse sentido devem ser feitas pelo contato da seção 1 e serão
+    processadas manualmente. Dados mantidos apenas no dispositivo (seção
+    3) são eliminados diretamente pelo usuário ao limpar os dados do
+    site em seu navegador, sem necessidade de solicitação.</p>
+
+    <h3>8. Direitos do titular</h3>
+    <p>Nos termos do art. 18 da LGPD, o usuário, na qualidade de titular
+    dos dados, pode solicitar, mediante contato indicado na seção 1:</p>
+    <ul>
+      <li>confirmação da existência de tratamento de seus dados;</li>
+      <li>acesso aos dados tratados;</li>
+      <li>correção de dados incompletos, inexatos ou desatualizados;</li>
+      <li>anonimização, bloqueio ou eliminação de dados desnecessários,
+      excessivos ou tratados em desconformidade com a LGPD;</li>
+      <li>portabilidade dos dados a outro fornecedor de serviço;</li>
+      <li>eliminação dos dados tratados com base no consentimento;</li>
+      <li>informação sobre as entidades com as quais os dados foram
+      compartilhados (ver seção 4);</li>
+      <li>revogação do consentimento, quando essa for a base legal
+      aplicável;</li>
+      <li>revisão de decisão tomada unicamente com base em tratamento
+      automatizado — não aplicável hoje: o conteúdo gerado por IA no
+      Jogo é narrativo e não produz decisão sobre a pessoa do usuário.</li>
+    </ul>
+
+    <h3>9. Crianças e adolescentes</h3>
+    <p>O tratamento de dados pessoais de crianças (até 12 anos
+    incompletos), incluindo a criação de conta, exige consentimento
+    específico e em destaque de ao menos um dos pais ou responsável
+    legal, nos termos do art. 14 da LGPD. O Octógono não solicita
+    deliberadamente mais dado do que o necessário à finalidade descrita
+    na seção 2, independentemente da idade do usuário. Responsáveis que
+    identifiquem tratamento de dado de criança sem a devida autorização
+    devem contatar a seção 1 para providências, incluindo eliminação.</p>
+
+    <h3>10. Segurança</h3>
+    <p>Senhas são armazenadas com hash pelo Supabase, nunca em texto
+    plano. O compartilhamento de dado entre usuários é impedido no
+    próprio banco de dados por regra de segurança em nível de linha
+    (Row Level Security), que recusa leitura ou gravação de dado de
+    outro usuário mesmo em caso de adulteração do aplicativo cliente.
+    Nenhum sistema é absolutamente livre de risco; o desenvolvedor adota
+    as medidas técnicas disponíveis proporcionalmente ao porte do
+    projeto.</p>
+
+    <h3>11. Alterações desta política</h3>
+    <p>Esta política pode ser alterada conforme o Jogo ganha
+    funcionalidade nova — a eventual introdução de cobrança, por
+    exemplo, acrescentará seção específica sobre dado de pagamento. A
+    data de revisão no topo sempre corresponde à versão vigente.</p>
+
+    <h3>12. Contato e encarregado</h3>
+    <p><a href="mailto:contato@octogono.fun">contato@octogono.fun</a></p>
+  `);
+}
 
 /* Roda toda vez que a caixa de conta aparece (fim de carreira). Se não
    tem sessão, não faz nada (devolve null, mostra o formulário de

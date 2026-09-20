@@ -3343,15 +3343,32 @@ function testarTelaInicial() {
       if (!/18-4/.test(item.innerHTML) || !/nota B/.test(item.innerHTML))
         throw new Error("cartel ou nota não aparecem certos: " + item.innerHTML);
     });
-    await passo("Termos de Uso: página existe, marcada como pendente", () => {
+    /* Texto real desde 2026-09-19 (antes disso a asserção só checava o
+       aviso "[PENDENTE]"). Não recheca o texto inteiro — só que os fatos
+       que ESTE código realmente decide (idade mínima, contato, e que os
+       dois documentos são diferentes um do outro) estão presentes, pra
+       um "cola texto genérico sem ler o código" futuro quebrar o teste. */
+    await passo("Termos de Uso: página existe, com texto de verdade (não [PENDENTE])", () => {
       UI.screenTermos();
       const texto = ultimoTexto("pagina-legal"); // conteúdo vem via innerHTML string, não vira nó rastreável
-      if (!texto || !/pendente/i.test(texto)) throw new Error("página de termos não mostra o aviso de pendente");
+      if (!texto || /\[PENDENTE/i.test(texto)) throw new Error("ainda mostra o aviso de [PENDENTE]: " + texto);
+      if (!/Estatuto da Criança e do Adolescente/.test(texto)) throw new Error("idade mínima (ECA) sumiu do texto: " + texto);
+      if (!/contato@octogono\.fun/.test(texto)) throw new Error("contato sumiu do texto: " + texto);
     });
-    await passo("Política de Privacidade: página existe, marcada como pendente", () => {
+    await passo("Política de Privacidade: página existe, com texto de verdade (não [PENDENTE])", () => {
       UI.screenPrivacidade();
       const texto = ultimoTexto("pagina-legal");
-      if (!texto || !/pendente/i.test(texto)) throw new Error("página de privacidade não mostra o aviso de pendente");
+      if (!texto || /\[PENDENTE/i.test(texto)) throw new Error("ainda mostra o aviso de [PENDENTE]: " + texto);
+      if (!/LGPD/.test(texto)) throw new Error("direitos de LGPD sumiram do texto: " + texto);
+      if (!/Supabase/.test(texto)) throw new Error("menção ao Supabase sumiu do texto: " + texto);
+      if (!/localStorage/.test(texto)) throw new Error("menção ao localStorage sumiu do texto: " + texto);
+    });
+    await passo("Termos e Privacidade não são o mesmo texto reaproveitado", () => {
+      UI.screenTermos();
+      const termos = ultimoTexto("pagina-legal");
+      UI.screenPrivacidade();
+      const privacidade = ultimoTexto("pagina-legal");
+      if (termos === privacidade) throw new Error("as duas páginas voltaram texto idêntico");
     });
 
     let ok = true;
