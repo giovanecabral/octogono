@@ -1100,6 +1100,45 @@ barra de fã fica visível, ou perguntar direto a jogadores) e decidir,
 com esse número em mãos, se o redesenho (não-linear, mais banda no
 miolo) vale a pena. Sem essa medição, não mexer.
 
+## 31. Rótulo de raridade das conquistas — texto por faixa hoje, porcentagem real quando existir jogador
+
+Redesign de conquistas (pedido explícito, 2026-09-20): mostrar dificuldade
+sem inventar número. Não existe jogador de verdade ainda — uma "% de quem
+tem essa conquista" hoje seria decorativo fingindo estatística, e isso
+destrói confiança quando descoberto (e vai ser descoberto, num jogo que
+pretende cobrar).
+
+**Decidido:** rótulo textual de raridade (Comum/Incomum/Raro/Lendário),
+faixas por cima da MEDIÇÃO OFFLINE já feita com o bot (`node testar.js
+freqconquistas`), não um número exibido. As faixas propostas ao usuário:
+acima de 60% Comum, 30-60% Incomum, 10-30% Raro, abaixo de 10% Lendário —
+aguardando confirmação antes de aplicar.
+
+**Quando existir jogador de verdade**: trocar o rótulo estático por
+porcentagem real puxada do Supabase (`conquista_id` já existe em
+`conquistas_usuario`, ver LEIA-ME.md "Conquistas" — é só `count(*) group by
+conquista_id` dividido pelo total de contas, cacheado, não em tempo real
+por carreira). Registrado aqui pra não se perder — não é trabalho do
+redesign de agora, é o passo seguinte natural quando a fase 3 do
+`PLANO-LANCAMENTO.md` (alguém de fora jogando) acontecer.
+
+**Três conquistas sem taxa medível pelo bot offline, cada uma por motivo
+diferente** — não dá pra tratar as três igual:
+- `prudente` — depende de `j.evitouLesao`, campo que só a IA de verdade
+  preenche (julgamento do dilema); o bot offline sempre cai no fallback
+  local, que nunca marca esse campo. Taxa real só existe com jogador
+  respondendo dilema de verdade contra a API em produção.
+- `lenda_coroada` — não é problema de IA, é de MODO: só desbloqueia com
+  `modo==="lenda"`, e a medição de frequência das outras 14 sempre rodou
+  em modo normal. Mede igual às outras, só precisa de uma leva separada
+  com o bot em modo lenda (`node testar.js freqconquistas N lenda").
+- `nao_sente` — **achado remedindo pra este item: NÃO é IA-dependente.**
+  A entrada anterior no LEIA-ME.md ("lesão/prudente/lenda não têm amostra
+  offline") está desatualizada — lesão tem dois caminhos, dilema (IA) e
+  nocaute (`lesaoRng`, 100% local, existe desde a Fase de lesão por
+  nocaute). O bot offline JÁ gera esse momento pelo caminho de nocaute.
+  Corrigir o LEIA-ME.md quando o redesign for implementado.
+
 ## Manutenção
 
 - **Conferir no navegador o que o teste não vê** (DOM falso não vê pixel):

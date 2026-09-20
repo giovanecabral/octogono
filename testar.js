@@ -2359,6 +2359,169 @@ function testarFrequenciaMomentos(N = 30) {
 }
 
 /* ================================================================== *
+ * FREQUÊNCIA DE CONQUISTAS — mesmo bot de ponta a ponta de
+ *     testarFrequenciaMomentos(), reaproveitado pra medir quantas
+ *     carreiras cada conquista de CONQUISTAS realmente desbloqueia (não
+ *     só se o check() está no limite certo — testarConquistas() já prova
+ *     isso). Pedido explícito do usuário: redesign de conquistas precisa
+ *     de número medido, não suposto, mesmo processo dos gatilhos de
+ *     card. `dilrespTexto` deixa escolher o que o bot "escreve" no
+ *     dilema — "aceito, sem problema" tende a cair pra evitarLesao=false
+ *     no julgamento local de fallback (offline, sem chave de IA); outro
+ *     texto pode mudar a taxa de "prudente", mas não sai do zero (ver
+ *     achado abaixo). */
+function testarFrequenciaConquistas(N = 150, modo = "normal", dilrespTexto = "aceito, sem problema") {
+  console.log("\n" + cinza(`${N} carreiras de ponta a ponta (auto, modo ${modo}), frequência real de cada conquista`));
+  const F = lerLutadores();
+  const noop = () => {};
+  function makeEl(tag) {
+    return {
+      tagName: tag, _html: "", textContent: "", id: "", className: "", style: {},
+      children: [], disabled: false, value: "",
+      classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      dataset: {},
+      appendChild(c) { this.children.push(c); return c; }, append() {}, scrollIntoView: noop, focus: noop,
+      addEventListener: noop, remove: noop, querySelector: () => makeEl(), querySelectorAll: () => [],
+      getContext: () => null, get innerHTML() { return this._html; }, set innerHTML(v) { this._html = String(v); },
+    };
+  }
+  const respirar = () => new Promise(r => setImmediate(r));
+
+  function novoSandbox() {
+    const registro = {}; const timers = [];
+    const sb = {
+      console: { log: noop, warn: noop, error: noop },
+      document: {
+        documentElement: makeEl(),
+        getElementById: id => registro[id] || (registro[id] = makeEl()), createElement: t => makeEl(t),
+        querySelector: () => makeEl(), addEventListener: noop, removeEventListener: noop,
+      },
+      window: { matchMedia: () => ({ matches: true }) },
+      setTimeout: fn => { timers.push(fn); return timers.length; },
+      clearTimeout: noop, setInterval: noop, clearInterval: noop,
+      fetch: () => Promise.reject(new Error("offline")),
+      AbortController: class { constructor() { this.signal = null; } abort() {} },
+      Math, JSON, Date, Number, String, Array, Object, Promise, Set, Map, Error, isNaN,
+    };
+    sb.globalThis = sb;
+    vm.createContext(sb);
+    return { sb, registro, drenar: () => { let i = 0; while (timers.length && i++ < 200000) (timers.shift())(); } };
+  }
+
+  function montarCarreira(sb, seed) {
+    const corpo = `
+;globalThis.__x=(function(){
+  ROSTER=rateAll(${JSON.stringify(F)});
+  CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+  DIVISION="lightweight"; MODO="${modo}";
+  POOL=poolDivisao(DIVISION);
+  PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+  RANKING=buildRanking(POOL);
+  SEED=${seed};
+  rng=mulberry32(SEED); holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
+  fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
+  escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
+  lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
+  eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
+  dilemaRng=mulberry32((SEED^0x4D1E8A63)>>>0);
+  function draft(rngD){
+    let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
+    const f={name:"TesteBot",division:DIVISION,sapm:3.2};
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rngD,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
+    }
+    f.strAcc=f.strAcc||.45; f.tdAcc=f.tdAcc||.38;
+    return f;
+  }
+  me=draft(rng);
+  me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+  ROSTO=null;
+  st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+      bestBeaten:0,bestWin:null,title:false,standing:.18,peak:.18,events:0,koLosses:0,
+      kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,peakFollowers:2400,longestW:0,
+      lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,disputaRecusas:0,defesas:0,
+      exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,vezesCampeao:0,
+      subLosses:0,evitouAlgumaVez:false,dinheiro:0,treinadorComprado:false,estreouMainCard:false};
+  fought=new Set();rareUsed=new Set();
+  fightNo=0;auto=true;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;
+  document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
+  document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
+  document.getElementById("escolhaLuta").style.display="none";
+  document.getElementById("controls"); document.getElementById("next"); document.getElementById("autob");
+  globalThis.__ehPlaying=()=>playing;
+  globalThis.__ehDilema=()=>dilemaAberto;
+  globalThis.__campo=()=>document.getElementById("dilresp");
+  globalThis.__botao=()=>document.getElementById("dilgo");
+  return "ok";
+})();
+`;
+    vm.runInContext(lerScript() + corpo, sb, { filename: "index.html" });
+  }
+
+  async function resolverDilemaSeAberto(sb, drenar, registro) {
+    if (!sb.__ehDilema()) return;
+    const campo = sb.__campo(), botao = sb.__botao();
+    if (campo && botao && !campo.disabled && !botao.disabled) {
+      campo.value = dilrespTexto;
+      botao.onclick();
+      delete registro.dilresp; delete registro.dilgo;
+      drenar(); await respirar(); drenar(); await respirar();
+      vm.runInContext("auto=true;", sb);
+    }
+  }
+
+  async function rodarCarreira(seed) {
+    const { sb, drenar, registro } = novoSandbox();
+    montarCarreira(sb, seed);
+    for (let f = 0; f < 22; f++) {
+      let tentativas = 0;
+      while (sb.__ehPlaying() && tentativas++ < 100) await respirar();
+      await resolverDilemaSeAberto(sb, drenar, registro);
+      let t2 = 0;
+      while (sb.__ehDilema() && t2++ < 10) await resolverDilemaSeAberto(sb, drenar, registro);
+      vm.runInContext("nextFight();", sb);
+      drenar(); await respirar(); drenar(); await respirar();
+      await resolverDilemaSeAberto(sb, drenar, registro);
+    }
+    for (let k = 0; k < 15; k++) { drenar(); await respirar(); await resolverDilemaSeAberto(sb, drenar, registro); }
+    const resultados = vm.runInContext(`CONQUISTAS.map(c=>({id:c.id,ok:!!c.check(st,MODO)}))`, sb) || [];
+    return { fightNo: vm.runInContext("fightNo", sb), resultados };
+  }
+
+  return (async () => {
+    const contagem = {};
+    const idsVistos = new Set();
+    let somaDesbloqueadas = 0, truncadas = 0;
+    for (let s = 0; s < N; s++) {
+      let r = { fightNo: 0, resultados: [] };
+      try { r = await rodarCarreira(90000 + s); }
+      catch (e) { console.log("  carreira " + s + " falhou: " + e.message); }
+      if (r.fightNo !== 22) truncadas++;
+      let nesta = 0;
+      r.resultados.forEach(({ id, ok }) => {
+        idsVistos.add(id);
+        if (contagem[id] == null) contagem[id] = 0;
+        if (ok) { contagem[id]++; nesta++; }
+      });
+      somaDesbloqueadas += nesta;
+    }
+    const ids = [...idsVistos];
+    console.log(`  ${cinza(`${N} carreiras, média ${(somaDesbloqueadas / N).toFixed(2)}/${ids.length} desbloqueadas por carreira (${(100 * somaDesbloqueadas / N / ids.length).toFixed(1)}%)`)}`);
+    console.log(`  ${cinza("por conquista:")}`);
+    for (const id of ids)
+      console.log(`    ${id.padEnd(20)} ${(100 * contagem[id] / N).toFixed(1)}%`);
+    if (truncadas) console.log(`  ${vermelho(truncadas + " carreiras não chegaram na luta 22 — investigar antes de confiar no número")}`);
+    return truncadas === 0;
+  })();
+}
+
+/* ================================================================== *
  * 7d. CONQUISTAS — cada check() na hora certa, no limite certo
  * ================================================================== */
 /* st montado à mão pra cada conquista, nos dois lados do limite (a favor
@@ -2856,21 +3019,18 @@ function testarNarracaoResultado(N = 8) {
  *     2x; sem dinheiro, o botão vem desabilitado.
  * ================================================================== */
 /* ================================================================== *
- * COMPARTILHAR — achado jogando: "colei e vieram dois arquivos
- *     idênticos, mesmo nome, mesmo conteúdo". Não existe addEventListener
- *     duplicado em lugar nenhum (só onclick=, que nunca duplica sozinho —
- *     conferido por grep no arquivo inteiro). O que existe: compartilhar()
- *     ATRIBUI btn.disabled=true mas nunca CHECA o valor antes de rodar —
- *     duas invocações que cheguem antes do primeiro await resolver (toque
- *     duplo rápido no mobile, sem feedback visual imediato) rodam as duas
- *     inteiras, cada uma gerando seu próprio arquivo com o MESMO nome
- *     determinístico (${me.name}.png, sem timestamp). Mesma classe de bug
- *     que o usuário suspeitou (execução dupla de um handler que devia
- *     rodar uma vez), causa raiz diferente (guard ausente, não listener
- *     duplicado).
+ * SALVAR/COPIAR IMAGEM — era um botão só ("Compartilhar", via
+ *     navigator.share()) que, no Mac, podia devolver a folha do sistema
+ *     oferecendo o arquivo E o link como dois itens — lia como "a imagem
+ *     veio duplicada" sem duplicação nenhuma no arquivo em si. Virou dois
+ *     botões determinísticos (salvarImagem()/copiarImagem()), sem folha
+ *     nativa no meio. O bug de reentrância original ("colei e vieram dois
+ *     arquivos idênticos, mesmo nome") continua valendo pros dois: cada
+ *     função ATRIBUI btn.disabled=true mas só o CHECA no topo — duas
+ *     invocações antes do 1º await resolver rodam as duas inteiras.
  * ================================================================== */
 function testarCompartilhar() {
-  console.log("\n" + cinza("compartilhar(): dois toques antes do 1º await resolver não podem gerar dois arquivos"));
+  console.log("\n" + cinza("salvarImagem()/copiarImagem(): dois toques antes do 1º await resolver não podem duplicar"));
   const env = criarAmbiente();
   const origCreateElement = env.sandbox.document.createElement;
   const cliques = [];
@@ -2879,14 +3039,42 @@ function testarCompartilhar() {
     if (t === "a") n.click = () => cliques.push(n.href);
     return n;
   };
-  let chamadasShare = 0;
+  let chamadasClipboardWrite = 0;
   env.sandbox.navigator = {
-    canShare: () => false, // força o caminho de download (o outro navegador possível)
-    share: async () => { chamadasShare++; },
-    clipboard: { writeText: async () => {} },
+    canShare: () => false,
+    share: async () => {},
+    clipboard: {
+      writeText: async () => {},
+      write: async () => { chamadasClipboardWrite++; },
+    },
   };
+  // window.ClipboardItem (checado antes de usar) e o global ClipboardItem
+  // (usado em `new ClipboardItem(...)`) precisam ser a MESMA classe fake —
+  // são dois jeitos de achar a mesma coisa no navegador de verdade.
+  class ClipboardItemFake { constructor(o) { this.o = o; } }
+  env.sandbox.ClipboardItem = ClipboardItemFake;
+  env.sandbox.window.ClipboardItem = ClipboardItemFake;
   env.sandbox.URL = { createObjectURL: () => "blob:fake", revokeObjectURL: () => {} };
   env.sandbox.File = class { constructor(partes, nome, opts) { this.nome = nome; this.type = opts && opts.type; } };
+  /* salvarImagem()/copiarImagem() reagendam disabled=false num setTimeout
+     (pra segurar "Salvo"/"Copiada!" na tela um instante) — o setTimeout
+     deste ambiente só ENFILEIRA (criarAmbiente().drenar() que executa de
+     verdade). Sem drenar entre cenários que reusam o MESMO botão
+     (caminho 1 → caminho 3, mesmo botaoSalvarPainel), o 2º cenário
+     encontraria disabled ainda true do 1º e nem chegaria a rodar —
+     falso "reentrância bloqueada" por timer preso, não por guard. */
+  env.sandbox.__drenar = env.drenar;
+  /* `chamadasClipboardWrite` é variável do escopo de FORA (Node) — o
+     fecho de navigator.clipboard.write() a incrementa certo não importa
+     de onde é chamado, closures atravessam vm.runInContext(). Mas o
+     CORPO abaixo roda como script à parte dentro do sandbox: escrever
+     "chamadasClipboardWrite=0" ali de dentro NÃO reatribui esta
+     variável — cria/muda uma global HOMÔNIMA solta no sandbox (modo não
+     estrito), sem relação nenhuma com o contador real. Achado testando:
+     "Copiada!" aparecia certo na tela (prova que write() rodou), mas a
+     asserção via essa global fantasma sempre lia 0. Exposta como função
+     pra o corpo só LER o valor de verdade, nunca reatribuir. */
+  env.sandbox.__nEscritasClipboard = () => chamadasClipboardWrite;
   vm.createContext(env.sandbox);
 
   const corpo = `
@@ -2900,30 +3088,37 @@ function testarCompartilhar() {
       chamadasDesenhar++;
       return {toBlob:(cb)=>cb({fake:"blob",n:chamadasDesenhar})};
     };
-    const btn=el("button","","Salvar imagem");
     const m={frase:"Doze lutas, doze vitórias.",titulo:"Doze e zero"};
 
     // toque duplo: chama o MESMO onclick que um clique real dispara, duas
     // vezes seguidas, sem esperar a 1ª terminar — é isso que "clicar rápido
     // duas vezes antes do disabled surtir efeito" produz na prática.
-    const onclick=()=>compartilhar(m,btn,desenharFake);
-    const p1=onclick();
-    const p2=onclick();
-    await Promise.all([p1,p2]);
-
-    passo("desenhar() rodou só 1 vez mesmo com 2 chamadas seguidas (reentrância bloqueada)",
+    const btnS=el("button","","Salvar imagem");
+    const pS1=salvarImagem(m,btnS,desenharFake), pS2=salvarImagem(m,btnS,desenharFake);
+    await Promise.all([pS1,pS2]);
+    __drenar();
+    passo("salvarImagem() isolada: desenhar() rodou só 1 vez com 2 chamadas seguidas (reentrância bloqueada)",
       chamadasDesenhar===1);
 
-    globalThis.__cliquesDownload = chamadasDesenhar; // exportado só pra clareza no log
+    chamadasDesenhar=0;
+    const antesEscIsolada=__nEscritasClipboard();
+    const btnC=el("button","","Copiar imagem");
+    const pC1=copiarImagem(m,btnC,desenharFake), pC2=copiarImagem(m,btnC,desenharFake);
+    await Promise.all([pC1,pC2]);
+    __drenar();
+    passo("copiarImagem() isolada: desenhar() rodou só 1 vez com 2 chamadas seguidas (reentrância bloqueada)",
+      chamadasDesenhar===1);
+    passo("copiarImagem() isolada: escreveu na área de transferência (não caiu no catch por falta de suporte fake)",
+      (__nEscritasClipboard()-antesEscIsolada)===1);
 
     /* ---------------------------------------------------------------
        Achado jogando (2026-09-11): "a duplicação voltou". O teste acima
-       só prova que compartilhar() se protege quando CHAMADA direto — não
-       prova que os 3 caminhos de verdade (botão do painel de momentos,
-       botão do fim de carreira, e a miniatura clicável/copiável) estão
-       fiados certo. Daqui pra baixo roda a FIAÇÃO real —
-       abrirPainelMomentos()/screenReport() de verdade, achando o botão
-       pelo texto renderizado, não reconstruindo um onclick equivalente. */
+       só prova que as funções se protegem quando CHAMADAS direto — não
+       prova que os caminhos de verdade (painel de momentos, fim de
+       carreira, miniatura clicável) estão fiados certo. Daqui pra baixo
+       roda a FIAÇÃO real — abrirPainelMomentos()/screenReport() de
+       verdade, achando o botão pelo texto renderizado, não reconstruindo
+       um onclick equivalente. */
     function acharBotao(node,texto){
       if(!node||!node.children)return null;
       for(const c of node.children){
@@ -2957,7 +3152,7 @@ function testarCompartilhar() {
     fought=new Set(); rareUsed=new Set();
 
     /* desenhar de verdade precisa de canvas/fonte reais que o ambiente
-       falso não tem — troca pela mesma técnica de 40 linhas acima, só que
+       falso não tem — troca pela mesma técnica de acima, só que
        reatribuindo o binding GLOBAL (as duas telas chamam pelo nome, sem
        receber o desenhador por parâmetro — screenReport() nem tem esse
        parâmetro). O que se prova aqui é a FIAÇÃO (o botão certo, achado no
@@ -2970,36 +3165,57 @@ function testarCompartilhar() {
     // ---------- caminho 1 e 3: painel de momentos ----------
     await abrirPainelMomentos();
     const painel=document.getElementById("painelMomentos");
-    const botaoPainel=acharBotao(painel,"Salvar imagem");
-    passo("caminho 1: achou o botão 'Salvar imagem' de verdade (fiação real de abrirPainelMomentos, não onclick reconstruído)",
-      !!botaoPainel);
+    const botaoSalvarPainel=acharBotao(painel,"Salvar imagem");
+    const botaoCopiarPainel=acharBotao(painel,"Copiar imagem");
+    passo("caminho 1: achou 'Salvar imagem' E 'Copiar imagem' de verdade (fiação real de abrirPainelMomentos, não onclick reconstruído)",
+      !!botaoSalvarPainel && !!botaoCopiarPainel);
     const miniatura=acharPorClasse(painel,"momento-mini");
     passo("miniatura NÃO é <canvas>/<img> — sem alvo pro 'Copiar imagem'/'Salvar imagem' nativo do navegador",
       !!miniatura && miniatura.tagName!=="canvas" && miniatura.tagName!=="img");
 
     chamadasMomento=0;
-    const q1=botaoPainel.onclick(), q2=botaoPainel.onclick();  // 2 cliques reais, mesmo botão
+    const q1=botaoSalvarPainel.onclick(), q2=botaoSalvarPainel.onclick();  // 2 cliques reais, mesmo botão
     await Promise.all([q1,q2]);
-    passo("caminho 1 (botão real do painel): 2 cliques seguidos geram só 1 desenho",
+    __drenar();
+    passo("caminho 1 (Salvar, botão real do painel): 2 cliques seguidos geram só 1 desenho",
       chamadasMomento===1);
 
     chamadasMomento=0;
-    const q3=miniatura.onclick(), q4=botaoPainel.onclick();    // miniatura + botão, mesmo card
+    const q3=miniatura.onclick(), q4=botaoSalvarPainel.onclick();    // miniatura + botão Salvar, mesmo card
     await Promise.all([q3,q4]);
-    passo("caminho 3 (miniatura + botão do mesmo card): também gera só 1 desenho",
+    __drenar();
+    passo("caminho 3 (miniatura + botão Salvar do mesmo card, guard compartilhado): também gera só 1 desenho",
       chamadasMomento===1);
+
+    chamadasMomento=0;
+    const antesEsc1=__nEscritasClipboard();
+    const q5=botaoCopiarPainel.onclick(), q6=botaoCopiarPainel.onclick();
+    await Promise.all([q5,q6]);
+    __drenar();
+    passo("caminho 1 (Copiar, botão real do painel): 2 cliques seguidos escrevem na área de transferência só 1 vez",
+      chamadasMomento===1 && (__nEscritasClipboard()-antesEsc1)===1);
 
     // ---------- caminho 2: fim de carreira ----------
     screenReport();
-    const botaoFim=acharBotao(app,"Compartilhar");
-    passo("caminho 2: achou o botão 'Compartilhar' de verdade (fiação real de screenReport)",
-      !!botaoFim);
+    const botaoSalvarFim=acharBotao(app,"Salvar imagem");
+    const botaoCopiarFim=acharBotao(app,"Copiar imagem");
+    passo("caminho 2: achou 'Salvar imagem' E 'Copiar imagem' de verdade (fiação real de screenReport)",
+      !!botaoSalvarFim && !!botaoCopiarFim);
 
     chamadasCard=0;
-    const q5=botaoFim.onclick(), q6=botaoFim.onclick();
-    await Promise.all([q5,q6]);
-    passo("caminho 2 (botão real do fim de carreira): 2 cliques seguidos geram só 1 desenho",
+    const q7=botaoSalvarFim.onclick(), q8=botaoSalvarFim.onclick();
+    await Promise.all([q7,q8]);
+    __drenar();
+    passo("caminho 2 (Salvar, botão real do fim de carreira): 2 cliques seguidos geram só 1 desenho",
       chamadasCard===1);
+
+    chamadasCard=0;
+    const antesEsc2=__nEscritasClipboard();
+    const q9=botaoCopiarFim.onclick(), q10=botaoCopiarFim.onclick();
+    await Promise.all([q9,q10]);
+    __drenar();
+    passo("caminho 2 (Copiar, botão real do fim de carreira): 2 cliques seguidos escrevem na área de transferência só 1 vez",
+      chamadasCard===1 && (__nEscritasClipboard()-antesEsc2)===1);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -3020,16 +3236,94 @@ function testarCompartilhar() {
       if (!p.ok) ok = false;
       console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
     }
-    console.log(`  ${cinza("downloads efetivamente disparados: " + cliques.length + ", chamadas a navigator.share: " + chamadasShare)}`);
-    /* 4 cenários independentes agora (a chamada isolada original + os 3
-       caminhos reais abaixo), 2 cliques cada, 1 download por cenário —
-       4 é o número CERTO, não um vazamento. Duplicação de verdade
-       apareceria como múltiplo de 4 (8, 12...) ou downloads sobrando
-       depois de contar os cenários que ainda não rodaram nesta linha. */
+    console.log(`  ${cinza("downloads efetivamente disparados: " + cliques.length)}`);
+    /* 4 cenários de SALVAR (isolado + caminho 1 + caminho 3 + caminho 2),
+       2 cliques cada, 1 download por cenário — 4 é o número CERTO. Copiar
+       nunca cria <a>, então não entra nesta contagem (tem a própria
+       asserção de chamadasClipboardWrite===1 em cada caminho acima).
+       Duplicação de verdade apareceria como múltiplo de 4 (8, 12...). */
     ok = ok && cliques.length === 4;
-    console.log(`  ${cliques.length===4?verde("ok   "):vermelho("fora ")} 4 cenários, 1 download cada — nenhum duplicado (${cliques.length} no total)`);
+    console.log(`  ${cliques.length===4?verde("ok   "):vermelho("fora ")} 4 cenários de Salvar, 1 download cada — nenhum duplicado (${cliques.length} no total)`);
     return ok && passos.length > 0;
   });
+}
+
+/* ================================================================== *
+ * APOSENTADORIA SEM LUTAS (ou quase) — o card final (screenReport(),
+ *     via grade() e LEGACY) sempre foi escrito supondo carreira de 22
+ *     lutas de verdade. Aposentadoria voluntária (item novo) pode zerar
+ *     fightNo, ou parar em qualquer número pequeno — dois textos
+ *     quebravam: "você entrou no octógono" (grade(), tier F) e "Vinte e
+ *     duas lutas, vinte e duas derrotas" (LEGACY, wins===0) cravado, sem
+ *     olhar pra quantas lutas realmente aconteceram. Achado lendo o
+ *     código depois do pedido do usuário, não jogando — mas o teste é o
+ *     mesmo: prova o texto de verdade, não só que a função não quebra. */
+function testarAposentadoriaSemLutas() {
+  console.log("\n" + cinza("card final: mensagem certa pra quem se aposenta com 0-0 ou poucas lutas"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  const corpo = `
+;globalThis.__apos=(function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    const base={peak:.18,bestBeaten:0,title:false,finishes:0};
+
+    // 0-0: nunca lutou. Não pode soar como invicto de verdade nem como
+    // quem "entrou no octógono".
+    st={...base,wins:0,losses:0,fightNo:0};
+    const g0=grade();
+    passo("grade() 0-0: não afirma 'entrou no octógono'",
+      !/entrou no octógono/.test(g0.verdict));
+    passo("grade() 0-0: parecer novo, específico pra quem nunca lutou",
+      /antes da primeira luta/.test(g0.verdict));
+    const legado0=LEGACY.find(l=>l.when(st)).t("Fulano");
+    passo("LEGACY 0-0: não cai em 'saiu invicto' (não houve sequência nenhuma)",
+      !/saiu invicto/.test(legado0));
+    passo("LEGACY 0-0: frase própria, honesta sobre não ter lutado",
+      /pendurou as luvas/.test(legado0));
+
+    // 0-3: aposentou cedo, só perdendo. Não pode dizer "vinte e duas".
+    st={...base,wins:0,losses:3,fightNo:3};
+    const legado3=LEGACY.find(l=>l.when(st)).t("Fulano");
+    passo("LEGACY 0-3: não crava 'vinte e duas' num cartel de 3 lutas",
+      !/vinte e duas/.test(legado3));
+    passo("LEGACY 0-3: usa o número real de lutas (3)",
+      /^3 lutas, 3 derrotas/.test(legado3));
+
+    // 1-0: carreira normal (não aposentadoria), continua com a frase de
+    // sempre — prova que o conserto não afetou quem joga as 22 de verdade.
+    st={wins:0,losses:22,fightNo:22,peak:.18,bestBeaten:0,title:false,finishes:0};
+    const legado22=LEGACY.find(l=>l.when(st)).t("Fulano");
+    passo("LEGACY 22-0 perdendo todas: continua acertando o número (22), não regrediu",
+      /^22 lutas, 22 derrotas/.test(legado22));
+
+    // grade() em carreira normal (fightNo>0) continua com o parecer de
+    // sempre, não o texto novo de "não chegou a entrar".
+    st={wins:15,losses:7,fightNo:22,peak:.7,bestBeaten:.6,title:false,finishes:5};
+    const gNormal=grade();
+    passo("grade() carreira normal: NÃO usa o parecer de 'não chegou a entrar'",
+      !/não chegou a entrar/.test(gNormal.verdict));
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message,ok:false});
+  }
+  return passos;
+})();
+`;
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  const passos = env.sandbox.__apos;
+  let ok = true;
+  for (const p of passos) {
+    if (!p.ok) ok = false;
+    console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+  }
+  return ok && passos.length > 0;
 }
 
 /* ================================================================== *
@@ -4767,6 +5061,7 @@ try {
   else if (cmd === "escalonamento") ok = testarEscalonamentoDisputa();
   else if (cmd === "espera") ok = testarEspera(div || "lightweight");
   else if (cmd === "frequencia") ok = await testarFrequenciaMomentos(Number(div) || 30);
+  else if (cmd === "freqconquistas") ok = await testarFrequenciaConquistas(Number(div) || 150, process.argv[4] || "normal");
   else if (cmd === "lesaonocaute") ok = testarLesaoNocaute();
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "narracao") ok = await testarNarracaoResultado(Number(div) || 8);
@@ -4779,6 +5074,7 @@ try {
   else if (cmd === "memoria") ok = testarMemoriaEntreCarreiras();
   else if (cmd === "loja") ok = testarLoja();
   else if (cmd === "compartilhar") ok = await testarCompartilhar();
+  else if (cmd === "aposentadoria") ok = testarAposentadoriaSemLutas();
   else if (cmd === "inicial") ok = await testarTelaInicial();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();

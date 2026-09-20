@@ -236,6 +236,20 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus{
 .pbp.fin{font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:.04em;
   text-transform:uppercase;color:var(--stamp);padding-top:8px}
 .btn-sm{padding:7px 13px;font-size:13px}
+/* Vermelho de aviso (--stamp), contornado — não preenchido como o .btn
+   primário, pra não competir com "Próxima luta" pelo olho. Precisa vir
+   DEPOIS de .btn/.btn:hover no arquivo: mesma especificidade de classe
+   única, empate de cascata resolve por ordem de leitura (já custou 2
+   bugs nesta sessão — .mobile-only e .abas-carreira). */
+.btn-perigo{background:transparent;color:var(--stamp-bright);border:1px solid var(--stamp)}
+.btn-perigo:hover{background:var(--stamp);color:#fff}
+/* #btnAposentar só pode agir no estado ocioso — igual em qualquer largura,
+   por isso fora da media query de mobile. html[data-estado-carreira] vem
+   de atualizarEstadoCarreira() e está sempre em dia (roda em toda
+   transição real), diferente do "disabled" que renderFicha() poderia
+   calcular só no instante em que ela roda por último. */
+html:not([data-estado-carreira="ocioso"]) #btnAposentar,
+html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
 
 /* ---------- escolha de divisão ---------- */
 /* ---------- seletor de modo (Fase 5, 2026-09-16: virou peça segmentada —
@@ -1306,12 +1320,23 @@ const RARE=[
 
 /* LEGADO — a frase de fecho. O primeiro que casar vence, então a ordem importa. */
 const LEGACY=[
+ /* Aposentadoria voluntária (item novo) pode zerar fightNo antes de
+    qualquer outra regra fazer sentido — sem isto, wins===0&&losses===0
+    caía direto na regra de baixo ("saiu invicto e sem cinturão"), que
+    pressupõe uma sequência invicta de verdade. Frase própria, honesta:
+    não inventa carreira que não existiu. */
+ {when:s=>s.wins===0&&s.losses===0,
+  t:n=>`${n} pendurou as luvas antes da primeira luta. Não tem cartel pra julgar — só a decisão de não ter um.`},
  {when:s=>s.losses===0&&s.title,
   t:n=>`Ninguém nunca botou ${n} no chão. Daqui a vinte anos vai ter discussão em mesa de bar sobre isso, e um cara vai jurar que estava lá.`},
  {when:s=>s.losses===0,
   t:n=>`${n} saiu invicto e sem cinturão, que é o jeito mais garantido de virar assunto eterno. Todo bar tem um defensor de ${n}.`},
  {when:s=>s.wins===0,
-  t:n=>`Vinte e duas lutas, vinte e duas derrotas. Vão lembrar de ${n}, sim, mas por um compilado de dez minutos no YouTube com quatro milhões de views.`},
+  /* Era "Vinte e duas lutas, vinte e duas derrotas" cravado — só batia
+     certo pra quem perdia as 22 e nunca se aposentava mais cedo. wins===0
+     sempre implica losses===fightNo (perdeu todas as que lutou), então o
+     número de verdade é st.fightNo, não a constante da carreira inteira. */
+  t:n=>`${st.fightNo} lutas, ${st.fightNo} derrotas. Vão lembrar de ${n}, sim, mas por um compilado de dez minutos no YouTube com quatro milhões de views.`},
  {when:s=>s.title&&s.peak>=.98,
   t:n=>`${n} vai ser citado sempre que alguém abrir a frase "os melhores da história". Às vezes em primeiro, às vezes em quinto, mas sempre citado.`},
  /* foiCampeao, não title: o texto é sobre um fato histórico permanente ("isso
@@ -3919,7 +3944,72 @@ function renderFicha(){
     <div class="ficha-sec">
       <h4>Atributos · base e treino</h4>
       <div class="atrs">${linhas}</div>
+    </div>
+    <div class="ficha-sec">
+      <button id="btnAposentar" class="btn btn-perigo">Aposentar-se</button>
     </div>`;
+  /* NÃO calcula disabled aqui dentro do innerHTML: renderFicha() só roda de
+     novo quando alguém chama ela (fim de luta, aplicarCamp(), etc) — se
+     ficasse travado no valor de playing/escolhaAberta/dilemaAberto DESTE
+     instante, o botão nasceria "habilitado" no meio de uma luta que só
+     começou DEPOIS da última renderFicha() e ficaria errado até a
+     próxima chamada (achado testando: renderFicha() roda ANTES de
+     iniciarTelaLuta() setar playing=true em lutar()). Quem decide
+     visualmente é o CSS via html[data-estado-carreira] (ver @media no
+     fim do <style>, mesmo mecanismo de #next/#autob) — sempre correto
+     porque atualizarEstadoCarreira() já roda em toda transição real.
+     Botão vive dentro do innerHTML de cima (a ficha inteira é uma string
+     só) — liga o handler de verdade depois, mesmo padrão de #nomeIn em
+     screenCriador(). Trava dupla: CSS acima (visual, sempre em dia) E o
+     guard em abrirConfirmarAposentadoria() (funcional, mesmo raciocínio
+     de next.disabled em atualizarControles()) — pra não abrir o
+     encerramento em cima de uma narração ou escolha em andamento mesmo
+     no instante entre a luta começar e a próxima renderFicha(). */
+  const btnApos=document.getElementById("btnAposentar");
+  if(btnApos)btnApos.onclick=abrirConfirmarAposentadoria;
+}
+/* Aposentadoria voluntária: mesmo destino de fim de carreira natural
+   (screenReport() — não hardcoda "22 lutas" em lugar nenhum, lê st.wins/
+   st.losses/grade() do estado atual, então funciona em qualquer fightNo).
+   Confirmação em painel próprio, não confirm() nativo — o jogo inteiro
+   evita chrome de navegador (mesma razão do cfg-overlay/painel-momentos
+   já existirem). Sem fechar em toque fora, de propósito: é permanente,
+   merece escolha explícita entre Cancelar e Aposentar-se, não um toque
+   sem querer no fundo. */
+function abrirConfirmarAposentadoria(){
+  if(playing||escolhaAberta||dilemaAberto)return;
+  const p=document.getElementById("painelAposentar");
+  if(!p)return;
+  p.innerHTML="";
+  const box=el("div","painel-momentos");
+  box.appendChild(el("h3","","Aposentar-se agora?"));
+  box.appendChild(el("p","hint",
+    `Encerra a carreira de ${me.name} nesta hora, com ${st.wins}-${st.losses}
+     no cartel — permanente, sem como desfazer. Vai direto pro card de
+     encerramento, igual ao fim natural das 22 lutas.`));
+  const row=el("div","row");
+  const cancelar=el("button","btn btn-ghost btn-sm","Cancelar");
+  cancelar.onclick=fecharConfirmarAposentadoria;
+  const confirmar=el("button","btn btn-perigo","Aposentar-se");
+  confirmar.onclick=confirmarAposentadoria;
+  row.append(cancelar,confirmar);
+  box.appendChild(row);
+  p.appendChild(box);
+  p.style.display="flex";
+}
+function fecharConfirmarAposentadoria(){
+  const p=document.getElementById("painelAposentar");
+  if(p){p.style.display="none";p.innerHTML="";}
+}
+function confirmarAposentadoria(){
+  SOM.toque();
+  /* Mesma limpeza que o fim natural de carreira já faz (ver o bloco
+     fightNo>=TOTAL_FIGHTS em finishFight()): sem isso, um autoTimer
+     pendente do modo automático dispararia nextFight() por cima da tela
+     de encerramento que screenReport() acabou de montar. */
+  auto=false;clearTimeout(autoTimer);
+  fecharConfirmarAposentadoria();
+  screenReport();
 }
 
 /* =========================================================================
@@ -4986,9 +5076,13 @@ async function abrirPainelMomentos(){
       const texto=el("div","momento-texto");
       texto.appendChild(el("div","frase",m.frase));
       texto.appendChild(el("div","meta",`Luta ${m.luta} de ${TOTAL_FIGHTS} · ${m.cartel}`));
-      const btn=el("button","btn btn-sm","Salvar imagem");
-      btn.onclick=()=>compartilhar(m,btn,desenharCardMomento);
-      texto.appendChild(btn);
+      const acoes=el("div","row");
+      const btnSalvar=el("button","btn btn-sm","Salvar imagem");
+      btnSalvar.onclick=()=>salvarImagem(m,btnSalvar,desenharCardMomento);
+      const btnCopiar=el("button","btn btn-ghost btn-sm","Copiar imagem");
+      btnCopiar.onclick=()=>copiarImagem(m,btnCopiar,desenharCardMomento);
+      acoes.append(btnSalvar,btnCopiar);
+      texto.appendChild(acoes);
       /* miniatura: o mesmo canvas do card de verdade, reduzido — sem prévia
          o jogador só descobre o que vai postar depois de baixar.
 
@@ -5000,8 +5094,8 @@ async function abrirPainelMomentos(){
          pra outra fonte. `background-image` também não some do "Salvar
          imagem": Chrome/Firefox só oferecem esse item de menu pra
          <img>/<canvas>/<svg> — um <div> com fundo CSS não é destino
-         desses itens. A miniatura também aciona compartilhar() no clique
-         esquerdo, mesmo caminho do botão abaixo — atalho, não a defesa. */
+         desses itens. A miniatura também aciona salvarImagem() no clique
+         esquerdo, mesmo caminho do botão "Salvar" — atalho, não a defesa. */
       try{
         const cv=await desenharCardMomento(m);
         const thumbW=140,thumbH=Math.round(thumbW*CARD_H/CARD_W);
@@ -5012,7 +5106,7 @@ async function abrirPainelMomentos(){
         const mini=el("div","momento-mini");
         mini.style.width=thumbW+"px";mini.style.height=thumbH+"px";
         mini.style.backgroundImage=`url(${cv.toDataURL("image/png")})`;
-        mini.onclick=()=>compartilhar(m,btn,desenharCardMomento);
+        mini.onclick=()=>salvarImagem(m,btnSalvar,desenharCardMomento);
         const moldura=el("div","momento-moldura");
         moldura.appendChild(mini);
         item.appendChild(moldura);
@@ -5159,38 +5253,49 @@ function urlDesafio(){
   return `${base}?d=${DIVISION}&s=${SEED.toString(36)}${MODO==="lenda"?"&m=lenda":""}`;
 }
 
-async function compartilhar(g,btn,desenhar=desenharCard){
-  /* Achado jogando: "colei e vieram dois arquivos idênticos, mesmo nome" —
-     a função ATRIBUÍA disabled=true mas nunca CHECAVA antes de rodar. Toque
-     duplo rápido (comum aqui: nada aparece na tela até "Gerando…" surgir,
-     sem feedback do 1º toque) chama esta função DUAS vezes antes do 1º
-     await resolver — as duas rodam inteiras, cada uma gera seu próprio
-     arquivo com o MESMO nome determinístico (${me.name}.png, sem
-     timestamp). Guard explícito, não confia só no <button disabled> nativo
-     — mesmo raciocínio de sempre neste projeto (nunca confiar só na
-     instrução/estado implícito, checar). */
+/* Desenha o canvas e devolve o PNG já em blob — usado por salvarImagem() e
+   copiarImagem(), que faziam a mesma espera de fonte+canvas duas vezes
+   quando eram uma função só (compartilhar()). */
+async function gerarBlobCard(g,desenhar){
+  if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+  const cv=await desenhar(g);
+  return await new Promise(r=>cv.toBlob(r,"image/png"));
+}
+/* Salvar e Copiar eram UM botão só (compartilhar(), via navigator.share())
+   que decidia sozinho, por navegador, se baixava o arquivo ou abria a
+   folha de compartilhamento do sistema. Achado: no Mac, share() com
+   {files,text,url} juntos podia devolver a folha do SO oferecendo o
+   arquivo da imagem E o link como dois itens de compartilhamento — lê
+   como "a imagem veio duplicada" sem nenhum bug de verdade no arquivo
+   gerado (sempre foi um só). Separado em dois botões determinísticos, sem
+   folha nativa nenhuma no meio: Salvar sempre baixa, Copiar sempre
+   escreve na área de transferência — mesmo resultado em qualquer
+   navegador. Mesmo guard de antes (disabled checado, não só atribuído) —
+   é o que já provava, com dente, que toque duplo não gera 2 arquivos. */
+async function salvarImagem(g,btn,desenhar=desenharCard){
   if(btn.disabled)return;
   btn.disabled=true;const antes=btn.textContent;btn.textContent="Gerando…";
   try{
-    if(document.fonts&&document.fonts.ready)await document.fonts.ready;
-    const cv=await desenhar(g);
-    const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
-    const arq=new File([blob],`${me.name.replace(/\s+/g,"-").toLowerCase()}.png`,{type:"image/png"});
-    /* g.frase só existe no card de momento (desenharCardMomento); g.letter
-       só no de fim de carreira (desenharCard) — texto do compartilhamento
-       segue o mesmo duck-typing em vez de mais um parâmetro. */
-    const texto=g.frase
-      ?`${me.name}: ${g.frase} Joga a mesma carreira:`
-      :`${me.name}: ${st.wins}-${st.losses}, nota ${g.letter}. Joga a mesma carreira:`;
-    if(navigator.canShare&&navigator.canShare({files:[arq]})){
-      await navigator.share({files:[arq],text:texto,url:urlDesafio()});
-    }else{
-      const a=document.createElement("a");
-      a.href=URL.createObjectURL(blob);a.download=arq.name;a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-    }
-  }catch(e){ btn.textContent="Não deu"; setTimeout(()=>{btn.textContent=antes;btn.disabled=false;},1800); return; }
-  btn.textContent=antes;btn.disabled=false;
+    const blob=await gerarBlobCard(g,desenhar);
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`${me.name.replace(/\s+/g,"-").toLowerCase()}.png`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    btn.textContent="Salvo";
+  }catch(e){ btn.textContent="Não deu"; }
+  setTimeout(()=>{btn.textContent=antes;btn.disabled=false;},1800);
+}
+async function copiarImagem(g,btn,desenhar=desenharCard){
+  if(btn.disabled)return;
+  btn.disabled=true;const antes=btn.textContent;btn.textContent="Gerando…";
+  try{
+    const blob=await gerarBlobCard(g,desenhar);
+    if(!navigator.clipboard||!window.ClipboardItem)throw new Error("sem suporte a copiar imagem neste navegador");
+    await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);
+    btn.textContent="Copiada!";           // aviso claro, mesmo padrão do "Copiado" no botão de link de desafio
+  }catch(e){ btn.textContent="Não deu pra copiar"; }
+  setTimeout(()=>{btn.textContent=antes;btn.disabled=false;},2200);
 }
 
 /* =========================================================================
@@ -5887,6 +5992,8 @@ function startCareer(){
   painelC.style.display="none";app.appendChild(painelC);
   const painelT=el("div","painel-overlay");painelT.id="painelTreinador";
   painelT.style.display="none";app.appendChild(painelT);
+  const painelApos=el("div","painel-overlay");painelApos.id="painelAposentar";
+  painelApos.style.display="none";app.appendChild(painelApos);
   atualizarBadgeConquistas();
 
   /* Abas Ficha/Histórico: só têm efeito em ≤1080px e só no estado ocioso
@@ -5941,6 +6048,13 @@ function atualizarEstadoCarreira(){
      que ela mexer nas abas, não fica travada em histórico pra sempre. */
   if(dilemaAberto)abaCarreira="historico";
   h.dataset.abaCarreira=abaCarreira||"ficha";
+  /* dilemaAberto não é um 4º estado de layout (a tela continua "ocioso" —
+     abas, sem barra de luta), mas #btnAposentar tem que apagar mesmo
+     assim: abrirConfirmarAposentadoria() já recusa (mesmo guard de
+     next.disabled), então sem isto o botão ficaria com cara de
+     habilitado clicando em nada — mesmo problema que o "disabled" preso
+     em renderFicha() já tinha pra playing/escolhaAberta. */
+  h.dataset.dilemaCarreira=dilemaAberto?"1":"0";
   const abas=document.querySelector(".abas-carreira");
   if(abas)abas.querySelectorAll(".aba").forEach(b=>
     b.classList.toggle("on",b.textContent===(abaCarreira==="ficha"?"Ficha":"Histórico")));
@@ -6664,7 +6778,14 @@ function grade(){
     [32,"D","Ficou pelo caminho. Teve momentos."],
     [0,"F","Não deu. Mas você entrou no octógono, que é mais do que a maioria."]];
   const t=tiers.find(x=>score>=x[0]);
-  return{score:Math.round(score),letter:t[1],verdict:t[2]};
+  /* fightNo===0 (aposentadoria antes da 1ª luta) sempre cai no score baixo
+     da faixa F — mas "você entrou no octógono" é falso pra quem nunca
+     lutou. Mesma letra (a pontuação de verdade não muda), parecer
+     diferente, honesto com o que realmente aconteceu. */
+  const verdict=st.fightNo===0
+    ?"Não chegou a entrar no octógono. Aposentado antes da primeira luta."
+    :t[2];
+  return{score:Math.round(score),letter:t[1],verdict};
 }
 function screenReport(){
   const g=grade();
@@ -6736,8 +6857,10 @@ function screenReport(){
     picks.map(p=>`${p.pair.label} do ${p.from}`).join(" · ")));
 
   const row2=el("div","row");
-  const share=el("button","btn","Compartilhar");
-  share.onclick=()=>compartilhar(g,share);
+  const btnSalvar=el("button","btn","Salvar imagem");
+  btnSalvar.onclick=()=>salvarImagem(g,btnSalvar);
+  const btnCopiar=el("button","btn btn-ghost","Copiar imagem");
+  btnCopiar.onclick=()=>copiarImagem(g,btnCopiar);
   const link=el("button","btn btn-ghost","Copiar desafio");
   link.onclick=async()=>{
     try{await navigator.clipboard.writeText(urlDesafio());link.textContent="Copiado";}
@@ -6747,7 +6870,7 @@ function screenReport(){
   const again=el("button","btn btn-ghost","Nova carreira");
   again.onclick=()=>{docmeta.textContent="Comissão Atlética · Registro";
     history.replaceState(null,"",location.pathname);SEED=0;screenName();};
-  row2.append(share,link,again);app.appendChild(row2);
+  row2.append(btnSalvar,btnCopiar,link,again);app.appendChild(row2);
   app.appendChild(el("p","hint",
     `Semente <b>#${SEED.toString(36).toUpperCase()}</b> — quem abrir seu link pega as mesmas cartas e os mesmos adversários.`));
 }
