@@ -347,6 +347,18 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     const camps = env.todos.slice(m2).filter(n2 => (n2.className || "").split(" ").includes("camp") && n2.onclick);
     if (camps.length < 3) throw new Error(`esperava ao menos 3 camps, vieram ${camps.length}`);
     camps[n % 3].onclick();
+    env.drenar(); await respirar();
+    /* Plano Pro (2026-09-21): coletiva pré-luta agora fica entre camp e a
+       luta em si (telaColetiva(), chamada pelo botão de camp em vez de
+       lutar() direto). Sem sessão de conta no ambiente de teste, meuPro
+       fica false — "Pular" é o caminho determinístico de sempre (não
+       mexe em hype/pressao, segue pra lutar() igual o clique de camp já
+       fazia antes desta leva). O caminho Pro de verdade (provocar,
+       aplicarColetiva) tem suíte própria — ver testarColetivaEntrevista(). */
+    const pular = env.registro.colpular;
+    if (!pular || !pular.onclick) throw new Error("tela de coletiva não apareceu depois do camp");
+    pular.onclick();
+    delete env.registro.colresp; delete env.registro.colgo; delete env.registro.colpular;
     env.drenar(); await respirar(); env.drenar();     // narração + dilema assíncrono
 
     /* item 3: escolha na luta, uma vez por luta (só quando o round 1 não
@@ -4425,8 +4437,17 @@ function testarConteudoInseguro() {
 
     // controle: efeito de verdade (não zero) continua aparecendo
     st.followers=2400; st.fan=5;
+    /* Achado nesta sessão (Plano Pro, 2026-09-21): este fixture não menciona
+       NADA financeiro no desfecho ("ganhou uns seguidores" não bate
+       MENCIONA_DINHEIRO) — pré-existente, de antes do gate "item 2"
+       (mencionaDinheiro) existir; as 4 asserções de dinheiro logo abaixo
+       reprovavam mesmo sem nenhuma mudança de código, o gate estava
+       funcionando CERTO (recusando dinheiro sem palavra financeira no
+       texto), só o teste ficou desatualizado. Acrescentado "fechou um
+       patrocínio pequeno" pra bater a intenção real do teste — sem
+       mexer em seguidores/fã, que não passam por este gate. */
     aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
-      {desfecho:"Fez a escolha certa e ganhou uns seguidores.",seguidores:.05,fa:.3,dinheiro:.4,
+      {desfecho:"Fez a escolha certa, ganhou uns seguidores e fechou um patrocínio pequeno.",seguidores:.05,fa:.3,dinheiro:.4,
        atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
     passo("efeito real (não zero): linha de seguidores aparece",
       box.innerHTML.includes("seguidores</span>"));
@@ -4442,14 +4463,14 @@ function testarConteudoInseguro() {
        deixar o piso Math.max(0,...) mascarar o efeito medido. */
     st.dinheiro=100000; st.empresarioComprado=false;
     aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
-      {desfecho:"Gastou tudo num golpe.",seguidores:0,fa:0,dinheiro:-.4,
+      {desfecho:"Caiu num golpe e perdeu o pagamento combinado.",seguidores:0,fa:0,dinheiro:-.4,
        atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
     passo("sem empresário: perda de dinheiro é inteira (não reduzida)",
       st.dinheiro===100000-Math.round(RENDA_BASE*.4));
 
     st.dinheiro=100000; st.empresarioComprado=true;
     aplicarDilema(box,{titulo:"T",cena:"C"},"resposta comum",
-      {desfecho:"Gastou tudo num golpe.",seguidores:0,fa:0,dinheiro:-.4,
+      {desfecho:"Caiu num golpe e perdeu o pagamento combinado.",seguidores:0,fa:0,dinheiro:-.4,
        atributo:"nenhum",efeito:1,lesao:null,evitouLesao:false});
     passo("com empresário: perda de dinheiro vem pela METADE",
       st.dinheiro===100000-Math.round(Math.round(RENDA_BASE*.4)/2));
@@ -4493,6 +4514,232 @@ function testarConteudoInseguro() {
     console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
   }
   return ok && passos.length > 0;
+}
+
+/* ================================================================== *
+ * 8a2. PLANO PRO — coletiva pré-luta e entrevista pós-luta: prioridade
+ *      determinística da pergunta, clamp de número, vitrine no grátis,
+ *      CONTEUDO_INSEGURO/semResultadoDeLuta continuam valendo.
+ *      `ai` é sobrescrito direto no vm (mesmo truque de testarEventoIA,
+ *      abaixo) — mais simples que mockar fetch pra capturar o `data`
+ *      exato que cada chamada manda.
+ * ================================================================== */
+function testarColetivaEntrevista() {
+  console.log("\n" + cinza("Plano Pro: coletiva/entrevista — pergunta determinística, clamp de número, vitrine no grátis"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  /* Diferente de testarAiVivo (setTimeout síncrono pra todo mundo):
+     aplicarColetiva() usa setTimeout(seguir,2200) só quando mostra uma
+     reação de verdade — se o setTimeout disparasse na hora, `seguir()`
+     limparia box.innerHTML="" ANTES do teste conseguir ler o texto
+     renderizado. __drenarAgora (mesmo `timers`/`drenar` de sempre)
+     deixa CADA cenário escolher: inspeciona o innerHTML primeiro, dispara
+     depois (ou nunca, sem problema — timer parado não afeta nada). */
+  env.sandbox.__drenarAgora = env.drenar;
+
+  const corpo = `
+;globalThis.__result=(async function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    /* ---------- perguntaEntrevista(): prioridade FIXA, sem IA nem rng ---------- */
+    const opp={name:"Rival",arquetipo:"Completo",rating:.5,destaque:null};
+    passo("prioridade: cinturão vence tudo, mesmo com lesão/zebra também true",
+      perguntaEntrevista(opp,true,"Decisão",3,"5:00",true,true,"joelho machucado",2,1,1).fatoObrigatorio==="cinturão");
+    passo("prioridade: lesão vence zebra/método quando não há cinturão",
+      perguntaEntrevista(opp,true,"Nocaute",1,"2:30",false,true,"joelho machucado",0,0,1).fatoObrigatorio==="lesão");
+    passo("prioridade: zebra vence método quando não há cinturão/lesão",
+      perguntaEntrevista(opp,true,"Finalização",2,"1:00",false,true,null,0,0,1).fatoObrigatorio==="zebra");
+    passo("prioridade: nocaute sozinho (sem cinturão/lesão/zebra)",
+      perguntaEntrevista(opp,true,"Nocaute",1,"4:10",false,false,null,0,0,1).fatoObrigatorio==="nocaute");
+    passo("prioridade: finalização sozinha",
+      perguntaEntrevista(opp,false,"Finalização",2,"3:20",false,false,null,0,0,1).fatoObrigatorio==="finalização");
+    passo("prioridade: decisão sozinha (fallback de método)",
+      perguntaEntrevista(opp,true,"Decisão",3,"5:00",false,false,null,0,0,1).fatoObrigatorio==="decisão");
+    passo("quedas: decisão COM quedas aplicadas enriquece a pergunta (cita o número)",
+      perguntaEntrevista(opp,true,"Decisão",3,"5:00",false,false,null,3,1,1).pergunta.includes("3 quedas aplicadas"));
+    passo("quedas: decisão SEM quedas nenhuma não cita quedas",
+      !perguntaEntrevista(opp,true,"Decisão",3,"5:00",false,false,null,0,0,1).pergunta.includes("quedas aplicadas"));
+    passo("paridade varia a redação (fightNo par x ímpar não repete a mesma frase)",
+      perguntaEntrevista(opp,true,"Nocaute",1,"2:00",false,false,null,0,0,2).pergunta
+        !==perguntaEntrevista(opp,true,"Nocaute",1,"2:00",false,false,null,0,0,3).pergunta);
+
+    /* ---------- fixtures comuns pra coletiva/entrevista de verdade ---------- */
+    me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
+        tdDef:.6,subAvg:.5,kdAvg:.4,strAcc:.45,tdAcc:.38};
+    me.__base={}; ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
+    st={treino:{},eventoMod:{},wins:5,losses:1,standing:.5,fan:5,followers:8000,dinheiro:0,
+        lesao:null,tituloEstaLuta:false,coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0};
+    fightNo=6;
+
+    /* ---------- COLETIVA: Pro, resposta boa, números clampados ---------- */
+    let lutarChamado=null;
+    lutar=(escolhido,camp)=>{lutarChamado={escolhido,camp};};
+    meuPro=true;
+    let dataRecebida=null;
+    ai=async(kind,data)=>{dataRecebida={kind,data};
+      return{reacao:"Ele revirou os olhos e saiu resmungando pro microfone.",hype:5,pressao:-3,atributoPressao:"tdDef"};};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    document.getElementById("colresp").value="vai ver quando o sino tocar";
+    await document.getElementById("colgo").onclick();
+    passo("coletiva Pro: manda kind certo e o texto do jogador em 'resposta'",
+      dataRecebida&&dataRecebida.kind==="coletiva"&&dataRecebida.data.resposta==="vai ver quando o sino tocar");
+    passo("coletiva Pro: manda o nome do adversário e o record atual",
+      dataRecebida.data.opp==="Rival"&&dataRecebida.data.record==="5-1");
+    passo("coletiva: hype trava no teto 1.20 (resposta mandou 5)", st.coletivaHype===1.20);
+    passo("coletiva: pressao trava no piso 0.90 (resposta mandou -3)",
+      st.coletivaPressao&&st.coletivaPressao.mult===0.90);
+    passo("coletiva: atributoPressao válido vira st.coletivaPressao.atributo",
+      st.coletivaPressao&&st.coletivaPressao.atributo==="tdDef");
+    __drenarAgora();   // dispara o setTimeout(seguir,2200) — só agora lutar() de fato roda
+    passo("coletiva: seguir() chama lutar() com o MESMO escolhido/camp da tela",
+      lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
+
+    /* ---------- COLETIVA: atributoPressao inválido não vira pressão ---------- */
+    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
+    ai=async()=>({reacao:"Ele nem comentou nada de mais.",hype:1,pressao:1,atributoPressao:"velocidade_da_luz"});
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    document.getElementById("colresp").value="beleza";
+    await document.getElementById("colgo").onclick();
+    passo("coletiva: atributoPressao fora da lista de atributos válidos vira null (não quebra)",
+      st.coletivaPressao===null);
+
+    /* ---------- COLETIVA: CONTEUDO_INSEGURO descarta o j INTEIRO ---------- */
+    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
+    let chamouAiInseguro=false;
+    ai=async()=>{chamouAiInseguro=true;return{reacao:"ok",hype:1.2,pressao:.9,atributoPressao:"nenhum"};};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    document.getElementById("colresp").value="eu me corto quando fico ansioso, isso não muda nada";
+    await document.getElementById("colgo").onclick();
+    passo("coletiva: texto inseguro do JOGADOR corta ANTES de chamar a IA (mesma rede de baixo do dilema)",
+      !chamouAiInseguro);
+    passo("coletiva: sem chamada de IA, hype/pressao ficam neutros", st.coletivaHype===1&&st.coletivaPressao===null);
+    passo("coletiva: mesmo sem reacao, seguir() ainda roda (a luta nunca trava)", !!lutarChamado);
+
+    /* ---------- COLETIVA: semResultadoDeLuta corta só a frase ofensora ---------- */
+    st.coletivaHype=1;st.coletivaPressao=null;
+    ai=async()=>({reacao:"Ele ficou irritado com a provocação. Vai perder por nocaute no primeiro round, aposto.",
+      hype:1.1,pressao:.95,atributoPressao:"nenhum"});
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    document.getElementById("colresp").value="ele não passa do primeiro round";
+    await document.getElementById("colgo").onclick();
+    const boxColetiva=document.getElementById("escolha");
+    passo("coletiva: RESULTADO_LUTA corta a frase que afirma quem ganha a luta futura",
+      !boxColetiva.innerHTML.includes("Vai perder por nocaute"));
+    passo("coletiva: a frase SEGURA da mesma reacao continua aparecendo",
+      boxColetiva.innerHTML.includes("Ele ficou irritado"));
+
+    /* ---------- COLETIVA: grátis é vitrine, nunca chama a IA ---------- */
+    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
+    meuPro=false;
+    let chamouAiGratis=false;
+    ai=async()=>{chamouAiGratis=true;return null;};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    document.getElementById("colresp").value="provocação qualquer";
+    document.getElementById("colgo").onclick();
+    passo("coletiva grátis: clicar 'Provocar' NÃO chama a IA", !chamouAiGratis);
+    passo("coletiva grátis: mostra a oferta Pro", document.getElementById("escolha").innerHTML.includes("Recurso Pro"));
+    const continuar=document.getElementById("ofertaProContinuar");
+    passo("coletiva grátis: tem botão pra continuar (não é beco sem saída)", !!(continuar&&continuar.onclick));
+    continuar.onclick();
+    passo("coletiva grátis: 'Continuar' da oferta chama lutar() normalmente", !!lutarChamado);
+
+    /* ---------- COLETIVA: 'Pular' não mexe em nada, segue direto ---------- */
+    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;meuPro=true;
+    let chamouAiPular=false;
+    ai=async()=>{chamouAiPular=true;return null;};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    document.getElementById("colpular").onclick();
+    passo("coletiva: 'Pular' não chama a IA", !chamouAiPular);
+    passo("coletiva: 'Pular' ainda assim chama lutar()", !!lutarChamado);
+
+    /* ================= ENTREVISTA ================= */
+    const bouts=document.getElementById("bouts");
+    const r={method:"Nocaute",round:1,clock:"3:12"};
+
+    /* ---------- ENTREVISTA: Pro, resposta boa, payload certo ---------- */
+    st.lesao={atributo:"strDef",nome:"Ombro travado"};
+    st.dinheiro=0;st.followers=8000;st.fan=5;meuPro=true;
+    dataRecebida=null;
+    ai=async(kind,data)=>{dataRecebida={kind,data};
+      return{reacao:"A sala riu junto: 'sentir, senti — mas parar era pior.' Fechou um patrocínio pequeno com uma loja da cidade.",
+        fa:2.5,seguidores:.8,dinheiro:.3};};
+    renderBotaoEntrevista(bouts,opp,r,false,true,2,1,false);
+    const btnEnt=bouts.children[bouts.children.length-1].children[0];
+    btnEnt.onclick();
+    document.getElementById("entresp").value="sentir, senti, mas não ia parar";
+    await document.getElementById("entgo").onclick();
+    passo("entrevista Pro: manda kind certo e a resposta do jogador",
+      dataRecebida&&dataRecebida.kind==="entrevista"&&dataRecebida.data.resposta==="sentir, senti, mas não ia parar");
+    passo("entrevista Pro: manda método/round/clock da luta que ACABOU de acontecer",
+      dataRecebida.data.metodo==="Nocaute"&&dataRecebida.data.round===1&&dataRecebida.data.clock==="3:12");
+    passo("entrevista Pro: manda quedas aplicadas/sofridas certas (td0/tdt0)",
+      dataRecebida.data.tdApl===2&&dataRecebida.data.tdSof===1);
+    passo("entrevista Pro: manda a lesão ativa formatada (ROTULO_ATTR)",
+      typeof dataRecebida.data.lesao==="string"&&dataRecebida.data.lesao.includes("machucado"));
+    passo("entrevista: fã clampado corretamente (2.5 dentro do teto 2)", st.fan===5+2);
+    passo("entrevista: seguidores aplicado (0.8 dentro do teto 0.50 — trava em 0.50)",
+      st.followers===Math.round(8000*(1+0.50)));
+    passo("entrevista: dinheiro aplicado (reacao menciona 'patrocínio')",
+      st.dinheiro===Math.round(RENDA_BASE*.3));
+    passo("entrevistasFeitas incrementou", st.entrevistasFeitas===1);
+
+    /* ---------- ENTREVISTA: dinheiro só com fato financeiro no texto ---------- */
+    st.dinheiro=0;st.followers=8000;st.fan=5;st.entrevistasFeitas=0;
+    ai=async()=>({reacao:"Ele só deu de ombros e voltou pro vestiário sem mais comentário.",fa:0,seguidores:0,dinheiro:.9});
+    renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
+    const btnEnt2=bouts.children[bouts.children.length-1].children[0];
+    btnEnt2.onclick();
+    document.getElementById("entresp").value="sem comentários";
+    await document.getElementById("entgo").onclick();
+    passo("entrevista: reacao SEM palavra financeira não aplica dinheiro (mesmo com j.dinheiro=.9)",
+      st.dinheiro===0);
+
+    /* ---------- ENTREVISTA: CONTEUDO_INSEGURO descarta o j inteiro ---------- */
+    st.dinheiro=0;st.followers=8000;st.fan=5;
+    let chamouAiEntInseguro=false;
+    ai=async()=>{chamouAiEntInseguro=true;return{reacao:"ok",fa:2,seguidores:.5,dinheiro:1};};
+    renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
+    const btnEnt3=bouts.children[bouts.children.length-1].children[0];
+    btnEnt3.onclick();
+    document.getElementById("entresp").value="ele corta os pulsos escondido, todo mundo sabe";
+    await document.getElementById("entgo").onclick();
+    passo("entrevista: texto inseguro do jogador corta ANTES de chamar a IA",
+      !chamouAiEntInseguro);
+    passo("entrevista: sem chamada de IA, nada muda em fã/seguidor/dinheiro",
+      st.fan===5&&st.followers===8000&&st.dinheiro===0);
+
+    /* ---------- ENTREVISTA: grátis é vitrine, nunca monta pergunta nem chama IA ---------- */
+    meuPro=false;
+    let chamouAiEntGratis=false;
+    ai=async()=>{chamouAiEntGratis=true;return null;};
+    renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
+    const btnEnt4=bouts.children[bouts.children.length-1].children[0];
+    btnEnt4.onclick();
+    passo("entrevista grátis: clicar 'Dar entrevista' NÃO chama a IA nem monta pergunta", !chamouAiEntGratis);
+    passo("entrevista grátis: mostra a oferta Pro", bouts.children[bouts.children.length-1].innerHTML.includes("Recurso Pro"));
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  return env.sandbox.__result.then((passos) => {
+    let ok = true;
+    for (const p of passos) {
+      if (!p.ok) ok = false;
+      console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    return ok && passos.length > 0;
+  });
 }
 
 /* ================================================================== *
@@ -4900,9 +5147,12 @@ function testarAiVivo() {
   const passos=[];
   const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
   const zerarTudo=()=>{
-    feedPausadoAte=0; feedFalhasSeguidas=0;
-    eventoPausadoAte=0; eventoFalhasSeguidas=0;
-    dilemaPausadoAte=0; dilemaFalhasSeguidas=0;
+    /* CIRCUITOS (2026-09-21, Plano Pro) substituiu as variáveis soltas
+       CIRCUITOS.feed.pausadoAte/CIRCUITOS.evento.pausadoAte/CIRCUITOS.dilema.pausadoAte (ver index.html,
+       "Generalizado... pra tabela em vez de variável solta por família")
+       — mesmo objeto que ai()/tentarChamadaIA() leem de verdade agora,
+       zera os 5 (coletiva/entrevista inclusos, testados mais abaixo). */
+    Object.keys(CIRCUITOS).forEach(f=>{CIRCUITOS[f].pausadoAte=0;CIRCUITOS[f].falhas=0;});
   };
   try{
     /* ---------- circuito PRÓPRIO do feed (2026-09-11) — até esta leva era
@@ -4914,27 +5164,27 @@ function testarAiVivo() {
     __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
     await ai("feed",{});
     passo("feed: transitorio:false PAUSA (não existe mais desligamento permanente)",
-      feedPausadoAte>Date.now());
+      CIRCUITOS.feed.pausadoAte>Date.now());
 
     zerarTudo();
     __filaSet([{ok:false,body:{error:"upstream",status:503,transitorio:true}}]);
     await ai("feed",{});
-    passo("feed: transitorio:true NÃO pausa (instabilidade passageira)", feedPausadoAte===0);
+    passo("feed: transitorio:true NÃO pausa (instabilidade passageira)", CIRCUITOS.feed.pausadoAte===0);
 
     zerarTudo();
     __filaSet([{ok:false,body:{error:"upstream",status:401}}]);
     await ai("feed",{});
-    passo("feed: transitorio AUSENTE (servidor velho) NÃO pausa", feedPausadoAte===0);
+    passo("feed: transitorio AUSENTE (servidor velho) NÃO pausa", CIRCUITOS.feed.pausadoAte===0);
 
     zerarTudo();
     __filaSet([{throw:true}]);
     await ai("feed",{});
     passo("feed: 1ª falha de rede seguida NÃO pausa ainda",
-      feedPausadoAte===0 && feedFalhasSeguidas===1);
+      CIRCUITOS.feed.pausadoAte===0 && CIRCUITOS.feed.falhas===1);
     __filaSet([{throw:true}]);
     await ai("feed",{});
     passo("feed: 2ª falha de rede SEGUIDA pausa (nunca desliga pra sempre)",
-      feedPausadoAte>Date.now());
+      CIRCUITOS.feed.pausadoAte>Date.now());
 
     zerarTudo();
     __filaSet([{throw:true}]);
@@ -4942,17 +5192,17 @@ function testarAiVivo() {
     __filaSet([{ok:false,body:{error:"upstream",status:503,transitorio:true}}]);
     await ai("feed",{}); // respondeu (mesmo com erro) — zera o contador
     passo("feed: contador zera ao receber resposta de erro (não só sucesso)",
-      feedFalhasSeguidas===0);
+      CIRCUITOS.feed.falhas===0);
     __filaSet([{throw:true}]);
     await ai("feed",{});
-    passo("feed: depois de zerar, uma falha de rede sozinha NÃO pausa", feedPausadoAte===0);
+    passo("feed: depois de zerar, uma falha de rede sozinha NÃO pausa", CIRCUITOS.feed.pausadoAte===0);
 
     zerarTudo();
     const antesDe429Feed=Date.now();
     const chamadasAntes429Feed=__chamadasFetch();
     __filaSet([{ok:false,body:{error:"upstream",status:429,transitorio:true}}]);
     await ai("feed",{});
-    passo("feed: 429 seta pausa no futuro", feedPausadoAte>antesDe429Feed);
+    passo("feed: 429 seta pausa no futuro", CIRCUITOS.feed.pausadoAte>antesDe429Feed);
     passo("feed: 429 NÃO retenta (só 1 chamada de fetch nova — retry é só dilema/julgar)",
       __chamadasFetch()===chamadasAntes429Feed+1);
     const chamadasAntesFeed=__chamadasFetch();
@@ -4967,20 +5217,20 @@ function testarAiVivo() {
     __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
     await ai("evento",{});
     passo("evento: transitorio:false não mexe no circuito do feed (independente)",
-      feedPausadoAte===0);
-    passo("evento: transitorio:false PAUSA eventoPausadoAte (temporário, não pra sempre)",
-      eventoPausadoAte>Date.now());
+      CIRCUITOS.feed.pausadoAte===0);
+    passo("evento: transitorio:false PAUSA o circuito do evento (temporário, não pra sempre)",
+      CIRCUITOS.evento.pausadoAte>Date.now());
     passo("evento: erro_permanente NÃO retenta (só 1 chamada nova — retry é só dilema/julgar)",
       __chamadasFetch()===chamadasAntesEventoPerm+1);
 
     zerarTudo();
     __filaSet([{throw:true}]);
     await ai("evento",{});
-    passo("evento: 1ª falha de rede seguida NÃO pausa ainda", eventoPausadoAte===0 && eventoFalhasSeguidas===1);
+    passo("evento: 1ª falha de rede seguida NÃO pausa ainda", CIRCUITOS.evento.pausadoAte===0 && CIRCUITOS.evento.falhas===1);
     __filaSet([{throw:true}]);
     await ai("evento",{});
     passo("evento: 2ª falha de rede SEGUIDA pausa (nunca desliga nada pra sempre)",
-      eventoPausadoAte>Date.now());
+      CIRCUITOS.evento.pausadoAte>Date.now());
 
     const chamadasAntesEvento=__chamadasFetch();
     await ai("evento",{});
@@ -4994,16 +5244,16 @@ function testarAiVivo() {
     /* ---------- circuito de DILEMA/JULGAR (2026-09-09) ---------- */
     // dilema RESPEITA a pausa — pré-checagem, nem tenta rede
     zerarTudo();
-    dilemaPausadoAte=Date.now()+60000;
+    CIRCUITOS.dilema.pausadoAte=Date.now()+60000;
     const chamadasAntesDilPausado=__chamadasFetch();
     await ai("dilema",{});
     passo("dilema pausado: NÃO tenta rede (respeita a pré-checagem)",
       __chamadasFetch()===chamadasAntesDilPausado);
 
-    // julgar NUNCA respeita a pausa, mesmo com dilemaPausadoAte no futuro —
+    // julgar NUNCA respeita a pausa, mesmo com CIRCUITOS.dilema.pausadoAte no futuro —
     // é a regra mais forte pedida: cena na tela ⟹ julgamento sempre tenta
     zerarTudo();
-    dilemaPausadoAte=Date.now()+60000;
+    CIRCUITOS.dilema.pausadoAte=Date.now()+60000;
     __filaSet([{ok:true,body:{result:{desfecho:"ok"}}}]);
     const chamadasAntesJulgarPausado=__chamadasFetch();
     const rJulgarPausado=await ai("julgar",{});
@@ -5015,18 +5265,18 @@ function testarAiVivo() {
     __filaSet([{ok:false,body:{error:"upstream",status:401,transitorio:false}}]);
     await ai("dilema",{});
     passo("dilema: transitorio:false NÃO existe desligamento permanente pro circuito dele",
-      dilemaPausadoAte>Date.now());
+      CIRCUITOS.dilema.pausadoAte>Date.now());
 
     // dilema: 2 falhas de rede seguidas pausam (não desligam nada pra sempre)
     zerarTudo();
     __filaSet([{throw:true}]);
     await ai("dilema",{});
     passo("dilema: 1ª falha de rede seguida NÃO pausa ainda",
-      dilemaPausadoAte===0 && dilemaFalhasSeguidas===1);
+      CIRCUITOS.dilema.pausadoAte===0 && CIRCUITOS.dilema.falhas===1);
     __filaSet([{throw:true}]);
     await ai("dilema",{});
     passo("dilema: 2ª falha de rede SEGUIDA pausa (nunca desliga nada pra sempre)",
-      dilemaPausadoAte>Date.now());
+      CIRCUITOS.dilema.pausadoAte>Date.now());
 
     // julgar falhando (rede) ATUALIZA o MESMO contador do dilema, mesmo
     // sem respeitar a própria pausa — o círculo é compartilhado, só a
@@ -5036,13 +5286,13 @@ function testarAiVivo() {
     await ai("julgar",{});
     __filaSet([{throw:true}]);
     await ai("julgar",{});
-    passo("2 falhas de julgar pausam dilemaPausadoAte (mesmo contador, julgar contribui)",
-      dilemaPausadoAte>Date.now());
+    passo("2 falhas de julgar pausam o circuito do dilema (mesmo contador, julgar contribui)",
+      CIRCUITOS.dilema.pausadoAte>Date.now());
     // e o PRÓXIMO julgar, mesmo com dilema pausado, ainda assim tenta rede
     __filaSet([{ok:true,body:{result:{desfecho:"ok"}}}]);
     const chamadasAntesJulgar2=__chamadasFetch();
     await ai("julgar",{});
-    passo("julgar continua tentando rede mesmo com dilemaPausadoAte setado por ele mesmo",
+    passo("julgar continua tentando rede mesmo com o circuito do dilema pausado por ele mesmo",
       __chamadasFetch()===chamadasAntesJulgar2+1);
 
     // cross-contaminação nos dois sentidos
@@ -5051,12 +5301,12 @@ function testarAiVivo() {
     await ai("feed",{});
     __filaSet([{throw:true}]);
     await ai("feed",{}); // 2 falhas de feed pausam SÓ o circuito dele
-    passo("cross-contaminação: 2 falhas de FEED pausam feedPausadoAte, mas NÃO tocam dilemaFalhasSeguidas",
-      feedPausadoAte>Date.now() && dilemaFalhasSeguidas===0 && dilemaPausadoAte===0);
+    passo("cross-contaminação: 2 falhas de FEED pausam o circuito do feed, mas NÃO tocam o do dilema",
+      CIRCUITOS.feed.pausadoAte>Date.now() && CIRCUITOS.dilema.falhas===0 && CIRCUITOS.dilema.pausadoAte===0);
     __filaSet([{ok:true,body:{result:{desfecho:"ok"}}}]);
     const chamadasAntesDilCross=__chamadasFetch();
     await ai("julgar",{});
-    passo("julgar continua tentando rede mesmo com feedPausadoAte (do feed) já setado",
+    passo("julgar continua tentando rede mesmo com o circuito do feed já pausado",
       __chamadasFetch()===chamadasAntesDilCross+1);
 
     zerarTudo();
@@ -5064,8 +5314,8 @@ function testarAiVivo() {
     await ai("dilema",{});
     __filaSet([{throw:true}]);
     await ai("dilema",{}); // 2 falhas de dilema pausam o circuito dele
-    passo("cross-contaminação inversa: 2 falhas de DILEMA pausam dilemaPausadoAte, mas NÃO tocam feedPausadoAte",
-      dilemaPausadoAte>Date.now() && feedPausadoAte===0);
+    passo("cross-contaminação inversa: 2 falhas de DILEMA pausam o circuito do dilema, mas NÃO tocam o do feed",
+      CIRCUITOS.dilema.pausadoAte>Date.now() && CIRCUITOS.feed.pausadoAte===0);
 
     /* ---------- retry em 429 (2026-09-09), só dilema/julgar ---------- */
     // dilema: 429 na 1ª, sucesso na retentativa — devolve resultado de
@@ -5082,7 +5332,7 @@ function testarAiVivo() {
     passo("dilema: retentativa consumiu 2 chamadas de fetch (1 falhou, 1 funcionou)",
       __chamadasFetch()===chamadasAntesRetry1+2);
     passo("dilema: retentativa que deu certo NÃO deixa pausa setada",
-      dilemaPausadoAte===0);
+      CIRCUITOS.dilema.pausadoAte===0);
 
     // julgar: mesmo comportamento (429 então sucesso)
     zerarTudo();
@@ -5109,7 +5359,70 @@ function testarAiVivo() {
     passo("dilema: exatamente 2 chamadas de fetch (1 retry, nunca mais)",
       __chamadasFetch()===chamadasAntesRetry2+2);
     passo("dilema: 429 nas duas tentativas PAUSA o circuito",
-      dilemaPausadoAte>Date.now());
+      CIRCUITOS.dilema.pausadoAte>Date.now());
+
+    /* ---------- circuito de COLETIVA/ENTREVISTA (2026-09-21, Plano Pro) ----------
+       Mesma distinção dilema/julgar, mesma família de teste — coletiva é
+       ANTES da decisão do motor (respeita pausa, como dilema), entrevista é
+       DEPOIS que o jogador já escreveu (nunca respeita, como julgar). São
+       famílias PRÓPRIAS (não compartilham contador com dilema nem entre
+       si) — ver FAMILIA_DO_KIND em index.html. */
+    zerarTudo();
+    CIRCUITOS.coletiva.pausadoAte=Date.now()+60000;
+    const chamadasAntesColPausado=__chamadasFetch();
+    await ai("coletiva",{});
+    passo("coletiva pausada: NÃO tenta rede (respeita a pré-checagem, igual dilema)",
+      __chamadasFetch()===chamadasAntesColPausado);
+
+    zerarTudo();
+    CIRCUITOS.entrevista.pausadoAte=Date.now()+60000;
+    __filaSet([{ok:true,body:{result:{reacao:"ok"}}}]);
+    const chamadasAntesEntPausado=__chamadasFetch();
+    const rEntPausado=await ai("entrevista",{});
+    passo("entrevista IGNORA a própria pausa e tenta rede mesmo assim (igual julgar)",
+      __chamadasFetch()===chamadasAntesEntPausado+1&&rEntPausado!==null);
+
+    zerarTudo();
+    __filaSet([{throw:true}]);
+    await ai("coletiva",{});
+    __filaSet([{throw:true}]);
+    await ai("coletiva",{});
+    passo("2 falhas de rede pausam o circuito da coletiva",
+      CIRCUITOS.coletiva.pausadoAte>Date.now());
+    passo("cross-contaminação: falha de coletiva NÃO toca o circuito da entrevista",
+      CIRCUITOS.entrevista.pausadoAte===0&&CIRCUITOS.entrevista.falhas===0);
+
+    zerarTudo();
+    __filaSet([{throw:true}]);
+    await ai("entrevista",{});
+    __filaSet([{throw:true}]);
+    await ai("entrevista",{});
+    passo("2 falhas de rede pausam o circuito da entrevista",
+      CIRCUITOS.entrevista.pausadoAte>Date.now());
+    passo("cross-contaminação inversa: falha de entrevista NÃO toca o circuito da coletiva",
+      CIRCUITOS.coletiva.pausadoAte===0&&CIRCUITOS.coletiva.falhas===0);
+
+    // 429 com retry único, mesma disciplina de dilema/julgar
+    zerarTudo();
+    __filaSet([
+      {ok:false,body:{error:"upstream",status:429,transitorio:true}},
+      {ok:true,body:{result:{reacao:"ok"}}},
+    ]);
+    const chamadasAntesColRetry=__chamadasFetch();
+    const rColRetry=await ai("coletiva",{});
+    passo("coletiva: 429 então sucesso na retentativa — devolve resultado, não null",
+      rColRetry&&rColRetry.reacao==="ok");
+    passo("coletiva: retentativa consumiu 2 chamadas de fetch",
+      __chamadasFetch()===chamadasAntesColRetry+2);
+
+    zerarTudo();
+    __filaSet([
+      {ok:false,body:{error:"upstream",status:429,transitorio:true}},
+      {ok:true,body:{result:{reacao:"ok"}}},
+    ]);
+    const rEntRetry=await ai("entrevista",{});
+    passo("entrevista: 429 então sucesso na retentativa — devolve resultado, não null",
+      rEntRetry&&rEntRetry.reacao==="ok");
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -5184,6 +5497,7 @@ try {
   else if (cmd === "inicial") ok = await testarTelaInicial();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
+  else if (cmd === "pro") ok = await testarColetivaEntrevista();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
   else if (cmd === "escolhas") ok = testarEscolhas(div || "lightweight");
   else if (cmd === "treino") ok = testarTreino(div || "lightweight");
@@ -5223,7 +5537,7 @@ try {
     else console.log(cinza("\n  interface quebrada — pulei o resto, conserte isso primeiro"));
     console.log("\n" + (ok ? verde("TUDO CERTO") : vermelho("ALGO SAIU DA FAIXA")) + "\n");
   } else {
-    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
+    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|pro|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
     process.exit(0);
   }
 } catch (e) {

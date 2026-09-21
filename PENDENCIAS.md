@@ -1324,7 +1324,7 @@ normal depois, pra confirmar que continua no ~69º percentil.
 - Conserto do fallback de `candidatos()` que repetia adversário em silêncio
 - Modo no link de desafio (`&m=lenda`), com link antigo caindo em normal
 
-## 32. Plano Pro (R$10, pagamento único) — arquitetura aprovada, item 1 em andamento (2026-09-21)
+## 32. Plano Pro (R$10, pagamento único) — itens 1 e 2 FEITOS (2026-09-21)
 
 Maior mudança estrutural desde contas. Arquitetura e mock completos
 (`.claude/plans/lively-waddling-scone.md`), aprovados — Coletiva
@@ -1372,13 +1372,73 @@ camadas (servidor recusa sem env var `TERMOS_PUBLICADOS` no painel
 da Vercel; cliente mostra desativado) até essas duas páginas
 saírem de Versão 2 pra Versão 3 com o conteúdo de pagamento.
 
-**Ordem, 1 commit+push por item**: (1) SQL — FEITO, ver
-`supabase_schema.sql` (`assinaturas`, `pagamentos_processados`,
-`aceites_termos`), falta o usuário rodar no painel. (2) Coletiva +
-entrevista com verificação de JWT. (3) Medição das duas (alvo 90%
-citação de fato, deve bater ~100% pelo desenho determinístico). (4)
-Modo Rival. (5) Cards Pro. (6) Pagamento, botão desligado.
+**Ordem, 1 commit+push por item**: (1) SQL — FEITO, tabelas rodadas
+pelo usuário no painel, conta marcada `pro=true` na mão pra testar.
+(2) Coletiva + entrevista com verificação de JWT — FEITO. (3) Medição
+das duas (alvo 90% citação de fato, deve bater ~100% pelo desenho
+determinístico). (4) Modo Rival. (5) Cards Pro. (6) Pagamento, botão
+desligado.
+
+**Item 2, o que ficou pronto**: `api/ai.js` ganhou os prompts
+`coletiva`/`entrevista` e `verificarPro()` (lê `assinaturas` com o
+JWT do PRÓPRIO usuário via REST do Supabase — RLS já restringe à
+própria linha, então este gate específico não precisa de
+`service_role` nenhuma; `service_role` só entra no item 6, webhook de
+pagamento). `index.html`: abertura da coletiva e pergunta da
+entrevista são template local determinístico (`textoColetivaAbertura()`/
+`perguntaEntrevista()`, prioridade fixa cinturão>lesão>zebra>método,
+sem IA, sem rng — garante citação de fato por CONSTRUÇÃO); coletiva
+mexe em `st.coletivaHype`/`st.coletivaPressao` (escopados a 1 luta,
+resetados em `finishFight()`, aplicados em `hype`/`B.mAttr` dentro de
+`lutar()`); entrevista reaproveita os MESMOS 3 campos do julgar (fã/
+seguidores/dinheiro), mesma checagem `MENCIONA_DINHEIRO` (extraída
+de `aplicarDilema()` pra módulo, reusada — não duplicada); vitrine no
+grátis (`meuPro`, cache client-side só de UI — quem decide de
+verdade é o servidor) com `abrirOfertaPro()` (painel próprio, nunca
+`alert()`, o jogo inteiro evita dialog nativo). `ai()`/
+`tentarChamadaIA()` generalizados de branches hardcoded (evento/
+dilema/feed) pra tabela `FAMILIA_DO_KIND`/`RESPEITA_PAUSA`/
+`CIRCUITOS` — as 2 famílias novas entram sem duplicar branch.
+
+**2 achados registrados/consertados no caminho** (não é scope creep
+do Plano Pro em si, mas apareceram testando a área que o Plano Pro
+toca, e ficariam quebrados/inertes se eu não mexesse):
+- `lim(v,lo,hi,def)`: `Number(null)===0`, que é finito — o padrão
+  `lim(j&&j.campo,...)` usado em toda a base pra cair no `def` quando
+  `j` inteiro foi descartado (CONTEUDO_INSEGURO) só funcionava por
+  COINCIDÊNCIA nos casos com `def=0` dentro do intervalo (seguidores/
+  fã/dinheiro). Em multiplicador (`def=1`, intervalo sem o 0, tipo
+  .85-1.20) virava o PISO do intervalo, não o default — inerte até
+  agora (sempre emparelhado com atributo também nulo, nunca
+  aplicado), real pela primeira vez em `st.coletivaHype` (aplicado
+  incondicional). Corrigido na raiz (`v==null` cai em `def` antes do
+  `Number()`), `node testar.js pro/conteudo/dilema/eventoia` provam.
+- `node testar.js conteudo`: 4 asserções de dinheiro reprovando
+  ANTES de qualquer mudança minha (confirmado revertendo — não
+  coberto por "tudo", ficou quebrado em silêncio). Fixture antigo
+  ("Fez a escolha certa e ganhou uns seguidores"/"Gastou tudo num
+  golpe") não menciona nada financeiro — o gate `mencionaDinheiro`
+  (que o próprio teste deveria provar) estava certo, o texto do
+  teste que nunca foi atualizado depois desse gate existir. Corrigido
+  (fixture ganhou "fechou um patrocínio pequeno"/"perdeu o pagamento
+  combinado").
+- **Achado, NÃO consertado, fora de escopo**: `node testar.js
+  narracao` reprova (31/63 decisões narram a linha de resultado ao
+  vivo, deveria ser 63/63) — confirmado pré-existente do mesmo jeito
+  (revertido e testado). Não é do Plano Pro, precisa de investigação
+  própria (`montarDecisao()`/timing de `animarTrecho()`, estatístico,
+  63 amostras) — fica registrado aqui pra não se perder, não
+  investigado nesta sessão.
+
+`node testar.js pro` (suíte nova, 39 asserções) cobre prioridade
+determinística da pergunta, clamp de número (hype/pressão/fã/
+seguidores/dinheiro), `CONTEUDO_INSEGURO`/`semResultadoDeLuta`
+continuam valendo, vitrine no grátis nunca chama IA. `node testar.js
+aivivo` ganhou os circuitos de coletiva (respeita pausa)/entrevista
+(nunca respeita, igual julgar) — 10 asserções novas. `node testar.js`
+completo: `TUDO CERTO`.
 
 Env vars novas na Vercel quando chegar a hora (nunca no código,
 pedido explícito): `SUPABASE_SERVICE_ROLE_KEY`, `ASAAS_API_KEY`,
-`ASAAS_WEBHOOK_TOKEN`, `TERMOS_PUBLICADOS`.
+`ASAAS_WEBHOOK_TOKEN`, `TERMOS_PUBLICADOS`. Item 2 não precisou de
+nenhuma — confirmar com o usuário antes de seguir pro item 3.

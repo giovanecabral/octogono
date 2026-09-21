@@ -1878,6 +1878,44 @@ function getSupabase(){
   return supabaseClient;
 }
 
+/* Plano Pro (2026-09-21) — meuPro é cache do CLIENTE, só pra decidir qual
+   UI mostrar (campo ativo vs. vitrine). NÃO é a trava de verdade — quem
+   decide de fato se a chamada de IA roda é api/ai.js, consultando
+   `assinaturas` com o JWT do usuário (ver verificarPro() lá). Mesmo que
+   este cache esteja desatualizado/forjado via DevTools, o pior caso é a
+   UI mostrar "ativo" e o servidor recusar com 403 — nunca o contrário. */
+let meuPro=false;
+async function meuAccessToken(){
+  const sb=getSupabase();
+  if(!sb)return null;
+  let session;
+  try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){ return null; }
+  return session?session.access_token:null;
+}
+async function atualizarStatusPro(){
+  const sb=getSupabase();
+  if(!sb){meuPro=false;return;}
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session){meuPro=false;return;}
+    const{data}=await sb.from("assinaturas").select("pro").eq("user_id",session.user.id).maybeSingle();
+    meuPro=!!(data&&data.pro);
+  }catch(e){meuPro=false;}
+}
+/* Oferta Pro (vitrine) — mesmo painel simples pras 2 entradas (coletiva e
+   entrevista), sem link de pagamento ainda (item "pagamento" do plano,
+   por último — botão fica desligado até os Termos terem seção de
+   pagamento, ver PENDENCIAS.md item "Plano Pro"). Troca o conteúdo do
+   elemento chamador (nunca alert() — o jogo inteiro evita dialog nativo
+   de propósito, é a exceção que quebraria o padrão visual em todo canto). */
+function abrirOfertaPro(el,aoContinuar){
+  el.innerHTML=`<div class="dil-eyebrow">Recurso Pro</div>
+    <div class="dil-c">Coletiva e entrevista reagem ao que você escreve, de verdade — recurso do plano Pro (R$10, pagamento único).</div>
+    <div class="dil-c" style="color:var(--faded);font-size:12px">Ainda não está à venda nesta versão.</div>
+    ${aoContinuar?`<div class="dil-in"><button class="btn btn-sm" id="ofertaProContinuar">Continuar</button></div>`:""}`;
+  if(aoContinuar)document.getElementById("ofertaProContinuar").onclick=()=>{SOM.toque();aoContinuar();};
+}
+
 /* Só tamanho, nada de exigir maiúscula/número/símbolo — regra complexa
    demais no cadastro afasta gente (decisão explícita). Precisa bater
    com o mínimo configurado no painel (Authentication → Providers →
@@ -2742,20 +2780,16 @@ const AI_PAUSA_MS=60000;
    deixou de ser: o jogador SENTE falta das 3 falas de torcedor depois do
    resultado, mesmo sendo cosmético. Mesmo padrão do evento: falha vira
    PAUSA por `AI_PAUSA_MS`, nunca desligamento permanente — feed volta
-   sozinho depois da janela, sem religar manual. */
-let feedPausadoAte=0;
-let feedFalhasSeguidas=0;
+   sozinho depois da janela, sem religar manual.
 
-/* Circuito PRÓPRIO do evento (2026-09-07) — achado medindo 20 carreiras
+   Circuito PRÓPRIO do evento (2026-09-07) — achado medindo 20 carreiras
    reais: 3/20 perderam TODOS os eventos por causa de uma falha comum de
    rede, porque evento não tem molde local (decisão explícita, sem
    fallback) — o desligamento permanente que era invisível no feed virou
    "carreira inteira sem evento nenhum". Mesmo remédio que o feed ganhou
-   depois: PAUSA por `AI_PAUSA_MS`, nunca desligamento permanente. */
-let eventoPausadoAte=0;
-let eventoFalhasSeguidas=0;
+   depois: PAUSA por `AI_PAUSA_MS`, nunca desligamento permanente.
 
-/* Circuito PRÓPRIO de dilema+julgar (2026-09-09), nunca o de feed — achado
+   Circuito PRÓPRIO de dilema+julgar (2026-09-09), nunca o de feed — achado
    medindo com ritmo REALISTA (>60s entre chamadas, cada uma rede fresca):
    67% dos dilemas perdiam consequência (8 de 12, 3 carreiras reais). O
    circuito compartilhado antigo piorava isso — uma pausa de 60s disparada
@@ -2771,9 +2805,38 @@ let eventoFalhasSeguidas=0;
    GERAÇÃO da cena, ainda ANTES de existir resposta do jogador) respeita
    a pausa e cai no fallback local sem tentar rede. Os dois ainda
    ATUALIZAM o mesmo contador de falha — um julgar que falhar pode pausar
-   o PRÓXIMO `dilema`, só nunca pausa A SI MESMO. */
-let dilemaPausadoAte=0;
-let dilemaFalhasSeguidas=0;
+   o PRÓXIMO `dilema`, só nunca pausa A SI MESMO.
+
+   Circuito PRÓPRIO de coletiva/entrevista (2026-09-21, Plano Pro) — cada
+   uma é uma família independente, nem a de feed nem a de dilema, mesmo
+   raciocínio de sempre: um circuito compartilhado deixa a pausa de uma
+   coisa decorativa derrubar a única coisa que o jogador escreveu.
+   coletiva RESPEITA a pausa (roda ANTES da luta, sem resposta do jogador
+   ainda — fallback local sem provocação, a luta segue normal); entrevista
+   NUNCA respeita (roda DEPOIS que o jogador já escreveu a resposta, mesma
+   regra do julgar — "cena já apareceu, resposta já foi escrita" é
+   exatamente o caso que motivou a regra "nunca pausa a si mesmo").
+
+   Generalizado (2026-09-21, Plano Pro) pra tabela em vez de variável solta
+   por família — hardcodear um branch por kind (evento/dilema/feed) parava
+   de escalar na 4ª família. FAMILIA_DO_KIND agrupa kinds que COMPARTILHAM
+   contador de falha/pausa — só dilema+julgar (julgar é o veredito do MESMO
+   dilema que já rodou "dilema" antes, ver acima). Os kinds novos
+   (coletiva/entrevista) são cada um sua própria família, mesmo não tendo
+   par — não têm por quê compartilhar. RESPEITA_PAUSA é por KIND, não
+   por família: dentro da família dilema, "dilema" respeita e "julgar" não;
+   mesma distinção se aplica agora dentro de qualquer par ANTES-da-decisão/
+   DEPOIS-da-decisão que a família tiver. PODE_RETRY_429 (não medido pra
+   coletiva/entrevista ainda, estendido por analogia com dilema/julgar —
+   mesmo formato "reage a texto livre", mesma lógica de "vale uma segunda
+   tentativa antes de desistir") controla o retry único de sempre. */
+const FAMILIA_DO_KIND={evento:"evento",dilema:"dilema",julgar:"dilema",
+  feed:"feed",coletiva:"coletiva",entrevista:"entrevista"};
+const RESPEITA_PAUSA={evento:true,dilema:true,julgar:false,
+  feed:true,coletiva:true,entrevista:false};
+const PODE_RETRY_429={dilema:true,julgar:true,coletiva:true,entrevista:true};
+const CIRCUITOS={evento:{pausadoAte:0,falhas:0},dilema:{pausadoAte:0,falhas:0},
+  feed:{pausadoAte:0,falhas:0},coletiva:{pausadoAte:0,falhas:0},entrevista:{pausadoAte:0,falhas:0}};
 
 async function ai(kind,data,ms=9500){
   /* Achado jogando: "aceito" (dilema binário comum) caiu no fallback
@@ -2787,23 +2850,15 @@ async function ai(kind,data,ms=9500){
      evento não conserta nada sozinho, mas da próxima vez dá pra saber
      qual dos 5 caminhos foi, em vez de reconstruir por eliminação. */
   if(!AI_URL){evento("ia_null",{motivo:"sem_url",kind});return null;}
-  const ehEvento=kind==="evento";
-  const ehDilema=kind==="dilema"||kind==="julgar";
-  const ehJulgar=kind==="julgar";
-  if(ehEvento){
-    if(Date.now()<eventoPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
-  }else if(ehDilema){
-    if(!ehJulgar&&Date.now()<dilemaPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
-  }else{
-    // só "feed" chega aqui (os outros 3 kinds têm circuito próprio, acima)
-    if(Date.now()<feedPausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
-  }
-  return tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,true);
+  const c=CIRCUITOS[FAMILIA_DO_KIND[kind]];
+  if(RESPEITA_PAUSA[kind]&&Date.now()<c.pausadoAte){evento("ia_null",{motivo:"pausado",kind});return null;}
+  return tentarChamadaIA(kind,data,ms,true);
 }
 /* Extraído de ai() pra existir a retentativa (abaixo) sem duplicar a
    chamada de fetch inteira. podeRetentar=false na 2ª tentativa — nunca
    mais que 1 retry, senão um pool congestionado vira loop de espera. */
-async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
+async function tentarChamadaIA(kind,data,ms,podeRetentar){
+  const c=CIRCUITOS[FAMILIA_DO_KIND[kind]];
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   try{
@@ -2811,7 +2866,7 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kind,data})});
     clearTimeout(t);
-    if(ehEvento)eventoFalhasSeguidas=0; else if(ehDilema)dilemaFalhasSeguidas=0; else feedFalhasSeguidas=0;
+    c.falhas=0;
     if(!r.ok){
       /* O servidor já sabe o que aconteceu — não adivinha por status HTTP
          externo (502 cobre seis coisas diferentes, ver api/ai.js). Corpo
@@ -2822,19 +2877,17 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
       let corpo=null;
       try{corpo=await r.json();}catch(e){}
       if(corpo&&corpo.status===429){
-        /* Retentativa única, só em 429, só dilema/julgar — pedido depois
-           de medir 67% de fallback, mesmo padrão já usado no evento pra
-           JSON malformado. Espera curta (2s, não AI_PAUSA_MS inteiro):
-           429 no pool compartilhado costuma ser blip momentâneo, uma
-           segunda tentativa logo depois tem chance real de sair fora da
-           MESMA janela de limite. */
-        if(ehDilema&&podeRetentar){
+        /* Retentativa única, só em 429, só nas famílias de PODE_RETRY_429
+           — pedido depois de medir 67% de fallback no dilema, mesmo padrão
+           já usado no evento pra JSON malformado. Espera curta (2s, não
+           AI_PAUSA_MS inteiro): 429 no pool compartilhado costuma ser blip
+           momentâneo, uma segunda tentativa logo depois tem chance real de
+           sair fora da MESMA janela de limite. */
+        if(PODE_RETRY_429[kind]&&podeRetentar){
           await new Promise(res=>setTimeout(res,2000));
-          return tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,false);
+          return tentarChamadaIA(kind,data,ms,false);
         }
-        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
-        else if(ehDilema)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
-        else feedPausadoAte=Date.now()+AI_PAUSA_MS;
+        c.pausadoAte=Date.now()+AI_PAUSA_MS;
         evento("ia_null",{motivo:"429",kind});
       }else if(corpo&&corpo.transitorio===false){
         /* erro_permanente (chave, crédito, permissão) NUNCA desliga pra
@@ -2843,10 +2896,12 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
            é "permanente" pro estado atual da conta, é seguro: quem
            resolve o problema (troca a chave, recarrega crédito) resolve
            fora do jogo, e a próxima janela de pausa já volta tentando de
-           novo sozinha, sem precisar de reload. */
-        if(ehEvento)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
-        else if(ehDilema)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
-        else feedPausadoAte=Date.now()+AI_PAUSA_MS;
+           novo sozinha, sem precisar de reload. Também cobre 403 de plano
+           Pro ausente (coletiva/entrevista, ver api/ai.js) — não é erro
+           transitório, mas também não é motivo pra desligar a família
+           inteira PRA SEMPRE: se o status mudar (usuário assinou), a
+           próxima chamada, depois da pausa, já reflete isso sozinha. */
+        c.pausadoAte=Date.now()+AI_PAUSA_MS;
         evento("ia_null",{motivo:"erro_permanente",kind});
       }else evento("ia_null",{motivo:"erro_transitorio",kind});
       return null;
@@ -2855,21 +2910,24 @@ async function tentarChamadaIA(kind,data,ms,ehEvento,ehDilema,podeRetentar){
     return j.result??null;
   }catch(e){
     clearTimeout(t);
-    if(ehEvento){
-      eventoFalhasSeguidas++;
-      if(eventoFalhasSeguidas>=2)eventoPausadoAte=Date.now()+AI_PAUSA_MS;
-    }else if(ehDilema){
-      dilemaFalhasSeguidas++;
-      if(dilemaFalhasSeguidas>=2)dilemaPausadoAte=Date.now()+AI_PAUSA_MS;
-    }else{
-      feedFalhasSeguidas++;
-      if(feedFalhasSeguidas>=2)feedPausadoAte=Date.now()+AI_PAUSA_MS;
-    }
+    c.falhas++;
+    if(c.falhas>=2)c.pausadoAte=Date.now()+AI_PAUSA_MS;
     evento("ia_null",{motivo:"rede",kind});
     return null;
   }
 }
-const lim=(v,lo,hi,def)=>{const n=Number(v);
+/* Achado no Plano Pro (2026-09-21): Number(null)===0, que É finito — o
+   padrão `lim(j&&j.campo,...)`, usado em toda a base (dilema/julgar/
+   evento) pra cair no default quando `j` inteiro foi descartado (rede de
+   CONTEUDO_INSEGURO), só funcionava por COINCIDÊNCIA nos casos cujo
+   default já era 0 dentro do intervalo (seguidores/fã/dinheiro) — nos
+   casos de multiplicador (default 1, intervalo tipo .85-1.20, sem o 0
+   dentro) `v==null` virava o PISO do intervalo, não o default. Inerte
+   até agora porque sempre vinha emparelhado com um atributo também nulo
+   (nunca aplicado) — st.coletivaHype (Plano Pro) é o primeiro uso
+   incondicional, onde o valor errado passava direto pro estado do jogo.
+   `v==null` cobre null E undefined (comparação solta, de propósito). */
+const lim=(v,lo,hi,def)=>{if(v==null)return def;const n=Number(v);
   return Number.isFinite(n)?Math.max(lo,Math.min(hi,n)):def;};
 
 /* Analytics nunca pode derrubar a carreira de ninguém — mesmo princípio de
@@ -3375,6 +3433,14 @@ const CUSTO_CASA=30000;
    precisa comprar de novo) e o efeito medido. */
 const CUSTO_CONSULTORIA=24000;
 
+/* Extraídos de aplicarDilema() (2026-09-21, Plano Pro) — aplicarEntrevista()
+   precisa exatamente da mesma checagem (mesmo motivo: "dinheiro" só é
+   confiável quando o TEXTO de verdade menciona algo financeiro, ver
+   comentário original abaixo, em aplicarDilema). Duplicar o regex em dois
+   lugares seria o tipo de "dois números que deveriam ser um" que este
+   projeto já cortou antes. */
+const semAcento=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+const MENCIONA_DINHEIRO=/r\$|\breais?\b|multas?|patrocin\w*|contrat\w*|premi\w*|bolsas?|cache|\bpag(a|as|ou|am|ando|amento|amentos|ar|avel|aveis)\b|receb\w*|indeniza\w*|apost\w*|salari\w*|\bpix\b|divida\w*|emprest\w*|dinheiro/;
 function aplicarDilema(box,d,txt,jBruto){
   /* Rede de baixo do conteúdo inseguro (ver CONTEUDO_INSEGURO acima): um "j"
      cujo desfecho narrou automutilação/violência/sexual não é confiável em
@@ -3405,19 +3471,20 @@ function aplicarDilema(box,d,txt,jBruto){
      TEXTO menciona algo financeiro; não tenta decidir se a cena foi boa
      ou ruim (isso é frágil demais em texto livre com gíria, não vale a
      pena arriscar falso positivo). Sem acento de propósito (semAcento):
-     não depender de a IA ter acentuado igual. */
-  const semAcento=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
-  /* Raiz de palavra (\w*), não forma exata: medido contra os 20 desfechos
+     não depender de a IA ter acentuado igual.
+     Raiz de palavra (\w*), não forma exata: medido contra os 20 desfechos
      reais da leva anterior, "pagou"/"recebeu" sozinhos perderam "não PAGA
      a segunda parcela"/"sem RECEBER o resto" (conjugação diferente) — só
      não incomodou aquela vez porque o padrão (zera quando não acha) deu
-     por acaso o resultado certo. Ampliado pra não depender de sorte. */
-  /* Conta a CENA também, não só o desfecho: medido (v2 dos 20 casos) — quando
+     por acaso o resultado certo. Ampliado pra não depender de sorte.
+     Conta a CENA também, não só o desfecho: medido (v2 dos 20 casos) — quando
      a cena já estabelece a oferta ("R$500 pra postar isso"), o desfecho às
      vezes narra só o desdobramento e nunca repete o valor, porque já foi
      dito antes. Checar só o desfecho zerava um "dinheiro" certo (0.083,
-     batendo com os R$500 da cena) por engano. */
-  const mencionaDinheiro=/r\$|\breais?\b|multas?|patrocin\w*|contrat\w*|premi\w*|bolsas?|cache|\bpag(a|as|ou|am|ando|amento|amentos|ar|avel|aveis)\b|receb\w*|indeniza\w*|apost\w*|salari\w*|\bpix\b|divida\w*|emprest\w*|dinheiro/
+     batendo com os R$500 da cena) por engano. semAcento/MENCIONA_DINHEIRO
+     agora são de módulo (ver acima de aplicarDilema) — aplicarEntrevista()
+     reusa a mesma checagem. */
+  const mencionaDinheiro=MENCIONA_DINHEIRO
     .test(semAcento((j&&j.desfecho||"")+" "+(d&&d.cena||"")));
   const dDinheiroBruto=mencionaDinheiro?Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0)):0;
   const dDinheiro=(st.empresarioComprado&&dDinheiroBruto<0)?Math.round(dDinheiroBruto/2):dDinheiroBruto;
@@ -4473,9 +4540,174 @@ function telaCamp(escolhido){
       <span class="d">${c.desc}</span>
       <span class="g">${c.ganho}</span>
       ${barra}`);
-    b.onclick=()=>{SOM.toque();box.style.display="none";box.innerHTML="";lutar(escolhido,c);};
+    b.onclick=()=>{SOM.toque();box.style.display="none";box.innerHTML="";telaColetiva(escolhido,c);};
     g.appendChild(b);
   });
+}
+
+/* ---------- Plano Pro: coletiva de imprensa pré-luta ---------- */
+/* Hash estável (não-rng) só pra escolher QUAL variante de abertura mostrar
+   pro mesmo adversário — nunca pode consumir rng()/qualquer stream, senão
+   desloca a sequência e o link de desafio compartilhado para de reproduzir
+   a mesma carreira pra quem abre sem ser Pro (Modo Rival vai usar o mesmo
+   truque, ver PENDENCIAS.md item "Plano Pro"). */
+function hashEstavel(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h);}
+const ABERTURA_COLETIVA=[
+  opp=>`${opp.name} disse, na coletiva, que essa luta "não devia nem estar marcada".`,
+  opp=>`${opp.name} sorriu pra câmera e falou que você "ainda não pegou ninguém de verdade".`,
+  opp=>`${opp.name} prometeu resolver isso "antes do intervalo", direto pro microfone.`,
+  opp=>`Perguntado sobre você, ${opp.name} só respondeu "quem?" — a sala riu.`,
+  opp=>`${opp.name} chamou seu estilo de "fácil de ler" na entrevista de ontem.`,
+  opp=>`${opp.name} disse que está cansado de "gente que fala mais que luta" — olhando pra você.`,
+];
+function textoColetivaAbertura(opp){
+  return ABERTURA_COLETIVA[hashEstavel(opp.name)%ABERTURA_COLETIVA.length](opp);
+}
+function telaColetiva(escolhido,camp){
+  const box=document.getElementById("escolha");
+  box.style.display="";
+  const opp=escolhido.f,dif=dificuldade(opp);
+  const abertura=textoColetivaAbertura(opp);
+  const seguir=()=>{box.style.display="none";box.innerHTML="";lutar(escolhido,camp);};
+  box.innerHTML=`<div class="esc-hd">Coletiva · ${me.name} x ${opp.name}</div>
+    <div class="contra">${abertura}</div>
+    <div class="dil-in">
+      <textarea id="colresp" maxlength="200" rows="3" placeholder="O que você responde?"></textarea>
+      <button class="btn btn-sm" id="colgo">${meuPro?"Provocar":"Provocar 🔒 Pro"}</button>
+      <button class="btn btn-sm btn-ghost" id="colpular">Pular</button></div>`;
+  const inp=document.getElementById("colresp"),go=document.getElementById("colgo"),pular=document.getElementById("colpular");
+  const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
+  inp.addEventListener("input",cresce);
+  pular.onclick=()=>{SOM.toque();seguir();};
+  go.onclick=async()=>{
+    const txt=inp.value.trim();
+    if(!txt)return inp.focus();
+    /* Grátis é vitrine (mesmo tratamento da entrevista, ver
+       renderBotaoEntrevista()): campo e botão aparecem, clique abre a
+       oferta do Pro em vez de chamar a IA — nunca gasta chamada com quem
+       não pode receber o resultado (api/ai.js recusaria com 403 de
+       qualquer jeito, isto só evita a viagem de rede). */
+    if(!meuPro){abrirOfertaPro(box,seguir);return;}
+    go.disabled=true;inp.disabled=true;go.textContent="…";
+    const token=await meuAccessToken();
+    /* Corta ANTES de chamar a IA — mesmo motivo do dilema: mais barato e
+       não depende de a IA ter obedecido a instrução de conteúdo inseguro. */
+    const j=conteudoInseguro(txt)?null:await ai("coletiva",{name:me.name,opp:opp.name,
+      estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
+      abertura,resposta:txt,record:`${st.wins}-${st.losses}`,
+      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),token});
+    aplicarColetiva(box,opp,txt,j,seguir);
+  };
+  inp.focus();
+}
+function aplicarColetiva(box,opp,txt,jBruto,seguir){
+  const jSeguro=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
+  const j=jSeguro;
+  st.coletivaHype=lim(j&&j.hype,.85,1.20,1);
+  const mult=lim(j&&j.pressao,.90,1.10,1);
+  const atr=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"].includes(j&&j.atributoPressao)?j.atributoPressao:null;
+  st.coletivaPressao=atr?{atributo:atr,mult}:null;
+  /* mesma rede de baixo do dilema: nunca deixa a IA afirmar quem ganha a
+     luta que ainda vai acontecer — semResultadoDeLuta() já existe pra
+     isso, reaproveitado aqui igual foi feito no dilema. */
+  const bruto=(j&&j.reacao)?semResultadoDeLuta(String(j.reacao)).slice(0,800):"";
+  if(bruto){
+    box.innerHTML=`<div class="dil-eyebrow">Coletiva</div>
+      <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
+      <div class="dil-o">${bruto}</div>`;
+    setTimeout(seguir,2200);
+  }else seguir();
+}
+
+/* ---------- Plano Pro: entrevista pós-luta ---------- */
+/* Fato obrigatório: prioridade FIXA, decidida por string interpolation no
+   cliente — NÃO pela IA, NÃO por sorteio. Garante citação de fato real na
+   pergunta por CONSTRUÇÃO, não por instrução de prompt (mesma lição já
+   medida no evento — forçar bate sugerir, ver EVENTO_TEMAS/proximoTema()).
+   Ordem: cinturão > lesão > zebra > método (nocaute/finalização vs
+   decisão) — "quedas" não é um 6º degrau separado (método sempre existe
+   pra toda luta, então um degrau abaixo dele nunca seria alcançado); em
+   vez disso entra como ENRIQUECIMENTO da pergunta de método quando há
+   quedas de verdade pra citar, sem competir na prioridade. par (paridade
+   de fightNo, sem rng) só varia a REDAÇÃO entre 2 frases por categoria,
+   pra não repetir a mesma pergunta palavra por palavra toda vez que o
+   mesmo tipo de fato aparece. */
+function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,tdApl,tdSof,fightNo){
+  const par=fightNo%2===0;
+  const comQuedas=s=>(tdApl>=1||tdSof>=1)?`${s} (foram ${tdApl} quedas aplicadas contra ${tdSof} sofridas)`:s;
+  if(title)return{pergunta:par?`O cinturão estava em jogo hoje — o que passou pela sua cabeça quando o sino tocou?`
+    :`Essa era luta de cinturão. Depois de tudo isso, o que você sente agora?`,fatoObrigatorio:"cinturão"};
+  if(lesaoTxt)return{pergunta:par?`Você entrou nessa luta com ${lesaoTxt.toLowerCase()} — valeu a pena arriscar?`
+    :`Como está ${lesaoTxt.toLowerCase()} depois do que aconteceu hoje contra ${opp.name}?`,fatoObrigatorio:"lesão"};
+  if(zebra)return{pergunta:par?`Poucos apostavam em você contra ${opp.name} — o que mudou?`
+    :`Ninguém esperava esse resultado contra ${opp.name}. Você esperava?`,fatoObrigatorio:"zebra"};
+  if(/ocaute/.test(metodo))return{pergunta:comQuedas(par
+    ?`Foi nocaute no round ${round}, aos ${clock} — o que você viu no momento do golpe?`
+    :`${ganhou?"Você fechou":"Você sofreu"} por nocaute no round ${round}. Como foi aquele instante?`),fatoObrigatorio:"nocaute"};
+  if(metodo==="Finalização")return{pergunta:comQuedas(par
+    ?`Foi finalização no round ${round} — em que momento você sentiu que ${ganhou?"tinha fechado":"não ia escapar"}?`
+    :`${ganhou?"Você finalizou":"Você foi finalizado"} no round ${round}, aos ${clock}. Como foi por dentro?`),fatoObrigatorio:"finalização"};
+  return{pergunta:comQuedas(par
+    ?`Foi pros cartões contra ${opp.name} — você achou que o placar refletiu a luta?`
+    :`Decisão dos juízes hoje contra ${opp.name}. Como você avalia essa luta?`),fatoObrigatorio:"decisão"};
+}
+function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra){
+  const wrap=el("div","");
+  const btn=el("button","btn btn-sm btn-ghost",meuPro?"Dar entrevista":"Dar entrevista 🔒 Pro");
+  wrap.appendChild(btn);
+  bouts.appendChild(wrap);
+  btn.onclick=()=>{
+    SOM.toque();
+    if(!meuPro){abrirOfertaPro(wrap);return;}
+    const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
+    const{pergunta}=perguntaEntrevista(opp,won,r.method,r.round,r.clock,
+      titleFight,zebra,lesaoTxt,td0,tdt0,fightNo);
+    wrap.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
+      <div class="dil-c">"${pergunta}"</div>
+      <div class="dil-in">
+        <textarea id="entresp" maxlength="200" rows="3" placeholder="Sua resposta"></textarea>
+        <button class="btn btn-sm" id="entgo">Responder</button></div>`;
+    const inp=document.getElementById("entresp"),go=document.getElementById("entgo");
+    const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
+    inp.addEventListener("input",cresce);
+    inp.focus();
+    go.onclick=async()=>{
+      const txt=inp.value.trim();
+      if(!txt)return inp.focus();
+      go.disabled=true;inp.disabled=true;go.textContent="…";
+      const token=await meuAccessToken();
+      const j=conteudoInseguro(txt)?null:await ai("entrevista",{name:me.name,opp:opp.name,
+        ganhou:won,metodo:r.method,round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,
+        zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,pergunta,resposta:txt,
+        record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
+        rendaBase:RENDA_BASE,token});
+      aplicarEntrevista(wrap,pergunta,txt,j);
+    };
+  };
+}
+function aplicarEntrevista(box,pergunta,txt,jBruto){
+  const j=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
+  const dFan=lim(j&&j.fa,-2,2,0);
+  const dSeg=lim(j&&j.seguidores,-.30,.50,0);
+  const mencionaDinheiro=MENCIONA_DINHEIRO.test(semAcento(j&&j.reacao||""));
+  const dDinheiro=mencionaDinheiro?Math.round(RENDA_BASE*lim(j&&j.dinheiro,-1,1,0)):0;
+  const antes=st.followers;
+  st.followers=Math.max(120,Math.round(st.followers*(1+dSeg)));
+  st.fan=Math.max(0,Math.min(10,st.fan+dFan));
+  st.dinheiro=Math.max(0,(st.dinheiro||0)+dDinheiro);
+  const dif=st.followers-antes;
+  st.entrevistasFeitas=(st.entrevistasFeitas||0)+1;
+  const bruto=(j&&j.reacao)?String(j.reacao).slice(0,800):"";
+  const reacao=bruto||fraseFallback();
+  box.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
+    <div class="dil-c">"${pergunta}"</div>
+    <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
+    <div class="dil-o">${reacao}</div>
+    <div class="dil-fx">
+      ${dif!==0?`<span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>`:""}
+      ${Math.abs(dFan)>=0.05?`<span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>`:""}
+      ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}</div>`;
+  renderFicha();
 }
 
 
@@ -6078,6 +6310,13 @@ function startCareer(){
      (remaining.length===0 em pick()) — é o ponto exato de conclusão, não
      "escolheu mais uma". */
   evento("terminou_draft");
+  /* Plano Pro — dispara sem esperar (fire-and-forget): meuPro é só cache
+     de UI (ver comentário em atualizarStatusPro()), a carreira não pode
+     travar esperando uma consulta de rede que pode nem existir sessão
+     pra fazer. Se resolver depois do jogador já estar na tela de camp,
+     tudo bem — a próxima renderização de telaColetiva()/botão de
+     entrevista já lê o valor atualizado. */
+  atualizarStatusPro();
   if(me.sapm==null)me.sapm=3.2;
   if(me.strAcc==null)me.strAcc=.45;
   if(me.tdAcc==null)me.tdAcc=.38;
@@ -6096,7 +6335,12 @@ function startCareer(){
       cinturaoInterino:false,tituloInterinoLuta:false,
       topoDivisaoAlcancado:false,bonusNoiteMarco:false,consultoriaAtiva:false,
       longestL:0,foiCinturaoInterino:false,perdeuCinturaoPorNocaute:false,
-      maxDisputaRecusas:0,tituloPorDecisao:false};
+      maxDisputaRecusas:0,tituloPorDecisao:false,
+      /* Plano Pro — coletivaHype/coletivaPressao são escopados a UMA luta
+         (ver reset em finishFight()), nunca acumulam. entrevistasFeitas é
+         só contador de exibição (não afeta nada), mesmo espírito de
+         st.dilemas. */
+      coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -6441,11 +6685,11 @@ function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
    sobreposição, mas ainda sobra o tempo de finishFight()/troca de tela
    antes do feed aparecer de verdade. Cadência de chamada intacta: só
    lutas pares ou com finish, ver testarDriverRodada() e o item 1. */
-function finalizarLuta(opp,res,titleFight,won0,kd0,kdt0){
+function finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0){
   const finish0=res.method!=="Decisão";
   if(fightNo%2===0||finish0)
     prefetchFeed(res,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
-  finishFight(opp,res,titleFight);
+  finishFight(opp,res,titleFight,td0,tdt0);
 }
 function lutar(escolhido,camp){
   escolhaAberta=false;
@@ -6475,6 +6719,14 @@ function lutar(escolhido,camp){
   const rngL=mulberry32(Math.floor(rng()*1e9));
   const form=()=>1+(rngL()+rngL()+rngL()-1.5)/1.5*TUNING.formSpread;
   const A=mkState(comCamp,form()),B=mkState(opp,form());
+  /* Plano Pro — pressão da coletiva: modificador TEMPORÁRIO só desta luta
+     num atributo do ADVERSÁRIO, mesmo mecanismo já usado por "escolha na
+     luta" (mAttr, ver A.mAttr[attr]=mod mais abaixo), só que em B em vez
+     de A e vindo de ANTES da luta em vez de durante. st.coletivaPressao é
+     limpo em resetColetiva() (ver nextFight()) — nunca sobrevive além de
+     UMA luta, não acumula como treino. */
+  if(st.coletivaPressao&&st.coletivaPressao.atributo)
+    B.mAttr[st.coletivaPressao.atributo]=st.coletivaPressao.mult;
   const log=[];
   const push=(round,clock,kind,text)=>log.push({round,clock,kind,text});
   const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
@@ -6496,7 +6748,13 @@ function lutar(escolhido,camp){
   const encerrar=res=>{
     const won0=res.winner===me.name;
     const kd0=res.knockdowns[opp.name]||0,kdt0=res.knockdowns[me.name]||0;
-    finalizarLuta(opp,res,titleFight,won0,kd0,kdt0);
+    /* quedas de verdade (takedowns), não nocautes — A/B.takedowns nunca
+       tinham saído deste closure antes (mkState() conta, mas só kds()
+       de knockdowns virava resultado). Entrevista (Plano Pro) precisa do
+       número real de "quedas aplicadas"/"quedas sofridas" que ela promete
+       citar — ver PROMPTS.entrevista em api/ai.js. */
+    const td0=A.takedowns||0,tdt0=B.takedowns||0;
+    finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0);
   };
 
   let round=1,marca=0;
@@ -6581,7 +6839,7 @@ function animarTrecho(lines,aoTerminar){
   };
   step();
 }
-function finishFight(opp,r,titleFight){
+function finishFight(opp,r,titleFight,td0,tdt0){
   playing=false;atualizarControles();
   const momentosAntes=st.momentos.length;   // pra filtrar por prioridade no fim, ver ORDEM_MOMENTO
   const won=r.winner===me.name;
@@ -6758,7 +7016,20 @@ function finishFight(opp,r,titleFight){
   }
 
   /* --- repercussão --- */
-  const hype=hypeOf(r,won,opp,me,titleFight,myKd,oppKd);
+  /* Plano Pro — hype da coletiva multiplica o hype DESTA luta, não
+     substitui: entra ANTES de bonusNoite/fã/seguidor lerem a variável,
+     então uma boa provocação genuinamente pode virar recorde de "melhor
+     atuação" (é a intenção — provocar e entregar é o auge do hype).
+     st.coletivaHype é 1 (neutro) quando não houve coletiva ou ela caiu no
+     fallback; nunca null, pra não precisar de "||1" espalhado. Resetado
+     em resetColetiva() (ver nextFight()) — vale só PRA ESTA luta. */
+  const hype=hypeOf(r,won,opp,me,titleFight,myKd,oppKd)*(st.coletivaHype||1);
+  /* Já consumido acima (mAttr foi lido na construção de B, em lutar(); hype
+     acabou de ler st.coletivaHype) — limpa pra próxima luta não herdar por
+     engano. Reset aqui, não em nextFight(): telaColetiva() da PRÓXIMA luta
+     só existe depois que ESTA finishFight() já terminou, então não há
+     risco de apagar um valor que ainda não foi lido. */
+  st.coletivaHype=1;st.coletivaPressao=null;
   /* Bônus de performance da noite: só rótulo, nenhum número novo — reaproveita
      hype, que já existe e já alimenta fã/seguidor. Sem limiar pra calibrar:
      é sempre a luta de MAIOR hype da carreira ATÉ AGORA, tipo st.bestWin/
@@ -6843,6 +7114,10 @@ function finishFight(opp,r,titleFight){
     <span class="stamp${won?"":" d"}">${won?"Vitória":"Derrota"}</span>`;
   bouts.appendChild(line);
   (won?SOM.vitoria:SOM.derrota)();     // um só, no carimbo, seja qual for o método
+  /* Plano Pro — "zebra" da entrevista reaproveita a MESMA definição de
+     upset já medida acima (won&&fightNo>=6&&diferença>.20, ver LEIA-ME
+     "Card de momento") — não inventa um segundo conceito de zebra. */
+  renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,upset);
 
   /* dilema interativo a cada 5 lutas; nas outras, evento — um por luta
      agora (era só luta par ou com finish, throttle que existia pra poupar
