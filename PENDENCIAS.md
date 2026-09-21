@@ -1323,3 +1323,62 @@ normal depois, pra confirmar que continua no ~69º percentil.
 - Modo "Seja uma lenda", com as 4 divisões que não fecham fora do grid
 - Conserto do fallback de `candidatos()` que repetia adversário em silêncio
 - Modo no link de desafio (`&m=lenda`), com link antigo caindo em normal
+
+## 32. Plano Pro (R$10, pagamento único) — arquitetura aprovada, item 1 em andamento (2026-09-21)
+
+Maior mudança estrutural desde contas. Arquitetura e mock completos
+(`.claude/plans/lively-waddling-scone.md`), aprovados — Coletiva
+pré-luta e Entrevista pós-luta (as duas usam IA, provocação/pergunta
+reage a texto livre do jogador), Modo Rival (nome fictício, stats
+emprestados de lutador real — protege imagem do mesmo jeito que a
+ausência de retrato pros 1.527 reais), Modo Lenda vira Pro (trava só
+client-side, aceita risco — sem segredo pra proteger, `fighters.json`
+já é público por inteiro), cards com acabamento Pro (opção "contorno
+duplo + canto cortado", sem escrever "PRO").
+
+**Porta fechada pros 3 itens de IA**: JWT do Supabase mandado junto
+do POST, `api/ai.js` verifica com `service_role` (nunca confia num
+campo `isPro` solto no corpo), status Pro vem de consulta à tabela
+`assinaturas`, nunca do cliente. Modo Lenda e cards Pro ficam de fora
+dessa porta (não passam por `api/ai.js`).
+
+**Custo de IA estimado** (proxy: `julgar`, o `kind` mais caro hoje,
+US$0,000045/chamada medido): 44 chamadas novas/carreira Pro (1 por
+coletiva + 1 por entrevista × 22 lutas — abertura da coletiva e
+pergunta da entrevista são template local, sem IA, só a REAÇÃO ao
+texto do jogador chama a IA) ≈ US$0,0033/carreira Pro total. R$10
+financia ~500-600 carreiras Pro no cenário normal, ~250-290 mesmo
+dobrando o custo por segurança — folgado. Precisa virar medição real
+assim que a feature existir.
+
+**Pagamento**: Asaas (Pix+cartão), webhook confere status E valor
+direto na API da Asaas (nunca só o corpo do webhook), tabela nova
+`pagamentos_processados` garante idempotência (Asaas pode reenviar o
+mesmo evento). Estorno (`PAYMENT_REFUNDED`, a confirmar contra a doc/
+sandbox da Asaas antes de codar) zera `pro`.
+
+**Correção, checado nesta sessão**: os Termos de Uso NÃO estão
+`[PENDENTE]` — `screenTermos()` tem texto real, formal, Versão 2
+(19/09/2026, ver commit 9a81717). Mas esse texto EXPLICITAMENTE diz
+"o Serviço não processa pagamento nem cobrança na presente versão"
+e "caso isso venha a mudar, estes Termos serão atualizados
+previamente, com nova manifestação de aceite do usuário antes de
+qualquer cobrança" (seção 5) — então o gate continua necessário, só
+o motivo é mais específico: falta a seção de pagamento/Pro (preço,
+reembolso/arrependimento CDC, o que "pro" dá direito) nos Termos, e
+falta Asaas como processador na Política de Privacidade (que hoje só
+lista Supabase/Vercel). Botão de pagar fica desligado em duas
+camadas (servidor recusa sem env var `TERMOS_PUBLICADOS` no painel
+da Vercel; cliente mostra desativado) até essas duas páginas
+saírem de Versão 2 pra Versão 3 com o conteúdo de pagamento.
+
+**Ordem, 1 commit+push por item**: (1) SQL — FEITO, ver
+`supabase_schema.sql` (`assinaturas`, `pagamentos_processados`,
+`aceites_termos`), falta o usuário rodar no painel. (2) Coletiva +
+entrevista com verificação de JWT. (3) Medição das duas (alvo 90%
+citação de fato, deve bater ~100% pelo desenho determinístico). (4)
+Modo Rival. (5) Cards Pro. (6) Pagamento, botão desligado.
+
+Env vars novas na Vercel quando chegar a hora (nunca no código,
+pedido explícito): `SUPABASE_SERVICE_ROLE_KEY`, `ASAAS_API_KEY`,
+`ASAAS_WEBHOOK_TOKEN`, `TERMOS_PUBLICADOS`.
