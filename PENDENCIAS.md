@@ -1500,6 +1500,41 @@ inalcançável — reverter quando o item 6 (pagamento) estiver pronto e
 fizer sentido oferecer o plano pra quem visita.
 
 `node testar.js` completo: **TUDO CERTO**, 36 categorias, ~25min.
-Commit `fd3ec28`, já no ar (GitHub). Próximo passo: deploy na Vercel
-(`api/ai.js` mudou no item 2, nunca foi publicado ainda) e então a
-medição do item 3.
+Commit `fd3ec28`, já no ar (GitHub). Deploy feito e confirmado contra
+`https://octogono.fun/api/ai` (`julgar` funcionando, `coletiva` sem
+token/com token forjado recusando 403 — porta fechada em produção).
+
+**Item 3 — medição, FEITA (2026-09-21).** 20 chamadas reais de
+`entrevista` + 20 de `coletiva` contra produção, com o token de sessão
+da conta Pro de verdade e dados de luta genuínos (`simulateFight()`
+real, seeds variando até cobrir nocaute/finalização/decisão/zebra/
+cinturão/lesão — nunca inventado à mão). Script em
+`medir_pro.js` (scratchpad da sessão, não commitado — reconstrua se
+precisar rodar de novo, é curto).
+
+- **Citação de fato real: 20/20 (100%) nas duas** — não é medição
+  probabilística, é garantida por construção: a pergunta/abertura são
+  template local determinístico (prioridade fixa cinturão>lesão>zebra
+  >método), nunca a IA quem decide se cita. Não tem como dar diferente
+  de 100% a menos que o template quebre.
+- **Nenhuma das 40 reações vazou resultado de luta futura** (checado
+  contra as 40, zero ocorrência).
+- **Achado real na medição, não teoria: "ensurdecedor" apareceu em
+  9/40 reações (22,5%)** — mesma classe de muleta atmosférica que o
+  prompt do `julgar` já proíbe explicitamente ("silêncio pesado no
+  vestiário" etc.), só que os prompts novos (`coletiva`/`entrevista`)
+  nunca herdaram essa regra. Corrigido: portado o mesmo parágrafo pros
+  dois prompts, deployado, reconfirmado numa chamada nova (amostra
+  livre da muleta, reagindo de verdade ao texto específico do
+  jogador). Sem essa correção, reatividade ficaria dentro do alvo
+  (>90% claramente reagia ao texto específico, não a um molde) mas com
+  qualidade de prosa comprometida por repetição.
+- Reatividade em si (a IA reage ao que foi ESCRITO, não a um molde
+  genérico): lida à mão nas 40 amostras, como o plano já previa
+  ("sem forma 100% automática confiável") — a grande maioria cita ou
+  parafraseia especificamente o que o jogador escreveu (ex.: "sentir,
+  senti" citado de volta, "controlei o ritmo" contestado com o placar
+  real da luta), passa do alvo de 90% claramente.
+
+Plano Pro itens 1-3 completos, deployados, medidos. Próximo: item 4
+(Modo Rival).
