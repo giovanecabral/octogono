@@ -1603,5 +1603,95 @@ real): canto cortado + contorno duplo + selo aparecem certo quando
 Pro, e o card grátis (mesma chamada, `meuPro=false`) sai idêntico ao
 de sempre, canto reto, sem contorno.
 
-Restam os itens 6 (Pagamento, botão desligado até Termos ganharem
-seção de pagamento).
+**Item 6 — Pagamento (Asaas), código FEITO, NÃO deployado, NÃO
+configurado (2026-09-21).**
+
+- **Termos de Uso e Política de Privacidade viraram Versão 3.** Termos
+  ganhou seção 6 (Plano Pro — pagamento único): preço, o que
+  desbloqueia, quem processa (Asaas, Pix/cartão, sem o Octógono ver
+  dado de cartão), direito de arrependimento de 7 dias corridos (art.
+  49 CDC) com devolução integral, o que acontece fora do prazo. Seções
+  seguintes renumeradas (7-14). Privacidade ganhou Asaas como operador
+  novo na seção 4 (é instituição de pagamento brasileira — sem
+  transferência internacional, diferente de Supabase/Vercel/IA), CPF e
+  status Pro na lista de dados tratados (seção 2), retenção fiscal de
+  pagamento (5 anos, CTN art. 173, seção 7). Sem renumeração em
+  Privacidade — só bullets novos, nenhum header mudou de número.
+- **`screenConta()` ganhou bloco de compra** (`renderPlanoPro()`, só
+  aparece com sessão ativa): mostra status Pro se já é Pro; senão, CPF
+  + checkbox de aceite (com link pros Termos/Privacidade, sem
+  pré-marcado) + botão "Confirmar pagamento — R$10". Botão SEMPRE
+  tenta a chamada real (não finge estado "desligado" client-side) —
+  se `TERMOS_PUBLICADOS` não estiver ligado no servidor, a resposta
+  503 vira a mensagem inline. Aceite grava em `aceites_termos` (upsert
+  idempotente, mesmo padrão de `conquistas_usuario`) ANTES de chamar
+  `/api/criar-pagamento` — se o registro do aceite falhar, o pagamento
+  nem é tentado.
+- **`api/criar-pagamento.js` (novo)**: verifica o JWT do usuário
+  (`/auth/v1/user` na Supabase, sem service_role — só prova quem é
+  quem, nunca escreve nada), confere `TERMOS_PUBLICADOS==="true"`
+  (503 se não), confere CPF por módulo 11, recusa se a conta já é Pro
+  (409), cria cliente na Asaas (`POST /v3/customers`,
+  `externalReference=user_id`) e a cobrança (`POST /v3/payments`,
+  `billingType:"UNDEFINED"` — usuário escolhe Pix ou cartão na página
+  hospedada da própria Asaas, `externalReference=user_id` de novo, é
+  isso que o webhook usa pra saber de qual conta é o pagamento),
+  devolve `invoiceUrl` pro cliente redirecionar.
+- **`api/webhook-asaas.js` (novo)**: autentica pelo header
+  `asaas-access-token` contra `ASAAS_WEBHOOK_TOKEN`. Pra
+  `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`: refaz `GET
+  /v3/payments/{id}` direto na Asaas (nunca confia no corpo do
+  webhook), só ativa `pro=true` se o status confirmado por lá for
+  `CONFIRMED`/`RECEIVED` E o valor bater (≥R$9,99 — trava contra
+  cobrança de teste/errada). Pra `PAYMENT_REFUNDED`/
+  `PAYMENT_PARTIALLY_REFUNDED`: só desativa (`pro=false`) se o status
+  real virou `REFUNDED` (parcial não derruba, plano é preço fixo).
+  Grava em `assinaturas` via `SUPABASE_SERVICE_ROLE_KEY` (único lugar
+  do projeto que usa a service_role pra escrever). Idempotente por
+  `(asaas_payment_id, evento)` via `pagamentos_processados` — sempre
+  responde 200 (menos token errado, 401), porque é assim que se diz
+  "recebido, não reenvie" pra Asaas.
+- **Nomes de evento/status/cabeçalho da Asaas confirmados contra
+  `docs.asaas.com` nesta sessão** (`payment-events`,
+  `webhook-para-cobrancas`, `recuperar-uma-unica-cobranca`,
+  `criar-nova-cobranca`) — não é suposição, era um risco marcado
+  explicitamente no plano original ("PAYMENT_REFUNDED — não
+  confirmado, confirmar antes de escrever o handler").
+- **Bug achado e corrigido ANTES de virar bug de verdade**:
+  `pagamentos_processados` tinha PK de uma coluna só
+  (`asaas_payment_id`). Confirmação seguida de estorno no MESMO
+  pagamento faria o estorno bater em "já processado" pelo primeiro
+  evento e ser ignorado — `pro` ficaria `true` pra sempre depois de um
+  estorno real. Corrigido pra PK composta `(asaas_payment_id, evento)`
+  em `supabase_schema.sql`, com o `alter table` de migração comentado
+  no arquivo (a tabela já existe em produção com a PK antiga — @user
+  precisa rodar a migração manualmente no painel, ver arquivo).
+
+**`node testar.js interface` e `node testar.js pro`: passam** (39/39
+em `pro`, sem regressão pelo texto novo de Termos/Privacidade nem pelo
+bloco novo em Conta — confirmado que o fluxo de login/cadastro
+testado em `testarTelaInicial()` nunca chega a renderizar
+`renderPlanoPro()`, porque login bem-sucedido chama
+`location.reload()`, no-op no sandbox, então a tela Conta não
+re-renderiza com sessão dentro do mesmo teste). `node testar.js tudo`
+completo rodando em background nesta sessão pra confirmar sem
+regressão em nenhuma das ~36 categorias antes do commit.
+
+**NÃO deployado. NÃO configurado.** Faltam, todas no painel da Vercel,
+nunca no código:
+- `ASAAS_API_KEY`
+- `ASAAS_WEBHOOK_TOKEN` (mesmo valor configurado no painel da Asaas,
+  em Integrações → Webhooks, apontando pra
+  `https://octogono.fun/api/webhook-asaas`)
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `TERMOS_PUBLICADOS=true` (só depois das três acima estarem
+  configuradas e o webhook cadastrado no painel da Asaas — é o que
+  liga o endpoint de pagamento de verdade)
+
+E a migração SQL comentada em `supabase_schema.sql` (PK composta de
+`pagamentos_processados`) precisa rodar no painel do Supabase antes do
+primeiro pagamento real, senão um estorno não desativa o Pro.
+
+Sem essas variáveis, o botão em Conta segue tentando e mostrando
+"Pagamento ainda não está disponível nesta versão." — nada quebra,
+nada cobra, só não funciona ainda.

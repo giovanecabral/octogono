@@ -106,14 +106,28 @@ create policy "usuário lê só a própria assinatura"
 --    confirmado DIRETO na API da Asaas (GET /payments/{id}, nunca só o
 --    corpo do webhook) — é o que evita um evento forjado com
 --    status/valor adulterado (ex. R$0,01) virar Pro de graça.
+-- Chave é (asaas_payment_id, evento), NÃO só asaas_payment_id: um mesmo
+-- pagamento passa por MAIS de um evento real na vida dele (PAYMENT_CONFIRMED
+-- e, depois, talvez PAYMENT_REFUNDED) — com PK de uma coluna só, a segunda
+-- linha (o estorno) bateria em "já processado" pelo primeiro evento e seria
+-- IGNORADA, deixando pro=true pra sempre depois de um estorno real. Achado
+-- por inspeção antes de escrever api/webhook-asaas.js, não em produção.
 create table if not exists pagamentos_processados (
-  asaas_payment_id text primary key,
+  asaas_payment_id text not null,
   user_id uuid not null references auth.users(id) on delete cascade,
   evento text not null,             -- nome do evento de webhook que gerou esta linha
   status text not null,             -- status confirmado via GET na API da Asaas, não o do corpo do webhook
   valor numeric(10,2) not null,     -- valor confirmado via GET na API da Asaas, idem
-  processado_em timestamptz not null default now()
+  processado_em timestamptz not null default now(),
+  primary key (asaas_payment_id, evento)
 );
+
+-- MIGRAÇÃO — rode isto uma vez no painel se a tabela acima já existe com
+-- a PK antiga (uma coluna só). "create table if not exists" não conserta
+-- tabela já criada — sem isto, a tabela fica com o bug do comentário
+-- acima mesmo com este arquivo atualizado.
+-- alter table pagamentos_processados drop constraint pagamentos_processados_pkey;
+-- alter table pagamentos_processados add primary key (asaas_payment_id, evento);
 
 alter table pagamentos_processados enable row level security;
 

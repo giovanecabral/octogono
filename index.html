@@ -663,7 +663,10 @@ html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
 .conta-box{border:1px solid var(--line2);padding:12px 14px;margin:14px 0}
 .conta-box h4{margin:0 0 6px;font-family:Oswald,sans-serif;font-weight:700;
   font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
-.conta-box input[type=email],.conta-box input[type=password]{display:block;width:100%;max-width:260px;margin:8px 0}
+.conta-box input[type=email],.conta-box input[type=password],.conta-box input[type=text]{display:block;width:100%;max-width:260px;margin:8px 0}
+.conta-pro{margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)}
+.conta-pro label.aceite-pro{display:flex;align-items:flex-start;gap:7px;margin:10px 0;cursor:pointer}
+.conta-pro label.aceite-pro input{margin-top:3px}
 .conta-box .termos-nota{font-size:11px;margin-top:10px}
 .conta-box .termos-nota a{color:var(--ink2)}
 .conta-box h4{border-bottom:1px solid var(--line2);padding-bottom:6px;margin-bottom:10px}
@@ -2321,6 +2324,9 @@ function screenConta(){
       const sair=el("button","btn btn-ghost btn-sm","Sair");
       sair.onclick=async()=>{ await sairDaConta(); location.reload(); };
       box.appendChild(sair);
+      getSupabase().auth.getSession().then(({data:{session}})=>{
+        if(session)renderPlanoPro(box,session);
+      });
     }else{
       const formArea=el("div","");
       box.appendChild(formArea);
@@ -2330,6 +2336,100 @@ function screenConta(){
   const voltar=el("button","btn btn-ghost","Voltar");
   voltar.onclick=voltarInicio;
   app.appendChild(voltar);
+}
+
+/* Versão dos Termos aceita no clique de "Confirmar pagamento" — bate com
+   o número no topo de screenTermos(). Muda SÓ se a seção 6 (Plano Pro)
+   dos Termos mudar de um jeito que precise de aceite novo; ajuste de
+   redação em outra seção não exige. */
+const VERSAO_TERMOS_PAGAMENTO="3";
+
+/* Plano Pro — compra, dentro da tela Conta (2026-09-21, item 6). Só
+   roda com sessão ativa (assinaturas é chaveada por user_id, RLS só
+   deixa o dono ler a própria linha — ver verificarPro() em api/ai.js
+   pro mesmo padrão). Portão de verdade fica no servidor
+   (TERMOS_PUBLICADOS em api/criar-pagamento.js, ver PENDENCIAS.md item
+   "Plano Pro") — este botão SEMPRE tenta a chamada real; se o servidor
+   ainda não estiver publicado, a resposta 503 vira a mensagem inline,
+   sem esconder nada nem fingir estado que o cliente não pode saber de
+   antemão. */
+async function renderPlanoPro(container,session){
+  const box=el("div","conta-pro");
+  container.appendChild(box);
+  box.appendChild(el("p","hint","Verificando Plano Pro…"));
+  const sb=getSupabase();
+  let pro=false;
+  try{
+    const{data}=await sb.from("assinaturas").select("pro").eq("user_id",session.user.id).maybeSingle();
+    pro=!!(data&&data.pro);
+  }catch(e){/* rede caiu — trata como não-Pro, mostra a oferta; não é
+    decisão de segurança (isso é sempre revalidado no servidor) */}
+  meuPro=pro;
+  box.innerHTML="";
+  box.appendChild(el("h4","","Plano Pro"));
+  if(pro){
+    box.appendChild(el("p","hint","Esta conta é Pro: modo Lenda, coletiva de imprensa, entrevista pós-luta, Modo Rival e o acabamento de card estão liberados."));
+    return;
+  }
+  box.appendChild(el("p","dil-c","Coletiva de imprensa e entrevista pós-luta reagem de verdade ao que você escreve. Modo Lenda, Modo Rival e o acabamento de card também entram. R$10, pagamento único — não é assinatura."));
+  const cpfIn=el("input");cpfIn.type="text";cpfIn.placeholder="CPF (só números)";cpfIn.maxLength=14;cpfIn.inputMode="numeric";
+  box.appendChild(cpfIn);
+  /* innerHTML + getElementById pros links, não createTextNode — mesmo
+     padrão de abrirOfertaPro(). O DOM falso do testar.js não implementa
+     document.createTextNode (achado rodando "tudo" completo: a suíte
+     "inicial" reabre screenConta() já logada, então este bloco roda de
+     verdade no sandbox, não só em produção). */
+  const aceiteLabel=el("label","aceite-pro",
+    `<input type="checkbox" id="aceiteProCheck"> Li e aceito os `+
+    `<a href="#" id="aceiteProLinkT">Termos de Uso</a> e a `+
+    `<a href="#" id="aceiteProLinkP">Política de Privacidade</a>, `+
+    `incluindo a seção do Plano Pro.`);
+  box.appendChild(aceiteLabel);
+  const aceiteBox=document.getElementById("aceiteProCheck");
+  document.getElementById("aceiteProLinkT").onclick=e=>{e.preventDefault();screenTermos();};
+  document.getElementById("aceiteProLinkP").onclick=e=>{e.preventDefault();screenPrivacidade();};
+  const btn=el("button","btn btn-sm","Confirmar pagamento — R$10");
+  btn.disabled=true;
+  box.appendChild(btn);
+  const msg=el("p","hint","");
+  box.appendChild(msg);
+  const validar=()=>{ btn.disabled=!(aceiteBox.checked&&cpfIn.value.replace(/\D/g,"").length===11); };
+  aceiteBox.onchange=validar;
+  cpfIn.oninput=validar;
+  const erro=(txt)=>{ msg.className="hint msg-erro"; msg.textContent=txt; };
+  btn.onclick=async()=>{
+    btn.disabled=true;
+    msg.className="hint";
+    msg.textContent="Processando…";
+    try{
+      await sb.from("aceites_termos").upsert(
+        {user_id:session.user.id,versao_termos:VERSAO_TERMOS_PAGAMENTO},
+        {onConflict:"user_id,versao_termos",ignoreDuplicates:true});
+    }catch(e){
+      erro("Não deu pra registrar o aceite dos Termos. Tenta de novo.");
+      validar();
+      return;
+    }
+    let r,j;
+    try{
+      r=await fetch("/api/criar-pagamento",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({token:session.access_token,cpf:cpfIn.value}),
+      });
+      j=await r.json().catch(()=>({}));
+    }catch(e){
+      erro("Falha de rede. Tenta de novo em instantes.");
+      validar();
+      return;
+    }
+    if(r.status===503){ erro("Pagamento ainda não está disponível nesta versão."); validar(); return; }
+    if(r.status===409){ erro("Esta conta já é Pro."); return; }
+    if(!r.ok||!j.invoiceUrl){ erro("Não deu pra criar o pagamento agora. Tenta de novo em instantes."); validar(); return; }
+    msg.className="hint msg-ok";
+    msg.textContent="Redirecionando pro pagamento…";
+    location.href=j.invoiceUrl;
+  };
 }
 
 /* ---------- histórico — placeholder, ver LEIA-ME.md "Histórico" pra
@@ -2407,7 +2507,7 @@ function screenPaginaLegal(titulo,corpo){
 }
 function screenTermos(){
   screenPaginaLegal("Termos de Uso",`
-    <p class="rev">Versão 2 — última revisão: 19 de setembro de 2026.</p>
+    <p class="rev">Versão 3 — última revisão: 21 de setembro de 2026.</p>
 
     <h3>1. Aceitação e objeto</h3>
     <p>Estes Termos de Uso ("Termos") regem o acesso e a utilização do
@@ -2422,7 +2522,10 @@ function screenTermos(){
     <p>O Octógono é um jogo eletrônico de um único jogador, sem
     multijogador e sem interação entre usuários. O jogador monta um
     lutador fictício selecionando atributos de lutadores reais e conduz
-    uma carreira simulada de até 22 lutas. O Serviço é mantido por
+    uma carreira simulada de até 22 lutas. O Serviço é oferecido em duas
+    camadas: uma gratuita, que contempla a carreira completa de até 22
+    lutas, dilemas, conquistas e card de resultado; e o Plano Pro,
+    upgrade pago e opcional descrito na seção 6. O Serviço é mantido por
     desenvolvedor pessoa física, a título de projeto independente, sem
     estrutura de atendimento ao consumidor em tempo integral.</p>
 
@@ -2449,12 +2552,50 @@ function screenTermos(){
     <p>O "orçamento" utilizado na montagem do lutador e o "dinheiro"
     recebido a cada luta são unidades fictícias internas ao Jogo, sem
     valor monetário, sem lastro, sem conversibilidade em moeda real e sem
-    qualquer mecanismo de aposta, prêmio ou sorteio. O Serviço não
-    processa pagamento nem cobrança na presente versão. Caso isso venha a
-    mudar, estes Termos serão atualizados previamente, com nova
-    manifestação de aceite do usuário antes de qualquer cobrança.</p>
+    qualquer mecanismo de aposta, prêmio ou sorteio. Essas unidades
+    fictícias não se confundem com o valor em reais cobrado pelo Plano
+    Pro, upgrade opcional descrito na seção 6 — a compra do Plano Pro não
+    altera o orçamento de draft, o dinheiro fictício de carreira nem o
+    resultado de qualquer luta, e nenhuma luta, atributo ou desfecho pode
+    ser comprado individualmente.</p>
 
-    <h3>6. Lutadores reais e conteúdo gerado por inteligência artificial</h3>
+    <h3>6. Plano Pro — pagamento único</h3>
+    <p>O Octógono oferece um upgrade opcional e pago, o "Plano Pro", ao
+    valor de R$ 10,00 (dez reais), cobrado uma única vez por conta — não é
+    assinatura, não se renova e não expira. O Plano Pro desbloqueia: modo
+    Lenda (pool de lutadores lendários no draft), coletiva de imprensa
+    antes da luta, entrevista pós-luta, Modo Rival, e acabamento visual
+    diferenciado nos cards de resultado e de momento. Nenhuma dessas
+    funcionalidades altera a simulação da luta em si nem concede qualquer
+    vantagem sobre o resultado — são camadas de narrativa e apresentação,
+    adicionais à carreira gratuita completa.</p>
+    <p>O pagamento é processado por intermediador financeiro terceirizado
+    (Asaas Gestão Financeira S.A., ver Política de Privacidade, seção 4),
+    por Pix ou cartão de crédito. O Octógono não recebe nem armazena dado
+    de cartão — essa informação é inserida diretamente na página do
+    processador de pagamento e fica sob custódia exclusiva dele. A
+    confirmação do Plano Pro no Jogo depende da comunicação de pagamento
+    confirmado enviada pelo processador; pode levar alguns minutos entre o
+    pagamento e a liberação do acesso.</p>
+    <p>Nos termos do art. 49 da Lei nº 8.078/1990 (Código de Defesa do
+    Consumidor), por se tratar de contratação fora do estabelecimento
+    comercial, o usuário tem direito de arrependimento no prazo de 7
+    (sete) dias corridos, contado da confirmação do pagamento, com
+    devolução integral do valor pago, sem necessidade de justificativa.
+    Para exercer esse direito, o usuário deve solicitar o estorno pelo
+    contato indicado na seção 14; o pedido é processado junto ao
+    intermediador financeiro e, uma vez confirmado o estorno, o acesso ao
+    Plano Pro é revogado a partir dessa confirmação. Fora do prazo de
+    arrependimento, não há reembolso, ressalvada eventual cobrança em
+    duplicidade ou erro comprovado do Serviço, casos em que o
+    desenvolvedor avaliará o estorno pelo mesmo contato.</p>
+    <p>A alteração destes Termos para introduzir o Plano Pro, prevista na
+    versão anterior desta seção como condição para qualquer cobrança,
+    está formalizada nesta versão; o pagamento só é processado depois de
+    o usuário manifestar aceite explícito e específico a estes Termos no
+    momento da contratação, distinto da aceitação geral da seção 1.</p>
+
+    <h3>7. Lutadores reais e conteúdo gerado por inteligência artificial</h3>
     <p>O Jogo utiliza nomes e estatísticas públicas de desempenho
     esportivo de 1.527 lutadores reais de MMA, dado histórico de natureza
     pública. Nenhum desses lutadores reais recebe retrato ou representação
@@ -2462,17 +2603,20 @@ function screenTermos(){
     possui aparência gerada. Essa distinção é deliberada: estatística
     esportiva é fato público; a imagem de uma pessoa é direito da própria
     pessoa, protegido pelo art. 5º, X, da Constituição Federal e pelo
-    Código Civil.</p>
-    <p>Dilemas, eventos narrativos e a "repercussão" simulada em rede
-    social fictícia dentro do Jogo são produzidos por modelo de
-    inteligência artificial a partir do estado da carreira do usuário e do
-    texto por ele inserido. Trata-se de conteúdo de ficção interativa: não
-    constitui notícia, informação factual, opinião real ou retrato da
-    conduta de qualquer lutador citado, e pode conter imprecisão típica de
-    texto gerado por IA.</p>
+    Código Civil. O mesmo vale para a voz de rivais fictícios do Modo Pro
+    (seção 6): stats emprestados de lutador real, nome e falas sempre
+    inventados, sem vínculo com pessoa real nenhuma.</p>
+    <p>Dilemas, eventos narrativos, a coletiva de imprensa, a entrevista
+    pós-luta e a "repercussão" simulada em rede social fictícia dentro do
+    Jogo são produzidos por modelo de inteligência artificial a partir do
+    estado da carreira do usuário e do texto por ele inserido. Trata-se de
+    conteúdo de ficção interativa: não constitui notícia, informação
+    factual, opinião real ou retrato da conduta de qualquer lutador
+    citado, e pode conter imprecisão típica de texto gerado por IA.</p>
 
-    <h3>7. Conteúdo inserido pelo usuário</h3>
-    <p>Nos dilemas de carreira, o usuário insere texto livre descrevendo a
+    <h3>8. Conteúdo inserido pelo usuário</h3>
+    <p>Nos dilemas de carreira e, no Plano Pro, na coletiva de imprensa e
+    na entrevista pós-luta, o usuário insere texto livre descrevendo a
     conduta de seu lutador. Esse texto é transmitido a provedor de
     inteligência artificial terceirizado para geração do desfecho da cena
     (ver Política de Privacidade). O usuário não deve inserir dado pessoal
@@ -2483,7 +2627,7 @@ function screenTermos(){
     automático e, em caso de reincidência, o bloqueio do acesso do
     usuário ao Serviço.</p>
 
-    <h3>8. Propriedade intelectual</h3>
+    <h3>9. Propriedade intelectual</h3>
     <p>O código-fonte, o motor de simulação, a interface e os textos
     originais do Jogo são de titularidade do desenvolvedor, protegidos
     pela Lei nº 9.610/1998 (direitos autorais) e, quanto ao software,
@@ -2492,7 +2636,7 @@ function screenTermos(){
     utilizados exclusivamente como dado histórico de domínio público,
     sem qualquer vínculo, endosso, patrocínio ou associação com o Jogo.</p>
 
-    <h3>9. Isenção de garantias e limitação de responsabilidade</h3>
+    <h3>10. Isenção de garantias e limitação de responsabilidade</h3>
     <p>O Serviço é fornecido "no estado em que se encontra" ("as is"),
     sem garantia de disponibilidade contínua, ausência de erros ou
     adequação a finalidade específica. Por se tratar de projeto pessoal
@@ -2502,39 +2646,46 @@ function screenTermos(){
     pela legislação aplicável, o desenvolvedor não responde por perda de
     progresso, indisponibilidade temporária ou permanente, nem por danos
     indiretos, incidentais ou consequenciais decorrentes do uso ou da
-    impossibilidade de uso do Serviço.</p>
+    impossibilidade de uso do Serviço. A intermediação de pagamento do
+    Plano Pro é prestada por terceiro (seção 6), sujeita aos próprios
+    termos e à própria disponibilidade desse terceiro; o desenvolvedor não
+    responde por indisponibilidade, atraso ou falha do processador de
+    pagamento, sem prejuízo do direito de arrependimento previsto na
+    seção 6.</p>
 
-    <h3>10. Rescisão</h3>
+    <h3>11. Rescisão</h3>
     <p>O usuário pode encerrar sua conta a qualquer momento, mediante
-    solicitação ao contato indicado na seção 13. O desenvolvedor pode
+    solicitação ao contato indicado na seção 14. O desenvolvedor pode
     suspender ou encerrar o acesso de usuário que violar estes Termos,
-    especialmente a seção 7.</p>
+    especialmente a seção 8.</p>
 
-    <h3>11. Alterações destes Termos</h3>
+    <h3>12. Alterações destes Termos</h3>
     <p>Estes Termos podem ser alterados para refletir a evolução do
-    Serviço, sobretudo na eventual introdução de cobrança — hipótese em
-    que passará a ser exigido aceite explícito e registrado, distinto da
-    disponibilização desta página. A data de revisão no topo sempre
-    corresponde à versão vigente; alterações relevantes serão comunicadas
-    de forma destacada dentro do Jogo.</p>
+    Serviço. Alteração que introduza nova cobrança ou nova modalidade de
+    plano pago exige, como ocorreu na introdução do Plano Pro (seção 6),
+    aceite explícito e registrado, distinto da disponibilização desta
+    página. A data de revisão no topo sempre corresponde à versão
+    vigente; alterações relevantes serão comunicadas de forma destacada
+    dentro do Jogo.</p>
 
-    <h3>12. Legislação aplicável e foro</h3>
+    <h3>13. Legislação aplicável e foro</h3>
     <p>Estes Termos são regidos pelas leis da República Federativa do
     Brasil, incluindo a Lei nº 12.965/2014 (Marco Civil da Internet), a
-    Lei nº 13.709/2018 (Lei Geral de Proteção de Dados) e, no que
-    couber, a Lei nº 8.078/1990 (Código de Defesa do Consumidor). Fica
-    eleito o foro do domicílio do usuário para dirimir controvérsias
-    oriundas destes Termos, sem prejuízo da tentativa prévia de solução
-    amigável pelo contato abaixo.</p>
+    Lei nº 13.709/2018 (Lei Geral de Proteção de Dados) e a Lei nº
+    8.078/1990 (Código de Defesa do Consumidor). Fica eleito o foro do
+    domicílio do usuário para dirimir controvérsias oriundas destes
+    Termos, sem prejuízo da tentativa prévia de solução amigável pelo
+    contato abaixo.</p>
 
-    <h3>13. Contato</h3>
-    <p>Dúvidas, denúncias de conteúdo ou solicitações relacionadas a
-    estes Termos: <a href="mailto:contato@octogono.fun">contato@octogono.fun</a>.</p>
+    <h3>14. Contato</h3>
+    <p>Dúvidas, denúncias de conteúdo, pedido de estorno ou solicitações
+    relacionadas a estes Termos:
+    <a href="mailto:contato@octogono.fun">contato@octogono.fun</a>.</p>
   `);
 }
 function screenPrivacidade(){
   screenPaginaLegal("Política de Privacidade",`
-    <p class="rev">Versão 2 — última revisão: 19 de setembro de 2026.</p>
+    <p class="rev">Versão 3 — última revisão: 21 de setembro de 2026.</p>
 
     <p>Esta Política de Privacidade descreve, em conformidade com a Lei
     nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais — "LGPD"),
@@ -2569,12 +2720,25 @@ function screenPrivacidade(){
       conquistas desbloqueadas</b> (só se houver conta) — finalidade:
       sincronizar o progresso do jogador entre aparelhos. Base legal:
       execução de contrato (art. 7º, V).</li>
-      <li><b>Texto livre digitado nos dilemas</b> — finalidade: gerar a
-      narrativa da carreira por meio de inteligência artificial, a
-      pedido do próprio usuário ao usar essa função do Jogo. Base legal:
-      execução de contrato/fornecimento do serviço solicitado (art. 7º,
-      V) e consentimento tácito ao utilizar voluntariamente a
+      <li><b>Texto livre digitado nos dilemas e, no Plano Pro, na
+      coletiva de imprensa e na entrevista pós-luta</b> — finalidade:
+      gerar a narrativa da carreira por meio de inteligência artificial,
+      a pedido do próprio usuário ao usar essa função do Jogo. Base
+      legal: execução de contrato/fornecimento do serviço solicitado
+      (art. 7º, V) e consentimento tácito ao utilizar voluntariamente a
       funcionalidade (art. 7º, I).</li>
+      <li><b>CPF, nome e dado de cobrança informados ao contratar o
+      Plano Pro</b> — finalidade: processar e comprovar o pagamento
+      único de R$ 10,00. O Octógono não recebe nem armazena número de
+      cartão de crédito ou dado sensível de pagamento — apenas o
+      identificador do cliente e do pagamento gerado pelo processador
+      (Asaas), necessários para vincular a cobrança à conta do usuário.
+      Base legal: execução de contrato (art. 7º, V) e cumprimento de
+      obrigação legal fiscal (art. 7º, II).</li>
+      <li><b>Status do Plano Pro</b> (se a conta é Pro, plano
+      contratado, identificador do pagamento na Asaas) — finalidade:
+      liberar as funcionalidades pagas descritas nos Termos de Uso,
+      seção 6. Base legal: execução de contrato (art. 7º, V).</li>
       <li><b>Endereço IP e identificação do navegador</b> — coletados de
       forma padrão pela infraestrutura de hospedagem (Vercel), não pelo
       código do Jogo. Finalidade: segurança, prevenção a fraude e
@@ -2611,6 +2775,10 @@ function screenPrivacidade(){
       <li><b>Provedor de inteligência artificial, via OpenRouter</b> —
       processa o texto inserido pelo usuário e o estado da carreira para
       gerar dilemas, eventos e a repercussão simulada.</li>
+      <li><b>Asaas Gestão Financeira S.A.</b> — processa o pagamento do
+      Plano Pro (Pix e cartão de crédito) e emite a cobrança; recebe
+      CPF, nome e dado de pagamento necessários a essa função, sob seus
+      próprios mecanismos de segurança e conformidade.</li>
     </ul>
     <p>Não há veiculação de publicidade no Jogo e, por consequência, não
     há compartilhamento de dado para fins publicitários.</p>
@@ -2622,7 +2790,11 @@ function screenPrivacidade(){
     termos do art. 33 da LGPD. Essas empresas publicam seus próprios
     compromissos contratuais de proteção de dados (incluindo cláusulas-padrão
     reconhecidas internacionalmente); o Octógono não realiza
-    tratamento adicional desses dados fora dos operadores aqui listados.</p>
+    tratamento adicional desses dados fora dos operadores aqui listados.
+    A Asaas Gestão Financeira S.A. é instituição de pagamento brasileira,
+    sujeita à regulação do Banco Central do Brasil, e não realiza
+    transferência internacional dos dados de pagamento tratados nesta
+    política.</p>
 
     <h3>6. Cookies e tecnologias semelhantes</h3>
     <p>O Jogo não utiliza cookie próprio. A sessão de autenticação, quando
@@ -2637,7 +2809,11 @@ function screenPrivacidade(){
     nesse sentido devem ser feitas pelo contato da seção 1 e serão
     processadas manualmente. Dados mantidos apenas no dispositivo (seção
     3) são eliminados diretamente pelo usuário ao limpar os dados do
-    site em seu navegador, sem necessidade de solicitação.</p>
+    site em seu navegador, sem necessidade de solicitação. Registro de
+    pagamento do Plano Pro é mantido pelo prazo exigido pela legislação
+    fiscal e civil aplicável (em regra, 5 anos, art. 173 do Código
+    Tributário Nacional), mesmo após eventual estorno ou encerramento de
+    conta, para fins de comprovação contábil.</p>
 
     <h3>8. Direitos do titular</h3>
     <p>Nos termos do art. 18 da LGPD, o usuário, na qualidade de titular
