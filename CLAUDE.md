@@ -25,13 +25,24 @@ LEIA-ME.md          Documentação detalhada.
 node testar.js
 ```
 
-Um comando, ~40s, sem servidor e sem internet. Percorre a interface inteira
-clicando nos botões de verdade em 3 divisões, mais uma passagem no modo lenda, e
-depois confere motor, draft, escolhas e treino.
+Um comando, sem servidor e sem internet. Roda TODA suíte dispatchável
+(mesma lista do `else if` no fim do arquivo) — corrigido em 2026-09-21
+depois de achado jogando: a versão antiga de "tudo" só rodava
+interface+motor+draft, e duas suítes (`conteudo`, `narracao`) reprovavam
+em silêncio há tempo sem que "TUDO CERTO" nunca acusasse. Agora reprova
+o resultado final se QUALQUER suíte reprovar — nenhuma fica de fora,
+nenhuma passa despercebida. **~25 minutos**, não ~40s — a maioria das
+suítes é rápida, mas `freqconquistas` (150 carreiras de ponta a ponta),
+`frequencia` (30), `gapescolha` (3000 pares) e `drivermotor`/`motor`
+(6000 lutas cada) são pesadas de verdade. Rodar em background
+(`run_in_background`/`&`) e aguardar a notificação, não ficar no
+terminal esperando.
 
-Partes: `interface`, `motor`, `draft`, `escolhas`, `treino`, `desafio`,
-`divisoes`, `pesos`, `cinturao`, `lesao`, `conteudo`, `aivivo`, `momentos`,
-`resultado`, `conquistas`. A interface aceita divisão e modo:
+Pra iterar rápido numa suíte específica, chame ela sozinha:
+`node testar.js <nome>` (ex.: `node testar.js conteudo`) — a lista
+completa de nomes está no uso impresso por `node testar.js xyz`
+(nome inválido) ou lendo o bloco de `else if (cmd === ...)` no fim de
+`testar.js`. A interface aceita divisão e modo:
 `node testar.js interface 6 lenda`.
 
 **`node --check` não basta.** Ele só valida sintaxe: uma função que não existe

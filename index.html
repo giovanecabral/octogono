@@ -4563,7 +4563,18 @@ const ABERTURA_COLETIVA=[
 function textoColetivaAbertura(opp){
   return ABERTURA_COLETIVA[hashEstavel(opp.name)%ABERTURA_COLETIVA.length](opp);
 }
+/* Flag de visibilidade (2026-09-21, pedido explícito antes do deploy do
+   item 2): reusa meuPro como o ÚNICO portão — hoje só a conta do usuário
+   tem pro=true no banco, então "esconder pra quem não é meuPro" já
+   esconde de todo mundo, sem flag nova nenhuma. Nada de vitrine (campo +
+   "abre oferta") pra quem não é meuPro enquanto o pagamento (item 6) não
+   existir de verdade — não faz sentido oferecer um plano que ninguém
+   consegue comprar ainda. Quando o item 6 estiver pronto, TROCAR a
+   condição de volta pra "sempre mostra, vitrine decide dentro" (o código
+   de vitrine dentro de telaColetiva()/renderBotaoEntrevista() continua
+   intacto, só não é alcançado enquanto esta trava existir aqui fora). */
 function telaColetiva(escolhido,camp){
+  if(!meuPro){lutar(escolhido,camp);return;}
   const box=document.getElementById("escolha");
   box.style.display="";
   const opp=escolhido.f,dif=dificuldade(opp);
@@ -4652,8 +4663,11 @@ function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,t
     :`Decisão dos juízes hoje contra ${opp.name}. Como você avalia essa luta?`),fatoObrigatorio:"decisão"};
 }
 function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra){
+  /* Mesma trava de telaColetiva() acima — nada aparece pra quem não é
+     meuPro, nem o botão, enquanto o item 6 (pagamento) não existir. */
+  if(!meuPro)return;
   const wrap=el("div","");
-  const btn=el("button","btn btn-sm btn-ghost",meuPro?"Dar entrevista":"Dar entrevista 🔒 Pro");
+  const btn=el("button","btn btn-sm btn-ghost","Dar entrevista");
   wrap.appendChild(btn);
   bouts.appendChild(wrap);
   btn.onclick=()=>{

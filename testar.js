@@ -347,18 +347,15 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     const camps = env.todos.slice(m2).filter(n2 => (n2.className || "").split(" ").includes("camp") && n2.onclick);
     if (camps.length < 3) throw new Error(`esperava ao menos 3 camps, vieram ${camps.length}`);
     camps[n % 3].onclick();
-    env.drenar(); await respirar();
-    /* Plano Pro (2026-09-21): coletiva pré-luta agora fica entre camp e a
-       luta em si (telaColetiva(), chamada pelo botão de camp em vez de
-       lutar() direto). Sem sessão de conta no ambiente de teste, meuPro
-       fica false — "Pular" é o caminho determinístico de sempre (não
-       mexe em hype/pressao, segue pra lutar() igual o clique de camp já
-       fazia antes desta leva). O caminho Pro de verdade (provocar,
-       aplicarColetiva) tem suíte própria — ver testarColetivaEntrevista(). */
-    const pular = env.registro.colpular;
-    if (!pular || !pular.onclick) throw new Error("tela de coletiva não apareceu depois do camp");
-    pular.onclick();
-    delete env.registro.colresp; delete env.registro.colgo; delete env.registro.colpular;
+    /* Plano Pro (2026-09-21): telaColetiva() existe entre camp e a luta em
+       si, mas fica atrás de meuPro (trava temporária, pedida antes do
+       deploy do item 2 — nada de Pro aparece pra ninguém além da conta do
+       usuário até o pagamento, item 6, existir de verdade). Sem sessão de
+       conta no ambiente de teste, meuPro é sempre false — telaColetiva()
+       pula direto pra lutar(), igual o clique de camp já fazia antes
+       desta leva, sem tela nenhuma no meio. O caminho Pro de verdade
+       (meuPro=true, provocar, aplicarColetiva) tem suíte própria — ver
+       testarColetivaEntrevista(). */
     env.drenar(); await respirar(); env.drenar();     // narração + dilema assíncrono
 
     /* item 3: escolha na luta, uma vez por luta (só quando o round 1 não
@@ -2282,6 +2279,16 @@ function testarFrequenciaMomentos(N = 30) {
   rng=mulberry32(SEED); holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
   fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
   escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
+  /* Achado 2026-09-21 (Plano Pro, "tudo" exaustivo): faltava aqui, presente
+     na suíte irmã (testarFrequenciaConquistas) — sem isto, qualquer carreira
+     que rolasse lesão de nocaute (finishFight(), ver LESAO_NOCAUTE) crashava
+     com "lesaoRng is not a function", derrubando 18/30 carreiras da amostra
+     em silêncio (a medição de frequência seguia rodando com dados
+     incompletos, sem avisar QUE fração real tinha caído fora — só aparecia
+     no aviso genérico "N carreiras não chegaram na luta 22"). eventoRng
+     também faltava, pelo mesmo motivo (evento por IA por luta). */
+  lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
+  eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
   function draft(rngD){
     let left=TOTAL_WEIGHT*BUDGET_PCT, rem=[...PAIRS];
     const f={name:"TesteBot",division:DIVISION,sapm:3.2};
@@ -2988,7 +2995,17 @@ function testarNarracaoResultado(N = 8) {
     for (let k = 0; k < 15; k++) { drenar(); await respirar(); await resolverDilemaSeAberto(sb, drenar, registro); }
     const fightNo = vm.runInContext("fightNo", sb);
     const wins = vm.runInContext("st.wins", sb), losses = vm.runInContext("st.losses", sb);
-    const boutsLinhas = (registro.bouts ? registro.bouts.children : []).map(c => c.innerHTML);
+    /* #bouts é compartilhado — carrega a linha de resultado (className "bout")
+       E qualquer painel de dilema/evento/momento que aconteceu naquela luta
+       (className "dilema"/"event"/etc.). Preserva className aqui pra quem
+       filtra depois poder distinguir — texto sozinho não basta: o painel de
+       dilema tem "Decisão" como RÓTULO FIXO da seção (`dil-eyebrow`), sem
+       nenhuma relação com o método da luta, e um filtro por texto puro conta
+       os dois como se fossem a mesma coisa (achado 2026-09-21, ver
+       PENDENCIAS.md). Token-based, nunca `n.className==="x"` — mesma regra
+       do resto do arquivo. */
+    const boutsLinhas = (registro.bouts ? registro.bouts.children : [])
+      .map(c => ({ cls: String(c.className || ""), html: c.innerHTML }));
     const playLinhas = (registro.play ? registro.play.children : []).map(c => c.innerHTML);
     return { fightNo, wins, losses, boutsLinhas, playLinhas };
   }
@@ -3001,8 +3018,12 @@ function testarNarracaoResultado(N = 8) {
       const r = await rodarCarreira(60000 + s);
       if (r.fightNo === 22 && r.wins + r.losses === 22) carreirasCompletas++;
 
-      const decisoesBout = r.boutsLinhas.filter(l => /Decisão/.test(l)).length;
-      const finishesBout = r.boutsLinhas.filter(l => /Nocaute|Finaliza/.test(l)).length;
+      /* SÓ a linha de verdade (className "bout") — nunca o innerHTML puro de
+         TODO #bouts, que também acumula painel de dilema (rótulo fixo
+         "Decisão", nada a ver com método de luta), evento e momento. */
+      const linhasDeFato = r.boutsLinhas.filter(l => l.cls.split(" ").includes("bout")).map(l => l.html);
+      const decisoesBout = linhasDeFato.filter(l => /Decisão/.test(l)).length;
+      const finishesBout = linhasDeFato.filter(l => /Nocaute|Finaliza/.test(l)).length;
       /* fin() escreve "vence por nocaute"/"vence por finalização"/"vence por
          nocaute técnico no chão"; montarDecisao() escreve "vence por decisão".
          Casar por essas frases, não pelo `kind`, porque é exatamente o texto
@@ -3019,7 +3040,19 @@ function testarNarracaoResultado(N = 8) {
       totalDecisoes > 0);
     passo(`controle: KO/finalização SEMPRE narra a linha de resultado ao vivo (${totalNarradasFinish}/${totalFinishes})`,
       totalFinishes > 0 && totalNarradasFinish === totalFinishes);
-    passo(`CONSERTO: decisão narra a linha de resultado ao vivo tantas vezes quanto o cartel registrou (${totalNarradasDecisao}/${totalDecisoes})`,
+    /* Achado 2026-09-21 (investigado a pedido do usuário, que via 31/63 aqui
+       e perguntou se o CONSERTO de trechoFinal (ver comentário em lutar(),
+       index.html) tinha voltado ou nunca tinha ficado completo — NENHUM
+       DOS DOIS: o motor sempre esteve certo, o TESTE que contava errado.
+       `decisoesBout` filtrava #bouts por TEXTO "Decisão" sem checar
+       className — e o painel de dilema (que também vive em #bouts) tem
+       "Decisão" como RÓTULO FIXO da seção (`dil-eyebrow`), nada a ver com o
+       método da luta. 4 dilemas por carreira × 8 carreiras = 32 painéis
+       falsos, quase batendo exato com o gap (63 registrados − 31 reais =
+       32). Corrigido: `linhasDeFato` filtra por className "bout" antes de
+       testar o texto (ver acima). Reproduzido isolado com instrumentação
+       fora do harness antes de mexer aqui — não foi só teoria. */
+    passo(`decisão narra a linha de resultado ao vivo tantas vezes quanto o cartel registrou (${totalNarradasDecisao}/${totalDecisoes})`,
       totalNarradasDecisao === totalDecisoes);
     return ok;
   })();
@@ -4629,20 +4662,24 @@ function testarColetivaEntrevista() {
     passo("coletiva: a frase SEGURA da mesma reacao continua aparecendo",
       boxColetiva.innerHTML.includes("Ele ficou irritado"));
 
-    /* ---------- COLETIVA: grátis é vitrine, nunca chama a IA ---------- */
+    /* ---------- COLETIVA: sem meuPro, NADA aparece (2026-09-21) ----------
+       Trava temporária pedida antes do deploy do item 2: enquanto o
+       pagamento (item 6) não existe, mostrar a vitrine pra quem não pode
+       comprar não faz sentido — telaColetiva() pula direto pra lutar(),
+       sem tela nenhuma. O código de vitrine (abrirOfertaPro) continua no
+       arquivo, só fica inalcançável enquanto essa trava existir — ver
+       comentário em index.html, logo acima de telaColetiva(). */
     st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
     meuPro=false;
     let chamouAiGratis=false;
     ai=async()=>{chamouAiGratis=true;return null;};
+    const escolhaBoxAntes=document.getElementById("escolha").innerHTML;
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
-    document.getElementById("colresp").value="provocação qualquer";
-    document.getElementById("colgo").onclick();
-    passo("coletiva grátis: clicar 'Provocar' NÃO chama a IA", !chamouAiGratis);
-    passo("coletiva grátis: mostra a oferta Pro", document.getElementById("escolha").innerHTML.includes("Recurso Pro"));
-    const continuar=document.getElementById("ofertaProContinuar");
-    passo("coletiva grátis: tem botão pra continuar (não é beco sem saída)", !!(continuar&&continuar.onclick));
-    continuar.onclick();
-    passo("coletiva grátis: 'Continuar' da oferta chama lutar() normalmente", !!lutarChamado);
+    passo("coletiva sem meuPro: chama lutar() direto, sem mostrar nada",
+      !!lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
+    passo("coletiva sem meuPro: não muda o conteúdo da tela de escolha",
+      document.getElementById("escolha").innerHTML===escolhaBoxAntes);
+    passo("coletiva sem meuPro: nunca chega a chamar a IA", !chamouAiGratis);
 
     /* ---------- COLETIVA: 'Pular' não mexe em nada, segue direto ---------- */
     st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;meuPro=true;
@@ -4709,15 +4746,16 @@ function testarColetivaEntrevista() {
     passo("entrevista: sem chamada de IA, nada muda em fã/seguidor/dinheiro",
       st.fan===5&&st.followers===8000&&st.dinheiro===0);
 
-    /* ---------- ENTREVISTA: grátis é vitrine, nunca monta pergunta nem chama IA ---------- */
+    /* ---------- ENTREVISTA: sem meuPro, nem o botão aparece (2026-09-21) ----------
+       Mesma trava temporária da coletiva, ver comentário lá. */
     meuPro=false;
     let chamouAiEntGratis=false;
     ai=async()=>{chamouAiEntGratis=true;return null;};
+    const boutsAntesGratis=bouts.children.length;
     renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
-    const btnEnt4=bouts.children[bouts.children.length-1].children[0];
-    btnEnt4.onclick();
-    passo("entrevista grátis: clicar 'Dar entrevista' NÃO chama a IA nem monta pergunta", !chamouAiEntGratis);
-    passo("entrevista grátis: mostra a oferta Pro", bouts.children[bouts.children.length-1].innerHTML.includes("Recurso Pro"));
+    passo("entrevista sem meuPro: não adiciona botão nenhum em #bouts",
+      bouts.children.length===boutsAntesGratis);
+    passo("entrevista sem meuPro: nunca chega a chamar a IA", !chamouAiEntGratis);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
   }
@@ -5459,6 +5497,33 @@ function testarAiVivo() {
   });
 }
 
+/* Extraído do `else if (cmd === "divisoes")` (2026-09-21) pra ser
+   chamável também de dentro de "tudo", sem duplicar a lógica. */
+function testarDivisoes() {
+  const M = carregarMotor(), F = M.rateAll(lerLutadores());
+  const MIN = M.MIN_LUTADORES || 40;
+  console.log("\n" + cinza("uma carreira são 22 lutas sem repetir adversário"));
+  console.log(cinza(`divisão com menos de ${MIN} lutadores no pool não fecha`));
+  console.log(cinza(`lenda = disputou cinturão OU rating >= ${(M.RATING_LENDA).toFixed(3)} (13/18)\n`));
+  console.log(cinza("                          normal        lenda"));
+  let jog = 0, jogL = 0;
+  const linhas = M.DIVISOES.map(d => {
+    const pool = F.filter(f => f.division === d.id);
+    return { id: d.id, n: pool.length, l: pool.filter(M.ehLenda).length };
+  }).sort((a, b) => b.n - a.n);
+  for (const r of linhas) {
+    const a = r.n >= MIN, b = a && r.l >= MIN;      // sem divisão não há modo lenda
+    if (a) jog++; if (b) jogL++;
+    console.log(`  ${r.id.padEnd(20)} ` +
+      `${(a ? verde(String(r.n).padStart(4)) : vermelho(String(r.n).padStart(4)))} ` +
+      `${a ? "     " : cinza("fora ")} ` +
+      `${(b ? verde(String(r.l).padStart(6)) : vermelho(String(r.l).padStart(6)))} ` +
+      `${b ? "" : cinza("fora")}`);
+  }
+  console.log(cinza(`\n  ${jog} divisões jogáveis · ${jogL} delas também no modo lenda`));
+  return jog >= 8 && jogL >= 6;
+}
+
 /* ================================================================== */
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
@@ -5501,41 +5566,89 @@ try {
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
   else if (cmd === "escolhas") ok = testarEscolhas(div || "lightweight");
   else if (cmd === "treino") ok = testarTreino(div || "lightweight");
-  else if (cmd === "divisoes") {
-    const M = carregarMotor(), F = M.rateAll(lerLutadores());
-    const MIN = M.MIN_LUTADORES || 40;
-    console.log("\n" + cinza("uma carreira são 22 lutas sem repetir adversário"));
-    console.log(cinza(`divisão com menos de ${MIN} lutadores no pool não fecha`));
-    console.log(cinza(`lenda = disputou cinturão OU rating >= ${(M.RATING_LENDA).toFixed(3)} (13/18)\n`));
-    console.log(cinza("                          normal        lenda"));
-    let jog = 0, jogL = 0;
-    const linhas = M.DIVISOES.map(d => {
-      const pool = F.filter(f => f.division === d.id);
-      return { id: d.id, n: pool.length, l: pool.filter(M.ehLenda).length };
-    }).sort((a, b) => b.n - a.n);
-    for (const r of linhas) {
-      const a = r.n >= MIN, b = a && r.l >= MIN;      // sem divisão não há modo lenda
-      if (a) jog++; if (b) jogL++;
-      console.log(`  ${r.id.padEnd(20)} ` +
-        `${(a ? verde(String(r.n).padStart(4)) : vermelho(String(r.n).padStart(4)))} ` +
-        `${a ? "     " : cinza("fora ")} ` +
-        `${(b ? verde(String(r.l).padStart(6)) : vermelho(String(r.l).padStart(6)))} ` +
-        `${b ? "" : cinza("fora")}`);
-    }
-    console.log(cinza(`\n  ${jog} divisões jogáveis · ${jogL} delas também no modo lenda`));
-    ok = jog >= 8 && jogL >= 6;
-  }
+  else if (cmd === "divisoes") ok = testarDivisoes();
   else if (cmd === "tudo") {
-    /* roda a interface em 3 divisões diferentes: peso-pesado nocauteia muito,
-       mosca vai pros cartões, feminino tem pool menor. Caminhos diferentes. */
+    /* Achado 2026-09-21 (Plano Pro, usuário testando em produção): "tudo"
+       só rodava interface×4 + motor + draft — QUALQUER outra suíte
+       (conteudo, narracao, aivivo, pro, dilema, etc.) ficava de fora,
+       podendo estar reprovando em silêncio sem nenhum sinal aqui. Duas
+       delas ESTAVAM (ver PENDENCIAS.md item 32) — "TUDO CERTO" não
+       queria dizer "tudo", queria dizer "essas 6". Corrigido: roda TODA
+       suíte dispatchável (mesma lista de `else if` acima, cada uma com
+       o argumento padrão que ela já usa sozinha), reprova se qualquer
+       uma reprovar, sem pular nada em silêncio nunca mais.
+
+       Única exceção que continua saindo cedo: interface quebrada de
+       verdade (a tela não fecha o caminho básico) torna o resto ruído —
+       um bug ali tende a derrubar/travar dezenas de suítes por baixo
+       (todas dependem do mesmo motor renderizando), então continua
+       parando ali, mas isso é a ÚNICA suíte com esse privilégio — todas
+       as outras rodam sempre, mesmo se uma anterior já reprovou. */
     ok = true;
     for (const d of [3, 7, 8]) ok = (await testarInterface(d)) && ok;
-    /* No lenda o índice 6 cai no peso-pesado, que é o pool de lendas mais
-       apertado que sobra (49). Se algum modo vai estourar a escada, é esse. */
     ok = (await testarInterface(6, "lenda")) && ok;
-    if (ok) { ok = testarMotor() && ok; ok = testarDraft(div || "lightweight") && ok; }
-    else console.log(cinza("\n  interface quebrada — pulei o resto, conserte isso primeiro"));
-    console.log("\n" + (ok ? verde("TUDO CERTO") : vermelho("ALGO SAIU DA FAIXA")) + "\n");
+    if (!ok) {
+      console.log(cinza("\n  interface quebrada — pulei o resto, conserte isso primeiro"));
+      console.log("\n" + vermelho("ALGO SAIU DA FAIXA") + "\n");
+    } else {
+      /* {nome, roda} — cada `roda` já usa o MESMO argumento padrão que o
+         `else if` isolado acima usaria sem argumento extra. Ordem: rápidas
+         primeiro (regressão de correção), pesadas/estatísticas por
+         último (calibração — algumas (ex. "pesos") nunca reprovam
+         sozinhas, são relatório, não gate; entram do mesmo jeito, pedido
+         explícito é rodar tudo, não só o que pode reprovar). */
+      const suites = [
+        ["motor", () => testarMotor()],
+        ["draft", () => testarDraft(div || "lightweight")],
+        ["escolhas", () => testarEscolhas(div || "lightweight")],
+        ["treino", () => testarTreino(div || "lightweight")],
+        ["desafio", () => testarDesafio(div || "lightweight")],
+        ["cinturao", () => testarCinturao(div || "heavyweight")],
+        ["lesao", () => testarLesao()],
+        ["resultado", () => testarResultadoLuta()],
+        ["conteudo", () => testarConteudoInseguro()],
+        ["aivivo", () => testarAiVivo()],
+        ["pro", () => testarColetivaEntrevista()],
+        ["momentos", () => testarMomentos()],
+        ["conquistas", () => testarConquistas()],
+        ["escolhaluta", () => testarEscolhaLuta()],
+        ["acoesluta", () => testarAcoesLuta()],
+        ["dinheiro", () => testarDinheiro(div || "lightweight")],
+        ["coerencia", () => testarCoerencia()],
+        ["eventoia", () => testarEventoIA()],
+        ["dilema", () => testarDilemaMecanismo()],
+        ["memoria", () => testarMemoriaEntreCarreiras()],
+        ["loja", () => testarLoja()],
+        ["compartilhar", () => testarCompartilhar()],
+        ["aposentadoria", () => testarAposentadoriaSemLutas()],
+        ["inicial", () => testarTelaInicial()],
+        ["escalonamento", () => testarEscalonamentoDisputa()],
+        ["espera", () => testarEspera(div || "lightweight")],
+        ["lesaonocaute", () => testarLesaoNocaute()],
+        ["driverluta", () => testarDriverRodada()],
+        ["divisoes", () => testarDivisoes()],
+        ["pesos", () => medirPesos(div || "lightweight")],
+        ["gapescolha", () => testarGapEscolha(3000)],
+        ["frequencia", () => testarFrequenciaMomentos(30)],
+        ["freqconquistas", () => testarFrequenciaConquistas(150, "normal")],
+        ["narracao", () => testarNarracaoResultado(8)],
+        ["drivermotor", () => testarDriverMotor(1, 6000)],
+      ];
+      const falhas = [];
+      for (const [nome, roda] of suites) {
+        console.log("\n" + cinza(`── ${nome} ──`));
+        let r;
+        try { r = await roda(); }
+        catch (e) {
+          console.log(vermelho(`  erro rodando ${nome}: ${e.message}`));
+          r = false;
+        }
+        if (!r) falhas.push(nome);
+        ok = r && ok;
+      }
+      console.log("\n" + (ok ? verde("TUDO CERTO")
+        : vermelho(`ALGO SAIU DA FAIXA — reprovou: ${falhas.join(", ")}`)) + "\n");
+    }
   } else {
     console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|pro|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
     process.exit(0);
