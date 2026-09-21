@@ -497,6 +497,14 @@ html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
 .opp .stake{display:flex;justify-content:space-between;align-items:center;gap:8px;
   border-top:1px solid var(--ink);padding-top:7px;font-size:11px;
   letter-spacing:.1em;text-transform:uppercase;color:var(--faded)}
+/* Modo Rival (Plano Pro): borda de destaque no card inteiro (mesma cor de
+   raridade das conquistas, não uma cor nova) + selo no canto — reconhecível
+   de relance, sem competir com a faixa de dificuldade que já ocupa o topo. */
+.opp.rival{border-color:var(--gold)}
+.opp.rival:hover{border-color:var(--gold-bright)}
+.rival-selo{align-self:flex-start;font-family:Oswald,sans-serif;font-weight:700;
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-bright);
+  border:1px solid var(--gold);padding:2px 7px}
 .opp .stake b{font-family:Oswald,sans-serif;font-size:14px;letter-spacing:.04em;color:var(--win-bright)}
 .camps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .camp{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;text-align:left;
@@ -4366,6 +4374,61 @@ function tituloLiberado(){
    deixa a faixa "duro" bem em cima do topo da escada, onde o campeão está:
    ele apareceria como luta comum antes da disputa, e a disputa de verdade
    viraria revanche. */
+/* ---------- Modo Rival (Plano Pro, item 4) ----------
+   Nome fictício, stats emprestados de um lutador real da divisão — mesma
+   proteção de imagem que a ausência de retrato pros 1.527 reais (ver
+   CLAUDE.md "Nada de rosto para os lutadores reais"): a IA vai dar VOZ a
+   esse rival (coletiva/entrevista), e falas inventadas na boca de um
+   atleta de verdade são o mesmo risco que retrato, só que em texto. Por
+   isso o nome NUNCA é de um lutador real (pool próprio abaixo), e a
+   bio emprestada (fights/era/titulos) é sanitizada — só os números de
+   COMBATE (rating e os atributos treináveis) vêm do lutador real, pra
+   manter a dificuldade justa no motor; o resto (quantas lutas teve, em
+   que época, quantos títulos) seria história de uma pessoa de verdade
+   contada como se fosse ficção, e isso continua sendo o problema que a
+   regra de "sem retrato" já resolveu pro rosto. */
+const RIVAL_PRIMEIRO_M=["Rafael","Thiago","Bruno","Igor","Cauê","Renan","Diego",
+  "Vitor","Matheus","Gustavo","André","Felipe","Marcos","Leandro"];
+const RIVAL_PRIMEIRO_F=["Camila","Larissa","Beatriz","Juliana","Fernanda","Priscila",
+  "Vanessa","Aline","Débora","Renata","Patrícia","Gabriela","Carolina","Natália"];
+const RIVAL_SOBRENOME=["Duarte","Farias","Cordeiro","Bastos","Teixeira","Amaral",
+  "Pontes","Siqueira","Moraes","Cavalcante","Nogueira","Brandão","Falcão","Marinho"];
+function nomeRival(nomesReais){
+  const primeiros=(DIVISION||"").startsWith("w_")?RIVAL_PRIMEIRO_F:RIVAL_PRIMEIRO_M;
+  let nome,tentativas=0;
+  do{
+    nome=primeiros[Math.floor(rivalRng()*primeiros.length)]+" "+
+      RIVAL_SOBRENOME[Math.floor(rivalRng()*RIVAL_SOBRENOME.length)];
+    tentativas++;
+  }while(nomesReais.has(nome)&&tentativas<20); // some combinação bate um nome real — troca, não trava
+  return nome;
+}
+/* Cedo na carreira (luta 3), reaparece a cada 4 lutas depois disso — pausa
+   de vez quando o jogador já venceu ele uma vez (rivalidade "resolvida",
+   não persegue pra sempre). Nunca durante luta de título/defesa (o motor
+   já reserva essa luta pra uma coisa só, ver candidatos() acima). */
+function rivalDeveAparecer(){
+  if(!meuPro||st.tituloEstaLuta)return false;
+  if(st.rival&&st.rival.historico.some(h=>h.ganhou))return false;
+  const proximaLuta=fightNo+1;
+  if(!st.rival)return proximaLuta===3;
+  return proximaLuta>=3&&(proximaLuta-3)%4===0;
+}
+function gerarRival(){
+  const reservados=new Set((RANKING&&RANKING.lista||[]).map(f=>f.name));
+  const pool=LADDER.filter(f=>!reservados.has(f.name));
+  const base=pool[Math.floor(rivalRng()*pool.length)]||LADDER[0];
+  const nome=nomeRival(new Set(LADDER.map(f=>f.name)));
+  st.rival={
+    nome,
+    // stats de combate reais (mantém dificuldade justa), bio sanitizada
+    // (nunca a carreira de verdade de quem emprestou os números)
+    f:{...base,name:nome,fights:12+Math.floor(rivalRng()*16),era:null,
+       titulos:{disputas:0,vitorias:0}},
+    historico:[],
+  };
+}
+
 function candidatos(){
   /* NÃO chama tituloLiberado() aqui. st.tituloEstaLuta já foi decidido em
      nextFight(), uma vez por luta, antes de existir tela ou pick automático.
@@ -4452,6 +4515,15 @@ function candidatos(){
     if(!esc)esc=LADDER[Math.max(0,Math.min(N-1,a))];
     out.push({f:esc,ganho});
   }
+  /* Modo Rival: 4ª carta, só Pro, só quando elegível (rivalDeveAparecer()).
+     Nunca troca uma das 3 bandas comuns — soma, não substitui. Guard contra
+     colisão de nome com uma das 3 já escolhidas (raro, mas o rival empresta
+     stats de alguém do mesmo LADDER que as bandas comuns também sorteiam). */
+  if(rivalDeveAparecer()){
+    if(!st.rival)gerarRival();
+    if(st.rival&&!out.some(o=>o.f.name===st.rival.f.name))
+      out.push({f:st.rival.f,ganho:.09,rival:true});
+  }
   return out;
 }
 
@@ -4490,12 +4562,21 @@ function telaAdversario(){
      bioLutador(), o.ganho de sempre — só reorganizado. */
   opts.forEach(o=>{
     const d=dificuldade(o.f);
-    const b=el("button","opp d"+d.n,`
+    /* Modo Rival: mesma estrutura de card, só acrescenta o selo "RIVAL" e
+       troca a bio pelo histórico entre os dois — não é um lutador comum,
+       é continuidade de uma rivalidade que atravessa a carreira. */
+    const hist=o.rival&&st.rival.historico;
+    const bioOuHistorico=o.rival
+      ?(hist.length?`${hist.length+1}ª vez que se enfrentam · ${hist[hist.length-1].ganhou?"você venceu":"ele venceu"} a última, por ${hist[hist.length-1].metodo.toLowerCase()}`
+        :"1ª vez que se enfrentam")
+      :bioLutador(o.f);
+    const b=el("button","opp d"+d.n+(o.rival?" rival":""),`
+      ${o.rival?`<span class="rival-selo">RIVAL</span>`:""}
       <span class="dbanda"><b>${d.rot}</b><span class="pips">${[1,2,3,4].map(i=>`<i class="${i<=d.pips?"on":""}"></i>`).join("")}</span></span>
       <span class="vs"><span class="quem">${me.name}</span><span class="vslabel">vs</span></span>
       <span class="nm">${o.f.name}</span>
       <span class="arq">${o.f.arquetipo||"—"}</span>
-      <span class="bio">${bioLutador(o.f)}</span>
+      <span class="bio">${bioOuHistorico}</span>
       <span class="stake"><span>se vencer</span><b>+${Math.round(o.ganho*100)} ranking</b></span>`);
     b.onclick=()=>{SOM.toque();telaCamp(o);};
     g.appendChild(b);
@@ -4603,10 +4684,11 @@ function telaColetiva(escolhido,camp){
     const token=await meuAccessToken();
     /* Corta ANTES de chamar a IA — mesmo motivo do dilema: mais barato e
        não depende de a IA ter obedecido a instrução de conteúdo inseguro. */
+    const historicoRival=escolhido.rival?historicoRivalTexto():null;
     const j=conteudoInseguro(txt)?null:await ai("coletiva",{name:me.name,opp:opp.name,
       estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
       abertura,resposta:txt,record:`${st.wins}-${st.losses}`,
-      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),token});
+      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,token});
     aplicarColetiva(box,opp,txt,j,seguir);
   };
   inp.focus();
@@ -4662,7 +4744,17 @@ function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,t
     ?`Foi pros cartões contra ${opp.name} — você achou que o placar refletiu a luta?`
     :`Decisão dos juízes hoje contra ${opp.name}. Como você avalia essa luta?`),fatoObrigatorio:"decisão"};
 }
-function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra){
+/* Resume o histórico de um Rival em texto curto pro prompt — chamado tanto
+   por coletiva (telaColetiva) quanto entrevista (aqui embaixo), sempre a
+   MESMA frase pros dois, pra não inventar dois jeitos de contar a mesma
+   rivalidade. null quando não há histórico ainda (1º encontro) — o prompt
+   não recebe a chave nesse caso, não "histórico vazio". */
+function historicoRivalTexto(){
+  if(!st.rival||!st.rival.historico.length)return null;
+  const linhas=st.rival.historico.map(h=>`${h.ganhou?"você venceu":"ele venceu"} por ${h.metodo.toLowerCase()}`);
+  return `${st.rival.historico.length}º encontro entre os dois. Anteriores: ${linhas.join("; ")}.`;
+}
+function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival){
   /* Mesma trava de telaColetiva() acima — nada aparece pra quem não é
      meuPro, nem o botão, enquanto o item 6 (pagamento) não existir. */
   if(!meuPro)return;
@@ -4690,11 +4782,12 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra){
       if(!txt)return inp.focus();
       go.disabled=true;inp.disabled=true;go.textContent="…";
       const token=await meuAccessToken();
+      const historicoRival=ehRival?historicoRivalTexto():null;
       const j=conteudoInseguro(txt)?null:await ai("entrevista",{name:me.name,opp:opp.name,
         ganhou:won,metodo:r.method,round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,
         zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,pergunta,resposta:txt,
         record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
-        rendaBase:RENDA_BASE,token});
+        rendaBase:RENDA_BASE,historicoRival,token});
       aplicarEntrevista(wrap,pergunta,txt,j);
     };
   };
@@ -5695,7 +5788,7 @@ async function copiarImagem(g,btn,desenhar=desenharCard){
 const app=document.getElementById("app");
 const docmeta=document.getElementById("docmeta");
 let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
-let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,eventoRng=null,dilemaRng=null,rareUsed=null,fought=null;
+let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,eventoRng=null,dilemaRng=null,rivalRng=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=false;
 let speed=1,playing=false,playTimer=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -6093,6 +6186,14 @@ function startDraft(name){
   lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
   eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
   dilemaRng=mulberry32((SEED^0x4D1E8A63)>>>0);
+  /* Modo Rival (Plano Pro, item 4) — stream próprio, mesmo motivo de sempre:
+     escolher o rival (nome fictício + de quem emprestar os stats) nunca pode
+     tocar rng/escolhaRng/holdRng, senão um link de desafio compartilhado por
+     um Pro deixaria de reproduzir o MESMO draft/adversários pra quem abre
+     sem ser Pro. Rival é conteúdo Pro-only — só quem tem meuPro consome
+     este stream, então nunca diverge do que um viewer grátis já reproduzia
+     antes desta feature existir. */
+  rivalRng=mulberry32((SEED^0x6A09E667)>>>0);
   me={name,division:DIVISION};picks=[];
   budgetLeft=TOTAL_WEIGHT*BUDGET_PCT;
   remaining=[...PAIRS];
@@ -6354,7 +6455,7 @@ function startCareer(){
          (ver reset em finishFight()), nunca acumulam. entrevistasFeitas é
          só contador de exibição (não afeta nada), mesmo espírito de
          st.dilemas. */
-      coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0};
+      coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0,rival:null};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
@@ -6699,11 +6800,11 @@ function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
    sobreposição, mas ainda sobra o tempo de finishFight()/troca de tela
    antes do feed aparecer de verdade. Cadência de chamada intacta: só
    lutas pares ou com finish, ver testarDriverRodada() e o item 1. */
-function finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0){
+function finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0,ehRival){
   const finish0=res.method!=="Decisão";
   if(fightNo%2===0||finish0)
     prefetchFeed(res,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
-  finishFight(opp,res,titleFight,td0,tdt0);
+  finishFight(opp,res,titleFight,td0,tdt0,ehRival);
 }
 function lutar(escolhido,camp){
   escolhaAberta=false;
@@ -6721,6 +6822,7 @@ function lutar(escolhido,camp){
      consumir holdRng outra vez e discordar do que a tela mostrou. */
   const titleFight=!!st.tituloEstaLuta;
   const rounds=titleFight?5:3;
+  const ehRival=!!escolhido.rival; // Modo Rival (Plano Pro) — o card já veio marcado de candidatos()
 
   /* Driver round a round (item 3, "escolha na luta"): o que simulateFight()
      fazia por dentro numa chamada só agora roda aqui, round a round, pra
@@ -6768,7 +6870,7 @@ function lutar(escolhido,camp){
        número real de "quedas aplicadas"/"quedas sofridas" que ela promete
        citar — ver PROMPTS.entrevista em api/ai.js. */
     const td0=A.takedowns||0,tdt0=B.takedowns||0;
-    finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0);
+    finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0,ehRival);
   };
 
   let round=1,marca=0;
@@ -6853,8 +6955,12 @@ function animarTrecho(lines,aoTerminar){
   };
   step();
 }
-function finishFight(opp,r,titleFight,td0,tdt0){
+function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   playing=false;atualizarControles();
+  /* Modo Rival: registra o confronto no histórico ANTES de qualquer coisa
+     que dependa dele (entrevista, próxima aparição). Sempre st.rival aqui
+     porque ehRival só é true quando candidatos() já tinha gerado um. */
+  if(ehRival&&st.rival)st.rival.historico.push({luta:fightNo,ganhou:r.winner===me.name,metodo:r.method});
   const momentosAntes=st.momentos.length;   // pra filtrar por prioridade no fim, ver ORDEM_MOMENTO
   const won=r.winner===me.name;
   const isKO=/ocaute/.test(r.method),finish=r.method!=="Decisão";
@@ -7131,7 +7237,7 @@ function finishFight(opp,r,titleFight,td0,tdt0){
   /* Plano Pro — "zebra" da entrevista reaproveita a MESMA definição de
      upset já medida acima (won&&fightNo>=6&&diferença>.20, ver LEIA-ME
      "Card de momento") — não inventa um segundo conceito de zebra. */
-  renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,upset);
+  renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,upset,ehRival);
 
   /* dilema interativo a cada 5 lutas; nas outras, evento — um por luta
      agora (era só luta par ou com finish, throttle que existia pra poupar

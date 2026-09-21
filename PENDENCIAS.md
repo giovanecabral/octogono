@@ -1536,5 +1536,48 @@ precisar rodar de novo, é curto).
   senti" citado de volta, "controlei o ritmo" contestado com o placar
   real da luta), passa do alvo de 90% claramente.
 
-Plano Pro itens 1-3 completos, deployados, medidos. Próximo: item 4
-(Modo Rival).
+Plano Pro itens 1-3 completos, deployados, medidos.
+
+**Item 4 — Modo Rival, FEITO (2026-09-21).** Nome fictício (pool
+próprio, `RIVAL_PRIMEIRO_M/F`+`RIVAL_SOBRENOME`, escolhido por gênero
+via prefixo `w_` da divisão), stats de COMBATE emprestados de um
+lutador real da mesma divisão (rating + todos os atributos treináveis
+— mantém a dificuldade justa no motor), bio SANITIZADA (fights
+aleatório num intervalo plausível, era null, titulos zerado — nunca a
+carreira real de quem emprestou os números, mesma proteção de imagem
+que a ausência de retrato pros 1.527 reais).
+
+- **rng dedicado** (`rivalRng`, seed própria `SEED^0x6A09E667`) —
+  nunca toca rng/escolhaRng/holdRng. Medido diretamente: mesma seed,
+  rodando 10 lutas com `meuPro=false` e com `meuPro=true` (que
+  consome rivalRng nas lutas 3/7), as 3 bandas comuns saem
+  IDÊNTICAS nos dois casos — um link de desafio compartilhado por
+  quem tem Pro continua reproduzindo o mesmo draft/adversário comum
+  pra quem abre sem ser Pro.
+- **Aparece luta 3, reaparece a cada 4** (7, 11, 15, 19) até o
+  jogador vencer 1x — depois disso nunca mais nessa carreira. Nunca
+  durante luta de título/defesa. Só Pro (`meuPro`), mesma trava de
+  visibilidade do item 2 — grátis nunca vê a 4ª carta.
+- **UI**: `telaAdversario()` ganha selo "RIVAL" (moldura dourada, cor
+  de raridade já existente — sem inventar cor nova) e troca a bio
+  normal pelo histórico entre os dois ("2ª vez que se enfrentam · você
+  venceu a última, por decisão").
+- **Histórico alimenta coletiva/entrevista**: `historicoRivalTexto()`
+  monta um resumo (`"2º encontro... você venceu por decisão; ele
+  venceu por nocaute"`), os dois prompts em `api/ai.js` ganharam
+  instrução pra usar isso sem inventar encontro/vitória/método que não
+  esteja no histórico.
+- `node testar.js rival` (suíte nova, 19 asserções — cobre grátis
+  nunca vê, Pro vê na luta certa, nome fictício não bate com lutador
+  real, stats emprestados mas bio sanitizada, nunca em luta de
+  título, cadência de reaparição exata, para depois de vencer, rng
+  isolado medido, `historicoRivalTexto()`, `finishFight()` grava o
+  histórico) — genuína, ~70s pra rodar sozinha (várias chamadas de
+  `rateAll()` com 1.527 lutadores, não é suíte rápida).
+
+Não medido contra produção ainda (a voz do rival na coletiva/
+entrevista usa o MESMO prompt já medido no item 3, só com um campo a
+mais no contexto — não é um `kind` novo, não abre uma superfície nova
+de risco que precise de 20 chamadas dedicadas; se quiser medir mesmo
+assim, é rodar `medir_pro.js` de novo depois de uma carreira Pro que
+chegue no rival).

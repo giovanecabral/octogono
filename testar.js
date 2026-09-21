@@ -4781,6 +4781,201 @@ function testarColetivaEntrevista() {
 }
 
 /* ================================================================== *
+ * 8a3. PLANO PRO — Modo Rival: nome fictício, stats emprestados, cedo
+ *      na carreira, reaparece a cada 4 lutas até vencer 1x, histórico
+ *      alimenta coletiva/entrevista, rivalRng NUNCA desloca rng/
+ *      escolhaRng (senão um desafio compartilhado por Pro deixaria de
+ *      reproduzir o mesmo draft/adversário pra quem abre sem ser Pro).
+ * ================================================================== */
+function testarModoRival() {
+  console.log("\n" + cinza("Plano Pro: Modo Rival — nome fictício, elegibilidade, histórico, rng isolado"));
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  const F = lerLutadores();
+
+  const corpo = `
+;globalThis.__result=(async function(){
+  const passos=[];
+  const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
+  try{
+    function montarCarreira(divisao,seed){
+      ROSTER=rateAll(${JSON.stringify(F)});
+      CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      DIVISION=divisao; MODO="normal";
+      POOL=poolDivisao(DIVISION);
+      PCT=makePercentiler(POOL);
+      LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);
+      RANKING=buildRanking(POOL);
+      SEED=seed;
+      rng=mulberry32(SEED); holdRng=mulberry32((SEED^0x9E3779B9)>>>0);
+      fraseRng=mulberry32((SEED^0x1234ABCD)>>>0);
+      escolhaRng=mulberry32((SEED^0x5F3A9C21)>>>0);
+      lesaoRng=mulberry32((SEED^0x7C3E1A55)>>>0);
+      eventoRng=mulberry32((SEED^0x2B8D4F17)>>>0);
+      dilemaRng=mulberry32((SEED^0x4D1E8A63)>>>0);
+      rivalRng=mulberry32((SEED^0x6A09E667)>>>0);
+      me={name:"TesteBot",division:DIVISION,slpm:5,strAcc:.45,strDef:.55,
+          tdAvg:2,tdAcc:.4,tdDef:.6,subAvg:.5,kdAvg:.4,durability:1,sapm:3.2};
+      me.__base={}; ATTR_TREINAVEIS.forEach(a=>{if(me[a]!=null)me.__base[a]=me[a];});
+      fought=new Set();rareUsed=new Set();
+      fightNo=0;
+      /* Fixture COMPLETA, não a mínima que candidatos() sozinho pediria —
+         finishFight() é chamado direto mais abaixo (pra testar o registro
+         no histórico) e toca dezenas de campos de st; faltar um deles
+         quebra com "undefined" no meio do teste, não no motor de verdade. */
+      st={treino:{},eventoMod:{},campHist:{},wins:0,losses:0,finishes:0,streakW:0,streakL:0,
+          bestBeaten:0,bestWin:null,title:false,tituloEstaLuta:false,standing:.5,peak:.5,
+          events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,fan:5,followers:2400,
+          peakFollowers:2400,longestW:0,lostBeltFast:false,rares:[],momentos:[],
+          disputaLiberada:false,disputaRecusas:0,defesas:0,exCampeao:null,foiCampeao:false,
+          lesao:null,desafianteIdx:1,bonusNoite:null,vezesCampeao:0,subLosses:0,
+          evitouAlgumaVez:false,dinheiro:0,treinadorComprado:false,estreouMainCard:false,
+          longestL:0,foiCinturaoInterino:false,perdeuCinturaoPorNocaute:false,
+          maxDisputaRecusas:0,tituloPorDecisao:false,coletivaHype:1,coletivaPressao:null,
+          entrevistasFeitas:0,rival:null};
+    }
+
+    /* ---------- grátis: candidatos() nunca ganha a 4ª carta ---------- */
+    montarCarreira("lightweight",111);
+    meuPro=false;
+    fightNo=2; // próxima luta = 3, elegível SE fosse Pro
+    const optsGratis=candidatos();
+    passo("grátis: candidatos() devolve só as 3 bandas comuns, nunca o rival",
+      optsGratis.length===3 && optsGratis.every(o=>!o.rival));
+    passo("grátis: st.rival nunca é criado", st.rival===null);
+
+    /* ---------- Pro: 4ª carta aparece exatamente na luta 3 ---------- */
+    montarCarreira("lightweight",111);
+    meuPro=true;
+    fightNo=1; // próxima luta = 2, ainda não é a hora
+    passo("Pro, luta 2: rival NÃO aparece ainda (só a partir da luta 3)",
+      candidatos().length===3);
+    fightNo=2; // próxima luta = 3
+    const opts3=candidatos();
+    const rivalCard=opts3.find(o=>o.rival);
+    passo("Pro, luta 3: candidatos() devolve 4 (3 comuns + rival)", opts3.length===4);
+    passo("Pro, luta 3: exatamente 1 marcado rival:true", opts3.filter(o=>o.rival).length===1);
+    passo("Pro, luta 3: st.rival foi criado (gerarRival() rodou por dentro)", !!st.rival);
+
+    /* ---------- nome fictício, nunca um lutador real ---------- */
+    const nomesReais=new Set(LADDER.map(f=>f.name));
+    passo("nome do rival NÃO é nenhum lutador real da divisão",
+      !nomesReais.has(st.rival.nome));
+    passo("card do rival usa o MESMO nome fictício (não o nome de quem emprestou stats)",
+      rivalCard.f.name===st.rival.nome);
+
+    /* ---------- stats de combate emprestados, bio sanitizada ---------- */
+    const emprestou=LADDER.some(f=>f.rating===st.rival.f.rating&&f.slpm===st.rival.f.slpm);
+    passo("rating/slpm do rival batem com ALGUM lutador real (stats de combate emprestados)",
+      emprestou);
+    const doadorComBio=LADDER.find(f=>f.rating===st.rival.f.rating&&f.slpm===st.rival.f.slpm&&f.fights);
+    passo("bio (fights) do rival NÃO é a bio real de quem emprestou os stats (sanitizada)",
+      !doadorComBio||st.rival.f.fights!==doadorComBio.fights);
+    passo("era do rival é null (sem linha do tempo de carreira real vazando)",
+      st.rival.f.era===null);
+    passo("titulos do rival são zerados (sem histórico de cinturão real vazando)",
+      st.rival.f.titulos.disputas===0&&st.rival.f.titulos.vitorias===0);
+
+    /* ---------- nunca durante luta de título ---------- */
+    montarCarreira("lightweight",111);
+    meuPro=true; fightNo=2; st.tituloEstaLuta=true;
+    RANKING.campeao=LADDER[LADDER.length-1];
+    passo("luta de título: candidatos() devolve só a carta travada, nunca o rival",
+      candidatos().length===1&&!candidatos()[0].rival);
+
+    /* ---------- reaparição: a cada 4 lutas, para depois de vencer ---------- */
+    montarCarreira("lightweight",112);
+    meuPro=true;
+    const apareceuEm=[];
+    for(let f=1;f<=20;f++){
+      fightNo=f-1; // candidatos() olha fightNo+1 como "próxima luta"
+      const opts=candidatos();
+      if(opts.some(o=>o.rival))apareceuEm.push(f);
+    }
+    passo("reaparece nas lutas 3, 7, 11, 15, 19 (a cada 4, nunca vencido nesta simulação)",
+      JSON.stringify(apareceuEm)===JSON.stringify([3,7,11,15,19]));
+
+    // agora simula uma vitória na luta 7 e confere que ele PARA de reaparecer
+    montarCarreira("lightweight",112);
+    meuPro=true;
+    fightNo=2; candidatos(); // gera o rival na luta 3
+    st.rival.historico.push({luta:3,ganhou:false,metodo:"Decisão"});
+    st.rival.historico.push({luta:7,ganhou:true,metodo:"Nocaute"}); // venceu na luta 7
+    const apareceuDepois=[];
+    for(let f=8;f<=20;f++){
+      fightNo=f-1;
+      if(candidatos().some(o=>o.rival))apareceuDepois.push(f);
+    }
+    passo("depois de vencer o rival 1x, ele NUNCA MAIS aparece na mesma carreira",
+      apareceuDepois.length===0);
+
+    /* ---------- rivalRng nunca desloca rng/escolhaRng (link de desafio) ---------- */
+    montarCarreira("lightweight",222);
+    meuPro=false;
+    const semRival=[];
+    for(let f=1;f<=10;f++){fightNo=f-1;semRival.push(candidatos().map(o=>o.f.name).join(","));}
+
+    montarCarreira("lightweight",222); // MESMA seed
+    meuPro=true; // desta vez consome rivalRng nas lutas 3/7
+    const comRival=[];
+    for(let f=1;f<=10;f++){
+      fightNo=f-1;
+      const opts=candidatos();
+      comRival.push(opts.filter(o=>!o.rival).map(o=>o.f.name).join(","));
+    }
+    passo("rivalRng NUNCA desloca as 3 bandas comuns (mesma seed, com/sem Pro dão o MESMO adversário comum)",
+      JSON.stringify(semRival)===JSON.stringify(comRival));
+
+    /* ---------- historicoRivalTexto() ---------- */
+    montarCarreira("lightweight",111);
+    st.rival={nome:"Renan Duarte",f:{},historico:[]};
+    passo("historicoRivalTexto(): null no 1º encontro (sem histórico ainda)",
+      historicoRivalTexto()===null);
+    st.rival.historico.push({luta:3,ganhou:true,metodo:"Decisão"});
+    passo("historicoRivalTexto(): resume o encontro anterior",
+      historicoRivalTexto().includes("você venceu")&&historicoRivalTexto().includes("decisão"));
+    st.rival.historico.push({luta:7,ganhou:false,metodo:"Nocaute"});
+    passo("historicoRivalTexto(): acumula os dois encontros, na ordem",
+      /você venceu.*ele venceu/.test(historicoRivalTexto()));
+
+    /* ---------- finishFight() grava no histórico quando ehRival ---------- */
+    montarCarreira("lightweight",111);
+    meuPro=true;
+    fightNo=2; candidatos(); // cria st.rival
+    const nomeRivalCriado=st.rival.nome;
+    fightNo=2; // finishFight() incrementa por fora, aqui simulamos fightNo já setado como a luta 3
+    const resFake={winner:"TesteBot",loser:nomeRivalCriado,method:"Finalização",round:2,clock:"1:30",
+      cards:null,log:[],knockdowns:{"TesteBot":0,[nomeRivalCriado]:0}};
+    fightNo=3;
+    finishFight({name:nomeRivalCriado,rating:.5},resFake,false,0,0,true);
+    passo("finishFight(ehRival=true) grava {luta,ganhou,metodo} no histórico",
+      st.rival.historico.length===1&&st.rival.historico[0].luta===3&&
+      st.rival.historico[0].ganhou===true&&st.rival.historico[0].metodo==="Finalização");
+  }catch(e){
+    passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
+  }
+  return passos;
+})();
+`;
+
+  try {
+    vm.runInContext(lerScript() + corpo, env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("  o cenário nem rodou: " + e.message) + "\n" +
+      cinza(e.stack.split("\n").slice(1, 3).join("\n")));
+    return false;
+  }
+  return env.sandbox.__result.then((passos) => {
+    let ok = true;
+    for (const p of passos) {
+      if (!p.ok) ok = false;
+      console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
+    }
+    return ok && passos.length > 0;
+  });
+}
+
+/* ================================================================== *
  * 8b. EVENTO POR IA — RESULTADO_LUTA não se aplica aqui (de propósito,
  *     ver dispararEventoIA()), CONTEUDO_INSEGURO continua, e a
  *     retentativa única de JSON malformado funciona. `ai` é sobrescrito
@@ -5563,6 +5758,7 @@ try {
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "pro") ok = await testarColetivaEntrevista();
+  else if (cmd === "rival") ok = await testarModoRival();
   else if (cmd === "desafio") ok = testarDesafio(div || "lightweight");
   else if (cmd === "escolhas") ok = testarEscolhas(div || "lightweight");
   else if (cmd === "treino") ok = testarTreino(div || "lightweight");
@@ -5609,6 +5805,7 @@ try {
         ["conteudo", () => testarConteudoInseguro()],
         ["aivivo", () => testarAiVivo()],
         ["pro", () => testarColetivaEntrevista()],
+        ["rival", () => testarModoRival()],
         ["momentos", () => testarMomentos()],
         ["conquistas", () => testarConquistas()],
         ["escolhaluta", () => testarEscolhaLuta()],
@@ -5650,7 +5847,7 @@ try {
         : vermelho(`ALGO SAIU DA FAIXA — reprovou: ${falhas.join(", ")}`)) + "\n");
     }
   } else {
-    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|pro|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
+    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|pro|rival|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
     process.exit(0);
   }
 } catch (e) {
