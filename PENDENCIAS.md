@@ -1441,4 +1441,65 @@ completo: `TUDO CERTO`.
 Env vars novas na Vercel quando chegar a hora (nunca no código,
 pedido explícito): `SUPABASE_SERVICE_ROLE_KEY`, `ASAAS_API_KEY`,
 `ASAAS_WEBHOOK_TOKEN`, `TERMOS_PUBLICADOS`. Item 2 não precisou de
-nenhuma — confirmar com o usuário antes de seguir pro item 3.
+nenhuma.
+
+**Atualização 2026-09-21, segunda passada — antes do deploy do item 2,
+o usuário pediu 3 coisas: esconder Pro de todo mundo até o pagamento
+existir, investigar `narracao` (que ele lembrava de ter mandado
+consertar antes) e explicar por que `node testar.js` completo dizia
+"TUDO CERTO" com `conteudo`/`narracao` reprovando.**
+
+**`node testar.js` ("tudo") só rodava interface+motor+draft.** As
+outras 33 suítes nomeadas (`conteudo`, `narracao`, `aivivo`, `pro`,
+`dilema`, etc.) só rodavam se chamadas por nome — "TUDO CERTO" nunca
+quis dizer "tudo", só essas 6. Reescrito: roda as 36 categorias
+dispatcháveis (mesma lista do `else if` no fim de `testar.js`),
+reprova se qualquer uma reprovar, lista os nomes que reprovaram no
+resultado final. `CLAUDE.md` atualizado — não é mais "~40s", é
+"~25min completo" (medido: 24min33s), a maioria das suítes é rápida
+mas `freqconquistas` (150 carreiras inteiras), `frequencia` (30),
+`gapescolha` (3000 pares) e `motor`/`drivermotor` (6000 lutas cada)
+são pesadas de verdade — rodar em background, não esperar no
+terminal.
+
+**`narracao` (31/63 decisões sem linha ao vivo) — investigado com
+instrumentação de verdade (console.log direto no motor, não só
+leitura de código), não só teoria.** Resposta pro usuário: **nunca
+foi consertado por inteiro, nunca voltou — o motor sempre esteve
+certo, o TESTE contava errado.** O conserto do "vencedor" que ele
+lembrava (`trechoFinal` em `lutar()`, comentário "luta que vai aos
+cartões terminava sem nenhuma linha de resultado") está correto e
+nunca regrediu — reproduzido isolado, `round`/`marca`/`trechoFinal`
+batem exatos pra toda decisão real. O bug real: `abrirDilema()`
+também anexa seu painel em `#bouts` (o mesmo container da linha de
+resultado), e esse painel tem `<div class="dil-eyebrow">Decisão</div>`
+como RÓTULO FIXO da seção — nada a ver com o método da luta. O teste
+antigo contava QUALQUER coisa em `#bouts` com a palavra "Decisão",
+somando linha de resultado real + painel de dilema. 4 dilemas/carreira
+× 8 carreiras = 32 falsos positivos — 63 registrados − 32 = 31, batendo
+exato com o que a narração ao vivo já mostrava certo. Corrigido:
+`boutsLinhas` agora preserva `className`, e a contagem filtra por
+`.split(" ").includes("bout")` antes de testar o texto (nunca
+`n.className==="x"`, mesma regra de sempre) — `node testar.js
+narracao` agora dá 31/31.
+
+**`frequencia` (achado de bônus, não pedido — apareceu rodando o
+exaustivo): 18/30 carreiras crashavam com "lesaoRng is not a
+function".** Faltava inicializar `lesaoRng`/`eventoRng` no setup do
+teste — a suíte irmã (`freqconquistas`) já tinha essas duas linhas,
+`frequencia` nunca ganhou. Sem relação com Plano Pro, pré-existente,
+corrigido no mesmo commit por estar bem ao lado.
+
+**Esconde Pro de todo mundo (pedido explícito antes do deploy)**:
+`telaColetiva()`/`renderBotaoEntrevista()` ganharam `if(!meuPro)` logo
+no topo — sem isso, nada mais roda, nem a vitrine. Hoje só a conta do
+usuário tem `pro=true` no banco, então isso já esconde de qualquer
+outra pessoa em produção sem precisar de flag nova nenhuma. O código
+de vitrine (`abrirOfertaPro`) continua no arquivo, só fica
+inalcançável — reverter quando o item 6 (pagamento) estiver pronto e
+fizer sentido oferecer o plano pra quem visita.
+
+`node testar.js` completo: **TUDO CERTO**, 36 categorias, ~25min.
+Commit `fd3ec28`, já no ar (GitHub). Próximo passo: deploy na Vercel
+(`api/ai.js` mudou no item 2, nunca foi publicado ainda) e então a
+medição do item 3.
