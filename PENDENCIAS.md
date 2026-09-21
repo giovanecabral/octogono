@@ -1581,3 +1581,27 @@ mais no contexto — não é um `kind` novo, não abre uma superfície nova
 de risco que precise de 20 chamadas dedicadas; se quiser medir mesmo
 assim, é rodar `medir_pro.js` de novo depois de uma carreira Pro que
 chegue no rival).
+
+**Item 5 — Cards Pro, FEITO (2026-09-21).** Opção A do plano (contorno
+duplo + canto cortado), compartilhada entre `desenharCard()` (fim de
+carreira) e `desenharCardMomento()` — um desenho só
+(`fundoCard()`/`seloProCanvas()`), não dois inventados. Canto cortado
+34px, régua dupla em `C.gold` (mesma cor de raridade das conquistas,
+nenhuma cor nova) — externa na borda cortada, interna recuada — e selo
+de octógono sólido no rodapé, canto oposto ao `octogono.fun` (que
+sempre fica à direita). Sem escrever "PRO" em letra nenhuma. Card
+grátis pixel a pixel igual a antes — só entra quando `meuPro===true`
+no momento de gerar o card.
+
+**Sem cobertura automatizada possível**: Canvas 2D não existe no
+harness headless (`getContext` devolve `null` nos testes — é por isso
+que `testarCompartilhar()` já usava `desenharFake()`, não o desenho de
+verdade). Verificado visualmente no navegador, contra produção
+deployada, com a conta Pro de verdade logada (não forjei `meuPro`,
+`atualizarStatusPro()` resolveu `true` sozinho a partir da sessão
+real): canto cortado + contorno duplo + selo aparecem certo quando
+Pro, e o card grátis (mesma chamada, `meuPro=false`) sai idêntico ao
+de sempre, canto reto, sem contorno.
+
+Restam os itens 6 (Pagamento, botão desligado até Termos ganharem
+seção de pagamento).
