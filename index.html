@@ -5237,16 +5237,59 @@ function quebrar(ctx,txt,max){
   return linhas;
 }
 
+/* Plano Pro (item 5) — acabamento do card, opção A do plano aprovado:
+   contorno duplo + canto cortado. Reconhecível de relance, SEM escrever
+   "PRO" em letra grande — moldura, selo, na paleta que já existe (C.gold,
+   mesma cor de raridade das conquistas), nunca gradiente/brilho/cor nova.
+   Card grátis continua pixel a pixel igual a antes; só entra quando
+   meuPro é true no momento de gerar o card (é o próprio card que vira
+   propaganda do plano quando compartilhado, não precisa de texto dizendo
+   isso). Compartilhado pelos dois cards (fim de carreira e momento) —
+   um único desenho, não dois inventados. */
+const CORTE_CANTO_PRO=34;
+function fundoCard(x,w,h,pro){
+  x.save();
+  x.beginPath();
+  if(pro){
+    x.moveTo(CORTE_CANTO_PRO,0);x.lineTo(w,0);x.lineTo(w,h);x.lineTo(0,h);
+    x.lineTo(0,CORTE_CANTO_PRO);x.closePath();
+  }else x.rect(0,0,w,h);
+  x.fillStyle=C.stock;x.fill();
+  x.clip();                                    // textura de papel nunca vaza pro canto cortado
+  x.fillStyle="rgba(255,255,255,.014)";
+  for(let y=0;y<h;y+=3)x.fillRect(0,y,w,1);
+  x.restore();
+  if(!pro)return;
+  x.strokeStyle=C.gold;x.lineWidth=2;
+  x.beginPath();
+  x.moveTo(CORTE_CANTO_PRO,0);x.lineTo(w,0);x.lineTo(w,h);x.lineTo(0,h);
+  x.lineTo(0,CORTE_CANTO_PRO);x.closePath();x.stroke();
+  const o=14;                                   // régua interna, recuada — o "duplo" do contorno
+  x.beginPath();
+  x.moveTo(CORTE_CANTO_PRO+o,o);x.lineTo(w-o,o);x.lineTo(w-o,h-o);x.lineTo(o,h-o);
+  x.lineTo(o,CORTE_CANTO_PRO+o);x.closePath();x.stroke();
+}
+/* Selo: octógono sólido, do tamanho de uma inicial — glifo, nunca texto
+   "PRO". Fica no canto oposto ao rodapé octogono.fun (que é sempre
+   alinhado à direita), pra não competir com ele. */
+function seloProCanvas(x,cx,cy,r){
+  x.save();x.translate(cx,cy);
+  x.beginPath();
+  for(let i=0;i<8;i++){
+    const ang=Math.PI/8+i*Math.PI/4,px=Math.cos(ang)*r,py=Math.sin(ang)*r;
+    i===0?x.moveTo(px,py):x.lineTo(px,py);
+  }
+  x.closePath();x.fillStyle=C.gold;x.fill();
+  x.restore();
+}
+
 async function desenharCard(g){
   const cv=document.createElement("canvas");
   cv.width=CARD_W;cv.height=CARD_H;
   const x=cv.getContext("2d");
   const M=72;                                    // margem
 
-  x.fillStyle=C.stock;x.fillRect(0,0,CARD_W,CARD_H);
-  // textura de papel: mesmas linhas horizontais da página
-  x.fillStyle="rgba(255,255,255,.014)";
-  for(let y=0;y<CARD_H;y+=3)x.fillRect(0,y,CARD_W,1);
+  fundoCard(x,CARD_W,CARD_H,meuPro);            // fundo + textura + acabamento Pro (se meuPro)
 
   const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
   const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
@@ -5338,6 +5381,7 @@ async function desenharCard(g){
   x.fillStyle=C.faded;x.font=mono(19,400);
   x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
   x.textAlign="left";
+  if(meuPro)seloProCanvas(x,M+9,yf+68,11);      // canto oposto ao domínio, que é sempre à direita
   return cv;
 }
 
@@ -5429,9 +5473,7 @@ async function desenharCardMomento(m){
   const CARD_H_M=Math.max(1060,yFrase+lsFrase.length*42+50+86+M);
   cv.width=CARD_W;cv.height=CARD_H_M;      // reseta o canvas pro tamanho final (limpa o contexto, nada foi desenhado ainda)
 
-  x.fillStyle=C.stock;x.fillRect(0,0,CARD_W,CARD_H_M);
-  x.fillStyle="rgba(255,255,255,.014)";
-  for(let y=0;y<CARD_H_M;y+=3)x.fillRect(0,y,CARD_W,1);
+  fundoCard(x,CARD_W,CARD_H_M,meuPro);
 
   const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
 
@@ -5531,6 +5573,7 @@ async function desenharCardMomento(m){
   x.fillStyle=C.faded;x.font=mono(19,400);
   x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
   x.textAlign="left";
+  if(meuPro)seloProCanvas(x,M+9,yf+68,11);      // canto oposto ao domínio, que é sempre à direita
   return cv;
 }
 
