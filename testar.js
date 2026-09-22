@@ -145,7 +145,8 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     vm.runInContext(exportar(lerScript(), ["ready", "screenName", "screenReport", "DIVISOES"])
       + "\ntry{globalThis.__x.ranking=()=>RANKING;}catch(e){}"
       + "\ntry{globalThis.__x.st=()=>st;}catch(e){}"
-      + "\ntry{globalThis.__x.escolhaAberta=()=>escolhaAberta;}catch(e){}",
+      + "\ntry{globalThis.__x.escolhaAberta=()=>escolhaAberta;}catch(e){}"
+      + "\ntry{globalThis.__x.setMeuPro=(v)=>{meuPro=v;};}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
     console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
@@ -163,12 +164,12 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   };
 
   await passo("carregar e avaliar lutadores", () => UI.ready(lerLutadores()));
-  await passo("tela inicial: 4 itens de menu, clica Jogar (sem link de desafio, cai aqui de verdade)", () => {
+  await passo("tela inicial: 5 itens de menu, clica Jogar (sem link de desafio, cai aqui de verdade)", () => {
     // "Jogar" (o 1º) ganhou uma 2ª classe (inicio-item-principal) pra ter
     // peso visual de ação primária — token, não igualdade exata, senão
     // esse item some da contagem.
     const itens = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-item"));
-    if (itens.length !== 4) throw new Error(`esperava 4 itens no menu, achei ${itens.length}`);
+    if (itens.length !== 5) throw new Error(`esperava 5 itens no menu, achei ${itens.length}`);
     const titulo = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-titulo")).pop();
     if (!titulo || titulo.innerHTML !== "OCTÓGONO") throw new Error("título da tela inicial não é OCTÓGONO");
     itens[0].onclick(); // "Jogar" -> screenName()
@@ -221,6 +222,19 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     if (modo === "lenda") {
       const bt = env.registro.modo_lenda;
       if (!bt || !bt.onclick) throw new Error("não achei o botão do modo lenda");
+      /* item 1 do pedido pós-item-6 (2026-09-22): "Seja uma lenda" trava
+         sem meuPro — clique normal não muda MODO, só mostra a nota de
+         "recurso Pro" (ver screenDivisao() em index.html). Confere a
+         trava de verdade (grátis não entra) ANTES de simular sessão Pro
+         pro resto deste teste de navegação. */
+      bt.onclick();
+      const grid1 = env.todos.slice(marca).filter(n => (n.className || "").startsWith("div-c") && n.onclick);
+      if (grid1.some(c => /lendas/.test(c.innerHTML || "")))
+        throw new Error("clicar 'Seja uma lenda' sem meuPro entrou no modo mesmo assim");
+      const nota = env.todos.filter(n => (n.className || "").split(" ").includes("modo-nota")).pop();
+      if (!nota || !/Plano Pro/.test(nota.innerHTML || ""))
+        throw new Error("clicar 'Seja uma lenda' sem meuPro não mostrou a nota de recurso Pro");
+      UI.setMeuPro(true);
       marca = env.todos.length;
       bt.onclick();
     }
@@ -230,8 +244,18 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        lendas e saem de propósito, sobram 7. */
     const min = modo === "lenda" ? 6 : 8;
     if (divs.length < min) throw new Error(`só ${divs.length} divisões jogáveis, esperava ao menos ${min}`);
-    marca = env.todos.length;          // marca ANTES do clique: é ele que monta o draft
     divs[divEscolhida % divs.length].onclick();
+  });
+
+  /* item 4 do Plano Pro (2026-09-22): escolher divisão agora abre
+     screenAtivarRival() antes do draft — "Não" já nasce marcado, só
+     precisa clicar "Continuar" pra seguir sem rival (o caminho "Sim"
+     tem suíte própria, ver testarModoRival()). */
+  await passo("Modo Rival: tela de ativação abre, 'Continuar' sem escolher nada segue sem rival", () => {
+    const continuar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Continuar").pop();
+    if (!continuar || !continuar.onclick) throw new Error("botão 'Continuar' da tela de ativar Rival não foi montado");
+    marca = env.todos.length;          // marca ANTES do clique: é ele que monta o draft
+    continuar.onclick();
   });
 
   /* Item 3 ("Rolar novamente"): existe, funciona uma vez, desabilita de
@@ -347,15 +371,17 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     const camps = env.todos.slice(m2).filter(n2 => (n2.className || "").split(" ").includes("camp") && n2.onclick);
     if (camps.length < 3) throw new Error(`esperava ao menos 3 camps, vieram ${camps.length}`);
     camps[n % 3].onclick();
-    /* Plano Pro (2026-09-21): telaColetiva() existe entre camp e a luta em
-       si, mas fica atrás de meuPro (trava temporária, pedida antes do
-       deploy do item 2 — nada de Pro aparece pra ninguém além da conta do
-       usuário até o pagamento, item 6, existir de verdade). Sem sessão de
-       conta no ambiente de teste, meuPro é sempre false — telaColetiva()
-       pula direto pra lutar(), igual o clique de camp já fazia antes
-       desta leva, sem tela nenhuma no meio. O caminho Pro de verdade
-       (meuPro=true, provocar, aplicarColetiva) tem suíte própria — ver
+    /* Plano Pro (2026-09-22, item 5): telaColetiva() é vitrine agora —
+       aparece pra TODO MUNDO, meuPro ou não (a trava que pulava direto
+       pra lutar() foi removida de propósito, ver comentário em
+       index.html acima de telaColetiva()). Sem sessão de conta no
+       ambiente de teste, meuPro é sempre false — "Pular" é o caminho de
+       quem não quer engajar, sem chamar IA nem abrir oferta. O caminho
+       Pro de verdade (meuPro=true, provocar, aplicarColetiva) e a
+       oferta pro grátis (abrirOfertaPro) têm suíte própria — ver
        testarColetivaEntrevista(). */
+    const colPular = env.registro.colpular;
+    if (colPular) colPular.onclick();
     env.drenar(); await respirar(); env.drenar();     // narração + dilema assíncrono
 
     /* item 3: escolha na luta, uma vez por luta (só quando o round 1 não
@@ -3386,6 +3412,7 @@ function testarTelaInicial() {
 
   const chamadasAuth = [];
   let sessaoFalsa = null;
+  let assinaturaFalsa = null;
   let callbackAuthState = null;
   const supabaseFalso = {
     createClient: () => ({
@@ -3417,9 +3444,25 @@ function testarTelaInicial() {
         },
         onAuthStateChange: (cb) => { callbackAuthState = cb; },
       },
-      from: () => ({
+      /* assinaturaFalsa (2026-09-22, item 2/3): null = nunca pagou;
+         {pro,expira_em} = linha real de assinaturas. eq() precisa ser
+         tanto awaitable direto (uso de sempre, ex. conquistas_usuario:
+         `await sb.from(...).select(...).eq(...)`, espera {data:[...]})
+         QUANTO aceitar .maybeSingle() encadeado (uso novo do Plano Pro:
+         `.select("pro,expira_em").eq("user_id",id).maybeSingle()`) —
+         um objeto thenable com os dois, não uma Promise pura. */
+      from: (tabela) => ({
         upsert: async () => ({ data: [], error: null }),
-        select: () => ({ eq: async () => ({ data: [], error: null }) }),
+        select: () => ({
+          eq: () => {
+            const linhas = tabela === "assinaturas" ? (assinaturaFalsa ? [assinaturaFalsa] : []) : [];
+            const resultado = { data: linhas, error: null };
+            return {
+              then: (resolve) => resolve(resultado),
+              maybeSingle: async () => ({ data: linhas[0] || null, error: null }),
+            };
+          },
+        }),
       }),
     }),
   };
@@ -3435,7 +3478,7 @@ function testarTelaInicial() {
   try {
     vm.runInContext(exportar(lerScript(),
       ["ready", "screenInicio", "screenName", "screenConta", "screenHistorico",
-        "screenTermos", "screenPrivacidade", "abrirConfig", "salvarCarreiraLocal",
+        "screenTermos", "screenPrivacidade", "screenPlanoPro", "abrirConfig", "salvarCarreiraLocal",
         "SENHA_MIN", "traduzErroSupabase"])
       + "\ntry{globalThis.__x.cfgAberto=()=>cfgAberto;}catch(e){}",
       env.sandbox, { filename: "index.html" });
@@ -3459,7 +3502,7 @@ function testarTelaInicial() {
     await passo("carregar lutadores", () => UI.ready(lerLutadores()));
     await passo("Opções: clica no item do menu, abre o overlay de config", () => {
       const itens = marcado("inicio-item");
-      if (itens.length !== 4) throw new Error(`esperava 4 itens, achei ${itens.length}`);
+      if (itens.length !== 5) throw new Error(`esperava 5 itens, achei ${itens.length}`);
       itens[1].onclick(); // "Opções"
       if (!UI.cfgAberto()) throw new Error("abrirConfig() não marcou cfgAberto");
     });
@@ -3708,6 +3751,75 @@ function testarTelaInicial() {
       UI.screenPrivacidade();
       const privacidade = ultimoTexto("pagina-legal");
       if (termos === privacidade) throw new Error("as duas páginas voltaram texto idêntico");
+    });
+
+    /* ---------- Plano Pro: item 2/3 (2026-09-22) ---------- */
+    sessaoFalsa = null; // reseta explícito — o login de teste mais acima deixou sessão ativa
+    await passo("Plano Pro: menu ganhou o 5º item, clicando abre a tela dedicada", () => {
+      UI.screenInicio();
+      // marcado() acumula de TODOS os screenInicio() já rodados neste teste
+      // (env.todos nunca reseta) — os 5 últimos são os desta renderização.
+      const itens = marcado("inicio-item").slice(-5);
+      if (itens.length !== 5) throw new Error(`esperava 5 itens no menu, achei ${itens.length}`);
+      itens[4].onclick(); // "Plano Pro"
+      const eyebrow = ultimoTexto("eyebrow");
+      if (eyebrow !== "Plano Pro") throw new Error("clicar no item não abriu a tela Plano Pro: " + eyebrow);
+    });
+    await passo("Plano Pro: mostra os 5 benefícios (Modo Rival incluído) e o carrossel começa em GRÁTIS", () => {
+      const beneficios = marcado("pro-beneficio");
+      if (beneficios.length !== 5) throw new Error(`esperava 5 benefícios, achei ${beneficios.length}`);
+      if (!beneficios.some(b => (b.innerHTML || "").includes("Modo Rival")))
+        throw new Error("Modo Rival não apareceu na lista de benefícios");
+      // pro-carrossel-legenda usa .textContent= (texto puro, sem risco de
+      // XSS), não .innerHTML — o DOM falso não deriva um do outro, então
+      // ultimoTexto() (que lê innerHTML) não serve aqui.
+      const legenda = marcado("pro-carrossel-legenda").pop();
+      if (!legenda || !/^GR.TIS/.test(legenda.textContent || ""))
+        throw new Error("carrossel não começou em GRÁTIS: " + (legenda && legenda.textContent));
+    });
+    await passo("Plano Pro: seta do carrossel troca a legenda pra PRO", () => {
+      const setas = marcado("pro-carrossel-seta");
+      if (setas.length !== 2) throw new Error(`esperava 2 setas, achei ${setas.length}`);
+      setas[1].onclick();
+      const legenda = marcado("pro-carrossel-legenda").pop();
+      if (!legenda || !/^PRO/.test(legenda.textContent || ""))
+        throw new Error("seta não trocou pra PRO: " + (legenda && legenda.textContent));
+    });
+    const aceitesAntesDeLogar = marcado("aceite-pro").length;
+    await passo("Plano Pro sem sessão: pede conta em vez do formulário de pagar", () => {
+      sessaoFalsa = null;
+      UI.screenPlanoPro();
+    });
+    await passo("Plano Pro sem sessão: mensagem de 'exige conta' aparece, sem CPF nenhum", () => {
+      if (!ultimoTexto("hint") || !/Assinar exige uma conta/.test(ultimoTexto("hint")))
+        throw new Error("mensagem de 'exige conta' não apareceu sem sessão: " + ultimoTexto("hint"));
+      if (marcado("aceite-pro").length !== aceitesAntesDeLogar)
+        throw new Error("formulário de pagamento não deveria aparecer sem sessão");
+    });
+    await passo("Plano Pro logado, não-Pro: dispara o formulário de pagamento", () => {
+      sessaoFalsa = { user: { id: "u1", email: "pro@teste.com" }, access_token: "tok123" };
+      assinaturaFalsa = null;
+      UI.screenPlanoPro();
+    });
+    await passo("Plano Pro logado, não-Pro: CPF + aceite + 'Confirmar pagamento' aparecem", () => {
+      if (marcado("aceite-pro").length !== aceitesAntesDeLogar + 1)
+        throw new Error("formulário de aceite não apareceu com sessão ativa");
+      if (!env.todos.some(n => n.tagName === "button" && /Confirmar pagamento — R\$9,99/.test(n.innerHTML || "")))
+        throw new Error("botão 'Confirmar pagamento' não apareceu");
+    });
+    await passo("Conta, não-Pro: dispara o resumo", () => { UI.screenConta(); });
+    await passo("Conta, não-Pro: mostra link 'Ver Plano Pro →', não o formulário inteiro", () => {
+      const link = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Ver Plano Pro →").pop();
+      if (!link) throw new Error("link 'Ver Plano Pro →' não apareceu na Conta pra quem não é Pro");
+    });
+    await passo("Conta, Pro ativo: dispara o resumo", () => {
+      assinaturaFalsa = { pro: true, expira_em: "2099-01-01T00:00:00.000Z" };
+      UI.screenConta();
+    });
+    await passo("Conta, Pro ativo: mostra 'PLANO PRO ATIVO' em vez do link", () => {
+      const linha = marcado("pro-ativo-linha").pop();
+      if (!linha || linha.innerHTML !== "PLANO PRO ATIVO")
+        throw new Error("linha 'PLANO PRO ATIVO' não apareceu: " + (linha && linha.innerHTML));
     });
 
     let ok = true;
@@ -4662,24 +4774,29 @@ function testarColetivaEntrevista() {
     passo("coletiva: a frase SEGURA da mesma reacao continua aparecendo",
       boxColetiva.innerHTML.includes("Ele ficou irritado"));
 
-    /* ---------- COLETIVA: sem meuPro, NADA aparece (2026-09-21) ----------
-       Trava temporária pedida antes do deploy do item 2: enquanto o
-       pagamento (item 6) não existe, mostrar a vitrine pra quem não pode
-       comprar não faz sentido — telaColetiva() pula direto pra lutar(),
-       sem tela nenhuma. O código de vitrine (abrirOfertaPro) continua no
-       arquivo, só fica inalcançável enquanto essa trava existir — ver
-       comentário em index.html, logo acima de telaColetiva(). */
+    /* ---------- COLETIVA: sem meuPro, VITRINE (2026-09-22, item 5) ----------
+       Item 6 (pagamento) existe e está no ar — grátis TEM que ver que a
+       coletiva existe, senão o plano não vende sozinho. telaColetiva()
+       mostra a mesma tela pra todo mundo agora; só o clique em
+       "Provocar" que diverge (abre oferta em vez de chamar a IA). */
     st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
     meuPro=false;
     let chamouAiGratis=false;
     ai=async()=>{chamouAiGratis=true;return null;};
-    const escolhaBoxAntes=document.getElementById("escolha").innerHTML;
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
-    passo("coletiva sem meuPro: chama lutar() direto, sem mostrar nada",
+    passo("coletiva sem meuPro: mostra a tela (não pula pra lutar())", !lutarChamado);
+    passo("coletiva sem meuPro: botão avisa 'Provocar 🔒 Pro'",
+      document.getElementById("escolha").innerHTML.includes("Provocar 🔒 Pro"));
+    document.getElementById("colresp").value="ele não passa do primeiro round";
+    document.getElementById("colgo").onclick();
+    passo("coletiva sem meuPro: clique em Provocar NUNCA chama a IA", !chamouAiGratis);
+    passo("coletiva sem meuPro: clique em Provocar abre a oferta Pro",
+      document.getElementById("escolha").innerHTML.includes("Recurso Pro"));
+    const contProGo=document.getElementById("ofertaProContinuar");
+    passo("coletiva sem meuPro: oferta tem 'Continuar' que ainda chama lutar()", !!contProGo);
+    contProGo.onclick();
+    passo("coletiva sem meuPro: 'Continuar' da oferta chama lutar() com o mesmo escolhido/camp",
       !!lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
-    passo("coletiva sem meuPro: não muda o conteúdo da tela de escolha",
-      document.getElementById("escolha").innerHTML===escolhaBoxAntes);
-    passo("coletiva sem meuPro: nunca chega a chamar a IA", !chamouAiGratis);
 
     /* ---------- COLETIVA: 'Pular' não mexe em nada, segue direto ---------- */
     st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;meuPro=true;
@@ -4746,15 +4863,22 @@ function testarColetivaEntrevista() {
     passo("entrevista: sem chamada de IA, nada muda em fã/seguidor/dinheiro",
       st.fan===5&&st.followers===8000&&st.dinheiro===0);
 
-    /* ---------- ENTREVISTA: sem meuPro, nem o botão aparece (2026-09-21) ----------
-       Mesma trava temporária da coletiva, ver comentário lá. */
+    /* ---------- ENTREVISTA: sem meuPro, VITRINE (2026-09-22, item 5) ----------
+       O botão aparece (rotulado 🔒 Pro) — só o clique nele diverge:
+       abre a oferta em vez de montar a pergunta. */
     meuPro=false;
     let chamouAiEntGratis=false;
     ai=async()=>{chamouAiEntGratis=true;return null;};
     const boutsAntesGratis=bouts.children.length;
     renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
-    passo("entrevista sem meuPro: não adiciona botão nenhum em #bouts",
-      bouts.children.length===boutsAntesGratis);
+    passo("entrevista sem meuPro: botão AINDA aparece em #bouts",
+      bouts.children.length===boutsAntesGratis+1);
+    const btnEntGratis=bouts.children[bouts.children.length-1].children[0];
+    passo("entrevista sem meuPro: rótulo avisa 'Dar entrevista 🔒 Pro'",
+      btnEntGratis.innerHTML==="Dar entrevista 🔒 Pro");
+    btnEntGratis.onclick();
+    passo("entrevista sem meuPro: clique abre a oferta Pro, nunca a pergunta",
+      bouts.children[bouts.children.length-1].innerHTML.includes("Recurso Pro"));
     passo("entrevista sem meuPro: nunca chega a chamar a IA", !chamouAiEntGratis);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
@@ -4832,7 +4956,12 @@ function testarModoRival() {
           evitouAlgumaVez:false,dinheiro:0,treinadorComprado:false,estreouMainCard:false,
           longestL:0,foiCinturaoInterino:false,perdeuCinturaoPorNocaute:false,
           maxDisputaRecusas:0,tituloPorDecisao:false,coletivaHype:1,coletivaPressao:null,
-          entrevistasFeitas:0,rival:null};
+          entrevistasFeitas:0,rival:null,
+          /* item 4 (2026-09-22): rivalAtivado precisa estar true pro resto
+             desta suíte continuar testando o que sempre testou (rival
+             elegível) — a ativação explícita ganha teste PRÓPRIO logo
+             abaixo, não aqui no fixture compartilhado. */
+          rivalAtivado:true,rivalNomeEscolhido:null,rivalAnunciado:false};
     }
 
     /* ---------- grátis: candidatos() nunca ganha a 4ª carta ---------- */
@@ -4843,6 +4972,18 @@ function testarModoRival() {
     passo("grátis: candidatos() devolve só as 3 bandas comuns, nunca o rival",
       optsGratis.length===3 && optsGratis.every(o=>!o.rival));
     passo("grátis: st.rival nunca é criado", st.rival===null);
+
+    /* ---------- Pro, mas sem ativar: rival continua não aparecendo ----------
+       item 4 (2026-09-22): antes, meuPro sozinho já bastava — automático e
+       silencioso. Agora precisa da escolha explícita em
+       screenAtivarRival(), aqui simulada por st.rivalAtivado. */
+    montarCarreira("lightweight",111);
+    meuPro=true; st.rivalAtivado=false;
+    fightNo=2; // próxima luta = 3, elegível SE tivesse ativado
+    const optsSemAtivar=candidatos();
+    passo("Pro sem ativar: candidatos() devolve só as 3 bandas comuns",
+      optsSemAtivar.length===3 && optsSemAtivar.every(o=>!o.rival));
+    passo("Pro sem ativar: st.rival nunca é criado", st.rival===null);
 
     /* ---------- Pro: 4ª carta aparece exatamente na luta 3 ---------- */
     montarCarreira("lightweight",111);
@@ -4863,6 +5004,26 @@ function testarModoRival() {
       !nomesReais.has(st.rival.nome));
     passo("card do rival usa o MESMO nome fictício (não o nome de quem emprestou stats)",
       rivalCard.f.name===st.rival.nome);
+
+    /* ---------- gerarRival() usa o nome ESCOLHIDO pelo jogador, quando existe ---------- */
+    montarCarreira("lightweight",111);
+    meuPro=true; st.rivalAtivado=true; st.rivalNomeEscolhido="Renan Duarte Teste";
+    fightNo=2;
+    candidatos();
+    passo("gerarRival(): usa st.rivalNomeEscolhido em vez de sortear um nome novo",
+      !!st.rival && st.rival.nome==="Renan Duarte Teste" && st.rival.f.name==="Renan Duarte Teste");
+
+    /* ---------- validarNomeRival(): as 2 travas do nome livre ---------- */
+    passo("validarNomeRival: nome vazio recusa", !!validarNomeRival("   "));
+    const nomeRealDeVerdade=ROSTER[0].name;
+    passo("validarNomeRival: nome de lutador real recusa (comparação exata)",
+      !!validarNomeRival(nomeRealDeVerdade));
+    passo("validarNomeRival: mesmo nome real SEM acento e EM MAIÚSCULA continua recusando",
+      !!validarNomeRival(semAcento(nomeRealDeVerdade).toUpperCase()));
+    passo("validarNomeRival: conteúdo inseguro recusa",
+      !!validarNomeRival("vou tirar a própria vida se perder"));
+    passo("validarNomeRival: nome fictício comum passa (null = sem erro)",
+      validarNomeRival("Renan Duarte Teste 999")===null);
 
     /* ---------- stats de combate emprestados, bio sanitizada ---------- */
     const emprestou=LADDER.some(f=>f.rating===st.rival.f.rating&&f.slpm===st.rival.f.slpm);
@@ -4951,6 +5112,22 @@ function testarModoRival() {
     passo("finishFight(ehRival=true) grava {luta,ganhou,metodo} no histórico",
       st.rival.historico.length===1&&st.rival.historico[0].luta===3&&
       st.rival.historico[0].ganhou===true&&st.rival.historico[0].metodo==="Finalização");
+
+    /* ---------- item 4: anúncio de 1ª aparição, uma vez só ---------- */
+    montarCarreira("lightweight",111);
+    meuPro=true; st.rivalAtivado=true;
+    fightNo=2; // próxima luta = 3, 1ª aparição
+    telaAdversario();
+    const escolhaHtml1=document.getElementById("escolha").innerHTML;
+    passo("telaAdversario(): anuncia 'RIVALIDADE COMEÇA AGORA' na 1ª aparição",
+      /RIVALIDADE COME.A AGORA/.test(escolhaHtml1));
+    passo("telaAdversario(): st.rivalAnunciado vira true depois do anúncio",
+      st.rivalAnunciado===true);
+    fightNo=6; // próxima = 7, reaparição — NÃO é mais a 1ª vez
+    telaAdversario();
+    const escolhaHtml2=document.getElementById("escolha").innerHTML;
+    passo("telaAdversario(): reaparição NÃO repete o anúncio",
+      !/RIVALIDADE COME.A AGORA/.test(escolhaHtml2));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
   }

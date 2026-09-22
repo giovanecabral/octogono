@@ -1774,3 +1774,90 @@ sozinho — causa raiz e conserto.** Usuário pagou R$9,99 de verdade
   você está caçando. O log de entregas do LADO QUE ENVIA (aqui, o
   painel da Asaas) é a fonte de verdade sobre se uma tentativa
   aconteceu; o log de quem recebe só mostra o que efetivamente chegou.
+
+## 33. Plano Pro: visibilidade pós-pagamento (2026-09-22)
+
+Jogado depois do item 6 no ar, achado real (não teoria): o plano existia
+mas ninguém via — Modo Lenda jogável de graça pela interface normal
+(bug), coletiva/entrevista escondidas até o pagamento existir (trava
+temporária que ficou órfã), Modo Rival 100% automático e silencioso (só
+um selo pequeno na 4ª carta, sem escolha, sem nome, sem aviso). Cinco
+pedidos, mock de texto aprovado antes de codar (Plano Pro + carrossel).
+
+**Item 1 — Modo Lenda travado de verdade.** `screenDivisao()` nunca
+checava `meuPro` no clique de "Seja uma lenda" — bug de interface
+normal, não o risco de DevTools que o plano original aceitava. Clique
+agora confere `meuPro` e recusa com nota inline ("Modo Lenda é recurso
+do Plano Pro", link pra `screenPlanoPro()`) em vez de trocar `MODO`.
+**Achado corrigindo isto**: o primeiro jeito que escrevi capturava
+`travado` no fechamento, no momento em que o botão nasce — se `meuPro`
+mudasse depois (login/pagamento sem a tela re-renderizar), o botão
+ficava travado pra sempre até sair e voltar. Corrigido pra reconferir
+`meuPro` DENTRO do `onclick`, não fora. Pego rodando `node testar.js
+tudo` (variante "divisão 6, modo lenda" da suíte `interface`, que
+simula sessão Pro — se o bug tivesse ficado, um jogador que virasse Pro
+no meio da tela de criar carreira teria o mesmo problema).
+
+**Item 2 — tela "Plano Pro" no menu principal** (`screenPlanoPro()`,
+5º item do menu). 5 benefícios com ícone+descrição, carrossel de 2
+cards sintéticos (grátis/Pro, `desenharPreviewCard()` — NÃO é
+`desenharCard()` real, que depende de `me`/`st`/`DIVISION` de uma
+carreira em andamento; reaproveita só `fundoCard()`/`seloProCanvas()`,
+a diferença visual sendo vendida, com dado de exemplo fixo). Formulário
+de compra/renovação (`renderPlanoPro()`) **saiu da tela Conta e mudou
+pra cá** — sem sessão, mostra "Assinar exige uma conta" com link pra
+Conta; com sessão, formulário de verdade.
+
+**Item 3 — Conta mostra status, não formulário.** `screenConta()`
+agora só tem `renderStatusProResumo()`: "PLANO PRO ATIVO" em negrito
+verde (`--win-dim`) se Pro, link "Ver Plano Pro →" senão. O formulário
+inteiro (CPF, aceite, botão) morou na tela Conta até aqui — mudou pra
+`screenPlanoPro()` (item 2), sem duplicar código
+(`renderPlanoPro(container,session)` é a mesma função, só quem chama
+mudou).
+
+**Item 4 — Modo Rival vira escolha explícita.** `screenAtivarRival()`
+(novo, entre escolher divisão e o draft): Sim/Não + nome livre se Sim,
+mesma vitrine das outras (grátis vê a tela, "Sim" abre oferta em vez
+de ativar). `RIVAL_ATIVADO`/`RIVAL_NOME_ESCOLHIDO` são variáveis de
+módulo (mesmo padrão de `MODO`/`DIVISION`/`SEED` — sobrevivem ao setup
+até `startCareer()` copiar pra dentro de `st`). `rivalDeveAparecer()`
+agora exige `st.rivalAtivado` além de `meuPro` — sem a escolha, o
+rival nunca aparece, nem pra quem é Pro. `gerarRival()` usa o nome do
+jogador (`st.rivalNomeEscolhido`) em vez de sortear, quando existe.
+Validação do nome extraída pra função pura `validarNomeRival()`
+(testável direto, sem montar a tela): recusa vazio, recusa nome que
+bate (sem acento, sem maiúscula) com qualquer um dos 1.527 reais do
+`fighters.json` — mesmo motivo do rival ser sempre fictício, a IA
+inventaria fala na boca de gente real — e recusa `CONTEUDO_INSEGURO`.
+Anúncio de 1ª aparição em `telaAdversario()` (`st.rivalAnunciado`,
+uma vez só): "RIVALIDADE COMEÇA AGORA" antes da lista de adversários.
+
+**Item 5 — coletiva/entrevista viram vitrine de verdade.** As duas
+tinham `if(!meuPro){...return;}` no topo — trava temporária de antes
+do item 6 existir, com nota já deixada no código dizendo pra trocar
+quando o pagamento estivesse pronto. Removida: agora aparecem pra todo
+mundo, só o clique de fato (Provocar/Dar entrevista) diverge pra quem
+não é Pro (abre oferta em vez de chamar a IA — código que já existia,
+só estava inalcançável).
+
+**Bug de teste achado e corrigido no caminho** (não do motor):
+`document.getElementById` no DOM falso do `testar.js` fabrica um nó
+novo por id sob demanda — não reflete texto de um botão que nasceu
+dentro de um template HTML bruto (`box.innerHTML=\`...<button
+id="x">texto</button>...\``). Pra esses casos, o innerHTML do
+CONTAINER pai é a fonte de verdade, não o nó filho. E `.textContent=`
+funciona normal nesse DOM falso (é campo puro) — só não é o mesmo que
+`.innerHTML` (que reflete `_html`), confundir os dois deu 3 falsos
+negativos nesta sessão até eu entender a mecânica certa.
+
+**Classe reaproveitada por engano**: usei `conta-box` (que um teste
+antigo trata como marcador exclusivo "existe caixa de conta
+configurada") nas telas novas — quebrou um teste que checava ausência
+de conta-box sem Supabase configurado. Renomeado pra `tela-box` (CSS
+compartilhado com `conta-box` via seletor combinado, semântica
+separada).
+
+`node testar.js tudo`: **TUDO CERTO**, ~36 categorias, 26min — 2
+rodadas (a 1ª pegou o bug do fechamento capturado, corrigida, a 2ª
+passou limpa).

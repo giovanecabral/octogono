@@ -505,6 +505,11 @@ html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
 .rival-selo{align-self:flex-start;font-family:Oswald,sans-serif;font-weight:700;
   font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-bright);
   border:1px solid var(--gold);padding:2px 7px}
+.rival-anuncio{border:1px solid var(--gold);color:var(--gold-bright);
+  font-family:Oswald,sans-serif;font-weight:700;font-size:13px;letter-spacing:.05em;
+  text-transform:uppercase;text-align:center;padding:12px 14px;margin-bottom:14px}
+.rival-anuncio .sub{display:block;text-transform:none;font-weight:400;
+  font-size:12.5px;letter-spacing:0;margin-top:6px;color:var(--ink2)}
 .opp .stake b{font-family:Oswald,sans-serif;font-size:14px;letter-spacing:.04em;color:var(--win-bright)}
 .camps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .camp{border:1px solid var(--ink);background:var(--stock-2);padding:11px 12px;text-align:left;
@@ -660,11 +665,26 @@ html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
   border-left:3px solid var(--stamp);padding:8px 0 8px 12px;margin-left:32px}
 .legacy{border-left:3px solid var(--ink);padding:12px 0 12px 16px;margin:20px 0 6px;
   font-size:15px;line-height:1.6;font-style:italic}
-.conta-box{border:1px solid var(--line2);padding:12px 14px;margin:14px 0}
-.conta-box h4{margin:0 0 6px;font-family:Oswald,sans-serif;font-weight:700;
+.conta-box,.tela-box{border:1px solid var(--line2);padding:12px 14px;margin:14px 0}
+.conta-box h4,.tela-box h4{margin:0 0 6px;font-family:Oswald,sans-serif;font-weight:700;
   font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
-.conta-box input[type=email],.conta-box input[type=password],.conta-box input[type=text]{display:block;width:100%;max-width:260px;margin:8px 0}
+.conta-box input[type=email],.conta-box input[type=password],.conta-box input[type=text],
+.tela-box input[type=email],.tela-box input[type=password],.tela-box input[type=text]{display:block;width:100%;max-width:260px;margin:8px 0}
 .conta-pro{margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)}
+.pro-ativo-linha{color:var(--win-dim);font-weight:700;font-size:13px;
+  letter-spacing:.04em;text-transform:uppercase;margin:4px 0 10px}
+.pro-beneficios{display:flex;flex-direction:column;gap:12px;margin:16px 0}
+.pro-beneficio{display:flex;gap:11px;align-items:flex-start;font-size:13.5px;line-height:1.5}
+.pro-beneficio .ic{font-size:20px;line-height:1.2;flex-shrink:0}
+.pro-beneficio .txt b{font-family:Oswald,sans-serif;font-weight:700;letter-spacing:.02em}
+.pro-carrossel{display:flex;align-items:center;gap:10px;margin:18px 0 4px;justify-content:center}
+.pro-carrossel-cv{width:180px;max-width:44vw}
+.pro-carrossel-cv canvas{display:block;width:100%;height:auto;border:1px solid var(--line2)}
+.pro-carrossel-seta{background:none;border:1px solid var(--line2);color:var(--ink);
+  font-size:20px;width:34px;height:34px;flex-shrink:0;cursor:pointer;border-radius:2px}
+.pro-carrossel-seta:hover{border-color:var(--gold)}
+.pro-carrossel-legenda{text-align:center;font-size:11px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--faded);margin-bottom:6px}
 .conta-pro label.aceite-pro{display:flex;align-items:flex-start;gap:7px;margin:10px 0;cursor:pointer}
 .conta-pro label.aceite-pro input{margin-top:3px}
 .conta-box .termos-nota{font-size:11px;margin-top:10px}
@@ -1934,7 +1954,7 @@ async function atualizarStatusPro(){
 function abrirOfertaPro(el,aoContinuar){
   el.innerHTML=`<div class="dil-eyebrow">Recurso Pro</div>
     <div class="dil-c">Coletiva e entrevista reagem ao que você escreve, de verdade — recurso do plano Pro (R$9,99, libera 30 dias).</div>
-    <div class="dil-c" style="color:var(--faded);font-size:12px">Assine na tela Conta, no menu principal.</div>
+    <div class="dil-c" style="color:var(--faded);font-size:12px">Assine na tela Plano Pro, no menu principal.</div>
     ${aoContinuar?`<div class="dil-in"><button class="btn btn-sm" id="ofertaProContinuar">Continuar</button></div>`:""}`;
   if(aoContinuar)document.getElementById("ofertaProContinuar").onclick=()=>{SOM.toque();aoContinuar();};
 }
@@ -2301,6 +2321,7 @@ function screenInicio(){
     item("Opções",()=>abrirConfig()),
     item("Conta",()=>screenConta()),
     item("Histórico",()=>screenHistorico()),
+    item("Plano Pro",()=>screenPlanoPro()),
   );
   conteudo.appendChild(menu);
   conteudo.appendChild(el("p","inicio-fato",
@@ -2332,12 +2353,14 @@ function screenConta(){
     box.innerHTML="";
     if(email){
       box.appendChild(el("h4","",`Conectado como ${email}`));
+      const statusPro=el("div","","");
+      box.appendChild(statusPro);
       box.appendChild(el("p","hint","Suas conquistas estão sincronizadas com esta conta."));
       const sair=el("button","btn btn-ghost btn-sm","Sair");
       sair.onclick=async()=>{ await sairDaConta(); location.reload(); };
       box.appendChild(sair);
       getSupabase().auth.getSession().then(({data:{session}})=>{
-        if(session)renderPlanoPro(box,session);
+        if(session)renderStatusProResumo(statusPro,session);
       });
     }else{
       const formArea=el("div","");
@@ -2356,10 +2379,105 @@ function screenConta(){
    redação em outra seção não exige. */
 const VERSAO_TERMOS_PAGAMENTO="4";
 
-/* Plano Pro — compra, dentro da tela Conta (2026-09-21, item 6). Só
-   roda com sessão ativa (assinaturas é chaveada por user_id, RLS só
-   deixa o dono ler a própria linha — ver verificarPro() em api/ai.js
-   pro mesmo padrão). Portão de verdade fica no servidor
+/* Item 3 (2026-09-22): resumo de 1 linha na tela Conta, logo abaixo do
+   e-mail — "PLANO PRO ATIVO" em negrito/verde pra quem tem, link pra
+   screenPlanoPro() pra quem não tem. O formulário de compra INTEIRO
+   saiu daqui (ver renderPlanoPro() abaixo) — mora só na tela dedicada
+   agora, esta função só informa e aponta. */
+async function renderStatusProResumo(container,session){
+  const sb=getSupabase();
+  let data=null;
+  try{ ({data}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle()); }
+  catch(e){}
+  const pro=proAindaValido(data);
+  meuPro=pro;
+  container.innerHTML="";
+  if(pro){
+    container.appendChild(el("p","pro-ativo-linha","PLANO PRO ATIVO"));
+  }else{
+    const link=el("a","","Ver Plano Pro →");
+    link.href="#";link.onclick=e=>{e.preventDefault();screenPlanoPro();};
+    container.appendChild(link);
+  }
+}
+
+/* Item 2 (2026-09-22): tela dedicada do Plano Pro, alcançável do menu
+   principal — o que vende o plano, não só o formulário de pagar.
+   Benefícios + carrossel comparando os cards ficam visíveis pra
+   QUALQUER UM, com ou sem conta (é vitrine); o formulário de
+   compra/renovação (renderPlanoPro() abaixo) só aparece com sessão. */
+const BENEFICIOS_PRO=[
+  {ic:"🏆",t:"Modo Lenda",d:"Draft e adversários vêm dos campeões e ex-desafiantes da divisão, não do elenco comum."},
+  {ic:"🎤",t:"Coletiva antes da luta",d:"Provoca o adversário de verdade — a reação dele muda o hype e a pressão da luta que vem."},
+  {ic:"📰",t:"Entrevista depois da luta",d:"O repórter pergunta sobre o que aconteceu; sua resposta muda fã, seguidor e patrocínio."},
+  {ic:"⚔",t:"Modo Rival",d:"Escolhe um nome, cria uma rivalidade que atravessa a carreira: histórico, revanches, o rosto que volta."},
+  {ic:"🎴",t:"Cards exclusivos",d:"Corte de canto e selo — reconhecível de relance no card de resultado e no de momento."},
+];
+function montarBeneficiosPro(container){
+  const lista=el("div","pro-beneficios");
+  BENEFICIOS_PRO.forEach(b=>{
+    lista.appendChild(el("div","pro-beneficio",
+      `<span class="ic">${b.ic}</span><span class="txt"><b>${b.t}</b><br>${b.d}</span>`));
+  });
+  container.appendChild(lista);
+}
+/* Carrossel de 2 (grátis/pro) — não precisa de biblioteca nenhuma pra
+   2 itens: um <canvas> só, setas trocam o índice e redesenham. Usa
+   desenharPreviewCard() (dado de exemplo, nunca uma carreira real). */
+function montarCarrosselPro(container){
+  const wrap=el("div","pro-carrossel");
+  const seta=(lado)=>{const b=el("button","pro-carrossel-seta",lado==="e"?"‹":"›");b.type="button";return b;};
+  const setaE=seta("e"),setaD=seta("d");
+  const cvWrap=el("div","pro-carrossel-cv");
+  const legenda=el("div","pro-carrossel-legenda","");
+  wrap.append(setaE,cvWrap,setaD);
+  container.append(wrap,legenda);
+  let i=0;
+  const desenha=()=>{
+    cvWrap.innerHTML="";
+    cvWrap.appendChild(desenharPreviewCard(i===1));
+    legenda.textContent=i===1?"PRO — corte de canto, contorno duplo, selo":"GRÁTIS — acabamento de sempre";
+  };
+  setaE.onclick=()=>{SOM.toque();i=i===0?1:0;desenha();};
+  setaD.onclick=()=>{SOM.toque();i=i===0?1:0;desenha();};
+  desenha();
+}
+function screenPlanoPro(){
+  tituloDoc(true);
+  app.innerHTML="";
+  app.appendChild(el("div","eyebrow","Plano Pro"));
+  const box=el("div","tela-box");
+  app.appendChild(box);
+  box.appendChild(el("h4","","Octógono Pro"));
+  box.appendChild(el("p","dil-c","R$9,99 libera 30 dias. Sem cobrança automática."));
+  montarBeneficiosPro(box);
+  montarCarrosselPro(box);
+  const formArea=el("div","");
+  box.appendChild(formArea);
+  formArea.appendChild(el("p","hint","Verificando sessão…"));
+  const sb=getSupabase();
+  (async()=>{
+    let session=null;
+    if(sb){ try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){} }
+    formArea.innerHTML="";
+    if(session){ await renderPlanoPro(formArea,session); }
+    else{
+      formArea.appendChild(el("p","hint","Assinar exige uma conta (é lá que o Plano Pro fica guardado)."));
+      const linkConta=el("a","","Entrar ou criar conta →");
+      linkConta.href="#";linkConta.onclick=e=>{e.preventDefault();screenConta();};
+      formArea.appendChild(linkConta);
+    }
+  })();
+  const voltar=el("button","btn btn-ghost","Voltar");
+  voltar.onclick=voltarInicio;
+  app.appendChild(voltar);
+}
+
+/* Plano Pro — formulário de compra/renovação (2026-09-21, item 6;
+   reaproveitado pela tela dedicada, 2026-09-22, item 2). Só roda com
+   sessão ativa (assinaturas é chaveada por user_id, RLS só deixa o
+   dono ler a própria linha — ver verificarPro() em api/ai.js pro
+   mesmo padrão). Portão de verdade fica no servidor
    (TERMOS_PUBLICADOS em api/criar-pagamento.js, ver PENDENCIAS.md item
    "Plano Pro") — este botão SEMPRE tenta a chamada real; se o servidor
    ainda não estiver publicado, a resposta 503 vira a mensagem inline,
@@ -2385,7 +2503,6 @@ async function renderPlanoPro(container,session){
   }else if(data&&data.expira_em){
     box.appendChild(el("p","hint",`Seu Plano Pro expirou em ${new Date(data.expira_em).toLocaleDateString("pt-BR")}.`));
   }
-  box.appendChild(el("p","dil-c","Coletiva de imprensa e entrevista pós-luta reagem de verdade ao que você escreve. Modo Lenda, Modo Rival e o acabamento de card também entram. R$9,99 libera 30 dias — sem cobrança automática, você decide quando renovar."));
   const cpfIn=el("input");cpfIn.type="text";cpfIn.placeholder="CPF (só números)";cpfIn.maxLength=14;cpfIn.inputMode="numeric";
   box.appendChild(cpfIn);
   /* innerHTML + getElementById pros links, não createTextNode — mesmo
@@ -4606,9 +4723,12 @@ function nomeRival(nomesReais){
 /* Cedo na carreira (luta 3), reaparece a cada 4 lutas depois disso — pausa
    de vez quando o jogador já venceu ele uma vez (rivalidade "resolvida",
    não persegue pra sempre). Nunca durante luta de título/defesa (o motor
-   já reserva essa luta pra uma coisa só, ver candidatos() acima). */
+   já reserva essa luta pra uma coisa só, ver candidatos() acima).
+   st.rivalAtivado (item 4, 2026-09-22): sem a escolha explícita em
+   screenAtivarRival(), o rival NUNCA aparece — meuPro sozinho não basta
+   mais (antes disso, todo Pro tinha rival automático e silencioso). */
 function rivalDeveAparecer(){
-  if(!meuPro||st.tituloEstaLuta)return false;
+  if(!meuPro||!st.rivalAtivado||st.tituloEstaLuta)return false;
   if(st.rival&&st.rival.historico.some(h=>h.ganhou))return false;
   const proximaLuta=fightNo+1;
   if(!st.rival)return proximaLuta===3;
@@ -4618,7 +4738,11 @@ function gerarRival(){
   const reservados=new Set((RANKING&&RANKING.lista||[]).map(f=>f.name));
   const pool=LADDER.filter(f=>!reservados.has(f.name));
   const base=pool[Math.floor(rivalRng()*pool.length)]||LADDER[0];
-  const nome=nomeRival(new Set(LADDER.map(f=>f.name)));
+  // nome do jogador (validado em screenAtivarRival(): não bate com
+  // nenhum dos 1.527 reais, passou por CONTEUDO_INSEGURO) — nomeRival()
+  // só entra como fallback se por algum motivo nada foi escolhido
+  // (nunca deveria acontecer, rivalDeveAparecer() já exige rivalAtivado).
+  const nome=st.rivalNomeEscolhido||nomeRival(new Set(LADDER.map(f=>f.name)));
   st.rival={
     nome,
     // stats de combate reais (mantém dificuldade justa), bio sanitizada
@@ -4748,7 +4872,13 @@ function telaAdversario(){
   const box=document.getElementById("escolha");
   box.style.display="";
   const opts=candidatos();
-  box.innerHTML=`<div class="esc-hd">Luta ${fightNo+1} de ${TOTAL_FIGHTS} — escolha o adversário</div>
+  /* Modo Rival: anúncio de 1ª aparição (item 4) — sem isto, o rival só
+     se distingue por um selo pequeno na carta, fácil de nunca notar
+     (achado jogando). Uma vez só por carreira (st.rivalAnunciado). */
+  const rivalNovo=opts.find(o=>o.rival)&&!st.rivalAnunciado;
+  if(rivalNovo)st.rivalAnunciado=true;
+  box.innerHTML=`${rivalNovo?`<div class="rival-anuncio">RIVALIDADE COMEÇA AGORA<span class="sub">"${st.rival.nome}" entra na sua carreira — primeira vez que vocês se cruzam.</span></div>`:""}
+    <div class="esc-hd">Luta ${fightNo+1} de ${TOTAL_FIGHTS} — escolha o adversário</div>
     <div class="opps" id="opps"></div>`;
   const g=document.getElementById("opps");
   /* Fase 6 (2026-09-16): dificuldade vira faixa colorida no topo do card
@@ -4844,18 +4974,13 @@ const ABERTURA_COLETIVA=[
 function textoColetivaAbertura(opp){
   return ABERTURA_COLETIVA[hashEstavel(opp.name)%ABERTURA_COLETIVA.length](opp);
 }
-/* Flag de visibilidade (2026-09-21, pedido explícito antes do deploy do
-   item 2): reusa meuPro como o ÚNICO portão — hoje só a conta do usuário
-   tem pro=true no banco, então "esconder pra quem não é meuPro" já
-   esconde de todo mundo, sem flag nova nenhuma. Nada de vitrine (campo +
-   "abre oferta") pra quem não é meuPro enquanto o pagamento (item 6) não
-   existir de verdade — não faz sentido oferecer um plano que ninguém
-   consegue comprar ainda. Quando o item 6 estiver pronto, TROCAR a
-   condição de volta pra "sempre mostra, vitrine decide dentro" (o código
-   de vitrine dentro de telaColetiva()/renderBotaoEntrevista() continua
-   intacto, só não é alcançado enquanto esta trava existir aqui fora). */
+/* Vitrine ligada (2026-09-22, item 5 pós-pagamento): o item 6 existe e
+   está no ar, então grátis PRECISA ver que isso existe — campo e botão
+   aparecem pra todo mundo, "Provocar 🔒 Pro" abre a oferta em vez de
+   chamar a IA só no clique (ver go.onclick abaixo). Antes disso, uma
+   trava aqui fora escondia a tela inteira enquanto ninguém podia
+   comprar — removida, o código de vitrine sempre existiu por baixo. */
 function telaColetiva(escolhido,camp){
-  if(!meuPro){lutar(escolhido,camp);return;}
   const box=document.getElementById("escolha");
   box.style.display="";
   const opp=escolhido.f,dif=dificuldade(opp);
@@ -4955,11 +5080,8 @@ function historicoRivalTexto(){
   return `${st.rival.historico.length}º encontro entre os dois. Anteriores: ${linhas.join("; ")}.`;
 }
 function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival){
-  /* Mesma trava de telaColetiva() acima — nada aparece pra quem não é
-     meuPro, nem o botão, enquanto o item 6 (pagamento) não existir. */
-  if(!meuPro)return;
   const wrap=el("div","");
-  const btn=el("button","btn btn-sm btn-ghost","Dar entrevista");
+  const btn=el("button","btn btn-sm btn-ghost",meuPro?"Dar entrevista":"Dar entrevista 🔒 Pro");
   wrap.appendChild(btn);
   bouts.appendChild(wrap);
   btn.onclick=()=>{
@@ -5481,6 +5603,53 @@ function seloProCanvas(x,cx,cy,r){
   }
   x.closePath();x.fillStyle=C.gold;x.fill();
   x.restore();
+}
+/* Preview sintético pra vitrine do Plano Pro (item 2, 2026-09-22) — NÃO
+   é desenharCard() de verdade: aquele lê me/st/DIVISION, que só existem
+   com uma carreira real em andamento ou terminada, e esta tela é
+   alcançável direto do menu principal, sem carreira nenhuma. Reaproveita
+   só o que É seguro fora de uma carreira — fundoCard()/seloProCanvas(),
+   a diferença visual que está sendo vendida — com dado de exemplo fixo
+   pro resto, sem reimplementar o layout inteiro da ficha real. */
+function desenharPreviewCard(pro){
+  const cv=document.createElement("canvas");
+  cv.width=CARD_W;cv.height=CARD_H;
+  const x=cv.getContext("2d");
+  /* getContext("2d") pode vir null (harness de teste sem canvas de
+     verdade, ver testar.js; navegador raro sem suporte também não pode
+     travar a tela) — devolve o canvas em branco em vez de explodir. A
+     tela do Plano Pro precisa ser testável mesmo sem desenho real, ao
+     contrário de desenharCard()/desenharCardMomento() que dependem de
+     me/st/DIVISION e por isso nunca rodam no harness de qualquer jeito. */
+  if(!x)return cv;
+  const M=72;
+  fundoCard(x,CARD_W,CARD_H,pro);
+  const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
+  const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
+  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
+  regra(M,4,C.stamp);
+  x.fillStyle=C.ink;x.font=mono(20,600);x.textBaseline="alphabetic";
+  x.fillText("OCTÓGONO",M,M+22);
+  regra(M+34,2,C.rule);
+  x.fillStyle=C.ink;x.font=disp(46);
+  x.fillText("FICHA DO LUTADOR",M,M+94);
+  x.fillStyle=C.faded;x.font=mono(19,500);
+  x.fillText("EXEMPLO · CARREIRA ENCERRADA",M,M+126);
+  regra(M+148,2,C.rule);
+  let y=M+222;
+  x.fillStyle=C.ink;x.font=disp(76);
+  x.fillText("SEU LUTADOR",M,y);
+  y+=160;
+  x.font=disp(148);x.fillStyle=C.ink;
+  x.fillText("14-2",M,y);
+  x.font=mono(21,500);x.fillStyle=C.faded;
+  x.fillText("CARTEL",M+5,y+34);
+  const yf=CARD_H-88;
+  x.fillStyle=C.faded;x.font=mono(19,500);x.textAlign="right";
+  x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
+  x.textAlign="left";
+  if(pro)seloProCanvas(x,M+9,yf+68,11);
+  return cv;
 }
 
 async function desenharCard(g){
@@ -6064,6 +6233,14 @@ const MIN_LUTADORES=40;
 const RATING_LENDA=13/18;
 const ehLenda=f=>(f.titulos&&f.titulos.disputas>=1)||f.rating>=RATING_LENDA-1e-9;
 let MODO="normal";
+/* Modo Rival — ativação explícita (item 4, 2026-09-22). Escolha feita em
+   screenAtivarRival(), entre a divisão e o draft; sobrevive até
+   startCareer() copiar pra dentro de st (mesmo padrão de MODO/DIVISION/
+   SEED — variável de módulo que atravessa o setup da carreira). Sem isto,
+   Modo Rival era 100% automático e silencioso: o jogador só descobria
+   que existia se reparasse num selo pequeno na 4ª carta, sem escolha,
+   sem nome próprio, sem aviso — achado jogando (pedido explícito). */
+let RIVAL_ATIVADO=false,RIVAL_NOME_ESCOLHIDO=null;
 function poolDivisao(id,modo){
   const p=ROSTER?ROSTER.filter(f=>f.division===id):[];
   return (modo||MODO)==="lenda"?p.filter(ehLenda):p;
@@ -6352,6 +6529,7 @@ const MODOS=[
   desc:"Campeões e ex-desafiantes, no draft e do outro lado do octógono."},
 ];
 function screenDivisao(name){
+  RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null; // reseta a cada carreira nova
   app.innerHTML="";
   docmeta.textContent=`Registro · ${name}`;
   app.appendChild(el("div","eyebrow","Em que divisão você vai lutar"));
@@ -6366,10 +6544,29 @@ function screenDivisao(name){
   const desenha=()=>{
     modos.innerHTML="";
     MODOS.forEach(m=>{
+      /* Item 1 do pedido pós-item-6: "Seja uma lenda" não checava meuPro
+         nenhuma vez — clique normal, sem DevTools, entrava. O risco
+         aceito no plano original era só forçar MODO="lenda" via
+         console; pela interface, grátis não pode. */
+      const travado=m.id==="lenda"&&!meuPro; // só pro RÓTULO — o clique confere meuPro de novo, ver abaixo
       const b=el("button","modo"+(MODO===m.id?" on":""),
-        `<span class="n">${m.nome}</span><span class="d">${m.desc}</span>`);
+        `<span class="n">${m.nome}${travado?" 🔒 Pro":""}</span><span class="d">${m.desc}</span>`);
       b.id="modo_"+m.id;
-      b.onclick=()=>{ if(MODO===m.id)return; SOM.toque(); MODO=m.id; desenha(); };
+      b.onclick=()=>{
+        if(MODO===m.id)return;
+        SOM.toque();
+        /* NUNCA usar o `travado` capturado no fechamento acima — ele é
+           de quando o botão nasceu; meuPro pode ter mudado desde então
+           (login/pagamento noutra aba) sem esta tela re-renderizar.
+           Recalcula na hora do clique, senão um Pro de verdade podia
+           ficar travado até sair e voltar da tela. */
+        if(m.id==="lenda"&&!meuPro){
+          nota.innerHTML=`Modo Lenda é recurso do <a href="#" id="notaLinkPro">Plano Pro</a>.`;
+          document.getElementById("notaLinkPro").onclick=e=>{e.preventDefault();screenPlanoPro();};
+          return;
+        }
+        MODO=m.id; desenha();
+      };
       modos.appendChild(b);
     });
 
@@ -6390,7 +6587,7 @@ function screenDivisao(name){
          <span class="lb">até ${d.lbs} lb · ${ko>=1.3?"nocaute alto":ko>=.9?"nocaute médio":"nocaute baixo"}</span>
          <span class="qt"><b>${pool.length}</b> ${MODO==="lenda"?"lendas":"lutadores"}</span>
          <span class="top">o melhor daqui é ${top.name}</span>`);
-      c.onclick=()=>{SOM.toque();DIVISION=d.id;startDraft(name);};
+      c.onclick=()=>{SOM.toque();DIVISION=d.id;screenAtivarRival(name);};
       grid.appendChild(c);
     });
 
@@ -6400,6 +6597,78 @@ function screenDivisao(name){
       : "";
   };
   desenha();
+}
+/* Modo Rival — ativação (item 4, 2026-09-22). Vitrine igual coletiva/
+   entrevista: aparece pra todo mundo, o clique em "Sim" é que trava pra
+   quem não é Pro (abre a oferta, "Continuar" dela segue sem rival —
+   nunca trava o fluxo de criar carreira). Duas travas no nome livre:
+   1) bate (sem acento, sem maiúscula) com qualquer um dos 1.527
+   lutadores reais — a IA inventaria fala na boca de gente real, mesmo
+   motivo do rival em si ser sempre fictício (ver nomeRival()); 2)
+   CONTEUDO_INSEGURO, mesma rede de baixo do dilema. Função pura (sem
+   DOM), separada de propósito — testável direto, sem precisar montar a
+   tela inteira. Devolve null se o nome passa, ou a mensagem de recusa
+   em português. */
+function validarNomeRival(digitado){
+  const nome=String(digitado||"").trim();
+  if(!nome)return"Escreve um nome pro rival.";
+  const bateReal=(ROSTER||[]).some(f=>semAcento(f.name)===semAcento(nome));
+  if(bateReal)return"Esse nome já é de um lutador de verdade — escolhe outro.";
+  if(conteudoInseguro(nome))return"Esse nome não pode ser usado.";
+  return null;
+}
+function screenAtivarRival(name){
+  app.innerHTML="";
+  docmeta.textContent=`Registro · ${name}`;
+  app.appendChild(el("div","eyebrow","Modo Rival"));
+  const box=el("div","tela-box");
+  app.appendChild(box);
+  box.appendChild(el("h4","",meuPro?"Modo Rival":"Modo Rival 🔒 Pro"));
+  box.appendChild(el("p","dil-c","Quer um rival nesta carreira? Alguém que reaparece, te persegue, e cuja história muda conforme vocês se enfrentam."));
+
+  const opts=el("div","modos");
+  const simBtn=el("button","modo",`<span class="n">Sim, quero um rival</span>`);
+  const naoBtn=el("button","modo on",`<span class="n">Não, carreira normal</span>`);
+  opts.append(simBtn,naoBtn);
+  box.appendChild(opts);
+
+  const nomeArea=el("div","");
+  box.appendChild(nomeArea);
+  const msg=el("p","hint","");
+  box.appendChild(msg);
+  const continuar=el("button","btn","Continuar");
+  box.appendChild(continuar);
+
+  let escolha="nao",nomeIn=null;
+  const marcar=()=>{
+    simBtn.className="modo"+(escolha==="sim"?" on":"");
+    naoBtn.className="modo"+(escolha==="nao"?" on":"");
+  };
+  const renderNome=()=>{
+    nomeArea.innerHTML="";
+    if(escolha!=="sim")return;
+    nomeIn=el("input");nomeIn.type="text";nomeIn.placeholder="Nome do rival";nomeIn.maxLength=40;
+    nomeArea.appendChild(nomeIn);
+  };
+  simBtn.onclick=()=>{
+    SOM.toque();
+    if(!meuPro){ abrirOfertaPro(box,()=>{RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null;startDraft(name);}); return; }
+    escolha="sim";marcar();renderNome();
+  };
+  naoBtn.onclick=()=>{ SOM.toque(); escolha="nao";marcar();renderNome(); };
+
+  continuar.onclick=()=>{
+    SOM.toque();
+    if(escolha==="sim"){
+      const digitado=(nomeIn.value||"").trim();
+      const erro=validarNomeRival(digitado);
+      if(erro){ msg.className="hint msg-erro"; msg.textContent=erro; return; }
+      RIVAL_ATIVADO=true;RIVAL_NOME_ESCOLHIDO=digitado;
+    }else{
+      RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null;
+    }
+    startDraft(name);
+  };
 }
 function startDraft(name){
   /* refeito a cada carreira porque a divisão OU o modo podem ter mudado */
@@ -6698,7 +6967,13 @@ function startCareer(){
          (ver reset em finishFight()), nunca acumulam. entrevistasFeitas é
          só contador de exibição (não afeta nada), mesmo espírito de
          st.dilemas. */
-      coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0,rival:null};
+      coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0,rival:null,
+      /* Modo Rival (item 4) — escolha feita em screenAtivarRival(), antes
+         do draft; copiada aqui porque RIVAL_ATIVADO/RIVAL_NOME_ESCOLHIDO
+         são variáveis de módulo (sobrevivem ao draft, não a st, que só
+         nasce agora). rivalAnunciado controla o aviso de 1ª aparição —
+         uma vez só, ver telaAdversario(). */
+      rivalAtivado:RIVAL_ATIVADO,rivalNomeEscolhido:RIVAL_NOME_ESCOLHIDO,rivalAnunciado:false};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
 
