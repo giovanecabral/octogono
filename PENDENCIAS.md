@@ -1737,3 +1737,40 @@ pra grátis**.
 Ainda não deployado no momento deste registro — commit feito, deploy é
 o próximo passo, com o usuário esperando pra completar um pagamento
 real de R$9,99 assim que confirmar que subiu.
+
+**Incidente real (2026-09-22): 1º pagamento de verdade não ativou o Pro
+sozinho — causa raiz e conserto.** Usuário pagou R$9,99 de verdade
+(Pix, conta giovanecpiresg@gmail.com), `assinaturas.pro` não mudou.
+
+- **Diagnóstico errado no meio do caminho, corrigido**: achei nos logs
+  da Vercel (`vercel logs`) uma chamada `POST /api/webhook-asaas` →
+  401, e concluí que era a Asaas tentando entregar o webhook com token
+  errado. Bati o horário: era um **curl meu**, teste de alcançabilidade
+  logo após o deploy (corpo vazio, sem header nenhum — 401 é
+  comportamento correto ali, não bug). Confirmado depois que o próprio
+  log de entregas da Asaas estava **vazio** — se fosse tentativa real
+  dela, apareceria lá mesmo dando erro.
+- **Causa raiz de verdade**: o webhook cadastrado no painel da Asaas
+  não tinha os eventos de pagamento (confirmada/recebida/reembolsada)
+  marcados. Sem inscrição no evento, a Asaas não tenta entregar nada —
+  não é retry falhando, é disparo que nunca aconteceu. Usuário marcou
+  os 3 eventos (bate com `EVENTOS_CONFIRMACAO`/`EVENTOS_ESTORNO` em
+  `api/webhook-asaas.js`) e salvou.
+- **Efeito**: conserta daqui pra frente (próxima renovação em 30 dias
+  dispara sozinho). Não reprocessa o pagamento de hoje retroativamente
+  — sem botão de reenvio no painel da Asaas pra esse evento específico.
+- **Reconciliação manual do pagamento de hoje** (SQL rodado direto no
+  Supabase, sem envolver `service_role` nem chave nenhuma no código):
+  `assinaturas.pro=true`, `plano='mensal'`, `expira_em=2026-10-22`,
+  `asaas_payment_id='pay_916513392'` (prefixo `pay_` inferido — o
+  painel da Asaas só mostrava o número puro na URL, não achamos o ID
+  completo em lugar nenhum visível; se o webhook real chegar depois
+  com o ID verdadeiro, o pior caso é ganhar dias extras de bônus, não
+  trava nada). Linha equivalente inserida em `pagamentos_processados`
+  como registro do evento.
+- **Lição pro projeto**: `vercel logs` mostra QUEM chamou o endpoint,
+  não QUEM DEVERIA ter chamado — uma chamada 401 meio-própria no meio
+  de uma sessão de teste é fácil de confundir com a coisa real que
+  você está caçando. O log de entregas do LADO QUE ENVIA (aqui, o
+  painel da Asaas) é a fonte de verdade sobre se uma tentativa
+  aconteceu; o log de quem recebe só mostra o que efetivamente chegou.
