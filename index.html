@@ -505,6 +505,15 @@ html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
 .rival-selo{align-self:flex-start;font-family:Oswald,sans-serif;font-weight:700;
   font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-bright);
   border:1px solid var(--gold);padding:2px 7px}
+/* Selo Pro — reaproveitado em todo lugar que é recurso Pro (item novo,
+   2026-09-22). Semi-transparente (fundo tingido, não sólido) + contorno
+   amarelo, mesma paleta de raridade de sempre (--gold/--gold-bright),
+   nunca cor nova. display:inline-flex pra caber no meio de texto de
+   botão/título sem quebrar linha estranho. */
+.selo-pro{display:inline-flex;align-items:center;vertical-align:middle;
+  background:rgba(185,147,47,.16);border:1px solid var(--gold);color:var(--gold-bright);
+  font-family:Oswald,sans-serif;font-weight:700;font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;padding:2px 7px;margin-left:6px;border-radius:2px;white-space:nowrap}
 .rival-anuncio{border:1px solid var(--gold);color:var(--gold-bright);
   font-family:Oswald,sans-serif;font-weight:700;font-size:13px;letter-spacing:.05em;
   text-transform:uppercase;text-align:center;padding:12px 14px;margin-bottom:14px}
@@ -685,6 +694,7 @@ html[data-dilema-carreira="1"] #btnAposentar{opacity:.4;pointer-events:none}
 .pro-carrossel-seta:hover{border-color:var(--gold)}
 .pro-carrossel-legenda{text-align:center;font-size:11px;letter-spacing:.04em;
   text-transform:uppercase;color:var(--faded);margin-bottom:6px}
+.pro-carrossel-acao{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:16px}
 .conta-pro label.aceite-pro{display:flex;align-items:flex-start;gap:7px;margin:10px 0;cursor:pointer}
 .conta-pro label.aceite-pro input{margin-top:3px}
 .conta-box .termos-nota{font-size:11px;margin-top:10px}
@@ -1927,6 +1937,13 @@ function proAindaValido(row){
   if(row.expira_em&&new Date(row.expira_em).getTime()<=Date.now())return false;
   return true;
 }
+/* Selo Pro (2026-09-22, pedido explícito) — um selo só, reaproveitado em
+   TODO lugar que hoje é recurso Pro (Modo Lenda, coletiva, entrevista,
+   Modo Rival, e qualquer coisa nova que ganhar esse status depois): selo
+   semi-transparente, contorno amarelo (mesma cor de raridade, C.gold no
+   canvas / var(--gold) no CSS — nunca cor nova). Substitui o antigo
+   sufixo "🔒 Pro" solto no texto, que cada tela escrevia na mão. */
+function seloPro(){ return`<span class="selo-pro">Plano Pro</span>`; }
 async function meuAccessToken(){
   const sb=getSupabase();
   if(!sb)return null;
@@ -2424,22 +2441,52 @@ function montarBeneficiosPro(container){
 /* Carrossel de 2 (grátis/pro) — não precisa de biblioteca nenhuma pra
    2 itens: um <canvas> só, setas trocam o índice e redesenham. Usa
    desenharPreviewCard() (dado de exemplo, nunca uma carreira real). */
+/* Carrossel — 4 posições agora (2026-09-22, 3 modelos de card pedidos
+   explicitamente): 0 = grátis, 1..3 = CORES_CARD_PRO. Só troca a COR do
+   mesmo acabamento (corte de canto + contorno duplo + selo) — layout
+   único, decisão já tomada quando perguntei e a resposta foi "cor
+   diferente por modelo", não moldura diferente. "Usar esta cor" só
+   funciona de verdade pra quem é Pro (grava em corCardProEscolha,
+   persistido — os PRÓXIMOS cards gerados, de qualquer carreira, usam
+   essa cor sozinhos, fundoCard()/seloProCanvas() já leem o valor
+   salvo por padrão). Pra quem não é Pro, mostra e deixa passear pelas
+   3 cores (vitrine), mas o botão não aplica nada. */
 function montarCarrosselPro(container){
   const wrap=el("div","pro-carrossel");
   const seta=(lado)=>{const b=el("button","pro-carrossel-seta",lado==="e"?"‹":"›");b.type="button";return b;};
   const setaE=seta("e"),setaD=seta("d");
   const cvWrap=el("div","pro-carrossel-cv");
   const legenda=el("div","pro-carrossel-legenda","");
+  const acao=el("div","pro-carrossel-acao");
   wrap.append(setaE,cvWrap,setaD);
-  container.append(wrap,legenda);
+  container.append(wrap,legenda,acao);
+  const N=1+CORES_CARD_PRO.length;
   let i=0;
   const desenha=()=>{
     cvWrap.innerHTML="";
-    cvWrap.appendChild(desenharPreviewCard(i===1));
-    legenda.textContent=i===1?"PRO — corte de canto, contorno duplo, selo":"GRÁTIS — acabamento de sempre";
+    acao.innerHTML="";
+    if(i===0){
+      cvWrap.appendChild(desenharPreviewCard(false));
+      legenda.textContent="GRÁTIS — acabamento de sempre";
+      return;
+    }
+    const modelo=CORES_CARD_PRO[i-1];
+    cvWrap.appendChild(desenharPreviewCard(true,modelo.cor));
+    legenda.textContent=`PRO — modelo ${modelo.nome}`;
+    const jaEhEsta=meuPro&&corCardProEscolha===i-1;
+    const btn=el("button","btn btn-sm"+(jaEhEsta?" btn-ghost":""),
+      jaEhEsta?"Em uso":`Usar modelo ${modelo.nome}`);
+    btn.disabled=jaEhEsta;
+    btn.onclick=()=>{
+      SOM.toque();
+      if(!meuPro){ acao.appendChild(el("p","hint","Assine o Plano Pro pra escolher a cor do seu card.")); return; }
+      definirCorCardPro(i-1);
+      desenha();
+    };
+    acao.appendChild(btn);
   };
-  setaE.onclick=()=>{SOM.toque();i=i===0?1:0;desenha();};
-  setaD.onclick=()=>{SOM.toque();i=i===0?1:0;desenha();};
+  setaE.onclick=()=>{SOM.toque();i=(i-1+N)%N;desenha();};
+  setaD.onclick=()=>{SOM.toque();i=(i+1)%N;desenha();};
   desenha();
 }
 function screenPlanoPro(){
@@ -4990,7 +5037,7 @@ function telaColetiva(escolhido,camp){
     <div class="contra">${abertura}</div>
     <div class="dil-in">
       <textarea id="colresp" maxlength="200" rows="3" placeholder="O que você responde?"></textarea>
-      <button class="btn btn-sm" id="colgo">${meuPro?"Provocar":"Provocar 🔒 Pro"}</button>
+      <button class="btn btn-sm" id="colgo">Provocar${meuPro?"":seloPro()}</button>
       <button class="btn btn-sm btn-ghost" id="colpular">Pular</button></div>`;
   const inp=document.getElementById("colresp"),go=document.getElementById("colgo"),pular=document.getElementById("colpular");
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
@@ -5081,7 +5128,7 @@ function historicoRivalTexto(){
 }
 function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival){
   const wrap=el("div","");
-  const btn=el("button","btn btn-sm btn-ghost",meuPro?"Dar entrevista":"Dar entrevista 🔒 Pro");
+  const btn=el("button","btn btn-sm btn-ghost",`Dar entrevista${meuPro?"":seloPro()}`);
   wrap.appendChild(btn);
   bouts.appendChild(wrap);
   btn.onclick=()=>{
@@ -5569,7 +5616,23 @@ function quebrar(ctx,txt,max){
    isso). Compartilhado pelos dois cards (fim de carreira e momento) —
    um único desenho, não dois inventados. */
 const CORTE_CANTO_PRO=34;
-function fundoCard(x,w,h,pro){
+/* 3 modelos de card (2026-09-22, pedido explícito) — mesmo corte/contorno
+   de sempre, só a cor de destaque muda. "Ouro" é EXATAMENTE C.gold: quem
+   já é Pro hoje não pode ver o card mudar de cor sozinho, então o padrão
+   tem que ser bit-a-bit igual ao que já existia. */
+const CORES_CARD_PRO=[
+  {id:"ouro",nome:"Ouro",cor:"#B9932F"},
+  {id:"prata",nome:"Prata",cor:"#A9B2BC"},
+  {id:"bronze",nome:"Bronze",cor:"#A9683A"},
+];
+let corCardProEscolha=(()=>{try{const v=parseInt(localStorage.getItem("corCardPro"),10);
+  return(v>=0&&v<CORES_CARD_PRO.length)?v:0;}catch(e){return 0;}})();
+function definirCorCardPro(i){
+  corCardProEscolha=i;
+  try{localStorage.setItem("corCardPro",String(i));}catch(e){}
+}
+function fundoCard(x,w,h,pro,cor){
+  cor=cor||CORES_CARD_PRO[corCardProEscolha].cor;
   x.save();
   x.beginPath();
   if(pro){
@@ -5582,7 +5645,7 @@ function fundoCard(x,w,h,pro){
   for(let y=0;y<h;y+=3)x.fillRect(0,y,w,1);
   x.restore();
   if(!pro)return;
-  x.strokeStyle=C.gold;x.lineWidth=2;
+  x.strokeStyle=cor;x.lineWidth=2;
   x.beginPath();
   x.moveTo(CORTE_CANTO_PRO,0);x.lineTo(w,0);x.lineTo(w,h);x.lineTo(0,h);
   x.lineTo(0,CORTE_CANTO_PRO);x.closePath();x.stroke();
@@ -5594,14 +5657,14 @@ function fundoCard(x,w,h,pro){
 /* Selo: octógono sólido, do tamanho de uma inicial — glifo, nunca texto
    "PRO". Fica no canto oposto ao rodapé octogono.fun (que é sempre
    alinhado à direita), pra não competir com ele. */
-function seloProCanvas(x,cx,cy,r){
+function seloProCanvas(x,cx,cy,r,cor){
   x.save();x.translate(cx,cy);
   x.beginPath();
   for(let i=0;i<8;i++){
     const ang=Math.PI/8+i*Math.PI/4,px=Math.cos(ang)*r,py=Math.sin(ang)*r;
     i===0?x.moveTo(px,py):x.lineTo(px,py);
   }
-  x.closePath();x.fillStyle=C.gold;x.fill();
+  x.closePath();x.fillStyle=cor||CORES_CARD_PRO[corCardProEscolha].cor;x.fill();
   x.restore();
 }
 /* Preview sintético pra vitrine do Plano Pro (item 2, 2026-09-22) — NÃO
@@ -5611,7 +5674,7 @@ function seloProCanvas(x,cx,cy,r){
    só o que É seguro fora de uma carreira — fundoCard()/seloProCanvas(),
    a diferença visual que está sendo vendida — com dado de exemplo fixo
    pro resto, sem reimplementar o layout inteiro da ficha real. */
-function desenharPreviewCard(pro){
+function desenharPreviewCard(pro,cor){
   const cv=document.createElement("canvas");
   cv.width=CARD_W;cv.height=CARD_H;
   const x=cv.getContext("2d");
@@ -5623,7 +5686,7 @@ function desenharPreviewCard(pro){
      me/st/DIVISION e por isso nunca rodam no harness de qualquer jeito. */
   if(!x)return cv;
   const M=72;
-  fundoCard(x,CARD_W,CARD_H,pro);
+  fundoCard(x,CARD_W,CARD_H,pro,cor);
   const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
   const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
   const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
@@ -5648,7 +5711,7 @@ function desenharPreviewCard(pro){
   x.fillStyle=C.faded;x.font=mono(19,500);x.textAlign="right";
   x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
   x.textAlign="left";
-  if(pro)seloProCanvas(x,M+9,yf+68,11);
+  if(pro)seloProCanvas(x,M+9,yf+68,11,cor);
   return cv;
 }
 
@@ -6550,7 +6613,7 @@ function screenDivisao(name){
          console; pela interface, grátis não pode. */
       const travado=m.id==="lenda"&&!meuPro; // só pro RÓTULO — o clique confere meuPro de novo, ver abaixo
       const b=el("button","modo"+(MODO===m.id?" on":""),
-        `<span class="n">${m.nome}${travado?" 🔒 Pro":""}</span><span class="d">${m.desc}</span>`);
+        `<span class="n">${m.nome}${travado?seloPro():""}</span><span class="d">${m.desc}</span>`);
       b.id="modo_"+m.id;
       b.onclick=()=>{
         if(MODO===m.id)return;
@@ -6623,7 +6686,7 @@ function screenAtivarRival(name){
   app.appendChild(el("div","eyebrow","Modo Rival"));
   const box=el("div","tela-box");
   app.appendChild(box);
-  box.appendChild(el("h4","",meuPro?"Modo Rival":"Modo Rival 🔒 Pro"));
+  box.appendChild(el("h4","",`Modo Rival${meuPro?"":seloPro()}`));
   box.appendChild(el("p","dil-c","Quer um rival nesta carreira? Alguém que reaparece, te persegue, e cuja história muda conforme vocês se enfrentam."));
 
   const opts=el("div","modos");

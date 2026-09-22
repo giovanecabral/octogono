@@ -1861,3 +1861,62 @@ separada).
 `node testar.js tudo`: **TUDO CERTO**, ~36 categorias, 26min — 2
 rodadas (a 1ª pegou o bug do fechamento capturado, corrigida, a 2ª
 passou limpa).
+
+## 34. Selo Pro padronizado + 3 modelos de card (2026-09-22)
+
+Pedido depois de ver o item 33 no ar: selo visual único pra tudo que é
+Plano Pro (em vez do sufixo "🔒 Pro" solto em cada tela), e o card Pro
+ganhar 3 modelos pra escolher (não só o acabamento único de sempre).
+
+**Selo Pro.** `seloPro()` (retorna
+`<span class="selo-pro">Plano Pro</span>`) + CSS `.selo-pro` (fundo
+semi-transparente `rgba(185,147,47,.16)`, contorno `var(--gold)`,
+texto `var(--gold-bright)` — mesma paleta de raridade de sempre, nada
+novo). Substituiu o "🔒 Pro" em texto solto nos 4 lugares que tinham:
+botão "Seja uma lenda", tela "Modo Rival", botão "Provocar" (coletiva)
+e botão "Dar entrevista". Qualquer recurso Pro novo reaproveita
+`seloPro()`, não escreve o próprio texto.
+
+**3 modelos de card** (Ouro/Prata/Bronze — decisão tomada quando
+perguntei: cor de destaque diferente por modelo, não moldura
+diferente). `fundoCard()`/`seloProCanvas()` ganharam parâmetro de cor
+opcional, com fallback pro valor salvo (`corCardProEscolha`,
+persistido em `localStorage`) — **card grátis dos 1.527 continua
+idêntico, e quem já era Pro antes desta mudança não vê o próprio card
+mudar de cor sozinho**: "Ouro" é bit-a-bit o mesmo hex que já existia
+(`#B9932F`), sem isso teria sido uma mudança visual não-pedida em cima
+de quem já pagou. Escolha feita no carrossel da tela Plano Pro (agora
+4 posições: Grátis + 3 cores), botão "Usar modelo X" só funciona de
+verdade com `meuPro` — sem Pro, mostra e deixa passear pelas 3 cores
+(vitrine) mas avisa que precisa assinar pra aplicar.
+
+`node testar.js inicial/interface/pro/rival`: todos passam, incluindo
+os testes novos do carrossel (Pro escolhendo Prata grava e mostra "Em
+uso"; sem Pro, botão aparece mas não muda nada, só avisa).
+
+## 35. Pendente — registrado, não começado
+
+- **"Muito mais opções de customização de personagem" pro Plano
+  Pro.** Direção escolhida quando perguntei: mais variedade DENTRO das
+  categorias que já existem (hoje: 8 peles, 9 cortes de cabelo, 8
+  barbas, 5 olhos, 6 sobrancelhas, 6 bocas, 6 cicatrizes, 8 cores de
+  calção, 3 portes — `PELES`/`CABELO_TIPOS`/etc. em index.html perto
+  de `bonecoSVG()`). Cada opção nova é path de SVG desenhado à mão,
+  seguindo o sistema de coordenadas de `anatomia()` — trabalho de
+  ilustração de verdade, não é dado/config; precisa de verificação
+  visual em navegador (o mesmo motivo pelo qual card/canvas não tem
+  cobertura automatizada). Não é do tamanho do resto desta sessão —
+  fica pra uma leva própria, categoria por categoria.
+- **Modo PVP — ideia registrada, sem compromisso.** Pedido como "se
+  possível" — não é recurso a mais dentro da arquitetura atual, é
+  mudança de arquitetura: o jogo hoje é **single-player, motor roda
+  100% no navegador do jogador**, sem servidor de partida, sem
+  conceito de "outro jogador" em lugar nenhum do código (o próprio
+  Termos de Uso, seção 2, diz isso explicitamente — "sem multijogador
+  e sem interação entre usuários"). PVP de verdade precisaria de, no
+  mínimo: motor autoritativo rodando em servidor (o cliente hoje decide
+  o resultado sozinho — daria pra forjar vitória trivialmente num PVP
+  client-side), matchmaking, alguma forma de sincronização/replay
+  entre os dois jogadores, e reescrita da seção 2 dos Termos. Combinado
+  de deixar só como ideia registrada por enquanto, sem investigação de
+  escopo ainda.

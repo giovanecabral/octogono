@@ -3480,7 +3480,8 @@ function testarTelaInicial() {
       ["ready", "screenInicio", "screenName", "screenConta", "screenHistorico",
         "screenTermos", "screenPrivacidade", "screenPlanoPro", "abrirConfig", "salvarCarreiraLocal",
         "SENHA_MIN", "traduzErroSupabase"])
-      + "\ntry{globalThis.__x.cfgAberto=()=>cfgAberto;}catch(e){}",
+      + "\ntry{globalThis.__x.cfgAberto=()=>cfgAberto;}catch(e){}"
+      + "\ntry{globalThis.__x.corCardProEscolha=()=>corCardProEscolha;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
     console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
@@ -3820,6 +3821,43 @@ function testarTelaInicial() {
       const linha = marcado("pro-ativo-linha").pop();
       if (!linha || linha.innerHTML !== "PLANO PRO ATIVO")
         throw new Error("linha 'PLANO PRO ATIVO' não apareceu: " + (linha && linha.innerHTML));
+    });
+
+    /* ---------- 3 modelos de card (2026-09-22) ---------- */
+    await passo("Carrossel Pro ativo: abre a tela de novo (meuPro já ficou true pelo passo acima)", () => {
+      UI.screenPlanoPro();
+    });
+    await passo("Carrossel Pro ativo: 1ª seta pro modelo Prata, botão 'Usar modelo Prata' aparece habilitado", () => {
+      const setas = marcado("pro-carrossel-seta").slice(-2);
+      setas[1].onclick(); // GRÁTIS -> Ouro
+      setas[1].onclick(); // Ouro -> Prata
+      const legenda = marcado("pro-carrossel-legenda").pop();
+      if (!legenda || legenda.textContent !== "PRO — modelo Prata")
+        throw new Error("carrossel não chegou no modelo Prata: " + (legenda && legenda.textContent));
+      const btn = env.todos.filter(n => n.tagName === "button" && /Usar modelo Prata/.test(n.innerHTML || "")).pop();
+      if (!btn || btn.disabled) throw new Error("botão 'Usar modelo Prata' não apareceu habilitado");
+      btn.onclick();
+    });
+    await passo("Carrossel Pro ativo: clicar 'Usar modelo Prata' grava a escolha e vira 'Em uso'", () => {
+      if (UI.corCardProEscolha() !== 1) throw new Error("corCardProEscolha não virou 1 (Prata)");
+      const btn = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Em uso").pop();
+      if (!btn || !btn.disabled) throw new Error("botão não virou 'Em uso'/desabilitado depois de escolher");
+    });
+    await passo("Carrossel SEM Pro: reseta meuPro=false de novo", () => {
+      assinaturaFalsa = null;
+      UI.screenConta();
+    });
+    await passo("Carrossel SEM Pro: escolher não faz nada, só avisa", () => {
+      UI.screenPlanoPro();
+      const setas = marcado("pro-carrossel-seta").slice(-2);
+      setas[1].onclick(); // GRÁTIS -> Ouro
+      const antes = UI.corCardProEscolha();
+      const btn = env.todos.filter(n => n.tagName === "button" && /Usar modelo Ouro/.test(n.innerHTML || "")).pop();
+      if (!btn) throw new Error("botão 'Usar modelo Ouro' não apareceu (vitrine deveria mostrar mesmo sem Pro)");
+      btn.onclick();
+      if (UI.corCardProEscolha() !== antes) throw new Error("clicar sem ser Pro mudou a escolha mesmo assim");
+      if (!env.todos.some(n => n.tagName === "p" && /Assine o Plano Pro/.test(n.innerHTML || "")))
+        throw new Error("aviso de 'assine pra escolher' não apareceu");
     });
 
     let ok = true;
@@ -4785,8 +4823,9 @@ function testarColetivaEntrevista() {
     ai=async()=>{chamouAiGratis=true;return null;};
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
     passo("coletiva sem meuPro: mostra a tela (não pula pra lutar())", !lutarChamado);
-    passo("coletiva sem meuPro: botão avisa 'Provocar 🔒 Pro'",
-      document.getElementById("escolha").innerHTML.includes("Provocar 🔒 Pro"));
+    passo("coletiva sem meuPro: botão mostra o selo Pro",
+      document.getElementById("escolha").innerHTML.includes("Provocar")
+      && document.getElementById("escolha").innerHTML.includes('<span class="selo-pro">Plano Pro</span>'));
     document.getElementById("colresp").value="ele não passa do primeiro round";
     document.getElementById("colgo").onclick();
     passo("coletiva sem meuPro: clique em Provocar NUNCA chama a IA", !chamouAiGratis);
@@ -4874,8 +4913,8 @@ function testarColetivaEntrevista() {
     passo("entrevista sem meuPro: botão AINDA aparece em #bouts",
       bouts.children.length===boutsAntesGratis+1);
     const btnEntGratis=bouts.children[bouts.children.length-1].children[0];
-    passo("entrevista sem meuPro: rótulo avisa 'Dar entrevista 🔒 Pro'",
-      btnEntGratis.innerHTML==="Dar entrevista 🔒 Pro");
+    passo("entrevista sem meuPro: rótulo mostra o selo Pro",
+      btnEntGratis.innerHTML==='Dar entrevista<span class="selo-pro">Plano Pro</span>');
     btnEntGratis.onclick();
     passo("entrevista sem meuPro: clique abre a oferta Pro, nunca a pergunta",
       bouts.children[bouts.children.length-1].innerHTML.includes("Recurso Pro"));
