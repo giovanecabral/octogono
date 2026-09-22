@@ -518,7 +518,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 async function verificarPro(token) {
   if (!token || typeof token !== "string") return false;
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/assinaturas?select=pro`, {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/assinaturas?select=pro,expira_em`, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
     });
     // token inválido/expirado: Supabase recusa com 401 antes de RLS entrar em jogo
@@ -526,7 +526,15 @@ async function verificarPro(token) {
     const linhas = await r.json();
     // RLS já restringe a leitura à própria linha do usuário do token — não
     // precisa (nem pode, com a anon key) filtrar por user_id aqui
-    return Array.isArray(linhas) && linhas.length > 0 && linhas[0].pro === true;
+    if (!Array.isArray(linhas) || linhas.length === 0 || linhas[0].pro !== true) return false;
+    // expira_em (2026-09-22, "mensal" = R$9,99 libera 30 dias, sem
+    // cobrança automática): pro=true no banco não é suficiente sozinho —
+    // se o período já passou, ninguém desliga o campo ativamente (não
+    // existe cobrança recorrente que dispare webhook nenhum), então a
+    // checagem tem que ser preguiçosa, aqui, toda vez que alguém lê.
+    const { expira_em } = linhas[0];
+    if (expira_em && new Date(expira_em).getTime() <= Date.now()) return false;
+    return true;
   } catch {
     return false;
   }

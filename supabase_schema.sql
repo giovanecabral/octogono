@@ -75,10 +75,17 @@ create policy "usuário grava só as próprias carreiras"
 create table if not exists assinaturas (
   user_id uuid primary key references auth.users(id) on delete cascade,
   pro boolean not null default false,
-  plano text not null default 'unico' check (plano in ('unico','mensal')),
+  plano text not null default 'mensal' check (plano in ('unico','mensal')),
   asaas_customer_id text,
   asaas_payment_id text,       -- pagamento que ATIVOU o pro atual
-  expira_em timestamptz,       -- null = pagamento único, nunca expira
+  expira_em timestamptz,       -- 2026-09-22: R$9,99 libera 30 dias, sem
+                                -- cobrança automática (não é assinatura
+                                -- recorrente da Asaas) — cada pagamento
+                                -- confirmado SOMA 30 dias (a partir de
+                                -- agora, ou do fim do período ainda
+                                -- ativo, ver ativarPro() em
+                                -- api/webhook-asaas.js). null só antes
+                                -- do 1º pagamento.
   atualizado_em timestamptz not null default now()
 );
 
@@ -143,12 +150,9 @@ create policy "usuário lê só os próprios pagamentos"
 -- de Uso, gravado no clique de "Confirmar pagamento" (não no cadastro
 -- — cadastro e pagamento podem estar bem separados no tempo, o aceite
 -- que importa juridicamente é o de quando dinheiro troca de mão). Fica
--- INATIVO na prática até screenTermos()/screenPrivacidade() ganharem a
--- seção de pagamento/Pro (o texto atual, Versão 2, diz explicitamente
--- que o Serviço "não processa pagamento nesta versão" e exige
--- atualização prévia antes de qualquer cobrança) e a env var
--- TERMOS_PUBLICADOS ligar no painel da Vercel — ver PENDENCIAS.md,
--- item "Plano Pro". Diferente de assinaturas/pagamentos_processados: AQUI
+-- Ativado em 2026-09-22 (Termos Versão 4, TERMOS_PUBLICADOS=true no
+-- painel da Vercel) — ver PENDENCIAS.md, item "Plano Pro", pro histórico
+-- de quando isso ligou. Diferente de assinaturas/pagamentos_processados: AQUI
 -- o usuário escreve direto (é ele quem aceita, no clique, antes do
 -- pagamento existir) — mesmo padrão de RLS de conquistas_usuario.
 create table if not exists aceites_termos (

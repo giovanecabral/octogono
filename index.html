@@ -1896,6 +1896,17 @@ function getSupabase(){
    este cache esteja desatualizado/forjado via DevTools, o pior caso é a
    UI mostrar "ativo" e o servidor recusar com 403 — nunca o contrário. */
 let meuPro=false;
+/* R$9,99 libera 30 dias (2026-09-22), sem cobrança automática — então
+   "pro=true" no banco não basta sozinho, ninguém desliga esse campo
+   ativamente quando o período acaba (não existe assinatura recorrente
+   disparando webhook nenhum). A checagem de validade é preguiçosa, toda
+   vez que alguém lê — mesma lógica espelhada em verificarPro() (api/ai.js,
+   é lá que a trava de verdade mora) e aqui, no cache do cliente. */
+function proAindaValido(row){
+  if(!row||row.pro!==true)return false;
+  if(row.expira_em&&new Date(row.expira_em).getTime()<=Date.now())return false;
+  return true;
+}
 async function meuAccessToken(){
   const sb=getSupabase();
   if(!sb)return null;
@@ -1909,20 +1920,21 @@ async function atualizarStatusPro(){
   try{
     const{data:{session}}=await sb.auth.getSession();
     if(!session){meuPro=false;return;}
-    const{data}=await sb.from("assinaturas").select("pro").eq("user_id",session.user.id).maybeSingle();
-    meuPro=!!(data&&data.pro);
+    const{data}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle();
+    meuPro=proAindaValido(data);
   }catch(e){meuPro=false;}
 }
 /* Oferta Pro (vitrine) — mesmo painel simples pras 2 entradas (coletiva e
-   entrevista), sem link de pagamento ainda (item "pagamento" do plano,
-   por último — botão fica desligado até os Termos terem seção de
-   pagamento, ver PENDENCIAS.md item "Plano Pro"). Troca o conteúdo do
-   elemento chamador (nunca alert() — o jogo inteiro evita dialog nativo
-   de propósito, é a exceção que quebraria o padrão visual em todo canto). */
+   entrevista). Sem link de pagamento AQUI de propósito: comprar exige
+   sair da luta em andamento (CPF, aceite), e essa tela aparece no meio
+   de uma luta — manda pro menu Conta em vez de tentar cobrar no meio do
+   fluxo. Troca o conteúdo do elemento chamador (nunca alert() — o jogo
+   inteiro evita dialog nativo de propósito, é a exceção que quebraria o
+   padrão visual em todo canto). */
 function abrirOfertaPro(el,aoContinuar){
   el.innerHTML=`<div class="dil-eyebrow">Recurso Pro</div>
-    <div class="dil-c">Coletiva e entrevista reagem ao que você escreve, de verdade — recurso do plano Pro (R$10, pagamento único).</div>
-    <div class="dil-c" style="color:var(--faded);font-size:12px">Ainda não está à venda nesta versão.</div>
+    <div class="dil-c">Coletiva e entrevista reagem ao que você escreve, de verdade — recurso do plano Pro (R$9,99, libera 30 dias).</div>
+    <div class="dil-c" style="color:var(--faded);font-size:12px">Assine na tela Conta, no menu principal.</div>
     ${aoContinuar?`<div class="dil-in"><button class="btn btn-sm" id="ofertaProContinuar">Continuar</button></div>`:""}`;
   if(aoContinuar)document.getElementById("ofertaProContinuar").onclick=()=>{SOM.toque();aoContinuar();};
 }
@@ -2342,7 +2354,7 @@ function screenConta(){
    o número no topo de screenTermos(). Muda SÓ se a seção 6 (Plano Pro)
    dos Termos mudar de um jeito que precise de aceite novo; ajuste de
    redação em outra seção não exige. */
-const VERSAO_TERMOS_PAGAMENTO="3";
+const VERSAO_TERMOS_PAGAMENTO="4";
 
 /* Plano Pro — compra, dentro da tela Conta (2026-09-21, item 6). Só
    roda com sessão ativa (assinaturas é chaveada por user_id, RLS só
@@ -2358,20 +2370,22 @@ async function renderPlanoPro(container,session){
   container.appendChild(box);
   box.appendChild(el("p","hint","Verificando Plano Pro…"));
   const sb=getSupabase();
-  let pro=false;
+  let data=null;
   try{
-    const{data}=await sb.from("assinaturas").select("pro").eq("user_id",session.user.id).maybeSingle();
-    pro=!!(data&&data.pro);
+    ({data}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle());
   }catch(e){/* rede caiu — trata como não-Pro, mostra a oferta; não é
     decisão de segurança (isso é sempre revalidado no servidor) */}
+  const pro=proAindaValido(data);
   meuPro=pro;
   box.innerHTML="";
   box.appendChild(el("h4","","Plano Pro"));
   if(pro){
-    box.appendChild(el("p","hint","Esta conta é Pro: modo Lenda, coletiva de imprensa, entrevista pós-luta, Modo Rival e o acabamento de card estão liberados."));
-    return;
+    const ateFmt=new Date(data.expira_em).toLocaleDateString("pt-BR");
+    box.appendChild(el("p","hint",`Esta conta é Pro até ${ateFmt}: modo Lenda, coletiva de imprensa, entrevista pós-luta, Modo Rival e o acabamento de card estão liberados. Sem cobrança automática — pra continuar depois dessa data, é só pagar de novo, a qualquer momento.`));
+  }else if(data&&data.expira_em){
+    box.appendChild(el("p","hint",`Seu Plano Pro expirou em ${new Date(data.expira_em).toLocaleDateString("pt-BR")}.`));
   }
-  box.appendChild(el("p","dil-c","Coletiva de imprensa e entrevista pós-luta reagem de verdade ao que você escreve. Modo Lenda, Modo Rival e o acabamento de card também entram. R$10, pagamento único — não é assinatura."));
+  box.appendChild(el("p","dil-c","Coletiva de imprensa e entrevista pós-luta reagem de verdade ao que você escreve. Modo Lenda, Modo Rival e o acabamento de card também entram. R$9,99 libera 30 dias — sem cobrança automática, você decide quando renovar."));
   const cpfIn=el("input");cpfIn.type="text";cpfIn.placeholder="CPF (só números)";cpfIn.maxLength=14;cpfIn.inputMode="numeric";
   box.appendChild(cpfIn);
   /* innerHTML + getElementById pros links, não createTextNode — mesmo
@@ -2388,7 +2402,7 @@ async function renderPlanoPro(container,session){
   const aceiteBox=document.getElementById("aceiteProCheck");
   document.getElementById("aceiteProLinkT").onclick=e=>{e.preventDefault();screenTermos();};
   document.getElementById("aceiteProLinkP").onclick=e=>{e.preventDefault();screenPrivacidade();};
-  const btn=el("button","btn btn-sm","Confirmar pagamento — R$10");
+  const btn=el("button","btn btn-sm",pro?"Renovar — R$9,99 (mais 30 dias)":"Confirmar pagamento — R$9,99 (30 dias)");
   btn.disabled=true;
   box.appendChild(btn);
   const msg=el("p","hint","");
@@ -2424,7 +2438,6 @@ async function renderPlanoPro(container,session){
       return;
     }
     if(r.status===503){ erro("Pagamento ainda não está disponível nesta versão."); validar(); return; }
-    if(r.status===409){ erro("Esta conta já é Pro."); return; }
     if(!r.ok||!j.invoiceUrl){ erro("Não deu pra criar o pagamento agora. Tenta de novo em instantes."); validar(); return; }
     msg.className="hint msg-ok";
     msg.textContent="Redirecionando pro pagamento…";
@@ -2507,7 +2520,7 @@ function screenPaginaLegal(titulo,corpo){
 }
 function screenTermos(){
   screenPaginaLegal("Termos de Uso",`
-    <p class="rev">Versão 3 — última revisão: 21 de setembro de 2026.</p>
+    <p class="rev">Versão 4 — última revisão: 22 de setembro de 2026.</p>
 
     <h3>1. Aceitação e objeto</h3>
     <p>Estes Termos de Uso ("Termos") regem o acesso e a utilização do
@@ -2559,16 +2572,25 @@ function screenTermos(){
     resultado de qualquer luta, e nenhuma luta, atributo ou desfecho pode
     ser comprado individualmente.</p>
 
-    <h3>6. Plano Pro — pagamento único</h3>
+    <h3>6. Plano Pro — pagamento avulso, 30 dias por vez</h3>
     <p>O Octógono oferece um upgrade opcional e pago, o "Plano Pro", ao
-    valor de R$ 10,00 (dez reais), cobrado uma única vez por conta — não é
-    assinatura, não se renova e não expira. O Plano Pro desbloqueia: modo
-    Lenda (pool de lutadores lendários no draft), coletiva de imprensa
-    antes da luta, entrevista pós-luta, Modo Rival, e acabamento visual
+    valor de R$ 9,99 (nove reais e noventa e nove centavos) por
+    pagamento. Cada pagamento confirmado libera o Plano Pro por 30
+    (trinta) dias corridos a partir da confirmação — ou, se a conta
+    ainda tiver dias ativos de um pagamento anterior, a partir do fim
+    desse período, sem desperdiçar o tempo já pago. Não há cobrança
+    automática, recorrente ou assinatura: a Octógono NUNCA cobra o
+    usuário sem uma ação de pagamento nova e explícita dele. Passados os
+    30 dias sem novo pagamento, a conta volta sozinha à camada gratuita
+    — sem aviso prévio de cobrança porque não há cobrança nenhuma
+    acontecendo, e sem qualquer efeito sobre o progresso da carreira em
+    andamento. O Plano Pro desbloqueia, enquanto ativo: modo Lenda (pool
+    de lutadores lendários no draft), coletiva de imprensa antes da
+    luta, entrevista pós-luta, Modo Rival, e acabamento visual
     diferenciado nos cards de resultado e de momento. Nenhuma dessas
-    funcionalidades altera a simulação da luta em si nem concede qualquer
-    vantagem sobre o resultado — são camadas de narrativa e apresentação,
-    adicionais à carreira gratuita completa.</p>
+    funcionalidades altera a simulação da luta em si nem concede
+    qualquer vantagem sobre o resultado — são camadas de narrativa e
+    apresentação, adicionais à carreira gratuita completa.</p>
     <p>O pagamento é processado por intermediador financeiro terceirizado
     (Asaas Gestão Financeira S.A., ver Política de Privacidade, seção 4),
     por Pix ou cartão de crédito. O Octógono não recebe nem armazena dado
@@ -2585,11 +2607,12 @@ function screenTermos(){
     Para exercer esse direito, o usuário deve solicitar o estorno pelo
     contato indicado na seção 14; o pedido é processado junto ao
     intermediador financeiro e, uma vez confirmado o estorno, o acesso ao
-    Plano Pro é revogado a partir dessa confirmação. Fora do prazo de
-    arrependimento, não há reembolso, ressalvada eventual cobrança em
-    duplicidade ou erro comprovado do Serviço, casos em que o
-    desenvolvedor avaliará o estorno pelo mesmo contato.</p>
-    <p>A alteração destes Termos para introduzir o Plano Pro, prevista na
+    Plano Pro é revogado a partir dessa confirmação, independentemente de
+    quantos dias do período de 30 ainda restassem. Fora do prazo de
+    arrependimento, não há reembolso do período já em curso, ressalvada
+    eventual cobrança em duplicidade ou erro comprovado do Serviço, casos
+    em que o desenvolvedor avaliará o estorno pelo mesmo contato.</p>
+    <p>A alteração destes Termos para introduzir o Plano Pro, prevista em
     versão anterior desta seção como condição para qualquer cobrança,
     está formalizada nesta versão; o pagamento só é processado depois de
     o usuário manifestar aceite explícito e específico a estes Termos no
@@ -2685,7 +2708,7 @@ function screenTermos(){
 }
 function screenPrivacidade(){
   screenPaginaLegal("Política de Privacidade",`
-    <p class="rev">Versão 3 — última revisão: 21 de setembro de 2026.</p>
+    <p class="rev">Versão 4 — última revisão: 22 de setembro de 2026.</p>
 
     <p>Esta Política de Privacidade descreve, em conformidade com a Lei
     nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais — "LGPD"),
@@ -2729,16 +2752,17 @@ function screenPrivacidade(){
       funcionalidade (art. 7º, I).</li>
       <li><b>CPF, nome e dado de cobrança informados ao contratar o
       Plano Pro</b> — finalidade: processar e comprovar o pagamento
-      único de R$ 10,00. O Octógono não recebe nem armazena número de
+      único de R$ 9,99. O Octógono não recebe nem armazena número de
       cartão de crédito ou dado sensível de pagamento — apenas o
       identificador do cliente e do pagamento gerado pelo processador
       (Asaas), necessários para vincular a cobrança à conta do usuário.
       Base legal: execução de contrato (art. 7º, V) e cumprimento de
       obrigação legal fiscal (art. 7º, II).</li>
-      <li><b>Status do Plano Pro</b> (se a conta é Pro, plano
-      contratado, identificador do pagamento na Asaas) — finalidade:
-      liberar as funcionalidades pagas descritas nos Termos de Uso,
-      seção 6. Base legal: execução de contrato (art. 7º, V).</li>
+      <li><b>Status do Plano Pro</b> (se a conta é Pro, data em que o
+      período de 30 dias pago expira, identificador do pagamento na
+      Asaas) — finalidade: liberar as funcionalidades pagas descritas
+      nos Termos de Uso, seção 6, pelo período pago. Base legal:
+      execução de contrato (art. 7º, V).</li>
       <li><b>Endereço IP e identificação do navegador</b> — coletados de
       forma padrão pela infraestrutura de hospedagem (Vercel), não pelo
       código do Jogo. Finalidade: segurança, prevenção a fraude e

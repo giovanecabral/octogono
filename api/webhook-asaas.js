@@ -34,7 +34,7 @@
 
 const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 const ASAAS_URL = "https://api.asaas.com/v3";
-const PRECO_PRO_MINIMO = 9.99; // trava contra cobrança de teste/valor errado (o plano custa R$10 fixo)
+const PRECO_PRO_MINIMO = 9.9; // trava contra cobrança de teste/valor errado (o plano custa R$9,99 fixo — floor um pouco abaixo pra não brigar com arredondamento de ponto flutuante no valor exato)
 
 const EVENTOS_CONFIRMACAO = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
 const EVENTOS_ESTORNO = new Set(["PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED"]);
@@ -69,26 +69,50 @@ async function registrarProcessado(paymentId, userId, evento, status, valor) {
   });
 }
 
+const DIAS_POR_PAGAMENTO = 30;
+
+/* 2026-09-22: R$9,99 não é mais "pagamento único pra sempre" — libera
+   30 dias. Sem cobrança automática nenhuma (não é assinatura recorrente
+   da Asaas), então cada pagamento confirmado SOMA 30 dias — a partir de
+   AGORA se já tinha expirado (ou nunca teve), ou a partir do fim do
+   período ainda ativo, se a pessoa renovou antes de expirar (senão
+   renovar cedo desperdiçaria os dias que ainda restavam). */
+async function expiraEmAtual(userId) {
+  const r = await supabaseServiceRole(
+    `assinaturas?user_id=eq.${encodeURIComponent(userId)}&select=expira_em`
+  );
+  if (!r.ok) return null;
+  const linhas = await r.json();
+  return Array.isArray(linhas) && linhas.length > 0 ? linhas[0].expira_em : null;
+}
+
 async function ativarPro(userId, customerId, paymentId) {
+  const atual = await expiraEmAtual(userId);
+  const agora = Date.now();
+  const base = atual && new Date(atual).getTime() > agora ? new Date(atual).getTime() : agora;
+  const novaExpiracao = new Date(base + DIAS_POR_PAGAMENTO * 24 * 3600 * 1000).toISOString();
   await supabaseServiceRole("assinaturas", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify({
       user_id: userId,
       pro: true,
-      plano: "unico",
+      plano: "mensal",
       asaas_customer_id: customerId,
       asaas_payment_id: paymentId,
-      expira_em: null,
+      expira_em: novaExpiracao,
       atualizado_em: new Date().toISOString(),
     }),
   });
 }
 
 async function desativarPro(userId) {
+  // estorno revoga NA HORA, independente de quanto ainda faltava do
+  // período — coerente com o direito de arrependimento dos Termos
+  // (seção 6): confirmado o estorno, acesso cai imediatamente.
   await supabaseServiceRole(`assinaturas?user_id=eq.${encodeURIComponent(userId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ pro: false, atualizado_em: new Date().toISOString() }),
+    body: JSON.stringify({ pro: false, expira_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }),
   });
 }
 

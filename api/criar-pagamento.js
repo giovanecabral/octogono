@@ -21,7 +21,7 @@ const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
 const ASAAS_URL = "https://api.asaas.com/v3";
-const PRECO_PRO = 10.0;
+const PRECO_PRO = 9.99;
 
 /* Troca o JWT do usuário pelo próprio usuário — não usa service_role
    aqui, de propósito: este endpoint só cria uma cobrança em nome de
@@ -40,19 +40,6 @@ async function usuarioDoToken(token) {
     return u && u.id ? u : null;
   } catch {
     return null;
-  }
-}
-
-async function jaEhPro(token) {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/assinaturas?select=pro`, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-    });
-    if (!r.ok) return false;
-    const linhas = await r.json();
-    return Array.isArray(linhas) && linhas.length > 0 && linhas[0].pro === true;
-  } catch {
-    return false;
   }
 }
 
@@ -88,7 +75,9 @@ export default async function handler(req, res) {
   const usuario = await usuarioDoToken(token);
   if (!usuario) return res.status(401).json({ error: "sessão inválida — entre na conta de novo" });
   if (!cpfValido(cpf)) return res.status(400).json({ error: "CPF inválido" });
-  if (await jaEhPro(token)) return res.status(409).json({ error: "esta conta já é Pro" });
+  // sem trava de "já é Pro" — cada pagamento confirmado SOMA 30 dias
+  // (ver ativarPro() em api/webhook-asaas.js), então renovar antes de
+  // expirar é uso normal, não erro
 
   const headersAsaas = { access_token: process.env.ASAAS_API_KEY, "Content-Type": "application/json" };
 
@@ -117,7 +106,7 @@ export default async function handler(req, res) {
         value: PRECO_PRO,
         dueDate: vencimento,
         externalReference: usuario.id, // é isto que o webhook lê pra saber de qual conta é o pagamento
-        description: "Octógono — Plano Pro (pagamento único)",
+        description: "Octógono — Plano Pro (30 dias)",
       }),
     });
     const pagamento = await rPagamento.json();

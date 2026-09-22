@@ -1695,3 +1695,45 @@ primeiro pagamento real, senão um estorno não desativa o Pro.
 Sem essas variáveis, o botão em Conta segue tentando e mostrando
 "Pagamento ainda não está disponível nesta versão." — nada quebra,
 nada cobra, só não funciona ainda.
+
+**Item 6 — modelo trocado pra 30 dias, R$9,99 (2026-09-22).** Testado
+em produção (deploy anterior, com a conta de teste): endpoint no ar,
+`TERMOS_PUBLICADOS`/`ASAAS_API_KEY` confirmados funcionando (cobrança
+real criada na Asaas, `invoiceUrl` válido, RLS bloqueando o usuário
+comum de escrever `pro` — só service_role escreve). Antes do usuário
+completar um pagamento real de verdade, pedido dele: não é mais
+pagamento único pra sempre, é **R$9,99 libera 30 dias, sem cobrança
+automática — passado o prazo sem pagar de novo, a conta volta sozinha
+pra grátis**.
+
+- `api/webhook-asaas.js`: `ativarPro()` agora lê `expira_em` atual
+  antes de escrever (`expiraEmAtual()`), soma 30 dias a partir de
+  `max(agora, expira_em atual)` — renovar antes de expirar não
+  desperdiça dias. `plano` passa a ser `'mensal'` (não mais
+  `'unico'`). `desativarPro()` (estorno) também zera `expira_em` pra
+  agora, não só `pro=false`.
+- `api/ai.js` (`verificarPro`) e `index.html`
+  (`proAindaValido()`/`atualizarStatusPro()`/`renderPlanoPro()`): como
+  não existe cobrança recorrente nenhuma disparando webhook quando o
+  prazo acaba, ninguém desliga `pro` ativamente — a checagem é
+  **preguiçosa**, em toda leitura: `pro===true` E `expira_em` ainda no
+  futuro. `verificarPro()` (o portão de verdade em `api/ai.js`) e o
+  cache do cliente fazem exatamente a mesma conta, espelhada.
+- `api/criar-pagamento.js`: tirado o bloqueio de "já é Pro" (409) —
+  renovar antes de expirar é uso normal agora, não erro.
+- `screenConta()`: mostra "Pro até DD/MM/AAAA" quando ativo, "expirou
+  em DD/MM/AAAA" quando não, e o formulário de compra/renovação
+  continua sempre visível (não desaparece só porque já é Pro).
+- Termos de Uso vira **Versão 4** (22/09/2026): seção 6 reescrita pro
+  modelo de 30 dias — nunca cobra sem ação nova do usuário, cai
+  sozinho pra grátis sem aviso de cobrança (porque não há cobrança
+  nenhuma acontecendo), direito de arrependimento de 7 dias continua
+  igual (art. 49 CDC). `VERSAO_TERMOS_PAGAMENTO` no código bumpado
+  pra `"4"` — ninguém tinha aceitado a Versão 3 pra pagamento real
+  ainda (só chamada de teste direta, sem passar pelo checkbox), então
+  não há aceite órfão de versão antiga a se preocupar.
+- `node testar.js tudo`: **TUDO CERTO**, ~36 categorias, 13min.
+
+Ainda não deployado no momento deste registro — commit feito, deploy é
+o próximo passo, com o usuário esperando pra completar um pagamento
+real de R$9,99 assim que confirmar que subiu.
