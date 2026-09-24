@@ -5126,14 +5126,25 @@ function historicoRivalTexto(){
   const linhas=st.rival.historico.map(h=>`${h.ganhou?"você venceu":"ele venceu"} por ${h.metodo.toLowerCase()}`);
   return `${st.rival.historico.length}º encontro entre os dois. Anteriores: ${linhas.join("; ")}.`;
 }
+/* entrevistaWrapAtual/entrevistaWrapRespondida (2026-09-22, achado
+   jogando: "o botão de dar entrevista das lutas passadas continuam
+   aparecendo") — cada luta chamava isto e só ACRESCENTAVA um wrap novo
+   em #bouts, nunca tirando o convite da luta anterior que ficou sem
+   resposta. #bouts continua mostrando o HISTÓRICO completo (cada linha
+   de resultado fica pra sempre, é o cartel) — só o CONVITE não
+   respondido é que não devia sobreviver pra próxima luta. */
+let entrevistaWrapAtual=null,entrevistaWrapRespondida=true;
 function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival){
+  if(entrevistaWrapAtual&&!entrevistaWrapRespondida)entrevistaWrapAtual.innerHTML="";
   const wrap=el("div","");
+  entrevistaWrapAtual=wrap;entrevistaWrapRespondida=false;
   const btn=el("button","btn btn-sm btn-ghost",`Dar entrevista${meuPro?"":seloPro()}`);
   wrap.appendChild(btn);
   bouts.appendChild(wrap);
   btn.onclick=()=>{
     SOM.toque();
     if(!meuPro){abrirOfertaPro(wrap);return;}
+    entrevistaAberta=true;atualizarControles();
     const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
     const{pergunta}=perguntaEntrevista(opp,won,r.method,r.round,r.clock,
       titleFight,zebra,lesaoTxt,td0,tdt0,fightNo);
@@ -5161,6 +5172,13 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
     };
   };
 }
+/* Botão "Continuar" depois da entrevista (2026-09-22, pedido explícito:
+   "não tá dando tempo de ler") — sem isto, o automático (1,1s/speed) ou
+   um clique cedo em "Próxima luta" cortava a resposta da IA antes do
+   jogador terminar de ler. entrevistaAberta trava os dois (ver
+   atualizarControles()/nextFight()/o timer do automático) até este
+   botão ser clicado — aí sim segue pra próxima luta, de propósito
+   (pedido foi "um botão de ir pra luta", não só "fechar o painel"). */
 function aplicarEntrevista(box,pergunta,txt,jBruto){
   const j=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
   const dFan=lim(j&&j.fa,-2,2,0);
@@ -5175,6 +5193,7 @@ function aplicarEntrevista(box,pergunta,txt,jBruto){
   st.entrevistasFeitas=(st.entrevistasFeitas||0)+1;
   const bruto=(j&&j.reacao)?String(j.reacao).slice(0,800):"";
   const reacao=bruto||fraseFallback();
+  entrevistaWrapRespondida=true;             // fica pra sempre no histórico, não é mais "pendente"
   box.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
     <div class="dil-c">"${pergunta}"</div>
     <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
@@ -5182,7 +5201,14 @@ function aplicarEntrevista(box,pergunta,txt,jBruto){
     <div class="dil-fx">
       ${dif!==0?`<span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>`:""}
       ${Math.abs(dFan)>=0.05?`<span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>`:""}
-      ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}</div>`;
+      ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}</div>
+    <div class="dil-in"><button class="btn btn-sm" id="entcontinuar">${fightNo>=TOTAL_FIGHTS?"Continuar":"Continuar pra próxima luta"}</button></div>`;
+  document.getElementById("entcontinuar").onclick=()=>{
+    SOM.toque();
+    entrevistaAberta=false;
+    atualizarControles();
+    nextFight();
+  };
   renderFicha();
 }
 
@@ -6216,6 +6242,17 @@ function urlDesafio(){
    copiarImagem(), que faziam a mesma espera de fonte+canvas duas vezes
    quando eram uma função só (compartilhar()). */
 async function gerarBlobCard(g,desenhar){
+  /* Achado jogando (2026-09-24): "joguei uma carreira e não vi card
+     nenhum novo" — meuPro só é atualizado 1x, no INÍCIO da carreira
+     (atualizarStatusPro() fire-and-forget em startCareer()), sem
+     retry. Se essa chamada falhar (rede) ou simplesmente não tiver
+     terminado ainda, meuPro fica false o resto da carreira INTEIRA,
+     inclusive no momento mais importante: gerar o card final. Reconfere
+     fresco bem aqui, no ÚNICO lugar por onde salvarImagem()/
+     copiarImagem() passam — mesmo raciocínio do bug do fechamento
+     capturado no botão "Seja uma lenda" (nunca confiar num valor pego
+     de antemão quando dá pra reconferir na hora que importa). */
+  await atualizarStatusPro();
   if(document.fonts&&document.fonts.ready)await document.fonts.ready;
   const cv=await desenhar(g);
   return await new Promise(r=>cv.toBlob(r,"image/png"));
@@ -6271,6 +6308,12 @@ let speed=1,playing=false,playTimer=null;
    resolvia e a carreira travava de vez. */
 let dilemaAberto=false;
 let escolhaAberta=false;
+/* Entrevista aberta (2026-09-22, pedido explícito: "não tá dando tempo
+   de ler") — true do clique em "Dar entrevista" (Pro, pergunta real)
+   até o jogador clicar "Continuar pra próxima luta". Mesmo papel de
+   dilemaAberto: trava "Próxima luta" e pausa o timer do automático,
+   senão a resposta da IA passa voando antes de dar tempo de ler. */
+let entrevistaAberta=false;
 let abaCarreira="ficha";     // "ficha"|"historico" — só importa em ≤1080px, estado ocioso
 const TOTAL_FIGHTS=22,SPEEDS=[1,2,4];
 let DIVISION="lightweight";
@@ -7039,6 +7082,7 @@ function startCareer(){
       rivalAtivado:RIVAL_ATIVADO,rivalNomeEscolhido:RIVAL_NOME_ESCOLHIDO,rivalAnunciado:false};
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
+  dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
 
   app.innerHTML="";
   app.appendChild(el("div","eyebrow","Registro de lutas"));
@@ -7156,11 +7200,12 @@ function atualizarControles(){
   if(!next||!ab)return;
   atualizarEstadoCarreira();
   const fim=fightNo>=TOTAL_FIGHTS;
-  next.disabled=dilemaAberto||escolhaAberta||playing||auto||fim;
-  ab.disabled=dilemaAberto||fim;
-  if(ctrl)ctrl.classList.toggle("travado",dilemaAberto||escolhaAberta);
+  next.disabled=dilemaAberto||escolhaAberta||entrevistaAberta||playing||auto||fim;
+  ab.disabled=dilemaAberto||entrevistaAberta||fim;
+  if(ctrl)ctrl.classList.toggle("travado",dilemaAberto||escolhaAberta||entrevistaAberta);
   if(cont&&dilemaAberto)cont.textContent="responda para continuar";
   else if(cont&&escolhaAberta)cont.textContent="escolha o adversário";
+  else if(cont&&entrevistaAberta)cont.textContent="leia a entrevista pra continuar";
   else if(cont)cont.textContent=`${fightNo} de ${TOTAL_FIGHTS} · ${st.wins}-${st.losses}`;
   const cb=document.getElementById("cardsb");
   if(cb){const n=(st.momentos||[]).length;cb.textContent=n?`Cards (${n})`:"Cards";}
@@ -7179,7 +7224,7 @@ function cycleSpeed(){
   document.getElementById("speedb").textContent=`Velocidade ${speed}x`;
 }
 function toggleAuto(){
-  if(dilemaAberto)return;                 // não dá pra pular um dilema
+  if(dilemaAberto||entrevistaAberta)return; // não dá pra pular um dilema/entrevista aberta
   auto=!auto;
   if(auto&&escolhaAberta){                // automático assume as escolhas
     escolhaAberta=false;
@@ -7203,7 +7248,7 @@ function pickOpponent(){
   return LADDER[lo+Math.floor(rng()*(hi-lo+1))];
 }
 function nextFight(){
-  if(fightNo>=TOTAL_FIGHTS||playing||dilemaAberto||escolhaAberta)return;
+  if(fightNo>=TOTAL_FIGHTS||playing||dilemaAberto||escolhaAberta||entrevistaAberta)return;
   /* Único lugar que decide "é luta de título?" pra esta luta. Uma vez por
      luta, aqui, antes de existir tela ou pick automático — candidatos() e
      lutar() só leem st.tituloEstaLuta depois disso. */
@@ -7889,7 +7934,8 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     c.appendChild(fin);return;
   }
   atualizarControles();
-  if(auto&&!dilemaAberto)autoTimer=setTimeout(()=>{if(auto&&!dilemaAberto)nextFight();},1100/speed);
+  if(auto&&!dilemaAberto&&!entrevistaAberta)
+    autoTimer=setTimeout(()=>{if(auto&&!dilemaAberto&&!entrevistaAberta)nextFight();},1100/speed);
 }
 
 /* ---------- tela 4: relatório ---------- */

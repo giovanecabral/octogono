@@ -1920,3 +1920,41 @@ uso"; sem Pro, botão aparece mas não muda nada, só avisa).
   entre os dois jogadores, e reescrita da seção 2 dos Termos. Combinado
   de deixar só como ideia registrada por enquanto, sem investigação de
   escopo ainda.
+
+## 36. Três bugs achados jogando (2026-09-24)
+
+**1. "Não vi card nenhum novo".** Causa raiz: `meuPro` só é conferido
+1x, no INÍCIO da carreira (`atualizarStatusPro()` fire-and-forget em
+`startCareer()`, sem retry). Se essa chamada falhar (rede) ou não
+terminar a tempo, `meuPro` fica `false` a carreira INTEIRA — inclusive
+no momento mais importante: gerar o card final. `gerarBlobCard()`
+(usado por `salvarImagem()`/`copiarImagem()`, os dois únicos lugares
+que de fato desenham o card — `screenReport()` mostra só a tabela de
+estatísticas, o card em si é gerado sob demanda) agora reconfere
+`meuPro` fresco ANTES de desenhar, mesmo raciocínio do bug do
+fechamento capturado do item "Seja uma lenda" (nunca confiar num valor
+pego de antemão quando dá pra reconferir na hora que importa).
+
+**2. "Botão de dar entrevista das lutas passadas continua
+aparecendo".** `renderBotaoEntrevista()` só ACRESCENTAVA um convite
+novo em `#bouts` a cada luta, nunca tirava o da luta anterior sem
+resposta. `entrevistaWrapAtual`/`entrevistaWrapRespondida` (novos):
+convite sem resposta é limpo (`innerHTML=""`) quando a luta seguinte
+chama de novo; convite JÁ RESPONDIDO (via `aplicarEntrevista()`) fica
+pra sempre — é histórico de carreira, não convite pendente.
+
+**3. "Não tá dando tempo de ler".** Nem o automático (retomava em
+1,1s/velocidade) nem "Próxima luta" sabiam que uma entrevista estava
+aberta. `entrevistaAberta` (novo, mesmo papel de `dilemaAberto`): abre
+no clique de "Dar entrevista" (só a pergunta de verdade, Pro — a
+vitrine pro grátis não trava nada), trava `next.disabled`, o timer do
+automático, `nextFight()` e `toggleAuto()`. Fecha só quando o jogador
+clica o botão novo "Continuar pra próxima luta" (dentro de
+`aplicarEntrevista()`, depois da reação da IA), que chama
+`nextFight()` de propósito — pedido foi "um botão de ir pra luta", não
+só "fechar o painel".
+
+`node testar.js tudo`: TUDO CERTO, ~36 categorias, 26min. Cobertura
+nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
+4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
+entrevistaAberta e chama nextFight()).

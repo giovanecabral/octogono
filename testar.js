@@ -3146,6 +3146,19 @@ function testarCompartilhar() {
      asserção via essa global fantasma sempre lia 0. Exposta como função
      pra o corpo só LER o valor de verdade, nunca reatribuir. */
   env.sandbox.__nEscritasClipboard = () => chamadasClipboardWrite;
+  /* Supabase falso SÓ pra provar o achado de 2026-09-24: meuPro tem que
+     ser reconferido no momento de gerar o card, não confiar num
+     snapshot pego 1x no início da carreira (que pode ter falhado sem
+     ninguém notar). pro:true aqui simula "a conta É Pro, só a checagem
+     de início da carreira que não pegou". */
+  env.sandbox.window.supabase = {
+    createClient: () => ({
+      auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) },
+      from: () => ({ select: () => ({ eq: () => ({
+        maybeSingle: async () => ({ data: { pro: true, expira_em: null }, error: null }),
+      }) }) }),
+    }),
+  };
   vm.createContext(env.sandbox);
 
   const corpo = `
@@ -3181,6 +3194,21 @@ function testarCompartilhar() {
       chamadasDesenhar===1);
     passo("copiarImagem() isolada: escreveu na área de transferência (não caiu no catch por falta de suporte fake)",
       (__nEscritasClipboard()-antesEscIsolada)===1);
+
+    /* Achado jogando (2026-09-24): "joguei uma carreira e não vi card
+       nenhum novo" — meuPro fica false a carreira inteira se a checagem
+       de início (atualizarStatusPro() fire-and-forget em startCareer())
+       falhar ou não terminar a tempo, sem retry. gerarBlobCard() (usado
+       por salvarImagem/copiarImagem) reconfere fresco agora — prova
+       aqui: meuPro começa false (simula a checagem de início que não
+       pegou), a conta falsa é pro:true, gerar o card tem que corrigir
+       sozinho ANTES de desenhar. */
+    meuPro=false;
+    const btnSFresh=el("button","","Salvar imagem");
+    await salvarImagem(m,btnSFresh,desenharFake);
+    __drenar();
+    passo("gerarBlobCard(): reconfere meuPro fresco antes de desenhar (não confia no snapshot do início da carreira)",
+      meuPro===true);
 
     /* ---------------------------------------------------------------
        Achado jogando (2026-09-11): "a duplicação voltou". O teste acima
@@ -3308,13 +3336,14 @@ function testarCompartilhar() {
       console.log(`  ${p.ok ? verde("ok   ") : vermelho("fora ")} ${p.nome}`);
     }
     console.log(`  ${cinza("downloads efetivamente disparados: " + cliques.length)}`);
-    /* 4 cenários de SALVAR (isolado + caminho 1 + caminho 3 + caminho 2),
-       2 cliques cada, 1 download por cenário — 4 é o número CERTO. Copiar
-       nunca cria <a>, então não entra nesta contagem (tem a própria
-       asserção de chamadasClipboardWrite===1 em cada caminho acima).
-       Duplicação de verdade apareceria como múltiplo de 4 (8, 12...). */
-    ok = ok && cliques.length === 4;
-    console.log(`  ${cliques.length===4?verde("ok   "):vermelho("fora ")} 4 cenários de Salvar, 1 download cada — nenhum duplicado (${cliques.length} no total)`);
+    /* 5 cenários de SALVAR: isolado (2 cliques, 1 download, guard
+       testado acima), o de refresh de meuPro de 2026-09-24 (1 clique, 1
+       download), caminho 1/3/2 (2 cliques cada, 1 download cada) — 5
+       downloads no total é o número CERTO. Copiar nunca cria <a>, então
+       não entra nesta contagem (tem a própria asserção de
+       chamadasClipboardWrite===1 em cada caminho acima). */
+    ok = ok && cliques.length === 5;
+    console.log(`  ${cliques.length===5?verde("ok   "):vermelho("fora ")} 5 cenários de Salvar, 1 download cada — nenhum duplicado (${cliques.length} no total)`);
     return ok && passos.length > 0;
   });
 }
@@ -4876,6 +4905,45 @@ function testarColetivaEntrevista() {
     passo("entrevista: dinheiro aplicado (reacao menciona 'patrocínio')",
       st.dinheiro===Math.round(RENDA_BASE*.3));
     passo("entrevistasFeitas incrementou", st.entrevistasFeitas===1);
+
+    /* ---------- ENTREVISTA: "Continuar" trava/libera nextFight (2026-09-24) ----------
+       Achado jogando: "não tá dando tempo de ler" — sem isto, o
+       automático ou um clique cedo em 'Próxima luta' cortava a resposta
+       da IA. entrevistaAberta abre no clique de "Dar entrevista" e só
+       fecha quando "Continuar" é clicado, chamando nextFight() de
+       verdade (aqui trocado por um contador — a suíte de coletiva/
+       entrevista não monta draft/LADDER, testar nextFight() de ponta a
+       ponta é papel da suíte de interface). */
+    let nextFightChamado=0;
+    nextFight=()=>{nextFightChamado++;};
+    passo("entrevista: 'Dar entrevista' abre entrevistaAberta=true", entrevistaAberta===true);
+    const boxRespondida=bouts.children[bouts.children.length-1];
+    passo("entrevista: box respondida mostra o botão 'Continuar pra próxima luta' no innerHTML",
+      /Continuar pra próxima luta/.test(boxRespondida.innerHTML||""));
+    const btnContinuar=document.getElementById("entcontinuar");
+    btnContinuar.onclick();
+    passo("entrevista: clicar 'Continuar' fecha entrevistaAberta e chama nextFight()",
+      entrevistaAberta===false&&nextFightChamado===1);
+
+    /* ---------- ENTREVISTA: convite de luta anterior some na luta seguinte ----------
+       Achado jogando: "o botão de dar entrevista das lutas passadas
+       continuam aparecendo". */
+    fightNo=7;
+    ai=async()=>null; // não vai responder esta — só testar limpeza
+    renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false); // luta 7: convite NOVO, sem responder
+    const wrapLuta7=bouts.children[bouts.children.length-1];
+    // o botão é appendChild() de verdade (não innerHTML de template) — o
+    // DOM falso só reflete appendChild em .children, nunca em .innerHTML
+    // (achado com o mesmo engano no botão "Provocar" mais acima nesta
+    // sessão). Checa via .children, não via innerHTML, antes da limpeza.
+    passo("entrevista: convite da luta 7 nasce com o botão 'Dar entrevista' (children, não innerHTML)",
+      wrapLuta7.children.length===1&&/Dar entrevista/.test(wrapLuta7.children[0].innerHTML||""));
+    fightNo=8;
+    renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false); // luta 8: deveria limpar o convite da 7 sem resposta
+    passo("entrevista: convite SEM RESPOSTA da luta anterior é limpo quando a próxima luta chama de novo",
+      wrapLuta7.innerHTML==="");
+    passo("entrevista: convite da luta 6 (JÁ RESPONDIDO, lá em cima) continua no histórico, não foi limpo",
+      boxRespondida.innerHTML!==""&&/Continuar/.test(boxRespondida.innerHTML));
 
     /* ---------- ENTREVISTA: dinheiro só com fato financeiro no texto ---------- */
     st.dinheiro=0;st.followers=8000;st.fan=5;st.entrevistasFeitas=0;
