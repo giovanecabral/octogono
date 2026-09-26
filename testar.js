@@ -6059,6 +6059,16 @@ async function testarRotas() {
       if (!txt.includes(t)) throw new Error("rodapé sem " + t + ": " + txt);
   });
 
+  await conf("atualizações: linha do tempo com todas as entradas, mais recente primeiro", () => {
+    const m = env.todos.length;
+    UI.irPara("atualizacoes"); env.drenar();
+    const marcos = desde(m).filter(n => tem(n, "marco"));
+    if (marcos.length < 8) throw new Error("só " + marcos.length + " entradas");
+    const datas = marcos.map(n => (String(n.innerHTML).match(/data-iso="([\d-]+)"/) || [])[1]);
+    const ord = [...datas].sort().reverse();
+    if (JSON.stringify(datas) !== JSON.stringify(ord)) throw new Error("fora de ordem: " + datas.join(","));
+  });
+
   await conf("todas as rotas do spec estão registradas", () => {
     const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking", "creditos",
       "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);

@@ -5462,6 +5462,63 @@ registrarRota("privacidade",screenPrivacidade);
 registrarRota("404",screen404);
 
 /* Stubs: cada tarefa das fases 1-2 troca o seu pela tela de verdade. */
+/* Atualizações (página própria + prévia no menu). Escritas à mão, em
+   português direto, a partir do histórico real do git (cada item bate
+   com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
+   revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
+const ATUALIZACOES=[
+  {data:"2026-09-26",titulo:"Visual novo",itens:[
+    "Menu com cards e páginas próprias para ranking, atualizações e conta.",
+    "Carreira salva na conta, em até 3 espaços. Recarregar a página não perde mais o progresso.",
+    "Ranking com as carreiras encerradas de todos os jogadores.",
+    "Música e efeitos sonoros novos."]},
+  {data:"2026-09-22",titulo:"Plano Pro",itens:[
+    "R$ 9,99 liberam 30 dias, sem cobrança automática.",
+    "O Pro libera o modo Lenda, a coletiva de imprensa, a entrevista depois da luta, o modo Rival e três modelos de card: Ouro, Prata e Bronze."]},
+  {data:"2026-09-20",titulo:"Conquistas com ícone e raridade",itens:[
+    "Cada conquista mostra um ícone próprio e a raridade: comum, incomum, rara ou lendária."]},
+  {data:"2026-09-19",titulo:"Carreira no celular",itens:[
+    "Ficha e histórico em abas, barra de controles fixa e menu com loja, cards e conquistas.",
+    "No computador, a narração da luta ganhou mais espaço."]},
+  {data:"2026-09-17",titulo:"Dilemas e escolhas na luta",itens:[
+    "Os dilemas fora do octógono e as escolhas no meio do round ganharam visual próprio."]},
+  {data:"2026-09-16",titulo:"Resposta do dilema",itens:[
+    "A resposta do dilema virou uma caixa de texto que cresce enquanto você escreve. Enter só quebra a linha."]},
+  {data:"2026-09-11",titulo:"Mais cards de momento",itens:[
+    "Bônus da noite e chegada ao topo da divisão agora viram card.",
+    "Os desfechos dos dilemas ficaram mais concretos, com nome e diálogo."]},
+  {data:"2026-09-10",titulo:"Contas",itens:[
+    "Crie conta com e-mail e senha ou entre com o Google.",
+    "Conquistas e carreiras encerradas ficam guardadas na conta.",
+    "Recuperação de senha por e-mail."]},
+  {data:"2026-09-07",titulo:"Loja nova",itens:[
+    "Empresário financeiro e casa melhor entraram na loja, cada um com efeito medido na carreira."]},
+  {data:"2026-09-05",titulo:"Escolhas no meio da luta",itens:[
+    "31 ações diferentes para escolher durante o round, cada uma decidida pelos atributos dos dois lutadores.",
+    "Nocaute sofrido pode virar lesão."]},
+  {data:"2026-09-04",titulo:"Conquistas",itens:[
+    "15 conquistas e a platina."]},
+  {data:"2026-09-03",titulo:"Card de momento",itens:[
+    "Vitórias marcantes viram um card para salvar ou compartilhar."]},
+];
+
+function screenAtualizacoes(){
+  const c=montarTela({fundo:"imprensa",titulo:"Atualizações",classe:"tela-atualizacoes"});
+  c.appendChild(el("p","tela-sub","O que mudou no jogo, da mais recente para a mais antiga."));
+  const linha=el("ol","linha-tempo");
+  ATUALIZACOES.forEach((a,i)=>{
+    const item=el("li","marco entra",
+      `<span class="marco-data" data-iso="${a.data}">${fmtData(a.data)} <small>${a.data.slice(0,4)}</small></span>
+       <div class="marco-corpo">
+         <h2 class="marco-titulo">${a.titulo}</h2>
+         <ul class="marco-itens">${a.itens.map(t=>`<li>${t}</li>`).join("")}</ul>
+       </div>`);
+    item.style.animationDelay=(Math.min(i,8)*60)+"ms";
+    linha.appendChild(item);
+  });
+  c.appendChild(linha);
+}
+
 /* Mês em 3 letras, maiúsculo, sem depender de Intl (o teste roda sem). */
 const MESES=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
 function fmtData(iso){
@@ -5575,7 +5632,6 @@ async function preencherPreviaConta(chip){
     `<span class="previa-linha"><span class="previa-txt">${ativo?`<b class="txt-ouro">Plano Pro</b>${ate?` até ${ate}`:""}`:"Plano grátis"}</span></span>`;
 }
 function screenContinuar(){ montarTela({fundo:"vestiario",titulo:"Continuar"}); }
-function screenAtualizacoes(){ montarTela({fundo:"imprensa",titulo:"Atualizações"}); }
 function screenRanking(){ montarTela({fundo:"cinturao",titulo:"Ranking"}); }
 function screenCreditos(){ montarTela({fundo:"arquibancada",titulo:"Créditos"}); }
 

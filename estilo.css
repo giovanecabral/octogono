@@ -170,3 +170,19 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
   .menu-card-medio .cartao-foto{opacity:.45}
   .menu-contato{margin-left:0}
 }
+
+/* ---------- atualizações ---------- */
+.linha-tempo{list-style:none;margin:0;padding:0 0 0 28px;position:relative;max-width:900px}
+.linha-tempo::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--sangue),rgba(215,38,30,.1))}
+.marco{position:relative;display:grid;grid-template-columns:120px minmax(0,1fr);gap:18px;padding:0 0 30px}
+.marco::before{content:"";position:absolute;left:-28px;top:6px;width:14px;height:14px;background:var(--sangue);
+  clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.marco-data{font-family:var(--f-ui);font-weight:700;font-size:18px;letter-spacing:.1em;color:var(--sangue)}
+.marco-data small{display:block;font-size:13px;color:var(--cinza)}
+.marco-corpo{background:rgba(17,19,26,.78);border:1px solid var(--linha);padding:18px 22px;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.marco-titulo{font-family:var(--f-titulo);font-weight:400;font-size:28px;text-transform:uppercase;margin:0 0 8px;line-height:1}
+.marco-itens{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;color:var(--osso-2)}
+.marco-itens li{position:relative;padding-left:18px}
+.marco-itens li::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;background:var(--sangue)}
+@media (max-width:640px){.marco{grid-template-columns:1fr;gap:8px}.marco-corpo{padding:16px}}
