@@ -6109,6 +6109,15 @@ async function testarRotas() {
     if (!tem(podio.children[1], "degrau-1")) throw new Error("1º lugar não está no meio do pódio");
   });
 
+  await conf("continuar: 3 espaços, vazio leva a Nova carreira", () => {
+    const m = env.todos.length;
+    UI.irPara("continuar"); env.drenar();
+    const slots = desde(m).filter(n => tem(n, "save-slot"));
+    if (slots.length !== 3) throw new Error(slots.length + " espaços");
+    slots[0].onclick(); env.drenar();
+    if (UI.rotaAtual() !== "nova") throw new Error("espaço vazio foi pra " + UI.rotaAtual());
+  });
+
   await conf("todas as rotas do spec estão registradas", () => {
     const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking", "creditos",
       "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);

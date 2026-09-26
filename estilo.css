@@ -278,3 +278,12 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .tela .pro-carrossel-seta{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:0;
   background:var(--sup-2);border:1px solid var(--linha-forte);color:var(--osso);cursor:pointer}
 .tela .pro-carrossel-seta .ico{width:20px;height:20px}
+
+/* ---------- continuar ---------- */
+.slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.save-slot{min-height:360px}
+.save-slot-vazio .cartao-miolo{background:rgba(17,19,26,.62)}
+.save-slot-vazio .cartao-conteudo{margin:auto 0;align-items:flex-start}
+.slot-vazio-ico{display:flex;width:56px;height:56px;align-items:center;justify-content:center;border:1px dashed var(--linha-forte);margin:10px 0}
+.slot-vazio-ico .ico{width:26px;height:26px;color:var(--sangue)}
+@media (max-width:900px){.slots{grid-template-columns:1fr}.save-slot{min-height:200px}}

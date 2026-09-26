@@ -5657,7 +5657,26 @@ async function preencherPreviaConta(chip){
   alvo.innerHTML=`<span class="previa-linha"><span class="previa-txt">${email}</span></span>`+
     `<span class="previa-linha"><span class="previa-txt">${ativo?`<b class="txt-ouro">Plano Pro</b>${ate?` até ${ate}`:""}`:"Plano grátis"}</span></span>`;
 }
-function screenContinuar(){ montarTela({fundo:"vestiario",titulo:"Continuar"}); }
+function screenContinuar(){
+  const c=montarTela({fundo:"vestiario",titulo:"Continuar",classe:"tela-continuar"});
+  c.appendChild(el("p","tela-sub","Cada conta guarda até 3 carreiras em andamento."));
+  const grade=el("div","slots");
+  for(let n=1;n<=3;n++)grade.appendChild(slotVazio(n));
+  c.appendChild(grade);
+}
+function slotVazio(n){
+  const b=el("button","cartao save-slot save-slot-vazio entra",
+    `<span class="cartao-miolo"><span class="cartao-conteudo">
+       <span class="cartao-rotulo">Espaço ${n}</span>
+       <span class="slot-vazio-ico">${ICONE("mais")}</span>
+       <span class="cartao-titulo">Livre</span>
+       <span class="cartao-acao">Nova carreira${ICONE("seta-dir")}</span>
+     </span></span>`);
+  b.type="button";
+  b.style.animationDelay=((n-1)*80)+"ms";
+  b.onclick=()=>{ SOM.toque(); irPara("nova"); };
+  return b;
+}
 let filtroRanking={divisao:null,modo:"normal"};
 function screenRanking(){
   const c=montarTela({fundo:"cinturao",titulo:"Ranking",classe:"tela-ranking"});
