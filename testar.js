@@ -3744,13 +3744,29 @@ function testarTelaInicial() {
       btnGoogle.onclick();
     });
 
-    await passo("Histórico vazio: abre a tela", () => { UI.screenHistorico(); });
-    await passo("Histórico vazio: mensagens de 'nenhuma ainda' pros dois blocos", () => {
-      const linhas = env.todos.filter(n => n.tagName === "p" && (n.className || "").split(" ").includes("hint")).map(n => n.innerHTML);
-      if (!linhas.some(t => /nenhuma carreira/i.test(t))) throw new Error("não avisou 'nenhuma carreira ainda'");
-      if (!linhas.some(t => /nenhuma conquista/i.test(t))) throw new Error("não avisou 'nenhuma conquista ainda'");
+    /* Revamp 2026-09-26: Histórico virou as abas "Carreiras encerradas"
+       e "Conquistas" da Conta (logado). screenHistorico() continua
+       existindo como atalho pra aba de carreiras. */
+    const hintsDesde = (m) => env.todos.slice(m).filter(n => n.tagName === "p" && (n.className || "").split(" ").includes("hint")).map(n => n.innerHTML);
+    let marcaHist = 0;
+    await passo("Carreiras encerradas (logado, nenhuma): screenHistorico() abre a aba", () => {
+      sessaoFalsa = { user: { id: "u1", email: "teste@teste.com" } };
+      marcaHist = env.todos.length;
+      UI.screenHistorico();
     });
-    await passo("Histórico com carreira salva: nome, cartel e nota aparecem", () => {
+    await passo("Carreiras encerradas: avisa 'nenhuma carreira concluída ainda'", () => {
+      if (!hintsDesde(marcaHist).some(t => /nenhuma carreira/i.test(t))) throw new Error("não avisou 'nenhuma carreira ainda'");
+      const abas = env.todos.slice(marcaHist).filter(n => (n.className || "").split(" ").includes("guia")).map(n => n.dataset && n.dataset.aba);
+      if (JSON.stringify(abas) !== '["perfil","pro","carreiras","conquistas"]') throw new Error("abas da Conta: " + abas.join(","));
+    });
+    await passo("Conquistas (logado, nenhuma): aba abre", () => {
+      marcaHist = env.todos.length;
+      UI.screenConta("conquistas");
+    });
+    await passo("Conquistas: avisa 'nenhuma conquista desbloqueada ainda'", () => {
+      if (!hintsDesde(marcaHist).some(t => /nenhuma conquista/i.test(t))) throw new Error("não avisou 'nenhuma conquista ainda'");
+    });
+    await passo("Carreiras encerradas com carreira salva: nome, cartel e nota aparecem", () => {
       UI.salvarCarreiraLocal({ seed: 12345, nome: "TesteBot", cartel: "18-4", nota: "B", data: "2026-09-09T12:00:00.000Z" });
       UI.screenHistorico();
     });
@@ -3794,13 +3810,20 @@ function testarTelaInicial() {
 
     /* ---------- Plano Pro: item 2/3 (2026-09-22) ---------- */
     sessaoFalsa = null; // reseta explícito — o login de teste mais acima deixou sessão ativa
-    await passo("Plano Pro: screenPlanoPro() abre a tela do plano (revamp: saiu do menu, mora na Conta)", () => {
+    /* revamp: a vitrine do Pro aparece em mais de um lugar (Conta sem
+       login, aba Plano Pro) — conta só o que ESTA abertura desenhou. */
+    let marcaPro = 0;
+    const desdePro = (classe) => env.todos.slice(marcaPro).filter(n => (n.className || "").split(" ").includes(classe));
+    await passo("Plano Pro: screenPlanoPro() abre a vitrine na Conta (revamp: saiu do menu)", () => {
+      marcaPro = env.todos.length;
       UI.screenPlanoPro();
-      const eyebrow = ultimoTexto("eyebrow");
-      if (eyebrow !== "Plano Pro") throw new Error("não abriu a tela Plano Pro: " + eyebrow);
+    });
+    await passo("Plano Pro: vitrine tem o título do plano", () => {
+      const t = ultimoTexto("painel-titulo");
+      if (!/Octógono Pro/.test(t || "")) throw new Error("vitrine do Pro não apareceu: " + t);
     });
     await passo("Plano Pro: mostra os 5 benefícios (Modo Rival incluído) e o carrossel começa em GRÁTIS", () => {
-      const beneficios = marcado("pro-beneficio");
+      const beneficios = desdePro("pro-beneficio");
       if (beneficios.length !== 5) throw new Error(`esperava 5 benefícios, achei ${beneficios.length}`);
       if (!beneficios.some(b => (b.innerHTML || "").includes("Modo Rival")))
         throw new Error("Modo Rival não apareceu na lista de benefícios");
@@ -3812,7 +3835,7 @@ function testarTelaInicial() {
         throw new Error("carrossel não começou em GRÁTIS: " + (legenda && legenda.textContent));
     });
     await passo("Plano Pro: seta do carrossel troca a legenda pra PRO", () => {
-      const setas = marcado("pro-carrossel-seta");
+      const setas = desdePro("pro-carrossel-seta");
       if (setas.length !== 2) throw new Error(`esperava 2 setas, achei ${setas.length}`);
       setas[1].onclick();
       const legenda = marcado("pro-carrossel-legenda").pop();
@@ -3880,8 +3903,10 @@ function testarTelaInicial() {
       assinaturaFalsa = null;
       UI.screenConta();
     });
-    await passo("Carrossel SEM Pro: escolher não faz nada, só avisa", () => {
+    await passo("Carrossel SEM Pro: abre a vitrine de novo (a Conta desenha depois da sessão resolver)", () => {
       UI.screenPlanoPro();
+    });
+    await passo("Carrossel SEM Pro: escolher não faz nada, só avisa", () => {
       const setas = marcado("pro-carrossel-seta").slice(-2);
       setas[1].onclick(); // GRÁTIS -> Ouro
       const antes = UI.corCardProEscolha();
@@ -6127,16 +6152,21 @@ async function testarRotas() {
     if (r.nome !== "ranking" || r.auth) throw new Error("hash normal lido errado: " + JSON.stringify(r));
   });
 
-  await conf("telas novas sem emoji e sem travessão no texto", () => {
+  /* Emoji como ícone: proibido em TODA tela nova (ícone é SVG do sprite).
+     Travessão: só nas telas de texto 100% novo; as que reaproveitam texto
+     antigo (Conta: formulário e vitrine do Pro) entram na passada de
+     texto da fase 7, depois das amostras aprovadas pelo dono. */
+  await conf("telas novas sem emoji (todas) e sem travessão (as de texto novo)", async () => {
     const sujos = [];
-    for (const r of ["menu", "continuar", "ranking", "atualizacoes", "creditos", "nao-existe"]) {
+    const SEM_TRAVESSAO = ["menu", "continuar", "ranking", "atualizacoes", "creditos", "nao-existe"];
+    for (const r of [...SEM_TRAVESSAO, "conta", "termos", "privacidade"]) {
       const m = env.todos.length;
       UI.irPara(r);
-      env.drenar();
+      env.drenar(); await respirar(); env.drenar();
       desde(m).forEach(n => {
         const h = String(n.innerHTML || "") + String(n.textContent || "");
         if (EMOJI.test(h)) sujos.push(`${r}: emoji em "${h.slice(0, 60)}"`);
-        if (/[—–]/.test(h)) sujos.push(`${r}: travessão em "${h.slice(0, 60)}"`);
+        if (SEM_TRAVESSAO.includes(r) && /[—–]/.test(h)) sujos.push(`${r}: travessão em "${h.slice(0, 60)}"`);
       });
     }
     if (sujos.length) throw new Error(sujos.slice(0, 5).join(" | "));

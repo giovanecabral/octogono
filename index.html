@@ -1282,31 +1282,134 @@ function tituloDoc(mostrar){
 function screenInicio(){ irPara("menu"); }
 function voltarInicio(){ screenInicio(); }
 
-/* ---------- tela conta ---------- */
+/* ---------- tela conta ----------
+   Revamp 2026-09-26: sem sessão, formulário de entrar/criar conta ao
+   lado da vitrine do Plano Pro (quem ainda não tem conta também vê o que
+   o Pro libera). Com sessão, abas Perfil / Plano Pro / Carreiras
+   encerradas / Conquistas. A aba vai no endereço (#/conta/pro) via
+   replaceState: trocar de aba não empilha histórico. Histórico e Plano
+   Pro, que eram telas próprias no menu antigo, moram aqui agora. */
 function screenConta(aba){
-  const corpoTela=montarTela({fundo:"contrato",titulo:"Conta",classe:"tela-conta"});
-  const box=el("div","conta-box");
-  corpoTela.appendChild(box);
-  box.appendChild(el("p","hint","Verificando sessão…"));
-  sincronizarConquistasNaNuvem().then(email=>{
-    box.innerHTML="";
-    if(email){
-      box.appendChild(el("h4","",`Conectado como ${email}`));
-      const statusPro=el("div","","");
-      box.appendChild(statusPro);
-      box.appendChild(el("p","hint","Suas conquistas estão sincronizadas com esta conta."));
-      const sair=el("button","btn btn-ghost btn-sm","Sair");
-      sair.onclick=async()=>{ await sairDaConta(); location.reload(); };
-      box.appendChild(sair);
-      getSupabase().auth.getSession().then(({data:{session}})=>{
-        if(session)renderStatusProResumo(statusPro,session);
-      });
-    }else{
-      const formArea=el("div","");
-      box.appendChild(formArea);
-      montarFormularioConta(formArea);
+  const c=montarTela({fundo:"contrato",titulo:"Conta",classe:"tela-conta"});
+  const area=el("div","conta-area");
+  c.appendChild(area);
+  area.appendChild(el("p","carregando","Verificando sessão"));
+  sincronizarConquistasNaNuvem().then(async email=>{
+    area.innerHTML="";
+    if(!email){
+      const grade=el("div","conta-grade");
+      const form=el("div","painel-n conta-form");
+      const vitrine=el("div","painel-n conta-vitrine");
+      grade.append(form,vitrine);
+      area.appendChild(grade);
+      montarFormularioConta(form);
+      montarVitrinePro(vitrine,null);
+      return;
     }
+    let session=null;
+    try{ ({data:{session}}=await getSupabase().auth.getSession()); }catch(e){}
+    const abas=[["perfil","Perfil","usuario"],["pro","Plano Pro","estrela"],
+                ["carreiras","Carreiras encerradas","lista"],["conquistas","Conquistas","trofeu"]];
+    const atual=abas.some(a=>a[0]===aba)?aba:"perfil";
+    const corpo=el("div","guia-corpo");
+    const abrir=id=>{
+      corpo.innerHTML="";
+      ({perfil:()=>montarPerfil(corpo,email,session),
+        pro:()=>{ const v=el("div","painel-n conta-vitrine"); corpo.appendChild(v); montarVitrinePro(v,session); },
+        carreiras:()=>montarCarreirasEncerradas(corpo),
+        conquistas:()=>montarConquistasConta(corpo)})[id]();
+    };
+    area.append(montarGuias(abas,atual,id=>{
+      try{ history.replaceState(null,"","#/conta/"+id); }catch(e){}
+      abrir(id);
+    }),corpo);
+    abrir(atual);
   });
+}
+function screenHistorico(){ irPara("conta","carreiras"); }
+function screenPlanoPro(){ irPara("conta","pro"); }
+
+function montarPerfil(corpo,email,session){
+  const p=el("div","painel-n perfil");
+  p.appendChild(el("div","perfil-rot","E-mail"));
+  p.appendChild(el("div","perfil-email",email));
+  const statusPro=el("div","","");
+  p.appendChild(statusPro);
+  if(session)renderStatusProResumo(statusPro,session);
+  p.appendChild(el("p","hint","Suas conquistas e carreiras ficam sincronizadas com esta conta."));
+  const acoes=el("div","perfil-acoes");
+  const trocar=el("button","botao botao-sec",`${ICONE("chave")}<span>Trocar senha</span>`);
+  trocar.type="button";
+  const formSenha=el("div","perfil-senha");
+  formSenha.style.display="none";
+  trocar.onclick=()=>{
+    formSenha.style.display=formSenha.style.display==="none"?"":"none";
+    if(formSenha.children&&formSenha.children.length)return;
+    const inp=el("input");inp.type="password";inp.placeholder="Nova senha";inp.id="perfil-nova-senha";
+    const ok=el("button","botao","Salvar senha");ok.type="button";
+    const msg=el("p","hint","");
+    ok.onclick=async()=>{
+      if(!inp.value||inp.value.length<SENHA_MIN){ msg.textContent=`A senha precisa de pelo menos ${SENHA_MIN} caracteres.`; return; }
+      ok.disabled=true; msg.textContent="Salvando";
+      const r=await definirNovaSenha(inp.value);
+      ok.disabled=false;
+      msg.textContent=r.ok?"Senha trocada.":traduzErroSupabase(r.erro);
+    };
+    formSenha.append(inp,ok,msg);
+  };
+  const sair=el("button","botao botao-sec",`${ICONE("sair")}<span>Sair</span>`);
+  sair.type="button";
+  sair.onclick=async()=>{ await sairDaConta(); location.reload(); };
+  acoes.append(trocar,sair);
+  p.append(acoes,formSenha);
+  corpo.appendChild(p);
+}
+/* Vitrine do Pro: benefícios + carrossel dos modelos de card + (com
+   sessão) o formulário de pagamento de sempre; sem sessão, avisa que
+   assinar exige conta. Mesmo conteúdo da antiga screenPlanoPro(). */
+function montarVitrinePro(container,session){
+  container.appendChild(el("h2","painel-titulo","Octógono Pro"));
+  container.appendChild(el("p","dil-c","R$ 9,99 liberam 30 dias. Sem cobrança automática."));
+  montarBeneficiosPro(container);
+  montarCarrosselPro(container);
+  const formArea=el("div","");
+  container.appendChild(formArea);
+  if(session)renderPlanoPro(formArea,session);
+  else formArea.appendChild(el("p","hint","Assinar exige uma conta (é lá que o Plano Pro fica guardado)."));
+}
+function montarCarreirasEncerradas(corpo){
+  const box=el("div","painel-n");
+  corpo.appendChild(box);
+  box.appendChild(el("p","carregando","Carregando"));
+  const desenhar=()=>{
+    box.innerHTML="";
+    const carreiras=lerCarreirasLocais().sort((a,b)=>new Date(b.data)-new Date(a.data));
+    if(!carreiras.length){ box.appendChild(el("p","hint","Nenhuma carreira concluída ainda.")); return; }
+    carreiras.forEach(cr=>{
+      const d=new Date(cr.data);
+      const dataFmt=isNaN(d)?cr.data:d.toLocaleDateString("pt-BR");
+      box.appendChild(el("div","carreira-item",
+        `<div class="carreira-linha">
+           <span class="carreira-nome">${cr.nome}</span>
+           <span class="carreira-stats"><b>${cr.cartel}</b><span class="carreira-nota">nota ${cr.nota}</span></span>
+         </div>
+         <div class="carreira-data">${dataFmt}</div>`));
+    });
+  };
+  if(getSupabase())sincronizarCarreirasNaNuvem().then(desenhar).catch(desenhar);
+  else desenhar();
+}
+function montarConquistasConta(corpo){
+  const box=el("div","painel-n");
+  const n=CONQUISTAS_DESBLOQUEADAS.size,total=CONQUISTAS.length;
+  box.appendChild(el("div","conq-progresso",
+    `<span class="conq-num">${n}<small>/${total}</small></span>
+     <span class="conq-barra"><i style="width:${Math.round(n/total*100)}%"></i></span>`));
+  const desbloqueadas=CONQUISTAS.filter(c=>CONQUISTAS_DESBLOQUEADAS.has(c.id));
+  if(!desbloqueadas.length)box.appendChild(el("p","hint","Nenhuma conquista desbloqueada ainda."));
+  else desbloqueadas.forEach(c=>box.appendChild(el("div","conquista ok",
+    `<div class="conquista-nome">${ICONE("check")} ${c.nome}</div><div class="conquista-desc">${c.desc}</div>`)));
+  corpo.appendChild(box);
 }
 
 /* Versão dos Termos aceita no clique de "Confirmar pagamento" — bate com
@@ -1343,17 +1446,17 @@ async function renderStatusProResumo(container,session){
    QUALQUER UM, com ou sem conta (é vitrine); o formulário de
    compra/renovação (renderPlanoPro() abaixo) só aparece com sessão. */
 const BENEFICIOS_PRO=[
-  {ic:"🏆",t:"Modo Lenda",d:"Draft e adversários vêm dos campeões e ex-desafiantes da divisão, não do elenco comum."},
-  {ic:"🎤",t:"Coletiva antes da luta",d:"Provoca o adversário de verdade — a reação dele muda o hype e a pressão da luta que vem."},
-  {ic:"📰",t:"Entrevista depois da luta",d:"O repórter pergunta sobre o que aconteceu; sua resposta muda fã, seguidor e patrocínio."},
-  {ic:"⚔",t:"Modo Rival",d:"Escolhe um nome, cria uma rivalidade que atravessa a carreira: histórico, revanches, o rosto que volta."},
-  {ic:"🎴",t:"Cards exclusivos",d:"Corte de canto e selo — reconhecível de relance no card de resultado e no de momento."},
+  {ic:"coroa",t:"Modo Lenda",d:"Draft e adversários vêm dos campeões e ex-desafiantes da divisão, não do elenco comum."},
+  {ic:"microfone",t:"Coletiva antes da luta",d:"Provoca o adversário de verdade — a reação dele muda o hype e a pressão da luta que vem."},
+  {ic:"jornal",t:"Entrevista depois da luta",d:"O repórter pergunta sobre o que aconteceu; sua resposta muda fã, seguidor e patrocínio."},
+  {ic:"luta",t:"Modo Rival",d:"Escolhe um nome, cria uma rivalidade que atravessa a carreira: histórico, revanches, o rosto que volta."},
+  {ic:"cards",t:"Cards exclusivos",d:"Corte de canto e selo — reconhecível de relance no card de resultado e no de momento."},
 ];
 function montarBeneficiosPro(container){
   const lista=el("div","pro-beneficios");
   BENEFICIOS_PRO.forEach(b=>{
     lista.appendChild(el("div","pro-beneficio",
-      `<span class="ic">${b.ic}</span><span class="txt"><b>${b.t}</b><br>${b.d}</span>`));
+      `<span class="ic">${ICONE(b.ic)}</span><span class="txt"><b>${b.t}</b><br>${b.d}</span>`));
   });
   container.appendChild(lista);
 }
@@ -1372,7 +1475,8 @@ function montarBeneficiosPro(container){
    3 cores (vitrine), mas o botão não aplica nada. */
 function montarCarrosselPro(container){
   const wrap=el("div","pro-carrossel");
-  const seta=(lado)=>{const b=el("button","pro-carrossel-seta",lado==="e"?"‹":"›");b.type="button";return b;};
+  const seta=(lado)=>{const b=el("button","pro-carrossel-seta",ICONE(lado==="e"?"chevron-esq":"chevron-dir"));
+    b.type="button";if(b.setAttribute)b.setAttribute("aria-label",lado==="e"?"Anterior":"Próximo");return b;};
   const setaE=seta("e"),setaD=seta("d");
   const cvWrap=el("div","pro-carrossel-cv");
   const legenda=el("div","pro-carrossel-legenda","");
@@ -1407,36 +1511,6 @@ function montarCarrosselPro(container){
   setaE.onclick=()=>{SOM.toque();i=(i-1+N)%N;desenha();};
   setaD.onclick=()=>{SOM.toque();i=(i+1)%N;desenha();};
   desenha();
-}
-function screenPlanoPro(){
-  tituloDoc(true);
-  app.innerHTML="";
-  app.appendChild(el("div","eyebrow","Plano Pro"));
-  const box=el("div","tela-box");
-  app.appendChild(box);
-  box.appendChild(el("h4","","Octógono Pro"));
-  box.appendChild(el("p","dil-c","R$9,99 libera 30 dias. Sem cobrança automática."));
-  montarBeneficiosPro(box);
-  montarCarrosselPro(box);
-  const formArea=el("div","");
-  box.appendChild(formArea);
-  formArea.appendChild(el("p","hint","Verificando sessão…"));
-  const sb=getSupabase();
-  (async()=>{
-    let session=null;
-    if(sb){ try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){} }
-    formArea.innerHTML="";
-    if(session){ await renderPlanoPro(formArea,session); }
-    else{
-      formArea.appendChild(el("p","hint","Assinar exige uma conta (é lá que o Plano Pro fica guardado)."));
-      const linkConta=el("a","","Entrar ou criar conta →");
-      linkConta.href="#";linkConta.onclick=e=>{e.preventDefault();screenConta();};
-      formArea.appendChild(linkConta);
-    }
-  })();
-  const voltar=el("button","btn btn-ghost","Voltar");
-  voltar.onclick=voltarInicio;
-  app.appendChild(voltar);
 }
 
 /* Plano Pro — formulário de compra/renovação (2026-09-21, item 6;
@@ -1528,57 +1602,9 @@ async function renderPlanoPro(container,session){
   };
 }
 
-/* ---------- histórico — placeholder, ver LEIA-ME.md "Histórico" pra
-   proposta de conteúdo (aguardando aprovação antes de escrever) ---------- */
-/* Histórico (2026-09-09): carreiras anteriores (nome, cartel, nota, data)
-   e conquistas desbloqueadas. Funciona sem conta (só localStorage, igual
-   sempre) — com conta, sincroniza primeiro pra trazer o que só existe
-   na nuvem (outro aparelho). */
-function screenHistorico(){
-  tituloDoc(true);
-  app.innerHTML="";
-  app.appendChild(el("div","eyebrow","Histórico"));
-  const box=el("div","");
-  app.appendChild(box);
-  box.appendChild(el("p","hint","Carregando…"));
-
-  const desenhar=()=>{
-    box.innerHTML="";
-    box.appendChild(el("h4","","Carreiras anteriores"));
-    const carreiras=lerCarreirasLocais().sort((a,b)=>new Date(b.data)-new Date(a.data));
-    if(!carreiras.length){
-      box.appendChild(el("p","hint","Nenhuma carreira concluída ainda."));
-    }else{
-      carreiras.forEach(c=>{
-        const data=new Date(c.data);
-        const dataFmt=isNaN(data)?c.data:data.toLocaleDateString("pt-BR");
-        box.appendChild(el("div","carreira-item",
-          `<div class="carreira-linha">
-             <span class="carreira-nome">${c.nome}</span>
-             <span class="carreira-stats"><b>${c.cartel}</b><span class="carreira-nota">nota ${c.nota}</span></span>
-           </div>
-           <div class="carreira-data">${dataFmt}</div>`));
-      });
-    }
-    box.appendChild(el("h4","","Conquistas"));
-    const desbloqueadas=CONQUISTAS.filter(c=>CONQUISTAS_DESBLOQUEADAS.has(c.id));
-    if(!desbloqueadas.length){
-      box.appendChild(el("p","hint","Nenhuma conquista desbloqueada ainda."));
-    }else{
-      desbloqueadas.forEach(c=>{
-        box.appendChild(el("div","conquista ok",
-          `<div class="conquista-nome">✓ ${c.nome}</div><div class="conquista-desc">${c.desc}</div>`));
-      });
-    }
-  };
-
-  if(getSupabase())sincronizarCarreirasNaNuvem().then(desenhar).catch(desenhar);
-  else desenhar();
-
-  const voltar=el("button","btn btn-ghost","Voltar");
-  voltar.onclick=voltarInicio;
-  app.appendChild(voltar);
-}
+/* Histórico (2026-09-09) virou as abas "Carreiras encerradas" e
+   "Conquistas" da Conta no revamp de 2026-09-26: ver screenConta(),
+   montarCarreirasEncerradas() e montarConquistasConta(). */
 
 /* ---------- Termos de Uso / Política de Privacidade ----------
    Texto próprio, não modelo colado de provedor de pagamento — pesquisado

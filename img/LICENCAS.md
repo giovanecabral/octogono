@@ -2,7 +2,7 @@
 
 ## Ícones (img/icones.svg)
 
-41 ícones do Lucide (https://lucide.dev), pacote `lucide-static` versão 1.48.0,
+44 ícones do Lucide (https://lucide.dev), pacote `lucide-static` versão 1.48.0,
 convertidos em sprite `<symbol>` sem alteração do desenho. Licença original,
 copiada na íntegra abaixo (ISC para o Lucide; MIT para os ícones que vieram do
 Feather):
