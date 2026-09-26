@@ -11,13 +11,34 @@ cada decisão. Este arquivo é só o resumo do que não pode ser esquecido.
 ## Arquivos
 
 ```
-index.html          O JOGO INTEIRO (~2900 linhas). Fonte única de verdade.
+index.html          O JOGO INTEIRO (~7000 linhas de JS). Fonte única de verdade do código.
+estilo.css          Visual NOVO (revamp 2026-09-26, identidade "Noite de Luta").
+legado.css          CSS antigo movido sem mudança; some quando a última tela antiga for trocada.
+img/                icones.svg (sprite Lucide), fundos .webp, gerar.py (gera e trata os fundos).
+404.html            Página de erro estática (a Vercel serve sozinha).
 fighters.json       1.527 lutadores reais com stats do ufcstats.
 testar.js           A única ferramenta de teste. Lê o motor de dentro do HTML.
 atualizar-dados.py  Regenera o fighters.json.
 api/ai.js           Proxy do OpenRouter. Roda na Vercel.
 LEIA-ME.md          Documentação detalhada.
+docs/superpowers/   Spec e planos do revamp da interface.
 ```
+
+## Revamp da interface em andamento (branch `revamp-ui`)
+
+Spec: `docs/superpowers/specs/2026-09-26-revamp-ui-design.md`. Estado das
+fases em `PENDENCIAS.md` item 37. Enquanto a branch não voltar pro
+`master`: **nunca `vercel --prod` a partir dela** (o deploy sai dos
+arquivos locais e publicaria meio revamp). Duas regras novas que valem
+daqui pra frente:
+
+- **Roteador por hash (`irPara`/`lerRota`)**: o Supabase devolve login com
+  Google, confirmação de e-mail e recuperação de senha NO HASH
+  (`#access_token=...`). `lerRota()` marca isso com `auth:true` e ninguém
+  mexe na URL nesse caso, senão o token some antes do Supabase ler.
+  `redirectTo` sempre com `urlRetornoAuth()` (endereço sem o hash da rota).
+- **Ícone é SVG do sprite (`ICONE(nome)`), nunca emoji nem caractere
+  unicode.** A suíte `rotas` reprova emoji em qualquer tela nova.
 
 ## Como testar — SEMPRE
 

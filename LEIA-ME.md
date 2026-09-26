@@ -60,13 +60,18 @@ node testar.js interface 7
 ```
 index.html          O JOGO INTEIRO. Motor, draft, narração, eventos, interface.
                     É a única fonte de verdade: o testar.js lê o motor daqui.
+estilo.css          Visual novo (revamp 2026-09-26). Ver "Interface nova".
+legado.css          CSS das telas antigas, movido sem mudança. Temporário.
+img/                Ícones (sprite SVG) e fundos (.webp) + gerar.py.
+404.html            Página de erro estática.
 fighters.json       1.527 lutadores com stats calculadas do ufcstats.
 testar.js           A única ferramenta.
 atualizar-dados.py  Regenera o fighters.json com dados novos.
 api/ai.js           Proxy do OpenRouter. Só é usado depois do deploy.
 ```
 
-Cinco arquivos. Para jogar você precisa de dois: `index.html` e `fighters.json`.
+Para jogar localmente: `python3 -m http.server 8000` na pasta e abrir
+`http://localhost:8000` (CSS, imagens e ícones são arquivos separados agora).
 
 ---
 
@@ -2468,7 +2473,12 @@ proxy de IA). Vale resolver quando existir pagamento ou ranking global de
 verdade — hoje o custo de forjar (abrir DevTools, entender a estrutura)
 já filtra a imensa maioria, e não há prêmio nenhum em jogo.
 
-## Tela inicial (2026-09-09)
+## Tela inicial (2026-09-09), SUBSTITUÍDA pelo menu do revamp (2026-09-26)
+
+O que está abaixo descreve a tela antiga; ficou como histórico. O menu atual
+está em "Interface nova (revamp 2026-09-26)". O que continua valendo daqui:
+link de desafio pula o menu, e o fluxo de recuperação de senha.
+
 
 Antes, `boot()`/`ready()` iam direto pra tela de nome — sem menu, sem
 marca, sem link pra conta ou pra termos. `screenInicio()` é a nova
@@ -2511,6 +2521,74 @@ certos do Supabase com os argumentos certos, incluindo o evento
 `PASSWORD_RECOVERY` disparado manualmente no teste (captura o callback
 que `onAuthStateChange` registrou, chama com `"PASSWORD_RECOVERY"`) e
 confirma que `screenNovaSenha()` abre sozinha. Provado com dente.
+
+## Interface nova (revamp 2026-09-26)
+
+Spec completo em `docs/superpowers/specs/2026-09-26-revamp-ui-design.md`;
+planos por fase em `docs/superpowers/plans/`. Pedido do dono: sair do visual
+"texto cru" e construir menu e hub novos com identidade própria, no nível de
+jogo de console. Decisões medidas/combinadas antes de codar, uma por vez.
+
+**Identidade "Noite de Luta"** (transmissão de PPV). Tokens no topo do
+`estilo.css`: fundo `#07080B`, superfícies `#11131A`/`#1A1D26`, vermelho
+`#D7261E` como cor de ação, dourado `#D4A017` só pra cinturão/lendário/Pro,
+texto osso `#F2EEE6`. Fontes Anton (títulos), Barlow Condensed (interface),
+Barlow (texto). Card com dois cantos cortados em diagonal (`.cartao`, a
+assinatura visual), granulação sobre a tela, fundo com foto duotone. As regras
+antigas de "sem gradiente, sem canto, vermelho raro" caíram de propósito junto
+com a identidade antiga.
+
+**Arquivos.** O `<style>` inteiro saiu pro `legado.css` sem nenhuma mudança
+(provado com screenshot idêntico pixel a pixel antes/depois); visual novo mora
+no `estilo.css`, carregado depois. O JS continua no `<script>` único do
+`index.html` (o `testar.js` e a semente dependem disso): bloco "INTERFACE NOVA"
+logo antes de `boot()`.
+
+**Roteador.** `irPara(rota, param)` + endereço no hash (`#/menu`,
+`#/ranking`, `#/conta/pro`...). Botão voltar do navegador funciona
+(`popstate`), rota desconhecida abre a 404 interna, caminho desconhecido no
+site cai no `404.html`. `screenInicio()`, `screenHistorico()` e
+`screenPlanoPro()` continuam existindo como atalhos pro roteador porque
+código antigo e testes chamam esses nomes. **Cuidado que já foi pego antes de
+dar problema**: o Supabase devolve o token de login no hash; `lerRota()`
+reconhece (`auth:true`) e ninguém reescreve a URL nesse caso, e o
+`redirectTo` do Google e da recuperação de senha usa `urlRetornoAuth()`
+(endereço sem o hash da rota), senão o token chegaria como
+`#/conta#access_token=...`.
+
+**Molde de tela.** `montarTela({fundo, titulo, voltar})` monta fundo,
+cabeçalho com **Voltar** e corpo; toda tela nova usa. Transição: corte
+diagonal vermelho (`#corte`) cobrindo a troca; com `prefers-reduced-motion`,
+troca direto.
+
+**Menu** (`screenMenu`): Nova carreira e Continuar grandes, Ranking,
+Atualizações e Conta médios com prévia (top 3 do placar, 2 últimas
+atualizações, e-mail e status Pro). Opções viraram só a engrenagem;
+Histórico e Plano Pro moram na Conta.
+
+**Páginas**: Atualizações (lista `ATUALIZACOES` escrita à mão, cada item
+conferido contra o `git log`), Ranking (placar global; lê a tabela `placar`
+que a fase 3 cria; sem tabela, mostra estado vazio), Conta (sem login:
+formulário + vitrine do Pro; com login: abas Perfil, Plano Pro, Carreiras
+encerradas, Conquistas), Continuar (3 espaços; a fase 3 liga o save),
+Créditos, Termos e Privacidade.
+
+**Ícones**: sprite `img/icones.svg` com símbolos do Lucide (ISC, licença em
+`img/LICENCAS.md`); `ICONE(nome)` devolve o `<svg><use>`. Nenhum emoji ou
+caractere fazendo papel de ícone: a vitrine do Pro tinha 5 emojis e as setas
+do carrossel eram `‹ ›`, trocados. A suíte `rotas` reprova emoji em tela nova.
+
+**Imagens**: `img/gerar.py` gera os fundos pelo OpenRouter
+(`google/gemini-3-pro-image`) e aplica o tritom preto/vermelho/osso com
+granulação, em WebP desktop (1920px) e recorte retrato pro celular. A chave
+nunca fica no repositório: o script lê `~/.octogono-openrouter`. Regras dos
+prompts: sem pessoa real, sem rosto reconhecível, sem marca.
+
+**Teste**: `node testar.js rotas` (menu, Voltar em toda tela, 404, hash do
+Supabase, créditos, ranking com pódio, sem emoji/travessão). Dente provado:
+tirar o Voltar do molde reprova 7 telas; tirar a proteção do hash reprova com
+o token virando nome de rota. Verificação visual com screenshots em 1440, 820
+e 380 px (puppeteer-core com o Chrome instalado, ferramenta fora do repo).
 
 ## Histórico (2026-09-09) — aprovado, implementado
 

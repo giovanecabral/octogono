@@ -1958,3 +1958,43 @@ só "fechar o painel".
 nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
+
+## 37. Revamp da interface (2026-09-26) — fases 1 e 2 feitas na branch `revamp-ui`
+
+Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
+console, mais conta obrigatória, save, placar, som e passada de texto.
+Spec: `docs/superpowers/specs/2026-09-26-revamp-ui-design.md` (7 seções
+aprovadas uma a uma). Plano das fases 1-2:
+`docs/superpowers/plans/2026-09-26-revamp-fases-1-2.md`.
+
+**Feito (fases 1-2):** `legado.css`/`estilo.css`, fontes novas, sprite de
+ícones, roteador por hash com Voltar em toda tela e 404 (interna e
+`404.html`), menu de 5 cards, Atualizações, Ranking (estado vazio até a
+tabela existir), Conta com abas, Continuar (3 espaços vazios), Créditos,
+Termos/Privacidade no molde novo. Suíte nova `rotas`; `interface` e
+`inicial` atualizadas pro menu novo. Mensagem de uso do `testar.js` agora
+é lida do próprio despacho (a escrita à mão estava desatualizada).
+
+**Esperando o dono:** chave do OpenRouter em `~/.octogono-openrouter`
+(`chmod 600`) pra gerar os fundos (`python3 img/gerar.py`). Sem as imagens,
+as telas novas funcionam mas os cards ficam escuros. **Checkpoint visual
+do dono antes da fase 3.**
+
+**Ainda no fluxo antigo, de propósito, até a fase certa:** `#/nova` abre o
+`screenName()` de sempre (fase 4 troca pelo assistente); hub da carreira é o
+antigo (fase 5). Voltar do navegador no meio da carreira volta pro menu e
+perde a carreira, igual recarregar perdia antes: o save da fase 3 resolve.
+
+**Riscos e achados registrados (não resolvidos nesta fase):**
+- Resend grátis manda 100 e-mails por dia; com confirmação de e-mail
+  obrigatória (fase 3), dia de anúncio forte pode travar cadastro.
+- Placar forjável com carreira plausível (o motor roda no navegador);
+  barrar de vez exige rerodar a carreira no servidor. Fora de escopo.
+- Os CSVs de `data/` vêm do projeto `Greco1899/scrape_ufc_stats`, que é
+  GPL-3.0 (o código do raspador). Estatística é fato público, mas vale o
+  dono decidir se isso exige alguma nota além do crédito na página Créditos.
+- Sobram 6 "✓" como ícone em telas do hub (fase 5 troca por SVG) e 2 emojis
+  em posts simulados da repercussão (fase 7 decide).
+- Travessões e "de verdade" na vitrine do Pro e no formulário de conta
+  (texto antigo reaproveitado): entram na passada de texto da fase 7, depois
+  das 10 amostras aprovadas.
