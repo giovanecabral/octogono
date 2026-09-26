@@ -51,6 +51,7 @@
   </svg>
 </button>
 <div id="cfg" class="cfg-overlay" style="display:none"></div>
+<div id="corte" aria-hidden="true"></div>
 
 <script>
 /* =========================================================================
@@ -1006,7 +1007,7 @@ async function entrarComGoogle(){
   const sb=getSupabase();
   if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
   try{
-    const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.href}});
+    const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:urlRetornoAuth()}});
     if(error)return{ok:false,erro:error.message};
     return{ok:true}; // navegador já está saindo da página aqui
   }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
@@ -1044,7 +1045,7 @@ async function enviarRecuperacaoSenha(email){
   const sb=getSupabase();
   if(!sb)return{ok:false,erro:"Conta não configurada ainda."};
   try{
-    const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.href});
+    const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:urlRetornoAuth()});
     if(error)return{ok:false,erro:error.message};
     return{ok:true};
   }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
@@ -1267,63 +1268,25 @@ function montarFormularioConta(container){
    qualquer outra tela restaura (a home é a única sem cabeçalho de
    registro, faz sentido — as outras SÃO o registro). */
 function tituloDoc(mostrar){
+  /* revamp: tela antiga (ainda chama tituloDoc) mostra o cabeçalho de
+     sempre; tela nova (montarTela) marca data-tela="nova" e o CSS some
+     com ele. */
+  document.documentElement.dataset.tela="antiga";
   const h=document.getElementById("dochead-h1");
   if(h)h.style.display=mostrar?"":"none";
 }
-/* ---------- tela inicial ---------- */
-function screenInicio(){
-  tituloDoc(false);
-  app.innerHTML="";
-  const tela=el("div","tela-inicio");
-
-  const oct=el("div","inicio-oct");
-  oct.innerHTML=octogonoSVG();
-  tela.appendChild(oct);
-
-  const conteudo=el("div","inicio-conteudo");
-
-  const marca=el("div","inicio-marca");
-  marca.appendChild(el("h1","inicio-titulo","OCTÓGONO"));
-  marca.appendChild(el("p","inicio-tagline",
-    "Monte seu lutador draftando atributos de gente real. Jogue a carreira inteira, até a aposentadoria."));
-  conteudo.appendChild(marca);
-
-  const menu=el("nav","inicio-menu");
-  const item=(rot,aoClicar,principal)=>{
-    const b=el("button","inicio-item"+(principal?" inicio-item-principal":""),rot);
-    b.onclick=aoClicar;return b;};
-  menu.append(
-    item("Jogar",()=>screenName(),true),
-    item("Opções",()=>abrirConfig()),
-    item("Conta",()=>screenConta()),
-    item("Histórico",()=>screenHistorico()),
-    item("Plano Pro",()=>screenPlanoPro()),
-  );
-  conteudo.appendChild(menu);
-  conteudo.appendChild(el("p","inicio-fato",
-    `<b>${ROSTER?ROSTER.length:1527}</b> lutadores reais, com estatística de verdade do octógono.`));
-  tela.appendChild(conteudo);
-
-  const rodape=el("footer","inicio-rodape");
-  const linkTermos=el("a","","Termos de Uso");linkTermos.href="#";
-  linkTermos.onclick=e=>{e.preventDefault();screenTermos();};
-  const linkPriv=el("a","","Política de Privacidade");linkPriv.href="#";
-  linkPriv.onclick=e=>{e.preventDefault();screenPrivacidade();};
-  const linkContato=el("a","","Contato");linkContato.href="mailto:contato@octogono.fun";
-  rodape.append(linkTermos,el("span","","·"),linkPriv,el("span","","·"),linkContato);
-  tela.appendChild(rodape);
-
-  app.appendChild(tela);
-}
+/* ---------- tela inicial ----------
+   Revamp 2026-09-26: o menu mora em screenMenu() (bloco INTERFACE NOVA).
+   screenInicio() fica como atalho pro roteador porque várias telas antigas
+   (e o testar.js) ainda chamam este nome. */
+function screenInicio(){ irPara("menu"); }
 function voltarInicio(){ screenInicio(); }
 
 /* ---------- tela conta ---------- */
-function screenConta(){
-  tituloDoc(true);
-  app.innerHTML="";
-  app.appendChild(el("div","eyebrow","Conta"));
+function screenConta(aba){
+  const corpoTela=montarTela({fundo:"contrato",titulo:"Conta",classe:"tela-conta"});
   const box=el("div","conta-box");
-  app.appendChild(box);
+  corpoTela.appendChild(box);
   box.appendChild(el("p","hint","Verificando sessão…"));
   sincronizarConquistasNaNuvem().then(email=>{
     box.innerHTML="";
@@ -1344,9 +1307,6 @@ function screenConta(){
       montarFormularioConta(formArea);
     }
   });
-  const voltar=el("button","btn btn-ghost","Voltar");
-  voltar.onclick=voltarInicio;
-  app.appendChild(voltar);
 }
 
 /* Versão dos Termos aceita no clique de "Confirmar pagamento" — bate com
@@ -1633,13 +1593,8 @@ function screenHistorico(){
    continua proposta pra quando existir pagamento, não implementado aqui
    — ver LEIA-ME.md "Termos de Uso e Política de Privacidade". */
 function screenPaginaLegal(titulo,corpo){
-  tituloDoc(true);
-  app.innerHTML="";
-  app.appendChild(el("div","eyebrow",titulo));
-  app.appendChild(el("div","pagina-legal",corpo));
-  const voltar=el("button","btn btn-ghost","Voltar");
-  voltar.onclick=voltarInicio;
-  app.appendChild(voltar);
+  const c=montarTela({fundo:"arquibancada",titulo,classe:"tela-legal"});
+  c.appendChild(el("div","pagina-legal",corpo));
 }
 function screenTermos(){
   screenPaginaLegal("Termos de Uso",`
@@ -5372,6 +5327,154 @@ const pctBar=p=>`<span class="pctwrap ${pctClass(p)}">
   <span class="pctbar"><i style="width:${Math.max(2,Math.round(p*100))}%"></i></span>
   <span class="pctnum">${pctLabel(p)}</span></span>`;
 
+/* =========================================================================
+   INTERFACE NOVA (revamp 2026-09-26): roteador por hash, molde de tela,
+   ícones, transição. Visual em estilo.css. Spec em
+   docs/superpowers/specs/2026-09-26-revamp-ui-design.md.
+   ========================================================================= */
+const ICONE=(nome,cls="")=>
+  `<svg class="ico${cls?" "+cls:""}" aria-hidden="true" focusable="false"><use href="img/icones.svg#${nome}"></use></svg>`;
+
+const ROTAS={};
+let rotaAtual=null;
+function registrarRota(nome,tela){ ROTAS[nome]={tela}; }
+/* O Supabase devolve login com Google, confirmação de e-mail e link de
+   recuperação de senha no HASH (#access_token=...&type=...). Se isso
+   virasse nome de rota, o jogo abria a 404 e, pior, reescrevia o hash
+   antes do Supabase ler o token: login perdido. auth:true avisa quem
+   chama pra NÃO mexer na URL. */
+function lerRota(){
+  let h="";
+  try{ h=String(location.hash||""); }catch(e){}
+  if(/access_token=|refresh_token=|error_description=|type=recovery|type=signup/.test(h))
+    return{nome:"menu",param:null,auth:true};
+  const partes=h.replace(/^#\/?/,"").split("/").filter(Boolean);
+  return{nome:partes[0]||"menu",param:partes.slice(1).join("/")||null,auth:false};
+}
+function irPara(nome,param=null,{substituir=false}={}){
+  const alvo="#/"+nome+(param?"/"+param:"");
+  try{
+    if(location.hash!==alvo){
+      if(substituir)history.replaceState(null,"",alvo);
+      else history.pushState(null,"",alvo);
+    }
+  }catch(e){/* sem history: navega igual, só não entra no histórico */}
+  mostrarRota(nome,param);
+}
+function mostrarRota(nome,param){
+  const r=ROTAS[nome]?nome:"404";
+  rotaAtual=r;
+  transicao(()=>ROTAS[r].tela(param));
+}
+/* Corte diagonal vermelho: cobre a tela em ~170ms, troca o conteúdo
+   coberto, descobre. Sem animação (reduce-motion ou sem o elemento),
+   troca direto. */
+function transicao(trocar){
+  const c=document.getElementById("corte");
+  if(reduceMotion()||!c||!c.classList){ trocar(); rolarTopo(); return; }
+  c.classList.remove("corte-on"); void c.offsetWidth; c.classList.add("corte-on");
+  setTimeout(()=>{ trocar(); rolarTopo(); },170);
+}
+function rolarTopo(){ try{ window.scrollTo(0,0); }catch(e){} }
+function armarRotas(){
+  try{
+    window.addEventListener("popstate",()=>{
+      const r=lerRota(); if(!r.auth)mostrarRota(r.nome,r.param);
+    });
+  }catch(e){}
+}
+/* Endereço de volta pro Supabase (Google, recuperação de senha): sem o
+   hash da rota, senão o token chega como "#/conta#access_token=..." e o
+   Supabase não acha. */
+function urlRetornoAuth(){
+  try{ return String(location.href).split("#")[0]; }
+  catch(e){ return "https://octogono.fun/"; }
+}
+
+function fundoTela(nome,{vivo=false}={}){
+  const f=el("div","tela-fundo"+(vivo?" vivo":""));
+  f.style.cssText=`--img:url(img/${nome}.webp);--img-m:url(img/${nome}-m.webp)`;
+  return f;
+}
+/* Molde único das telas novas: fundo, cabeçalho com Voltar e título,
+   corpo. Devolve o corpo. voltar=null só no menu (é a raiz). */
+function montarTela({fundo=null,vivo=false,titulo=null,voltar="menu",classe=""}={}){
+  if(cfgAberto)fecharConfig();
+  document.documentElement.dataset.tela="nova";
+  app.innerHTML="";
+  const tela=el("div","tela"+(classe?" "+classe:""));
+  if(fundo)tela.appendChild(fundoTela(fundo,{vivo}));
+  if(titulo||voltar){
+    const cab=el("header","tela-cab");
+    if(voltar){
+      const b=el("button","btn-voltar",ICONE("seta-esq")+"<span>Voltar</span>");
+      b.type="button";
+      b.onclick=()=>{ SOM.toque(); irPara(voltar); };
+      cab.appendChild(b);
+    }
+    if(titulo)cab.appendChild(el("h1","tela-titulo",titulo));
+    tela.appendChild(cab);
+  }
+  const corpo=el("div","tela-corpo");
+  tela.appendChild(corpo);
+  app.appendChild(tela);
+  return corpo;
+}
+/* Abas das telas novas (Conta agora; hub da carreira na fase 5). Troca
+   o conteúdo sem refazer a tela inteira. abas=[[id,rótulo,ícone?],...] */
+function montarGuias(abas,atual,aoTrocar){
+  const nav=el("nav","guias");
+  abas.forEach(([id,rot,ico])=>{
+    const b=el("button","guia"+(id===atual?" on":""),(ico?ICONE(ico):"")+`<span>${rot}</span>`);
+    b.type="button"; b.dataset.aba=id;
+    b.onclick=()=>{
+      SOM.toque();
+      nav.querySelectorAll(".guia").forEach(x=>x.classList.toggle("on",x===b));
+      aoTrocar(id);
+    };
+    nav.appendChild(b);
+  });
+  return nav;
+}
+function vazio(icone,titulo,texto){
+  return el("div","vazio",`${ICONE(icone,"vazio-ico")}<b>${titulo}</b>${texto?`<span>${texto}</span>`:""}`);
+}
+
+function screen404(){
+  const c=montarTela({fundo:"apagado",titulo:null,voltar:"menu",classe:"tela-404"});
+  c.appendChild(el("div","erro-num","404"));
+  c.appendChild(el("h2","erro-titulo","Página não encontrada"));
+  c.appendChild(el("p","tela-sub","O endereço não existe ou mudou de lugar."));
+  const b=el("button","botao",`${ICONE("seta-esq")}<span>Voltar ao menu</span>`);
+  b.type="button"; b.onclick=()=>irPara("menu");
+  c.appendChild(b);
+}
+
+registrarRota("menu",screenMenu);
+registrarRota("nova",()=>screenName());   // mesmo caminho do antigo "Jogar"; a fase 4 troca pelo assistente
+registrarRota("continuar",screenContinuar);
+registrarRota("conta",p=>screenConta(p));
+registrarRota("atualizacoes",screenAtualizacoes);
+registrarRota("ranking",screenRanking);
+registrarRota("creditos",screenCreditos);
+registrarRota("termos",screenTermos);
+registrarRota("privacidade",screenPrivacidade);
+registrarRota("404",screen404);
+
+/* Stubs: cada tarefa das fases 1-2 troca o seu pela tela de verdade. */
+function screenMenu(){
+  const c=montarTela({fundo:"arena",vivo:true,voltar:null,classe:"tela-menu"});
+  const grade=el("div","menu-grade"); c.appendChild(grade);
+  ["nova","continuar","ranking","atualizacoes","conta"].forEach(r=>{
+    const b=el("button","cartao menu-card",r); b.type="button"; b.dataset.rota=r;
+    b.onclick=()=>irPara(r); grade.appendChild(b);
+  });
+}
+function screenContinuar(){ montarTela({fundo:"vestiario",titulo:"Continuar"}); }
+function screenAtualizacoes(){ montarTela({fundo:"imprensa",titulo:"Atualizações"}); }
+function screenRanking(){ montarTela({fundo:"cinturao",titulo:"Ranking"}); }
+function screenCreditos(){ montarTela({fundo:"arquibancada",titulo:"Créditos"}); }
+
 /* ---------- carregar dados ---------- */
 async function boot(){
   /* "Abriu o jogo" — evento 1 de 4 do funil (PLANO-LANCAMENTO.md, fase 0).
@@ -5416,7 +5519,14 @@ function ready(data){
     /* Link de desafio pula a tela inicial de propósito — quem clicou
        num link de amigo já sabe o que veio fazer aqui, forçar passar
        pelo menu primeiro só atrapalharia. */
-    lerDesafio()?screenName():screenInicio();
+    if(lerDesafio()){ screenName(); return; }
+    /* Endereço com rota (#/ranking) abre direto nela. Endereço com
+       resposta de login do Supabase no hash: cria o client ANTES de
+       qualquer coisa mexer na URL (ele lê o token dali) e desenha o menu
+       sem reescrever o endereço. */
+    const r=lerRota();
+    if(r.auth){ getSupabase(); rotaAtual="menu"; ROTAS.menu.tela(null); return; }
+    irPara(r.nome,r.param,{substituir:true});
   },30);
 }
 
@@ -7007,6 +7117,7 @@ function screenReport(){
 }
 armarTrilha();
 armarConfig();
+armarRotas();
 boot();
 </script>
 </body>

@@ -3,3 +3,132 @@
    Todo visual NOVO mora aqui. legado.css só existe até a última tela
    antiga ser trocada. Carregado DEPOIS do legado.css: em empate de
    especificidade, o novo vence. */
+
+:root{
+  --fundo:#07080B; --sup:#11131A; --sup-2:#1A1D26;
+  --linha:rgba(255,255,255,.08); --linha-forte:rgba(255,255,255,.16);
+  --sangue:#D7261E; --sangue-vivo:#E8362D; --sangue-escuro:#7A0F0B;
+  --ouro:#D4A017; --osso:#F2EEE6; --osso-2:#C9CBD2; --cinza:#8A8F9C; --ganho:#2FBF71;
+  --f-titulo:"Anton",Impact,"Arial Narrow",sans-serif;
+  --f-ui:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-texto:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --corte:18px;
+  --ease-soco:cubic-bezier(.2,.8,.2,1);
+}
+
+/* telas novas: fundo e largura próprios; "Ficha do Lutador" some */
+html[data-tela="nova"] body{background:var(--fundo)}
+html[data-tela="nova"] .doc-head{display:none}
+html[data-tela="nova"] .wrap{max-width:1320px;padding:28px 24px 64px}
+@media (max-width:600px){html[data-tela="nova"] .wrap{padding:18px 16px 48px}}
+
+/* granulação sobre tudo (filme), sem pegar clique */
+body::after{content:"";position:fixed;inset:0;z-index:9990;pointer-events:none;opacity:.07;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>")}
+
+.ico{width:1.1em;height:1.1em;flex:none;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;vertical-align:-.18em}
+
+/* ---------- molde de tela ---------- */
+.tela{position:relative;min-height:calc(100vh - 92px);font-family:var(--f-texto);color:var(--osso);font-size:16px;line-height:1.5}
+.tela-fundo{position:fixed;inset:0;z-index:-1;background:var(--fundo) center/cover no-repeat;background-image:var(--img)}
+@media (max-width:700px){.tela-fundo{background-image:var(--img-m,var(--img))}}
+.tela-fundo::after{content:"";position:absolute;inset:0;background:
+  radial-gradient(120% 90% at 50% 10%,rgba(7,8,11,.25) 0%,rgba(7,8,11,.78) 58%,rgba(7,8,11,.96) 100%),
+  linear-gradient(180deg,rgba(7,8,11,.2) 0%,rgba(7,8,11,.85) 100%)}
+.tela-fundo.vivo{animation:kenburns 28s ease-in-out infinite alternate}
+@keyframes kenburns{from{transform:scale(1.03)}to{transform:scale(1.12) translate3d(-1.5%,-1%,0)}}
+.tela-cab{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin:0 0 28px;padding-right:64px}
+.tela-titulo{font-family:var(--f-titulo);font-weight:400;font-size:clamp(38px,5.4vw,72px);line-height:.95;
+  text-transform:uppercase;letter-spacing:.005em;margin:0}
+.tela-sub{color:var(--osso-2);font-size:17px;max-width:62ch;margin:0 0 24px}
+.btn-voltar{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 16px 0 12px;cursor:pointer;
+  background:rgba(17,19,26,.72);color:var(--osso);border:1px solid var(--linha-forte);
+  font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.14em;text-transform:uppercase;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:border-color .2s,background .2s}
+.btn-voltar:focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
+.carregando{font-family:var(--f-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);animation:pisca 1.2s ease-in-out infinite}
+@keyframes pisca{50%{opacity:.35}}
+.vazio{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:28px;background:rgba(17,19,26,.7);border:1px dashed var(--linha-forte)}
+.vazio b{font-family:var(--f-ui);font-size:20px;letter-spacing:.06em;text-transform:uppercase}
+.vazio span{color:var(--cinza)}
+.vazio-ico{width:30px;height:30px;color:var(--sangue)}
+
+/* ---------- card com canto cortado (assinatura) ---------- */
+.cartao{position:relative;isolation:isolate;display:flex;width:100%;padding:0;border:0;cursor:pointer;
+  text-align:left;font:inherit;color:var(--osso);background:var(--linha-forte);
+  clip-path:polygon(var(--corte) 0,100% 0,100% calc(100% - var(--corte)),calc(100% - var(--corte)) 100%,0 100%,0 var(--corte));
+  transition:background .25s,transform .35s var(--ease-soco)}
+.cartao-miolo{position:relative;flex:1;display:flex;flex-direction:column;margin:1px;overflow:hidden;background:var(--sup);
+  clip-path:polygon(var(--corte) 0,100% 0,100% calc(100% - var(--corte)),calc(100% - var(--corte)) 100%,0 100%,0 var(--corte))}
+.cartao-foto{position:absolute;inset:0;background:center/cover no-repeat;background-image:var(--img);
+  transition:transform .8s var(--ease-soco);opacity:.95}
+.cartao-foto::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(7,8,11,.05) 0%,rgba(7,8,11,.55) 50%,rgba(7,8,11,.96) 100%)}
+.cartao-conteudo{position:relative;z-index:1;margin-top:auto;padding:24px;display:flex;flex-direction:column;gap:6px}
+.cartao-rotulo{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--sangue)}
+.cartao-titulo{font-family:var(--f-titulo);font-weight:400;font-size:clamp(30px,3.3vw,48px);line-height:.95;text-transform:uppercase}
+.cartao-texto{color:var(--osso-2);font-size:15px;line-height:1.45}
+.cartao-acao{display:inline-flex;align-items:center;gap:10px;margin-top:12px;font-family:var(--f-ui);font-weight:700;
+  font-size:15px;letter-spacing:.16em;text-transform:uppercase}
+.cartao-acao .ico{transition:transform .3s var(--ease-soco)}
+.cartao.apagado .cartao-foto{filter:grayscale(1) brightness(.55)}
+.cartao.apagado .cartao-rotulo{color:var(--cinza)}
+.cartao:focus-visible{outline:none;background:var(--sangue)}
+@media (hover:hover) and (pointer:fine){
+  .cartao:hover{background:var(--sangue);transform:translateY(-3px)}
+  .cartao:hover .cartao-foto{transform:scale(1.045)}
+  .cartao:hover .cartao-acao .ico{transform:translateX(5px)}
+  .cartao::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;transform:translateX(-120%);
+    background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.10) 50%,transparent 65%)}
+  .cartao:hover::after{transform:translateX(120%);transition:transform .8s var(--ease-soco)}
+  .btn-voltar:hover{border-color:var(--sangue);background:rgba(215,38,30,.14)}
+  .botao:hover{background:var(--sangue-vivo)}
+  .botao-sec:hover{box-shadow:inset 0 0 0 1px var(--osso)}
+}
+
+/* ---------- botões e abas ---------- */
+.botao{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;padding:0 28px;cursor:pointer;
+  font-family:var(--f-ui);font-weight:700;font-size:17px;letter-spacing:.14em;text-transform:uppercase;color:#fff;
+  background:var(--sangue);border:0;text-decoration:none;transition:background .2s,transform .2s var(--ease-soco);
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+.botao:active{transform:translateY(1px)}
+.botao:disabled{opacity:.4;cursor:not-allowed}
+.botao:focus-visible{outline:2px solid var(--osso);outline-offset:3px}
+.botao-sec{background:transparent;color:var(--osso);box-shadow:inset 0 0 0 1px var(--linha-forte)}
+.guias{display:flex;gap:4px;overflow-x:auto;margin:0 0 24px;border-bottom:1px solid var(--linha-forte);scrollbar-width:none}
+.guia{display:inline-flex;align-items:center;gap:8px;padding:12px 18px;background:none;border:0;cursor:pointer;white-space:nowrap;
+  color:var(--cinza);font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.14em;text-transform:uppercase;
+  box-shadow:inset 0 -3px 0 transparent;transition:color .2s,box-shadow .2s}
+.guia.on{color:var(--osso);box-shadow:inset 0 -3px 0 var(--sangue)}
+@media (hover:hover) and (pointer:fine){.guia:hover{color:var(--osso)}}
+
+/* ---------- entrada em cascata ---------- */
+.entra{animation:entra .6s var(--ease-soco) both}
+@keyframes entra{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+
+/* ---------- troca de tela: corte diagonal ---------- */
+#corte{position:fixed;inset:0;z-index:9995;pointer-events:none;visibility:hidden;background:var(--sangue);
+  clip-path:polygon(0 0,0 0,-30% 100%,-30% 100%)}
+#corte.corte-on{visibility:visible;animation:corte .36s cubic-bezier(.7,0,.3,1) both}
+@keyframes corte{
+  0%{clip-path:polygon(0 0,0 0,-30% 100%,-30% 100%)}
+  48%,52%{clip-path:polygon(0 0,130% 0,100% 100%,-30% 100%)}
+  100%{clip-path:polygon(130% 0,130% 0,100% 100%,100% 100%)}}
+
+/* ---------- 404 ---------- */
+.tela-404 .tela-corpo{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding-top:6vh}
+.erro-num{font-family:var(--f-titulo);font-size:clamp(120px,24vw,280px);line-height:.8;color:var(--sangue)}
+.erro-titulo{font-family:var(--f-titulo);font-weight:400;font-size:clamp(30px,4vw,52px);text-transform:uppercase;margin:0}
+
+/* ---------- engrenagem global no visual novo ---------- */
+html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid var(--linha-forte);color:var(--osso);
+  border-radius:0;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+@media (prefers-reduced-motion:reduce){
+  .entra{animation:fade .25s both}
+  .tela-fundo.vivo{animation:none}
+  #corte{display:none}
+  .cartao,.cartao-foto,.botao{transition:none}
+}
+@keyframes fade{from{opacity:0}}

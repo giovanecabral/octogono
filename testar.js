@@ -97,7 +97,12 @@ function criarAmbiente({ contarNos = false } = {}) {
       /* o jogo arma um ouvinte de primeiro clique para iniciar a trilha */
       addEventListener: noop, removeEventListener: noop,
     },
-    window: { matchMedia: () => ({ matches: true }) },   // reduce-motion: sem esperas
+    window: { matchMedia: () => ({ matches: true }), addEventListener: noop, scrollTo: noop },   // reduce-motion: sem esperas
+    /* roteador por hash (revamp 2026-09-26): irPara() grava em history e
+       lê location.hash. pushState aqui só atualiza o hash do location
+       ATUAL do sandbox (suítes que trocam sandbox.location continuam
+       funcionando, a leitura é na hora da chamada). */
+    location: { hash: "", href: "https://octogono.fun/", search: "", pathname: "/", origin: "https://octogono.fun", reload: noop },
     setTimeout: fn => { timers.push(fn); return timers.length; },
     clearTimeout: noop, setInterval: noop, clearInterval: noop,
     fetch: () => Promise.reject(new Error("offline")),
@@ -105,6 +110,10 @@ function criarAmbiente({ contarNos = false } = {}) {
     Math, JSON, Date, Number, String, Array, Object, Promise, Set, Map, Error, isNaN,
   };
   sandbox.globalThis = sandbox;
+  sandbox.history = {
+    pushState: (x, y, u) => { sandbox.location.hash = String(u || ""); },
+    replaceState: (x, y, u) => { sandbox.location.hash = String(u || "").startsWith("#") ? String(u) : ""; },
+  };
   return { sandbox, todos, registro, drenar: () => { let i = 0; while (timers.length && i++ < 60000) (timers.shift())(); } };
 }
 
@@ -164,15 +173,12 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   };
 
   await passo("carregar e avaliar lutadores", () => UI.ready(lerLutadores()));
-  await passo("tela inicial: 5 itens de menu, clica Jogar (sem link de desafio, cai aqui de verdade)", () => {
-    // "Jogar" (o 1º) ganhou uma 2ª classe (inicio-item-principal) pra ter
-    // peso visual de ação primária — token, não igualdade exata, senão
-    // esse item some da contagem.
-    const itens = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-item"));
-    if (itens.length !== 5) throw new Error(`esperava 5 itens no menu, achei ${itens.length}`);
-    const titulo = env.todos.filter(n => (n.className || "").split(" ").includes("inicio-titulo")).pop();
-    if (!titulo || titulo.innerHTML !== "OCTÓGONO") throw new Error("título da tela inicial não é OCTÓGONO");
-    itens[0].onclick(); // "Jogar" -> screenName()
+  await passo("menu: 5 cards (nova, continuar, ranking, atualizações, conta), clica Nova carreira", () => {
+    const cards = env.todos.filter(n => (n.className || "").split(" ").includes("menu-card"));
+    const rotas = cards.map(c => c.dataset && c.dataset.rota);
+    const esperadas = ["nova", "continuar", "ranking", "atualizacoes", "conta"];
+    if (JSON.stringify(rotas) !== JSON.stringify(esperadas)) throw new Error("cards do menu: " + rotas.join(","));
+    cards[0].onclick(); // Nova carreira -> screenName() (a fase 4 troca pelo assistente)
   });
   await passo("digitar nome e avançar", () => {
     const inp = env.todos.filter(n => n.tagName === "input" && n.type === "text").pop();
@@ -3527,21 +3533,22 @@ function testarTelaInicial() {
   // (ex. "inicio-item inicio-item-principal") e ainda contar pra `classe`
   const marcado = (classe) => env.todos.filter(n => (n.className || "").split(" ").includes(classe));
   const ultimoTexto = (classe) => { const l = marcado(classe); return l.length ? l[l.length - 1].innerHTML : null; };
+  // revamp: o menu virou 5 cards com data-rota; acha pelo PAPEL (rota), não pela posição
+  const cardRota = (r) => marcado("menu-card").filter(n => n.dataset && n.dataset.rota === r).pop();
 
   return (async () => {
     await passo("carregar lutadores", () => UI.ready(lerLutadores()));
-    await passo("Opções: clica no item do menu, abre o overlay de config", () => {
-      const itens = marcado("inicio-item");
-      if (itens.length !== 5) throw new Error(`esperava 5 itens, achei ${itens.length}`);
-      itens[1].onclick(); // "Opções"
+    await passo("Opções: a engrenagem (fixa em toda tela) abre o overlay de config", () => {
+      const g = env.registro.cfgbtn;
+      if (!g || !g.onclick) throw new Error("engrenagem sem onclick");
+      g.onclick();
       if (!UI.cfgAberto()) throw new Error("abrirConfig() não marcou cfgAberto");
     });
 
     // reabre a tela inicial (Opções é overlay, não troca de tela) e vai pra Conta
     await passo("Conta (sem sessão): abre no modo Entrar por padrão", () => {
       UI.screenInicio();
-      const itens = marcado("inicio-item");
-      itens[2].onclick(); // "Conta"
+      cardRota("conta").onclick();
     });
     await passo("Conta/Entrar: só e-mail + 1 senha + esqueci + link pra criar, SEM confirmar senha", () => {
       const emails = env.todos.filter(n => n.type === "email");
@@ -3689,10 +3696,12 @@ function testarTelaInicial() {
     await passo("Conta: 'Esqueci minha senha' com e-mail preenchido chama resetPasswordForEmail", () => {
       const email = env.todos.filter(n => n.type === "email").pop();
       email.value = "esqueci@teste.com";
+      // a Conta agora mora em #/conta: o endereço de volta tem que sair SEM o hash da rota
+      env.sandbox.location.href = "https://octogono.fun/#/conta";
       const linkEsqueci = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Esqueci minha senha").pop();
       linkEsqueci.onclick({ preventDefault(){} });
     });
-    await passo("Conta: resetPasswordForEmail recebeu e-mail e redirectTo (location.href) certos", () => {
+    await passo("Conta: resetPasswordForEmail recebeu e-mail e redirectTo (endereço sem o hash da rota) certos", () => {
       const chamada = chamadasAuth.find(c => c[0] === "resetPasswordForEmail");
       if (!chamada || chamada[1] !== "esqueci@teste.com" || chamada[2] !== "https://octogono.fun/")
         throw new Error("resetPasswordForEmail não recebeu os argumentos certos: " + JSON.stringify(chamada));
@@ -3721,13 +3730,13 @@ function testarTelaInicial() {
     });
 
     UI.screenInicio();
-    marcado("inicio-item")[2].onclick(); // Conta de novo, formulário fresco pro resto dos testes
+    cardRota("conta").onclick(); // Conta de novo, formulário fresco pro resto dos testes
     await passo("Conta: Google chama signInWithOAuth com provider google e redirectTo", () => {
       const chamada = chamadasAuth.find(c => c[0] === "signInWithOAuth");
       if (!chamada) {
         // ainda não clicou — clica agora, num formulário fresco
         UI.screenInicio();
-        marcado("inicio-item")[2].onclick();
+        cardRota("conta").onclick();
       }
     });
     await passo("Conta: clica Google de verdade e confirma provider/redirectTo", () => {
@@ -3785,15 +3794,10 @@ function testarTelaInicial() {
 
     /* ---------- Plano Pro: item 2/3 (2026-09-22) ---------- */
     sessaoFalsa = null; // reseta explícito — o login de teste mais acima deixou sessão ativa
-    await passo("Plano Pro: menu ganhou o 5º item, clicando abre a tela dedicada", () => {
-      UI.screenInicio();
-      // marcado() acumula de TODOS os screenInicio() já rodados neste teste
-      // (env.todos nunca reseta) — os 5 últimos são os desta renderização.
-      const itens = marcado("inicio-item").slice(-5);
-      if (itens.length !== 5) throw new Error(`esperava 5 itens no menu, achei ${itens.length}`);
-      itens[4].onclick(); // "Plano Pro"
+    await passo("Plano Pro: screenPlanoPro() abre a tela do plano (revamp: saiu do menu, mora na Conta)", () => {
+      UI.screenPlanoPro();
       const eyebrow = ultimoTexto("eyebrow");
-      if (eyebrow !== "Plano Pro") throw new Error("clicar no item não abriu a tela Plano Pro: " + eyebrow);
+      if (eyebrow !== "Plano Pro") throw new Error("não abriu a tela Plano Pro: " + eyebrow);
     });
     await passo("Plano Pro: mostra os 5 benefícios (Modo Rival incluído) e o carrossel começa em GRÁTIS", () => {
       const beneficios = marcado("pro-beneficio");
@@ -6004,6 +6008,114 @@ function testarDivisoes() {
 }
 
 /* ================================================================== */
+/* ================================================================== *
+ * ROTAS (revamp 2026-09-26): toda tela nova abre pelo roteador, toda
+ * tela secundária tem Voltar que leva ao menu, endereço desconhecido
+ * cai na 404, resposta de login do Supabase no hash NUNCA vira rota, e
+ * nenhuma tela nova usa emoji/travessão no texto.
+ * ================================================================== */
+async function testarRotas() {
+  console.log("\n" + cinza("rotas: menu, Voltar em toda tela, 404, hash do Supabase, sem emoji nem travessão"));
+  const env = criarAmbiente({ contarNos: true });
+  vm.createContext(env.sandbox);
+  try {
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS"])
+      + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}",
+      env.sandbox, { filename: "index.html" });
+  } catch (e) {
+    console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
+    return false;
+  }
+  const UI = env.sandbox.__x;
+  const tem = (n, c) => (n.className || "").split(" ").includes(c);
+  const desde = m => env.todos.slice(m);
+  const respirar = () => new Promise(r => setImmediate(r));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); env.drenar(); await respirar(); env.drenar(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const EMOJI = /\p{Extended_Pictographic}/u;
+
+  await conf("abre no menu com os 5 cards na ordem certa", async () => {
+    UI.ready(lerLutadores());
+    env.drenar(); await respirar(); env.drenar();
+    const rotas = env.todos.filter(n => tem(n, "menu-card")).map(n => n.dataset && n.dataset.rota);
+    const esperado = ["nova", "continuar", "ranking", "atualizacoes", "conta"];
+    if (JSON.stringify(rotas) !== JSON.stringify(esperado)) throw new Error("cards: " + rotas.join(","));
+    if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
+  });
+
+  await conf("todas as rotas do spec estão registradas", () => {
+    const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking", "creditos",
+      "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);
+    if (faltam.length) throw new Error("faltam: " + faltam.join(","));
+  });
+
+  for (const r of ["continuar", "ranking", "atualizacoes", "conta", "creditos", "termos", "privacidade"]) {
+    await conf(`#/${r}: abre, tem Voltar, Voltar leva ao menu`, () => {
+      const m = env.todos.length;
+      UI.irPara(r);
+      env.drenar();
+      if (UI.rotaAtual() !== r) throw new Error("rotaAtual = " + UI.rotaAtual());
+      const voltar = desde(m).filter(n => tem(n, "btn-voltar") && n.onclick).pop();
+      if (!voltar) throw new Error("tela sem botão Voltar");
+      const m2 = env.todos.length;
+      voltar.onclick();
+      env.drenar();
+      if (UI.rotaAtual() !== "menu") throw new Error("Voltar foi pra " + UI.rotaAtual());
+      if (desde(m2).filter(n => tem(n, "menu-card")).length !== 5) throw new Error("menu não foi redesenhado");
+    });
+  }
+
+  await conf("rota desconhecida cai na 404, que tem Voltar", () => {
+    const m = env.todos.length;
+    UI.irPara("nao-existe-mesmo");
+    env.drenar();
+    if (UI.rotaAtual() !== "404") throw new Error("rotaAtual = " + UI.rotaAtual());
+    if (!desde(m).some(n => tem(n, "tela-404"))) throw new Error("tela-404 não montada");
+    if (!desde(m).some(n => tem(n, "btn-voltar") && n.onclick)) throw new Error("404 sem Voltar");
+  });
+
+  await conf("hash de resposta do Supabase (login/confirmação/recuperação) não vira rota", () => {
+    for (const h of ["#access_token=abc&refresh_token=def&type=signup", "#error=access_denied&error_description=x",
+      "#access_token=abc&type=recovery"]) {
+      env.sandbox.location.hash = h;
+      const r = UI.lerRota();
+      if (r.nome !== "menu" || !r.auth) throw new Error(`${h} virou ${JSON.stringify(r)}`);
+    }
+    env.sandbox.location.hash = "#/ranking";
+    const r = UI.lerRota();
+    if (r.nome !== "ranking" || r.auth) throw new Error("hash normal lido errado: " + JSON.stringify(r));
+  });
+
+  await conf("telas novas sem emoji e sem travessão no texto", () => {
+    const sujos = [];
+    for (const r of ["menu", "continuar", "ranking", "atualizacoes", "creditos", "nao-existe"]) {
+      const m = env.todos.length;
+      UI.irPara(r);
+      env.drenar();
+      desde(m).forEach(n => {
+        const h = String(n.innerHTML || "") + String(n.textContent || "");
+        if (EMOJI.test(h)) sujos.push(`${r}: emoji em "${h.slice(0, 60)}"`);
+        if (/[—–]/.test(h)) sujos.push(`${r}: travessão em "${h.slice(0, 60)}"`);
+      });
+    }
+    if (sujos.length) throw new Error(sujos.slice(0, 5).join(" | "));
+  });
+
+  await conf("#/nova abre o fluxo de nova carreira (campo de nome)", () => {
+    const m = env.todos.length;
+    UI.irPara("nova");
+    env.drenar();
+    if (!desde(m).some(n => n.tagName === "input" && n.type === "text")) throw new Error("campo de nome não apareceu");
+  });
+
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("rotas ok") : vermelho(`${falhas.length} falha(s) nas rotas`)));
+  return ok;
+}
+
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
 let ok = true;
@@ -6039,6 +6151,7 @@ try {
   else if (cmd === "compartilhar") ok = await testarCompartilhar();
   else if (cmd === "aposentadoria") ok = testarAposentadoriaSemLutas();
   else if (cmd === "inicial") ok = await testarTelaInicial();
+  else if (cmd === "rotas") ok = await testarRotas();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "pro") ok = await testarColetivaEntrevista();
@@ -6103,6 +6216,7 @@ try {
         ["compartilhar", () => testarCompartilhar()],
         ["aposentadoria", () => testarAposentadoriaSemLutas()],
         ["inicial", () => testarTelaInicial()],
+        ["rotas", () => testarRotas()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],
@@ -6131,7 +6245,11 @@ try {
         : vermelho(`ALGO SAIU DA FAIXA — reprovou: ${falhas.join(", ")}`)) + "\n");
     }
   } else {
-    console.log(`\nuso: node testar.js [tudo|interface|motor|draft|escolhas|treino|desafio|divisoes|pesos|cinturao|lesao|resultado|conteudo|aivivo|pro|rival|conquistas|escolhaluta|driverluta] [divisão] [normal|lenda]\n`);
+    /* lista lida do próprio arquivo (todo nome comparado com cmd no despacho):
+       a versão escrita à mão ficou desatualizada por semanas sem ninguém
+       notar, e o CLAUDE.md manda consultar esta mensagem. */
+    const nomes = [...new Set([...fs.readFileSync(__filename, "utf8").matchAll(/cmd === "(\w+)"/g)].map(m => m[1]))];
+    console.log(`\nuso: node testar.js [${nomes.join("|")}] [divisão] [normal|lenda]\n`);
     process.exit(0);
   }
 } catch (e) {
