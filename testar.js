@@ -6118,6 +6118,15 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "nova") throw new Error("espaço vazio foi pra " + UI.rotaAtual());
   });
 
+  await conf("créditos: lista dados, imagens, ícones e fontes, cada item com licença", () => {
+    const m = env.todos.length;
+    UI.irPara("creditos"); env.drenar();
+    const itens = desde(m).filter(n => tem(n, "credito"));
+    if (itens.length < 5) throw new Error("só " + itens.length + " créditos");
+    for (const t of ["Lucide", "ISC", "SIL Open Font License", "scrape_ufc_stats"])
+      if (!itens.some(n => String(n.innerHTML).includes(t))) throw new Error("créditos sem " + t);
+  });
+
   await conf("todas as rotas do spec estão registradas", () => {
     const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking", "creditos",
       "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);

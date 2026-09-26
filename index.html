@@ -5736,7 +5736,32 @@ function linhaRanking(l,pos){
      <span class="rank-nota">${l.nota}</span>
      <span class="rank-pontos">${fmtPontos(l.pontuacao)}</span>`);
 }
-function screenCreditos(){ montarTela({fundo:"arquibancada",titulo:"Créditos"}); }
+/* Créditos: obrigatório pelas licenças (CC-BY da música na fase 6, ISC
+   do Lucide, OFL das fontes). A fase 6 acrescenta o grupo "Música e
+   efeitos sonoros". */
+const CREDITOS=[
+  {grupo:"Dados",itens:[
+    {nome:"Estatísticas de luta",autor:"UFCStats",licenca:"Dados públicos",link:"http://ufcstats.com"},
+    {nome:"Raspagem dos dados",autor:"Greco1899/scrape_ufc_stats",licenca:"GPL-3.0 (código)",link:"https://github.com/Greco1899/scrape_ufc_stats"}]},
+  {grupo:"Imagens",itens:[
+    {nome:"Fundos do jogo",autor:"Gerados com Gemini 3 Pro Image (Google) via OpenRouter e tratados pelo Octógono",licenca:"Uso próprio",link:""}]},
+  {grupo:"Ícones",itens:[
+    {nome:"Lucide",autor:"Lucide Contributors",licenca:"ISC",link:"https://lucide.dev"}]},
+  {grupo:"Fontes",itens:[
+    {nome:"Anton",autor:"Vernon Adams",licenca:"SIL Open Font License 1.1",link:"https://fonts.google.com/specimen/Anton"},
+    {nome:"Barlow e Barlow Condensed",autor:"Jeremy Tribby",licenca:"SIL Open Font License 1.1",link:"https://fonts.google.com/specimen/Barlow"}]},
+];
+function screenCreditos(){
+  const c=montarTela({fundo:"arquibancada",titulo:"Créditos",classe:"tela-creditos"});
+  c.appendChild(el("p","tela-sub","Quem fez o que o jogo usa, e sob qual licença."));
+  CREDITOS.forEach(g=>{
+    const sec=el("section","creditos-grupo",`<h2 class="creditos-titulo">${g.grupo}</h2>`);
+    g.itens.forEach(it=>sec.appendChild(el("div","credito",
+      `<b>${it.nome}</b><span>${it.autor}</span><span class="credito-lic">${it.licenca}</span>`+
+      (it.link?`<a href="${it.link}" target="_blank" rel="noopener">${it.link.replace(/^https?:\/\//,"")}</a>`:"<span></span>"))));
+    c.appendChild(sec);
+  });
+}
 
 /* ---------- carregar dados ---------- */
 async function boot(){

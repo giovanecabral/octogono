@@ -287,3 +287,19 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .slot-vazio-ico{display:flex;width:56px;height:56px;align-items:center;justify-content:center;border:1px dashed var(--linha-forte);margin:10px 0}
 .slot-vazio-ico .ico{width:26px;height:26px;color:var(--sangue)}
 @media (max-width:900px){.slots{grid-template-columns:1fr}.save-slot{min-height:200px}}
+
+/* ---------- créditos e páginas legais ---------- */
+.creditos-grupo{margin:0 0 26px;max-width:980px}
+.creditos-titulo{font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.24em;text-transform:uppercase;color:var(--sangue);margin:0 0 10px}
+.credito{display:grid;grid-template-columns:1.1fr 1.5fr .9fr 1.1fr;gap:4px 16px;align-items:baseline;padding:12px 16px;
+  background:rgba(17,19,26,.82);border-left:3px solid var(--linha-forte);margin-bottom:6px}
+.credito b{font-family:var(--f-ui);font-size:18px;letter-spacing:.03em}
+.credito span{color:var(--osso-2)}
+.credito .credito-lic{font-family:var(--f-ui);font-weight:700;letter-spacing:.06em;color:var(--osso)}
+.credito a{color:var(--osso-2);overflow-wrap:anywhere}
+@media (max-width:760px){.credito{grid-template-columns:1fr}}
+.tela-legal .pagina-legal{max-width:80ch;background:rgba(17,19,26,.88);border:1px solid var(--linha);padding:28px 34px;
+  font-family:var(--f-texto);font-size:16px;line-height:1.7;color:var(--osso-2)}
+.tela-legal .pagina-legal h3{font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase;color:var(--osso);margin:28px 0 8px}
+.tela-legal .pagina-legal .rev{font-family:var(--f-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--cinza);font-size:14px}
+@media (max-width:600px){.tela-legal .pagina-legal{padding:20px 18px;font-size:15px}}

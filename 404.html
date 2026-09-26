@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-tela="nova">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Página não encontrada · Octógono</title>
+<!-- 404 estático: a Vercel serve este arquivo sozinho pra caminho que não
+     existe. Mesma identidade das telas novas (estilo.css), sem o motor. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/estilo.css">
+<style>
+  html,body{margin:0}
+  body{background:#07080B;color:#F2EEE6}
+  .wrap{max-width:1320px;margin:0 auto;padding:28px 24px 64px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tela tela-404">
+    <div class="tela-fundo" style="--img:url(/img/apagado.webp);--img-m:url(/img/apagado-m.webp)"></div>
+    <div class="tela-corpo">
+      <div class="erro-num">404</div>
+      <h1 class="erro-titulo">Página não encontrada</h1>
+      <p class="tela-sub">O endereço não existe ou mudou de lugar.</p>
+      <a class="botao" href="/">
+        <svg class="ico" aria-hidden="true"><use href="/img/icones.svg#seta-esq"></use></svg><span>Voltar ao menu</span>
+      </a>
+    </div>
+  </div>
+</div>
+</body>
+</html>
