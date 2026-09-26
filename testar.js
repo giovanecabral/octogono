@@ -6019,7 +6019,7 @@ async function testarRotas() {
   const env = criarAmbiente({ contarNos: true });
   vm.createContext(env.sandbox);
   try {
-    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS"])
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
@@ -6067,6 +6067,21 @@ async function testarRotas() {
     const datas = marcos.map(n => (String(n.innerHTML).match(/data-iso="([\d-]+)"/) || [])[1]);
     const ord = [...datas].sort().reverse();
     if (JSON.stringify(datas) !== JSON.stringify(ord)) throw new Error("fora de ordem: " + datas.join(","));
+  });
+
+  await conf("ranking: vazio mostra estado vazio; com dados, pódio dos 3 e lista do 4º em diante", async () => {
+    const m = env.todos.length;
+    UI.irPara("ranking"); env.drenar(); await respirar(); env.drenar();   // placar carrega assíncrono
+    if (!desde(m).some(n => tem(n, "vazio"))) throw new Error("sem estado vazio com placar vazio");
+    const area = { innerHTML: "", children: [], appendChild(c) { this.children.push(c); return c; } };
+    const linhas = Array.from({ length: 6 }, (_, i) => ({ nome_lutador: "L" + i, divisao: "lightweight", modo: "normal",
+      pontuacao: 9000 - i * 100, cartel: "18-4", nota: "A", cinturoes: i === 0 ? 2 : 0, rosto: null }));
+    UI.desenharRanking(area, linhas);
+    const podio = area.children.find(n => tem(n, "podio"));
+    const lista = area.children.find(n => tem(n, "ranking-lista"));
+    if (!podio || podio.children.length !== 3) throw new Error("pódio não tem 3 degraus");
+    if (!lista || lista.children.length !== 3) throw new Error("lista não tem as 3 linhas restantes");
+    if (!tem(podio.children[1], "degrau-1")) throw new Error("1º lugar não está no meio do pódio");
   });
 
   await conf("todas as rotas do spec estão registradas", () => {

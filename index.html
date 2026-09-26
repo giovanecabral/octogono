@@ -5632,7 +5632,65 @@ async function preencherPreviaConta(chip){
     `<span class="previa-linha"><span class="previa-txt">${ativo?`<b class="txt-ouro">Plano Pro</b>${ate?` até ${ate}`:""}`:"Plano grátis"}</span></span>`;
 }
 function screenContinuar(){ montarTela({fundo:"vestiario",titulo:"Continuar"}); }
-function screenRanking(){ montarTela({fundo:"cinturao",titulo:"Ranking"}); }
+let filtroRanking={divisao:null,modo:"normal"};
+function screenRanking(){
+  const c=montarTela({fundo:"cinturao",titulo:"Ranking",classe:"tela-ranking"});
+  c.appendChild(el("p","tela-sub","Carreiras encerradas de todos os jogadores, pela pontuação final."));
+  const filtros=el("div","filtros");
+  const sel=el("select","campo-select",
+    `<option value="">Todas as divisões</option>`+DIVISOES.map(d=>`<option value="${d.id}">${d.nome}</option>`).join(""));
+  sel.value=filtroRanking.divisao||"";
+  if(sel.setAttribute)sel.setAttribute("aria-label","Divisão");
+  const seg=el("div","segmento");
+  const area=el("div","ranking-area");
+  const carregar=async()=>{
+    area.innerHTML=""; area.appendChild(el("p","carregando","Carregando placar"));
+    desenharRanking(area,await buscarPlacar(filtroRanking));
+  };
+  [["normal","Carreira"],["lenda","Lenda"]].forEach(([m,rot])=>{
+    const b=el("button","segmento-op"+(filtroRanking.modo===m?" on":""),rot);
+    b.type="button";
+    b.onclick=()=>{ filtroRanking.modo=m;
+      seg.querySelectorAll(".segmento-op").forEach(x=>x.classList.toggle("on",x===b)); carregar(); };
+    seg.appendChild(b);
+  });
+  sel.onchange=()=>{ filtroRanking.divisao=sel.value||null; carregar(); };
+  filtros.append(sel,seg);
+  c.append(filtros,area);
+  carregar();
+}
+function nomeDivisao(id){ const d=DIVISOES.find(x=>x.id===id); return d?d.nome:""; }
+function desenharRanking(area,linhas){
+  area.innerHTML="";
+  if(!linhas.length){
+    area.appendChild(vazio("trofeu","Nenhuma carreira no placar ainda.","Termine uma carreira para aparecer aqui."));
+    return;
+  }
+  const podio=el("div","podio");
+  [1,0,2].forEach(i=>{ if(linhas[i])podio.appendChild(degrauPodio(linhas[i],i+1)); });
+  area.appendChild(podio);
+  const lista=el("ol","ranking-lista");
+  linhas.slice(3).forEach((l,i)=>lista.appendChild(linhaRanking(l,i+4)));
+  area.appendChild(lista);
+}
+function degrauPodio(l,pos){
+  return el("div",`degrau degrau-${pos} entra`,
+    `<span class="degrau-retrato">${bonecoSVG(l.rosto||cfgPadrao(),{w:pos===1?120:96})}</span>
+     <span class="degrau-pos">${pos}º</span>
+     <span class="degrau-nome">${l.nome_lutador}</span>
+     <span class="degrau-meta">${nomeDivisao(l.divisao)} · ${l.cartel}${l.cinturoes?` · ${ICONE("medalha")} ${l.cinturoes}`:""}</span>
+     <span class="degrau-pontos">${fmtPontos(l.pontuacao)}</span>`);
+}
+function linhaRanking(l,pos){
+  return el("li","rank-linha",
+    `<span class="rank-pos">${pos}</span>
+     <span class="rank-retrato">${bonecoSVG(l.rosto||cfgPadrao(),{w:44})}</span>
+     <span class="rank-nome">${l.nome_lutador}<small>${nomeDivisao(l.divisao)}</small></span>
+     <span class="rank-meta">${l.cartel}</span>
+     <span class="rank-meta">${l.cinturoes?`${ICONE("medalha")} ${l.cinturoes}`:""}</span>
+     <span class="rank-nota">${l.nota}</span>
+     <span class="rank-pontos">${fmtPontos(l.pontuacao)}</span>`);
+}
 function screenCreditos(){ montarTela({fundo:"arquibancada",titulo:"Créditos"}); }
 
 /* ---------- carregar dados ---------- */

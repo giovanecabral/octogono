@@ -186,3 +186,53 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .marco-itens li{position:relative;padding-left:18px}
 .marco-itens li::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;background:var(--sangue)}
 @media (max-width:640px){.marco{grid-template-columns:1fr;gap:8px}.marco-corpo{padding:16px}}
+
+/* ---------- ranking ---------- */
+.filtros{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 26px}
+.campo-select{height:46px;padding:0 40px 0 14px;background:var(--sup) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%23F2EEE6' stroke-width='2' fill='none'/></svg>") no-repeat right 14px center;
+  color:var(--osso);border:1px solid var(--linha-forte);border-radius:0;appearance:none;-webkit-appearance:none;
+  font-family:var(--f-ui);font-weight:600;font-size:16px;letter-spacing:.06em;cursor:pointer}
+.campo-select:focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
+.segmento{display:inline-flex;border:1px solid var(--linha-forte);background:rgba(17,19,26,.72)}
+.segmento-op{height:44px;padding:0 20px;background:transparent;border:0;cursor:pointer;color:var(--cinza);
+  font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.14em;text-transform:uppercase}
+.segmento-op.on{background:var(--sangue);color:#fff}
+.podio{display:grid;grid-template-columns:1fr 1.15fr 1fr;align-items:end;gap:14px;margin:0 0 26px}
+.degrau{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:18px 12px 20px;min-width:0;
+  background:rgba(17,19,26,.82);border-top:3px solid var(--linha-forte);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.degrau-1{border-top-color:var(--ouro);padding-top:26px}
+.degrau-2{border-top-color:#B8BCC6}
+.degrau-3{border-top-color:#A0643A}
+.degrau-retrato svg{display:block;max-width:100%;height:auto}
+.degrau-pos{font-family:var(--f-titulo);font-size:40px;line-height:1}
+.degrau-1 .degrau-pos{color:var(--ouro);font-size:52px}
+.degrau-nome{font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.04em;text-transform:uppercase;overflow-wrap:anywhere}
+.degrau-meta{color:var(--cinza);font-size:14px}
+.degrau-pontos{font-family:var(--f-titulo);font-size:26px;color:var(--osso)}
+.ranking-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.rank-linha{display:grid;grid-template-columns:44px 52px minmax(0,1fr) 80px 60px 40px 90px;align-items:center;gap:10px;
+  padding:8px 16px 8px 10px;background:rgba(17,19,26,.78);border-left:3px solid transparent}
+.rank-retrato svg{display:block;width:44px;height:auto}
+.rank-pos{font-family:var(--f-titulo);font-size:24px;text-align:center;color:var(--cinza)}
+.rank-nome{font-family:var(--f-ui);font-weight:700;font-size:18px;text-transform:uppercase;letter-spacing:.03em;min-width:0;overflow-wrap:anywhere}
+.rank-nome small{display:block;font-family:var(--f-texto);font-weight:400;font-size:13px;text-transform:none;letter-spacing:0;color:var(--cinza)}
+.rank-meta{color:var(--osso-2);font-variant-numeric:tabular-nums}
+.rank-nota{font-family:var(--f-titulo);font-size:20px;color:var(--sangue)}
+.rank-pontos{font-family:var(--f-ui);font-weight:700;font-size:18px;text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:700px){
+  .podio{grid-template-columns:1fr;align-items:stretch;gap:8px}
+  .degrau-1{order:-1}
+  .degrau{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;grid-template-areas:"pos ret nome pts" "pos ret meta pts";
+    align-items:center;text-align:left;gap:0 12px;padding:10px 14px;border-top:0;border-left:3px solid var(--linha-forte)}
+  .degrau-1{border-left-color:var(--ouro);padding-top:10px}
+  .degrau-2{border-left-color:#B8BCC6}
+  .degrau-3{border-left-color:#A0643A}
+  .degrau-retrato{grid-area:ret}
+  .degrau-retrato svg{width:52px}
+  .degrau-pos,.degrau-1 .degrau-pos{grid-area:pos;font-size:30px}
+  .degrau-nome{grid-area:nome;font-size:17px}
+  .degrau-meta{grid-area:meta;font-size:13px}
+  .degrau-pontos{grid-area:pts;font-size:22px}
+  .rank-linha{grid-template-columns:34px 44px minmax(0,1fr) 70px}
+  .rank-linha .rank-meta,.rank-linha .rank-nota{display:none}
+}
