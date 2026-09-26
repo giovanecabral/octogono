@@ -132,3 +132,41 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
   .cartao,.cartao-foto,.botao{transition:none}
 }
 @keyframes fade{from{opacity:0}}
+
+/* ---------- menu ---------- */
+.menu-topo{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 64px 34px 0}
+.marca{display:flex;flex-direction:column;line-height:1}
+.marca-nome{font-family:var(--f-titulo);font-size:clamp(46px,7vw,92px);text-transform:uppercase;letter-spacing:.01em}
+.marca-sub{font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.34em;text-transform:uppercase;color:var(--sangue);margin-top:8px}
+.chip-conta{display:inline-flex;align-items:center;gap:10px;max-width:280px;height:44px;padding:0 16px;cursor:pointer;
+  background:rgba(17,19,26,.72);border:1px solid var(--linha-forte);color:var(--osso);
+  font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.08em;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.chip-conta .chip-rot{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-grade{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px}
+.menu-card-grande{grid-column:span 3;min-height:min(46vh,420px)}
+.menu-card-medio{grid-column:span 2;min-height:260px}
+.menu-card-medio .cartao-titulo{font-size:clamp(28px,2.6vw,38px)}
+.previa{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.previa-linha{display:flex;align-items:baseline;gap:10px;font-size:15px;color:var(--osso-2);min-width:0}
+.previa-pos{font-family:var(--f-titulo);font-size:18px;color:var(--sangue);min-width:14px}
+.previa-data{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.1em;color:var(--sangue);white-space:nowrap}
+.previa-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.previa-num{font-family:var(--f-ui);font-weight:700;font-variant-numeric:tabular-nums;color:var(--osso)}
+.txt-ouro{color:var(--ouro)}
+.menu-rodape{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center;margin-top:38px;padding-top:18px;
+  border-top:1px solid var(--linha);font-family:var(--f-ui);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--cinza)}
+.menu-rodape a{color:var(--osso-2);text-decoration:none}
+.menu-contato{text-transform:none;letter-spacing:.02em;margin-left:auto}
+@media (hover:hover) and (pointer:fine){.menu-rodape a:hover{color:var(--sangue)} .chip-conta:hover{border-color:var(--sangue)}}
+@media (max-width:980px){
+  .menu-card-grande{grid-column:span 6;min-height:300px}
+  .menu-card-medio{grid-column:span 2;min-height:250px}
+}
+@media (max-width:720px){
+  .menu-topo{margin-right:56px}
+  .menu-card-grande{min-height:250px}
+  .menu-card-medio{grid-column:span 6;min-height:0}
+  .menu-card-medio .cartao-foto{opacity:.45}
+  .menu-contato{margin-left:0}
+}

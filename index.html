@@ -5462,13 +5462,117 @@ registrarRota("privacidade",screenPrivacidade);
 registrarRota("404",screen404);
 
 /* Stubs: cada tarefa das fases 1-2 troca o seu pela tela de verdade. */
+/* Mês em 3 letras, maiúsculo, sem depender de Intl (o teste roda sem). */
+const MESES=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+function fmtData(iso){
+  const d=new Date(iso+(String(iso).length===10?"T12:00:00":""));
+  return isNaN(d)?String(iso):`${String(d.getDate()).padStart(2,"0")} ${MESES[d.getMonth()]}`;
+}
+const fmtPontos=n=>String(Math.round(n||0)).replace(/\B(?=(\d{3})+(?!\d))/g,".");
+
+/* Placar (a fase 3 cria a tabela). Nunca rejeita: sem Supabase, sem
+   tabela, sem rede ou erro de RLS, devolve lista vazia e a tela mostra
+   o estado vazio. */
+async function buscarPlacar({divisao=null,modo="normal",limite=50}={}){
+  const sb=getSupabase();
+  if(!sb)return[];
+  try{
+    let q=sb.from("placar").select("nome_lutador,divisao,modo,pontuacao,cartel,nota,cinturoes,rosto").eq("modo",modo);
+    if(divisao)q=q.eq("divisao",divisao);
+    const{data,error}=await q.order("pontuacao",{ascending:false}).limit(limite);
+    return error||!Array.isArray(data)?[]:data;
+  }catch(e){ return[]; }
+}
+
+function cartaoMenu({rota,tamanho,foto,rotulo,titulo,texto="",acao,extra="",i=0,apagado=false}){
+  const b=el("button",`cartao menu-card menu-card-${tamanho} entra${apagado?" apagado":""}`,
+    `<span class="cartao-miolo">
+       ${foto?`<span class="cartao-foto" style="--img:url(img/${foto}.webp)"></span>`:""}
+       <span class="cartao-conteudo">
+         <span class="cartao-rotulo">${rotulo}</span>
+         <span class="cartao-titulo">${titulo}</span>
+         ${texto?`<span class="cartao-texto">${texto}</span>`:""}
+         ${extra}
+         <span class="cartao-acao">${acao}${ICONE("seta-dir")}</span>
+       </span>
+     </span>`);
+  b.type="button";
+  b.dataset.rota=rota;
+  b.style.animationDelay=(i*70)+"ms";
+  b.onclick=()=>{ SOM.toque(); irPara(rota); };
+  return b;
+}
+const ultimasAtualizacoes=n=>typeof ATUALIZACOES!=="undefined"?ATUALIZACOES.slice(0,n):[];
+
 function screenMenu(){
   const c=montarTela({fundo:"arena",vivo:true,voltar:null,classe:"tela-menu"});
-  const grade=el("div","menu-grade"); c.appendChild(grade);
-  ["nova","continuar","ranking","atualizacoes","conta"].forEach(r=>{
-    const b=el("button","cartao menu-card",r); b.type="button"; b.dataset.rota=r;
-    b.onclick=()=>irPara(r); grade.appendChild(b);
-  });
+
+  const topo=el("div","menu-topo");
+  topo.appendChild(el("div","marca",
+    `<span class="marca-nome">Octógono</span><span class="marca-sub">Carreira de MMA</span>`));
+  const chip=el("button","chip-conta",`${ICONE("usuario")}<span class="chip-rot">Entrar</span>`);
+  chip.type="button"; chip.onclick=()=>{ SOM.toque(); irPara("conta"); };
+  topo.appendChild(chip);
+  c.appendChild(topo);
+
+  const grade=el("div","menu-grade");
+  grade.append(
+    cartaoMenu({rota:"nova",tamanho:"grande",foto:"tunel",rotulo:"Modo carreira",titulo:"Nova carreira",
+      texto:"Monte o lutador com atributos de lutadores reais e jogue 22 lutas até a aposentadoria.",
+      acao:"Começar",i:0}),
+    cartaoMenu({rota:"continuar",tamanho:"grande",foto:"vestiario",rotulo:"Carreira salva",titulo:"Continuar",
+      texto:`<span id="continuar-txt">Entre para ver suas carreiras.</span>`,acao:"Ver carreiras",i:1,apagado:true}),
+    cartaoMenu({rota:"ranking",tamanho:"medio",foto:"cinturao",rotulo:"Placar",titulo:"Ranking",
+      extra:`<span class="previa" id="previa-ranking"><span class="carregando">Carregando</span></span>`,
+      acao:"Ver ranking",i:2}),
+    cartaoMenu({rota:"atualizacoes",tamanho:"medio",foto:"imprensa",rotulo:"Novidades",titulo:"Atualizações",
+      extra:`<span class="previa">${ultimasAtualizacoes(2).map(a=>
+        `<span class="previa-linha"><span class="previa-data">${fmtData(a.data)}</span><span class="previa-txt">${a.titulo}</span></span>`).join("")}</span>`,
+      acao:"Ver tudo",i:3}),
+    cartaoMenu({rota:"conta",tamanho:"medio",foto:"contrato",rotulo:"Perfil",titulo:"Conta",
+      extra:`<span class="previa" id="previa-conta"><span class="previa-linha"><span class="previa-txt">Entre ou crie sua conta.</span></span></span>`,
+      acao:"Abrir conta",i:4}),
+  );
+  c.appendChild(grade);
+
+  const rod=el("footer","menu-rodape");
+  const lk=(txt,rota)=>{ const a=el("a","",txt); a.href="#/"+rota;
+    a.onclick=e=>{ e.preventDefault(); irPara(rota); }; return a; };
+  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),lk("Créditos","creditos"),
+    el("span","menu-contato","Contato: contato@octogono.fun"));
+  c.appendChild(rod);
+
+  preencherPreviaRanking();
+  preencherPreviaConta(chip);
+}
+async function preencherPreviaRanking(){
+  const linhas=await buscarPlacar({limite:3});
+  const alvo=document.getElementById("previa-ranking");
+  if(!alvo)return;
+  alvo.innerHTML=linhas.length
+    ? linhas.map((l,i)=>`<span class="previa-linha"><span class="previa-pos">${i+1}</span>`+
+        `<span class="previa-txt">${l.nome_lutador}</span><span class="previa-num">${fmtPontos(l.pontuacao)}</span></span>`).join("")
+    : `<span class="previa-linha"><span class="previa-txt">Nenhuma carreira no placar ainda.</span></span>`;
+}
+async function preencherPreviaConta(chip){
+  const sb=getSupabase();
+  if(!sb)return;
+  let session=null;
+  try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){ return; }
+  if(!session)return;
+  const email=session.user.email||"";
+  const ct=document.getElementById("continuar-txt");
+  if(ct)ct.textContent="Nenhuma carreira salva.";   // a fase 3 troca pelo save mais recente
+  const rot=chip.querySelector?chip.querySelector(".chip-rot"):null;
+  if(rot)rot.textContent=email;
+  let pro=null;
+  try{ ({data:pro}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle()); }catch(e){}
+  const alvo=document.getElementById("previa-conta");
+  if(!alvo)return;
+  const ativo=proAindaValido(pro);
+  const ate=ativo&&pro.expira_em?new Date(pro.expira_em).toLocaleDateString("pt-BR"):null;
+  alvo.innerHTML=`<span class="previa-linha"><span class="previa-txt">${email}</span></span>`+
+    `<span class="previa-linha"><span class="previa-txt">${ativo?`<b class="txt-ouro">Plano Pro</b>${ate?` até ${ate}`:""}`:"Plano grátis"}</span></span>`;
 }
 function screenContinuar(){ montarTela({fundo:"vestiario",titulo:"Continuar"}); }
 function screenAtualizacoes(){ montarTela({fundo:"imprensa",titulo:"Atualizações"}); }

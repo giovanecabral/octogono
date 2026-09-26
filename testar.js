@@ -6046,6 +6046,19 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
   });
 
+  await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade/Créditos e contato em texto", () => {
+    UI.irPara("menu"); env.drenar();
+    const cards = env.todos.filter(n => tem(n, "menu-card")).slice(-5);
+    const grandes = cards.filter(n => tem(n, "menu-card-grande")).map(n => n.dataset.rota);
+    if (JSON.stringify(grandes) !== '["nova","continuar"]') throw new Error("cards grandes: " + grandes);
+    if (!env.todos.some(n => tem(n, "marca") && /Octógono/i.test(n.innerHTML))) throw new Error("sem marca");
+    const rod = env.todos.filter(n => tem(n, "menu-rodape")).pop();
+    if (!rod) throw new Error("sem rodapé");
+    const txt = rod.children.map(c => String(c.innerHTML)).join(" | ");
+    for (const t of ["Termos", "Privacidade", "Créditos", "contato@octogono.fun"])
+      if (!txt.includes(t)) throw new Error("rodapé sem " + t + ": " + txt);
+  });
+
   await conf("todas as rotas do spec estão registradas", () => {
     const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking", "creditos",
       "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);
