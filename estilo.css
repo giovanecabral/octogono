@@ -1,0 +1,5 @@
+/* estilo.css: identidade "Noite de Luta" (revamp 2026-09-26).
+   Spec: docs/superpowers/specs/2026-09-26-revamp-ui-design.md
+   Todo visual NOVO mora aqui. legado.css só existe até a última tela
+   antiga ser trocada. Carregado DEPOIS do legado.css: em empate de
+   especificidade, o novo vence. */
