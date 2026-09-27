@@ -6755,6 +6755,7 @@ function startCareer(){
   montarTelaCarreira();
   salvarCarreira();
 }
+const SEGUIDORES_INICIAIS=2400;
 /* Estado inicial da carreira (revamp fase 3: separado da tela pra
    carreira retomada de um save montar só a tela, sem zerar nada). */
 function iniciarEstadoCarreira(){
@@ -6767,7 +6768,7 @@ function iniciarEstadoCarreira(){
   st={treino:{},eventoMod:{},campHist:{},
       wins:0,losses:0,finishes:0,streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,
       standing:.18,peak:.18,events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,
-      fan:5.0,followers:2400,peakFollowers:2400,
+      fan:5.0,followers:SEGUIDORES_INICIAIS,peakFollowers:SEGUIDORES_INICIAIS,
       longestW:0,lostBeltFast:false,rares:[],momentos:[],disputaLiberada:false,
       exCampeao:null,foiCampeao:false,lesao:null,desafianteIdx:1,bonusNoite:null,
       vezesCampeao:0,subLosses:0,evitouAlgumaVez:false,
@@ -6874,10 +6875,16 @@ function montarTelaCarreira(){
   principal.appendChild(ultima);
 
   const ficha=el("div","ficha");ficha.id="ficha";secao.lutador.appendChild(ficha);
-  const bouts=el("div","bouts");bouts.id="bouts";secao.cartel.appendChild(bouts);
+  const resumo=el("div","cartel-resumo");resumo.id="cartelResumo";
+  const cvz=vazio("lista","Nenhuma luta ainda","Cada luta da carreira entra aqui. Toque numa linha pra rever a narração.");cvz.id="cartelVazio";
+  const bouts=el("div","bouts");bouts.id="bouts";
+  secao.cartel.append(resumo,cvz,bouts);
+  const midia=el("div","midia-grade");
   const phone=el("div","phone");phone.id="phone";
   phone.appendChild(vazio("jornal","Nada ainda","A repercussão aparece depois da primeira luta."));
-  secao.midia.appendChild(phone);
+  const graf=el("div","painel-bloco midia-grafico");graf.id="midiaGrafico";
+  midia.append(phone,graf);
+  secao.midia.appendChild(midia);
   [["loja","painelTreinador"],["cards","painelMomentos"],["conquistas","painelConquistas"]].forEach(([a,id])=>{
     const p=el("div","hub-painel");p.id=id;secao[a].appendChild(p);
   });
@@ -6945,6 +6952,7 @@ function abrirAbaHub(id){
   else if(a.id==="cards")abrirPainelMomentos();
   else if(a.id==="conquistas")abrirPainelConquistas();
   else if(a.id==="lutador")renderFicha();
+  else if(a.id==="midia")renderMidia();
   rolarTopo();
 }
 function renderBarraHub(){
@@ -7052,6 +7060,8 @@ function atualizarControles(){
   atualizarBadgeConquistas();
   renderBarraHub();
   renderPainel();
+  renderCartelResumo();
+  if(abaHub==="midia")renderMidia();
 }
 /* Contagem é GLOBAL (localStorage), não da carreira atual — troféu não
    zera quando você começa outra. */
@@ -7443,11 +7453,64 @@ function animarTrecho(lines,aoTerminar){
 /* Linha de uma luta no histórico (revamp fase 3). Uma função só: a luta
    que acabou agora e a carreira retomada de um save desenham igual. */
 function linhaBout(reg){
-  const line=el("div","bout"+(reg.titulo?" title-fight":""));
+  const temNarr=!!(reg.narracao&&reg.narracao.length);
+  const line=el("div","bout"+(reg.titulo?" title-fight":"")+(temNarr?" com-narracao":""));
   line.innerHTML=`<span class="no">${String(reg.n).padStart(2,"0")}</span>
     <span><span class="opp">${reg.adv}</span><br><span class="how">${reg.metodo} · round ${reg.round} ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}${(reg.kd[0]||reg.kd[1])?` · quedas ${reg.kd[0]}-${reg.kd[1]}`:""} · R$${fmtNum(reg.renda)}</span></span>
-    <span class="stamp${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</span>`;
+    <span class="stamp${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</span>${temNarr?ICONE("chevron-baixo","bout-seta"):""}`;
+  /* Cartel (revamp fase 5): a linha reabre a narração daquela luta. Nasce
+     como FILHO da linha, desenhada só no primeiro clique: a linha continua
+     filha direta de #bouts e o texto dela não muda (a suíte narracao lê). */
+  if(temNarr)line.onclick=()=>{
+    SOM.toque();
+    if(!line.__narr){
+      line.__narr=el("div","bout-narracao",reg.narracao.map(([c,k,t])=>
+        `<div class="pbp${k?" "+k:""}"><span class="clk">${c}</span><span>${t}</span></div>`).join(""));
+      line.__narr.hidden=true;
+      line.appendChild(line.__narr);
+    }
+    line.__narr.hidden=!line.__narr.hidden;
+    line.className="bout"+(reg.titulo?" title-fight":"")+" com-narracao"+(line.__narr.hidden?"":" aberta");
+  };
   return line;
+}
+/* Resumo do cartel (aba Cartel): contado de st.registro, a mesma fonte
+   das linhas. */
+function renderCartelResumo(){
+  const c=document.getElementById("cartelResumo");
+  if(!c||!st)return;
+  const reg=st.registro||[];
+  const v=reg.filter(r=>r.venceu).length;
+  const vm=m=>reg.filter(r=>r.venceu&&m(r.metodo)).length;
+  c.innerHTML=[["Vitórias",v],["Derrotas",reg.length-v],["Nocautes",vm(m=>/ocaute/.test(m))],
+    ["Finalizações",vm(m=>m==="Finalização")],["Decisões",vm(m=>m==="Decisão")],["Lutas de cinturão",reg.filter(r=>r.titulo).length]]
+    .map(([rot,n])=>`<div class="resumo-item"><b>${n}</b><span>${rot}</span></div>`).join("");
+  const vz=document.getElementById("cartelVazio");
+  if(vz)vz.hidden=reg.length>0;
+}
+/* Gráfico da aba Mídia: seguidores no começo e depois de cada luta. */
+function renderMidia(){
+  const g=document.getElementById("midiaGrafico");
+  if(!g||!st)return;
+  const pts=[SEGUIDORES_INICIAIS].concat((st.registro||[]).filter(r=>typeof r.seg==="number").map(r=>r.seg));
+  if(pts.length<2){
+    g.innerHTML="";
+    g.appendChild(vazio("grafico","Sem curva ainda","Os seguidores de cada luta aparecem aqui depois da primeira."));
+    return;
+  }
+  const W=640,H=220,pad=14;
+  const max=Math.max(...pts),min=Math.min(...pts);
+  const x=i=>pad+(W-2*pad)*i/(pts.length-1);
+  const y=v=>H-pad-(H-2*pad)*((v-min)/Math.max(1,max-min));
+  const linha=pts.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  g.innerHTML=`<div class="painel-cab">${ICONE("seguidores")}Seguidores por luta</div>
+    <div class="grafico-num"><b>${fmtNum(st.followers)}</b><span>pico ${fmtNum(st.peakFollowers)}</span></div>
+    <svg class="grafico" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Seguidores por luta">
+      <defs><linearGradient id="grafArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D7261E" stop-opacity=".42"/><stop offset="1" stop-color="#D7261E" stop-opacity="0"/></linearGradient></defs>
+      <polyline points="${linha}" fill="none" stroke="#E8362D" stroke-width="3" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      <polygon points="${pad},${H-pad} ${linha} ${x(pts.length-1).toFixed(1)},${H-pad}" fill="url(#grafArea)"/>
+    </svg>
+    <div class="grafico-eixo"><span>Início</span><span>Luta ${pts.length-1}</span></div>`;
 }
 /* O que aconteceu depois da luta (evento, raro, dilema, entrevista) vai
    pra última entrada do registro, pra carreira retomada mostrar igual. */
@@ -7744,8 +7807,13 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      tela retomada redesenha o histórico daqui; antes a linha só existia
      no DOM e sumia ao recarregar. linhaBout() é a mesma nos dois casos. */
   st.registro=st.registro||[];
+  /* revamp fase 5: seguidores e fã depois da luta (gráfico da Mídia) e a
+     narração inteira (o Cartel reabre a luta). Campos opcionais: save
+     antigo sem eles continua abrindo, só sem gráfico e sem narração. */
   const reg={n:fightNo,adv:opp.name,venceu:won,metodo:r.method,round:r.round,relogio:r.clock,
-    cartoes:r.cards||null,kd:[myKd,oppKd],renda:rendaLuta,titulo:!!titleFight,extras:[]};
+    cartoes:r.cards||null,kd:[myKd,oppKd],renda:rendaLuta,titulo:!!titleFight,extras:[],
+    seg:st.followers,fa:Math.round(st.fan*10)/10,
+    narracao:(r.log||[]).map(L=>[L.clock,L.kind||"",L.text])};
   st.registro.push(reg);
   const bouts=document.getElementById("bouts");
   bouts.appendChild(linhaBout(reg));

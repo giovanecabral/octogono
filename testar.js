@@ -6979,6 +6979,63 @@ async function testarHub() {
     if (X.run("fightNo") !== 0 || X.registro.app.children.length === 0) throw new Error("encerrou a carreira");
   });
 
+  await conf("cartel: registro guarda seguidores, fã e a narração; clicar a linha abre a narração daquela luta", async () => {
+    const X = novo(778301);
+    await jogarCarreiraAte(X, 2); X.run("auto=false;");
+    const r0 = JSON.parse(X.run("JSON.stringify(st.registro[0])"));
+    if (typeof r0.seg !== "number" || typeof r0.fa !== "number") throw new Error("sem seg/fa: " + JSON.stringify(r0).slice(0, 120));
+    if (!Array.isArray(r0.narracao) || r0.narracao.length < 5) throw new Error("narração: " + JSON.stringify(r0.narracao));
+    const ultimaLinha = r0.narracao[r0.narracao.length - 1][2];
+    if (!/vence/.test(ultimaLinha)) throw new Error("última linha da narração: " + ultimaLinha);
+    const linha = X.registro.bouts.children.filter(n => tem(n, "bout"))[0];
+    if (!linha || !linha.onclick) throw new Error("linha do cartel não abre");
+    linha.onclick();
+    const narr = linha.children.find(n => tem(n, "bout-narracao"));
+    if (!narr || narr.hidden || !narr.innerHTML.includes(ultimaLinha)) throw new Error("narração não abriu com o texto da luta");
+    linha.onclick();
+    if (!narr.hidden) throw new Error("segundo clique não fechou");
+  });
+
+  await conf("cartel: resumo de vitórias, derrotas e métodos bate com st.registro", async () => {
+    const X = novo(778302);
+    await jogarCarreiraAte(X, 4); X.run("auto=false;atualizarControles();");
+    const reg = JSON.parse(X.run("JSON.stringify(st.registro)"));
+    const h = X.registro.cartelResumo.innerHTML;
+    const v = reg.filter(r => r.venceu).length, d = reg.length - v;
+    const par = (num, rot) => h.includes(`<b>${num}</b><span>${rot}</span>`);
+    const nm = m => reg.filter(r => r.venceu && m(r.metodo)).length;
+    for (const [num, rot] of [[v, "Vitórias"], [d, "Derrotas"], [nm(m => /ocaute/.test(m)), "Nocautes"],
+      [nm(m => m === "Finalização"), "Finalizações"], [nm(m => m === "Decisão"), "Decisões"]])
+      if (!par(num, rot)) throw new Error(`resumo sem ${num} ${rot}: ` + h);
+    if (!X.registro.cartelVazio.hidden) throw new Error("vazio do cartel aparece com lutas");
+  });
+
+  await conf("save antigo sem seg/fa/narracao abre: cartel sem narração, mídia sem quebrar", async () => {
+    const X = novo(778303);
+    await jogarCarreiraAte(X, 3); X.run("auto=false;");
+    const save = JSON.parse(X.run("JSON.stringify(montarSave())"));
+    save.st.registro.forEach(r => { delete r.seg; delete r.fa; delete r.narracao; });
+    const Y = sandboxCarreira();
+    Y.sb.__F = F; Y.sb.__RJ = rosterJSON; Y.sb.__save = JSON.stringify(save);
+    Y.run(`ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      retomarCarreira(JSON.parse(globalThis.__save));abrirAbaHub("midia");abrirAbaHub("cartel");`);
+    const linhas = Y.registro.bouts.children.filter(n => tem(n, "bout"));
+    if (linhas.length !== save.st.registro.length) throw new Error(linhas.length + " linhas");
+    if (linhas.some(l => l.onclick)) throw new Error("linha sem narração ficou clicável");
+  });
+
+  await conf("mídia: gráfico de seguidores com um ponto por luta mais o começo", async () => {
+    const X = novo(778304);
+    await jogarCarreiraAte(X, 3); X.run("auto=false;abrirAbaHub('midia');");
+    const n = X.run("st.registro.length");
+    const h = X.registro.midiaGrafico.innerHTML;
+    const m = /<polyline points="([^"]+)"/.exec(h);
+    if (!m) throw new Error("sem polyline: " + h.slice(0, 200));
+    const pts = m[1].trim().split(/\s+/).length;
+    if (pts !== n + 1) throw new Error(`${pts} pontos para ${n} lutas`);
+    if (!h.includes(X.run("fmtNum(st.followers)"))) throw new Error("gráfico sem o total atual");
+  });
+
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("hub ok") : vermelho(`${falhas.length} falha(s) no hub`)));
   return ok;
