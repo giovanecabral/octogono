@@ -313,3 +313,19 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .indicador-save .ico{width:16px;height:16px}
 .indicador-save.local{color:var(--ouro);border-color:rgba(212,160,23,.45)}
 .indicador-save.salvando .ico{animation:pisca 1s ease-in-out infinite}
+/* espaços ocupados (fase 3) */
+.save-slot-cheio{cursor:default}
+.save-slot-cheio .cartao-conteudo{margin-top:0;height:100%}
+.slot-retrato{display:block;margin:6px 0 2px}
+.slot-retrato svg{display:block}
+.slot-linha{color:var(--osso-2);font-size:15px;display:flex;align-items:center;gap:8px}
+.slot-cartel b{font-family:var(--f-titulo);font-weight:400;font-size:24px;color:var(--osso);letter-spacing:.02em}
+.slot-cinturao{color:var(--ouro);width:18px;height:18px}
+.slot-quando{font-family:var(--f-ui);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza);margin-top:4px}
+.selo-lenda{display:inline-block;margin-left:8px;padding:1px 6px;border:1px solid var(--ouro);color:var(--ouro);font-size:11px;letter-spacing:.14em}
+.slot-acoes-linha{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.slot-acoes-linha .botao{min-height:44px;padding:0 18px;font-size:15px}
+@media (hover:hover) and (pointer:fine){.save-slot-cheio:hover{transform:none;background:var(--linha-forte)}}
+/* portão e formulários de conta: largura de formulário, "Mostrar" colado no campo */
+.tela-portao .portao-form{max-width:560px}
+.tela .campo-rot{display:flex;justify-content:space-between;align-items:baseline;max-width:440px}

@@ -6248,6 +6248,71 @@ async function testarRotas() {
     if (desde(m).some(n => tem(n, "save-slot"))) throw new Error("mostrou os espaços sem conta");
     if (JSON.parse(dadosLS.intencao).tipo !== "continuar") throw new Error("intenção errada");
   });
+  /* saves sintéticos: só os campos que a tela de espaços lê */
+  const saveFalso = (slot, nome, luta, horasAtras) => JSON.stringify({ versao: 1, slot, fase: "carreira", nome,
+    divisao: "lightweight", modo: slot === 3 ? "lenda" : "normal", rosto: null, fightNo: luta,
+    st: { wins: luta - 2, losses: 2, title: luta > 10 }, atualizadoEm: new Date(Date.now() - horasAtras * 3600e3).toISOString() });
+  await conf("continuar com 1 save no espaço 2: livre, salvo (nome, luta N de 22), livre", async () => {
+    estadoSb.sessao = { user: { id: "u1", email: "t@t.com" } };
+    for (const k of Object.keys(dadosLS)) if (k.startsWith("save:")) delete dadosLS[k];
+    dadosLS["save:u1:2"] = saveFalso(2, "Kayo Brasa", 11, 2);
+    const m = env.todos.length;
+    UI.irPara("continuar"); env.drenar(); await respirar(); env.drenar(); await respirar();
+    const slots = desde(m).filter(n => tem(n, "save-slot"));
+    if (slots.length !== 3) throw new Error(slots.length + " espaços");
+    const vazios = slots.map(n => tem(n, "save-slot-vazio"));
+    if (JSON.stringify(vazios) !== "[true,false,true]") throw new Error("ordem dos espaços: " + JSON.stringify(vazios));
+    const textoDe = (n) => String(n.innerHTML || "") + (n.children || []).map(textoDe).join(" ");
+    const h = textoDe(slots[1]);
+    if (!/Kayo Brasa/.test(h) || !/Luta 11 de 22/.test(h)) throw new Error("card do save sem nome ou luta: " + h.slice(0, 200));
+  });
+  await conf("apagar pede confirmação na própria tela: 1º clique não apaga, 2º apaga", async () => {
+    const m0 = env.todos.length;
+    UI.irPara("continuar"); env.drenar(); await respirar(); env.drenar(); await respirar();
+    const apagar = env.todos.slice(m0).filter(n => tem(n, "slot-apagar") && n.onclick).pop();
+    if (!apagar) throw new Error("botão apagar não existe");
+    apagar.onclick(); env.drenar(); await respirar();
+    if (!dadosLS["save:u1:2"]) throw new Error("apagou no primeiro clique");
+    const conf2 = env.todos.slice(m0).filter(n => tem(n, "slot-apagar-sim") && n.onclick).pop();
+    if (!conf2) throw new Error("confirmação não apareceu");
+    conf2.onclick(); env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (dadosLS["save:u1:2"]) throw new Error("não apagou depois de confirmar");
+  });
+  await conf("nova carreira com os 3 espaços cheios: escolhe qual substituir, só inicia depois de confirmar", async () => {
+    dadosLS["save:u1:1"] = saveFalso(1, "Um", 5, 5);
+    dadosLS["save:u1:2"] = saveFalso(2, "Dois", 8, 3);
+    dadosLS["save:u1:3"] = saveFalso(3, "Tres", 2, 1);
+    const m = env.todos.length;
+    UI.irPara("nova"); env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (!desde(m).some(n => tem(n, "tela-espaco"))) throw new Error("tela de escolher espaço não apareceu");
+    if (desde(m).some(n => n.id === "nomeIn")) throw new Error("abriu o nome sem escolher espaço");
+    const subst = desde(m).filter(n => tem(n, "slot-substituir") && n.onclick);
+    if (subst.length !== 3) throw new Error(subst.length + " botões de substituir");
+    subst[1].onclick(); env.drenar(); await respirar();
+    if (!dadosLS["save:u1:2"]) throw new Error("substituiu sem confirmar");
+    const sim = desde(m).filter(n => tem(n, "slot-substituir-sim") && n.onclick).pop();
+    if (!sim) throw new Error("confirmação de substituir não apareceu");
+    const m2 = env.todos.length;
+    sim.onclick(); env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (dadosLS["save:u1:2"]) throw new Error("save antigo do espaço 2 não foi apagado");
+    if (!env.todos.slice(m2).some(n => n.tagName === "input" && n.type === "text")) throw new Error("não abriu o nome depois de confirmar");
+    for (const k of Object.keys(dadosLS)) if (k.startsWith("save:")) delete dadosLS[k];
+  });
+  await conf("menu com saves: card Continuar mostra a carreira mais recente e acende; Conta conta as salvas", async () => {
+    estadoSb.sessao = { user: { id: "u1", email: "t@t.com" } };
+    dadosLS["save:u1:1"] = saveFalso(1, "Antigo", 4, 30);
+    dadosLS["save:u1:3"] = saveFalso(3, "Recente Silva", 9, 1);
+    const m = env.todos.length;
+    UI.irPara("menu"); env.drenar(); await respirar(); env.drenar(); await respirar(); env.drenar(); await respirar();
+    const card = desde(m).filter(n => tem(n, "menu-card") && n.dataset.rota === "continuar").pop();
+    const txt = desde(m).filter(n => n.id === "continuar-txt").pop() || env.registro["continuar-txt"];
+    const t = (txt && (txt.textContent || txt.innerHTML)) || "";
+    if (!/Recente Silva/.test(t) || !/luta 9 de 22/.test(t)) throw new Error("card Continuar não mostrou a mais recente: " + t);
+    if (tem(card, "apagado")) throw new Error("card Continuar continuou apagado com save existente");
+    const conta = env.registro["previa-conta"];
+    if (!conta || !/2 carreiras salvas/.test(conta.innerHTML)) throw new Error("prévia da Conta sem a contagem: " + (conta && conta.innerHTML));
+    for (const k of Object.keys(dadosLS)) if (k.startsWith("save:")) delete dadosLS[k];
+  });
   await conf("intenção: consumirIntencao devolve e apaga; com mais de 24 h é ignorada", () => {
     UI.guardarIntencao({ tipo: "nova" });
     const v = UI.consumirIntencao();
@@ -6625,6 +6690,32 @@ async function testarSave() {
     if (!r[1] || r[1].nome !== "Local novo") throw new Error("espaço 2 devia ser o local (mais novo): " + (r[1] && r[1].nome));
     if (r[2] !== null) throw new Error("espaço 3 devia ser vazio");
     if (JSON.parse(X.dadosLS["save:u1:1"]).nome !== "Nuvem nova") throw new Error("a versão da nuvem não foi copiada pro aparelho");
+  });
+  const nosDe = (raiz, acc = []) => { if (!raiz) return acc; acc.push(raiz); (raiz.children || []).forEach(c => nosDe(c, acc)); return acc; };
+  await conf("de ponta a ponta: joga até a 5 logado, abre Continuar, clica Continuar no card, volta na luta 5 com o histórico", async () => {
+    const est = { chamadas: [], falhar: false, nuvem: [] };
+    const X = sandboxCarreira();
+    X.sb.window.supabase = supabaseFalso(est);
+    X.run("USUARIO_ID='u1';SLOT_ATUAL=1;");
+    iniciarCarreiraTeste(X, F, 777008);
+    await jogarCarreiraAte(X, 5);
+    for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); await resolverDilemaTeste(X, "aceito"); }
+    if (!X.dadosLS["save:u1:1"]) throw new Error("sem save no espaço 1");
+    // outra "sessão": sandbox novo, só com o que ficou no aparelho
+    const Y = sandboxCarreira();
+    Y.sb.window.supabase = supabaseFalso(est);
+    Object.assign(Y.dadosLS, X.dadosLS);
+    Y.sb.__F = F;
+    Y.run("ROSTER=rateAll(globalThis.__F);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;USUARIO_ID='u1';irPara('continuar');");
+    for (let k = 0; k < 4; k++) { Y.drenar(); await respirarCarreira(); }
+    const btn = nosDe(Y.registro.app).filter(n => (n.className || "").split(" ").includes("slot-continuar") && n.onclick).pop();
+    if (!btn) throw new Error("botão Continuar do espaço não apareceu");
+    btn.onclick();
+    for (let k = 0; k < 4; k++) { Y.drenar(); await respirarCarreira(); }
+    if (Y.run("fightNo") !== 5) throw new Error("retomou na luta " + Y.run("fightNo"));
+    if (Y.run("SLOT_ATUAL") !== 1) throw new Error("SLOT_ATUAL não ficou no espaço 1");
+    const linhas = (Y.registro.bouts.children || []).filter(n => (n.className || "").split(" ").includes("bout"));
+    if (linhas.length !== 5) throw new Error(`${linhas.length} linhas de luta no histórico retomado`);
   });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));

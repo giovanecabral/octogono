@@ -5507,7 +5507,7 @@ function screen404(){
 }
 
 registrarRota("menu",screenMenu);
-registrarRota("nova",()=>comConta({tipo:"nova"},()=>screenName()));   // a fase 4 troca screenName pelo assistente
+registrarRota("nova",()=>comConta({tipo:"nova"},()=>iniciarNovaCarreira()));   // a fase 4 troca o fluxo de criação pelo assistente
 registrarRota("continuar",()=>comConta({tipo:"continuar"},screenContinuar));
 registrarRota("conta",p=>screenConta(p));
 registrarRota("atualizacoes",screenAtualizacoes);
@@ -5633,8 +5633,8 @@ function screenMenu(){
     cartaoMenu({rota:"nova",tamanho:"grande",foto:"tunel",rotulo:"Modo carreira",titulo:"Nova carreira",
       texto:"Monte o lutador com atributos de lutadores reais e jogue 22 lutas até a aposentadoria.",
       acao:"Começar",i:0}),
-    cartaoMenu({rota:"continuar",tamanho:"grande",foto:"vestiario",rotulo:"Carreira salva",titulo:"Continuar",
-      texto:`<span id="continuar-txt">Entre para ver suas carreiras.</span>`,acao:"Ver carreiras",i:1,apagado:true}),
+    Object.assign(cartaoMenu({rota:"continuar",tamanho:"grande",foto:"vestiario",rotulo:"Carreira salva",titulo:"Continuar",
+      texto:`<span id="continuar-txt">Entre para ver suas carreiras.</span>`,acao:"Ver carreiras",i:1,apagado:true}),{id:"card-continuar"}),
     cartaoMenu({rota:"ranking",tamanho:"medio",foto:"cinturao",rotulo:"Placar",titulo:"Ranking",
       extra:`<span class="previa" id="previa-ranking"><span class="carregando">Carregando</span></span>`,
       acao:"Ver ranking",i:2}),
@@ -5674,10 +5674,18 @@ async function preencherPreviaConta(chip){
   try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){ return; }
   if(!session)return;
   const email=session.user.email||"";
-  const ct=document.getElementById("continuar-txt");
-  if(ct)ct.textContent="Nenhuma carreira salva.";   // a fase 3 troca pelo save mais recente
+  USUARIO_ID=session.user.id;
   const rot=chip.querySelector?chip.querySelector(".chip-rot"):null;
   if(rot)rot.textContent=email;
+  /* Continuar mostra a carreira mais recente das 3 (revamp fase 3) */
+  const saves=(await listarSaves()).filter(Boolean);
+  const recente=saves.sort((a,b)=>new Date(b.atualizadoEm)-new Date(a.atualizadoEm))[0];
+  const ct=document.getElementById("continuar-txt");
+  if(ct)ct.textContent=recente
+    ?`${recente.nome} · ${nomeDivisao(recente.divisao)} · ${(recente.st||{}).wins||0}-${(recente.st||{}).losses||0} · luta ${recente.fightNo||0} de ${TOTAL_FIGHTS}`
+    :"Nenhuma carreira salva.";
+  const cardC=document.getElementById("card-continuar");
+  if(cardC&&recente)cardC.className=String(cardC.className).split(" ").filter(c=>c!=="apagado").join(" ");
   let pro=null;
   try{ ({data:pro}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle()); }catch(e){}
   const alvo=document.getElementById("previa-conta");
@@ -5685,14 +5693,29 @@ async function preencherPreviaConta(chip){
   const ativo=proAindaValido(pro);
   const ate=ativo&&pro.expira_em?new Date(pro.expira_em).toLocaleDateString("pt-BR"):null;
   alvo.innerHTML=`<span class="previa-linha"><span class="previa-txt">${email}</span></span>`+
-    `<span class="previa-linha"><span class="previa-txt">${ativo?`<b class="txt-ouro">Plano Pro</b>${ate?` até ${ate}`:""}`:"Plano grátis"}</span></span>`;
+    `<span class="previa-linha"><span class="previa-txt">${ativo?`<b class="txt-ouro">Plano Pro</b>${ate?` até ${ate}`:""}`:"Plano grátis"}</span></span>`+
+    `<span class="previa-linha"><span class="previa-txt">${saves.length===1?"1 carreira salva":`${saves.length} carreiras salvas`}</span></span>`;
 }
-function screenContinuar(){
+/* "há 2 horas" sem Intl (o teste roda sem) */
+function fmtRelativo(iso){
+  const d=new Date(iso);if(isNaN(d))return"";
+  const min=Math.round((Date.now()-d.getTime())/60000);
+  if(min<2)return"agora há pouco";
+  if(min<60)return`há ${min} minutos`;
+  const h=Math.round(min/60);if(h<24)return`há ${h} hora${h>1?"s":""}`;
+  const dias=Math.round(h/24);return dias===1?"ontem":`há ${dias} dias`;
+}
+/* Continuar (revamp fase 3): os 3 espaços da conta, com o save de cada
+   um (o mais novo entre aparelho e nuvem, ver listarSaves). */
+async function screenContinuar(){
   const c=montarTela({fundo:"vestiario",titulo:"Continuar",classe:"tela-continuar"});
   c.appendChild(el("p","tela-sub","Cada conta guarda até 3 carreiras em andamento."));
   const grade=el("div","slots");
-  for(let n=1;n<=3;n++)grade.appendChild(slotVazio(n));
   c.appendChild(grade);
+  grade.appendChild(el("p","carregando","Carregando carreiras"));
+  const saves=await listarSaves();
+  grade.innerHTML="";
+  saves.forEach((sv,i)=>grade.appendChild(sv?slotSalvo(sv,i+1,"continuar",()=>screenContinuar()):slotVazio(i+1)));
 }
 function slotVazio(n){
   const b=el("button","cartao save-slot save-slot-vazio entra",
@@ -5706,6 +5729,71 @@ function slotVazio(n){
   b.style.animationDelay=((n-1)*80)+"ms";
   b.onclick=()=>{ SOM.toque(); irPara("nova"); };
   return b;
+}
+/* Card de um espaço ocupado. modo "continuar": Continuar + Apagar;
+   modo "substituir": Substituir (tela de espaço cheio). Apagar e
+   substituir pedem confirmação no próprio card, nunca em diálogo. */
+function slotSalvo(sv,n,modo,aoMudar){
+  const compat=sv.versao===VERSAO_SAVE;
+  const s=sv.st||{};
+  /* elementos de verdade (não string): as ações entram DENTRO do miolo,
+     senão o flex do .cartao põe os botões ao lado do conteúdo */
+  const card=el("div","cartao save-slot save-slot-cheio entra");
+  const miolo=el("div","cartao-miolo");
+  const conteudo=el("div","cartao-conteudo",
+    `<span class="cartao-rotulo">Espaço ${n}${sv.modo==="lenda"?` <span class="selo-lenda">Lenda</span>`:""}</span>
+     <span class="slot-retrato">${bonecoSVG(sv.rosto||cfgPadrao(),{w:110})}</span>
+     <span class="cartao-titulo">${sv.nome||"Sem nome"}</span>
+     <span class="slot-linha">${nomeDivisao(sv.divisao)}${s.title?` ${ICONE("medalha","slot-cinturao")}`:""}</span>
+     <span class="slot-linha slot-cartel"><b>${s.wins||0}-${s.losses||0}</b> · Luta ${sv.fightNo||0} de ${TOTAL_FIGHTS}</span>
+     <span class="slot-quando">${compat?`Jogado ${fmtRelativo(sv.atualizadoEm)}`:"Save de uma versão antiga do jogo"}</span>`);
+  miolo.appendChild(conteudo);card.appendChild(miolo);
+  card.style.animationDelay=((n-1)*80)+"ms";
+  const acoes=el("div","slot-acoes-linha");
+  const confirmar=(rotulo,classeSim,aoConfirmar)=>{
+    acoes.innerHTML="";
+    const sim=el("button",`botao ${classeSim}`,rotulo);sim.type="button";
+    const nao=el("button","botao botao-sec","Cancelar");nao.type="button";
+    sim.onclick=async()=>{ SOM.toque(); await aoConfirmar(); };
+    nao.onclick=()=>{ SOM.toque(); desenharAcoes(); };
+    acoes.append(sim,nao);
+  };
+  const desenharAcoes=()=>{
+    acoes.innerHTML="";
+    if(modo==="substituir"){
+      const sub=el("button","botao botao-sec slot-substituir",`${ICONE("lixeira")}<span>Substituir</span>`);sub.type="button";
+      sub.onclick=()=>{ SOM.toque(); confirmar("Substituir de vez","slot-substituir-sim",async()=>{
+        await apagarSave(n); SLOT_ATUAL=n; screenName(); }); };
+      acoes.appendChild(sub);
+      return;
+    }
+    const cont=el("button","botao slot-continuar",`<span>Continuar</span>${ICONE("seta-dir")}`);cont.type="button";
+    cont.disabled=!compat;
+    cont.onclick=()=>{ SOM.toque(); SLOT_ATUAL=n; retomarCarreira(sv); };
+    const apagar=el("button","botao botao-sec slot-apagar",`${ICONE("lixeira")}<span>Apagar</span>`);apagar.type="button";
+    apagar.onclick=()=>{ SOM.toque(); confirmar("Apagar de vez","slot-apagar-sim",async()=>{
+      await apagarSave(n); if(aoMudar)aoMudar(); }); };
+    acoes.append(cont,apagar);
+  };
+  desenharAcoes();
+  conteudo.appendChild(acoes);
+  return card;
+}
+/* Nova carreira (revamp fase 3): ocupa o 1º espaço livre; com os 3
+   cheios, pede qual carreira substituir. A partir daqui o fluxo de
+   criação é o de sempre (a fase 4 troca pelo assistente). */
+async function iniciarNovaCarreira(){
+  const saves=await listarSaves();
+  const livre=saves.findIndex(x=>!x);
+  if(livre>=0){ SLOT_ATUAL=livre+1; screenName(); return; }
+  screenEscolherEspaco(saves);
+}
+function screenEscolherEspaco(saves){
+  const c=montarTela({fundo:"vestiario",titulo:"Espaços cheios",classe:"tela-espaco"});
+  c.appendChild(el("p","tela-sub","Sua conta já tem 3 carreiras em andamento. Escolha qual substituir pela nova."));
+  const grade=el("div","slots");
+  saves.forEach((sv,i)=>grade.appendChild(slotSalvo(sv,i+1,"substituir")));
+  c.appendChild(grade);
 }
 let filtroRanking={divisao:null,modo:"normal"};
 function screenRanking(){
@@ -5836,6 +5924,7 @@ function aplicarSave(s){
   auto=false;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
 }
 function retomarCarreira(s){
+  tituloDoc(true);   // tela da carreira ainda é a antiga até a fase 5
   aplicarSave(s);
   atualizarStatusPro();
   montarTelaCarreira();
@@ -6028,7 +6117,7 @@ function ready(data){
     /* Link de desafio pula a tela inicial de propósito — quem clicou
        num link de amigo já sabe o que veio fazer aqui, forçar passar
        pelo menu primeiro só atrapalharia. */
-    if(lerDesafio()){ comConta({tipo:"desafio",busca:location.search},()=>screenName()); return; }
+    if(lerDesafio()){ comConta({tipo:"desafio",busca:location.search},()=>iniciarNovaCarreira()); return; }
     /* Endereço com rota (#/ranking) abre direto nela. Endereço com
        resposta de login do Supabase no hash: cria o client ANTES de
        qualquer coisa mexer na URL (ele lê o token dali) e desenha o menu
@@ -7677,7 +7766,7 @@ function screenReport(){
   };
   const again=el("button","btn btn-ghost","Nova carreira");
   again.onclick=()=>{docmeta.textContent="Comissão Atlética · Registro";
-    history.replaceState(null,"",location.pathname);SEED=0;screenName();};
+    history.replaceState(null,"",location.pathname);SEED=0;irPara("nova");};   // revamp fase 3: passa pelo portão e pela escolha de espaço
   row2.append(btnSalvar,btnCopiar,link,again);app.appendChild(row2);
   app.appendChild(el("p","hint",
     `Semente <b>#${SEED.toString(36).toUpperCase()}</b> — quem abrir seu link pega as mesmas cartas e os mesmos adversários.`));
