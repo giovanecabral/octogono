@@ -1975,10 +1975,23 @@ Termos/Privacidade no molde novo. Suíte nova `rotas`; `interface` e
 `inicial` atualizadas pro menu novo. Mensagem de uso do `testar.js` agora
 é lida do próprio despacho (a escrita à mão estava desatualizada).
 
-**Esperando o dono:** chave do OpenRouter em `~/.octogono-openrouter`
-(`chmod 600`) pra gerar os fundos (`python3 img/gerar.py`). Sem as imagens,
-as telas novas funcionam mas os cards ficam escuros. **Checkpoint visual
-do dono antes da fase 3.**
+**Fundos gerados (2026-09-27):** 18 temas em 2K pelo Gemini 3 Pro Image
+(mesmo preço do 1K), tritom + granulação, 3,6 MB no total, custo total
+US$ 3,43 (inclui pedidos cobrados em dobro quando a API ficou lenta e o
+cliente estourou o tempo; o script agora espera 10 min e tenta de novo só
+uma vez). Arena refeita uma vez: a 1ª versão 2K tinha marcas imitando
+letras na grade; a atual saiu com cordas em vez de grade (aceita como fundo
+de menu, pendente de opinião do dono). Suíte completa depois das fases 1-2:
+TUDO CERTO, calibração igual (KO 34 / SUB 19 / DEC 46).
+**Checkpoint visual do dono antes da fase 3.**
+
+**Correção do spec pra fase 3, achada lendo `lutar()`:** a luta não é
+decidida numa chamada só; ela roda round a round com UMA escolha do jogador
+depois do 1º round (`abrirEscolhaLuta`). "Gravar o resultado antes da
+narração" não é possível. Mesmo efeito anti-trapaça: gravar no início da
+luta a semente dela (`rngL`, já sai de um único `rng()`) + adversário e
+camp, e gravar a escolha do round 1 assim que feita. Recarregar no meio
+refaz a MESMA luta com a MESMA escolha: resultado idêntico.
 
 **Ainda no fluxo antigo, de propósito, até a fase certa:** `#/nova` abre o
 `screenName()` de sempre (fase 4 troca pelo assistente); hub da carreira é o
