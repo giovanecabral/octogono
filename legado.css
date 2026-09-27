@@ -974,69 +974,16 @@ body.ko::after{content:"";position:fixed;inset:0;background:var(--stamp);
   .inicio-item{width:100%}
   .inicio-item-principal{width:100%}
 }
-.mobile-only{display:none}   /* padrão desktop — a media query logo abaixo reabre em ≤1080px; precisa vir ANTES dela no arquivo, mesma especificidade de classe única, empate de cascata resolve por ordem de leitura */
-/* ---------- carreira no celular: 3 estados, não 3 colunas ----------
-   html[data-estado-carreira] vem de atualizarEstadoCarreira() (ponto
-   único, chamado de dentro de atualizarControles()) — três valores:
-   "ocioso" (ficha/histórico em aba), "escolhendo" (#escolha domina),
-   "lutando" (narração domina). Documentado no mock aprovado antes de
-   escrever: as colunas sempre foram 2 (ficha + coluna que já empilhava
-   escolha/narração/histórico) — o problema nunca foi 3 colunas brigando,
-   foi falta de hierarquia DENTRO da coluna. Acima de 1080px nada disto
-   se aplica: desktop ignora estado/aba, as duas colunas convivem como
-   sempre (só a tipografia da narração muda, ver bloco @media min-width
-   logo abaixo). */
-@media (max-width:1080px){
-  .mobile-only{display:inline-flex;min-height:44px;align-items:center}
-  #cardsb,#conqb,#treinb{display:none}         /* saem da barra — só no "Mais" */
-  .abas-carreira{margin-bottom:10px}
-  html:not([data-estado-carreira="ocioso"]) .abas-carreira{display:none}
-
-  /* ocioso: aba manda quem aparece, #ficha e #bouts nunca empilhados */
-  html[data-estado-carreira="ocioso"][data-aba-carreira="historico"] #ficha{display:none}
-  html[data-estado-carreira="ocioso"][data-aba-carreira="ficha"] #bouts,
-  html[data-estado-carreira="ocioso"][data-aba-carreira="ficha"] #stage{display:none}
-
-  /* escolhendo/lutando: #ficha começa escondida, "Ver ficha" alterna —
-     nunca toca playing/stage, só CSS por cima (ver onclick de verFichaBtn
-     em startCareer()) — narração/escolha continuam rodando atrás. */
-  html[data-estado-carreira="escolhendo"] #ficha,
-  html[data-estado-carreira="lutando"] #ficha{display:none}
-  html.mostrar-ficha[data-estado-carreira="escolhendo"] #ficha,
-  html.mostrar-ficha[data-estado-carreira="lutando"] #ficha{
-    display:block;position:fixed;left:10px;right:10px;top:60px;bottom:76px;
-    overflow:auto;z-index:45;box-shadow:0 6px 0 rgba(0,0,0,.4)}
-  html:not([data-estado-carreira="escolhendo"]):not([data-estado-carreira="lutando"]) #verFichaBtn{display:none}
-
-  /* "Próxima luta" vira barra fixa no polegar, só faz sentido ocioso —
-     durante escolha/luta o card/narração já É a ação, barra some. */
-  html[data-estado-carreira="ocioso"] #next{
-    position:fixed;left:0;right:0;bottom:0;z-index:40;display:block;
-    height:56px;font-size:15px;letter-spacing:.08em;
-    padding-bottom:env(safe-area-inset-bottom)}
-  html:not([data-estado-carreira="ocioso"]) #next{display:none}
-  #controls{padding-bottom:64px}   /* não deixa o resto do conteúdo passar embaixo da barra fixa */
-
-  /* Lutando: Automático + Velocidade sobem pro topo, junto da narração —
-     únicos dois controles que agem no que está na tela agora. #controls
-     em si vira a barra fixa (mesmo elemento, sem mover nó nenhum no DOM —
-     só reposiciona via CSS, então onclick/disabled continuam os mesmos). */
-  html[data-estado-carreira="lutando"] #controls{
-    position:fixed;top:0;left:0;right:0;z-index:40;display:flex;
-    background:var(--bg);border-bottom:1px solid var(--ink);
-    padding:8px 10px;gap:8px}
-  html[data-estado-carreira="lutando"] #next,
-  html[data-estado-carreira="lutando"] #counter,
-  html[data-estado-carreira="lutando"] #maisb{display:none}
-  html:not([data-estado-carreira="lutando"]) #autob,
-  html:not([data-estado-carreira="lutando"]) #speedb{display:none}
-}
+/* (revamp fase 5) As regras de celular da tela ANTIGA da carreira
+   (3 estados, abas Ficha/Histórico, "Ver ficha", "Mais", Próxima luta
+   fixa no rodapé) saíram daqui: o hub novo (estilo.css, "hub da
+   carreira") tem o próprio layout de celular e essas regras escondiam
+   e fixavam elementos por cima dele. */
 /* ---------- carreira no desktop: narração precisa dominar de verdade ----------
    Medido antes de mexer: .pbp (linha da narração) tinha font-size:13px,
    .bout .opp (nome no histórico) herdava os 14px do body em peso 500 — o
    HISTÓRICO já lia mais forte que a AÇÃO, o oposto do que devia. */
 @media (min-width:1081px){
-  .abas-carreira{display:none}   /* aba é solução de empilhamento — desktop nunca empilhou */
   .pbp{font-size:15px}
   .live-head{font-size:15px}
   .live{border-width:2px}

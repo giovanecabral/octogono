@@ -4011,7 +4011,7 @@ function testarLoja() {
     linhas=itensDe(p);
     const linhaEquip=linhas.find(l=>l.children[0].innerHTML==="Equipamento de proteção");
     passo("depois de comprado, o item mostra 'Adquirido', não o botão de novo",
-      filhosENetos(linhaEquip).some(c=>c.innerHTML==="✓ Adquirido") &&
+      filhosENetos(linhaEquip).some(c=>/Adquirido/.test(c.innerHTML)&&!/✓/.test(c.innerHTML)) &&
       !filhosENetos(linhaEquip).some(c=>c.tagName==="button"));
 
     // caso 5: clicar comprar sem dinheiro suficiente não desconta nem marca
@@ -4085,8 +4085,8 @@ function testarLoja() {
     linhas=itensDe(p);
     const linhaConsult=linhas.find(l=>l.children[0].innerHTML==="Consultoria de mídia");
     passo("consultoria: ATIVA mostra rótulo próprio, não 'Adquirido' (é recorrente, não permanente)",
-      filhosENetos(linhaConsult).some(c=>c.innerHTML==="✓ Ativa para a próxima luta") &&
-      !filhosENetos(linhaConsult).some(c=>c.innerHTML==="✓ Adquirido"));
+      filhosENetos(linhaConsult).some(c=>/Ativa para a próxima luta/.test(c.innerHTML)&&!/✓/.test(c.innerHTML)) &&
+      !filhosENetos(linhaConsult).some(c=>/Adquirido/.test(c.innerHTML)));
 
     fightNo=6; rng=mulberry32(1); rareUsed=new Set();
     st.followers=10000; st.fightNo=6;
@@ -6760,6 +6760,140 @@ async function testarSave() {
 }
 
 /* ================================================================== *
+ * HUB DA CARREIRA (revamp fase 5): barra fixa, 7 abas com fundo
+ * próprio, Loja/Cards/Conquistas como aba, Voltar ao painel. Carreira
+ * de verdade num sandbox (mesmo caminho da suíte save), DOM falso.
+ * ================================================================== */
+async function testarHub() {
+  console.log("\n" + cinza("hub: barra, 7 abas com fundo, Loja/Cards/Conquistas como aba, Voltar ao painel"));
+  const F = lerLutadores();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const tem = (n, c) => (n.className || "").split(" ").includes(c);
+  const nosDe = (raiz, acc = []) => { if (!raiz) return acc; acc.push(raiz); (raiz.children || []).forEach(c => nosDe(c, acc)); return acc; };
+  const EMOJI = /\p{Extended_Pictographic}/u;
+  const ORDEM = ["painel", "lutador", "cartel", "midia", "loja", "cards", "conquistas"];
+  const novo = (seed) => {
+    const ctx = sandboxCarreira();
+    iniciarCarreiraTeste(ctx, F, seed);
+    ctx.run("auto=false;");
+    return ctx;
+  };
+  const respirarN = async (X, n = 3) => { for (let k = 0; k < n; k++) { X.drenar(); await respirarCarreira(); } };
+
+  await conf("carreira monta o hub: data-tela=hub e as 7 guias na ordem", async () => {
+    const X = novo(778001);
+    const tela = X.run("document.documentElement.dataset.tela");
+    if (tela !== "hub") throw new Error("data-tela = " + tela);
+    const guias = nosDe(X.registro.app).filter(n => tem(n, "guia-hub") && n.dataset && n.dataset.aba).map(n => n.dataset.aba);
+    if (JSON.stringify(guias) !== JSON.stringify(ORDEM)) throw new Error("guias: " + guias.join(","));
+  });
+
+  await conf("cada guia deixa só a sua seção visível, marca a guia e troca o fundo", async () => {
+    const X = novo(778002);
+    for (const id of ORDEM) {
+      const g = X.registro["guia_" + id];
+      if (!g || !g.onclick) throw new Error("sem guia " + id);
+      g.onclick();
+      await respirarN(X, 1);
+      for (const outra of ORDEM) {
+        const s = X.registro["aba_" + outra];
+        if (!s) throw new Error("sem seção " + outra);
+        if (s.hidden !== (outra !== id)) throw new Error(`guia ${id}: seção ${outra} hidden=${s.hidden}`);
+      }
+      const nomeFundo = X.run(`ABAS_HUB.find(a=>a.id==="${id}").fundo`);
+      const fundo = X.registro.hubFundo;
+      if (!fundo || !String(fundo.style.cssText || "").includes("img/" + nomeFundo + ".webp"))
+        throw new Error(`guia ${id}: fundo ${fundo && fundo.style.cssText}`);
+      if (!tem(X.registro["guia_" + id], "on")) throw new Error(`guia ${id} não ficou marcada`);
+      const marcadas = ORDEM.filter(o => tem(X.registro["guia_" + o], "on"));
+      if (marcadas.length !== 1) throw new Error(`guia ${id}: ${marcadas.length} guias marcadas`);
+    }
+  });
+
+  await conf("Loja, Cards e Conquistas desenham dentro da própria aba, sem sobreposição e sem Fechar", async () => {
+    const X = novo(778003);
+    X.registro.guia_loja.onclick();
+    const loja = X.registro.painelTreinador;
+    const itens = loja.children[0] ? loja.children[0].children.filter(c => tem(c, "loja-item")) : [];
+    if (itens.length !== 5) throw new Error(itens.length + " itens na loja");
+    if (loja.style.display === "flex") throw new Error("loja ainda abre como sobreposição");
+    X.registro.guia_cards.onclick();
+    await respirarN(X);
+    if (!X.registro.painelMomentos.children.length) throw new Error("cards não desenhou");
+    X.registro.guia_conquistas.onclick();
+    const conq = X.registro.painelConquistas;
+    if (!conq.children.length || !conq.children[0].children.some(c => tem(c, "conquista"))) throw new Error("conquistas não desenhou");
+    const fechar = [loja, X.registro.painelMomentos, conq].flatMap(p => nosDe(p)).filter(n => tem(n, "painel-fechar"));
+    if (fechar.length) throw new Error("ainda tem botão Fechar de sobreposição");
+  });
+
+  await conf("toda aba fora do Painel tem Voltar ao painel, e ele volta", async () => {
+    const X = novo(778004);
+    for (const id of ORDEM.slice(1)) {
+      X.registro["guia_" + id].onclick();
+      await respirarN(X, 1);
+      const v = nosDe(X.registro["aba_" + id]).filter(n => tem(n, "voltar-painel") && n.onclick);
+      if (v.length !== 1) throw new Error(`aba ${id}: ${v.length} botões de voltar`);
+      v[0].onclick();
+      if (X.registro.aba_painel.hidden) throw new Error(`Voltar da aba ${id} não voltou pro painel`);
+    }
+  });
+
+  await conf("Mais (celular) abre a folha com Loja, Cards e Conquistas", async () => {
+    const X = novo(778005);
+    const mais = X.registro.guiaMais;
+    if (!mais || !mais.onclick) throw new Error("sem botão Mais");
+    mais.onclick();
+    const folha = X.registro.hubFolha;
+    if (!folha || folha.hidden) throw new Error("folha não abriu");
+    const itens = folha.children.filter(c => tem(c, "folha-item") && c.onclick);
+    if (itens.length !== 3) throw new Error(itens.length + " itens na folha");
+    itens[1].onclick();
+    await respirarN(X, 1);
+    if (X.registro.aba_cards.hidden) throw new Error("item Cards da folha não abriu a aba");
+    if (!folha.hidden) throw new Error("folha não fechou ao escolher");
+  });
+
+  await conf("barra mostra nome, cartel, lutas, dinheiro e seguidores e acompanha a carreira", async () => {
+    const X = novo(778006);
+    await jogarCarreiraAte(X, 3);
+    X.run("auto=false;");
+    const nome = X.run("me.name"), cartel = X.run("st.wins+'-'+st.losses");
+    const din = X.run("fmtNum(st.dinheiro)"), seg = X.run("fmtNum(st.followers)");
+    const lutas = X.run("fightNo") + " de 22";
+    if (X.run("fightNo") < 3) throw new Error("carreira não andou: fightNo " + X.run("fightNo"));
+    const barra = ["hubNome", "hubLinha", "hubDinheiro", "hubSeguidores"]
+      .map(id => { const n = X.registro[id] || {}; return String(n.innerHTML || "") + " " + String(n.textContent || ""); }).join(" | ");
+    for (const t of [nome, cartel, lutas, din, seg]) if (!barra.includes(t)) throw new Error(`barra sem "${t}": ${barra}`);
+  });
+
+  await conf("ids da lógica continuam montados dentro do hub", async () => {
+    const X = novo(778007);
+    const dentro = new Set(nosDe(X.registro.app).map(n => n.id).filter(Boolean));
+    for (const id of ["controls", "next", "autob", "counter", "ficha", "bouts", "phone", "escolha", "stage", "live",
+      "escolhaLuta", "painelTreinador", "painelMomentos", "painelConquistas", "painelAposentar", "hubMenu"])
+      if (!dentro.has(id)) throw new Error("fora do hub: #" + id);
+  });
+
+  await conf("hub sem emoji em nenhum nó", async () => {
+    const X = novo(778008);
+    await jogarCarreiraAte(X, 2);
+    X.run("auto=false;");
+    for (const id of ORDEM) { X.registro["guia_" + id].onclick(); await respirarN(X, 1); }
+    const ruim = nosDe(X.registro.app).find(n => EMOJI.test(String(n.innerHTML || "") + String(n.textContent || "")));
+    if (ruim) throw new Error("emoji em: " + String(ruim.innerHTML || ruim.textContent).slice(0, 80));
+  });
+
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("hub ok") : vermelho(`${falhas.length} falha(s) no hub`)));
+  return ok;
+}
+
+/* ================================================================== *
  * PLACAR (revamp fase 3): a regra do servidor (api/_placar-regras.js)
  * aceita carreira real e recusa o impossível; o endpoint (api/placar.js)
  * exige sessão, limita envios e grava o user_id do TOKEN, nunca do corpo.
@@ -6905,6 +7039,7 @@ try {
   else if (cmd === "inicial") ok = await testarTelaInicial();
   else if (cmd === "rotas") ok = await testarRotas();
   else if (cmd === "save") ok = await testarSave();
+  else if (cmd === "hub") ok = await testarHub();
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -6972,6 +7107,7 @@ try {
         ["inicial", () => testarTelaInicial()],
         ["rotas", () => testarRotas()],
         ["save", () => testarSave()],
+        ["hub", () => testarHub()],
         ["placar", () => testarPlacar()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],

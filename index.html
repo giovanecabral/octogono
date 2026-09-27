@@ -3267,40 +3267,6 @@ function fecharConfig(){
   cx.style.display="none";
   cx.innerHTML="";
 }
-/* Botão "Mais" (só existe em ≤1080px, ver #maisb no CSS): Cards/
-   Conquistas/Loja saíram da barra principal do celular. Reaproveita o
-   MESMO overlay #cfg de abrirConfig() — mesma trava cfgAberto (um overlay
-   por vez), mesmo fechar-tocando-fora — só com título e gatilho próprios,
-   pra não confundir "ajuste de som" com "loja/conquistas" dentro do mesmo
-   rótulo "Configurações". Lê o texto (com contador) direto dos botões
-   originais, que continuam existindo escondidos — sempre atualizados por
-   atualizarControles()/atualizarBadgeConquistas(), nunca duplicados. */
-function abrirMenuCarreira(){
-  const cx=document.getElementById("cfg");
-  if(!cx||cfgAberto)return;
-  cfgAberto=true;
-  cx.innerHTML="";
-  const p=el("div","cfg-painel");
-  const topo=el("div","cfg-top","<h2>Mais</h2>");
-  const fechar=el("button","cfg-x","&#10005;");
-  fechar.type="button";fechar.setAttribute("aria-label","Fechar");
-  fechar.onclick=()=>{SOM.toque();fecharConfig();};
-  topo.appendChild(fechar);
-  const item=(origId,onAbrir)=>{
-    const orig=document.getElementById(origId);
-    const b=el("button","btn btn-ghost menu-item",orig?orig.textContent:"");
-    b.onclick=()=>{SOM.toque();fecharConfig();onAbrir();};
-    return b;
-  };
-  p.append(topo,
-    item("cardsb",abrirPainelMomentos),
-    item("conqb",abrirPainelConquistas),
-    item("treinb",abrirPainelTreinador));
-  cx.onclick=e=>{ if(!e||e.target===cx)fecharConfig(); };
-  p.onclick=e=>{ if(e&&e.stopPropagation)e.stopPropagation(); };
-  cx.appendChild(p);
-  cx.style.display="flex";
-}
 function armarConfig(){
   const b=document.getElementById("cfgbtn");
   if(b)b.onclick=()=>{ SOM.toque(); cfgAberto?fecharConfig():abrirConfig(); };
@@ -3506,6 +3472,7 @@ function renderFicha(){
      no instante entre a luta começar e a próxima renderFicha(). */
   const btnApos=document.getElementById("btnAposentar");
   if(btnApos)btnApos.onclick=abrirConfirmarAposentadoria;
+  renderBarraHub();
 }
 /* Aposentadoria voluntária: mesmo destino de fim de carreira natural
    (screenReport() — não hardcoda "22 lutas" em lugar nenhum, lê st.wins/
@@ -5009,10 +4976,9 @@ async function desenharCardMomento(m){
 async function abrirPainelMomentos(){
   const p=document.getElementById("painelMomentos");
   p.innerHTML="";
-  const box=el("div","painel-momentos");
-  box.appendChild(el("h3","",`Cards da carreira (${st.momentos.length})`));
+  const box=el("div","hub-lista momentos");
   if(!st.momentos.length){
-    box.appendChild(el("p","vazio","Nenhum momento marcante ainda."));
+    box.appendChild(vazio("cards","Nenhum card ainda","Nocaute rápido, cinturão, zebra: os momentos marcantes da carreira viram card pra compartilhar."));
   }else{
     for(const m of st.momentos){
       const item=el("div","momento-item");
@@ -5041,7 +5007,7 @@ async function abrirPainelMomentos(){
          esquerdo, mesmo caminho do botão "Salvar" — atalho, não a defesa. */
       try{
         const cv=await desenharCardMomento(m);
-        const thumbW=140,thumbH=Math.round(thumbW*CARD_H/CARD_W);
+        const thumbW=180,thumbH=Math.round(thumbW*CARD_H/CARD_W);
         /* Moldura (Fase 8, 2026-09-17): passe-partout ao redor da miniatura
            — .momento-moldura é só padding+borda, .momento-mini continua o
            MESMO <div> de fundo CSS de sempre, tamanho/onclick/background
@@ -5058,15 +5024,7 @@ async function abrirPainelMomentos(){
       box.appendChild(item);
     }
   }
-  const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
-  fechar.onclick=fecharPainelMomentos;
-  box.appendChild(fechar);
   p.appendChild(box);
-  p.style.display="flex";
-}
-function fecharPainelMomentos(){
-  const p=document.getElementById("painelMomentos");
-  if(p)p.style.display="none";
 }
 
 /* Visual de documento — sem canto arredondado, "✓"/"·" continuam
@@ -5081,17 +5039,18 @@ function fecharPainelMomentos(){
 function abrirPainelConquistas(){
   const p=document.getElementById("painelConquistas");
   p.innerHTML="";
-  const box=el("div","painel-momentos conquistas");
+  const box=el("div","hub-lista conquistas");
   const n=CONQUISTAS_DESBLOQUEADAS.size,total=CONQUISTAS.length;
-  box.appendChild(el("h3","",`Conquistas (${n}/${total})`));
+  box.appendChild(el("div","conq-progresso",`<div class="conq-num">${n}<small>/${total}</small></div>
+    <div class="conq-barra"><i style="width:${Math.round(100*n/Math.max(1,total))}%"></i></div>`));
   CONQUISTAS.forEach(c=>{
     const ok=CONQUISTAS_DESBLOQUEADAS.has(c.id);
     const item=el("div","conquista"+(ok?" ok":""));
     item.innerHTML=iconeConquista(c.cat);
     const raridade=raridadeConquista(c.id);
     const texto=el("div","conquista-texto",`
-      <div class="conquista-nome">${(ok?"✓ ":"· ")+c.nome}${
-        raridade?` <span class="badge badge-${RARIDADE_BADGE[raridade]}">${raridade}</span>`:""}</div>
+      <div class="conquista-nome">${ICONE(ok?"check":"cadeado","conquista-estado")}<span>${c.nome}</span>${
+        raridade?`<span class="badge badge-${RARIDADE_BADGE[raridade]}">${raridade}</span>`:""}</div>
       <div class="conquista-desc">${c.desc}</div>`);
     item.appendChild(texto);
     box.appendChild(item);
@@ -5099,19 +5058,11 @@ function abrirPainelConquistas(){
   const plat=el("div","conquista"+(n>=total?" ok":""));
   plat.innerHTML=iconeConquista("estrela");
   const platTexto=el("div","conquista-texto",`
-    <div class="conquista-nome">${(n>=total?"✓ ":"· ")+"PLATINA"}</div>
+    <div class="conquista-nome">${ICONE(n>=total?"check":"cadeado","conquista-estado")}<span>Platina</span></div>
     <div class="conquista-desc">${n>=total?"Todas as conquistas desbloqueadas.":`Faltam ${total-n} pra completar.`}</div>`);
   plat.appendChild(platTexto);
   box.appendChild(plat);
-  const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
-  fechar.onclick=fecharPainelConquistas;
-  box.appendChild(fechar);
   p.appendChild(box);
-  p.style.display="flex";
-}
-function fecharPainelConquistas(){
-  const p=document.getElementById("painelConquistas");
-  if(p)p.style.display="none";
 }
 
 /* Loja: compras permanentes até a aposentadoria, uma vez cada por
@@ -5153,15 +5104,18 @@ const LOJA_ITENS=[
    efeito:()=>`Efeito: +${Math.round((CASA_FOLLOWER_MULT-1)*100)}% de seguidores, só na PRÓXIMA luta. Pode comprar de novo depois.`,
    comprar:()=>{st.consultoriaAtiva=true;}},
 ];
+/* Foto de cada produto (fundo do card na aba Loja): cena da mesma série
+   de fundos do jogo, nenhuma imagem nova. */
+const IMG_LOJA={treinador:"saco",equipamento:"vestiario",empresario:"contrato",casa:"fotos",consultoria:"imprensa"};
 function abrirPainelTreinador(){
   const p=document.getElementById("painelTreinador");
   p.innerHTML="";
-  const box=el("div","painel-momentos treinador");
-  box.appendChild(el("h3","","Loja"));
-  box.appendChild(el("div","conquista-desc","Seu caixa: "+fmtNum(st.dinheiro||0)));
+  const box=el("div","hub-lista treinador");
+  box.appendChild(el("div","loja-caixa",`<span>Seu caixa</span><b>R$ ${fmtNum(st.dinheiro||0)}</b>`));
   LOJA_ITENS.forEach(item=>{
     const comprado=item.comprado();
     const linha=el("div","loja-item"+(comprado?" comprado":""));
+    linha.style.cssText=`--img:url(img/${IMG_LOJA[item.id]||"academia"}.webp)`;
     linha.appendChild(el("div","loja-nome",item.nome));
     linha.appendChild(el("div","item-desc",item.desc()));
     linha.appendChild(el("div","loja-efeito-lb","Efeito medido"));
@@ -5171,17 +5125,19 @@ function abrirPainelTreinador(){
     const custo=item.custo();
     const rodape=el("div","loja-rodape");
     if(comprado){
-      rodape.appendChild(el("span","badge badge-win",
-        item.recorrente?"✓ Ativa para a próxima luta":"✓ Adquirido"));
+      rodape.appendChild(el("span","loja-selo",
+        `${ICONE("check")}<span>${item.recorrente?"Ativa para a próxima luta":"Adquirido"}</span>`));
     }else{
-      rodape.appendChild(el("span","loja-preco",fmtNum(custo)));
-      const buy=el("button","btn btn-sm","Comprar");
+      rodape.appendChild(el("span","loja-preco",`R$ ${fmtNum(custo)}`));
+      const buy=el("button","botao","Comprar");
       buy.disabled=(st.dinheiro||0)<custo;
       buy.onclick=()=>{
         if((st.dinheiro||0)<custo)return;
         st.dinheiro-=custo;
         item.comprar();
+        SOM.toque();
         salvarCarreira();
+        renderBarraHub();
         abrirPainelTreinador();        // redesenha já adquirido
       };
       rodape.appendChild(buy);
@@ -5189,15 +5145,7 @@ function abrirPainelTreinador(){
     linha.appendChild(rodape);
     box.appendChild(linha);
   });
-  const fechar=el("button","btn btn-ghost btn-sm painel-fechar","Fechar");
-  fechar.onclick=fecharPainelTreinador;
-  box.appendChild(fechar);
   p.appendChild(box);
-  p.style.display="flex";
-}
-function fecharPainelTreinador(){
-  const p=document.getElementById("painelTreinador");
-  if(p)p.style.display="none";
 }
 
 function urlDesafio(){
@@ -5284,7 +5232,6 @@ let escolhaAberta=false;
    dilemaAberto: trava "Próxima luta" e pausa o timer do automático,
    senão a resposta da IA passa voando antes de dar tempo de ler. */
 let entrevistaAberta=false;
-let abaCarreira="ficha";     // "ficha"|"historico" — só importa em ≤1080px, estado ocioso
 const TOTAL_FIGHTS=22,SPEEDS=[1,2,4];
 let DIVISION="lightweight";
 let SEED=0;
@@ -5979,7 +5926,6 @@ function aplicarSave(s){
   auto=false;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
 }
 function retomarCarreira(s){
-  tituloDoc(true);   // tela da carreira ainda é a antiga até a fase 5
   aplicarSave(s);
   atualizarStatusPro();
   montarTelaCarreira();
@@ -6006,6 +5952,7 @@ function retomarPendente(){
     rodarLuta(opp,!!st.tituloEstaLuta,!!p.rival,p.semL,p.escolha||null);
   }else if(p.tipo==="dilema"&&p.d){
     dilemaAberto=true;atualizarControles();
+    abrirAbaHub("cartel");
     abrirDilema(p.d)
       .catch(()=>{})
       .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
@@ -6119,6 +6066,9 @@ function indicadorSave(estado){
   i.innerHTML=`${ICONE(estado==="local"?"nuvem-off":"nuvem-ok")}<span>${txt}</span>`;
   clearTimeout(i._t);
   if(estado==="salvo")i._t=setTimeout(()=>{ i.className="indicador-save"; },2500);
+  const h=document.getElementById("hubSave");
+  if(h){ h.className="hub-save "+estado;
+    h.innerHTML=`${ICONE(estado==="local"?"nuvem-off":"nuvem-ok")}<span>${estado==="local"?"No aparelho":txt}</span>`; }
 }
 /* sair da aba/fechar/trocar de app no celular: grava de novo na hora */
 function armarSave(){
@@ -6821,113 +6771,176 @@ function iniciarEstadoCarreira(){
   fightNo=0;auto=false;speed=1;playing=false;
   dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
 }
-/* Tela da carreira (controles, painéis, abas, ficha, histórico vazio). */
+/* =========================================================================
+   HUB DA CARREIRA (revamp fase 5). Casca nova: barra fixa e 7 abas com
+   fundo próprio. A lógica do jogo continua achando tudo por id (#next,
+   #escolha, #stage, #bouts, #ficha, #phone...); aqui só muda ONDE cada
+   container mora. Plano: docs/superpowers/plans/2026-09-27-revamp-fase-5.md
+   ========================================================================= */
+const ABAS_HUB=[
+  {id:"painel",rot:"Painel",ic:"painel",fundo:"arena"},
+  {id:"lutador",rot:"Lutador",ic:"usuario",fundo:"vestiario"},
+  {id:"cartel",rot:"Cartel",ic:"lista",fundo:"tunel"},
+  {id:"midia",rot:"Mídia",ic:"jornal",fundo:"imprensa"},
+  {id:"loja",rot:"Loja",ic:"loja",fundo:"academia"},
+  {id:"cards",rot:"Cards",ic:"cards",fundo:"fotos"},
+  {id:"conquistas",rot:"Conquistas",ic:"trofeu",fundo:"trofeus"},
+];
+/* No celular a barra de baixo só comporta 4 guias e o "Mais"; estas 3
+   moram na folha que o "Mais" abre. */
+const ABAS_NA_FOLHA=["loja","cards","conquistas"];
+let abaHub="painel";
 function montarTelaCarreira(){
+  if(cfgAberto)fecharConfig();
+  document.documentElement.dataset.tela="hub";
   app.innerHTML="";
-  app.appendChild(el("div","eyebrow","Registro de lutas"));
-  app.appendChild(el("p","made-of","Seu lutador: "+
-    picks.map(p=>`<b>${p.pair.label}</b> do ${p.from}`).join(" · ")));
-  const row=el("div","row");row.id="controls";
-  const next=el("button","btn","Próxima luta");next.id="next";next.onclick=()=>nextFight();
-  const ab=el("button","btn btn-ghost","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
-  const sp=el("button","btn btn-ghost btn-sm","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
-  /* O som saiu daqui: mudo e volume moram no painel da engrenagem. */
-  const cardsb=el("button","btn btn-ghost btn-sm","Cards");cardsb.id="cardsb";
-  cardsb.onclick=abrirPainelMomentos;
-  const conqb=el("button","btn btn-ghost btn-sm","Conquistas");conqb.id="conqb";
-  conqb.onclick=abrirPainelConquistas;
-  const treinb=el("button","btn btn-ghost btn-sm","Loja");treinb.id="treinb";
-  treinb.onclick=abrirPainelTreinador;
-  const hint=el("span","hint aviso",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  /* Só existem/aparecem em ≤1080px (ver @media perto de .carreira). "Mais"
-     reaproveita o MESMO #cfg/cfgAberto de abrirConfig() — gatilho e título
-     próprios (abrirMenuCarreira()), mas a trava de "um overlay por vez" e o
-     fechar-tocando-fora são os de sempre, sem duplicar mecanismo. "Ver
-     ficha" não navega: só alterna a classe mostrar-ficha em <html>, então
-     nunca toca em playing/stage — a narração roda igual, ficha por cima. */
-  const maisb=el("button","btn btn-ghost btn-sm mobile-only","Mais");maisb.id="maisb";
-  maisb.onclick=abrirMenuCarreira;
-  const verFichaBtn=el("button","btn btn-ghost btn-sm mobile-only","Ver ficha");
-  verFichaBtn.id="verFichaBtn";
-  verFichaBtn.onclick=()=>{
-    const on=document.documentElement.classList.toggle("mostrar-ficha");
-    verFichaBtn.textContent=on?"Fechar ficha":"Ver ficha";
-  };
-  row.append(next,ab,sp,cardsb,conqb,treinb,maisb,verFichaBtn,hint);app.appendChild(row);
-  /* overlay do card de momento: criado uma vez, escondido, nunca trava
-     nextFight()/automático — ver painel-overlay no CSS. */
-  const painel=el("div","painel-overlay");painel.id="painelMomentos";
-  painel.style.display="none";app.appendChild(painel);
-  const painelC=el("div","painel-overlay");painelC.id="painelConquistas";
-  painelC.style.display="none";app.appendChild(painelC);
-  const painelT=el("div","painel-overlay");painelT.id="painelTreinador";
-  painelT.style.display="none";app.appendChild(painelT);
-  const painelApos=el("div","painel-overlay");painelApos.id="painelAposentar";
-  painelApos.style.display="none";app.appendChild(painelApos);
-  atualizarBadgeConquistas();
-
-  /* Abas Ficha/Histórico: só têm efeito em ≤1080px e só no estado ocioso
-     (ver atualizarEstadoCarreira()) — no desktop e durante escolha/luta a
-     CSS ignora abaCarreira de propósito, os dois painéis convivem como
-     sempre. Reaproveita o componente .abas/.aba do criador (já com alvo de
-     toque de 44px+), não é elemento novo. */
-  abaCarreira="ficha";
-  const abas=el("div","abas abas-carreira");
-  ["ficha","historico"].forEach(id=>{
-    const b=el("button","aba"+(id===abaCarreira?" on":""),id==="ficha"?"Ficha":"Histórico");
-    b.onclick=()=>{SOM.toque();abaCarreira=id;
-      abas.querySelectorAll(".aba").forEach(x=>x.classList.toggle("on",x===b));
-      atualizarEstadoCarreira();};
-    abas.appendChild(b);
+  const tela=el("div","tela tela-hub");
+  const fundo=fundoTela("arena");fundo.id="hubFundo";
+  tela.append(fundo,montarBarraHub(),montarGuiasHub());
+  const folha=el("div","hub-folha");folha.id="hubFolha";folha.hidden=true;
+  ABAS_NA_FOLHA.forEach(id=>{
+    const a=ABAS_HUB.find(x=>x.id===id);
+    const b=el("button","folha-item",`${ICONE(a.ic)}<span>${a.rot}</span>`);
+    b.type="button";b.onclick=()=>{SOM.toque();abrirAbaHub(id);};
+    folha.appendChild(b);
   });
-  app.appendChild(abas);
+  tela.appendChild(folha);
+  const corpo=el("main","hub-corpo");
+  const secao={};
+  ABAS_HUB.forEach(a=>{
+    const s=el("section","hub-aba hub-aba-"+a.id);s.id="aba_"+a.id;s.hidden=a.id!=="painel";
+    if(a.id!=="painel"){
+      const cab=el("div","hub-aba-cab");
+      const v=el("button","btn-voltar voltar-painel",`${ICONE("seta-esq")}<span>Painel</span>`);
+      v.type="button";v.onclick=()=>{SOM.toque();abrirAbaHub("painel");};
+      cab.append(v,el("h2","hub-aba-titulo",a.rot));
+      s.appendChild(cab);
+    }
+    secao[a.id]=s;corpo.appendChild(s);
+  });
+  tela.appendChild(corpo);
 
-  const carr=el("div","carreira");
-  const ficha=el("div","ficha");ficha.id="ficha";
-  const col=el("div","");
-  carr.append(ficha,col);app.appendChild(carr);
+  /* Painel: ações da carreira e, por enquanto, o palco da luta (a noite
+     de luta em tela cheia chega nas próximas tarefas da fase 5). */
+  const row=el("div","hub-acoes");row.id="controls";
+  const next=el("button","botao botao-grande","Próxima luta");next.id="next";next.onclick=()=>nextFight();
+  const ab=el("button","botao botao-sec","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
+  const sp=el("button","botao botao-sec","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
+  const hint=el("span","hub-contador",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
+  row.append(next,ab,sp,hint);
+  secao.painel.appendChild(row);
+  const palco=el("div","hub-palco");
   const esc=el("div","escolha");esc.id="escolha";esc.style.display="none";
-  col.appendChild(esc);
   const stage=el("div","stage");stage.id="stage";stage.style.display="none";
   const live=el("div","live");live.id="live";
-  const phone=el("div","phone");phone.id="phone";phone.style.visibility="hidden";
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
-  stage.append(live,phone,escLuta);col.appendChild(stage);
-  const bouts=el("div","bouts");bouts.id="bouts";col.appendChild(bouts);
-  renderFicha();
-  atualizarEstadoCarreira();
+  stage.append(live,escLuta);
+  palco.append(esc,stage);
+  secao.painel.appendChild(palco);
+
+  const ficha=el("div","ficha");ficha.id="ficha";secao.lutador.appendChild(ficha);
+  const bouts=el("div","bouts");bouts.id="bouts";secao.cartel.appendChild(bouts);
+  const phone=el("div","phone");phone.id="phone";
+  phone.appendChild(vazio("jornal","Nada ainda","A repercussão aparece depois da primeira luta."));
+  secao.midia.appendChild(phone);
+  [["loja","painelTreinador"],["cards","painelMomentos"],["conquistas","painelConquistas"]].forEach(([a,id])=>{
+    const p=el("div","hub-painel");p.id=id;secao[a].appendChild(p);
+  });
+  /* Aposentar continua em sobreposição de propósito: é permanente e pede
+     escolha explícita entre Cancelar e Aposentar-se. */
+  const painelApos=el("div","painel-overlay");painelApos.id="painelAposentar";
+  painelApos.style.display="none";tela.appendChild(painelApos);
+  app.appendChild(tela);
+  abrirAbaHub("painel");
+  atualizarControles();
 }
-/* Ponto único da CAMADA de layout mobile (data-estado no <html>): qual dos
-   3 estados do jogo está ativo, pra CSS decidir sozinha o que mostrar —
-   nenhuma outra função escreve nesse atributo. Chamada de dentro de
-   atualizarControles(), que já é o ponto único do ESTADO dos botões e já
-   roda em toda transição relevante (nextFight, toggleAuto, finishFight via
-   atualizarControles no fim, etc.) — não precisa de chamada extra
-   espalhada pelo código, só reagir ao mesmo lugar que já reage. */
+function montarBarraHub(){
+  const b=el("header","hub-barra");
+  const ret=el("div","hub-retrato");ret.id="hubRetrato";
+  const id=el("div","hub-id");
+  const nm=el("div","hub-nome");nm.id="hubNome";
+  const ln=el("div","hub-linha");ln.id="hubLinha";
+  id.append(nm,ln);
+  const nums=el("div","hub-nums");
+  const din=el("div","hub-num");din.id="hubDinheiro";
+  const seg=el("div","hub-num");seg.id="hubSeguidores";
+  nums.append(din,seg);
+  const sv=el("div","hub-save");sv.id="hubSave";
+  const menu=el("button","hub-menu",`${ICONE("menu")}<span>Menu</span>`);
+  menu.type="button";menu.id="hubMenu";
+  menu.onclick=()=>{SOM.toque();sairParaMenu();};
+  b.append(ret,id,nums,sv,menu);
+  return b;
+}
+function montarGuiasHub(){
+  const nav=el("nav","hub-guias");
+  ABAS_HUB.forEach(a=>{
+    const g=el("button","guia-hub"+(ABAS_NA_FOLHA.includes(a.id)?" guia-folha":""),
+      `${ICONE(a.ic)}<span class="guia-rot">${a.rot}</span><span class="guia-badge" id="badge_${a.id}"></span>`);
+    g.type="button";g.id="guia_"+a.id;g.dataset.aba=a.id;
+    g.onclick=()=>{SOM.toque();abrirAbaHub(a.id);};
+    nav.appendChild(g);
+  });
+  const mais=el("button","guia-hub guia-mais",`${ICONE("mais")}<span class="guia-rot">Mais</span>`);
+  mais.type="button";mais.id="guiaMais";
+  mais.onclick=()=>{SOM.toque();const f=document.getElementById("hubFolha");if(f)f.hidden=!f.hidden;};
+  nav.appendChild(mais);
+  return nav;
+}
+/* Troca de aba: só a seção dela aparece, a guia acende, o fundo troca (o
+   elemento é recriado pra animação de entrada rodar de novo) e o
+   conteúdo que depende do estado é desenhado na hora. */
+function abrirAbaHub(id){
+  const a=ABAS_HUB.find(x=>x.id===id)||ABAS_HUB[0];
+  abaHub=a.id;
+  ABAS_HUB.forEach(x=>{
+    const s=document.getElementById("aba_"+x.id);if(s)s.hidden=x.id!==a.id;
+    const g=document.getElementById("guia_"+x.id);
+    if(g)g.className="guia-hub"+(ABAS_NA_FOLHA.includes(x.id)?" guia-folha":"")+(x.id===a.id?" on":"");
+  });
+  const mais=document.getElementById("guiaMais");
+  if(mais)mais.className="guia-hub guia-mais"+(ABAS_NA_FOLHA.includes(a.id)?" on":"");
+  const folha=document.getElementById("hubFolha");if(folha)folha.hidden=true;
+  const velho=document.getElementById("hubFundo");
+  if(velho&&velho.parentNode){
+    const novo=fundoTela(a.fundo);novo.id="hubFundo";
+    velho.parentNode.replaceChild(novo,velho);
+  }else if(velho)velho.style.cssText=`--img:url(img/${a.fundo}.webp);--img-m:url(img/${a.fundo}-m.webp)`;
+  if(a.id==="loja")abrirPainelTreinador();
+  else if(a.id==="cards")abrirPainelMomentos();
+  else if(a.id==="conquistas")abrirPainelConquistas();
+  else if(a.id==="lutador")renderFicha();
+  rolarTopo();
+}
+function renderBarraHub(){
+  const nm=document.getElementById("hubNome");
+  if(!nm||!me||!st)return;
+  nm.textContent=me.name;
+  const ret=document.getElementById("hubRetrato");
+  if(ret)ret.innerHTML=bonecoSVG(ROSTO||cfgPadrao(),{w:46});
+  const ln=document.getElementById("hubLinha");
+  if(ln)ln.innerHTML=`<b>${st.wins}-${st.losses}</b><span>${fightNo} de ${TOTAL_FIGHTS} lutas</span>`;
+  const din=document.getElementById("hubDinheiro");
+  if(din)din.innerHTML=`${ICONE("carteira")}<span>R$ ${fmtNum(st.dinheiro||0)}</span>`;
+  const seg=document.getElementById("hubSeguidores");
+  if(seg)seg.innerHTML=`${ICONE("seguidores")}<span>${fmtNum(st.followers)}</span>`;
+  const sv=document.getElementById("hubSave");
+  if(sv&&!sv.innerHTML&&SLOT_ATUAL)sv.innerHTML=`${ICONE("nuvem-ok")}<span>Espaço ${SLOT_ATUAL}</span>`;
+}
+/* Menu da barra: salva e sai. No meio da narração não grava de novo: o
+   save do começo da luta (lutar) é o ponto certo de retomada. */
+function sairParaMenu(){
+  if(!playing)salvarCarreira();
+  clearTimeout(playTimer);clearTimeout(autoTimer);
+  auto=false;
+  irPara("menu");
+}
+/* Atributos que o CSS lê pra travar o Aposentar durante luta, escolha e
+   dilema (html[data-estado-carreira], html[data-dilema-carreira]). */
 function atualizarEstadoCarreira(){
   const h=document.documentElement;
   h.dataset.estadoCarreira=playing?"lutando":escolhaAberta?"escolhendo":"ocioso";
-  /* dilema nasce DENTRO de #bouts (abrirDilema() em bouts.appendChild) e só
-     depois que a narração já terminou (finishFight() roda como callback do
-     último animarTrecho(), com playing=false já setado antes de qualquer
-     dilema disparar — sem conflito de dilema atropelando luta em
-     andamento). Mas se a aba ativa for "ficha", #bouts fica display:none —
-     o dilema nasceria escondido, e é a ÚNICA coisa que o jogador escreve
-     na carreira inteira. Força a aba pra histórico quando ele abre; a
-     escolha da pessoa (ficha vs. histórico) volta a valer na próxima vez
-     que ela mexer nas abas, não fica travada em histórico pra sempre. */
-  if(dilemaAberto)abaCarreira="historico";
-  h.dataset.abaCarreira=abaCarreira||"ficha";
-  /* dilemaAberto não é um 4º estado de layout (a tela continua "ocioso" —
-     abas, sem barra de luta), mas #btnAposentar tem que apagar mesmo
-     assim: abrirConfirmarAposentadoria() já recusa (mesmo guard de
-     next.disabled), então sem isto o botão ficaria com cara de
-     habilitado clicando em nada — mesmo problema que o "disabled" preso
-     em renderFicha() já tinha pra playing/escolhaAberta. */
   h.dataset.dilemaCarreira=dilemaAberto?"1":"0";
-  const abas=document.querySelector(".abas-carreira");
-  if(abas)abas.querySelectorAll(".aba").forEach(b=>
-    b.classList.toggle("on",b.textContent===(abaCarreira==="ficha"?"Ficha":"Histórico")));
 }
 /* Ponto único que decide o estado dos botões. Antes isso estava espalhado em
    quatro lugares e um deles esquecia o automático. */
@@ -6946,17 +6959,17 @@ function atualizarControles(){
   else if(cont&&escolhaAberta)cont.textContent="escolha o adversário";
   else if(cont&&entrevistaAberta)cont.textContent="leia a entrevista pra continuar";
   else if(cont)cont.textContent=`${fightNo} de ${TOTAL_FIGHTS} · ${st.wins}-${st.losses}`;
-  const cb=document.getElementById("cardsb");
-  if(cb){const n=(st.momentos||[]).length;cb.textContent=n?`Cards (${n})`:"Cards";}
+  const cb=document.getElementById("badge_cards");
+  if(cb){const n=(st.momentos||[]).length;cb.textContent=n?String(n):"";}
   atualizarBadgeConquistas();
+  renderBarraHub();
 }
 /* Contagem é GLOBAL (localStorage), não da carreira atual — troféu não
    zera quando você começa outra. */
 function atualizarBadgeConquistas(){
-  const b=document.getElementById("conqb");
+  const b=document.getElementById("badge_conquistas");
   if(!b)return;
-  const n=CONQUISTAS_DESBLOQUEADAS.size,total=CONQUISTAS.length;
-  b.textContent=`Conquistas (${n}/${total})`;
+  b.textContent=`${CONQUISTAS_DESBLOQUEADAS.size}/${CONQUISTAS.length}`;
 }
 function cycleSpeed(){
   speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
@@ -7304,7 +7317,6 @@ function iniciarTelaLuta(opp,titleFight){
   playing=true;atualizarControles();
   const live=document.getElementById("live");
   document.getElementById("stage").style.display="";
-  document.getElementById("phone").style.visibility="hidden";
   live.innerHTML=`<div class="live-head">
       <span class="vs" style="display:flex;align-items:center;gap:9px">
         ${bonecoSVG(ROSTO||cfgPadrao(),{w:38})}
@@ -7662,6 +7674,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      virou IA, sem fallback — ver dispararEventoIA(). */
   if(fightNo%5===0&&fightNo<TOTAL_FIGHTS){
     dilemaAberto=true;
+    abrirAbaHub("cartel");
     if(auto){auto=false;clearTimeout(autoTimer);
       const b=document.getElementById("autob");
       b.classList.remove("on");b.textContent="Modo automático";}
