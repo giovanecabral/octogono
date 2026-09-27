@@ -1011,3 +1011,36 @@ html[data-noite="1"] .cfg-btn{z-index:70}
   .tela-hub #bouts>.pos-luta{margin-left:0}
 }
 @media (prefers-reduced-motion:reduce){.res-carimbo{animation:fade .25s both}}
+
+/* ---------- fim de carreira (fase 5) ---------- */
+.tela-fim .fim-topo{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:stretch;margin:0 0 20px}
+.fim-quem{display:flex;align-items:flex-end;gap:26px;padding:26px 28px 0;overflow:hidden;background:rgba(17,19,26,.9);border:1px solid var(--linha);
+  background-image:radial-gradient(50% 80% at 18% 10%,rgba(242,238,230,.12),transparent 70%)}
+.fim-retrato{flex:none;filter:drop-shadow(0 18px 30px rgba(0,0,0,.6))}
+.fim-retrato svg{display:block;width:210px;height:auto}
+.fim-id{padding-bottom:28px;min-width:0}
+.fim-rot{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--sangue)}
+.fim-nome{display:block;margin:6px 0 10px;font-family:var(--f-titulo);font-weight:400;font-size:clamp(44px,6vw,88px);line-height:.9;text-transform:uppercase;overflow-wrap:anywhere}
+.fim-sub{font-family:var(--f-ui);font-weight:600;font-size:16px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
+.fim-nota{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:26px 28px;background:rgba(17,19,26,.92);border:1px solid var(--linha);border-top:3px solid var(--ouro)}
+.fim-letra{font-family:var(--f-titulo);font-weight:400;font-size:150px;line-height:.85;color:var(--osso)}
+.fim-letra.nota-S{color:var(--ouro)}
+.fim-letra.nota-A{color:var(--osso)}
+.fim-letra.nota-D,.fim-letra.nota-F{color:var(--osso-2)}
+.fim-pontos{font-family:var(--f-ui);font-weight:700;font-size:16px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
+.fim-parecer{margin:10px 0 0;font-size:17px;line-height:1.5;color:var(--osso-2)}
+.fim-legado{margin:0 0 20px;padding:22px 26px;font-family:var(--f-titulo);font-weight:400;font-size:clamp(24px,3vw,38px);line-height:1.1;text-transform:uppercase;
+  color:var(--osso);background:rgba(215,38,30,.14);border-left:4px solid var(--sangue)}
+.fim-numeros{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:1px;margin:0 0 20px;background:var(--linha);border:1px solid var(--linha)}
+.fim-num{display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:rgba(17,19,26,.95)}
+.fim-num span{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--cinza)}
+.fim-num b{font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.02em;color:var(--osso)}
+.fim-destaque{margin:0 0 18px;padding:18px 22px;background:rgba(17,19,26,.92);border-left:3px solid var(--ouro)}
+.fim-destaque p{margin:8px 0 0;font-size:16px;line-height:1.45;color:var(--osso)}
+.fim-feito{margin:0 0 22px;font-size:15px;line-height:1.5;color:var(--osso-2)}
+.fim-acoes{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 16px}
+.fim-status{margin:6px 0;font-size:15px;color:var(--osso-2)}
+.fim-status p{margin:0}
+.fim-semente{margin-top:10px;font-size:14px;color:var(--cinza)}
+@media (max-width:900px){.tela-fim .fim-topo{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:560px){.fim-quem{flex-direction:column;align-items:flex-start;padding:20px 20px 0}.fim-retrato svg{width:160px}.fim-letra{font-size:120px}}

@@ -660,7 +660,7 @@ function followerDelta(followers,hype,won,standing){
   const floor=won?260:-90;
   return Math.round(followers*g+floor*(1+standing));
 }
-const fmtPico=p=>p>=.5?`top ${Math.round(100-p*100)}%`:"fora do top 50";
+const fmtPico=p=>p>=.5?`top ${Math.max(1,Math.round(100-p*100))}%`:"fora do top 50";   // topo absoluto é "top 1%", nunca "top 0%"
 const fmtNum=n=>n>=1e6?(n/1e6).toFixed(n>=1e7?0:1).replace(".",",")+"M"
   :n>=1e3?(n/1e3).toFixed(n>=1e5?0:1).replace(".",",")+"mil":String(n);
 
@@ -7743,7 +7743,7 @@ function linhaBout(reg){
   const temNarr=!!(reg.narracao&&reg.narracao.length);
   const line=el("div","bout"+(reg.titulo?" title-fight":"")+(temNarr?" com-narracao":""));
   line.innerHTML=`<span class="no">${String(reg.n).padStart(2,"0")}</span>
-    <span><span class="opp">${reg.adv}</span><br><span class="how">${reg.metodo} · round ${reg.round} ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}${(reg.kd[0]||reg.kd[1])?` · quedas ${reg.kd[0]}-${reg.kd[1]}`:""} · R$${fmtNum(reg.renda)}</span></span>
+    <span><span class="opp">${reg.adv}</span><br><span class="how">${reg.metodo} · round ${reg.round} ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}${(reg.kd[0]||reg.kd[1])?` · knockdowns ${reg.kd[0]}-${reg.kd[1]}`:""} · R$${fmtNum(reg.renda)}</span></span>
     <span class="stamp${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</span>${temNarr?ICONE("chevron-baixo","bout-seta"):""}`;
   /* Cartel (revamp fase 5): a linha reabre a narração daquela luta. Nasce
      como FILHO da linha, desenhada só no primeiro clique: a linha continua
@@ -8253,82 +8253,83 @@ function screenReport(){
      sessão (mesmo bloco que já sincroniza conquistas, ver adiante). */
   salvarCarreiraLocal({seed:SEED,nome:me.name,cartel:`${st.wins}-${st.losses}`,
     nota:g.letter,data:new Date().toISOString()});
-  app.innerHTML="";
-  app.appendChild(el("div","eyebrow","Encerramento de registro"));
-  app.appendChild(el("div","",`<div style="text-align:center;margin:4px 0 10px">
-    ${bonecoSVG(ROSTO||cfgPadrao(),{w:150})}</div>`));
-  const tape=el("table","tape"),row=(l,v)=>`<tr><td>${l}</td><td>${v}</td></tr>`;
-  tape.innerHTML=
-    row("Cartel",`${st.wins}-${st.losses}`)+
-    row("Vitórias antes do fim",`${st.finishes} de ${st.wins} (${Math.round(100*st.finishes/Math.max(1,st.wins))}%)`)+
-    row("Maior sequência",`${st.longestW} vitórias`)+
-    row("Idade ao encerrar",`${idadeAtual()} anos`)+
-    row("Defesas de cinturão",st.defesas||0)+
-    row("Golpe marcante",assinatura())+
-    row("Quedas aplicadas / sofridas",`${st.kdGiven} / ${st.kdTaken}`)+
-    row("Nocautes sofridos",st.koLosses)+
-    row("Pico no ranking",fmtPico(st.peak))+
-    row("Melhor vitória",st.bestWin||"—")+
-    (MODO==="lenda"?row("Modo","Seja uma lenda"):"")+
-    row("Cinturão",st.title?"Sim":"Não")+
-    row("Seguidores no fim",fmtNum(st.followers))+
-    row("Pico de seguidores",fmtNum(st.peakFollowers))+
-    row("Medidor de fã final",st.fan.toFixed(1)+" / 10")+
-    row("Momentos fora do octógono",st.events)+
-    row("Decisões que você tomou",st.dilemas||0)+
-    (st.bonusNoite?row("Bônus da noite",`Luta ${st.bonusNoite.luta} · vs ${st.bonusNoite.adversario}`):"");
-  app.appendChild(tape);
-  /* revamp fase 3: carreira encerrada vai pro placar e libera o espaço
-     do save (o histórico já ficou em carreiras_usuario acima) */
-  const linhaPlacar=el("p","hint","");
-  app.appendChild(linhaPlacar);
-  enviarPlacar(g,linhaPlacar);
-  if(SLOT_ATUAL){ apagarSave(SLOT_ATUAL); SLOT_ATUAL=null; }
-
-  const v=el("div","verdict");
-  v.innerHTML=`<div class="letter">${g.letter}</div>
-    <div class="said"><small>Parecer da comissão · ${g.score} de 100</small>${g.verdict}</div>`;
-  app.appendChild(v);
-
-  app.appendChild(el("div","legacy",LEGACY.find(l=>l.when(st)).t(me.name)));
-
-  /* Fim de carreira sobe conquistas e histórico pra conta. Revamp fase 3:
-     jogar já exige conta, então aqui não tem mais oferta de criar conta
-     (era o único lugar onde ela aparecia, no funil antigo sem cadastro).
-     Sem sessão neste ponto só acontece com a rede caindo: o histórico
-     fica no aparelho e sobe na próxima sincronização, sem aviso novo. */
-  if(getSupabase()){
-    const contaBox=el("div","conta-box");
-    app.appendChild(contaBox);
-    sincronizarConquistasNaNuvem().then(async email=>{
-      if(!email)return;
-      await sincronizarCarreirasNaNuvem(); // mesma sessão, mesmo instante: sobe a carreira que acabou de terminar
-      contaBox.appendChild(el("p","hint",`Conquistas e histórico salvos na conta <b>${email}</b>.`));
-    });
-  }
-
+  /* Revamp fase 5: a carreira acabou. Nada atrasado escreve mais nela e
+     o endereço sai de #/carreira (recarregar aqui abriria outra). */
+  pararCarreira();
+  try{ history.replaceState(null,"","#/menu"); }catch(e){}
+  const c=montarTela({fundo:(st.foiCampeao||st.title)?"cinturao":"arquibancada",voltar:"menu",classe:"tela-fim"});
+  const topo=el("div","fim-topo");
+  topo.appendChild(el("div","fim-quem",`<div class="fim-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:210})}</div>
+    <div class="fim-id"><span class="fim-rot">Fim de carreira</span><b class="fim-nome">${me.name}</b>
+      <span class="fim-sub">${st.wins}-${st.losses} · ${idadeAtual()} anos · ${nomeDivisao(DIVISION)}${MODO==="lenda"?" · Seja uma lenda":""}</span></div>`));
+  topo.appendChild(el("div","fim-nota",`<span class="fim-rot">Parecer da comissão</span>
+    <div class="fim-letra nota-${g.letter}">${g.letter}</div>
+    <span class="fim-pontos">${g.score} de 100</span><p class="fim-parecer">${g.verdict}</p>`));
+  c.appendChild(topo);
+  c.appendChild(el("blockquote","fim-legado",LEGACY.find(l=>l.when(st)).t(me.name)));
+  const num=(rot,v)=>`<div class="fim-num"><span>${rot}</span><b>${v}</b></div>`;
+  const nums=el("div","fim-numeros");
+  [["Cartel",`${st.wins}-${st.losses}`],
+   ["Vitórias antes do fim",`${st.finishes} de ${st.wins} (${Math.round(100*st.finishes/Math.max(1,st.wins))}%)`],
+   ["Maior sequência",`${st.longestW} vitórias`],
+   ["Cinturão",st.title?"Sim":"Não"],
+   ["Defesas de cinturão",st.defesas||0],
+   ["Pico no ranking",fmtPico(st.peak)],
+   ["Melhor vitória",st.bestWin||"Nenhuma"],
+   ["Golpe marcante",assinatura()],
+   ["Knockdowns aplicados e sofridos",`${st.kdGiven} e ${st.kdTaken}`],
+   ["Nocautes sofridos",st.koLosses],
+   ["Seguidores no fim",fmtNum(st.followers)],
+   ["Pico de seguidores",fmtNum(st.peakFollowers)],
+   ["Medidor de fã",st.fan.toFixed(1)+" de 10"],
+   ["Momentos fora do octógono",st.events],
+   ["Decisões que você tomou",st.dilemas||0]]
+   .concat(st.bonusNoite?[["Bônus da noite",`Luta ${st.bonusNoite.luta} contra ${st.bonusNoite.adversario}`]]:[])
+   .forEach(([rot,v])=>{ const d=el("div","fim-num",`<span>${rot}</span><b>${v}</b>`); nums.appendChild(d); });
+  c.appendChild(nums);
   if(st.rares.length)
-    app.appendChild(el("p","made-of","<b>Fora da curva:</b> "+st.rares.join(" &nbsp;·&nbsp; ")));
-  app.appendChild(el("p","made-of",`<b>${me.name}</b> era feito de: `+
-    picks.map(p=>`${p.pair.label} do ${p.from}`).join(" · ")));
+    c.appendChild(el("div","fim-destaque",`<span class="fim-rot">Fora da curva</span>${st.rares.map(t=>`<p>${t}</p>`).join("")}`));
+  c.appendChild(el("p","fim-feito",`<b>${me.name}</b> era feito de: `+picks.map(p=>`${p.pair.label} do ${p.from}`).join(" · ")));
 
-  const row2=el("div","row");
-  const btnSalvar=el("button","btn","Salvar imagem");
+  const acoes=el("div","fim-acoes");
+  const btnSalvar=el("button","botao","Salvar imagem");
   btnSalvar.onclick=()=>salvarImagem(g,btnSalvar);
-  const btnCopiar=el("button","btn btn-ghost","Copiar imagem");
+  const btnCopiar=el("button","botao botao-sec","Copiar imagem");
   btnCopiar.onclick=()=>copiarImagem(g,btnCopiar);
-  const link=el("button","btn btn-ghost","Copiar desafio");
+  const link=el("button","botao botao-sec","Copiar desafio");
   link.onclick=async()=>{
     try{await navigator.clipboard.writeText(urlDesafio());link.textContent="Copiado";}
     catch(e){link.textContent=urlDesafio();}
     setTimeout(()=>link.textContent="Copiar desafio",2200);
   };
-  const again=el("button","btn btn-ghost","Nova carreira");
+  const again=el("button","botao botao-sec","Nova carreira");
   again.onclick=()=>{docmeta.textContent="Comissão Atlética · Registro";
     history.replaceState(null,"",location.pathname);SEED=0;irPara("nova");};   // revamp fase 3: passa pelo portão e pela escolha de espaço
-  row2.append(btnSalvar,btnCopiar,link,again);app.appendChild(row2);
-  app.appendChild(el("p","hint",
-    `Semente <b>#${SEED.toString(36).toUpperCase()}</b> — quem abrir seu link pega as mesmas cartas e os mesmos adversários.`));
+  acoes.append(btnSalvar,btnCopiar,link,again);
+  c.appendChild(acoes);
+
+  /* revamp fase 3: carreira encerrada vai pro placar e libera o espaço
+     do save (o histórico já ficou em carreiras_usuario acima) */
+  const linhaPlacar=el("p","fim-status","");
+  c.appendChild(linhaPlacar);
+  enviarPlacar(g,linhaPlacar);
+  if(SLOT_ATUAL){ apagarSave(SLOT_ATUAL); SLOT_ATUAL=null; }
+
+  /* Fim de carreira sobe conquistas e histórico pra conta. Revamp fase 3:
+     jogar já exige conta, então aqui não tem mais oferta de criar conta.
+     Sem sessão neste ponto só acontece com a rede caindo: o histórico
+     fica no aparelho e sobe na próxima sincronização, sem aviso novo. */
+  if(getSupabase()){
+    const contaBox=el("div","fim-status");
+    c.appendChild(contaBox);
+    sincronizarConquistasNaNuvem().then(async email=>{
+      if(!email)return;
+      await sincronizarCarreirasNaNuvem(); // mesma sessão, mesmo instante: sobe a carreira que acabou de terminar
+      contaBox.appendChild(el("p","",`Conquistas e histórico salvos na conta <b>${email}</b>.`));
+    });
+  }
+  c.appendChild(el("p","fim-semente",
+    `Semente <b>#${SEED.toString(36).toUpperCase()}</b>: quem abrir seu link pega as mesmas cartas e os mesmos adversários.`));
 }
 armarTrilha();
 armarConfig();

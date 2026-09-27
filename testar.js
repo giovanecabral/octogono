@@ -7384,6 +7384,31 @@ async function testarHub() {
     if (Y.run("fightNo") !== X.run("fightNo") || Y.run("SLOT_ATUAL") !== 2) throw new Error(`retomou luta ${Y.run("fightNo")} no espaço ${Y.run("SLOT_ATUAL")}`);
   });
 
+  /* ---------- tarefa 9: fim de carreira ---------- */
+  await conf("fim de carreira: tela nova com nota, parecer, legado, números e ações; sem travessão; libera o espaço e sai de #/carreira", async () => {
+    const X = novo(778901);
+    X.run("USUARIO_ID='u1';SLOT_ATUAL=1;");
+    await jogarCarreiraAte(X, 2); X.run("auto=false;salvarCarreira();");
+    if (!X.dadosLS["save:u1:1"]) throw new Error("sem save antes do fim");
+    X.run("screenReport();");
+    for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
+    if (X.run("document.documentElement.dataset.tela") !== "nova") throw new Error("fim fora do molde novo");
+    const nos = nosDe(X.registro.app);
+    const g = JSON.parse(X.run("JSON.stringify(grade())"));
+    const nota = nos.find(n => tem(n, "fim-nota"));
+    if (!nota || !String(nota.innerHTML).includes(`fim-letra nota-${g.letter}">${g.letter}</div>`) || !String(nota.innerHTML).includes(g.verdict))
+      throw new Error("sem a nota " + g.letter + " e o parecer");
+    if (!nos.some(n => tem(n, "fim-legado"))) throw new Error("sem legado");
+    if (nos.filter(n => tem(n, "fim-num")).length < 10) throw new Error("poucos números");
+    for (const t of ["Salvar imagem", "Copiar imagem", "Copiar desafio", "Nova carreira"])
+      if (!nos.some(n => n.tagName === "button" && n.innerHTML === t && n.onclick)) throw new Error("sem botão " + t);
+    const comTravessao = nos.find(n => /—/.test(String(n.innerHTML || "")) && !tem(n, "fim-destaque"));
+    if (comTravessao) throw new Error("travessão no fim: " + String(comTravessao.innerHTML).slice(0, 80));
+    if (X.dadosLS["save:u1:1"]) throw new Error("espaço não foi liberado");
+    if (X.sb.location.hash === "#/carreira") throw new Error("continua em #/carreira (recarregar abriria outra carreira)");
+    if (nos.some(n => /Quedas aplicadas/.test(String(n.innerHTML)))) throw new Error("knockdown ainda rotulado como queda");
+  });
+
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("hub ok") : vermelho(`${falhas.length} falha(s) no hub`)));
   return ok;
