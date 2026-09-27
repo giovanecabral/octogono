@@ -877,8 +877,15 @@ function getSupabase(){
        uma sessão de recuperação, o Supabase dispara PASSWORD_RECOVERY
        sozinho, sem precisar de rota nem parâmetro na URL. */
     try{
-      supabaseClient.auth.onAuthStateChange((event)=>{
+      supabaseClient.auth.onAuthStateChange((event,session)=>{
         if(event==="PASSWORD_RECOVERY")screenNovaSenha();
+        /* revamp fase 3: login pelo Google ou pelo link de confirmação volta
+           pra página SEM a rota; se havia intenção (nova carreira, desafio),
+           segue pra ela. Só a partir do menu, nunca no meio de uma carreira. */
+        if(event==="SIGNED_IN"&&session){
+          USUARIO_ID=session.user.id;
+          if(rotaAtual==="menu"||rotaAtual===null){ const v=consumirIntencao(); if(v)seguirIntencao(v); }
+        }
       });
     }catch(e){}
   }
@@ -1035,6 +1042,7 @@ async function reenviarConfirmacaoEmail(email){
   }catch(e){return{ok:false,erro:"Falha de rede. Tenta de novo."};}
 }
 async function sairDaConta(){
+  USUARIO_ID=null;SLOT_ATUAL=null;
   const sb=getSupabase();
   if(!sb)return;
   try{ await sb.auth.signOut(); }catch(e){}
@@ -1091,13 +1099,13 @@ function screenNovaSenha(){
    telas nunca aparecem ao mesmo tempo, mesmo padrão já usado pelos
    campos de dilema (`dilresp`/`dilgo`), reaproveitados por
    `document.getElementById()` em vez de guardar referência local. */
-function montarFormularioConta(container){
+function montarFormularioConta(container,{modoInicial="entrar"}={}){
   // dois modos (entrar/criar) em vez de um formulário só — quem já tem
   // conta não deve ver confirmação de senha, quem está criando não
   // precisa ver "esqueci minha senha". IDs fixos: as duas telas (conta e
   // fim de carreira) nunca aparecem ao mesmo tempo, mesmo padrão de
   // dilresp/dilgo.
-  let modo="entrar";
+  let modo=modoInicial==="criar"?"criar":"entrar";
   let emailPendente=null; // e-mail aguardando confirmação — não persiste:
   // fechar a aba e voltar cai direto no formulário normal, de propósito.
 
@@ -5499,8 +5507,8 @@ function screen404(){
 }
 
 registrarRota("menu",screenMenu);
-registrarRota("nova",()=>screenName());   // mesmo caminho do antigo "Jogar"; a fase 4 troca pelo assistente
-registrarRota("continuar",screenContinuar);
+registrarRota("nova",()=>comConta({tipo:"nova"},()=>screenName()));   // a fase 4 troca screenName pelo assistente
+registrarRota("continuar",()=>comConta({tipo:"continuar"},screenContinuar));
 registrarRota("conta",p=>screenConta(p));
 registrarRota("atualizacoes",screenAtualizacoes);
 registrarRota("ranking",screenRanking);
@@ -5859,6 +5867,53 @@ function retomarPendente(){
       .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
   }
 }
+/* ---------- Conta obrigatória (revamp fase 3) ----------
+   Jogar exige conta (decisão do dono, 2026-09-26, revertendo "jogar não
+   exige conta" do LEIA-ME). Nova carreira, Continuar e link de desafio
+   passam por comConta(): com sessão segue; sem sessão guarda a intenção e
+   abre o portão. A intenção sobrevive ao login por Google e ao link de
+   confirmação de e-mail (os dois recarregam a página sem a rota) e é
+   seguida quando o Supabase avisa SIGNED_IN. */
+/* O SDK do Supabase vem com defer e pode chegar depois do motor: espera
+   um pouco antes de concluir "não tem sessão". */
+async function esperarSupabase(){
+  for(let i=0;i<30&&!getSupabase();i++)await new Promise(r=>setTimeout(r,100));
+  return getSupabase();
+}
+async function sessaoAtual(){
+  const sb=await esperarSupabase();
+  if(!sb){ USUARIO_ID=null; return null; }
+  try{ const{data:{session}}=await sb.auth.getSession(); USUARIO_ID=session?session.user.id:null; return session||null; }
+  catch(e){ return null; }
+}
+function guardarIntencao(obj){ try{ localStorage.setItem("intencao",JSON.stringify({...obj,em:Date.now()})); }catch(e){} }
+function consumirIntencao(){
+  let v=null;
+  try{ v=JSON.parse(localStorage.getItem("intencao")); localStorage.removeItem("intencao"); }catch(e){ return null; }
+  return v&&typeof v.em==="number"&&Date.now()-v.em<864e5?v:null;
+}
+async function comConta(intencao,fn){
+  const s=await sessaoAtual();
+  if(s){ consumirIntencao(); fn(); return; }   // já logado: intenção velha não serve mais
+  guardarIntencao(intencao);
+  screenPortao(intencao);
+}
+function screenPortao(intencao){
+  const c=montarTela({fundo:"tunel",titulo:"Crie sua conta",classe:"tela-portao"});
+  c.appendChild(el("p","tela-sub",intencao&&intencao.tipo==="desafio"
+    ?"Alguém te desafiou. Crie sua conta ou entre pra aceitar: a carreira fica salva nela."
+    :"Pra jogar você precisa de uma conta. Sua carreira fica salva nela e continua em qualquer aparelho."));
+  const form=el("div","painel-n conta-form portao-form");
+  c.appendChild(form);
+  montarFormularioConta(form,{modoInicial:"criar"});
+}
+function seguirIntencao(v){
+  if(!v)return false;
+  if(v.tipo==="desafio"&&v.busca){ location.href=location.pathname+v.busca; return true; }
+  irPara(v.tipo==="continuar"?"continuar":"nova",null,{substituir:true});
+  return true;
+}
+
 /* Armazenamento: grava no aparelho NA HORA (localStorage, síncrono,
    sobrevive a recarregar mesmo sem rede) e manda pra nuvem 2 s depois
    (tabela saves, uma chamada por rajada de saves seguidos). Sem espaço
@@ -5973,7 +6028,7 @@ function ready(data){
     /* Link de desafio pula a tela inicial de propósito — quem clicou
        num link de amigo já sabe o que veio fazer aqui, forçar passar
        pelo menu primeiro só atrapalharia. */
-    if(lerDesafio()){ screenName(); return; }
+    if(lerDesafio()){ comConta({tipo:"desafio",busca:location.search},()=>screenName()); return; }
     /* Endereço com rota (#/ranking) abre direto nela. Endereço com
        resposta de login do Supabase no hash: cria o client ANTES de
        qualquer coisa mexer na URL (ele lê o token dali) e desenha o menu
@@ -5981,6 +6036,9 @@ function ready(data){
     const r=lerRota();
     if(r.auth){ getSupabase(); rotaAtual="menu"; ROTAS.menu.tela(null); return; }
     irPara(r.nome,r.param,{substituir:true});
+    /* entrou com senha no portão: a página recarrega na rota que pediu
+       conta (#/nova...), que segue sozinha. Intenção só sobra no menu. */
+    if(r.nome==="menu")sessaoAtual().then(ss=>{ if(ss)seguirIntencao(consumirIntencao()); });
   },30);
 }
 
@@ -7586,27 +7644,18 @@ function screenReport(){
 
   app.appendChild(el("div","legacy",LEGACY.find(l=>l.when(st)).t(me.name)));
 
-  /* Contas: só aparece aqui, fim de carreira — nunca antes de jogar (o
-     funil depende de gente chegar, jogar e printar antes de qualquer
-     cadastro). getSupabase() devolve null se não estiver configurado —
-     nesse caso a caixa nem aparece, sem placeholder vazio. */
+  /* Fim de carreira sobe conquistas e histórico pra conta. Revamp fase 3:
+     jogar já exige conta, então aqui não tem mais oferta de criar conta
+     (era o único lugar onde ela aparecia, no funil antigo sem cadastro).
+     Sem sessão neste ponto só acontece com a rede caindo: o histórico
+     fica no aparelho e sobe na próxima sincronização, sem aviso novo. */
   if(getSupabase()){
     const contaBox=el("div","conta-box");
-    contaBox.appendChild(el("h4","","Salvar conquistas"));
-    contaBox.appendChild(el("p","hint",
-      "Suas conquistas já estão salvas neste aparelho. Entra ou cria conta pra não perder se trocar de aparelho."));
     app.appendChild(contaBox);
     sincronizarConquistasNaNuvem().then(async email=>{
-      contaBox.innerHTML="";
-      contaBox.appendChild(el("h4","","Salvar conquistas"));
-      if(email){
-        await sincronizarCarreirasNaNuvem(); // mesma sessão, mesmo instante — sobe a carreira que acabou de terminar
-        contaBox.appendChild(el("p","hint",`Conectado como <b>${email}</b>. Conquistas e histórico sincronizados.`));
-        return;
-      }
-      const formArea=el("div","");
-      contaBox.appendChild(formArea);
-      montarFormularioConta(formArea);
+      if(!email)return;
+      await sincronizarCarreirasNaNuvem(); // mesma sessão, mesmo instante: sobe a carreira que acabou de terminar
+      contaBox.appendChild(el("p","hint",`Conquistas e histórico salvos na conta <b>${email}</b>.`));
     });
   }
 

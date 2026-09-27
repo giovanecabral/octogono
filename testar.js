@@ -146,6 +146,9 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   console.log("\n" + cinza(`percorrendo a interface inteira, clicando nos botões de verdade `
     + `(divisão ${divEscolhida}${modo === "lenda" ? ", modo lenda" : ""})`));
   const env = criarAmbiente({ contarNos: true });
+  /* revamp fase 3: jogar exige conta; sem sessão o clique em Nova
+     carreira para no portão. Sessão falsa (definida em supabaseFalsoComSessao). */
+  env.sandbox.window.supabase = supabaseFalsoComSessao({ sessao: { user: { id: "u-teste", email: "t@t.com" } } });
   vm.createContext(env.sandbox);
   try {
     /* ranking sai como FUNÇÃO, não valor: RANKING é null até a carreira
@@ -491,9 +494,11 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   });
 
   await passo("relatório final", () => UI.screenReport());
-  await passo("contas: sem SUPABASE_URL configurado, a caixa de conta nem aparece", () => {
-    if (env.todos.some(n => (n.className || "").split(" ").includes("conta-box")))
-      throw new Error("caixa de conta apareceu mesmo sem Supabase configurado");
+  /* revamp fase 3: jogar já exige conta, o fim da carreira não oferece
+     mais o formulário de criar conta (só confirma a sincronização) */
+  await passo("fim de carreira não oferece criar conta (jogar já exige conta)", () => {
+    const campos = env.todos.filter(n => n.id === "conta-email" || n.id === "conta-senha");
+    if (campos.length) throw new Error("formulário de conta apareceu no fim da carreira");
   });
 
   const nos = env.todos.length;
@@ -6039,12 +6044,36 @@ function testarDivisoes() {
  * cai na 404, resposta de login do Supabase no hash NUNCA vira rota, e
  * nenhuma tela nova usa emoji/travessão no texto.
  * ================================================================== */
+/* Supabase falso genérico (revamp fase 3): sessão ligável por fora
+   (estado.sessao), toda consulta encadeável devolve lista vazia. */
+function supabaseFalsoComSessao(estado) {
+  const cadeia = () => {
+    const c = { eq: () => c, gt: () => c, gte: () => c, order: () => c, limit: () => c,
+      maybeSingle: async () => ({ data: null, error: null }),
+      then: (r) => r({ data: [], error: null, count: 0 }) };
+    return c;
+  };
+  return {
+    createClient: () => ({
+      auth: {
+        getSession: async () => ({ data: { session: estado.sessao } }),
+        onAuthStateChange: (cb) => { estado.aoMudar = cb; },
+        signOut: async () => { estado.sessao = null; return { error: null }; },
+      },
+      from: () => ({ select: () => cadeia(), upsert: async () => ({ error: null }), delete: () => cadeia() }),
+    }),
+  };
+}
 async function testarRotas() {
-  console.log("\n" + cinza("rotas: menu, Voltar em toda tela, 404, hash do Supabase, sem emoji nem travessão"));
+  console.log("\n" + cinza("rotas: menu, Voltar em toda tela, 404, hash do Supabase, portão de conta, sem emoji nem travessão"));
   const env = criarAmbiente({ contarNos: true });
+  const estadoSb = { sessao: { user: { id: "u1", email: "t@t.com" } } };
+  env.sandbox.window.supabase = supabaseFalsoComSessao(estadoSb);
+  const dadosLS = {};
+  env.sandbox.localStorage = { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } };
   vm.createContext(env.sandbox);
   try {
-    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking"])
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
@@ -6109,12 +6138,12 @@ async function testarRotas() {
     if (!tem(podio.children[1], "degrau-1")) throw new Error("1º lugar não está no meio do pódio");
   });
 
-  await conf("continuar: 3 espaços, vazio leva a Nova carreira", () => {
+  await conf("continuar: 3 espaços, vazio leva a Nova carreira", async () => {
     const m = env.todos.length;
-    UI.irPara("continuar"); env.drenar();
+    UI.irPara("continuar"); env.drenar(); await respirar(); env.drenar(); await respirar();
     const slots = desde(m).filter(n => tem(n, "save-slot"));
     if (slots.length !== 3) throw new Error(slots.length + " espaços");
-    slots[0].onclick(); env.drenar();
+    slots[0].onclick(); env.drenar(); await respirar();
     if (UI.rotaAtual() !== "nova") throw new Error("espaço vazio foi pra " + UI.rotaAtual());
   });
 
@@ -6134,10 +6163,10 @@ async function testarRotas() {
   });
 
   for (const r of ["continuar", "ranking", "atualizacoes", "conta", "creditos", "termos", "privacidade"]) {
-    await conf(`#/${r}: abre, tem Voltar, Voltar leva ao menu`, () => {
+    await conf(`#/${r}: abre, tem Voltar, Voltar leva ao menu`, async () => {
       const m = env.todos.length;
       UI.irPara(r);
-      env.drenar();
+      env.drenar(); await respirar(); env.drenar(); await respirar();   // continuar confere a sessão antes
       if (UI.rotaAtual() !== r) throw new Error("rotaAtual = " + UI.rotaAtual());
       const voltar = desde(m).filter(n => tem(n, "btn-voltar") && n.onclick).pop();
       if (!voltar) throw new Error("tela sem botão Voltar");
@@ -6190,11 +6219,43 @@ async function testarRotas() {
     if (sujos.length) throw new Error(sujos.slice(0, 5).join(" | "));
   });
 
-  await conf("#/nova abre o fluxo de nova carreira (campo de nome)", () => {
+  await conf("#/nova COM sessão abre o fluxo de nova carreira (campo de nome)", async () => {
+    estadoSb.sessao = { user: { id: "u1", email: "t@t.com" } };
     const m = env.todos.length;
     UI.irPara("nova");
-    env.drenar();
+    env.drenar(); await respirar(); env.drenar(); await respirar();
     if (!desde(m).some(n => n.tagName === "input" && n.type === "text")) throw new Error("campo de nome não apareceu");
+  });
+  await conf("#/nova SEM sessão abre o portão (formulário em modo Criar) e guarda a intenção", async () => {
+    estadoSb.sessao = null;
+    delete dadosLS.intencao;
+    const m = env.todos.length;
+    UI.irPara("nova");
+    env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (!desde(m).some(n => tem(n, "tela-portao"))) throw new Error("portão não apareceu");
+    const h4 = desde(m).filter(n => n.tagName === "h4").pop();
+    if (!h4 || h4.innerHTML !== "Criar conta") throw new Error("formulário do portão não começou em Criar conta: " + (h4 && h4.innerHTML));
+    const v = JSON.parse(dadosLS.intencao || "null");
+    if (!v || v.tipo !== "nova") throw new Error("intenção não guardada: " + dadosLS.intencao);
+    if (desde(m).some(n => n.tagName === "input" && n.type === "text" && n.id === "nomeIn")) throw new Error("fluxo de nome abriu sem conta");
+  });
+  await conf("#/continuar SEM sessão também para no portão", async () => {
+    estadoSb.sessao = null;
+    const m = env.todos.length;
+    UI.irPara("continuar");
+    env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (!desde(m).some(n => tem(n, "tela-portao"))) throw new Error("portão não apareceu");
+    if (desde(m).some(n => tem(n, "save-slot"))) throw new Error("mostrou os espaços sem conta");
+    if (JSON.parse(dadosLS.intencao).tipo !== "continuar") throw new Error("intenção errada");
+  });
+  await conf("intenção: consumirIntencao devolve e apaga; com mais de 24 h é ignorada", () => {
+    UI.guardarIntencao({ tipo: "nova" });
+    const v = UI.consumirIntencao();
+    if (!v || v.tipo !== "nova") throw new Error("não devolveu a intenção");
+    if (dadosLS.intencao) throw new Error("não apagou depois de consumir");
+    dadosLS.intencao = JSON.stringify({ tipo: "nova", em: Date.now() - 25 * 3600 * 1000 });
+    if (UI.consumirIntencao() !== null) throw new Error("intenção velha não foi ignorada");
+    estadoSb.sessao = { user: { id: "u1", email: "t@t.com" } };
   });
 
   const ok = !falhas.length;
