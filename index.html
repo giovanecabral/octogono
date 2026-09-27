@@ -2612,30 +2612,39 @@ function fraseFallback(){
   return f(me&&me.name||"Ele");
 }
 
-async function abrirDilema(){
+async function abrirDilema(dPronto){
   const bouts=document.getElementById("bouts");
   const box=el("div","dilema");
   box.innerHTML=`<div class="dil-t">Carregando…</div>`;
   bouts.appendChild(box);
   box.scrollIntoView({behavior:"smooth",block:"nearest"});
 
-  const seed=proximoDilemaSeed();
-  const mood=st.streakW>=3?"em alta":st.streakL>=2?"em queda":"estável";
-  const recentes=(st.dilemaRecentes||[]).slice(-3);
-  let d=await ai("dilema",{name:me.name,record:`${st.wins}-${st.losses}`,
-    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed,recentes});
-  /* dilema não recebe texto do jogador — não dá pra provocar ele do jeito
-     que dá pra provocar o julgar. Ainda assim, rede embaixo: se a IA gerar
-     algo ruim sem provocação (improvável, mas não impossível), cai no
-     mesmo fallback que já existe pra quando ela falha. Mesma rede pro
-     título repetir um dos recentes — a instrução de não repetir (acima,
-     no prompt) reduz mas não garante, mesma regra do evento. */
-  if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo)||
-    recentes.some(t=>t.toLowerCase()===String(d.titulo||"").toLowerCase()))
-    d=proximoDilemaFallback();
-  st.dilemaRecentes=st.dilemaRecentes||[];
-  st.dilemaRecentes.push(String(d.titulo||"E agora?"));
-  if(st.dilemaRecentes.length>3)st.dilemaRecentes.shift();
+  /* Save (revamp fase 3): dilema retomado de um save chega pronto
+     (dPronto) e NÃO sorteia nem pede texto novo; o sorteio e a IA já
+     aconteceram antes de gravar. Senão, recarregar a página trocava de
+     dilema até vir um fácil. */
+  let d=dPronto||null;
+  if(!d){
+    const seed=proximoDilemaSeed();
+    const mood=st.streakW>=3?"em alta":st.streakL>=2?"em queda":"estável";
+    const recentes=(st.dilemaRecentes||[]).slice(-3);
+    d=await ai("dilema",{name:me.name,record:`${st.wins}-${st.losses}`,
+      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed,recentes});
+    /* dilema não recebe texto do jogador — não dá pra provocar ele do jeito
+       que dá pra provocar o julgar. Ainda assim, rede embaixo: se a IA gerar
+       algo ruim sem provocação (improvável, mas não impossível), cai no
+       mesmo fallback que já existe pra quando ela falha. Mesma rede pro
+       título repetir um dos recentes — a instrução de não repetir (acima,
+       no prompt) reduz mas não garante, mesma regra do evento. */
+    if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo)||
+      recentes.some(t=>t.toLowerCase()===String(d.titulo||"").toLowerCase()))
+      d=proximoDilemaFallback();
+    st.dilemaRecentes=st.dilemaRecentes||[];
+    st.dilemaRecentes.push(String(d.titulo||"E agora?"));
+    if(st.dilemaRecentes.length>3)st.dilemaRecentes.shift();
+    PENDENTE={tipo:"dilema",d};
+    salvarCarreira();
+  }
 
   box.innerHTML=`<div class="dil-eyebrow">Decisão</div>
     <div class="dil-t">${String(d.titulo||"E agora?").slice(0,60)}</div>
@@ -5824,6 +5833,27 @@ function retomarCarreira(s){
     (reg.extras||[]).forEach(x=>bouts.appendChild(linhaExtra(x)));
   });
   atualizarControles();renderFicha();
+  retomarPendente();
+}
+/* Luta em andamento ou dilema aberto na hora em que o save foi gravado:
+   refaz a MESMA luta (mesma semente, mesma escolha do round 1 se já tinha
+   sido feita) ou reabre o MESMO dilema. Adversário que não existe mais no
+   elenco (save de outra versão do fighters.json) descarta a luta em vez de
+   travar a carreira. */
+function retomarPendente(){
+  const p=PENDENTE;
+  if(!p)return;
+  if(p.tipo==="luta"){
+    const opp=(p.rival&&st.rival)?st.rival.f
+      :(LADDER.find(f=>f.name===p.adv)||(RANKING&&RANKING.lista.find(f=>f&&f.name===p.adv))||null);
+    if(!opp){ PENDENTE=null; return; }
+    rodarLuta(opp,!!st.tituloEstaLuta,!!p.rival,p.semL,p.escolha||null);
+  }else if(p.tipo==="dilema"&&p.d){
+    dilemaAberto=true;atualizarControles();
+    abrirDilema(p.d)
+      .catch(()=>{})
+      .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
+  }
 }
 /* Grava no aparelho (a nuvem entra na tarefa 6). Sem espaço ou sem
    usuário (teste, carreira de desafio antes do login) não faz nada. */
@@ -6878,14 +6908,29 @@ function lutar(escolhido,camp){
   aplicarCamp(camp);                    // permanente, com teto
   renderFicha();
   st.campEscolhido=camp.nome;
-  const comCamp=lutadorEfetivo();
-  me.__rating=st.standing;
   /* st.tituloEstaLuta já foi decidido em nextFight(), antes de existir tela
      ou pick automático. Recalcular aqui com tituloLiberado() de novo poderia
      consumir holdRng outra vez e discordar do que a tela mostrou. */
   const titleFight=!!st.tituloEstaLuta;
-  const rounds=titleFight?5:3;
   const ehRival=!!escolhido.rival; // Modo Rival (Plano Pro) — o card já veio marcado de candidatos()
+  /* Save (revamp fase 3): a semente da luta sai do MESMO rng() de sempre,
+     no mesmo ponto (um por luta), e fica gravada em PENDENTE junto com o
+     adversário. Recarregar a página no meio da narração refaz ESTA luta
+     com esta semente (retomarPendente), em vez de voltar pra escolha de
+     adversário e deixar refazer uma derrota. */
+  const semL=Math.floor(rng()*1e9);
+  PENDENTE={tipo:"luta",adv:opp.name,camp:camp.nome,semL,escolha:null,rival:ehRival};
+  salvarCarreira();
+  rodarLuta(opp,titleFight,ehRival,semL,null);
+}
+/* O resto da luta (revamp fase 3: separado de lutar() pra carreira
+   retomada no meio da luta rodar SÓ isto, sem aplicar camp nem contar a
+   luta de novo). escolhaFixa: a escolha do round 1 que já tinha sido
+   feita antes de recarregar; reaplicada sem abrir a escolha de novo. */
+function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
+  const comCamp=lutadorEfetivo();
+  me.__rating=st.standing;
+  const rounds=titleFight?5:3;
 
   /* Driver round a round (item 3, "escolha na luta"): o que simulateFight()
      fazia por dentro numa chamada só agora roda aqui, round a round, pra
@@ -6895,7 +6940,7 @@ function lutar(escolhido,camp){
      provado bit a bit igual em testarDriverRodada() (node testar.js
      driverluta): rodar simularRound() em loop com o mesmo rng/A/B/scores
      bate exatamente com simulateFight() numa chamada só. */
-  const rngL=mulberry32(Math.floor(rng()*1e9));
+  const rngL=mulberry32(semL);
   const form=()=>1+(rngL()+rngL()+rngL()-1.5)/1.5*TUNING.formSpread;
   const A=mkState(comCamp,form()),B=mkState(opp,form());
   /* Plano Pro — pressão da coletiva: modificador TEMPORÁRIO só desta luta
@@ -6950,8 +6995,12 @@ function lutar(escolhido,camp){
       ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc};
     animarTrecho(trecho,()=>{
       if(round===1){
-        abrirEscolhaLuta(scouting,A.ref,opp,(mod,attr)=>{
+        if(escolhaFixa){
+          if(escolhaFixa.attr)A.mAttr[escolhaFixa.attr]=escolhaFixa.mod;
+          round++;proximaRodada();
+        }else abrirEscolhaLuta(scouting,A.ref,opp,(mod,attr)=>{
           if(attr)A.mAttr[attr]=mod;
+          if(PENDENTE&&PENDENTE.tipo==="luta"){PENDENTE.escolha={mod,attr:attr||null};salvarCarreira();}
           round++;proximaRodada();
         });
       }else if(round<rounds){
@@ -7347,7 +7396,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     atualizarControles();
     abrirDilema()
       .catch(()=>{})                       // falha do dilema não pode travar a carreira
-      .then(()=>{dilemaAberto=false;verificarConquistas();atualizarControles();renderFicha();});
+      .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
   }else{
     const raro=sortearRaro(st,rng,rareUsed);
     if(raro){
@@ -7382,6 +7431,10 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   }
   verificarConquistas();
   atualizarControles();renderFicha();
+  /* luta terminada: some a pendência (se abriu dilema, abrirDilema() grava
+     a pendência dele logo depois, quando o texto estiver pronto) */
+  if(PENDENTE&&PENDENTE.tipo==="luta")PENDENTE=null;
+  salvarCarreira();
 
   /* "Terminou a luta 1", "terminou a luta 5" e "terminou as 22". fightNo já
      foi incrementado em lutar() antes de finishFight() rodar, então aqui já

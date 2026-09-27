@@ -6403,6 +6403,97 @@ async function testarSave() {
     const linhas = bouts ? bouts.children.filter(n => (n.className || "").split(" ").includes("bout")) : [];
     if (linhas.length !== 11) throw new Error(`${linhas.length} linhas .bout no histórico retomado`);
   });
+  /* retoma um save num sandbox zerado (mesmo passo dos testes acima) */
+  const retomarEm = (save) => {
+    const B = sandboxCarreira();
+    B.sb.__F = F; B.sb.__save = save;
+    B.run(`ROSTER=rateAll(globalThis.__F);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      retomarCarreira(JSON.parse(globalThis.__save));`);
+    return B;
+  };
+  await conf("recarregar NO MEIO da luta refaz a MESMA luta (semente gravada no início)", async () => {
+    const A = sandboxCarreira();
+    iniciarCarreiraTeste(A, F, 777003);
+    await jogarCarreiraAte(A, 6);
+    // começa a luta 7 e salva ANTES de a narração andar (nada de drenar)
+    A.run("auto=true;nextFight();");
+    if (A.run("fightNo") !== 7) throw new Error("luta 7 não começou");
+    const pend = JSON.parse(A.run("JSON.stringify(PENDENTE)"));
+    if (!pend || pend.tipo !== "luta" || !Number.isFinite(pend.semL)) throw new Error("PENDENTE da luta não gravado: " + JSON.stringify(pend));
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = retomarEm(save);
+    B.sb.__alvo = 7;   // só a luta retomada; o automático não segue pra 8
+    B.run("auto=true;");
+    for (let k = 0; k < 6; k++) { B.drenar(); await respirarCarreira(); }
+    const C = sandboxCarreira();
+    iniciarCarreiraTeste(C, F, 777003);
+    await jogarCarreiraAte(C, 7);
+    const lb = JSON.parse(B.run("JSON.stringify((st.registro||[])[6]||null)"));
+    const lc = JSON.parse(C.run("JSON.stringify((st.registro||[])[6]||null)"));
+    if (!lb) throw new Error("luta retomada não terminou (registro[6] vazio)");
+    for (const k of ["adv", "venceu", "metodo", "round", "relogio"])
+      if (lb[k] !== lc[k]) throw new Error(`luta 7 retomada divergiu em ${k}: ${lb[k]} vs ${lc[k]}`);
+    if (B.run("PENDENTE") !== null) throw new Error("PENDENTE não foi limpo depois da luta");
+  });
+  await conf("escolha feita no round 1 fica gravada e é reaplicada ao retomar (não abre de novo)", async () => {
+    const A = sandboxCarreira();
+    iniciarCarreiraTeste(A, F, 777004);
+    await jogarCarreiraAte(A, 3);
+    // luta 4 no manual só na hora da escolha: troca abrirEscolhaLuta por uma que escolhe
+    // SEMPRE a 2ª ação com modificador 1.08 no 1º atributo (escolha de verdade, não a neutra)
+    A.run(`globalThis.__abertas=0;abrirEscolhaLuta=function(sc,ref,opp,cb){globalThis.__abertas++;cb(1.08,"slpm");};`);
+    A.run("auto=true;nextFight();");
+    A.drenar(); await respirarCarreira();
+    const pend = JSON.parse(A.run("JSON.stringify(PENDENTE)"));
+    // a luta pode ter terminado no round 1 (sem escolha); nesse caso a semente muda de luta
+    if (A.run("globalThis.__abertas") === 0) throw new Error("semente de teste terminou a luta 4 no 1º round; trocar a semente");
+    void pend;
+    const B0 = sandboxCarreira();
+    iniciarCarreiraTeste(B0, F, 777004);
+    await jogarCarreiraAte(B0, 3);
+    B0.run(`abrirEscolhaLuta=function(sc,ref,opp,cb){cb(1.08,"slpm");};`);
+    // para logo depois da escolha: intercepta o callback pra salvar e sair
+    B0.run(`const __orig=abrirEscolhaLuta;abrirEscolhaLuta=function(sc,ref,opp,cb){__orig(sc,ref,opp,(m,a)=>{
+      globalThis.__saveDepoisDaEscolha=null; cb(m,a); });};
+      const __sc=salvarCarreira;salvarCarreira=function(){__sc();if(PENDENTE&&PENDENTE.escolha&&!globalThis.__saveDepoisDaEscolha)
+        globalThis.__saveDepoisDaEscolha=JSON.stringify(montarSave());};`);
+    B0.run("auto=true;nextFight();");
+    for (let k = 0; k < 4; k++) { B0.drenar(); await respirarCarreira(); }
+    const save = B0.run("globalThis.__saveDepoisDaEscolha");
+    if (!save) throw new Error("nenhum save com a escolha gravada");
+    if (!JSON.parse(save).pendente.escolha) throw new Error("save sem pendente.escolha");
+    const B = retomarEm(save);
+    B.run(`globalThis.__reabriu=0;abrirEscolhaLuta=function(){globalThis.__reabriu++;};auto=true;`);
+    for (let k = 0; k < 6; k++) { B.drenar(); await respirarCarreira(); }
+    if (B.run("globalThis.__reabriu") !== 0) throw new Error("retomada abriu a escolha de novo");
+    const lb = JSON.parse(B.run("JSON.stringify(st.registro[3])"));
+    const la = JSON.parse(A.run("JSON.stringify(st.registro[3])"));
+    for (const k of ["adv", "venceu", "metodo", "round", "relogio"])
+      if (lb[k] !== la[k]) throw new Error(`luta com escolha divergiu em ${k}: ${lb[k]} vs ${la[k]}`);
+  });
+  await conf("dilema aberto reabre O MESMO texto ao retomar, sem pedir dilema novo", async () => {
+    const A = sandboxCarreira();
+    iniciarCarreiraTeste(A, F, 777005);
+    A.sb.__alvo = 5;
+    // joga até a luta 5 SEM responder o dilema (ele abre no fim da luta 5)
+    for (let g = 0; g < 200 && A.run("fightNo") < 5; g++) {
+      for (let k = 0; k < 3; k++) { A.drenar(); await respirarCarreira(); }
+      if (A.run("playing||dilemaAberto")) continue;
+      A.run("auto=true;nextFight();");
+    }
+    for (let k = 0; k < 6; k++) { A.drenar(); await respirarCarreira(); }
+    if (!A.run("dilemaAberto")) throw new Error("dilema da luta 5 não abriu");
+    const pend = JSON.parse(A.run("JSON.stringify(PENDENTE)"));
+    if (!pend || pend.tipo !== "dilema" || !pend.d || !pend.d.cena) throw new Error("PENDENTE do dilema não gravado: " + JSON.stringify(pend));
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = retomarEm(save);
+    B.run(`globalThis.__pedidos=0;const __ai=ai;ai=function(tipo){if(tipo==="dilema")globalThis.__pedidos++;return __ai.apply(this,arguments);};`);
+    for (let k = 0; k < 4; k++) { B.drenar(); await respirarCarreira(); }
+    if (!B.run("dilemaAberto")) throw new Error("dilema não reabriu");
+    const box = B.registro.bouts.children.filter(n => (n.className || "").split(" ").includes("dilema")).pop();
+    if (!box || !String(box.innerHTML).includes(String(pend.d.cena).slice(0, 40))) throw new Error("dilema reaberto com outro texto");
+    if (B.run("globalThis.__pedidos") !== 0) throw new Error("retomada pediu dilema novo pra IA");
+  });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));
   return ok;
