@@ -6202,6 +6202,108 @@ async function testarRotas() {
   return ok;
 }
 
+/* ------------------------------------------------------------------ *
+ * Carreira de verdade num sandbox isolado (revamp fase 3, suíte save).
+ * Diferente de testarFrequenciaConquistas (que monta `st` à mão por
+ * velocidade): aqui o caminho é o REAL, startDraft() + draft guloso +
+ * startCareer(), porque o save tem que serializar o estado que o jogo
+ * de fato cria. IA offline (fetch rejeita) = fallbacks locais,
+ * determinísticos pela semente.
+ * ------------------------------------------------------------------ */
+function sandboxCarreira() {
+  const noop = () => {};
+  const registro = {}; const timers = [];
+  function makeEl(tag) {
+    const n = {
+      tagName: tag, _html: "", textContent: "", id: "", className: "", style: {},
+      children: [], disabled: false, value: "", dataset: {},
+      classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+      appendChild(c) { this.children.push(c); if (c && c.id) registro[c.id] = c; return c; },
+      append(...cs) { cs.forEach(c => this.appendChild(c)); },
+      scrollIntoView: noop, focus: noop, addEventListener: noop, remove: noop, setAttribute: noop,
+      querySelector: () => makeEl(), querySelectorAll: () => [],
+      getContext: () => null, get innerHTML() { return this._html; },
+      set innerHTML(v) { this._html = String(v); if (v === "") this.children = []; },
+    };
+    return n;
+  }
+  const dadosLS = {};
+  const sb = {
+    console: { log: noop, warn: noop, error: noop },
+    document: {
+      documentElement: makeEl("html"),
+      getElementById: id => registro[id] || (registro[id] = Object.assign(makeEl("div"), { id })),
+      createElement: t => makeEl(t), querySelector: () => makeEl("div"),
+      addEventListener: noop, removeEventListener: noop,
+    },
+    window: { matchMedia: () => ({ matches: true }), addEventListener: noop, scrollTo: noop },
+    location: { hash: "", href: "https://octogono.fun/", search: "", pathname: "/", origin: "https://octogono.fun", reload: noop },
+    localStorage: { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } },
+    setTimeout: fn => { timers.push(fn); return timers.length; },
+    clearTimeout: noop, setInterval: noop, clearInterval: noop,
+    fetch: () => Promise.reject(new Error("offline")),
+    AbortController: class { constructor() { this.signal = null; } abort() {} },
+    Math, JSON, Date, Number, String, Array, Object, Promise, Set, Map, Error, isNaN,
+  };
+  sb.globalThis = sb;
+  sb.history = { pushState: (x, y, u) => { sb.location.hash = String(u || ""); }, replaceState: (x, y, u) => { sb.location.hash = String(u || ""); } };
+  vm.createContext(sb);
+  vm.runInContext(lerScript() + `
+;globalThis.__run=(c)=>eval(c);`, sb, { filename: "index.html" });
+  const drenar = () => { let i = 0; while (timers.length && i++ < 200000) (timers.shift())(); };
+  return { sb, registro, drenar, dadosLS, run: c => sb.__run(c) };
+}
+/* começa uma carreira pelo caminho real: startDraft, draft guloso (mais
+   caro que cabe no orçamento, mesmo critério do freqconquistas), startCareer */
+function iniciarCarreiraTeste(ctx, F, seed, modo = "normal") {
+  ctx.sb.__F = F;
+  ctx.run(`(function(){
+    ROSTER=rateAll(globalThis.__F);
+    CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+    DIVISION="lightweight"; MODO=${JSON.stringify(modo)}; SEED=${seed};
+    RIVAL_ATIVADO=false; RIVAL_NOME_ESCOLHIDO=null; ROSTO=null;
+    startDraft("TesteBot");
+    let left=budgetLeft, rem=[...remaining];
+    while(rem.length){
+      const rows=rollTable(POOL,rem,rng,PCT);
+      const aff=rows.filter(r=>r.cost<=left);
+      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
+      me[r.pair.a.key]=r.src[r.pair.a.key]; me[r.pair.b.key]=r.src[r.pair.b.key];
+      picks.push({pair:r.pair,from:r.src.name});
+      left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
+    }
+    remaining=[]; budgetLeft=left;
+    startCareer();
+    auto=true;
+  })()`);
+}
+const respirarCarreira = () => new Promise(r => setImmediate(r));
+async function resolverDilemaTeste(ctx, texto) {
+  if (!ctx.run("dilemaAberto")) return false;
+  const campo = ctx.registro.dilresp, botao = ctx.registro.dilgo;
+  if (campo && botao && !campo.disabled && !botao.disabled && botao.onclick) {
+    campo.value = texto;
+    botao.onclick();
+    delete ctx.registro.dilresp; delete ctx.registro.dilgo;
+    for (let k = 0; k < 4; k++) { ctx.drenar(); await respirarCarreira(); }
+    ctx.run("auto=true;");
+    return true;
+  }
+  return false;
+}
+/* joga (no automático) até fightNo === alvo, resolvendo dilemas no caminho */
+async function jogarCarreiraAte(ctx, alvo, texto = "aceito, sem problema") {
+  for (let guarda = 0; guarda < 400 && ctx.run("fightNo") < alvo; guarda++) {
+    for (let k = 0; k < 3; k++) { ctx.drenar(); await respirarCarreira(); }
+    if (await resolverDilemaTeste(ctx, texto)) continue;
+    if (ctx.run("playing||dilemaAberto||escolhaAberta||entrevistaAberta")) continue;
+    ctx.run("auto=true;nextFight();");
+  }
+  for (let k = 0; k < 6; k++) { ctx.drenar(); await respirarCarreira(); await resolverDilemaTeste(ctx, texto); }
+  return ctx.run("fightNo");
+}
+
 /* ================================================================== *
  * SAVE (revamp fase 3): geradores serializáveis, carreira interrompida
  * e retomada = carreira direta, pendências (luta em andamento, dilema
@@ -6232,6 +6334,21 @@ async function testarSave() {
     const b = M.mulberry32(1); b.restaurar(e);
     const obtido = [b(), b(), b(), b()];
     if (JSON.stringify(esperado) !== JSON.stringify(obtido)) throw new Error("restaurado divergiu");
+  });
+  const F = lerLutadores();
+  await conf("carreira inteira pelo caminho real: st.registro tem as 22 lutas, coerente com o cartel", async () => {
+    const ctx = sandboxCarreira();
+    iniciarCarreiraTeste(ctx, F, 424242);
+    const n = await jogarCarreiraAte(ctx, 22);
+    if (n !== 22) throw new Error("carreira parou na luta " + n);
+    const r = ctx.run("JSON.stringify({reg:st.registro||null,w:st.wins,l:st.losses})");
+    const { reg, w, l } = JSON.parse(r);
+    if (!Array.isArray(reg)) throw new Error("st.registro não existe");
+    if (reg.length !== 22) throw new Error("registro com " + reg.length + " lutas");
+    if (reg.filter(x => x.venceu).length !== w) throw new Error("vitórias do registro != st.wins");
+    if (reg.filter(x => !x.venceu).length !== l) throw new Error("derrotas do registro != st.losses");
+    if (!reg.every((x, i) => x.n === i + 1)) throw new Error("numeração fora de ordem");
+    if (new Set(reg.map(x => x.adv)).size !== 22) throw new Error("adversário repetido no registro");
   });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));

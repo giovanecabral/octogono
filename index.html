@@ -2433,6 +2433,7 @@ async function dispararEventoIA(bouts,opp,r){
   const texto=String(j.texto).slice(0,300).trim();
   if(!texto)return;
   bouts.appendChild(el("div","event","— "+texto));
+  registrarExtra({tipo:"evento",texto:"— "+texto});
   st.eventosRecentes=st.eventosRecentes||[];
   st.eventosRecentes.push(texto);
   if(st.eventosRecentes.length>3)st.eventosRecentes.shift();
@@ -2898,6 +2899,8 @@ function aplicarDilema(box,d,txt,jBruto){
       ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}
       ${atr?`<span class="hint">${ROTULO_ATTR[atr]||atr} <span class="${mult>=1?"g":"dn"}">${
         mult>=1?"+":""}${Math.round((mult-1)*100)}%</span></span>`:""}</div>`;
+  registrarExtra({tipo:"dilema",titulo:String(d.titulo||"E agora?").slice(0,60),cena:String(d.cena).slice(0,400),
+    resposta:txt.replace(/</g,"&lt;"),texto:desfecho});
   st.dilemas=(st.dilemas||0)+1;
   if(box.__done)box.__done();
 }
@@ -4139,6 +4142,7 @@ function aplicarEntrevista(box,pergunta,txt,jBruto){
   const bruto=(j&&j.reacao)?String(j.reacao).slice(0,800):"";
   const reacao=bruto||fraseFallback();
   entrevistaWrapRespondida=true;             // fica pra sempre no histórico, não é mais "pendente"
+  registrarExtra({tipo:"entrevista",cena:`"${pergunta}"`,resposta:txt.replace(/</g,"&lt;"),texto:reacao});
   box.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
     <div class="dil-c">"${pergunta}"</div>
     <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
@@ -6943,6 +6947,34 @@ function animarTrecho(lines,aoTerminar){
   };
   step();
 }
+/* Linha de uma luta no histórico (revamp fase 3). Uma função só: a luta
+   que acabou agora e a carreira retomada de um save desenham igual. */
+function linhaBout(reg){
+  const line=el("div","bout"+(reg.titulo?" title-fight":""));
+  line.innerHTML=`<span class="no">${String(reg.n).padStart(2,"0")}</span>
+    <span><span class="opp">${reg.adv}</span><br><span class="how">${reg.metodo} · round ${reg.round} ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}${(reg.kd[0]||reg.kd[1])?` · quedas ${reg.kd[0]}-${reg.kd[1]}`:""} · R$${fmtNum(reg.renda)}</span></span>
+    <span class="stamp${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</span>`;
+  return line;
+}
+/* O que aconteceu depois da luta (evento, raro, dilema, entrevista) vai
+   pra última entrada do registro, pra carreira retomada mostrar igual. */
+function registrarExtra(x){
+  const reg=st&&st.registro&&st.registro[st.registro.length-1];
+  if(reg)(reg.extras=reg.extras||[]).push(x);
+}
+function linhaExtra(x){
+  if(x.tipo==="dilema"||x.tipo==="entrevista"){
+    const b=el("div","dilema");
+    b.innerHTML=`<div class="dil-eyebrow">${x.tipo==="dilema"?"Decisão":"Entrevista"}</div>
+      ${x.titulo?`<div class="dil-t">${x.titulo}</div>`:""}
+      ${x.cena?`<div class="dil-c">${x.cena}</div>`:""}
+      ${x.resposta?`<div class="dil-r">"${x.resposta}"</div>`:""}
+      ${x.tipo==="dilema"?`<div class="dil-eyebrow">O desfecho</div>`:""}
+      <div class="dil-o">${x.texto}</div>`;
+    return b;
+  }
+  return el("div","event"+(x.tipo==="raro"?" rare":""),x.texto);
+}
 function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   playing=false;atualizarControles();
   /* Modo Rival: registra o confronto no histórico ANTES de qualquer coisa
@@ -7215,12 +7247,15 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     resolveFeed(molde,rng).then(f=>renderPhone(f,st.fan,delta,st.followers));
   }
 
+  /* Registro da luta como DADO (revamp fase 3): o save guarda isto e a
+     tela retomada redesenha o histórico daqui; antes a linha só existia
+     no DOM e sumia ao recarregar. linhaBout() é a mesma nos dois casos. */
+  st.registro=st.registro||[];
+  const reg={n:fightNo,adv:opp.name,venceu:won,metodo:r.method,round:r.round,relogio:r.clock,
+    cartoes:r.cards||null,kd:[myKd,oppKd],renda:rendaLuta,titulo:!!titleFight,extras:[]};
+  st.registro.push(reg);
   const bouts=document.getElementById("bouts");
-  const line=el("div","bout"+(titleFight?" title-fight":""));
-  line.innerHTML=`<span class="no">${String(fightNo).padStart(2,"0")}</span>
-    <span><span class="opp">${opp.name}</span><br><span class="how">${r.method} · round ${r.round} ${r.clock}${r.cards?" · "+r.cards:""}${(myKd||oppKd)?` · quedas ${myKd}-${oppKd}`:""} · R$${fmtNum(rendaLuta)}</span></span>
-    <span class="stamp${won?"":" d"}">${won?"Vitória":"Derrota"}</span>`;
-  bouts.appendChild(line);
+  bouts.appendChild(linhaBout(reg));
   (won?SOM.vitoria:SOM.derrota)();     // um só, no carimbo, seja qual for o método
   /* Plano Pro — "zebra" da entrevista reaproveita a MESMA definição de
      upset já medida acima (won&&fightNo>=6&&diferença>.20, ver LEIA-ME
@@ -7246,6 +7281,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     const raro=sortearRaro(st,rng,rareUsed);
     if(raro){
       bouts.appendChild(el("div","event rare",raro.t(me.name)));
+      registrarExtra({tipo:"raro",texto:raro.t(me.name)});
       tocarSom(raro.tom||0);
       st.events++;
       st.rares.push(raro.t(me.name));
