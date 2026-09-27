@@ -174,3 +174,62 @@ create policy "usuário grava só os próprios aceites"
 
 -- sem update/delete, de propósito: aceite não se edita nem se apaga,
 -- é registro histórico — mesmo raciocínio de conquistas/carreiras.
+
+-- =====================================================================
+-- REVAMP FASE 3 (2026-09-27): rodar SÓ este bloco se as tabelas acima
+-- já existem no projeto (create ... if not exists não recria nada, mas
+-- create policy repetida dá erro de "already exists").
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- saves — carreira EM ANDAMENTO, até 3 por conta. Diferente de
+-- carreiras_usuario (histórico, imutável): save é sobrescrito o tempo
+-- todo e apagado quando a carreira acaba ou o jogador libera o espaço.
+-- Mesmo padrão de RLS de sempre: cada um lê, grava e apaga só o que é
+-- seu (auth.uid() vem do JWT, não do client).
+create table if not exists saves (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  slot smallint not null check (slot between 1 and 3),
+  versao smallint not null,
+  dados jsonb not null,
+  nome text not null,
+  divisao text not null,
+  modo text not null,
+  cartel text not null,
+  luta_n smallint not null,
+  campeao boolean not null default false,
+  rosto jsonb,
+  atualizado_em timestamptz not null default now(),
+  primary key (user_id, slot)
+);
+alter table saves enable row level security;
+create policy "usuário lê só os próprios saves" on saves for select using (auth.uid() = user_id);
+create policy "usuário cria só os próprios saves" on saves for insert with check (auth.uid() = user_id);
+create policy "usuário atualiza só os próprios saves" on saves for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "usuário apaga só os próprios saves" on saves for delete using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------
+-- placar — carreiras ENCERRADAS de todos os jogadores (página Ranking).
+-- Leitura pública (é um ranking); ESCRITA só pelo servidor
+-- (api/placar.js com service_role, que valida plausibilidade antes). Sem
+-- policy de insert/update/delete pro usuário comum, de propósito, mesmo
+-- raciocínio de assinaturas: com policy de insert, bastava o DevTools
+-- pra se colocar em 1º lugar. user_id fica legível (UUID aleatório, sem
+-- e-mail): é o que deixa a tela mostrar "sua melhor posição".
+create table if not exists placar (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  seed bigint not null,
+  nome_lutador text not null,
+  divisao text not null,
+  modo text not null check (modo in ('normal','lenda')),
+  pontuacao integer not null check (pontuacao between 0 and 10000),
+  cartel text not null,
+  nota text not null,
+  cinturoes smallint not null default 0,
+  rosto jsonb,
+  criado_em timestamptz not null default now(),
+  primary key (user_id, seed)
+);
+create index if not exists placar_ordem on placar (modo, pontuacao desc);
+alter table placar enable row level security;
+create policy "placar é público" on placar for select using (true);
