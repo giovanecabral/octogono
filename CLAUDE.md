@@ -39,6 +39,15 @@ daqui pra frente:
   `redirectTo` sempre com `urlRetornoAuth()` (endereço sem o hash da rota).
 - **Ícone é SVG do sprite (`ICONE(nome)`), nunca emoji nem caractere
   unicode.** A suíte `rotas` reprova emoji em qualquer tela nova.
+- **Jogar exige conta** (revertido de propósito em 2026-09-27; ver
+  LEIA-ME "Contas"). Rota que exige conta passa por `comConta()`.
+- **Save = estado + estado dos 8 geradores.** A regra da semente vale
+  dobrado: mudar a ordem de consumo quebra link de desafio E save já
+  gravado. `node testar.js save` prova carreira interrompida = direta.
+  Mudou o formato do save: sobe `VERSAO_SAVE`.
+- **`api/placar.js` só existe em produção depois do deploy**, igual ao
+  `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
+  rota); a suíte `placar` compara as faixas com o `grade()` do jogo.
 
 ## Como testar — SEMPRE
 

@@ -2296,11 +2296,23 @@ node testar.js freqconquistas [N] [normal|lenda]   # frequência real de qualque
 
 ## Contas
 
-Jogar não exige conta — regra que não muda. A oferta de criar conta só
-aparece em `screenReport()`, depois das 22 lutas, pra não matar o funil
-(crescimento depende de gente chegar, jogar e printar antes de qualquer
-cadastro). `localStorage` continua sendo o cache de sempre; conta é
-sincronização por cima dele, nunca substitui.
+**Jogar exige conta (desde o revamp, 2026-09-27).** A regra antiga ("jogar
+não exige conta, regra que não muda", pensada pro funil de anúncio) foi
+revertida pelo dono de propósito: a carreira agora é salva na conta e o
+ranking é por conta. Nova carreira, Continuar e link de desafio passam por
+`comConta()`: sem sessão, a pessoa cai no portão (`screenPortao()`,
+formulário já em "Criar conta") e a intenção fica guardada
+(`guardarIntencao`, vence em 24 h). Confirmação de e-mail continua ligada;
+o link de confirmação e o login com Google voltam pra página SEM a rota, e
+a intenção é seguida quando o Supabase avisa `SIGNED_IN`. Consequência
+aceita: quem abre um link de desafio também cria conta antes de jogar. O
+fim da carreira não oferece mais criar conta (só confirma a sincronização).
+Menu, Ranking, Atualizações, Termos, Privacidade e Créditos continuam
+abertos sem conta. Risco registrado: Resend grátis manda 100 e-mails por
+dia (PENDENCIAS.md item 37).
+
+O texto abaixo descreve a conta como era antes (opcional) e continua certo
+na parte técnica (Supabase, RLS, senha, Google, recuperação).
 
 **Arquitetura**: Supabase (Postgres + Auth gerenciados, plano gratuito
 integra com Vercel sem servidor próprio). Tabela `conquistas_usuario`
@@ -2589,6 +2601,57 @@ Supabase, créditos, ranking com pódio, sem emoji/travessão). Dente provado:
 tirar o Voltar do molde reprova 7 telas; tirar a proteção do hash reprova com
 o token virando nome de rota. Verificação visual com screenshots em 1440, 820
 e 380 px (puppeteer-core com o Chrome instalado, ferramenta fora do repo).
+
+## Save (revamp fase 3, 2026-09-27)
+
+Até 3 carreiras em andamento por conta. Recarregar a página não perde nada.
+
+**O save é dado, não tela.** `montarSave()` guarda `me`, `st`, a semente,
+divisão, modo, rosto, rival, adversários já enfrentados, raros já usados e
+o **estado interno dos 8 geradores** (`mulberry32` ganhou `.estado()` e
+`.restaurar()`; a sequência não mudou, provado contra valores gravados
+antes). `POOL`/`LADDER`/`RANKING` saem de divisão + modo e não vão no save.
+A tela é redesenhada a partir de `st.registro` (uma entrada por luta, com
+evento, raro, dilema e entrevista em `extras`), que antes só existia no
+DOM. `linhaBout()`/`linhaExtra()` desenham igual na hora e ao retomar.
+
+**Prova:** `node testar.js save` joga uma carreira pelo caminho real,
+interrompe na luta 11, salva, retoma num sandbox zerado e termina: sai
+exatamente a mesma carreira de quem jogou direto, luta por luta. Dente
+provado: sem restaurar o gerador principal diverge na luta 12; sem os
+adversários já enfrentados, na 14.
+
+**Anti-trapaça no reload.** A luta roda round a round com uma escolha do
+jogador depois do 1º round, então não dá pra "gravar o resultado antes".
+`lutar()` grava a semente da luta (o mesmo `rng()` de sempre) em
+`PENDENTE` antes da narração; a escolha do round 1 é gravada assim que
+feita. Recarregar no meio refaz a MESMA luta com a MESMA escolha
+(`retomarPendente()` → `rodarLuta()`). Dilema aberto grava o texto já
+gerado (`abrirDilema(dPronto)`): recarregar reabre o mesmo, sem pedir outro
+à IA. Brecha conhecida e pequena: recarregar nos ~3 s entre enviar a
+resposta do dilema e o julgamento voltar deixa responder de novo.
+
+**Onde grava.** `localStorage` na hora (chave `save:<userId>:<espaço>`) e
+tabela `saves` do Supabase 2 s depois (um upsert por rajada). Entre
+aparelho e nuvem vale o mais novo (`listarSaves()`). Indicador fixo no
+canto: "Salvando", "Salvo", "Sem conexão, salvo neste aparelho". Também
+grava na compra da loja, no evento de IA (chega depois da luta), na
+entrevista e ao sair da aba. Carreira encerrada apaga o save (o histórico
+vai pra `carreiras_usuario` e o placar). `VERSAO_SAVE` sobe se o formato
+mudar; save de outra versão aparece com aviso e não carrega.
+
+## Placar (revamp fase 3, 2026-09-27)
+
+Página Ranking: carreiras encerradas de todos os jogadores. Tabela
+`placar` com leitura pública e **sem policy de escrita**: só
+`api/placar.js` grava, com a service role, depois de conferir a sessão
+(JWT), as regras de `api/_placar-regras.js` e o limite de 20 envios por
+24 h. O `user_id` gravado vem do token, nunca do corpo. Pontuação = nota
+bruta do `grade()` × 100, arredondada pra baixo (0 a 10.000; 89,996 é A,
+igual à letra). As regras recusam o que é impossível pelo jogo; carreira
+forjada e plausível passa (o motor roda no navegador). `node testar.js
+placar` testa a regra com uma carreira real e o endpoint com `fetch` falso.
+**O endpoint só roda depois do merge + deploy** (função serverless).
 
 ## Histórico (2026-09-09) — aprovado, implementado
 

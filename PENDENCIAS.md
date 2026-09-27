@@ -2011,3 +2011,27 @@ perde a carreira, igual recarregar perdia antes: o save da fase 3 resolve.
 - Travessões e "de verdade" na vitrine do Pro e no formulário de conta
   (texto antigo reaproveitado): entram na passada de texto da fase 7, depois
   das 10 amostras aprovadas.
+
+**Fase 3 feita (2026-09-27), branch `revamp-ui`:** conta obrigatória
+(portão + intenção), save em 3 espaços (aparelho na hora + nuvem com 2 s
+de atraso), luta em andamento e dilema aberto sobrevivem a recarregar sem
+permitir refazer, Continuar com os saves, escolha de espaço com os 3
+cheios, placar com regra no servidor, "sua melhor posição". Suítes novas
+`save` e `placar`; `rotas` e `interface` atualizadas (sessão falsa).
+
+**Depende do dono, fase 3:**
+- Rodar no SQL Editor do Supabase o bloco "REVAMP FASE 3" do
+  `supabase_schema.sql` (tabelas `saves` e `placar`). Sem isso o save fica
+  só no aparelho (o indicador avisa) e o Ranking fica vazio.
+- `api/placar.js` só existe em produção depois do merge + deploy; ele usa a
+  mesma `SUPABASE_SERVICE_ROLE_KEY` do webhook da Asaas, já configurada.
+
+**Achados/limites registrados na fase 3:**
+- Recarregar nos ~3 s entre enviar a resposta do dilema e o julgamento da
+  IA voltar reabre o dilema e deixa responder de novo. Pequeno; fechar
+  exigiria gravar a resposta antes do julgamento e reenviar a MESMA ao
+  retomar (o julgamento da IA não é determinístico).
+- Placar forjável com carreira plausível (motor no navegador); a regra só
+  recusa o impossível. Barrar de vez = rerodar a carreira no servidor.
+- `user_id` do placar é legível publicamente (UUID, sem e-mail): é o que
+  permite "sua melhor posição" sem endpoint extra.
