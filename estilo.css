@@ -334,3 +334,22 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
   margin:0 0 18px;padding:10px 16px 10px 14px;background:rgba(215,38,30,.14);border:1px solid rgba(215,38,30,.55)}
 .rank-minha-rot{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--sangue);max-width:90px;line-height:1.2}
 @media (max-width:700px){.rank-minha{grid-template-columns:auto 34px 44px minmax(0,1fr) 70px}.rank-minha .rank-meta,.rank-minha .rank-nota{display:none}}
+
+/* ---------- assistente de criação (fase 4) ---------- */
+.passo-cab{display:flex;align-items:center;gap:16px;margin:-10px 0 26px;flex-wrap:wrap}
+.passo-txt{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.22em;text-transform:uppercase;color:var(--sangue);white-space:nowrap}
+.passo-barra{display:flex;gap:6px;flex:1;min-width:160px;max-width:420px}
+.passo-seg{flex:1;height:4px;background:var(--linha-forte)}
+.passo-seg.on{background:var(--sangue)}
+
+/* ---------- recurso Pro travado (componente único) ---------- */
+.bloqueio-pro{position:relative;display:block;min-width:0}
+.bloqueio-pro>.bloqueado{opacity:.35;pointer-events:none;filter:grayscale(.5)}
+.selo-assine{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:8px;
+  padding:10px 16px;background:var(--ouro);color:#15120A;border:0;cursor:pointer;white-space:nowrap;
+  font-family:var(--f-ui);font-weight:800;font-size:14px;letter-spacing:.16em;text-transform:uppercase;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
+  box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.selo-assine .ico{width:16px;height:16px}
+.selo-assine:focus-visible{outline:2px solid var(--osso);outline-offset:3px}
+@media (hover:hover) and (pointer:fine){.selo-assine:hover{background:#E6B421}}

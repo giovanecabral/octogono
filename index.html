@@ -5465,7 +5465,8 @@ function montarTela({fundo=null,vivo=false,titulo=null,voltar="menu",classe=""}=
     if(voltar){
       const b=el("button","btn-voltar",ICONE("seta-esq")+"<span>Voltar</span>");
       b.type="button";
-      b.onclick=()=>{ SOM.toque(); irPara(voltar); };
+      /* rota ("menu") ou função (passo anterior do assistente de criação) */
+      b.onclick=()=>{ SOM.toque(); if(typeof voltar==="function")voltar(); else irPara(voltar); };
       cab.appendChild(b);
     }
     if(titulo)cab.appendChild(el("h1","tela-titulo",titulo));
@@ -5496,6 +5497,36 @@ function vazio(icone,titulo,texto){
   return el("div","vazio",`${ICONE(icone,"vazio-ico")}<b>${titulo}</b>${texto?`<span>${texto}</span>`:""}`);
 }
 
+/* Moldura de um passo do assistente de criação (revamp fase 4): o molde
+   de tela + "Passo n de total" + barra com `total` segmentos. */
+function montarPasso(n,total,{titulo,fundo,voltar}){
+  const c=montarTela({fundo,titulo,voltar,classe:"tela-criacao"});
+  const cab=el("div","passo-cab");
+  cab.appendChild(el("span","passo-txt",`Passo ${n} de ${total}`));
+  const barra=el("div","passo-barra");
+  for(let i=1;i<=total;i++)barra.appendChild(el("span","passo-seg"+(i<=n?" on":"")));
+  cab.appendChild(barra);
+  c.appendChild(cab);
+  return c;
+}
+/* Recurso Pro travado (revamp, spec seção 9): componente ÚNICO pra todo
+   recurso Pro. Sem Pro, o recurso aparece a 35% de opacidade e não
+   responde a clique; o único ponto clicável é o selo "Assine o Pro", que
+   leva à aba do plano. Com Pro, devolve o elemento sem mudar nada. A
+   trava de verdade continua no servidor (api/ai.js confere o plano);
+   isto é só a interface não oferecer o que a pessoa não tem. */
+function bloqueioPro(elemento){
+  if(meuPro)return elemento;
+  elemento.className=(elemento.className?elemento.className+" ":"")+"bloqueado";
+  elemento.onclick=null;
+  if(elemento.setAttribute){ elemento.setAttribute("aria-disabled","true"); elemento.setAttribute("tabindex","-1"); }
+  const w=el("div","bloqueio-pro");
+  const selo=el("button","selo-assine",`${ICONE("cadeado")}<span>Assine o Pro</span>`);
+  selo.type="button";
+  selo.onclick=e=>{ if(e&&e.stopPropagation)e.stopPropagation(); SOM.toque(); irPara("conta","pro"); };
+  w.append(elemento,selo);
+  return w;
+}
 function screen404(){
   const c=montarTela({fundo:"apagado",titulo:null,voltar:"menu",classe:"tela-404"});
   c.appendChild(el("div","erro-num","404"));

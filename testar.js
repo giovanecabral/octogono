@@ -6073,8 +6073,9 @@ async function testarRotas() {
   env.sandbox.localStorage = { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } };
   vm.createContext(env.sandbox);
   try {
-    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao"])
-      + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}",
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso"])
+      + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}"
+      + "\ntry{globalThis.__x.setMeuPro=(v)=>{meuPro=v;};}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
     console.log(vermelho("\n  o script nem carregou: " + e.message) + "\n");
@@ -6316,6 +6317,39 @@ async function testarRotas() {
     const conta = env.registro["previa-conta"];
     if (!conta || !/2 carreiras salvas/.test(conta.innerHTML)) throw new Error("prévia da Conta sem a contagem: " + (conta && conta.innerHTML));
     for (const k of Object.keys(dadosLS)) if (k.startsWith("save:")) delete dadosLS[k];
+  });
+  await conf("bloqueioPro sem Pro: embrulha, apaga e desliga o recurso, só o selo 'Assine o Pro' clica e leva à conta", () => {
+    UI.setMeuPro(false);
+    const alvo = env.sandbox.document.createElement("button");
+    alvo.className = "modo"; let clicou = false; alvo.onclick = () => { clicou = true; };
+    const w = UI.bloqueioPro(alvo);
+    if (w === alvo || !tem(w, "bloqueio-pro")) throw new Error("não embrulhou");
+    if (!tem(alvo, "bloqueado")) throw new Error("recurso sem a classe bloqueado");
+    if (alvo.onclick) throw new Error("recurso continuou clicável");
+    const selo = w.children.find(n => tem(n, "selo-assine"));
+    if (!selo || !selo.onclick || !/Assine o Pro/i.test(selo.innerHTML)) throw new Error("sem o selo Assine o Pro");
+    selo.onclick(); env.drenar();
+    if (UI.rotaAtual() !== "conta" || !/#\/conta\/pro/.test(env.sandbox.location.hash)) throw new Error("selo foi pra " + env.sandbox.location.hash);
+    void clicou;
+  });
+  await conf("bloqueioPro com Pro: devolve o recurso sem mudar nada", () => {
+    UI.setMeuPro(true);
+    const alvo = env.sandbox.document.createElement("button");
+    alvo.className = "modo"; alvo.onclick = () => {};
+    const w = UI.bloqueioPro(alvo);
+    UI.setMeuPro(false);
+    if (w !== alvo || tem(alvo, "bloqueado") || !alvo.onclick) throw new Error("mexeu no recurso de quem é Pro");
+  });
+  await conf("montarPasso(2,5): 'Passo 2 de 5' e barra com 5 segmentos, 2 acesos", () => {
+    const m = env.todos.length;
+    UI.montarPasso(2, 5, { titulo: "Visual", fundo: "vestiario", voltar: () => {} });
+    const barra = desde(m).find(n => tem(n, "passo-barra"));
+    if (!barra) throw new Error("sem barra de progresso");
+    const segs = barra.children.filter(n => tem(n, "passo-seg"));
+    if (segs.length !== 5 || segs.filter(n => tem(n, "on")).length !== 2) throw new Error(`segmentos ${segs.length}, acesos ${segs.filter(n => tem(n, "on")).length}`);
+    if (!desde(m).some(n => /Passo 2 de 5/.test(n.innerHTML || ""))) throw new Error("sem o texto Passo 2 de 5");
+    const voltar = desde(m).find(n => tem(n, "btn-voltar"));
+    if (!voltar || !voltar.onclick) throw new Error("passo sem Voltar");
   });
   await conf("intenção: consumirIntencao devolve e apaga; com mais de 24 h é ignorada", () => {
     UI.guardarIntencao({ tipo: "nova" });
