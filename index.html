@@ -819,6 +819,8 @@ function renderPhone(feed,fan,delta,followers){
         <span class="rt">${fmtNum(t.p.rt)} retweets</span></span>`));
     fd.scrollTop=fd.scrollHeight;
   },reduceMotion()?0:i*420/speed));
+  ultimoFeed=feed;
+  renderPainel();
 }
 
 
@@ -3323,9 +3325,15 @@ function passoCinturao(){
   }
   if(st.title)return null;
   const s=st.standing;
-  if(s<0.35)return "Vencer no card preliminar até entrar no ranking dos 15";
-  if(s<0.60)return "Subir no ranking encadeando vitórias contra quem está acima";
-  if(s<0.80)return "Chegar ao top 5 da divisão";
+  /* Revamp fase 5: as três primeiras faixas falam na MESMA régua da
+     posição que o Painel e a ficha mostram (#N de N). Antes diziam "top 5"
+     e "ranking dos 15" numa hora em que a posição literal podia ser #95 de
+     236 (a contradição anotada no CLAUDE.md). O alvo é a posição que o
+     limiar da faixa dá na tabela desta divisão; limiares intocados. */
+  const alvo=v=>{const p=posicaoDivisao(v);return p?`#${p.n}`:"o topo";};
+  if(s<0.35)return `Vencer no card preliminar até chegar ao ${alvo(0.35)} da divisão`;
+  if(s<0.60)return `Subir até o ${alvo(0.60)} vencendo quem está acima`;
+  if(s<0.80)return `Chegar ao ${alvo(0.80)} da divisão`;
   if(s<0.88){
     const nm=RANKING&&RANKING.desafiante?RANKING.desafiante.name:"um contender do top 5";
     return `Vencer ${nm} para virar desafiante`;
@@ -3362,6 +3370,13 @@ function posicaoDivisao(s){
   return {n:N-Math.round(v*(N-1)),de:N};
 }
 
+function textoDuracaoLesao(){
+  if(st.lesao.permanente)return "Lesão permanente — não cura";
+  const curaNaLuta=st.lesao.desdeLuta+st.lesao.duracao;
+  if(curaNaLuta>TOTAL_FIGHTS)return "Dura até o fim da carreira";
+  const restam=Math.max(0,curaNaLuta-(st.fightNo||0));
+  return `Cura em ${restam} luta${restam===1?"":"s"}`;
+}
 function renderFicha(){
   const box=document.getElementById("ficha");
   if(!box||!st||!me)return;
@@ -3437,13 +3452,7 @@ function renderFicha(){
         <div class="lesao-nome">${st.lesao.nome}</div>
         <div class="lesao-mag">${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo}
           ${Math.round((st.lesao.mult-1)*100)}%</div>
-        <div class="lesao-dur">${(()=>{
-          if(st.lesao.permanente)return "Lesão permanente — não cura";
-          const curaNaLuta=st.lesao.desdeLuta+st.lesao.duracao;
-          if(curaNaLuta>TOTAL_FIGHTS)return "Dura até o fim da carreira";
-          const restam=Math.max(0,curaNaLuta-st.fightNo);
-          return `Cura em ${restam} luta${restam===1?"":"s"}`;
-        })()}</div>
+        <div class="lesao-dur">${textoDuracaoLesao()}</div>
       </div>
     </div>`:""}
     <div class="ficha-sec">
@@ -6820,15 +6829,27 @@ function montarTelaCarreira(){
   });
   tela.appendChild(corpo);
 
-  /* Painel: ações da carreira e, por enquanto, o palco da luta (a noite
-     de luta em tela cheia chega nas próximas tarefas da fase 5). */
+  /* Painel: bloco da próxima luta (com as ações), palco da luta (até a
+     noite de luta em tela cheia chegar, tarefas 5 a 7 da fase 5), última
+     luta; na lateral, caminho até o cinturão, posição, lesão e posts. */
+  const grade=el("div","painel-grade");
+  const principal=el("div","painel-principal");
+  const lado=el("aside","painel-lado");
+  grade.append(principal,lado);
+  secao.painel.appendChild(grade);
+  const prox=el("div","painel-proxima");
+  const proxCab=el("div","proxima-cab");proxCab.id="painelProxima";
   const row=el("div","hub-acoes");row.id="controls";
   const next=el("button","botao botao-grande","Próxima luta");next.id="next";next.onclick=()=>nextFight();
   const ab=el("button","botao botao-sec","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
   const sp=el("button","botao botao-sec","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
   const hint=el("span","hub-contador",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
   row.append(next,ab,sp,hint);
-  secao.painel.appendChild(row);
+  prox.append(proxCab,row);
+  principal.appendChild(prox);
+  [["painelCinturao",""],["painelPosicao",""],["painelLesao","painel-bloco-lesao"],["painelPosts","painel-bloco-posts"]].forEach(([id,c])=>{
+    const b=el("div","painel-bloco"+(c?" "+c:""));b.id=id;lado.appendChild(b);
+  });
   const palco=el("div","hub-palco");
   const esc=el("div","escolha");esc.id="escolha";esc.style.display="none";
   const stage=el("div","stage");stage.id="stage";stage.style.display="none";
@@ -6836,7 +6857,9 @@ function montarTelaCarreira(){
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
   stage.append(live,escLuta);
   palco.append(esc,stage);
-  secao.painel.appendChild(palco);
+  principal.appendChild(palco);
+  const ultima=el("div","painel-bloco painel-ultima");ultima.id="painelUltima";ultima.hidden=true;
+  principal.appendChild(ultima);
 
   const ficha=el("div","ficha");ficha.id="ficha";secao.lutador.appendChild(ficha);
   const bouts=el("div","bouts");bouts.id="bouts";secao.cartel.appendChild(bouts);
@@ -6927,6 +6950,59 @@ function renderBarraHub(){
   const sv=document.getElementById("hubSave");
   if(sv&&!sv.innerHTML&&SLOT_ATUAL)sv.innerHTML=`${ICONE("nuvem-ok")}<span>Espaço ${SLOT_ATUAL}</span>`;
 }
+/* Posts da última luta (só memória: depois de recarregar, voltam na
+   próxima luta, igual ao feed da aba Mídia). */
+let ultimoFeed=null;
+const postHTML=t=>`<div class="tw${t.hater?" hater":""}"><span class="av" style="background:${t.p.color}">${t.p.initials}</span>
+  <span><span class="who">${t.p.name} <span>${t.p.handle}</span></span><span class="txt">${t.text}</span></span></div>`;
+function renderPainel(){
+  const px=document.getElementById("painelProxima");
+  if(!px||!st||!me)return;
+  px.innerHTML=fightNo>=TOTAL_FIGHTS
+    ?`<span class="proxima-rot">Fim da linha</span><span class="proxima-luta">${TOTAL_FIGHTS} lutas</span>`
+    :`<span class="proxima-rot">Próxima luta</span><span class="proxima-luta">Luta ${fightNo+1}<small>de ${TOTAL_FIGHTS}</small></span>`;
+  const ul=document.getElementById("painelUltima");
+  const reg=st.registro&&st.registro[st.registro.length-1];
+  if(ul){
+    ul.hidden=!reg;
+    if(reg)ul.innerHTML=`<div class="painel-cab">${ICONE("luta")}Última luta</div>
+      <div class="ultima-linha"><span class="carimbo${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</span>
+      <div class="ultima-quem"><b>${reg.adv}</b><span>${reg.metodo} · round ${reg.round} · ${reg.relogio}${reg.titulo?" · cinturão":""}</span></div></div>`;
+  }
+  const ci=document.getElementById("painelCinturao");
+  if(ci){
+    const passo=passoCinturao();
+    const pct=st.title?100:Math.round(clamp(st.standing,0,1)*100);
+    ci.innerHTML=`<div class="painel-cab">${ICONE("coroa")}Caminho até o cinturão</div>
+      ${st.title?`<div class="cint-status">${st.cinturaoInterino?"Campeão interino":"Campeão"}</div>`:""}
+      <div class="cint-barra${st.title?" ouro":""}"><i style="width:${pct}%"></i>${
+        [35,60,80,88].map(m=>`<span class="cint-marca" style="left:${m}%"></span>`).join("")}</div>
+      ${passo?`<p class="cint-passo">${passo}</p>`:""}`;
+  }
+  const po=document.getElementById("painelPosicao");
+  const rk=posicaoDivisao();
+  if(po&&rk){
+    const mov=st.rankAnt!=null?st.rankAnt-rk.n:0;
+    const pico=posicaoDivisao(st.peak);
+    po.innerHTML=`<div class="painel-cab">${ICONE("grafico")}Posição na divisão</div>
+      <div class="pos-linha"><span class="pos-num">#${rk.n}</span><span class="pos-de">de ${rk.de}</span>${
+        mov?`<span class="pos-mov ${mov>0?"sobe":"cai"}">${ICONE(mov>0?"sobe":"desce")}${Math.abs(mov)}</span>`:""}</div>
+      ${pico&&pico.n<rk.n?`<div class="pos-pico">Melhor da carreira: #${pico.n}</div>`:""}`;
+  }
+  const le=document.getElementById("painelLesao");
+  if(le){
+    le.hidden=!st.lesao;
+    if(st.lesao)le.innerHTML=`<div class="painel-cab">${ICONE("lesao")}Lesão</div>
+      <b class="lesao-painel-nome">${st.lesao.nome}</b>
+      <span class="lesao-painel-info">${ROTULO_ATTR[st.lesao.atributo]||""} ${Math.round((st.lesao.mult-1)*100)}% · ${textoDuracaoLesao()}</span>`;
+  }
+  const ps=document.getElementById("painelPosts");
+  if(ps){
+    const tem=!!(ultimoFeed&&ultimoFeed.length);
+    ps.hidden=!tem;
+    if(tem)ps.innerHTML=`<div class="painel-cab">${ICONE("jornal")}Repercussão</div>`+ultimoFeed.slice(0,2).map(postHTML).join("");
+  }
+}
 /* Menu da barra: salva e sai. No meio da narração não grava de novo: o
    save do começo da luta (lutar) é o ponto certo de retomada. */
 function sairParaMenu(){
@@ -6963,6 +7039,7 @@ function atualizarControles(){
   if(cb){const n=(st.momentos||[]).length;cb.textContent=n?String(n):"";}
   atualizarBadgeConquistas();
   renderBarraHub();
+  renderPainel();
 }
 /* Contagem é GLOBAL (localStorage), não da carreira atual — troféu não
    zera quando você começa outra. */

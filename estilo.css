@@ -603,3 +603,56 @@ html[data-tela="hub"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid va
   .tela-hub .momento-item{flex-direction:column}
   .hub-lista.treinador,.hub-lista.conquistas{grid-template-columns:1fr}
 }
+
+/* painel (aba) */
+.painel-grade{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:20px;align-items:start}
+.painel-principal,.painel-lado{display:flex;flex-direction:column;gap:18px;min-width:0}
+.painel-lado{gap:14px}
+.painel-proxima{position:relative;padding:28px 30px 26px;border:1px solid rgba(215,38,30,.38);
+  background:linear-gradient(135deg,rgba(215,38,30,.24) 0%,rgba(17,19,26,.94) 58%);
+  clip-path:polygon(var(--corte) 0,100% 0,100% calc(100% - var(--corte)),calc(100% - var(--corte)) 100%,0 100%,0 var(--corte))}
+.proxima-cab{display:flex;flex-direction:column;gap:4px;margin-bottom:20px}
+.proxima-rot{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.26em;text-transform:uppercase;color:var(--sangue)}
+.proxima-luta{font-family:var(--f-titulo);font-weight:400;font-size:clamp(54px,6.4vw,88px);line-height:.88;text-transform:uppercase}
+.proxima-luta small{margin-left:.35em;font-size:.34em;letter-spacing:.06em;color:var(--cinza)}
+.painel-proxima #controls{margin:0}
+.painel-bloco{padding:20px 22px;background:rgba(17,19,26,.92);border:1px solid var(--linha)}
+.painel-bloco[hidden]{display:none!important}
+.painel-cab{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--cinza)}
+.painel-cab .ico{width:16px;height:16px;color:var(--sangue)}
+.ultima-linha{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.carimbo{flex:none;display:inline-block;padding:7px 14px 6px;font-family:var(--f-titulo);font-weight:400;font-size:26px;line-height:1;letter-spacing:.06em;
+  text-transform:uppercase;color:#fff;background:var(--sangue);transform:rotate(-3deg)}
+.carimbo.d{color:var(--osso-2);background:none;box-shadow:inset 0 0 0 2px var(--cinza)}
+.ultima-quem{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ultima-quem b{font-family:var(--f-ui);font-weight:700;font-size:23px;letter-spacing:.04em;text-transform:uppercase}
+.ultima-quem span{font-size:15px;color:var(--osso-2)}
+.cint-status{margin:0 0 10px;font-family:var(--f-titulo);font-weight:400;font-size:32px;line-height:1;text-transform:uppercase;color:var(--ouro)}
+.cint-barra{position:relative;height:8px;margin:4px 0 14px;background:var(--sup-2)}
+.cint-barra i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--sangue-escuro),var(--sangue));transition:width .8s var(--ease-soco)}
+.cint-barra.ouro i{background:linear-gradient(90deg,#8a6a0e,var(--ouro))}
+.cint-marca{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fundo)}
+.cint-passo{margin:0;font-size:15px;line-height:1.45;color:var(--osso-2)}
+.pos-linha{display:flex;align-items:baseline;gap:10px}
+.pos-num{font-family:var(--f-titulo);font-weight:400;font-size:54px;line-height:1}
+.pos-de{font-family:var(--f-ui);font-weight:600;font-size:16px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
+.pos-mov{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-family:var(--f-ui);font-weight:700;font-size:20px}
+.pos-mov .ico{width:18px;height:18px}
+.pos-mov.sobe{color:var(--ganho)}
+.pos-mov.cai{color:var(--sangue-vivo)}
+.pos-pico{margin-top:4px;font-size:14px;color:var(--cinza)}
+.painel-bloco-lesao{border-color:rgba(215,38,30,.5);box-shadow:inset 3px 0 0 var(--sangue)}
+.lesao-painel-nome{display:block;margin-bottom:2px;font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.04em;text-transform:uppercase}
+.lesao-painel-info{font-size:14px;color:var(--osso-2)}
+.tela-hub .tw{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--linha);font-family:var(--f-texto)}
+.painel-bloco .tw:first-of-type{border-top:0;padding-top:2px}
+.tela-hub .tw .av{flex:none;width:36px;height:36px;display:grid;place-items:center;border-radius:50%;font-family:var(--f-ui);font-weight:700;font-size:14px;color:#fff}
+.tela-hub .tw .who{display:block;font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.03em;color:var(--osso)}
+.tela-hub .tw .who span{font-weight:500;color:var(--cinza)}
+.tela-hub .tw .txt{display:block;font-size:15px;line-height:1.4;color:var(--osso-2)}
+@media (max-width:980px){.painel-grade{grid-template-columns:1fr}}
+@media (max-width:560px){
+  .painel-proxima{padding:22px 20px}
+  .painel-proxima #controls .botao{flex:1 1 auto}
+}

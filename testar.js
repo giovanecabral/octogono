@@ -6424,10 +6424,13 @@ function sandboxCarreira() {
 }
 /* começa uma carreira pelo caminho real: startDraft, draft guloso (mais
    caro que cabe no orçamento, mesmo critério do freqconquistas), startCareer */
-function iniciarCarreiraTeste(ctx, F, seed, modo = "normal") {
+function iniciarCarreiraTeste(ctx, F, seed, modo = "normal", rosterJSON = null) {
   ctx.sb.__F = F;
+  /* rosterJSON: ROSTER já avaliado (rateAll é determinístico e é a parte
+     cara, ~7 s); suítes com muitas carreiras curtas avaliam uma vez só */
+  ctx.sb.__RJ = rosterJSON;
   ctx.run(`(function(){
-    ROSTER=rateAll(globalThis.__F);
+    ROSTER=globalThis.__RJ?JSON.parse(globalThis.__RJ):rateAll(globalThis.__F);
     CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
     DIVISION="lightweight"; MODO=${JSON.stringify(modo)}; SEED=${seed};
     RIVAL_ATIVADO=false; RIVAL_NOME_ESCOLHIDO=null; ROSTO=null;
@@ -6776,9 +6779,11 @@ async function testarHub() {
   const nosDe = (raiz, acc = []) => { if (!raiz) return acc; acc.push(raiz); (raiz.children || []).forEach(c => nosDe(c, acc)); return acc; };
   const EMOJI = /\p{Extended_Pictographic}/u;
   const ORDEM = ["painel", "lutador", "cartel", "midia", "loja", "cards", "conquistas"];
+  const R0 = sandboxCarreira(); R0.sb.__F = F;
+  const rosterJSON = R0.run("JSON.stringify(rateAll(globalThis.__F))");
   const novo = (seed) => {
     const ctx = sandboxCarreira();
-    iniciarCarreiraTeste(ctx, F, seed);
+    iniciarCarreiraTeste(ctx, F, seed, "normal", rosterJSON);
     ctx.run("auto=false;");
     return ctx;
   };
@@ -6886,6 +6891,63 @@ async function testarHub() {
     for (const id of ORDEM) { X.registro["guia_" + id].onclick(); await respirarN(X, 1); }
     const ruim = nosDe(X.registro.app).find(n => EMOJI.test(String(n.innerHTML || "") + String(n.textContent || "")));
     if (ruim) throw new Error("emoji em: " + String(ruim.innerHTML || ruim.textContent).slice(0, 80));
+  });
+
+  await conf("painel: bloco da próxima luta mostra o número da luta e mora junto das ações", async () => {
+    const X = novo(778101);
+    const px = X.registro.painelProxima;
+    if (!px || !/Luta 1\b/.test(px.innerHTML)) throw new Error("próxima luta: " + (px && px.innerHTML));
+    await jogarCarreiraAte(X, 2); X.run("auto=false;renderPainel();");
+    const esperado = "Luta " + (X.run("fightNo") + 1);
+    if (X.run("fightNo") < 2 || !X.registro.painelProxima.innerHTML.includes(esperado + "<"))
+      throw new Error(`esperava "${esperado}": ` + X.registro.painelProxima.innerHTML);
+  });
+
+  await conf("painel: última luta com adversário, método e carimbo certo", async () => {
+    const X = novo(778102);
+    if (!X.registro.painelUltima.hidden) throw new Error("última luta aparece antes de lutar");
+    await jogarCarreiraAte(X, 1); X.run("auto=false;renderPainel();");
+    const reg = JSON.parse(X.run("JSON.stringify(st.registro[st.registro.length-1])"));
+    const h = X.registro.painelUltima.innerHTML;
+    if (X.registro.painelUltima.hidden) throw new Error("última luta escondida depois de lutar");
+    for (const t of [reg.adv, reg.metodo, reg.venceu ? "Vitória" : "Derrota"]) if (!h.includes(t)) throw new Error(`sem "${t}": ${h}`);
+  });
+
+  await conf("painel: caminho até o cinturão usa o passo de verdade, posição tem o número da ficha", async () => {
+    const X = novo(778103);
+    await jogarCarreiraAte(X, 3); X.run("auto=false;renderPainel();");
+    const passo = X.run("passoCinturao()");
+    if (passo && !X.registro.painelCinturao.innerHTML.includes(passo)) throw new Error("passo ausente: " + X.registro.painelCinturao.innerHTML);
+    const n = X.run("posicaoDivisao().n");
+    if (!X.registro.painelPosicao.innerHTML.includes("#" + n)) throw new Error("posição: " + X.registro.painelPosicao.innerHTML);
+  });
+
+  await conf("painel: lesão aparece com st.lesao e some sem ela", async () => {
+    const X = novo(778104);
+    X.run(`st.lesao={nome:"Joelho travado",atributo:"durability",mult:.7,permanente:false,desdeLuta:0,duracao:8};renderPainel();`);
+    const le = X.registro.painelLesao;
+    if (le.hidden || !le.innerHTML.includes("Joelho travado") || !le.innerHTML.includes("Cura em 8 lutas")) throw new Error("lesão: " + le.innerHTML);
+    X.run("st.lesao=null;renderPainel();");
+    if (!le.hidden) throw new Error("lesão não sumiu");
+  });
+
+  await conf("painel: mostra os 2 primeiros posts da repercussão", async () => {
+    const X = novo(778105);
+    if (!X.registro.painelPosts.hidden) throw new Error("posts antes de qualquer luta");
+    X.run(`renderPhone([1,2,3].map(i=>({p:{name:"Fã "+i,handle:"@fa"+i,initials:"F"+i,color:"#333",rt:i},text:"post número "+i})),5,120,2600);`);
+    const h = X.registro.painelPosts.innerHTML;
+    if (X.registro.painelPosts.hidden || !h.includes("post número 1") || !h.includes("post número 2") || h.includes("post número 3"))
+      throw new Error("posts: " + h);
+  });
+
+  await conf("caminho até o cinturão fala na régua da posição (#N), nunca em 'top 5' ou 'ranking dos 15'", async () => {
+    const X = novo(778106);
+    for (const [st0, lim] of [[0.20, 0.35], [0.50, 0.60], [0.70, 0.80]]) {
+      const txt = X.run(`st.title=false;st.standing=${st0};passoCinturao()`);
+      const alvo = "#" + X.run(`posicaoDivisao(${lim}).n`);
+      if (!txt.includes(alvo)) throw new Error(`standing ${st0}: "${txt}" sem ${alvo}`);
+      if (/top 5|ranking dos 15/i.test(txt)) throw new Error(`standing ${st0}: "${txt}"`);
+    }
   });
 
   const ok = !falhas.length;
