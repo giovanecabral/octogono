@@ -783,3 +783,100 @@ html[data-tela="hub"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid va
 /* o nome do adversário na linha do cartel usa a classe .opp, que no
    legado.css também é o card de oferta (borda, fundo, padding) */
 .tela-hub .bout .opp{display:inline;padding:0;border:0;background:none;box-shadow:none;transform:none;cursor:inherit}
+
+/* ---------- noite de luta (fase 5) ---------- */
+html[data-noite="1"] body{overflow:hidden}
+html[data-noite="1"] .cfg-btn{z-index:70}
+.noite{position:fixed;inset:0;z-index:60;overflow-y:auto;overscroll-behavior:contain;background:var(--fundo);color:var(--osso);
+  font-family:var(--f-texto);font-size:16px;line-height:1.5;
+  --bg:var(--fundo);--panel:rgba(17,19,26,.9);--panel2:var(--sup-2);--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.22);
+  --rule:rgba(255,255,255,.1);--ink:var(--osso);--ink2:var(--osso-2);--faded:var(--cinza);--stamp:var(--sangue);--stamp-bright:#F0564D;
+  --win:var(--ganho);--win-bright:#4ADE8A;--win-dim:#6FCF97;--gold:var(--ouro);--gold-bright:#E6B421;--stock:var(--fundo);--stock-2:var(--sup);
+  --mira:rgba(215,38,30,.55);--mira-txt:#F08A84;--mira-bg:rgba(215,38,30,.12)}
+.noite[hidden]{display:none}
+.noite>.tela-fundo{animation:noite-fundo .7s ease both}
+@keyframes noite-fundo{from{opacity:0;transform:scale(1.05)}}
+.noite-conteudo{position:relative;display:flex;flex-direction:column;min-height:100%;max-width:1320px;margin:0 auto;padding:22px 24px 48px}
+.noite-cab{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:0 0 30px;padding-right:64px}
+.noite-cab .btn-voltar[hidden]{display:none}
+.noite-etapas{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.noite-etapa{padding:7px 13px 6px;font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--cinza);background:rgba(17,19,26,.66)}
+.noite-etapa.feita{color:var(--osso-2)}
+.noite-etapa.on{color:#fff;background:var(--sangue)}
+.noite-luta{margin-left:auto;font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
+.noite-luta b{margin:0 3px;font-family:var(--f-titulo);font-weight:400;font-size:30px;letter-spacing:.02em;color:var(--osso)}
+.noite-corpo{flex:1}
+.noite #escolha,.noite #stage{display:none;margin:0}
+.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha{display:block;animation:entra .5s var(--ease-soco) both}
+.noite.etapa-luta #stage,.noite.etapa-resultado #stage{display:block}
+.noite-rodape{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:26px}
+.noite-rodape .botao[hidden]{display:none}
+.noite .esc-hd{margin:0 0 22px;font-family:var(--f-titulo);font-weight:400;font-size:clamp(36px,4.6vw,60px);line-height:.95;letter-spacing:.01em;
+  text-transform:uppercase;color:var(--osso);border:0;padding:0}
+/* oferta */
+.noite .opps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.noite .opp{position:relative;display:flex;flex-direction:column;gap:8px;padding:0 22px 20px;text-align:left;cursor:pointer;color:var(--osso);
+  background:rgba(17,19,26,.95);border:0;box-shadow:inset 0 0 0 1px var(--linha-forte);transition:transform .3s var(--ease-soco),box-shadow .2s;
+  clip-path:polygon(var(--corte) 0,100% 0,100% calc(100% - var(--corte)),calc(100% - var(--corte)) 100%,0 100%,0 var(--corte))}
+.noite .opp .dbanda{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 -22px 10px;padding:13px 22px 12px;
+  font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.22em;text-transform:uppercase;border:0}
+.noite .opp.d1 .dbanda{color:var(--ganho);background:rgba(47,191,113,.14)}
+.noite .opp.d2 .dbanda{color:var(--osso-2);background:rgba(242,238,230,.07)}
+.noite .opp.d3 .dbanda{color:var(--ouro);background:rgba(212,160,23,.15)}
+.noite .opp.d4 .dbanda{color:#F0564D;background:rgba(215,38,30,.2)}
+.noite .opp .vs{font-family:var(--f-ui);font-weight:600;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
+.noite .opp .vs .quem{color:var(--osso-2)}
+.noite .opp .nm{font-family:var(--f-titulo);font-weight:400;font-size:36px;line-height:.95;text-transform:uppercase;color:var(--osso)}
+.noite .opp .arq{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:var(--sangue)}
+.noite .opp .bio{font-size:14px;line-height:1.5;color:var(--osso-2)}
+.noite .opp .bio b{color:var(--osso)}
+.opp-comp{display:grid;gap:5px;margin-top:6px;padding:10px 0;border-top:1px solid var(--linha);border-bottom:1px solid var(--linha)}
+.comp-linha{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:12px;align-items:baseline;font-family:var(--f-ui);font-weight:700;font-size:16px}
+.comp-eu{text-align:right;color:var(--osso)}
+.comp-ele{color:var(--osso)}
+.comp-rot{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cinza)}
+.noite .opp .stake{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:auto;padding-top:10px;border:0;
+  font-family:var(--f-ui);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--cinza)}
+.noite .opp .stake b{font-family:var(--f-titulo);font-weight:400;font-size:26px;letter-spacing:.02em;color:var(--ganho)}
+.noite .opp.rival{box-shadow:inset 0 0 0 2px var(--ouro)}
+.noite .rival-selo{position:absolute;right:14px;top:52px;padding:3px 8px;font-family:var(--f-ui);font-weight:800;font-size:12px;letter-spacing:.18em;color:#15120A;background:var(--ouro)}
+.noite .rival-anuncio{margin:0 0 20px;padding:18px 22px;font-family:var(--f-titulo);font-weight:400;font-size:30px;line-height:1;text-transform:uppercase;
+  color:var(--ouro);background:rgba(212,160,23,.1);border-left:4px solid var(--ouro)}
+.noite .rival-anuncio .sub{display:block;margin-top:8px;font-family:var(--f-texto);font-size:16px;text-transform:none;color:var(--osso-2)}
+/* camp */
+.noite .contra{margin:-8px 0 22px;max-width:72ch;font-size:17px;line-height:1.5;color:var(--osso-2)}
+.noite .contra b{color:var(--osso)}
+.noite .camps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.noite .camp{display:flex;flex-direction:column;gap:8px;padding:22px;text-align:left;cursor:pointer;color:var(--osso);background:rgba(17,19,26,.95);border:0;
+  box-shadow:inset 0 0 0 1px var(--linha-forte);transition:transform .3s var(--ease-soco),box-shadow .2s;
+  clip-path:polygon(var(--corte) 0,100% 0,100% calc(100% - var(--corte)),calc(100% - var(--corte)) 100%,0 100%,0 var(--corte))}
+.noite .camp .t{font-family:var(--f-titulo);font-weight:400;font-size:34px;line-height:1;letter-spacing:.01em;text-transform:uppercase;color:var(--osso)}
+.noite .camp .d{font-size:15px;line-height:1.45;color:var(--osso-2)}
+.noite .camp .g{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--ganho)}
+.noite .camp .pctnum{font-family:var(--f-titulo);font-weight:400;font-size:22px}
+.noite .camp-cap{font-family:var(--f-ui);font-size:12px;letter-spacing:.14em;color:var(--cinza)}
+/* coletiva */
+.noite .coletiva-abertura{margin:0 0 22px;max-width:62ch;padding-left:16px;border-left:3px solid var(--sangue);font-size:20px;line-height:1.5;font-style:italic;color:var(--osso)}
+.coletiva-provocar{display:flex;flex-direction:column;align-items:flex-start;gap:12px;max-width:640px}
+.noite .coletiva-provocar textarea{width:100%;min-height:100px;padding:14px;resize:vertical;font-family:var(--f-texto);font-size:16px;line-height:1.5;
+  color:var(--osso);background:var(--sup-2);border:1px solid var(--linha-forte);border-radius:0}
+.noite .coletiva-provocar textarea:focus{outline:none;border-color:var(--sangue)}
+.noite .bloqueio-pro{max-width:640px}
+.coletiva-pular{margin-top:18px}
+/* luta (visual completo na tarefa 6) */
+.noite .stage{display:none;grid-template-columns:none}
+.noite-luta-ctrl{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.noite .live{margin:0}
+@media (hover:hover) and (pointer:fine){
+  .noite .opp:hover,.noite .camp:hover{transform:translateY(-4px);box-shadow:inset 0 0 0 2px var(--sangue)}
+  .noite .opp.rival:hover{box-shadow:inset 0 0 0 2px var(--ouro)}
+}
+@media (max-width:720px){
+  .noite-conteudo{padding:14px 16px 40px}
+  .noite-cab{gap:12px;margin-bottom:22px;padding-right:56px}
+  .noite-etapa{padding:6px 9px 5px;font-size:12px;letter-spacing:.12em}
+  .noite-luta{margin-left:0}
+  .noite .opp .nm{font-size:30px}
+}
+@media (prefers-reduced-motion:reduce){.noite>.tela-fundo{animation:none}.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha{animation:fade .25s both}}

@@ -1288,6 +1288,7 @@ function tituloDoc(mostrar){
      sempre; tela nova (montarTela) marca data-tela="nova" e o CSS some
      com ele. */
   document.documentElement.dataset.tela="antiga";
+  document.documentElement.dataset.noite="0";
   const h=document.getElementById("dochead-h1");
   if(h)h.style.display=mostrar?"":"none";
 }
@@ -3870,17 +3871,26 @@ function bioLutador(f){
   return linhas.join("<br>");
 }
 
-function telaAdversario(){
+function telaAdversario(guardadas){
   const box=document.getElementById("escolha");
   box.style.display="";
-  const opts=candidatos();
+  /* Revamp fase 5: candidatos() consome rng, então roda UMA vez por luta.
+     Voltar do camp e reabrir a noite passam a oferta guardada. A oferta
+     sorteada vai pro save (PENDENTE "oferta"): recarregar, comprar na
+     loja ou sair pro menu com ela aberta reabre as MESMAS cartas. */
+  const opts=guardadas||candidatos();
+  ofertaAtual=opts;
   /* Modo Rival: anúncio de 1ª aparição (item 4) — sem isto, o rival só
      se distingue por um selo pequeno na carta, fácil de nunca notar
      (achado jogando). Uma vez só por carreira (st.rivalAnunciado). */
-  const rivalNovo=opts.find(o=>o.rival)&&!st.rivalAnunciado;
+  const rivalNovo=!guardadas&&opts.find(o=>o.rival)&&!st.rivalAnunciado;
   if(rivalNovo)st.rivalAnunciado=true;
+  if(!guardadas){
+    PENDENTE={tipo:"oferta",opts:opts.map(o=>({nome:o.f.name,ganho:o.ganho,rival:!!o.rival}))};
+    salvarCarreira();
+  }
   box.innerHTML=`${rivalNovo?`<div class="rival-anuncio">RIVALIDADE COMEÇA AGORA<span class="sub">"${st.rival.nome}" entra na sua carreira — primeira vez que vocês se cruzam.</span></div>`:""}
-    <div class="esc-hd">Luta ${fightNo+1} de ${TOTAL_FIGHTS} — escolha o adversário</div>
+    <div class="esc-hd">Escolha o adversário</div>
     <div class="opps" id="opps"></div>`;
   const g=document.getElementById("opps");
   /* Fase 6 (2026-09-16): dificuldade vira faixa colorida no topo do card
@@ -3909,16 +3919,27 @@ function telaAdversario(){
       <span class="nm">${o.f.name}</span>
       <span class="arq">${o.f.arquetipo||"—"}</span>
       <span class="bio">${bioOuHistorico}</span>
+      ${compararOferta(o.f)}
       <span class="stake"><span>se vencer</span><b>+${Math.round(o.ganho*100)} ranking</b></span>`);
     b.onclick=()=>{SOM.toque();telaCamp(o);};
     g.appendChild(b);
   });
-  box.scrollIntoView({behavior:"smooth",block:"nearest"});
+  mostrarNoite("oferta");
+}
+/* Comparação na carta da oferta (revamp fase 5): só dado público de
+   ficha (alcance, base, lutas no UFC). Atributo de luta do adversário
+   continua escondido de propósito (ver COUNTER_ATTR na escolha da luta). */
+function compararOferta(f){
+  const alc=a=>a!=null?Math.round(a)+String.fromCharCode(34):"-";
+  const linha=(rot,eu,ele)=>`<span class="comp-linha"><span class="comp-eu">${eu}</span><span class="comp-rot">${rot}</span><span class="comp-ele">${ele}</span></span>`;
+  return `<span class="opp-comp">${linha("Alcance",alc(me.reach),alc(f.reach))}${
+    me.stance&&f.stance?linha("Base",me.stance,f.stance):""}${linha("Lutas",fightNo,f.fights!=null?f.fights:"-")}</span>`;
 }
 
 function telaCamp(escolhido){
+  escolhidoAtual=escolhido;
   const box=document.getElementById("escolha");
-  box.innerHTML=`<div class="esc-hd">Camp para ${escolhido.f.name}</div>
+  box.innerHTML=`<div class="esc-hd">Camp pra ${escolhido.f.name}</div>
     <div class="contra">Ele é <b>${escolhido.f.arquetipo||"completo"}</b>${
       escolhido.f.destaque?`, com ${escolhido.f.destaque.eixo} no <b>${Math.round(escolhido.f.destaque.pct*100)}º percentil</b> da divisão`:""}.
       Prepare o que precisa.</div>
@@ -3956,6 +3977,7 @@ function telaCamp(escolhido){
     b.onclick=()=>{SOM.toque();box.style.display="none";box.innerHTML="";telaColetiva(escolhido,c);};
     g.appendChild(b);
   });
+  mostrarNoite("camp");
 }
 
 /* ---------- Plano Pro: coletiva de imprensa pré-luta ---------- */
@@ -3988,13 +4010,18 @@ function telaColetiva(escolhido,camp){
   const opp=escolhido.f,dif=dificuldade(opp);
   const abertura=textoColetivaAbertura(opp);
   const seguir=()=>{box.style.display="none";box.innerHTML="";lutar(escolhido,camp);};
-  box.innerHTML=`<div class="esc-hd">Coletiva · ${me.name} x ${opp.name}</div>
-    <div class="contra">${abertura}</div>
-    <div class="dil-in">
-      <textarea id="colresp" maxlength="200" rows="3" placeholder="O que você responde?"></textarea>
-      <button class="btn btn-sm" id="colgo">Provocar${meuPro?"":seloPro()}</button>
-      <button class="btn btn-sm btn-ghost" id="colpular">Pular</button></div>`;
-  const inp=document.getElementById("colresp"),go=document.getElementById("colgo"),pular=document.getElementById("colpular");
+  /* Revamp fase 5: sem Pro, a área de provocar aparece travada pelo
+     componente único bloqueioPro() (35%, sem clique, selo Assine o Pro);
+     "Pular" fica FORA do bloqueio e segue pra luta. */
+  box.innerHTML="";
+  box.appendChild(el("div","esc-hd",`Coletiva · ${me.name} x ${opp.name}`));
+  box.appendChild(el("div","contra coletiva-abertura",abertura));
+  const area=el("div","dil-in coletiva-provocar",`<textarea id="colresp" maxlength="200" rows="3" placeholder="O que você responde?"></textarea>
+      <button class="botao" id="colgo" type="button">Provocar</button>`);
+  box.appendChild(bloqueioPro(area));
+  const pular=el("button","botao botao-sec coletiva-pular","Pular a coletiva");pular.id="colpular";pular.type="button";
+  box.appendChild(pular);
+  const inp=document.getElementById("colresp"),go=document.getElementById("colgo");
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
   inp.addEventListener("input",cresce);
   pular.onclick=()=>{SOM.toque();seguir();};
@@ -4006,8 +4033,9 @@ function telaColetiva(escolhido,camp){
        oferta do Pro em vez de chamar a IA — nunca gasta chamada com quem
        não pode receber o resultado (api/ai.js recusaria com 403 de
        qualquer jeito, isto só evita a viagem de rede). */
-    if(!meuPro){abrirOfertaPro(box,seguir);return;}
+    if(!meuPro)return;
     go.disabled=true;inp.disabled=true;go.textContent="…";
+    const volta=document.getElementById("noiteVoltar");if(volta)volta.hidden=true;   // resposta a caminho: sem voltar
     const token=await meuAccessToken();
     /* Corta ANTES de chamar a IA — mesmo motivo do dilema: mais barato e
        não depende de a IA ter obedecido a instrução de conteúdo inseguro. */
@@ -4018,7 +4046,8 @@ function telaColetiva(escolhido,camp){
       followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,token});
     aplicarColetiva(box,opp,txt,j,seguir);
   };
-  inp.focus();
+  if(meuPro)inp.focus();
+  mostrarNoite("coletiva");
 }
 function aplicarColetiva(box,opp,txt,jBruto,seguir){
   const jSeguro=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
@@ -5425,6 +5454,7 @@ function fundoTela(nome,{vivo=false}={}){
 function montarTela({fundo=null,vivo=false,titulo=null,voltar="menu",classe=""}={}){
   if(cfgAberto)fecharConfig();
   document.documentElement.dataset.tela="nova";
+  document.documentElement.dataset.noite="0";
   app.innerHTML="";
   const tela=el("div","tela"+(classe?" "+classe:""));
   if(fundo)tela.appendChild(fundoTela(fundo,{vivo}));
@@ -5487,6 +5517,7 @@ function bloqueioPro(elemento){
   if(meuPro)return elemento;
   elemento.className=(elemento.className?elemento.className+" ":"")+"bloqueado";
   elemento.onclick=null;
+  elemento.inert=true;   // o miolo (campo, botão) também sai do teclado, não só do mouse
   if(elemento.setAttribute){ elemento.setAttribute("aria-disabled","true"); elemento.setAttribute("tabindex","-1"); }
   const w=el("div","bloqueio-pro");
   const selo=el("button","selo-assine",`${ICONE("cadeado")}<span>Assine o Pro</span>`);
@@ -5971,6 +6002,18 @@ function retomarPendente(){
       :(LADDER.find(f=>f.name===p.adv)||(RANKING&&RANKING.lista.find(f=>f&&f.name===p.adv))||null);
     if(!opp){ PENDENTE=null; return; }
     rodarLuta(opp,!!st.tituloEstaLuta,!!p.rival,p.semL,p.escolha||null);
+  }else if(p.tipo==="oferta"&&Array.isArray(p.opts)){
+    /* Oferta que já tinha sido sorteada: reabre as MESMAS cartas, sem
+       candidatos() (o rng salvo já passou dela). Adversário que não
+       existe mais no elenco descarta a oferta em vez de travar. */
+    const opts=p.opts.map(o=>{
+      const f=o.rival&&st.rival?st.rival.f
+        :(LADDER.find(x=>x.name===o.nome)||(RANKING&&RANKING.lista.find(x=>x&&x.name===o.nome))||null);
+      return f?{f,ganho:o.ganho,rival:!!o.rival}:null;
+    });
+    if(opts.some(x=>!x)){ PENDENTE=null; return; }
+    escolhaAberta=true;atualizarControles();
+    telaAdversario(opts);
   }else if(p.tipo==="dilema"&&p.d){
     dilemaAberto=true;atualizarControles();
     abrirAbaHub("cartel");
@@ -6815,6 +6858,8 @@ let abaHub="painel";
 function montarTelaCarreira(){
   if(cfgAberto)fecharConfig();
   document.documentElement.dataset.tela="hub";
+  document.documentElement.dataset.noite="0";
+  noiteEtapa=null;ofertaAtual=null;escolhidoAtual=null;
   app.innerHTML="";
   const tela=el("div","tela tela-hub");
   const fundo=fundoTela("arena");fundo.id="hubFundo";
@@ -6855,22 +6900,17 @@ function montarTelaCarreira(){
   const row=el("div","hub-acoes");row.id="controls";
   const next=el("button","botao botao-grande","Próxima luta");next.id="next";next.onclick=()=>nextFight();
   const ab=el("button","botao botao-sec","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
-  const sp=el("button","botao botao-sec","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
   const hint=el("span","hub-contador",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  row.append(next,ab,sp,hint);
-  prox.append(proxCab,row);
+  row.append(next,ab,hint);
+  /* oferta aberta com a noite fechada (Voltar na oferta): a escolha
+     continua de pé, sem sortear de novo; este botão reabre a noite nela */
+  const vn=el("button","botao botao-grande","Voltar à escolha do adversário");vn.id="voltarNoite";vn.hidden=true;
+  vn.onclick=()=>{SOM.toque();mostrarNoite("oferta");};
+  prox.append(proxCab,row,vn);
   principal.appendChild(prox);
   [["painelCinturao",""],["painelPosicao",""],["painelLesao","painel-bloco-lesao"],["painelPosts","painel-bloco-posts"]].forEach(([id,c])=>{
     const b=el("div","painel-bloco"+(c?" "+c:""));b.id=id;lado.appendChild(b);
   });
-  const palco=el("div","hub-palco");
-  const esc=el("div","escolha");esc.id="escolha";esc.style.display="none";
-  const stage=el("div","stage");stage.id="stage";stage.style.display="none";
-  const live=el("div","live");live.id="live";
-  const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
-  stage.append(live,escLuta);
-  palco.append(esc,stage);
-  principal.appendChild(palco);
   const ultima=el("div","painel-bloco painel-ultima");ultima.id="painelUltima";ultima.hidden=true;
   principal.appendChild(ultima);
 
@@ -6888,6 +6928,7 @@ function montarTelaCarreira(){
   [["loja","painelTreinador"],["cards","painelMomentos"],["conquistas","painelConquistas"]].forEach(([a,id])=>{
     const p=el("div","hub-painel");p.id=id;secao[a].appendChild(p);
   });
+  tela.appendChild(montarNoite());
   /* Aposentar continua em sobreposição de propósito: é permanente e pede
      escolha explícita entre Cancelar e Aposentar-se. */
   const painelApos=el("div","painel-overlay");painelApos.id="painelAposentar";
@@ -6895,6 +6936,100 @@ function montarTelaCarreira(){
   app.appendChild(tela);
   abrirAbaHub("painel");
   atualizarControles();
+}
+/* =========================================================================
+   NOITE DE LUTA (revamp fase 5): camada em tela cheia por cima do hub.
+   Só troca de etapa DEPOIS que o estado do jogo mudou (nextFight,
+   telaCamp, telaColetiva, iniciarTelaLuta); não decide nada. Voltar só
+   existe antes da luta começar e nunca sorteia de novo: a oferta fica
+   guardada em ofertaAtual e é redesenhada, não recalculada.
+   ========================================================================= */
+const ETAPAS_NOITE=[
+  {id:"oferta",rot:"Oferta",fundo:"contrato"},
+  {id:"camp",rot:"Camp",fundo:"saco"},
+  {id:"coletiva",rot:"Coletiva",fundo:"imprensa"},
+  {id:"entrada",rot:"Entrada",fundo:"entrada"},
+  {id:"luta",rot:"Luta",fundo:"octogono-luz"},
+  {id:"resultado",rot:"Resultado",fundo:"confete"},
+];
+let noiteEtapa=null,ofertaAtual=null,escolhidoAtual=null;
+function montarNoite(){
+  const noite=el("div","noite");noite.id="noite";noite.hidden=true;
+  const nf=fundoTela("contrato");nf.id="noiteFundo";
+  const nc=el("div","noite-conteudo");
+  const cab=el("header","noite-cab");
+  const volta=el("button","btn-voltar",`${ICONE("seta-esq")}<span>Voltar</span>`);
+  volta.type="button";volta.id="noiteVoltar";volta.onclick=voltarNoite;
+  const etapas=el("div","noite-etapas");etapas.id="noiteEtapas";
+  const luta=el("div","noite-luta");luta.id="noiteLuta";
+  cab.append(volta,etapas,luta);
+  const corpo=el("main","noite-corpo");
+  const esc=el("div","escolha");esc.id="escolha";esc.style.display="none";
+  const stage=el("div","stage");stage.id="stage";stage.style.display="none";
+  const ctrl=el("div","noite-luta-ctrl");
+  const sp=el("button","botao botao-sec","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
+  const na=el("button","botao botao-sec","Modo automático");na.id="noiteAuto";na.onclick=toggleAuto;
+  ctrl.append(sp,na);
+  const live=el("div","live");live.id="live";
+  const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
+  stage.append(ctrl,live,escLuta);
+  corpo.append(esc,stage);
+  const rod=el("footer","noite-rodape");
+  const prox=el("button","botao botao-grande","Próxima luta");prox.id="noiteProxima";prox.hidden=true;
+  prox.onclick=()=>{SOM.toque();nextFight();};
+  const hub=el("button","botao botao-sec","Voltar ao painel");hub.id="noiteHub";hub.hidden=true;
+  hub.onclick=()=>{SOM.toque();esconderNoite();};
+  const fim=el("button","botao botao-grande","Encerrar a carreira");fim.id="noiteEncerrar";fim.hidden=true;
+  fim.onclick=()=>{SOM.toque();screenReport();};
+  rod.append(prox,hub,fim);
+  nc.append(cab,corpo,rod);
+  noite.append(nf,nc);
+  return noite;
+}
+function mostrarNoite(etapa,fundo){
+  const n=document.getElementById("noite");
+  if(!n)return;
+  const i=Math.max(0,ETAPAS_NOITE.findIndex(e=>e.id===etapa));
+  const e=ETAPAS_NOITE[i];
+  const mudou=noiteEtapa!==e.id;
+  noiteEtapa=e.id;
+  n.hidden=false;
+  n.className="noite etapa-"+e.id;
+  document.documentElement.dataset.noite="1";
+  const img=fundo||e.fundo;
+  const f=document.getElementById("noiteFundo");
+  if(f&&(mudou||fundo)){
+    if(f.parentNode){const novo=fundoTela(img);novo.id="noiteFundo";f.parentNode.replaceChild(novo,f);}
+    else f.style.cssText=`--img:url(img/${img}.webp);--img-m:url(img/${img}-m.webp)`;
+  }
+  const et=document.getElementById("noiteEtapas");
+  const atual=e.id==="entrada"?"luta":e.id;
+  const pos=ETAPAS_NOITE.findIndex(x=>x.id===atual);
+  if(et)et.innerHTML=ETAPAS_NOITE.filter(x=>x.id!=="entrada").map(x=>{
+    const j=ETAPAS_NOITE.findIndex(y=>y.id===x.id);
+    return `<span class="noite-etapa${x.id===atual?" on":j<pos?" feita":""}">${x.rot}</span>`;}).join("");
+  const antes=["oferta","camp","coletiva"].includes(e.id);
+  const v=document.getElementById("noiteVoltar");
+  if(v)v.hidden=!antes;
+  const l=document.getElementById("noiteLuta");
+  if(l)l.innerHTML=`Luta <b>${Math.min(TOTAL_FIGHTS,antes?fightNo+1:fightNo)}</b> de ${TOTAL_FIGHTS}`;
+  if(mudou)n.scrollTop=0;
+  atualizarControles();
+}
+function esconderNoite(){
+  const n=document.getElementById("noite");
+  if(!n)return;
+  n.hidden=true;noiteEtapa=null;
+  document.documentElement.dataset.noite="0";
+  abrirAbaHub("painel");
+  atualizarControles();
+}
+function voltarNoite(){
+  SOM.toque();
+  if(playing)return;
+  if(noiteEtapa==="camp"&&ofertaAtual){telaAdversario(ofertaAtual);return;}
+  if(noiteEtapa==="coletiva"&&escolhidoAtual){telaCamp(escolhidoAtual);return;}
+  esconderNoite();
 }
 function montarBarraHub(){
   const b=el("header","hub-barra");
@@ -7058,6 +7193,16 @@ function atualizarControles(){
   const cb=document.getElementById("badge_cards");
   if(cb){const n=(st.momentos||[]).length;cb.textContent=n?String(n):"";}
   atualizarBadgeConquistas();
+  const vn=document.getElementById("voltarNoite");
+  if(vn)vn.hidden=!(escolhaAberta&&!noiteEtapa);
+  next.hidden=!!(escolhaAberta&&!noiteEtapa);
+  const naut=document.getElementById("noiteAuto");
+  if(naut){naut.textContent=auto?"Parar automático":"Modo automático";naut.disabled=ab.disabled;}
+  const livre=!playing&&!dilemaAberto&&!entrevistaAberta&&!escolhaAberta&&!auto;
+  const posLuta=noiteEtapa==="luta"||noiteEtapa==="resultado";
+  const np=document.getElementById("noiteProxima");if(np)np.hidden=!(posLuta&&livre&&!fim);
+  const nh=document.getElementById("noiteHub");if(nh)nh.hidden=!(posLuta&&livre);
+  const ne=document.getElementById("noiteEncerrar");if(ne)ne.hidden=!(posLuta&&livre&&fim);
   renderBarraHub();
   renderPainel();
   renderCartelResumo();
@@ -7083,8 +7228,7 @@ function toggleAuto(){
     if(b){b.style.display="none";b.innerHTML="";}
   }
   const b=document.getElementById("autob");
-  b.classList.toggle("on",auto);
-  b.textContent=auto?"Parar automático":"Modo automático";
+  if(b){b.classList.toggle("on",auto);b.textContent=auto?"Parar automático":"Modo automático";}
   atualizarControles();
   if(auto&&!playing)nextFight();
 }
@@ -7413,7 +7557,8 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
    velocidade só divide o intervalo, nunca pula linha — nada de resultado
    escondido. */
 function iniciarTelaLuta(opp,titleFight){
-  playing=true;atualizarControles();
+  playing=true;
+  mostrarNoite("luta");
   const live=document.getElementById("live");
   document.getElementById("stage").style.display="";
   live.innerHTML=`<div class="live-head">
@@ -7831,7 +7976,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      virou IA, sem fallback — ver dispararEventoIA(). */
   if(fightNo%5===0&&fightNo<TOTAL_FIGHTS){
     dilemaAberto=true;
-    abrirAbaHub("cartel");
+    esconderNoite();abrirAbaHub("cartel");
     if(auto){auto=false;clearTimeout(autoTimer);
       const b=document.getElementById("autob");
       b.classList.remove("on");b.textContent="Modo automático";}

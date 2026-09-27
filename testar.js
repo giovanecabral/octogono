@@ -4885,18 +4885,20 @@ function testarColetivaEntrevista() {
     ai=async()=>{chamouAiGratis=true;return null;};
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
     passo("coletiva sem meuPro: mostra a tela (não pula pra lutar())", !lutarChamado);
-    passo("coletiva sem meuPro: botão mostra o selo Pro",
-      document.getElementById("escolha").innerHTML.includes("Provocar")
-      && document.getElementById("escolha").innerHTML.includes('<span class="selo-pro">Plano Pro</span>'));
+    /* Revamp fase 5: a vitrine virou o componente único bloqueioPro()
+       (spec seção 9): a área de provocar aparece a 35%, inert, com o selo
+       Assine o Pro por cima; "Pular" fica fora do bloqueio. */
+    const temCls=(n,c)=>(n.className||"").split(" ").includes(c);
+    const travaCol=document.getElementById("escolha").children.find(n=>temCls(n,"bloqueio-pro"));
+    passo("coletiva sem meuPro: Provocar fica dentro do bloqueioPro (selo Assine o Pro, área inert)",
+      !!travaCol&&travaCol.children.some(n=>temCls(n,"selo-assine"))
+      &&travaCol.children.some(n=>temCls(n,"bloqueado")&&n.inert===true));
     document.getElementById("colresp").value="ele não passa do primeiro round";
     document.getElementById("colgo").onclick();
-    passo("coletiva sem meuPro: clique em Provocar NUNCA chama a IA", !chamouAiGratis);
-    passo("coletiva sem meuPro: clique em Provocar abre a oferta Pro",
-      document.getElementById("escolha").innerHTML.includes("Recurso Pro"));
-    const contProGo=document.getElementById("ofertaProContinuar");
-    passo("coletiva sem meuPro: oferta tem 'Continuar' que ainda chama lutar()", !!contProGo);
-    contProGo.onclick();
-    passo("coletiva sem meuPro: 'Continuar' da oferta chama lutar() com o mesmo escolhido/camp",
+    passo("coletiva sem meuPro: Provocar acionado por fora da tela NUNCA chama a IA", !chamouAiGratis);
+    passo("coletiva sem meuPro: Provocar não segue pra luta sozinho", !lutarChamado);
+    document.getElementById("colpular").onclick();
+    passo("coletiva sem meuPro: 'Pular' fica fora do bloqueio e chama lutar() com o mesmo escolhido/camp",
       !!lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
 
     /* ---------- COLETIVA: 'Pular' não mexe em nada, segue direto ---------- */
@@ -7034,6 +7036,99 @@ async function testarHub() {
     const pts = m[1].trim().split(/\s+/).length;
     if (pts !== n + 1) throw new Error(`${pts} pontos para ${n} lutas`);
     if (!h.includes(X.run("fmtNum(st.followers)"))) throw new Error("gráfico sem o total atual");
+  });
+
+  /* ---------- noite de luta (tarefa 5): oferta, camp, coletiva ---------- */
+  const ultimasCartas = (X, id, cls) => (X.registro[id] ? X.registro[id].children : []).filter(n => tem(n, cls) && n.onclick);
+  const abrirOferta = X => { X.run("auto=false;nextFight();"); };
+
+  await conf("noite: Próxima luta abre a noite na oferta, com fundo próprio e Voltar", async () => {
+    const X = novo(778501);
+    abrirOferta(X);
+    if (X.registro.noite.hidden) throw new Error("noite não abriu");
+    if (X.run("noiteEtapa") !== "oferta") throw new Error("etapa " + X.run("noiteEtapa"));
+    if (!String(X.registro.noiteFundo.style.cssText).includes("img/contrato.webp")) throw new Error("fundo " + X.registro.noiteFundo.style.cssText);
+    if (X.registro.noiteVoltar.hidden) throw new Error("oferta sem Voltar");
+    if (ultimasCartas(X, "opps", "opp").length < 1) throw new Error("sem cartas de adversário");
+  });
+
+  await conf("noite: Voltar do camp redesenha a MESMA oferta sem consumir rng; Voltar da oferta fecha e o Painel volta pra ela", async () => {
+    const X = novo(778502);
+    abrirOferta(X);
+    const nomes = X.run("JSON.stringify(ofertaAtual.map(o=>o.f.name))");
+    const rng0 = X.run("rng.estado()"), hold0 = X.run("holdRng.estado()");
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    if (X.run("noiteEtapa") !== "camp") throw new Error("não foi pro camp");
+    if (!String(X.registro.noiteFundo.style.cssText).includes("img/saco.webp")) throw new Error("fundo do camp");
+    X.registro.noiteVoltar.onclick();
+    if (X.run("noiteEtapa") !== "oferta") throw new Error("Voltar do camp foi pra " + X.run("noiteEtapa"));
+    if (X.run("JSON.stringify(ofertaAtual.map(o=>o.f.name))") !== nomes) throw new Error("oferta mudou");
+    if (X.run("rng.estado()") !== rng0 || X.run("holdRng.estado()") !== hold0) throw new Error("Voltar consumiu gerador");
+    X.registro.noiteVoltar.onclick();
+    if (!X.registro.noite.hidden || X.run("noiteEtapa") !== null) throw new Error("Voltar da oferta não fechou a noite");
+    if (!X.run("escolhaAberta")) throw new Error("oferta foi descartada");
+    const vn = X.registro.voltarNoite;
+    if (!vn || vn.hidden || !vn.onclick) throw new Error("Painel não oferece voltar à oferta");
+    vn.onclick();
+    if (X.registro.noite.hidden || X.run("noiteEtapa") !== "oferta") throw new Error("não reabriu a oferta");
+    if (X.run("JSON.stringify(ofertaAtual.map(o=>o.f.name))") !== nomes) throw new Error("oferta mudou ao reabrir");
+  });
+
+  await conf("noite: coletiva sem Pro trava Provocar (bloqueioPro, inert) e Pular segue pra luta", async () => {
+    const X = novo(778503);
+    X.run("meuPro=false;");
+    abrirOferta(X);
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    if (X.run("noiteEtapa") !== "coletiva") throw new Error("etapa " + X.run("noiteEtapa"));
+    const nos = nosDe(X.registro.escolha);
+    const trava = nos.find(n => tem(n, "bloqueio-pro"));
+    if (!trava) throw new Error("Provocar sem bloqueioPro");
+    const travado = trava.children.find(n => tem(n, "bloqueado"));
+    if (!travado || !travado.inert) throw new Error("área travada sem inert");
+    if (!trava.children.some(n => tem(n, "selo-assine"))) throw new Error("sem selo Assine o Pro");
+    const pular = X.registro.colpular;
+    if (!pular || !pular.onclick || nosDe(trava).includes(pular)) throw new Error("Pular dentro do bloqueio ou sem clique");
+    const f0 = X.run("fightNo");
+    pular.onclick();
+    if (X.run("fightNo") !== f0 + 1 || !X.run("playing")) throw new Error("Pular não começou a luta");
+    if (X.run("noiteEtapa") === "oferta" || X.registro.noiteVoltar.hidden === false) throw new Error("Voltar visível durante a luta");
+  });
+
+  await conf("noite: coletiva com Pro não trava", async () => {
+    const X = novo(778504);
+    X.run("meuPro=true;");
+    abrirOferta(X);
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    if (nosDe(X.registro.escolha).some(n => tem(n, "bloqueio-pro"))) throw new Error("travou com Pro");
+  });
+
+  await conf("save: oferta aberta + compra na loja + recarregar = mesma oferta e a mesma luta de quem jogou direto", async () => {
+    const A = novo(778505);
+    await jogarCarreiraAte(A, 2); A.run("auto=false;");
+    abrirOferta(A);
+    const nomesA = A.run("JSON.stringify(ofertaAtual.map(o=>o.f.name))");
+    A.run("st.dinheiro=999999;LOJA_ITENS[1].comprar();salvarCarreira();");
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = sandboxCarreira();
+    B.sb.__F = F; B.sb.__RJ = rosterJSON; B.sb.__save = save;
+    B.run(`ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;retomarCarreira(JSON.parse(globalThis.__save));`);
+    if (!B.run("escolhaAberta") || B.run("PENDENTE&&PENDENTE.tipo") !== "oferta") throw new Error("oferta não reabriu");
+    if (B.run("JSON.stringify(ofertaAtual.map(o=>o.f.name))") !== nomesA) throw new Error("oferta diferente depois de recarregar");
+    const lutaAte = async (X) => {
+      ultimasCartas(X, "opps", "opp")[0].onclick();
+      ultimasCartas(X, "camps", "camp")[1].onclick();
+      X.registro.colpular.onclick();
+      for (let k = 0; k < 12 && X.run("playing"); k++) {
+        X.drenar(); await respirarCarreira();
+        const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+        if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+      }
+      return X.run("JSON.stringify((({adv,venceu,metodo,round,relogio})=>({adv,venceu,metodo,round,relogio}))(st.registro[st.registro.length-1]))");
+    };
+    const la = await lutaAte(A), lb = await lutaAte(B);
+    if (la !== lb) throw new Error(`direta ${la} x retomada ${lb}`);
   });
 
   const ok = !falhas.length;
