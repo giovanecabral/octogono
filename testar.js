@@ -7131,6 +7131,67 @@ async function testarHub() {
     if (la !== lb) throw new Error(`direta ${la} x retomada ${lb}`);
   });
 
+  /* ---------- noite de luta (tarefa 6): entrada e luta ---------- */
+  await conf("entrada: no manual sem reduce-motion mostra o tale of the tape e segura a narração até acabar", async () => {
+    const X = novo(778601);
+    X.run("window.matchMedia=()=>({matches:false});meuPro=true;auto=false;nextFight();");
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    const playAntes = X.registro.play ? X.registro.play.children.length : 0;
+    X.registro.colpular.onclick();
+    if (X.run("noiteEtapa") !== "entrada") throw new Error("etapa " + X.run("noiteEtapa"));
+    const ent = X.registro.entrada;
+    const nome = X.run("ofertaAtual[0].f.name");
+    if (!ent.innerHTML.includes(nome) || !ent.innerHTML.includes(X.run("me.name"))) throw new Error("entrada sem os dois nomes");
+    if ((X.registro.play ? X.registro.play.children.length : 0) !== playAntes) throw new Error("narração começou durante a entrada");
+    const pular = ent.children.find(n => tem(n, "entrada-pular"));
+    if (!pular || !pular.onclick) throw new Error("entrada sem Pular");
+    pular.onclick(); pular.onclick();
+    if (X.run("noiteEtapa") !== "luta") throw new Error("Pular não foi pra luta");
+    if (X.registro.play.children.length <= playAntes) throw new Error("narração não começou depois da entrada");
+  });
+
+  await conf("entrada: pulada no automático e com reduce-motion (mesma luta, mesmo resultado)", async () => {
+    const res = [];
+    for (const comEntrada of [false, true]) {
+      const X = novo(778602);
+      X.run(`window.matchMedia=()=>({matches:${comEntrada ? "false" : "true"}});meuPro=true;auto=false;nextFight();`);
+      ultimasCartas(X, "opps", "opp")[1].onclick();
+      ultimasCartas(X, "camps", "camp")[2].onclick();
+      X.registro.colpular.onclick();
+      if (comEntrada && X.run("noiteEtapa") !== "entrada") throw new Error("sem entrada no manual");
+      if (!comEntrada && X.run("noiteEtapa") !== "luta") throw new Error("entrada com reduce-motion");
+      for (let k = 0; k < 20 && X.run("playing"); k++) {
+        X.drenar(); await respirarCarreira();
+        const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+        if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+      }
+      res.push(X.run("JSON.stringify((({adv,venceu,metodo,round,relogio})=>({adv,venceu,metodo,round,relogio}))(st.registro[st.registro.length-1]))"));
+    }
+    if (res[0] !== res[1]) throw new Error(`sem entrada ${res[0]} x com entrada ${res[1]}`);
+  });
+
+  await conf("luta: placar no topo com os dois nomes e números ao lado que começam zerados e andam depois dos rounds", async () => {
+    const X = novo(778603);
+    X.run("meuPro=true;auto=false;nextFight();");
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    X.registro.colpular.onclick();
+    const live = X.registro.live.innerHTML;
+    if (!live.includes("placar") || !live.includes(X.run("me.name")) || !live.includes(X.run("ofertaAtual[0].f.name"))) throw new Error("placar: " + live.slice(0, 200));
+    const zero = (/<aside class="luta-numeros[^>]*>([\s\S]*?)<\/aside>/.exec(live) || [])[1] || "";
+    const zeros = [...zero.matchAll(/data-num="[a-z]+-(eu|ele)"><b>(\d+)<\/b>/g)].map(m => +m[2]);
+    if (zeros.length !== 6 || zeros.some(v => v !== 0)) throw new Error("números não começam zerados: " + zero.slice(0, 200));
+    for (let k = 0; k < 20 && X.run("playing"); k++) {
+      X.drenar(); await respirarCarreira();
+      const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+      if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+    }
+    const fim = X.registro.lutaNumeros.innerHTML;
+    const golpes = [...fim.matchAll(/data-num="golpes-(eu|ele)"><b>(\d+)<\/b>/g)].map(m => +m[2]);
+    if (golpes.length !== 2 || golpes[0] + golpes[1] === 0) throw new Error("golpes no fim: " + fim.slice(0, 300));
+  });
+
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("hub ok") : vermelho(`${falhas.length} falha(s) no hub`)));
   return ok;

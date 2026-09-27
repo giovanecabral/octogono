@@ -880,3 +880,89 @@ html[data-noite="1"] .cfg-btn{z-index:70}
   .noite .opp .nm{font-size:30px}
 }
 @media (prefers-reduced-motion:reduce){.noite>.tela-fundo{animation:none}.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha{animation:fade .25s both}}
+
+/* entrada (tale of the tape antes do round 1) */
+.noite #entrada{display:none}
+.noite.etapa-entrada #entrada{display:flex;flex-direction:column;align-items:center;gap:22px;padding-top:6px;animation:entrada-in .5s var(--ease-soco) both}
+@keyframes entrada-in{from{opacity:0;transform:scale(1.04)}}
+.entrada-cint{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;font-family:var(--f-ui);font-weight:800;font-size:15px;letter-spacing:.24em;
+  text-transform:uppercase;color:#15120A;background:var(--ouro)}
+.entrada-lados{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:end;gap:26px;width:100%;max-width:1040px}
+.entrada-lado{display:flex;flex-direction:column;gap:8px;min-width:0}
+.entrada-lado.eu{align-items:flex-end;text-align:right}
+.entrada-lado.ele{align-items:flex-start;text-align:left}
+.entrada-lado b{font-family:var(--f-titulo);font-weight:400;font-size:clamp(40px,5.6vw,78px);line-height:.92;text-transform:uppercase;overflow-wrap:anywhere}
+.entrada-lado>span{font-family:var(--f-ui);font-weight:700;font-size:16px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.entrada-retrato{width:190px;filter:drop-shadow(0 18px 30px rgba(0,0,0,.65))}
+.entrada-retrato svg{display:block;width:190px;height:auto}
+.entrada-vs{align-self:center;font-family:var(--f-titulo);font-size:66px;line-height:1;color:var(--sangue)}
+.entrada-lado .entrada-dif{padding:4px 10px;font-size:13px;letter-spacing:.2em;color:var(--osso)}
+.entrada-dif.d1{background:rgba(47,191,113,.28)}
+.entrada-dif.d2{background:rgba(242,238,230,.14)}
+.entrada-dif.d3{background:rgba(212,160,23,.32)}
+.entrada-dif.d4{background:rgba(215,38,30,.5)}
+.tale{display:grid;gap:1px;width:100%;max-width:640px;background:var(--linha);border:1px solid var(--linha)}
+.tale-linha{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:16px;align-items:baseline;padding:10px 18px;background:rgba(17,19,26,.95)}
+.tale-a{text-align:right;font-family:var(--f-ui);font-weight:700;font-size:20px}
+.tale-b{font-family:var(--f-ui);font-weight:700;font-size:20px}
+.tale-rot{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--cinza)}
+
+/* luta: placar no topo, narração no centro, números ao lado */
+.noite .live{border:0;background:none}
+.placar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px;margin:0 0 16px;padding:16px 22px;
+  background:rgba(7,8,11,.88);border:1px solid var(--linha-forte);border-bottom:3px solid var(--sangue)}
+.placar-lado{display:flex;align-items:center;gap:14px;min-width:0}
+.placar-lado.ele{justify-content:flex-end;text-align:right}
+.placar-lado b{overflow:hidden;font-family:var(--f-titulo);font-weight:400;font-size:clamp(24px,3vw,40px);line-height:1;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap}
+.placar-retrato{flex:none;width:54px;height:54px;overflow:hidden;background:var(--sup-2);
+  clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+.placar-retrato svg{display:block;width:54px;height:auto;margin-top:6px}
+.placar-centro{display:flex;flex-direction:column;align-items:center;gap:3px}
+.placar .rd{font-family:var(--f-titulo);font-weight:400;font-size:34px;line-height:1;letter-spacing:.02em;text-transform:uppercase;color:var(--osso)}
+.placar-sub{font-family:var(--f-ui);font-weight:600;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--cinza)}
+.placar-cint{display:inline-flex;align-items:center;gap:6px;margin-top:3px;padding:2px 8px;font-family:var(--f-ui);font-weight:800;font-size:12px;
+  letter-spacing:.18em;text-transform:uppercase;color:#15120A;background:var(--ouro)}
+.placar-cint .ico{width:14px;height:14px}
+.luta-grade{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+.noite .play{min-height:320px;max-height:none;overflow:visible;margin:0;padding:6px 22px 18px;background:rgba(17,19,26,.92);border:1px solid var(--linha)}
+.noite .pbp{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:7px 0;border:0;font-size:17px;line-height:1.45;color:var(--osso-2);animation:linha-in .25s ease both}
+@keyframes linha-in{from{opacity:0;transform:translateY(6px)}}
+.noite .pbp .clk{font-family:var(--f-ui);font-weight:600;font-size:15px;color:var(--cinza)}
+.noite .pbp.big{font-weight:600;color:var(--osso)}
+.noite .pbp.kd{font-weight:700;color:#F0564D}
+.noite .pbp.rd{margin-top:8px;padding-top:12px;border-top:1px solid var(--linha);font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--cinza)}
+.noite .pbp.fin{margin-top:6px;font-family:var(--f-titulo);font-weight:400;font-size:28px;line-height:1.1;text-transform:uppercase;color:var(--sangue-vivo)}
+.luta-numeros{position:sticky;top:12px}
+.num-linha{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:baseline;padding:11px 0;border-top:1px solid var(--linha)}
+.luta-numeros .painel-cab+.num-linha{border-top:0}
+.num-v b{font-family:var(--f-titulo);font-weight:400;font-size:32px;line-height:1}
+.num-rot{text-align:center;font-family:var(--f-ui);font-weight:700;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--cinza)}
+.num-barra{grid-column:1/-1;height:4px;background:var(--linha-forte)}
+.num-barra i{display:block;height:100%;background:var(--sangue);transition:width .6s var(--ease-soco)}
+/* escolha na luta: por cima da narração */
+.noite .escolha-luta{position:sticky;bottom:12px;z-index:5;margin:16px 0 0;padding:20px 22px;background:rgba(17,19,26,.98);
+  border:1px solid var(--linha-forte);border-top:3px solid var(--sangue);box-shadow:0 -18px 40px rgba(0,0,0,.55)}
+.noite .el-cab{margin:0 0 14px;font-family:var(--f-ui);font-weight:700;font-size:19px;letter-spacing:.03em;color:var(--osso)}
+.noite .el-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.noite .el-opts button{display:flex;flex-direction:column;gap:8px;padding:16px;text-align:left;cursor:pointer;color:var(--osso);background:var(--sup-2);border:0;
+  box-shadow:inset 0 0 0 1px var(--linha-forte);transition:background .2s,box-shadow .2s;
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+.noite .el-nome{font-family:var(--f-titulo);font-weight:400;font-size:24px;line-height:1;text-transform:uppercase}
+.noite .el-attr{font-family:var(--f-ui);font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
+.noite .el-attr b{font-size:16px;color:var(--ganho)}
+@media (hover:hover) and (pointer:fine){.noite .el-opts button:hover{background:rgba(215,38,30,.14);box-shadow:inset 0 0 0 2px var(--sangue)}}
+@media (max-width:900px){.luta-grade{grid-template-columns:minmax(0,1fr)}.luta-numeros{position:static;order:-1}}
+@media (max-width:560px){
+  .placar{gap:10px;padding:12px 14px}
+  .placar-retrato{display:none}
+  .placar .rd{font-size:26px}
+  .noite .play{padding:4px 14px 14px}
+  .noite .pbp{grid-template-columns:44px minmax(0,1fr);font-size:15px}
+  .noite .pbp.fin{font-size:22px}
+  .entrada-lados{grid-template-columns:minmax(0,1fr);justify-items:center;gap:10px}
+  .entrada-lado.eu,.entrada-lado.ele{align-items:center;text-align:center}
+  .entrada-retrato,.entrada-retrato svg{width:130px}
+  .entrada-vs{font-size:40px}
+}
+@media (prefers-reduced-motion:reduce){.noite .pbp{animation:none}}

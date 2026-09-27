@@ -6973,7 +6973,8 @@ function montarNoite(){
   const live=el("div","live");live.id="live";
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
   stage.append(ctrl,live,escLuta);
-  corpo.append(esc,stage);
+  const ent=el("div","entrada");ent.id="entrada";
+  corpo.append(esc,ent,stage);
   const rod=el("footer","noite-rodape");
   const prox=el("button","botao botao-grande","Próxima luta");prox.id="noiteProxima";prox.hidden=true;
   prox.onclick=()=>{SOM.toque();nextFight();};
@@ -7517,11 +7518,12 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
                             b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks}:null;
     const res=simularRound(A,B,round,rngL,push,fin,scores);
     const trecho=log.slice(marca);marca=log.length;
-    if(res){animarTrecho(trecho,()=>encerrar(res));return;}
+    if(res){animarTrecho(trecho,()=>{atualizarNumerosLuta(A,B);encerrar(res);});return;}
     const scouting=antes&&{burstA:A.sigStrikes-antes.a,burstB:B.sigStrikes-antes.b,
       tdA:A.takedowns-antes.at,tdB:B.takedowns-antes.bt,
       ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc};
     animarTrecho(trecho,()=>{
+      atualizarNumerosLuta(A,B);
       if(round===1){
         if(escolhaFixa){
           if(escolhaFixa.attr)A.mAttr[escolhaFixa.attr]=escolhaFixa.mod;
@@ -7547,7 +7549,49 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
       }
     });
   };
-  proximaRodada();
+  /* A entrada (revamp fase 5) só atrasa o COMEÇO da narração: o round 1
+     é simulado no mesmo ponto da sequência de sempre, depois dela. */
+  aposEntrada(opp,titleFight,proximaRodada);
+}
+/* Entrada: 1,5 s de tale of the tape antes do primeiro round, pulável.
+   Só no manual e sem prefers-reduced-motion; no automático vai direto. */
+let entradaTimer=null;
+function aposEntrada(opp,titleFight,seguir){
+  const e=document.getElementById("entrada");
+  if(auto||reduceMotion()||!e){mostrarNoite("luta");seguir();return;}
+  let feito=false;
+  const fim=()=>{ if(feito)return; feito=true; clearTimeout(entradaTimer); mostrarNoite("luta"); seguir(); };
+  const alc=a=>a!=null?Math.round(a)+String.fromCharCode(34):"-";
+  const lin=(rot,a,b)=>`<div class="tale-linha"><span class="tale-a">${a}</span><span class="tale-rot">${rot}</span><span class="tale-b">${b}</span></div>`;
+  const d=dificuldade(opp);
+  e.innerHTML=`${titleFight?`<div class="entrada-cint">${ICONE("coroa")}<span>Luta de cinturão</span></div>`:""}
+    <div class="entrada-lados">
+      <div class="entrada-lado eu"><div class="entrada-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:190})}</div>
+        <b>${me.name}</b><span>${st.wins}-${st.losses}</span></div>
+      <div class="entrada-vs">vs</div>
+      <div class="entrada-lado ele"><span class="entrada-dif d${d.n}">${d.rot}</span>
+        <b>${opp.name}</b><span>${opp.arquetipo||"Completo"}</span></div>
+    </div>
+    <div class="tale">${lin("Lutas",fightNo-1,opp.fights!=null?opp.fights:"-")}${lin("Alcance",alc(me.reach),alc(opp.reach))}${
+      me.stance&&opp.stance?lin("Base",me.stance,opp.stance):""}${lin("Estilo",assinatura(),opp.arquetipo||"Completo")}</div>`;
+  const pular=el("button","botao botao-sec entrada-pular",`${ICONE("pular")}<span>Pular</span>`);
+  pular.type="button";pular.onclick=()=>{SOM.toque();fim();};
+  e.appendChild(pular);
+  mostrarNoite("entrada");
+  entradaTimer=setTimeout(fim,1500);
+}
+/* Números ao lado da narração: atualizados no FIM de cada round narrado
+   (o motor já simulou o round inteiro antes da narração começar; mostrar
+   antes seria contar o resultado). */
+function atualizarNumerosLuta(A,B){
+  const n=document.getElementById("lutaNumeros");
+  if(!n||!A||!B)return;
+  n.innerHTML=painelNumeros({golpes:[A.sigStrikes||0,B.sigStrikes||0],quedas:[A.takedowns||0,B.takedowns||0],kd:[A.knockdowns||0,B.knockdowns||0]});
+}
+function painelNumeros(v){
+  const lin=(id,rot,[a,b])=>`<div class="num-linha"><span class="num-v" data-num="${id}-eu"><b>${a}</b></span><span class="num-rot">${rot}</span><span class="num-v" data-num="${id}-ele"><b>${b}</b></span>
+    <span class="num-barra"><i style="width:${a+b?Math.round(100*a/(a+b)):0}%"></i></span></div>`;
+  return `<div class="painel-cab">${ICONE("grafico")}Na luta</div>${lin("golpes","Golpes significativos",v.golpes)}${lin("quedas","Quedas",v.quedas)}${lin("kd","Knockdowns",v.kd)}`;
 }
 /* Narração: cabeçalho monta UMA vez por luta (iniciarTelaLuta), o log
    anima em PEDAÇOS (animarTrecho) — desde o item 3 ("escolha na luta"),
@@ -7558,16 +7602,18 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
    escondido. */
 function iniciarTelaLuta(opp,titleFight){
   playing=true;
-  mostrarNoite("luta");
   const live=document.getElementById("live");
   document.getElementById("stage").style.display="";
-  live.innerHTML=`<div class="live-head">
-      <span class="vs" style="display:flex;align-items:center;gap:9px">
-        ${bonecoSVG(ROSTO||cfgPadrao(),{w:38})}
-        <span>${me.name} &nbsp;vs&nbsp; ${opp.name}${titleFight?" · cinturão":""}</span>
-      </span>
-      <span class="rd" id="rdlabel">Round 1</span></div>
-    <div class="play" id="play"></div>`;
+  live.innerHTML=`<div class="placar">
+      <div class="placar-lado eu"><span class="placar-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:54})}</span><b>${me.name}</b></div>
+      <div class="placar-centro"><span class="rd" id="rdlabel">Round 1</span><span class="placar-sub">${titleFight?5:3} rounds</span>${
+        titleFight?`<span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}</div>
+      <div class="placar-lado ele"><b>${opp.name}</b></div>
+    </div>
+    <div class="luta-grade">
+      <div class="play" id="play"></div>
+      <aside class="luta-numeros painel-bloco" id="lutaNumeros">${painelNumeros({golpes:[0,0],quedas:[0,0],kd:[0,0]})}</aside>
+    </div>`;
 }
 function animarTrecho(lines,aoTerminar){
   const play=document.getElementById("play");let i=0;
