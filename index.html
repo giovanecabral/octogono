@@ -6199,43 +6199,35 @@ function lerDesafio(){
     return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal"};
   }catch(e){return null;}
 }
-function screenName(){
-  tituloDoc(true);
-  app.innerHTML="";
+function screenName(nomeInicial=""){
+  /* Passo 1 do assistente (revamp fase 4). Link de desafio pula divisão e
+     rival (vêm do link): 3 passos em vez de 5. */
   const desafio=lerDesafio();
-  app.appendChild(el("div","eyebrow",desafio?"Você foi desafiado":"Abertura de registro"));
+  const total=desafio?3:5;
+  const c=montarPasso(1,total,{titulo:"Nome do lutador",fundo:"tunel",voltar:"menu"});
   if(desafio){
     const d=DIVISOES.find(x=>x.id===desafio.div);
-    app.appendChild(el("div","legend",
-      `Alguém mandou a carreira dele pra você. <b>${d.nome}</b>${
-        desafio.modo==="lenda"?", no modo <b>Seja uma lenda</b>":""}, com os
-       mesmos adversários, na mesma ordem. O draft (se rolar novamente) e os
-       eventos da carreira podem sair diferentes — o resto é você quem faz.`));
+    c.appendChild(el("div","faixa-desafio",
+      `${ICONE("luta")}<span><b>Você foi desafiado.</b> ${d.nome}${desafio.modo==="lenda"?", modo Seja uma lenda":""}, com os mesmos adversários na mesma ordem de quem te mandou o link. O draft e os eventos podem sair diferentes.</span>`));
   }
-  /* Reaproveita a identidade da Início (octógono de fundo, peso do botão
-     "Jogar") em vez de cair num formulário burocrático genérico — é a
-     tela seguinte no funil, mesma frase de "isto é o Octógono".
-     Frase cortada pra uma linha (2026-09-16): quem clicou em Jogar já
-     quer jogar, não ler duas frases antes do primeiro campo. */
-  const tela=el("div","tela-registro");
-  const oct=el("div","inicio-oct");oct.innerHTML=octogonoSVG();
-  const form=el("div","registro-form");
-  const p=el("p","inicio-tagline",`Todo lutador começa com um nome — o resto é luta.`);
+  const form=el("div","nome-form");
   const inp=el("input");inp.type="text";inp.className="input-hero";
-  inp.placeholder="Nome do lutador";inp.maxLength=28;
-  const go=el("button","inicio-item inicio-item-principal","Montar o lutador");
+  inp.placeholder="Nome do lutador";inp.maxLength=28;inp.value=nomeInicial||"";
+  const go=el("button","botao botao-grande","Montar o lutador");
+  go.type="button";
   go.onclick=()=>{
     const n=inp.value.trim();
     if(!n){inp.focus();return;}
+    SOM.toque();
     const dz=lerDesafio();
     try{const r=localStorage.getItem("rosto");if(r)ROSTO=JSON.parse(r);}catch(e){}
     if(dz){DIVISION=dz.div;SEED=dz.seed;MODO=dz.modo;screenCriador(n);}
     else{SEED=0;MODO="normal";screenCriador(n);}
   };
   inp.onkeydown=e=>{if(e.key==="Enter")go.click();};
-  form.append(p,inp,go);
-  tela.append(oct,form);
-  app.appendChild(tela);
+  form.append(inp,go);
+  c.appendChild(form);
+  c.appendChild(el("p","tela-sub nome-dica","Aparece em cada luta, no card de momento e no ranking."));
   inp.focus();
 }
 
@@ -6259,16 +6251,18 @@ const CATEGORIAS=[
 let CAT_ATIVA=0;
 
 function screenCriador(name){
+  /* Passo 2 do assistente (revamp fase 4): mesma lógica de sempre, na
+     moldura nova. Voltar leva ao Passo 1 com o nome preenchido. */
   ROSTO=ROSTO||cfgPadrao();
-  app.innerHTML="";
+  const dzPasso=lerDesafio();
+  const c=montarPasso(2,dzPasso?3:5,{titulo:"Visual",fundo:"vestiario",voltar:()=>screenName(name)});
   docmeta.textContent=`Registro · ${name}`;
-  app.appendChild(el("div","eyebrow","Monte o seu lutador"));
 
   const wrap=el("div","criador");
   const palco=el("div","palco");palco.id="palco";
   const pain=el("div","painelC");
   pain.innerHTML=`<div class="abas" id="abas"></div><div class="corpoC" id="corpoC"></div>`;
-  wrap.append(palco,pain);app.appendChild(wrap);
+  wrap.append(palco,pain);c.appendChild(wrap);
 
   const desenha=()=>{
     palco.innerHTML=`<div class="col-t">Seu lutador</div>`+bonecoSVG(ROSTO,{w:250})+
@@ -6346,7 +6340,8 @@ function screenCriador(name){
   pular.onclick=()=>{ROSTO=rostoAleatorio();evento("pulou_criador");avancar();};
   const ok=el("button","btn",dz?"Começar a carreira":"Escolher divisão");
   ok.onclick=avancar;
-  row.append(ok,rand,pular);app.appendChild(row);
+  row.className="row criador-acoes";
+  row.append(ok,rand,pular);c.appendChild(row);
   desenha();corpo();
 }
 
@@ -6361,16 +6356,17 @@ const MODOS=[
 ];
 function screenDivisao(name){
   RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null; // reseta a cada carreira nova
-  app.innerHTML="";
+  /* Passo 3 do assistente (revamp fase 4). Seja uma lenda passa pelo
+     bloqueioPro() sem Pro: aparece apagado, só o selo clica. */
+  const c=montarPasso(3,5,{titulo:"Divisão",fundo:"arena-alto",voltar:()=>screenCriador(name)});
   docmeta.textContent=`Registro · ${name}`;
-  app.appendChild(el("div","eyebrow","Em que divisão você vai lutar"));
-  app.appendChild(el("p","","A divisão muda tudo: quem você enfrenta, quanto se nocauteia e o quanto o seu queixo aguenta. Peso-pesado acaba luta cedo; mosca vai pros cartões."));
+  c.appendChild(el("p","tela-sub","A divisão decide quem você enfrenta e como as lutas terminam. Peso-pesado acaba cedo; mosca vai pros cartões."));
   /* O modo vem ANTES da divisão porque é ele que decide quantos lutadores cada
      divisão tem — e quais delas deixam de fechar 22 lutas sem repetir. */
   const modos=el("div","modos");
   const nota=el("p","modo-nota","");
   const grid=el("div","divs");
-  app.append(modos,nota,grid);
+  c.append(modos,nota,grid);
 
   const desenha=()=>{
     modos.innerHTML="";
@@ -6381,7 +6377,7 @@ function screenDivisao(name){
          console; pela interface, grátis não pode. */
       const travado=m.id==="lenda"&&!meuPro; // só pro RÓTULO — o clique confere meuPro de novo, ver abaixo
       const b=el("button","modo"+(MODO===m.id?" on":""),
-        `<span class="n">${m.nome}${travado?seloPro():""}</span><span class="d">${m.desc}</span>`);
+        `<span class="n">${m.nome}</span><span class="d">${m.desc}</span>`);   // travado: o bloqueioPro() põe o selo por cima
       b.id="modo_"+m.id;
       b.onclick=()=>{
         if(MODO===m.id)return;
@@ -6398,7 +6394,7 @@ function screenDivisao(name){
         }
         MODO=m.id; desenha();
       };
-      modos.appendChild(b);
+      modos.appendChild(travado?bloqueioPro(b):b);
     });
 
     grid.innerHTML="";
@@ -6413,13 +6409,16 @@ function screenDivisao(name){
       }
       const top=[...pool].sort((a,b)=>b.rating-a.rating)[0];
       const ko=TUNING.koPower[d.id];
-      const c=el("button","div-c"+(d.f?" fem":""),
+      const nivelKO=ko>=1.3?3:ko>=.9?2:1;
+      const card=el("button","div-c"+(d.f?" fem":""),
         `<span class="n">${d.nome}</span>
-         <span class="lb">até ${d.lbs} lb · ${ko>=1.3?"nocaute alto":ko>=.9?"nocaute médio":"nocaute baixo"}</span>
+         <span class="lb">até ${d.lbs} lb</span>
+         <span class="ko-linha"><span class="ko-rot">Nocaute</span><span class="ko-niveis ko-${nivelKO}"><i></i><i></i><i></i></span><span class="ko-txt">${["","baixo","médio","alto"][nivelKO]}</span></span>
          <span class="qt"><b>${pool.length}</b> ${MODO==="lenda"?"lendas":"lutadores"}</span>
-         <span class="top">o melhor daqui é ${top.name}</span>`);
-      c.onclick=()=>{SOM.toque();DIVISION=d.id;screenAtivarRival(name);};
-      grid.appendChild(c);
+         <span class="top">O melhor daqui: ${top.name}</span>`);
+      card.type="button";
+      card.onclick=()=>{SOM.toque();DIVISION=d.id;screenAtivarRival(name);};
+      grid.appendChild(card);
     });
 
     nota.innerHTML=fora.length
@@ -6449,30 +6448,30 @@ function validarNomeRival(digitado){
   return null;
 }
 function screenAtivarRival(name){
-  app.innerHTML="";
+  /* Passo 4 do assistente (revamp fase 4). "Sim" passa pelo bloqueioPro()
+     sem Pro (antes abria a oferta do Pro no meio do fluxo de criação). */
+  const c=montarPasso(4,5,{titulo:"Rival",fundo:"cartazes",voltar:()=>screenDivisao(name)});
   docmeta.textContent=`Registro · ${name}`;
-  app.appendChild(el("div","eyebrow","Modo Rival"));
-  const box=el("div","tela-box");
-  app.appendChild(box);
-  box.appendChild(el("h4","",`Modo Rival${meuPro?"":seloPro()}`));
-  box.appendChild(el("p","dil-c","Quer um rival nesta carreira? Alguém que reaparece, te persegue, e cuja história muda conforme vocês se enfrentam."));
+  const box=el("div","tela-box rival-box");
+  c.appendChild(box);
+  box.appendChild(el("p","tela-sub","Um rival reaparece ao longo da carreira, te persegue, e a história muda conforme vocês se enfrentam. O nome é seu; os números vêm de um lutador real."));
 
   const opts=el("div","modos");
-  const simBtn=el("button","modo",`<span class="n">Sim, quero um rival</span>`);
-  const naoBtn=el("button","modo on",`<span class="n">Não, carreira normal</span>`);
-  opts.append(simBtn,naoBtn);
+  const simBtn=el("button","modo",`${ICONE("luta","modo-ico")}<span class="n">Sim, quero um rival</span><span class="d">Recurso do Plano Pro</span>`);
+  const naoBtn=el("button","modo on",`${ICONE("usuario","modo-ico")}<span class="n">Não, carreira normal</span><span class="d">Só você contra a divisão</span>`);
+  simBtn.type="button";naoBtn.type="button";
   box.appendChild(opts);
 
   const nomeArea=el("div","");
   box.appendChild(nomeArea);
   const msg=el("p","hint","");
   box.appendChild(msg);
-  const continuar=el("button","btn","Continuar");
+  const continuar=el("button","botao","Continuar");continuar.type="button";
   box.appendChild(continuar);
 
   let escolha="nao",nomeIn=null;
   const marcar=()=>{
-    simBtn.className="modo"+(escolha==="sim"?" on":"");
+    simBtn.className="modo"+(escolha==="sim"?" on":"")+(meuPro?"":" bloqueado");   // não perde a trava
     naoBtn.className="modo"+(escolha==="nao"?" on":"");
   };
   const renderNome=()=>{
@@ -6483,10 +6482,11 @@ function screenAtivarRival(name){
   };
   simBtn.onclick=()=>{
     SOM.toque();
-    if(!meuPro){ abrirOfertaPro(box,()=>{RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null;startDraft(name);}); return; }
+    if(!meuPro)return;   // sem Pro o botão nem chega a ter clique (bloqueioPro)
     escolha="sim";marcar();renderNome();
   };
   naoBtn.onclick=()=>{ SOM.toque(); escolha="nao";marcar();renderNome(); };
+  opts.append(meuPro?simBtn:bloqueioPro(simBtn),naoBtn);
 
   continuar.onclick=()=>{
     SOM.toque();

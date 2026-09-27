@@ -353,3 +353,86 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .selo-assine .ico{width:16px;height:16px}
 .selo-assine:focus-visible{outline:2px solid var(--osso);outline-offset:3px}
 @media (hover:hover) and (pointer:fine){.selo-assine:hover{background:#E6B421}}
+
+/* passo 1: nome */
+.tela-criacao .nome-form{display:flex;flex-wrap:wrap;gap:14px;align-items:stretch;max-width:760px;margin:6px 0 10px}
+.tela-criacao .input-hero{flex:1 1 320px;height:64px;padding:0 20px;background:rgba(17,19,26,.86);border:1px solid var(--linha-forte);
+  border-bottom:3px solid var(--sangue);color:var(--osso);font-family:var(--f-titulo);font-size:30px;letter-spacing:.02em;text-transform:uppercase;border-radius:0}
+.tela-criacao .input-hero::placeholder{color:var(--cinza);font-family:var(--f-ui);font-size:20px;letter-spacing:.12em}
+.tela-criacao .input-hero:focus{outline:none;border-color:var(--sangue)}
+.botao-grande{min-height:64px;padding:0 34px;font-size:19px}
+.nome-dica{font-size:15px;color:var(--cinza)}
+.faixa-desafio{display:flex;gap:12px;align-items:flex-start;max-width:760px;margin:0 0 20px;padding:14px 18px;
+  background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.45);color:var(--osso-2)}
+.faixa-desafio .ico{color:var(--ouro);width:22px;height:22px;flex:none}
+.faixa-desafio b{color:var(--ouro)}
+
+/* passo 2: visual (criador) */
+.tela-criacao .criador{display:grid;grid-template-columns:minmax(260px,380px) minmax(0,1fr);gap:18px;align-items:start;margin:0}
+.tela-criacao .palco{position:relative;background:radial-gradient(60% 70% at 50% 35%,rgba(215,38,30,.28),rgba(17,19,26,.9) 70%),rgba(17,19,26,.9);
+  border:1px solid var(--linha);padding:24px 20px;text-align:center;min-height:0}
+.tela-criacao .palco .col-t{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--sangue);border:0;margin:0 0 8px;padding:0}
+.tela-criacao .palco svg{max-width:100%;height:auto}
+.tela-criacao .nomebox{margin-top:12px;text-align:left}
+.tela-criacao .nomebox small{display:block;font-family:var(--f-ui);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--cinza);margin-bottom:6px}
+.tela-criacao .nomebox input{max-width:none}
+.tela-criacao .painelC{background:rgba(17,19,26,.9);border:1px solid var(--linha);padding:0;min-width:0}
+.tela-criacao .abas{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--linha-forte);scrollbar-width:none;margin:0;padding:0 8px}
+.tela-criacao .aba{background:none;border:0;padding:14px 14px;color:var(--cinza);font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.14em;
+  text-transform:uppercase;cursor:pointer;box-shadow:inset 0 -3px 0 transparent;white-space:nowrap;border-radius:0}
+.tela-criacao .aba.on{color:var(--osso);box-shadow:inset 0 -3px 0 var(--sangue)}
+.tela-criacao .corpoC{padding:18px 20px}
+.tela-criacao .linhaC{margin-bottom:18px}
+.tela-criacao .linhaC-hd{display:flex;justify-content:space-between;font-family:var(--f-ui);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);margin-bottom:8px}
+.tela-criacao .linhaC-hd b{color:var(--osso);font-weight:700;letter-spacing:.06em}
+.tela-criacao .chips{display:flex;flex-wrap:wrap;gap:6px}
+.tela-criacao .chip{background:var(--sup-2);border:1px solid var(--linha-forte);color:var(--osso-2);padding:8px 12px;border-radius:0;cursor:pointer;
+  font-family:var(--f-texto);font-size:14px}
+.tela-criacao .chip.on{border-color:var(--sangue);color:#fff;background:rgba(215,38,30,.22)}
+.tela-criacao .swatches{display:flex;flex-wrap:wrap;gap:8px}
+.tela-criacao .sw{width:36px;height:36px;border-radius:0;border:2px solid var(--linha-forte);cursor:pointer;padding:0}
+.tela-criacao .sw.on{border-color:var(--osso);box-shadow:0 0 0 2px var(--sangue)}
+.tela-criacao .criador-acoes{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+@media (hover:hover) and (pointer:fine){.tela-criacao .chip:hover{border-color:var(--osso-2)}.tela-criacao .aba:hover{color:var(--osso)}}
+@media (max-width:820px){.tela-criacao .criador{grid-template-columns:1fr}}
+
+/* passo 3: modo e divisão */
+.tela-criacao .modos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:820px;margin:0 0 14px;border:0}
+.tela-criacao .modo{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:16px 18px;text-align:left;cursor:pointer;
+  background:rgba(17,19,26,.86);border:1px solid var(--linha-forte);color:var(--osso);border-radius:0}
+.tela-criacao .modo .n{font-family:var(--f-ui);font-weight:700;font-size:19px;letter-spacing:.06em;text-transform:uppercase}
+.tela-criacao .modo .d{color:var(--osso-2);font-size:14px}
+.tela-criacao .modo.on{border-color:var(--sangue);box-shadow:inset 0 0 0 1px var(--sangue);background:rgba(215,38,30,.14)}
+.tela-criacao .modo .modo-ico{width:22px;height:22px;color:var(--sangue);margin-bottom:4px}
+.tela-criacao .modo-nota{color:var(--cinza);font-size:14px;max-width:820px}
+.tela-criacao .divs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:10px}
+.tela-criacao .div-c{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:20px;text-align:left;cursor:pointer;
+  background:rgba(17,19,26,.88);border:0;color:var(--osso);border-radius:0;box-shadow:inset 0 0 0 1px var(--linha-forte);
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px);transition:background .2s,transform .25s var(--ease-soco)}
+.tela-criacao .div-c .n{font-family:var(--f-titulo);font-size:28px;line-height:1;text-transform:uppercase}
+.tela-criacao .div-c.fem .n::after{content:" fem.";font-family:var(--f-ui);font-size:14px;color:var(--cinza)}
+.tela-criacao .div-c .lb{font-family:var(--f-ui);font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
+.tela-criacao .ko-linha{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--osso-2)}
+.tela-criacao .ko-rot{font-family:var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
+.tela-criacao .ko-niveis{display:inline-flex;gap:3px}
+.tela-criacao .ko-niveis i{display:block;width:14px;height:6px;background:var(--linha-forte)}
+.tela-criacao .ko-1 i:nth-child(-n+1),.tela-criacao .ko-2 i:nth-child(-n+2),.tela-criacao .ko-3 i:nth-child(-n+3){background:var(--sangue)}
+.tela-criacao .div-c .qt{font-size:14px;color:var(--osso-2)}
+.tela-criacao .div-c .qt b{font-family:var(--f-titulo);font-weight:400;font-size:20px;color:var(--osso)}
+.tela-criacao .div-c .top{font-size:13px;color:var(--cinza)}
+@media (hover:hover) and (pointer:fine){
+  .tela-criacao .div-c:hover{background:rgba(215,38,30,.18);box-shadow:inset 0 0 0 1px var(--sangue);transform:translateY(-2px)}
+  .tela-criacao .modo:hover{border-color:var(--osso-2)}
+}
+@media (max-width:600px){.tela-criacao .modos{grid-template-columns:1fr}}
+
+/* passo 4: rival */
+.tela-criacao .rival-box{max-width:820px;background:none;border:0;padding:0}
+.tela-criacao .rival-opcoes{margin-bottom:16px}
+.tela-criacao .rival-box input[type=text]{margin:6px 0 10px}
+/* correções do CSS antigo que vazava nos passos */
+.tela-criacao .palco{position:relative;top:auto}
+.tela-criacao .modo+.modo{border-left:1px solid var(--linha-forte)}
+.tela-criacao .modo.on .n{color:var(--osso)}
+.tela-criacao .modo.on .d{color:var(--osso-2)}
+.tela-criacao .modo:not(.on):hover{background:rgba(17,19,26,.86)}

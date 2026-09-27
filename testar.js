@@ -154,7 +154,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     /* ranking sai como FUNÇÃO, não valor: RANKING é null até a carreira
        começar e exportar(nomes) captura só um instantâneo na hora do load —
        uma closure lê o binding ao vivo toda vez que é chamada. */
-    vm.runInContext(exportar(lerScript(), ["ready", "screenName", "screenReport", "DIVISOES"])
+    vm.runInContext(exportar(lerScript(), ["ready", "screenName", "screenReport", "screenDivisao", "DIVISOES"])
       + "\ntry{globalThis.__x.ranking=()=>RANKING;}catch(e){}"
       + "\ntry{globalThis.__x.st=()=>st;}catch(e){}"
       + "\ntry{globalThis.__x.escolhaAberta=()=>escolhaAberta;}catch(e){}"
@@ -230,22 +230,21 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        depois do clique — senão pegaríamos uma carta do grid normal, já órfã. */
     if (modo === "lenda") {
       const bt = env.registro.modo_lenda;
-      if (!bt || !bt.onclick) throw new Error("não achei o botão do modo lenda");
-      /* item 1 do pedido pós-item-6 (2026-09-22): "Seja uma lenda" trava
-         sem meuPro — clique normal não muda MODO, só mostra a nota de
-         "recurso Pro" (ver screenDivisao() em index.html). Confere a
-         trava de verdade (grátis não entra) ANTES de simular sessão Pro
-         pro resto deste teste de navegação. */
-      bt.onclick();
-      const grid1 = env.todos.slice(marca).filter(n => (n.className || "").startsWith("div-c") && n.onclick);
-      if (grid1.some(c => /lendas/.test(c.innerHTML || "")))
-        throw new Error("clicar 'Seja uma lenda' sem meuPro entrou no modo mesmo assim");
-      const nota = env.todos.filter(n => (n.className || "").split(" ").includes("modo-nota")).pop();
-      if (!nota || !/Plano Pro/.test(nota.innerHTML || ""))
-        throw new Error("clicar 'Seja uma lenda' sem meuPro não mostrou a nota de recurso Pro");
+      if (!bt) throw new Error("não achei o botão do modo lenda");
+      /* Revamp fase 4: sem Pro, "Seja uma lenda" passa pelo bloqueioPro()
+         (apagado, SEM clique, com o selo "Assine o Pro" como único ponto
+         clicável). Antes o clique mostrava uma nota; agora nem clique tem.
+         Confere a trava ANTES de simular sessão Pro pro resto do teste. */
+      if (!(bt.className || "").split(" ").includes("bloqueado")) throw new Error("Seja uma lenda sem Pro não está travado");
+      if (bt.onclick) throw new Error("Seja uma lenda sem Pro continua clicável");
+      const selo = env.todos.filter(n => (n.className || "").split(" ").includes("selo-assine")).pop();
+      if (!selo || !selo.onclick) throw new Error("sem o selo Assine o Pro");
       UI.setMeuPro(true);
+      UI.screenDivisao("TesteBot");       // com Pro a tela redesenha liberada
+      const bt2 = env.registro.modo_lenda;
+      if (!bt2 || !bt2.onclick) throw new Error("com Pro, Seja uma lenda devia responder ao clique");
       marca = env.todos.length;
-      bt.onclick();
+      bt2.onclick();
     }
     const divs = env.todos.slice(marca).filter(n => (n.className || "").startsWith("div-c") && n.onclick);
     if (!divs.length) throw new Error("nenhuma carta de divisão foi montada");
