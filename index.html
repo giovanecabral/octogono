@@ -4597,12 +4597,47 @@ function cfgPadrao(){
    pode jogar a MESMA carreira — mesmas cartas, mesmos adversários — e comparar.
    ========================================================================= */
 const CARD_W=1080, CARD_H=1350;
-/* O canvas não enxerga as variáveis CSS, então a paleta é repetida aqui.
-   Se você mexer no :root, mexa nestas também — senão o card sai com a cara
-   antiga e você só descobre quando alguém compartilha. */
-const C={stock:"#0A0D13",stock2:"#161E2B",ink:"#E6EBF2",stamp:"#C0392B",
-         faded:"#6B7A90",rule:"#222C3C",line2:"#33415A",win:"#4E9A62",gold:"#B9932F"};
-
+/* O canvas não enxerga as variáveis CSS, então a paleta é repetida aqui
+   (revamp fase 5: identidade "Noite de Luta", a mesma do :root em
+   estilo.css). Mexeu lá, mexa aqui. */
+const C={fundo:"#07080B",sup:"#11131A",sup2:"#1A1D26",osso:"#F2EEE6",osso2:"#C9CBD2",cinza:"#8A8F9C",
+         sangue:"#D7261E",ouro:"#D4A017",ganho:"#2FBF71",linha:"rgba(255,255,255,.10)",linhaForte:"rgba(255,255,255,.20)"};
+const FONTE={
+  titulo:p=>`400 ${p}px Anton,Impact,"Arial Narrow",sans-serif`,
+  ui:(p,w=700)=>`${w} ${p}px "Barlow Condensed","Arial Narrow",sans-serif`,
+  texto:(p,w=400,it=false)=>`${it?"italic ":""}${w} ${p}px Barlow,system-ui,sans-serif`,
+};
+/* Fonte que ainda não apareceu na página não existe pro canvas: mede e
+   desenha com a de reserva. Espera as três famílias antes de qualquer
+   measureText. */
+async function garantirFontesCard(){
+  try{
+    if(!document.fonts||!document.fonts.load)return;
+    await Promise.all([FONTE.titulo(100),FONTE.ui(40,700),FONTE.ui(40,600),FONTE.texto(34,400,true),FONTE.texto(30,500)]
+      .map(f=>document.fonts.load(f)));
+    await document.fonts.ready;
+  }catch(e){}
+}
+/* letterSpacing no canvas só existe em navegador novo; sem ele o texto só
+   sai sem o espaçamento, nada quebra */
+function espacar(x,px){ try{ if("letterSpacing" in x)x.letterSpacing=px+"px"; }catch(e){} }
+function carregarImagem(src){
+  return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=src;});
+}
+/* Foto da série de fundos do jogo cobrindo o card, escurecida de cima pra
+   baixo: a parte de cima respira, a de baixo vira fundo liso pro texto. */
+async function fotoCard(x,nome,w,h){
+  try{
+    const img=await carregarImagem(`img/${nome}.webp`);
+    const esc=Math.max(w/img.width,h*.72/img.height);
+    const iw=img.width*esc,ih=img.height*esc;
+    x.save();x.globalAlpha=.95;x.drawImage(img,(w-iw)/2,0,iw,ih);x.restore();
+  }catch(e){/* sem foto o card sai no fundo liso, nunca quebra o compartilhar */}
+  const gr=x.createLinearGradient(0,0,0,h);
+  gr.addColorStop(0,"rgba(7,8,11,.30)");gr.addColorStop(.30,"rgba(7,8,11,.62)");
+  gr.addColorStop(.52,"rgba(7,8,11,.93)");gr.addColorStop(1,"rgba(7,8,11,.98)");
+  x.fillStyle=gr;x.fillRect(0,0,w,h);
+}
 function quebrar(ctx,txt,max){
   const linhas=[];let atual="";
   for(const p of String(txt).split(" ")){
@@ -4616,7 +4651,7 @@ function quebrar(ctx,txt,max){
 
 /* Plano Pro (item 5) — acabamento do card, opção A do plano aprovado:
    contorno duplo + canto cortado. Reconhecível de relance, SEM escrever
-   "PRO" em letra grande — moldura, selo, na paleta que já existe (C.gold,
+   "PRO" em letra grande — moldura, selo, na paleta que já existe (C.ouro,
    mesma cor de raridade das conquistas), nunca gradiente/brilho/cor nova.
    Card grátis continua pixel a pixel igual a antes; só entra quando
    meuPro é true no momento de gerar o card (é o próprio card que vira
@@ -4625,11 +4660,11 @@ function quebrar(ctx,txt,max){
    um único desenho, não dois inventados. */
 const CORTE_CANTO_PRO=34;
 /* 3 modelos de card (2026-09-22, pedido explícito) — mesmo corte/contorno
-   de sempre, só a cor de destaque muda. "Ouro" é EXATAMENTE C.gold: quem
+   de sempre, só a cor de destaque muda. "Ouro" é EXATAMENTE C.ouro: quem
    já é Pro hoje não pode ver o card mudar de cor sozinho, então o padrão
    tem que ser bit-a-bit igual ao que já existia. */
 const CORES_CARD_PRO=[
-  {id:"ouro",nome:"Ouro",cor:"#B9932F"},
+  {id:"ouro",nome:"Ouro",cor:"#D4A017"},
   {id:"prata",nome:"Prata",cor:"#A9B2BC"},
   {id:"bronze",nome:"Bronze",cor:"#A9683A"},
 ];
@@ -4647,10 +4682,7 @@ function fundoCard(x,w,h,pro,cor){
     x.moveTo(CORTE_CANTO_PRO,0);x.lineTo(w,0);x.lineTo(w,h);x.lineTo(0,h);
     x.lineTo(0,CORTE_CANTO_PRO);x.closePath();
   }else x.rect(0,0,w,h);
-  x.fillStyle=C.stock;x.fill();
-  x.clip();                                    // textura de papel nunca vaza pro canto cortado
-  x.fillStyle="rgba(255,255,255,.014)";
-  for(let y=0;y<h;y+=3)x.fillRect(0,y,w,1);
+  x.fillStyle=C.fundo;x.fill();
   x.restore();
   if(!pro)return;
   x.strokeStyle=cor;x.lineWidth=2;
@@ -4661,6 +4693,17 @@ function fundoCard(x,w,h,pro,cor){
   x.beginPath();
   x.moveTo(CORTE_CANTO_PRO+o,o);x.lineTo(w-o,o);x.lineTo(w-o,h-o);x.lineTo(o,h-o);
   x.lineTo(o,CORTE_CANTO_PRO+o);x.closePath();x.stroke();
+}
+/* Granulação por cima de tudo (mesma textura de filme da interface),
+   gerada com gerador próprio: nunca toca nos 8 geradores da carreira. */
+function granularCard(x,w,h){
+  let s=987654321;const r=()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff;};
+  x.save();
+  for(let i=0;i<Math.round(w*h/260);i++){
+    x.fillStyle=r()<.5?"rgba(255,255,255,.05)":"rgba(0,0,0,.18)";
+    x.fillRect(r()*w,r()*h,1.4,1.4);
+  }
+  x.restore();
 }
 /* Selo: octógono sólido, do tamanho de uma inicial — glifo, nunca texto
    "PRO". Fica no canto oposto ao rodapé octogono.fun (que é sempre
@@ -4675,153 +4718,135 @@ function seloProCanvas(x,cx,cy,r,cor){
   x.closePath();x.fillStyle=cor||CORES_CARD_PRO[corCardProEscolha].cor;x.fill();
   x.restore();
 }
+/* Peças comuns dos cards (revamp fase 5). */
+function cabecalhoCard(x,M,direita,subtitulo){
+  x.textBaseline="alphabetic";x.textAlign="left";
+  x.fillStyle=C.sangue;x.fillRect(M,M,70,6);
+  x.fillStyle=C.osso;x.font=FONTE.titulo(52);x.fillText("OCTÓGONO",M,M+66);
+  if(subtitulo){x.fillStyle=C.cinza;x.font=FONTE.texto(23,400,true);x.fillText(subtitulo,M,M+102);}
+  if(direita){
+    x.textAlign="right";x.fillStyle=C.sangue;x.font=FONTE.ui(25,700);espacar(x,4);
+    x.fillText(direita.toUpperCase(),CARD_W-M,M+60);espacar(x,0);x.textAlign="left";
+  }
+}
+/* Carimbo quadrado girado: nota da carreira (uma letra) ou rótulo do
+   momento (1 a 3 linhas, a fonte encolhe até caber na caixa). */
+function carimboCard(x,cx,cy,texto,{ouro=false,lado=190}={}){
+  x.save();x.translate(cx,cy);x.rotate(-4*Math.PI/180);
+  x.fillStyle=ouro?C.ouro:C.sangue;x.fillRect(-lado/2,-lado/2,lado,lado);
+  x.fillStyle=ouro?"#15120A":"#FFFFFF";x.textAlign="center";x.textBaseline="middle";
+  const max=lado-28;
+  let t=texto.length<=2?168:66,linhas=[texto];
+  for(;t>=20;t-=2){
+    x.font=FONTE.titulo(t);linhas=quebrar(x,texto,max);
+    if(linhas.length<=3&&linhas.every(l=>x.measureText(l).width<=max)&&linhas.length*t<=lado-22)break;
+  }
+  const alt=linhas.length*t;
+  linhas.forEach((l,i)=>x.fillText(l,0,-alt/2+t/2+i*t+(texto.length<=2?8:3)));
+  x.restore();x.textAlign="left";x.textBaseline="alphabetic";
+}
+function avatarCard(x,src,px,py,w,h){
+  return svgParaImagem(src).then(img=>x.drawImage(img,px,py,w,h)).catch(()=>{});
+}
+function nomeCard(x,nome,txX,y0,txW,{max=108,min=48}={}){
+  let t=max;x.font=FONTE.titulo(t);
+  while(x.measureText(nome).width>txW&&t>min){t-=4;x.font=FONTE.titulo(t);}
+  const ls=quebrar(x,nome,txW).slice(0,2);
+  x.fillStyle=C.osso;
+  ls.forEach((l,i)=>x.fillText(l,txX,y0+t+i*t*.96));
+  return y0+t+(ls.length-1)*t*.96;
+}
+function rodapeCard(x,M,h,pro,cor,semente){
+  const yf=h-M-74;
+  x.fillStyle=C.linhaForte;x.fillRect(M,yf,CARD_W-M*2,2);
+  x.textAlign="left";x.fillStyle=C.osso;x.font=FONTE.ui(28,700);espacar(x,3);
+  x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M+(pro?34:0),yf+50);espacar(x,0);
+  x.textAlign="right";x.fillStyle=C.sangue;x.font=FONTE.titulo(48);x.fillText(semente,CARD_W-M,yf+58);
+  x.fillStyle=C.cinza;x.font=FONTE.ui(22,700);espacar(x,4);x.fillText(DOMINIO_JOGO.toUpperCase(),CARD_W-M,yf+90);espacar(x,0);
+  x.textAlign="left";
+  if(pro)seloProCanvas(x,M+12,yf+40,13,cor);
+}
 /* Preview sintético pra vitrine do Plano Pro (item 2, 2026-09-22) — NÃO
    é desenharCard() de verdade: aquele lê me/st/DIVISION, que só existem
-   com uma carreira real em andamento ou terminada, e esta tela é
-   alcançável direto do menu principal, sem carreira nenhuma. Reaproveita
-   só o que É seguro fora de uma carreira — fundoCard()/seloProCanvas(),
-   a diferença visual que está sendo vendida — com dado de exemplo fixo
-   pro resto, sem reimplementar o layout inteiro da ficha real. */
+   com uma carreira real. Síncrono (a vitrine desenha na hora), por isso
+   usa brilho de refletor no lugar da foto de fundo. */
 function desenharPreviewCard(pro,cor){
   const cv=document.createElement("canvas");
   cv.width=CARD_W;cv.height=CARD_H;
   const x=cv.getContext("2d");
   /* getContext("2d") pode vir null (harness de teste sem canvas de
-     verdade, ver testar.js; navegador raro sem suporte também não pode
-     travar a tela) — devolve o canvas em branco em vez de explodir. A
-     tela do Plano Pro precisa ser testável mesmo sem desenho real, ao
-     contrário de desenharCard()/desenharCardMomento() que dependem de
-     me/st/DIVISION e por isso nunca rodam no harness de qualquer jeito. */
+     verdade, navegador raro sem suporte): devolve o canvas em branco. */
   if(!x)return cv;
   const M=72;
   fundoCard(x,CARD_W,CARD_H,pro,cor);
-  const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
-  const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
-  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
-  regra(M,4,C.stamp);
-  x.fillStyle=C.ink;x.font=mono(20,600);x.textBaseline="alphabetic";
-  x.fillText("OCTÓGONO",M,M+22);
-  regra(M+34,2,C.rule);
-  x.fillStyle=C.ink;x.font=disp(46);
-  x.fillText("FICHA DO LUTADOR",M,M+94);
-  x.fillStyle=C.faded;x.font=mono(19,500);
-  x.fillText("EXEMPLO · CARREIRA ENCERRADA",M,M+126);
-  regra(M+148,2,C.rule);
-  let y=M+222;
-  x.fillStyle=C.ink;x.font=disp(76);
-  x.fillText("SEU LUTADOR",M,y);
-  y+=160;
-  x.font=disp(148);x.fillStyle=C.ink;
-  x.fillText("14-2",M,y);
-  x.font=mono(21,500);x.fillStyle=C.faded;
-  x.fillText("CARTEL",M+5,y+34);
-  const yf=CARD_H-88;
-  x.fillStyle=C.faded;x.font=mono(19,500);x.textAlign="right";
-  x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
-  x.textAlign="left";
-  if(pro)seloProCanvas(x,M+9,yf+68,11,cor);
+  const rg=x.createRadialGradient(CARD_W*.5,-40,20,CARD_W*.5,-40,CARD_H*.85);
+  rg.addColorStop(0,"rgba(215,38,30,.38)");rg.addColorStop(1,"rgba(7,8,11,0)");
+  x.fillStyle=rg;x.fillRect(0,0,CARD_W,CARD_H);
+  cabecalhoCard(x,M,"Carreira encerrada");
+  x.fillStyle=C.osso;x.font=FONTE.titulo(104);x.fillText("SEU LUTADOR",M,M+300);
+  x.font=FONTE.titulo(230);x.fillText("14-2",M,M+560);
+  x.fillStyle=C.cinza;x.font=FONTE.ui(26,700);espacar(x,5);x.fillText("CARTEL",M+6,M+604);espacar(x,0);
+  carimboCard(x,CARD_W-M-110,M+420,"A");
+  rodapeCard(x,M,CARD_H,pro,cor,"#EXEMPLO");
+  granularCard(x,CARD_W,CARD_H);
   return cv;
 }
-
 async function desenharCard(g){
+  await garantirFontesCard();
   const cv=document.createElement("canvas");
   cv.width=CARD_W;cv.height=CARD_H;
   const x=cv.getContext("2d");
-  const M=72;                                    // margem
+  const M=72;
+  fundoCard(x,CARD_W,CARD_H,meuPro);
+  await fotoCard(x,(st.foiCampeao||st.title)?"cinturao":"arquibancada",CARD_W,CARD_H);
+  cabecalhoCard(x,M,"Carreira encerrada");
 
-  fundoCard(x,CARD_W,CARD_H,meuPro);            // fundo + textura + acabamento Pro (se meuPro)
-
-  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
-  const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
-  const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
-
-  // cabeçalho — mesma marca do card de momento, uma linha só (este card já
-  // tem menos folga vertical, sem a tagline)
-  regra(M,4,C.stamp);
-  x.fillStyle=C.ink;x.font=mono(20,600);x.textBaseline="alphabetic";
-  x.fillText("OCTÓGONO",M,M+22);
-  regra(M+34,2,C.rule);
-  x.fillStyle=C.ink;x.font=disp(46);
-  x.fillText("FICHA DO LUTADOR",M,M+94);
-  x.fillStyle=C.faded;x.font=mono(19,500);
+  const avW=260,avH=Math.round(avW*1.2),avY=M+124;
+  await avatarCard(x,bonecoSVG(ROSTO||cfgPadrao(),{w:avW}),M-8,avY,avW,avH);
+  const txX=M+avW+14,txW=CARD_W-M-230-txX;
+  let y=nomeCard(x,me.name.toUpperCase(),txX,avY+6,txW);
   const dv=(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION;
-  x.fillText(dv.toUpperCase()+" · CARREIRA ENCERRADA",M,M+126);
-  regra(M+148,2,C.rule);
+  x.fillStyle=C.cinza;x.font=FONTE.ui(26,700);espacar(x,4);
+  x.fillText((dv+(MODO==="lenda"?" · Seja uma lenda":"")).toUpperCase(),txX,y+42);espacar(x,0);
+  x.fillStyle=C.osso;x.font=FONTE.titulo(150);
+  x.fillText(`${st.wins}-${st.losses}`,txX,avY+avH-26);
+  x.fillStyle=C.cinza;x.font=FONTE.ui(24,700);espacar(x,5);x.fillText("CARTEL",txX+6,avY+avH+8);espacar(x,0);
+  carimboCard(x,CARD_W-M-100,avY+104,g.letter,{ouro:g.letter==="S"});
+  x.fillStyle=C.cinza;x.font=FONTE.ui(22,700);espacar(x,4);x.textAlign="center";
+  x.fillText("NOTA",CARD_W-M-100,avY+244);x.textAlign="left";espacar(x,0);
 
-  // nome — encolhe até caber na largura inteira, acima da linha do cartel
-  let y=M+222;
-  x.fillStyle=C.ink;
-  let tam=76;
-  do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>CARD_W-M*2&&tam>30);
-  x.fillText(me.name.toUpperCase(),M,y);
-
-  // cartel grande, com o carimbo à direita centrado NELE (não no nome)
-  y+=160;
-  x.font=disp(148);x.fillStyle=C.ink;
-  x.fillText(`${st.wins}-${st.losses}`,M,y);
-  x.font=mono(21,500);x.fillStyle=C.faded;
-  x.fillText("CARTEL",M+5,y+34);
-
-  x.save();
-  x.translate(CARD_W-M-76,y-52);
-  x.rotate(-4*Math.PI/180);
-  x.strokeStyle=C.stamp;x.lineWidth=7;
-  x.strokeRect(-72,-72,144,144);
-  x.fillStyle=C.stamp;x.font=disp(100);
-  x.textAlign="center";x.textBaseline="middle";
-  x.fillText(g.letter,0,6);
-  x.restore();
-  x.textAlign="left";x.textBaseline="alphabetic";
-
-  // linhas de dados
-  y+=74;
-  regra(y,2,C.rule);y+=46;
-  const linha=(rot,val,destaque)=>{
-    x.fillStyle=C.faded;x.font=mono(21,500);
-    x.fillText(rot.toUpperCase(),M,y);
-    x.fillStyle=destaque?C.stamp:C.ink;x.font=mono(25,600);
-    x.textAlign="right";x.fillText(String(val),CARD_W-M,y);
-    x.textAlign="left";
-    x.fillStyle=C.rule;x.fillRect(M,y+15,CARD_W-M*2,1);
-    y+=53;
-  };
-  linha("Pico no ranking",fmtPico(st.peak));
-  linha("Vitórias antes do fim",`${st.finishes} de ${st.wins}`);
-  linha("Maior sequência",`${st.longestW} vitórias`);
-  linha("Seguidores",fmtNum(st.followers));
-  linha("Medidor de fã",st.fan.toFixed(1)+" / 10");
-  linha("Cinturão",st.title?"SIM":"não",st.title);
-  if(st.bonusNoite)linha("Bônus da noite",`Luta ${st.bonusNoite.luta}`,true);
-
-  // legado — é a carga emocional do card, ganha o espaço que sobra
-  y+=34;
-  x.font=`italic 28px "IBM Plex Mono",monospace`;
+  y=avY+avH+56;
+  const cel=[["Pico no ranking",fmtPico(st.peak)],["Vitórias antes do fim",`${st.finishes} de ${st.wins}`],
+    ["Maior sequência",`${st.longestW} vitórias`],["Seguidores",fmtNum(st.followers)],
+    ["Medidor de fã",st.fan.toFixed(1)+" de 10"],["Cinturão",st.title?"Sim":"Não"]];
+  const cw=(CARD_W-M*2)/2,ch=96;
+  cel.forEach(([rot,val],i)=>{
+    const cx=M+(i%2)*cw,cy=y+Math.floor(i/2)*ch;
+    x.fillStyle=C.linha;x.fillRect(cx,cy,cw-(i%2?0:24),2);
+    x.fillStyle=C.cinza;x.font=FONTE.ui(21,700);espacar(x,3);x.fillText(rot.toUpperCase(),cx,cy+36);espacar(x,0);
+    x.fillStyle=(rot==="Cinturão"&&st.title)?C.ouro:C.osso;x.font=FONTE.titulo(46);x.fillText(String(val),cx,cy+86);
+  });
+  y+=ch*3+18;
+  if(st.bonusNoite){
+    x.fillStyle=C.ouro;x.font=FONTE.ui(24,700);espacar(x,3);
+    x.fillText(`BÔNUS DA NOITE · LUTA ${st.bonusNoite.luta} CONTRA ${String(st.bonusNoite.adversario).toUpperCase()}`,M,y+10);espacar(x,0);y+=48;
+  }
+  x.font=FONTE.texto(33,400,true);
   const leg=LEGACY.find(l=>l.when(st)).t(me.name);
-  const ls=quebrar(x,leg,CARD_W-M*2-32).slice(0,4);
-  x.fillStyle=C.stamp;x.fillRect(M,y-30,5,ls.length*40+14);
-  x.fillStyle=C.ink;                       // canvas mantém o último fillStyle
-  ls.forEach((l,i)=>x.fillText(l,M+28,y+i*40));
-  y+=ls.length*40+46;
-
-  // feito de
-  x.fillStyle=C.faded;x.font=mono(20,500);
-  x.fillText("ESSE LUTADOR ERA FEITO DE",M,y);y+=34;
-  x.fillStyle=C.ink;x.font=mono(22,500);
-  quebrar(x,picks.map(p=>`${p.pair.label} do ${p.from}`).join("  ·  "),CARD_W-M*2)
-    .slice(0,3).forEach(l=>{x.fillText(l,M,y);y+=31;});
-
-  // rodapé: a semente é a parte que importa
-  const yf=CARD_H-M-86;
-  regra(yf,4,C.line2);
-  x.fillStyle=C.ink;x.font=mono(24,600);
-  x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M,yf+46);
-  x.fillStyle=C.stamp;x.font=mono(26,600);
-  x.textAlign="right";
-  x.fillText("#"+SEED.toString(36).toUpperCase(),CARD_W-M,yf+46);
-  x.fillStyle=C.faded;x.font=mono(19,400);
-  x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
-  x.textAlign="left";
-  if(meuPro)seloProCanvas(x,M+9,yf+68,11);      // canto oposto ao domínio, que é sempre à direita
+  const ls=quebrar(x,leg,CARD_W-M*2-34).slice(0,3);
+  y+=30;
+  x.fillStyle=C.sangue;x.fillRect(M,y-32,6,ls.length*44+8);
+  x.fillStyle=C.osso;ls.forEach((l,i)=>x.fillText(l,M+30,y+i*44));
+  y+=ls.length*44+26;
+  const limite=CARD_H-M-74-24;
+  if(y+34<limite){
+    x.fillStyle=C.cinza;x.font=FONTE.ui(21,700);espacar(x,3);x.fillText("ESSE LUTADOR ERA FEITO DE",M,y);espacar(x,0);y+=34;
+    x.fillStyle=C.osso2;x.font=FONTE.texto(23,500);
+    quebrar(x,picks.map(p=>`${p.pair.label} do ${p.from}`).join("  ·  "),CARD_W-M*2).slice(0,2)
+      .forEach(l=>{if(y<limite){x.fillText(l,M,y);y+=31;}});
+  }
+  rodapeCard(x,M,CARD_H,meuPro,null,"#"+SEED.toString(36).toUpperCase());
+  granularCard(x,CARD_W,CARD_H);
   return cv;
 }
 
@@ -4890,130 +4915,54 @@ function svgParaImagem(svg){
   });
 }
 
+/* Fundo do card de momento: a foto combina com o que aconteceu. */
+const FUNDO_MOMENTO={cinturao:"cinturao",cinturaoInterino:"cinturao",cinturaoPerdido:"apagado",ko:"confete",
+  upset:"arena-alto",lesao:"vestiario",estreia:"entrada",topoDivisao:"arena",bonusNoite:"confete",raro:"fotos"};
 async function desenharCardMomento(m){
+  await garantirFontesCard();
   const cv=document.createElement("canvas");
   cv.width=CARD_W;cv.height=CARD_H;
   const x=cv.getContext("2d");
   const M=72;
-  const mono=(p,w=400)=>`${w} ${p}px "IBM Plex Mono",monospace`;
-  const disp=(p,w=700)=>`${w} ${p}px Oswald,Impact,sans-serif`;
+  /* Altura dinâmica (achado jogando em produção): mede a frase e as
+     linhas de dados ANTES de fixar a altura; frase curta não deixa um
+     buraco vazio antes do rodapé. A largura nunca muda. */
+  x.font=FONTE.texto(36,400,true);
+  const lsFrase=quebrar(x,m.frase,CARD_W-M*2-34).slice(0,5);
+  const avW=250,avH=Math.round(avW*1.2),avY=M+140;
+  const dados=[["Adversário",m.adversario],["Resultado",m.resultado],["Posição na divisão",m.posicao]].filter(d=>d[1]);
+  const yDados=avY+avH+64;
+  const yFrase=yDados+dados.length*62+54;
+  const H=Math.max(1060,yFrase+lsFrase.length*50+30+104+M);
+  cv.width=CARD_W;cv.height=H;      // reseta o canvas pro tamanho final (nada foi desenhado ainda)
 
-  /* Altura dinâmica — achado jogando em produção: com a frase curta (1-2
-     frases é o caso comum, não o pior caso de 5 linhas), sobrava até
-     ~250px vazios entre o bloco de 3 linhas e o rodapé, porque CARD_H era
-     fixo pro pior caso. Mede quanto a frase e o bloco de 3 linhas REALMENTE
-     ocupam antes de fixar a altura final — CARD_W nunca muda, só a altura
-     deste card (o de fim de carreira, desenharCard(), continua CARD_H
-     fixo, ele já preenche bem). */
-  x.font=`italic 30px "IBM Plex Mono",monospace`;
-  const lsFrase=quebrar(x,m.frase,CARD_W-M*2-32).slice(0,5);
-  const avW=272,avH=Math.round(avW*120/100);
-  const numLinhas=(m.adversario?1:0)+(m.resultado?1:0)+(m.posicao?1:0);
-  const yFrase=(M+130+36+avH+50)+46+53*numLinhas+34;
-  const CARD_H_M=Math.max(1060,yFrase+lsFrase.length*42+50+86+M);
-  cv.width=CARD_W;cv.height=CARD_H_M;      // reseta o canvas pro tamanho final (limpa o contexto, nada foi desenhado ainda)
+  fundoCard(x,CARD_W,H,meuPro);
+  await fotoCard(x,FUNDO_MOMENTO[m.tipo]||"arena",CARD_W,H);
+  cabecalhoCard(x,M,`Luta ${m.luta} de ${TOTAL_FIGHTS}`,"Monte seu lutador de MMA. Jogue a carreira inteira.");
 
-  fundoCard(x,CARD_W,CARD_H_M,meuPro);
-
-  const regra=(y,esp=2,cor=C.line2)=>{x.fillStyle=cor;x.fillRect(M,y,CARD_W-M*2,esp);};
-
-  /* Cabeçalho de marca (item 5/6): nome do jogo + o que é, antes de
-     qualquer coisa — quem nunca jogou entende num olhar antes de reparar
-     no resultado. Única régua em C.stamp desta seção — o resto do card
-     usa C.line2/C.rule, cinza. */
-  regra(M,4,C.stamp);
-  x.fillStyle=C.ink;x.font=mono(26,600);x.textBaseline="alphabetic";
-  x.fillText("OCTÓGONO",M,M+32);
-  x.fillStyle=C.faded;x.font=`italic ${mono(19,400)}`;
-  x.fillText("Monte seu lutador de MMA. Jogue a carreira inteira.",M,M+58);
-  regra(M+78,2,C.rule);
-
-  x.fillStyle=C.faded;x.font=mono(18,500);
+  await avatarCard(x,bonecoSVG(ROSTO||cfgPadrao(),{w:avW}),M-8,avY,avW,avH);
+  const txX=M+avW+14,txW=CARD_W-M-230-txX;
+  const y=nomeCard(x,me.name.toUpperCase(),txX,avY+6,txW,{max:92,min:44});
   const dv=(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION;
-  x.fillText(dv.toUpperCase()+` · LUTA ${m.luta} DE ${TOTAL_FIGHTS}`,M,M+108);
-  regra(M+130,2,C.rule);
+  x.fillStyle=C.cinza;x.font=FONTE.ui(24,700);espacar(x,4);x.fillText(dv.toUpperCase(),txX,y+40);espacar(x,0);
+  x.fillStyle=C.osso;x.font=FONTE.titulo(116);x.fillText(m.cartel,txX,avY+avH-22);
+  x.fillStyle=C.cinza;x.font=FONTE.ui(22,700);espacar(x,5);x.fillText("CARTEL NA HORA",txX+4,avY+avH+10);espacar(x,0);
+  carimboCard(x,CARD_W-M-100,avY+104,rotuloMomento(m),{ouro:/CINTUR/.test(rotuloMomento(m))&&m.tipo!=="cinturaoPerdido"});
 
-  /* Avatar como protagonista (item 6): lado a lado com nome/cartel, não
-     empilhado — é a coisa mais distintiva do jogo (personalizado, os 1.527
-     lutadores reais não têm retrato) e hoje não aparecia no card nenhum.
-     avW/avH já calculados lá em cima, pra decidir a altura do card. */
-  const avY=M+130+36;
-  try{
-    const img=await svgParaImagem(bonecoSVG(ROSTO||cfgPadrao(),{w:avW}));
-    x.drawImage(img,M,avY,avW,avH);
-  }catch(e){/* falhou carregar a imagem (SVG malformado, navegador exótico) —
-    card sai sem avatar em vez de quebrar o compartilhamento inteiro */}
-
-  /* txW reserva espaço do carimbo rotacionado (centro em CARD_W-M-76, meia
-     largura ~72 antes da rotação) — sem isso o nome comprido invade o
-     carimbo (visto renderizando de verdade, ver LEIA-ME "Card de momento"). */
-  const txX=M+avW+40, txW=(CARD_W-M-160)-txX;
-  let y=avY+64;
-  x.fillStyle=C.ink;
-  let tam=52;
-  do{ x.font=disp(tam); tam-=3; }while(x.measureText(me.name.toUpperCase()).width>txW&&tam>22);
-  quebrar(x,me.name.toUpperCase(),txW).slice(0,2).forEach((l,i)=>{
-    x.fillText(l,txX,y+i*(tam+7));
+  let yl=yDados;
+  dados.forEach(([rot,val])=>{
+    x.fillStyle=C.linha;x.fillRect(M,yl-40,CARD_W-M*2,2);
+    x.fillStyle=C.cinza;x.font=FONTE.ui(22,700);espacar(x,3);x.fillText(rot.toUpperCase(),M,yl);espacar(x,0);
+    x.fillStyle=C.osso;x.font=FONTE.ui(30,700);x.textAlign="right";x.fillText(String(val),CARD_W-M,yl);x.textAlign="left";
+    yl+=62;
   });
 
-  x.font=disp(84);x.fillStyle=C.ink;
-  x.fillText(m.cartel,txX,avY+avH-24);
-  x.font=mono(17,500);x.fillStyle=C.faded;
-  x.fillText("CARTEL NA HORA",txX+3,avY+avH+2);
+  x.font=FONTE.texto(36,400,true);
+  x.fillStyle=C.sangue;x.fillRect(M,yFrase-36,6,lsFrase.length*50+6);
+  x.fillStyle=C.osso;lsFrase.forEach((l,i)=>x.fillText(l,M+30,yFrase+i*50));
 
-  x.save();
-  x.translate(CARD_W-M-76,M+130+112);
-  x.rotate(-4*Math.PI/180);
-  x.strokeStyle=C.stamp;x.lineWidth=7;
-  x.strokeRect(-72,-72,144,144);
-  x.fillStyle=C.stamp;
-  const rot=rotuloMomento(m);
-  let tamR=42;
-  do{ x.font=disp(tamR); tamR-=3; }while(x.measureText(rot).width>128&&tamR>16);
-  x.textAlign="center";x.textBaseline="middle";
-  x.fillText(rot,0,6);
-  x.restore();
-  x.textAlign="left";x.textBaseline="alphabetic";
-
-  // bloco de dados: 3 linhas fixas, nem mais nem menos — cartel já apareceu
-  // grande acima, então não repete aqui. Crescer essa lista vira planilha
-  // (ver LEIA-ME "Card de momento"); se o card ainda parecer vazio, o
-  // ajuste é a frase, não mais linha.
-  y=avY+avH+50;
-  regra(y,2,C.rule);y+=46;
-  const linha=(rot,val)=>{
-    x.fillStyle=C.faded;x.font=mono(21,500);
-    x.fillText(rot.toUpperCase(),M,y);
-    x.fillStyle=C.ink;x.font=mono(25,600);
-    x.textAlign="right";x.fillText(String(val),CARD_W-M,y);
-    x.textAlign="left";
-    x.fillStyle=C.rule;x.fillRect(M,y+15,CARD_W-M*2,1);
-    y+=53;
-  };
-  if(m.adversario)linha("Adversário",m.adversario);
-  if(m.resultado)linha("Resultado",m.resultado);
-  if(m.posicao)linha("Posição na divisão",m.posicao);
-  y+=34;
-
-  // frase — mesma carga emocional do LEGACY no card de fim de carreira.
-  // lsFrase já calculada lá em cima (mesma quebra, mesma largura), pra
-  // decidir a altura do card antes de desenhar.
-  x.font=`italic 30px "IBM Plex Mono",monospace`;
-  x.fillStyle=C.stamp;x.fillRect(M,y-30,5,lsFrase.length*42+14);
-  x.fillStyle=C.ink;
-  lsFrase.forEach((l,i)=>x.fillText(l,M+28,y+i*42));
-
-  const yf=CARD_H_M-M-86;
-  regra(yf,4,C.line2);
-  x.fillStyle=C.ink;x.font=mono(24,600);
-  x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M,yf+46);
-  x.fillStyle=C.stamp;x.font=mono(26,600);
-  x.textAlign="right";
-  x.fillText("#"+SEED.toString(36).toUpperCase(),CARD_W-M,yf+46);
-  x.fillStyle=C.faded;x.font=mono(19,400);
-  x.fillText(DOMINIO_JOGO,CARD_W-M,yf+76);
-  x.textAlign="left";
-  if(meuPro)seloProCanvas(x,M+9,yf+68,11);      // canto oposto ao domínio, que é sempre à direita
+  rodapeCard(x,M,H,meuPro,null,"#"+SEED.toString(36).toUpperCase());
+  granularCard(x,CARD_W,H);
   return cv;
 }
 
