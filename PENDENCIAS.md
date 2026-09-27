@@ -2035,3 +2035,8 @@ cheios, placar com regra no servidor, "sua melhor posição". Suítes novas
   recusa o impossível. Barrar de vez = rerodar a carreira no servidor.
 - `user_id` do placar é legível publicamente (UUID, sem e-mail): é o que
   permite "sua melhor posição" sem endpoint extra.
+
+**Fase 4 feita (2026-09-27):** nova carreira em 5 passos (3 no desafio),
+`bloqueioPro()` estreando em Lenda e Rival. Próxima: fase 5, o hub da
+carreira em abas + noite de luta + fim de carreira (a tela da carreira
+ainda é a antiga, inclusive quando retomada de um save).

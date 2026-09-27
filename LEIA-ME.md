@@ -2653,6 +2653,29 @@ forjada e plausível passa (o motor roda no navegador). `node testar.js
 placar` testa a regra com uma carreira real e o endpoint com `fetch` falso.
 **O endpoint só roda depois do merge + deploy** (função serverless).
 
+## Nova carreira em 5 passos (revamp fase 4, 2026-09-27)
+
+A criação do lutador virou um assistente: Nome, Visual, Divisão e modo,
+Rival, Draft (link de desafio: Nome, Visual, Draft, "de 3"). Cada passo é
+a MESMA função de antes (`screenName`, `screenCriador`, `screenDivisao`,
+`screenAtivarRival`, `renderDraft`), com a mesma lógica; muda a moldura
+(`montarPasso()`: "Passo n de 5", barra de progresso, fundo próprio,
+Voltar pro passo anterior) e o visual (CSS escopado em `.tela-criacao`).
+No draft, Voltar só existe antes da 1ª carta (depois ela já gastou
+orçamento e sorteio).
+
+**Truque que evitou reescrever o CSS do draft:** dentro de `.tela-criacao`
+as variáveis ANTIGAS (`--panel`, `--line`, `--ink`, `--stamp`, `--mira`...)
+são redefinidas com a paleta nova. O `legado.css` e o SVG do octógono
+continuam usando os nomes de sempre e já saem na identidade nova.
+
+**`bloqueioPro(elemento)`**, componente único de recurso Pro travado (spec
+seção 9): sem Pro, o recurso fica a 35% de opacidade, sem clique, e o único
+ponto clicável é o selo "Assine o Pro" (leva a `#/conta/pro`); com Pro,
+devolve o elemento intacto. Estreou em "Seja uma lenda" (antes o clique
+mostrava uma nota) e em "Sim, quero um rival" (antes abria a oferta do Pro
+no meio da criação). A trava de verdade continua no servidor.
+
 ## Histórico (2026-09-09) — aprovado, implementado
 
 Carreiras anteriores (nome, cartel, nota, data) e conquistas
