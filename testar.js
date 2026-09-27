@@ -6202,6 +6202,42 @@ async function testarRotas() {
   return ok;
 }
 
+/* ================================================================== *
+ * SAVE (revamp fase 3): geradores serializáveis, carreira interrompida
+ * e retomada = carreira direta, pendências (luta em andamento, dilema
+ * aberto), armazenamento no aparelho + nuvem.
+ * ================================================================== */
+/* primeiros 3 valores de mulberry32(12345) gravados com a função ANTES de
+   ganhar .estado()/.restaurar(): prova que a sequência não mudou */
+const ESPERADO_MULBERRY_12345 = "0.9797282678,0.3067522645,0.4842054215";
+async function testarSave() {
+  console.log("\n" + cinza("save: geradores serializáveis, carreira interrompida = carreira direta, pendências"));
+  const M = carregarMotor();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  await conf("mulberry32: sequência igual à de antes (primeiros valores da semente 12345)", () => {
+    const g = M.mulberry32(12345);
+    const v = [g(), g(), g()].map(x => x.toFixed(10)).join(",");
+    if (v !== ESPERADO_MULBERRY_12345) throw new Error("sequência mudou: " + v);
+  });
+  await conf("mulberry32: estado() + restaurar() continua exatamente de onde parou", () => {
+    const a = M.mulberry32(987654321);
+    for (let i = 0; i < 1000; i++) a();
+    if (typeof a.estado !== "function") throw new Error("gerador sem .estado()");
+    const e = a.estado();
+    const esperado = [a(), a(), a(), a()];
+    const b = M.mulberry32(1); b.restaurar(e);
+    const obtido = [b(), b(), b(), b()];
+    if (JSON.stringify(esperado) !== JSON.stringify(obtido)) throw new Error("restaurado divergiu");
+  });
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));
+  return ok;
+}
+
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
 let ok = true;
@@ -6238,6 +6274,7 @@ try {
   else if (cmd === "aposentadoria") ok = testarAposentadoriaSemLutas();
   else if (cmd === "inicial") ok = await testarTelaInicial();
   else if (cmd === "rotas") ok = await testarRotas();
+  else if (cmd === "save") ok = await testarSave();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "pro") ok = await testarColetivaEntrevista();
@@ -6303,6 +6340,7 @@ try {
         ["aposentadoria", () => testarAposentadoriaSemLutas()],
         ["inicial", () => testarTelaInicial()],
         ["rotas", () => testarRotas()],
+        ["save", () => testarSave()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],
