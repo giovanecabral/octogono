@@ -2363,6 +2363,7 @@ function proximoTema(){
    (lutadorEfetivo() da luta em andamento já foi lido antes disso). */
 const ATTRS_EVENTO=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"];
 async function dispararEventoIA(bouts,opp,r){
+  const tk=CARREIRA_TOKEN,luta=fightNo;
   const tema=proximoTema();
   /* Medido 2026-09-06: forçar o tema resolveu o COLAPSO ENTRE temas (42%
      convergindo pra "vídeo viraliza" mesmo quando o tema pedido era
@@ -2391,6 +2392,7 @@ async function dispararEventoIA(bouts,opp,r){
     perdeuCinturaoAgora:st.perdeuCinturaoNaLuta===fightNo,
     dinheiro:fmtNum(st.dinheiro||0)};
   let j=await ai("evento",dados);
+  if(tk!==CARREIRA_TOKEN)return;
   /* Medido: 10% das respostas vêm com ok:true mas sem o campo "texto" no
      JSON (a IA às vezes não obedece o formato pedido). Uma retentativa
      antes de desistir da luta — custo é 1 chamada extra em ~10% das ~18
@@ -2400,7 +2402,7 @@ async function dispararEventoIA(bouts,opp,r){
      desligamento pra essas, insistir por cima seria gastar chamada
      fadada a repetir o mesmo erro. */
   if(j&&!j.texto)j=await ai("evento",dados);
-  if(!j||!j.texto)return;
+  if(tk!==CARREIRA_TOKEN||!j||!j.texto)return;
   /* Medido: a instrução "não repita" em cima de "recentes" ajuda mas não
      é garantia — o modelo às vezes ecoa um dos recentes quase palavra
      por palavra mesmo assim (achado: pedido explícito de não repetir, e
@@ -2423,7 +2425,7 @@ async function dispararEventoIA(bouts,opp,r){
   const texto=String(j.texto).slice(0,300).trim();
   if(!texto)return;
   bouts.appendChild(el("div","event","— "+texto));
-  registrarExtra({tipo:"evento",texto:"— "+texto});
+  registrarExtra({tipo:"evento",texto:"— "+texto},luta);
   st.eventosRecentes=st.eventosRecentes||[];
   st.eventosRecentes.push(texto);
   if(st.eventosRecentes.length>3)st.eventosRecentes.shift();
@@ -2616,11 +2618,17 @@ async function abrirDilema(dPronto){
      dilema até vir um fácil. */
   let d=dPronto||null;
   if(!d){
-    const seed=proximoDilemaSeed();
+    /* Revamp fase 5: a semente vai pro PENDENTE ANTES da IA responder
+       (o save do fim da luta já sai com ela). Recarregar nesse intervalo
+       reabre o dilema da mesma semente, em vez de perder o dilema. */
+    const seed=(PENDENTE&&PENDENTE.tipo==="dilema"&&PENDENTE.seed!=null)?PENDENTE.seed:proximoDilemaSeed();
+    PENDENTE={tipo:"dilema",d:null,seed};
+    const tk=CARREIRA_TOKEN;
     const mood=st.streakW>=3?"em alta":st.streakL>=2?"em queda":"estável";
     const recentes=(st.dilemaRecentes||[]).slice(-3);
     d=await ai("dilema",{name:me.name,record:`${st.wins}-${st.losses}`,
       followers:fmtNum(st.followers),fan:st.fan.toFixed(1),mood,seed,recentes});
+    if(tk!==CARREIRA_TOKEN)return new Promise(()=>{});   // carreira trocada: abandona
     /* dilema não recebe texto do jogador — não dá pra provocar ele do jeito
        que dá pra provocar o julgar. Ainda assim, rede embaixo: se a IA gerar
        algo ruim sem provocação (improvável, mas não impossível), cai no
@@ -2658,12 +2666,14 @@ async function abrirDilema(dPronto){
     const txt=inp.value.trim();
     if(!txt)return inp.focus();
     go.disabled=true;inp.disabled=true;go.textContent="…";
+    const tk=CARREIRA_TOKEN;
     /* Corta ANTES de chamar a IA, não só depois: mais barato (economiza a
        chamada inteira) e não depende de o julgar ter obedecido a instrução
        de conteúdo inseguro — o texto nunca sai daqui. */
     const j=conteudoInseguro(txt)?null:await ai("julgar",{name:me.name,cena:d.cena,resposta:txt,
       record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
       rendaBase:RENDA_BASE});
+    if(tk!==CARREIRA_TOKEN)return;
     aplicarDilema(box,d,txt,j);
   };
   go.onclick=enviar;
@@ -4014,6 +4024,7 @@ function telaColetiva(escolhido,camp){
     if(!meuPro)return;
     go.disabled=true;inp.disabled=true;go.textContent="…";
     const volta=document.getElementById("noiteVoltar");if(volta)volta.hidden=true;   // resposta a caminho: sem voltar
+    const tk=CARREIRA_TOKEN;
     const token=await meuAccessToken();
     /* Corta ANTES de chamar a IA — mesmo motivo do dilema: mais barato e
        não depende de a IA ter obedecido a instrução de conteúdo inseguro. */
@@ -4022,6 +4033,7 @@ function telaColetiva(escolhido,camp){
       estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
       abertura,resposta:txt,record:`${st.wins}-${st.losses}`,
       followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,token});
+    if(tk!==CARREIRA_TOKEN)return;
     aplicarColetiva(box,opp,txt,j,seguir);
   };
   if(meuPro)inp.focus();
@@ -4042,7 +4054,8 @@ function aplicarColetiva(box,opp,txt,jBruto,seguir){
     box.innerHTML=`<div class="dil-eyebrow">Coletiva</div>
       <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
       <div class="dil-o">${bruto}</div>`;
-    setTimeout(seguir,2200);
+    const tk=CARREIRA_TOKEN;
+    setTimeout(()=>{ if(tk===CARREIRA_TOKEN)seguir(); },2200);
   }else seguir();
 }
 
@@ -4123,6 +4136,7 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
       const txt=inp.value.trim();
       if(!txt)return inp.focus();
       go.disabled=true;inp.disabled=true;go.textContent="…";
+      const tk=CARREIRA_TOKEN;
       const token=await meuAccessToken();
       const historicoRival=ehRival?historicoRivalTexto():null;
       const j=conteudoInseguro(txt)?null:await ai("entrevista",{name:me.name,opp:opp.name,
@@ -4130,6 +4144,7 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
         zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,pergunta,resposta:txt,
         record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
         rendaBase:RENDA_BASE,historicoRival,token});
+      if(tk!==CARREIRA_TOKEN)return;
       aplicarEntrevista(wrap,pergunta,txt,j);
     };
   };
@@ -5396,6 +5411,7 @@ function irPara(nome,param=null,{substituir=false}={}){
   mostrarRota(nome,param);
 }
 function mostrarRota(nome,param){
+  if(document.documentElement.dataset.tela==="hub"&&nome!=="carreira")pararCarreira();
   const r=ROTAS[nome]?nome:"404";
   rotaAtual=r;
   transicao(()=>ROTAS[r].tela(param));
@@ -5520,6 +5536,10 @@ function screen404(){
 registrarRota("menu",screenMenu);
 registrarRota("nova",()=>comConta({tipo:"nova"},()=>iniciarNovaCarreira()));   // a fase 4 troca o fluxo de criação pelo assistente
 registrarRota("continuar",()=>comConta({tipo:"continuar"},screenContinuar));
+registrarRota("carreira",()=>{
+  if(document.documentElement.dataset.tela==="hub"&&st)return;   // já está na carreira
+  comConta({tipo:"continuar"},retomarMaisRecente);
+});
 registrarRota("conta",p=>screenConta(p));
 registrarRota("atualizacoes",screenAtualizacoes);
 registrarRota("ranking",screenRanking);
@@ -5935,13 +5955,20 @@ function restaurarGeradores(g){
   rng=r(g.rng);holdRng=r(g.holdRng);fraseRng=r(g.fraseRng);escolhaRng=r(g.escolhaRng);
   lesaoRng=r(g.lesaoRng);eventoRng=r(g.eventoRng);dilemaRng=r(g.dilemaRng);rivalRng=r(g.rivalRng);
 }
+function geradoresDoSave(){
+  const g=estadoGeradores();
+  /* escolha da luta aberta e ainda não feita: o save volta o escolhaRng
+     pro ponto de antes do trio (a retomada sorteia o trio de novo) */
+  if(PENDENTE&&PENDENTE.tipo==="luta"&&!PENDENTE.escolha&&PENDENTE.escolhaRngAntes!=null)g.escolhaRng=PENDENTE.escolhaRngAntes;
+  return g;
+}
 function montarSave(){
   return{versao:VERSAO_SAVE,slot:SLOT_ATUAL,fase:"carreira",atualizadoEm:new Date().toISOString(),
     seed:SEED,divisao:DIVISION,modo:MODO,nome:me.name,rosto:ROSTO,
     rival:{ativado:RIVAL_ATIVADO,nome:RIVAL_NOME_ESCOLHIDO},
     picks:picks.map(p=>({label:p.pair?p.pair.label:p.label,from:p.from})),
     me,st,fightNo,fought:[...fought],rareUsed:[...rareUsed],
-    geradores:estadoGeradores(),pendente:PENDENTE};
+    geradores:geradoresDoSave(),pendente:PENDENTE};
 }
 /* Só estado global, sem tela. POOL/PCT/LADDER/RANKING saem de divisão +
    modo (determinístico), não vão no save. */
@@ -5970,6 +5997,18 @@ function retomarCarreira(s){
   atualizarControles();renderFicha();
   retomarPendente();
 }
+/* #/carreira recarregado: abre o save mais recente deste usuário (é o da
+   carreira que estava na tela). Sem save compatível, volta pro menu. */
+async function retomarMaisRecente(){
+  const saves=await listarSaves();
+  let melhor=null,slot=null;
+  saves.forEach((sv,i)=>{
+    if(sv&&sv.versao===VERSAO_SAVE&&(!melhor||new Date(sv.atualizadoEm)>new Date(melhor.atualizadoEm))){melhor=sv;slot=i+1;}
+  });
+  if(!melhor){ irPara("menu",null,{substituir:true}); return; }
+  SLOT_ATUAL=slot;
+  retomarCarreira(melhor);
+}
 /* Luta em andamento ou dilema aberto na hora em que o save foi gravado:
    refaz a MESMA luta (mesma semente, mesma escolha do round 1 se já tinha
    sido feita) ou reabre o MESMO dilema. Adversário que não existe mais no
@@ -5995,11 +6034,11 @@ function retomarPendente(){
     if(opts.some(x=>!x)){ PENDENTE=null; return; }
     escolhaAberta=true;atualizarControles();
     telaAdversario(opts);
-  }else if(p.tipo==="dilema"&&p.d){
+  }else if(p.tipo==="dilema"){
     dilemaAberto=true;
     novoPosLuta(fightNo);
     mostrarResultado(st.registro&&st.registro[st.registro.length-1],null);
-    abrirDilema(p.d)
+    abrirDilema(p.d||null)
       .catch(()=>{})
       .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
   }
@@ -6837,11 +6876,26 @@ const ABAS_HUB=[
    moram na folha que o "Mais" abre. */
 const ABAS_NA_FOLHA=["loja","cards","conquistas"];
 let abaHub="painel";
+/* Carreira na tela (revamp fase 5): muda a cada tela de carreira montada
+   e a cada saída. Toda continuação assíncrona (IA, timers) guarda o valor
+   de quando começou e desiste se ele mudou: resposta atrasada de uma
+   carreira nunca escreve na seguinte. */
+let CARREIRA_TOKEN=0;
+function pararCarreira(){
+  CARREIRA_TOKEN++;
+  clearTimeout(playTimer);clearTimeout(autoTimer);clearTimeout(entradaTimer);
+  auto=false;
+  document.documentElement.dataset.noite="0";
+}
 function montarTelaCarreira(){
   if(cfgAberto)fecharConfig();
   document.documentElement.dataset.tela="hub";
   document.documentElement.dataset.noite="0";
+  CARREIRA_TOKEN++;
   noiteEtapa=null;ofertaAtual=null;escolhidoAtual=null;posLutaAtual=null;
+  /* a carreira em andamento mora em #/carreira: recarregar volta pra ela */
+  rotaAtual="carreira";
+  try{ if(location.hash!=="#/carreira")history.replaceState(null,"","#/carreira"); }catch(e){}
   app.innerHTML="";
   const tela=el("div","tela tela-hub");
   const fundo=fundoTela("arena");fundo.id="hubFundo";
@@ -7193,12 +7247,12 @@ function renderPainel(){
     if(tem)ps.innerHTML=`<div class="painel-cab">${ICONE("jornal")}Repercussão</div>`+ultimoFeed.slice(0,2).map(postHTML).join("");
   }
 }
-/* Menu da barra: salva e sai. No meio da narração não grava de novo: o
-   save do começo da luta (lutar) é o ponto certo de retomada. */
+/* Menu da barra: salva e sai. Qualquer instante é ponto de save coerente
+   (oferta, dilema e escolha na luta guardam o que já foi sorteado);
+   no meio da narração a retomada refaz a mesma luta. */
 function sairParaMenu(){
-  if(!playing)salvarCarreira();
-  clearTimeout(playTimer);clearTimeout(autoTimer);
-  auto=false;
+  salvarCarreira();
+  pararCarreira();
   irPara("menu");
 }
 /* Atributos que o CSS lê pra travar o Aposentar durante luta, escolha e
@@ -7421,6 +7475,10 @@ function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
   else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca — ${s.burstA} a ${s.burstB}.`;
   else cabecalho=`Round parelho, nada decidido ainda.`;
 
+  /* Revamp fase 5: save com a escolha aberta grava o escolhaRng de ANTES
+     do trio (montarSave), então recarregar sorteia o MESMO trio. */
+  if(PENDENTE&&PENDENTE.tipo==="luta"&&!PENDENTE.escolha&&escolhaRng&&escolhaRng.estado)
+    PENDENTE.escolhaRngAntes=escolhaRng.estado();
   const sinal=sinalDoRound(s);
   const pool=ACOES_LUTA.filter(a=>a.pools.includes(sinal));
   const restante=[...pool];
@@ -7595,7 +7653,8 @@ function aposEntrada(opp,titleFight,seguir){
   const e=document.getElementById("entrada");
   if(auto||reduceMotion()||!e){mostrarNoite("luta");seguir();return;}
   let feito=false;
-  const fim=()=>{ if(feito)return; feito=true; clearTimeout(entradaTimer); mostrarNoite("luta"); seguir(); };
+  const tk=CARREIRA_TOKEN;
+  const fim=()=>{ if(feito||tk!==CARREIRA_TOKEN)return; feito=true; clearTimeout(entradaTimer); mostrarNoite("luta"); seguir(); };
   const alc=a=>a!=null?Math.round(a)+String.fromCharCode(34):"-";
   const lin=(rot,a,b)=>`<div class="tale-linha"><span class="tale-a">${a}</span><span class="tale-rot">${rot}</span><span class="tale-b">${b}</span></div>`;
   const d=dificuldade(opp);
@@ -7652,7 +7711,9 @@ function iniciarTelaLuta(opp,titleFight){
 }
 function animarTrecho(lines,aoTerminar){
   const play=document.getElementById("play");let i=0;
+  const tk=CARREIRA_TOKEN;
   const step=()=>{
+    if(tk!==CARREIRA_TOKEN)return;   // saiu da carreira: a narração para aqui
     if(i>=lines.length){aoTerminar();return;}
     const L=lines[i++];
     if(L.kind==="rd"&&/^Round/.test(L.text))
@@ -7740,8 +7801,10 @@ function renderMidia(){
 }
 /* O que aconteceu depois da luta (evento, raro, dilema, entrevista) vai
    pra última entrada do registro, pra carreira retomada mostrar igual. */
-function registrarExtra(x){
-  const reg=st&&st.registro&&st.registro[st.registro.length-1];
+function registrarExtra(x,luta){
+  /* luta: número da luta dona do extra (evento da IA pode chegar depois
+     da luta seguinte já ter terminado); sem ele, a última luta */
+  const reg=st&&st.registro&&(luta!=null?st.registro.find(r=>r.n===luta):st.registro[st.registro.length-1]);
   if(reg)(reg.extras=reg.extras||[]).push(x);
 }
 function linhaExtra(x){
@@ -8026,7 +8089,8 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   if(ph){
     const molde=buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,me.name,st.followers);
     ph.style.visibility="visible";
-    resolveFeed(molde,rng).then(f=>renderPhone(f,st.fan,delta,st.followers));
+    const tk=CARREIRA_TOKEN;
+    resolveFeed(molde,rng).then(f=>{ if(tk===CARREIRA_TOKEN)renderPhone(f,st.fan,delta,st.followers); });
   }
 
   /* Registro da luta como DADO (revamp fase 3): o save guarda isto e a
@@ -8129,8 +8193,10 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     c.appendChild(fin);return;
   }
   atualizarControles();
-  if(auto&&!dilemaAberto&&!entrevistaAberta)
-    autoTimer=setTimeout(()=>{if(auto&&!dilemaAberto&&!entrevistaAberta)nextFight();},1100/speed);
+  if(auto&&!dilemaAberto&&!entrevistaAberta){
+    const tk=CARREIRA_TOKEN;
+    autoTimer=setTimeout(()=>{if(tk===CARREIRA_TOKEN&&auto&&!dilemaAberto&&!entrevistaAberta)nextFight();},1100/speed);
+  }
 }
 
 /* ---------- tela 4: relatório ---------- */

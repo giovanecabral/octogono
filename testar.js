@@ -7285,6 +7285,105 @@ async function testarHub() {
     if (!conv || !conv.children.some(c => tem(c, "bloqueio-pro"))) throw new Error("convite sem bloqueioPro");
   });
 
+  /* ---------- tarefa 8: save em qualquer ponto e saída pelo Menu ---------- */
+  const retomarNoSandbox = (save, extra = "") => {
+    const Y = sandboxCarreira();
+    Y.sb.__F = F; Y.sb.__RJ = rosterJSON; Y.sb.__save = save;
+    Y.run(`ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;${extra}retomarCarreira(JSON.parse(globalThis.__save));`);
+    return Y;
+  };
+  const resumoLutas = X => X.run("JSON.stringify(st.registro.map(r=>[r.adv,r.venceu,r.metodo,r.round,r.relogio]))");
+
+  await conf("save: recarregar com o dilema esperando a IA reabre o dilema da MESMA semente e dá a mesma carreira", async () => {
+    const A = novo(778801);
+    await jogarCarreiraAte(A, 4); A.run("auto=false;");
+    A.sb.__alvo = 5;
+    A.run("auto=true;nextFight();");
+    A.drenar();                                   // luta 5 inteira; a IA do dilema ainda não respondeu
+    if (!A.run("dilemaAberto")) throw new Error("dilema da luta 5 não abriu");
+    const pend = JSON.parse(A.run("JSON.stringify(PENDENTE)"));
+    if (!pend || pend.tipo !== "dilema" || pend.d !== null || typeof pend.seed !== "string" && typeof pend.seed !== "number")
+      throw new Error("PENDENTE antes da IA: " + JSON.stringify(pend));
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = retomarNoSandbox(save);
+    for (let k = 0; k < 6; k++) { A.drenar(); B.drenar(); await respirarCarreira(); }
+    if (!B.run("dilemaAberto")) throw new Error("dilema não reabriu");
+    const tA = A.run("PENDENTE&&PENDENTE.d&&PENDENTE.d.titulo"), tB = B.run("PENDENTE&&PENDENTE.d&&PENDENTE.d.titulo");
+    if (!tA || tA !== tB) throw new Error(`dilema direto "${tA}" x retomado "${tB}"`);
+    for (const X of [A, B]) { X.sb.__alvo = 8; await resolverDilemaTeste(X, "aceito, sem problema"); await jogarCarreiraAte(X, 8); }
+    if (resumoLutas(A) !== resumoLutas(B)) throw new Error("carreiras divergiram depois do dilema");
+  });
+
+  await conf("save: salvar com a escolha na luta aberta e recarregar sorteia o MESMO trio", async () => {
+    const trio = X => Object.keys(X.registro).filter(k => k.startsWith("el_")).sort().join(",");
+    let A = null;
+    /* acha uma luta que passa do round 1 (só então a escolha abre) */
+    for (let semente = 778802; semente < 778812 && !A; semente++) {
+      const X = novo(semente);
+      X.run("meuPro=true;auto=false;nextFight();");
+      ultimasCartas(X, "opps", "opp")[0].onclick();
+      ultimasCartas(X, "camps", "camp")[0].onclick();
+      X.registro.colpular.onclick();
+      for (let k = 0; k < 10 && !trio(X) && X.run("playing"); k++) { X.drenar(); await respirarCarreira(); }
+      if (trio(X)) A = X;
+    }
+    if (!A) throw new Error("nenhuma das 10 sementes passou do round 1");
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = retomarNoSandbox(save);
+    for (let k = 0; k < 10 && !trio(B); k++) { B.drenar(); await respirarCarreira(); }
+    if (trio(A) !== trio(B)) throw new Error(`trio direto ${trio(A)} x retomado ${trio(B)}`);
+  });
+
+  await conf("Menu no meio da luta: para a narração, grava o ponto certo e a retomada dá a mesma luta", async () => {
+    const A = novo(778803), C = novo(778803);
+    for (const X of [A, C]) { X.run("USUARIO_ID='u1';SLOT_ATUAL=1;meuPro=true;auto=false;nextFight();");
+      ultimasCartas(X, "opps", "opp")[1].onclick(); ultimasCartas(X, "camps", "camp")[1].onclick(); X.registro.colpular.onclick(); }
+    const f0 = A.run("fightNo"), linhas0 = A.run("(st.registro||[]).length");
+    A.registro.hubMenu.onclick();
+    for (let k = 0; k < 6; k++) { A.drenar(); await respirarCarreira(); }
+    if (A.run("(st.registro||[]).length") !== linhas0) throw new Error("a luta continuou rodando depois de sair");
+    if (A.run("rotaAtual") !== "menu") throw new Error("não foi pro menu");
+    const save = A.dadosLS["save:u1:1"];
+    if (!save) throw new Error("sem save local");
+    const B = retomarNoSandbox(save);
+    if (B.run("fightNo") !== f0) throw new Error("retomou na luta " + B.run("fightNo"));
+    const terminar = async X => { for (let k = 0; k < 20 && X.run("playing"); k++) { X.drenar(); await respirarCarreira();
+      const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+      if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); } } };
+    await terminar(B); await terminar(C);
+    if (resumoLutas(B) !== resumoLutas(C)) throw new Error(`retomada ${resumoLutas(B)} x direta ${resumoLutas(C)}`);
+  });
+
+  await conf("evento da IA que chega depois de sair pro menu não toca a carreira seguinte", async () => {
+    const X = novo(778804);
+    X.run("meuPro=true;globalThis.__res=null;ai=(tipo)=>tipo==='evento'?new Promise(r=>{globalThis.__res=r;}):Promise.resolve(null);sortearRaro=()=>null;");
+    await lutarManual(X);
+    if (!X.run("typeof globalThis.__res==='function'")) throw new Error("evento não foi pedido");
+    X.registro.hubMenu.onclick();
+    iniciarCarreiraTeste(X, F, 778805, "normal", rosterJSON);
+    X.run("auto=false;");
+    const antes = X.run("JSON.stringify([st.events,st.eventoMod])");
+    X.run(`globalThis.__res({texto:"Um vídeo antigo do treino voltou a circular na cidade.",atributo:"slpm",efeito:1.1});`);
+    for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); }
+    if (X.run("JSON.stringify([st.events,st.eventoMod])") !== antes) throw new Error("evento antigo mexeu na carreira nova");
+    if (nosDe(X.registro.app).some(n => /voltou a circular/.test(String(n.innerHTML)))) throw new Error("evento antigo apareceu na tela nova");
+  });
+
+  await conf("#/carreira: a carreira fica nesse endereço e recarregar nele retoma o save mais recente", async () => {
+    const X = novo(778806);
+    X.run("USUARIO_ID='u1';SLOT_ATUAL=2;salvarCarreira();");
+    if (X.sb.location.hash !== "#/carreira") throw new Error("hash da carreira: " + X.sb.location.hash);
+    await jogarCarreiraAte(X, 2); X.run("auto=false;salvarCarreira();");
+    const Y = sandboxCarreira();
+    Object.assign(Y.dadosLS, X.dadosLS);
+    Y.sb.window.supabase = supabaseFalsoComSessao({ sessao: { user: { id: "u1", email: "t@t.com" } } });
+    Y.sb.__F = F; Y.sb.__RJ = rosterJSON;
+    Y.run(`ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;location.hash="#/carreira";irPara("carreira");`);
+    for (let k = 0; k < 8; k++) { Y.drenar(); await respirarCarreira(); }
+    if (Y.run("document.documentElement.dataset.tela") !== "hub") throw new Error("não abriu o hub: " + Y.run("document.documentElement.dataset.tela"));
+    if (Y.run("fightNo") !== X.run("fightNo") || Y.run("SLOT_ATUAL") !== 2) throw new Error(`retomou luta ${Y.run("fightNo")} no espaço ${Y.run("SLOT_ATUAL")}`);
+  });
+
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("hub ok") : vermelho(`${falhas.length} falha(s) no hub`)));
   return ok;
