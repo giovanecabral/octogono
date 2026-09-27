@@ -5772,6 +5772,68 @@ function screenCreditos(){
   });
 }
 
+/* =========================================================================
+   SAVE (revamp fase 3). O save é DADO: estado da carreira + estado interno
+   dos 8 geradores (mulberry32 .estado()/.restaurar()). A tela é
+   redesenhada a partir de st.registro. Carreira interrompida e retomada
+   dá exatamente a mesma carreira de quem jogou direto (node testar.js
+   save). Plano: docs/superpowers/plans/2026-09-27-revamp-fase-3.md.
+   ========================================================================= */
+const VERSAO_SAVE=1;
+let SLOT_ATUAL=null,USUARIO_ID=null,PENDENTE=null;
+function estadoGeradores(){
+  const e=g=>g&&g.estado?g.estado():null;
+  return{rng:e(rng),holdRng:e(holdRng),fraseRng:e(fraseRng),escolhaRng:e(escolhaRng),
+    lesaoRng:e(lesaoRng),eventoRng:e(eventoRng),dilemaRng:e(dilemaRng),rivalRng:e(rivalRng)};
+}
+function restaurarGeradores(g){
+  const r=v=>{const x=mulberry32(0);if(v!=null)x.restaurar(v);return x;};
+  rng=r(g.rng);holdRng=r(g.holdRng);fraseRng=r(g.fraseRng);escolhaRng=r(g.escolhaRng);
+  lesaoRng=r(g.lesaoRng);eventoRng=r(g.eventoRng);dilemaRng=r(g.dilemaRng);rivalRng=r(g.rivalRng);
+}
+function montarSave(){
+  return{versao:VERSAO_SAVE,slot:SLOT_ATUAL,fase:"carreira",atualizadoEm:new Date().toISOString(),
+    seed:SEED,divisao:DIVISION,modo:MODO,nome:me.name,rosto:ROSTO,
+    rival:{ativado:RIVAL_ATIVADO,nome:RIVAL_NOME_ESCOLHIDO},
+    picks:picks.map(p=>({label:p.pair?p.pair.label:p.label,from:p.from})),
+    me,st,fightNo,fought:[...fought],rareUsed:[...rareUsed],
+    geradores:estadoGeradores(),pendente:PENDENTE};
+}
+/* Só estado global, sem tela. POOL/PCT/LADDER/RANKING saem de divisão +
+   modo (determinístico), não vão no save. */
+function aplicarSave(s){
+  SEED=s.seed;DIVISION=s.divisao;MODO=s.modo;ROSTO=s.rosto||null;
+  RIVAL_ATIVADO=!!(s.rival&&s.rival.ativado);RIVAL_NOME_ESCOLHIDO=s.rival?s.rival.nome:null;
+  POOL=poolDivisao(DIVISION);PCT=makePercentiler(POOL);
+  LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);RANKING=buildRanking(POOL);
+  me=s.me;st=s.st;fightNo=s.fightNo;
+  picks=(s.picks||[]).map(p=>({pair:{label:p.label},from:p.from}));
+  fought=new Set(s.fought||[]);rareUsed=new Set(s.rareUsed||[]);
+  restaurarGeradores(s.geradores||{});
+  PENDENTE=s.pendente||null;
+  if(s.slot)SLOT_ATUAL=s.slot;
+  auto=false;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
+}
+function retomarCarreira(s){
+  aplicarSave(s);
+  atualizarStatusPro();
+  montarTelaCarreira();
+  const bouts=document.getElementById("bouts");
+  (st.registro||[]).forEach(reg=>{
+    bouts.appendChild(linhaBout(reg));
+    (reg.extras||[]).forEach(x=>bouts.appendChild(linhaExtra(x)));
+  });
+  atualizarControles();renderFicha();
+}
+/* Grava no aparelho (a nuvem entra na tarefa 6). Sem espaço ou sem
+   usuário (teste, carreira de desafio antes do login) não faz nada. */
+const chaveSave=(uid,slot)=>`save:${uid}:${slot}`;
+function gravarSaveLocal(uid,slot,dados){ try{ localStorage.setItem(chaveSave(uid,slot),JSON.stringify(dados)); return true; }catch(e){ return false; } }
+function salvarCarreira(){
+  if(!SLOT_ATUAL||!USUARIO_ID||!st||!me)return;
+  gravarSaveLocal(USUARIO_ID,SLOT_ATUAL,montarSave());
+}
+
 /* ---------- carregar dados ---------- */
 async function boot(){
   /* "Abriu o jogo" — evento 1 de 4 do funil (PLANO-LANCAMENTO.md, fase 0).
@@ -6416,6 +6478,13 @@ function startCareer(){
      tudo bem — a próxima renderização de telaColetiva()/botão de
      entrevista já lê o valor atualizado. */
   atualizarStatusPro();
+  iniciarEstadoCarreira();
+  montarTelaCarreira();
+  salvarCarreira();
+}
+/* Estado inicial da carreira (revamp fase 3: separado da tela pra
+   carreira retomada de um save montar só a tela, sem zerar nada). */
+function iniciarEstadoCarreira(){
   if(me.sapm==null)me.sapm=3.2;
   if(me.strAcc==null)me.strAcc=.45;
   if(me.tdAcc==null)me.tdAcc=.38;
@@ -6449,7 +6518,9 @@ function startCareer(){
   rareUsed=new Set();fought=new Set();
   fightNo=0;auto=false;speed=1;playing=false;
   dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
-
+}
+/* Tela da carreira (controles, painéis, abas, ficha, histórico vazio). */
+function montarTelaCarreira(){
   app.innerHTML="";
   app.appendChild(el("div","eyebrow","Registro de lutas"));
   app.appendChild(el("p","made-of","Seu lutador: "+

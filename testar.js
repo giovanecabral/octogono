@@ -6251,6 +6251,12 @@ function sandboxCarreira() {
   vm.runInContext(lerScript() + `
 ;globalThis.__run=(c)=>eval(c);`, sb, { filename: "index.html" });
   const drenar = () => { let i = 0; while (timers.length && i++ < 200000) (timers.shift())(); };
+  /* parar EXATAMENTE no fim da luta alvo: o automático agenda a próxima
+     luta dentro de finishFight(), e esse timer confere `auto` na hora de
+     rodar; desligar `auto` logo depois da luta alvo faz ele não fazer nada */
+  sb.__alvo = 22;
+  sb.__run(`(function(){const orig=finishFight;finishFight=function(){const r=orig.apply(this,arguments);
+    if(fightNo>=globalThis.__alvo)auto=false;return r;};})()`);
   return { sb, registro, drenar, dadosLS, run: c => sb.__run(c) };
 }
 /* começa uma carreira pelo caminho real: startDraft, draft guloso (mais
@@ -6294,6 +6300,7 @@ async function resolverDilemaTeste(ctx, texto) {
 }
 /* joga (no automático) até fightNo === alvo, resolvendo dilemas no caminho */
 async function jogarCarreiraAte(ctx, alvo, texto = "aceito, sem problema") {
+  ctx.sb.__alvo = alvo;
   for (let guarda = 0; guarda < 400 && ctx.run("fightNo") < alvo; guarda++) {
     for (let k = 0; k < 3; k++) { ctx.drenar(); await respirarCarreira(); }
     if (await resolverDilemaTeste(ctx, texto)) continue;
@@ -6349,6 +6356,52 @@ async function testarSave() {
     if (reg.filter(x => !x.venceu).length !== l) throw new Error("derrotas do registro != st.losses");
     if (!reg.every((x, i) => x.n === i + 1)) throw new Error("numeração fora de ordem");
     if (new Set(reg.map(x => x.adv)).size !== 22) throw new Error("adversário repetido no registro");
+  });
+  /* O teste que importa: interromper na luta 11, salvar, retomar num
+     sandbox ZERADO e terminar tem que dar exatamente a mesma carreira de
+     quem jogou direto. Compara o registro luta a luta, o cartel, dinheiro,
+     seguidores, cinturão, treino e o estado final do gerador principal. */
+  const resumo = ctx => JSON.parse(ctx.run(`JSON.stringify({
+    reg:(st.registro||[]).map(x=>[x.n,x.adv,x.venceu,x.metodo,x.round,x.relogio]),
+    w:st.wins,l:st.losses,din:st.dinheiro,seg:st.followers,title:st.title,treino:st.treino,
+    rng:rng.estado(),hold:holdRng.estado(),esc:escolhaRng.estado()})`));
+  let direta = null;
+  await conf("carreira interrompida na luta 11, salva e retomada = carreira direta, luta por luta", async () => {
+    const A = sandboxCarreira();
+    iniciarCarreiraTeste(A, F, 777001);
+    if (await jogarCarreiraAte(A, 11) !== 11) throw new Error("A não parou na 11");
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = sandboxCarreira();
+    B.sb.__F = F; B.sb.__save = save;
+    B.run(`ROSTER=rateAll(globalThis.__F);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      retomarCarreira(JSON.parse(globalThis.__save));`);
+    if (B.run("fightNo") !== 11) throw new Error("retomada não voltou na luta 11");
+    await jogarCarreiraAte(B, 22);
+    const C = sandboxCarreira();
+    iniciarCarreiraTeste(C, F, 777001);
+    await jogarCarreiraAte(C, 22);
+    const rb = resumo(B), rc = resumo(C);
+    direta = rc;
+    if (rc.reg.length !== 22) throw new Error("direta não chegou na 22");
+    for (let i = 0; i < 22; i++)
+      if (JSON.stringify(rb.reg[i]) !== JSON.stringify(rc.reg[i]))
+        throw new Error(`luta ${i + 1} divergiu: retomada ${JSON.stringify(rb.reg[i])} vs direta ${JSON.stringify(rc.reg[i])}`);
+    for (const k of ["w", "l", "din", "seg", "title", "rng", "hold", "esc"])
+      if (JSON.stringify(rb[k]) !== JSON.stringify(rc[k])) throw new Error(`${k} divergiu: ${rb[k]} vs ${rc[k]}`);
+    if (JSON.stringify(rb.treino) !== JSON.stringify(rc.treino)) throw new Error("treino divergiu");
+  });
+  await conf("carreira retomada redesenha o histórico: 11 linhas de luta na tela logo depois de retomar", async () => {
+    const A = sandboxCarreira();
+    iniciarCarreiraTeste(A, F, 777002);
+    await jogarCarreiraAte(A, 11);
+    const save = A.run("JSON.stringify(montarSave())");
+    const B = sandboxCarreira();
+    B.sb.__F = F; B.sb.__save = save;
+    B.run(`ROSTER=rateAll(globalThis.__F);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      retomarCarreira(JSON.parse(globalThis.__save));`);
+    const bouts = B.registro.bouts;
+    const linhas = bouts ? bouts.children.filter(n => (n.className || "").split(" ").includes("bout")) : [];
+    if (linhas.length !== 11) throw new Error(`${linhas.length} linhas .bout no histórico retomado`);
   });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));
