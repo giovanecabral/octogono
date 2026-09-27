@@ -5808,7 +5808,8 @@ function screenRanking(){
   const area=el("div","ranking-area");
   const carregar=async()=>{
     area.innerHTML=""; area.appendChild(el("p","carregando","Carregando placar"));
-    desenharRanking(area,await buscarPlacar(filtroRanking));
+    const[linhas,minha]=await Promise.all([buscarPlacar(filtroRanking),buscarMinhaPosicao(filtroRanking)]);
+    desenharRanking(area,linhas,minha);
   };
   [["normal","Carreira"],["lenda","Lenda"]].forEach(([m,rot])=>{
     const b=el("button","segmento-op"+(filtroRanking.modo===m?" on":""),rot);
@@ -5823,11 +5824,34 @@ function screenRanking(){
   carregar();
 }
 function nomeDivisao(id){ const d=DIVISOES.find(x=>x.id===id); return d?d.nome:""; }
-function desenharRanking(area,linhas){
+/* Melhor carreira do jogador logado no filtro atual + posição dela
+   (quantas têm pontuação maior, +1). Sem sessão ou sem carreira: null. */
+async function buscarMinhaPosicao({divisao=null,modo="normal"}={}){
+  const sb=getSupabase();
+  if(!sb)return null;
+  if(!USUARIO_ID)await sessaoAtual();
+  if(!USUARIO_ID)return null;
+  try{
+    let q=sb.from("placar").select("nome_lutador,divisao,pontuacao,cartel,nota,cinturoes,rosto").eq("user_id",USUARIO_ID).eq("modo",modo);
+    if(divisao)q=q.eq("divisao",divisao);
+    const{data}=await q.order("pontuacao",{ascending:false}).limit(1);
+    const minha=Array.isArray(data)&&data[0];
+    if(!minha)return null;
+    let c=sb.from("placar").select("seed",{count:"exact",head:true}).eq("modo",modo).gt("pontuacao",minha.pontuacao);
+    if(divisao)c=c.eq("divisao",divisao);
+    const{count}=await c;
+    return{...minha,posicao:(count||0)+1};
+  }catch(e){ return null; }
+}
+function desenharRanking(area,linhas,minha){
   area.innerHTML="";
   if(!linhas.length){
     area.appendChild(vazio("trofeu","Nenhuma carreira no placar ainda.","Termine uma carreira para aparecer aqui."));
     return;
+  }
+  if(minha){
+    const barra=el("div","rank-minha",`<span class="rank-minha-rot">Sua melhor posição</span>`+linhaRanking(minha,minha.posicao).innerHTML);
+    area.appendChild(barra);
   }
   const podio=el("div","podio");
   [1,0,2].forEach(i=>{ if(linhas[i])podio.appendChild(degrauPodio(linhas[i],i+1)); });
@@ -7673,16 +7697,42 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
 }
 
 /* ---------- tela 4: relatório ---------- */
-function grade(){
-  const winPct=st.wins/Math.max(1,st.wins+st.losses);
-  const finishPct=st.finishes/Math.max(1,st.wins);
-  const score=st.peak*40+st.bestBeaten*30+winPct*12+finishPct*8+(st.title?10:0);
-  const tiers=[[90,"S","Lenda. Vão passar essas lutas na TV por trinta anos."],
+/* Faixas da nota (revamp fase 3: saíram de dentro de grade() pro placar
+   no servidor, api/_placar-regras.js, conferir contra as mesmas). */
+const TIERS_NOTA=[[90,"S","Lenda. Vão passar essas lutas na TV por trinta anos."],
     [78,"A","Nome grande. Entrou no hall da fama da divisão."],
     [64,"B","Carreira sólida. Foi luta principal várias vezes."],
     [48,"C","Meio de card. Sustentou a família lutando."],
     [32,"D","Ficou pelo caminho. Teve momentos."],
     [0,"F","Não deu. Mas você entrou no octógono, que é mais do que a maioria."]];
+const FAIXAS_NOTA=TIERS_NOTA.map(t=>[t[0],t[1]]);
+/* Corpo do envio ao placar (api/placar.js confere tudo isto de novo no
+   servidor, com as mesmas faixas). Pontuação = nota bruta × 100
+   arredondada pra BAIXO: 89,996 continua A, igual à letra do grade(). */
+function corpoPlacar(g){
+  return{seed:SEED,nome:me.name,divisao:DIVISION,modo:MODO,wins:st.wins,losses:st.losses,
+    finishes:st.finishes,cinturoes:st.vezesCampeao||0,title:!!st.title,
+    pontuacao:Math.floor(g.bruto*100),nota:g.letter,rosto:ROSTO||null};
+}
+async function enviarPlacar(g,linha){
+  const sb=getSupabase();
+  if(!sb)return;
+  let session=null;
+  try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){}
+  if(!session)return;
+  try{
+    const r=await fetch("/api/placar",{method:"POST",
+      headers:{"Content-Type":"application/json",Authorization:"Bearer "+session.access_token},
+      body:JSON.stringify(corpoPlacar(g))});
+    let j={};try{ j=await r.json(); }catch(e){}
+    if(linha)linha.textContent=r.ok?"Carreira enviada ao ranking.":`Não entrou no ranking: ${j.erro||"erro no servidor"}.`;
+  }catch(e){ if(linha)linha.textContent="Não deu pra enviar ao ranking agora."; }
+}
+function grade(){
+  const winPct=st.wins/Math.max(1,st.wins+st.losses);
+  const finishPct=st.finishes/Math.max(1,st.wins);
+  const score=st.peak*40+st.bestBeaten*30+winPct*12+finishPct*8+(st.title?10:0);
+  const tiers=TIERS_NOTA;
   const t=tiers.find(x=>score>=x[0]);
   /* fightNo===0 (aposentadoria antes da 1ª luta) sempre cai no score baixo
      da faixa F — mas "você entrou no octógono" é falso pra quem nunca
@@ -7691,7 +7741,7 @@ function grade(){
   const verdict=st.fightNo===0
     ?"Não chegou a entrar no octógono. Aposentado antes da primeira luta."
     :t[2];
-  return{score:Math.round(score),letter:t[1],verdict};
+  return{score:Math.round(score),bruto:score,letter:t[1],verdict};
 }
 function screenReport(){
   const g=grade();
@@ -7725,6 +7775,12 @@ function screenReport(){
     row("Decisões que você tomou",st.dilemas||0)+
     (st.bonusNoite?row("Bônus da noite",`Luta ${st.bonusNoite.luta} · vs ${st.bonusNoite.adversario}`):"");
   app.appendChild(tape);
+  /* revamp fase 3: carreira encerrada vai pro placar e libera o espaço
+     do save (o histórico já ficou em carreiras_usuario acima) */
+  const linhaPlacar=el("p","hint","");
+  app.appendChild(linhaPlacar);
+  enviarPlacar(g,linhaPlacar);
+  if(SLOT_ATUAL){ apagarSave(SLOT_ATUAL); SLOT_ATUAL=null; }
 
   const v=el("div","verdict");
   v.innerHTML=`<div class="letter">${g.letter}</div>

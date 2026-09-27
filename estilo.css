@@ -329,3 +329,8 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 /* portão e formulários de conta: largura de formulário, "Mostrar" colado no campo */
 .tela-portao .portao-form{max-width:560px}
 .tela .campo-rot{display:flex;justify-content:space-between;align-items:baseline;max-width:440px}
+/* ranking: sua melhor posição (fase 3), acima da lista, com a cor da ação */
+.rank-minha{display:grid;grid-template-columns:auto 44px 52px minmax(0,1fr) 80px 60px 40px 90px;align-items:center;gap:10px;
+  margin:0 0 18px;padding:10px 16px 10px 14px;background:rgba(215,38,30,.14);border:1px solid rgba(215,38,30,.55)}
+.rank-minha-rot{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--sangue);max-width:90px;line-height:1.2}
+@media (max-width:700px){.rank-minha{grid-template-columns:auto 34px 44px minmax(0,1fr) 70px}.rank-minha .rank-meta,.rank-minha .rank-nota{display:none}}

@@ -6136,6 +6136,10 @@ async function testarRotas() {
     if (!podio || podio.children.length !== 3) throw new Error("pódio não tem 3 degraus");
     if (!lista || lista.children.length !== 3) throw new Error("lista não tem as 3 linhas restantes");
     if (!tem(podio.children[1], "degrau-1")) throw new Error("1º lugar não está no meio do pódio");
+    const area2 = { innerHTML: "", children: [], appendChild(c) { this.children.push(c); return c; } };
+    UI.desenharRanking(area2, linhas, { nome_lutador: "Eu Mesmo", divisao: "lightweight", pontuacao: 4321, cartel: "12-10", nota: "D", cinturoes: 0, rosto: null, posicao: 41 });
+    const minha = area2.children.find(n => tem(n, "rank-minha"));
+    if (!minha || !/41/.test(minha.innerHTML) || !/Eu Mesmo/.test(minha.innerHTML)) throw new Error("faixa 'sua melhor posição' não apareceu certa");
   });
 
   await conf("continuar: 3 espaços, vazio leva a Nova carreira", async () => {
@@ -6722,6 +6726,115 @@ async function testarSave() {
   return ok;
 }
 
+/* ================================================================== *
+ * PLACAR (revamp fase 3): a regra do servidor (api/_placar-regras.js)
+ * aceita carreira real e recusa o impossível; o endpoint (api/placar.js)
+ * exige sessão, limita envios e grava o user_id do TOKEN, nunca do corpo.
+ * ================================================================== */
+async function testarPlacar() {
+  console.log("\n" + cinza("placar: regra de plausibilidade do servidor e o endpoint"));
+  const url = require("url");
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  let R = null;
+  try { R = await import(url.pathToFileURL(path.join(RAIZ, "api", "_placar-regras.js")).href); }
+  catch (e) { console.log(vermelho("  não carregou api/_placar-regras.js: " + e.message)); return false; }
+  // carreira REAL, jogada pelo caminho de verdade, vira o corpo que o cliente manda
+  const F = lerLutadores();
+  const ctx = sandboxCarreira();
+  iniciarCarreiraTeste(ctx, F, 555001);
+  await jogarCarreiraAte(ctx, 22);
+  const real = JSON.parse(ctx.run("JSON.stringify(corpoPlacar(grade()))"));
+  await conf("aceita uma carreira real (22 lutas pelo caminho de verdade)", () => {
+    const v = R.validarEnvio(real);
+    if (!v.ok) throw new Error("recusou: " + v.erro + " " + JSON.stringify(real));
+    if (v.linha.cartel !== `${real.wins}-${real.losses}`) throw new Error("cartel montado errado");
+  });
+  const recusa = async (nome, mexe) => conf("recusa " + nome, () => {
+    const c = JSON.parse(JSON.stringify(real)); mexe(c);
+    const v = R.validarEnvio(c);
+    if (v.ok) throw new Error("aceitou " + JSON.stringify(c));
+  });
+  await recusa("mais de 22 lutas", c => { c.wins = 20; c.losses = 5; });
+  await recusa("finalizações acima das vitórias", c => { c.finishes = c.wins + 1; });
+  await recusa("cinturões acima das vitórias", c => { c.cinturoes = c.wins + 1; });
+  await recusa("pontuação acima de 10000", c => { c.pontuacao = 10001; c.nota = "S"; });
+  await recusa("pontuação acima do teto do cartel", c => { c.wins = 1; c.losses = 21; c.finishes = 0; c.title = false; c.pontuacao = 9500; c.nota = "S"; });
+  await recusa("nota que não bate com a pontuação", c => { c.nota = c.nota === "S" ? "F" : "S"; });
+  await recusa("nome vazio", c => { c.nome = "   "; });
+  await recusa("nome com mais de 28 caracteres", c => { c.nome = "x".repeat(29); });
+  await recusa("nome com link", c => { c.nome = "Veja www.site.com"; });
+  await recusa("nome com palavrão (sem acento e em maiúscula também)", c => { c.nome = "Zé PORRA"; });
+  await recusa("divisão fora da lista", c => { c.divisao = "superpesado"; });
+  await recusa("modo fora de normal/lenda", c => { c.modo = "deus"; });
+  await conf("faixas de nota do servidor = as do grade() do jogo", () => {
+    const tiers = JSON.parse(ctx.run("JSON.stringify(FAIXAS_NOTA)"));
+    /* no limite E logo abaixo dele: o limite sozinho não pega faixa
+       deslocada pra baixo (A a 7700 ainda aceita 7800 como A) */
+    const base = () => { const c = JSON.parse(JSON.stringify(real)); c.wins = 22; c.losses = 0; c.finishes = 22; c.title = true; c.cinturoes = 3; return c; };
+    tiers.forEach(([min, letra], i) => {
+      const c = base(); c.pontuacao = min * 100; c.nota = letra;
+      const v = R.validarEnvio(c);
+      if (!v.ok) throw new Error(`faixa ${letra} (${min}) recusada no limite: ${v.erro}`);
+      if (i < tiers.length - 1) {
+        const d = base(); d.pontuacao = min * 100 - 1; d.nota = tiers[i + 1][1];
+        const w = R.validarEnvio(d);
+        if (!w.ok) throw new Error(`${min * 100 - 1} devia ser ${tiers[i + 1][1]} no servidor: ${w.erro}`);
+      }
+    });
+  });
+  await conf("divisões do servidor = DIVISOES do jogo", () => {
+    const ids = JSON.parse(ctx.run("JSON.stringify(DIVISOES.map(d=>d.id))"));
+    if (JSON.stringify(ids.slice().sort()) !== JSON.stringify(R.DIVISOES_OK.slice().sort())) throw new Error(`jogo ${ids} vs servidor ${R.DIVISOES_OK}`);
+  });
+  // endpoint com fetch falso
+  let H = null;
+  try { H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "placar.js")).href)).default; }
+  catch (e) { falhas.push("carregar api/placar.js"); console.log(vermelho("  não carregou api/placar.js: " + e.message)); }
+  if (H) {
+    const fetchOriginal = globalThis.fetch;
+    const envOriginal = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const chamar = async ({ token, corpo, usuario = { id: "u-token" }, hoje = 0 }) => {
+      const gravado = [];
+      globalThis.fetch = async (u, op = {}) => {
+        if (String(u).includes("/auth/v1/user")) return { ok: !!usuario, json: async () => usuario };
+        if (String(u).includes("/rest/v1/placar?select=")) return { ok: true, json: async () => new Array(hoje).fill({ seed: 1 }) };
+        if (String(u).endsWith("/rest/v1/placar") && op.method === "POST") { gravado.push(JSON.parse(op.body)); return { ok: true }; }
+        return { ok: false };
+      };
+      process.env.SUPABASE_SERVICE_ROLE_KEY = "service-falsa";
+      const res = { cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } };
+      await H({ method: "POST", headers: token ? { authorization: "Bearer " + token } : {}, body: corpo }, res);
+      return { res, gravado };
+    };
+    try {
+      await conf("endpoint: sem token = 401", async () => { const { res } = await chamar({ corpo: real }); if (res.cod !== 401) throw new Error("status " + res.cod); });
+      await conf("endpoint: token que o Supabase não reconhece = 401", async () => { const { res } = await chamar({ token: "x", corpo: real, usuario: null }); if (res.cod !== 401) throw new Error("status " + res.cod); });
+      await conf("endpoint: carreira impossível = 400, nada gravado", async () => {
+        const c = JSON.parse(JSON.stringify(real)); c.wins = 30;
+        const { res, gravado } = await chamar({ token: "t", corpo: c });
+        if (res.cod !== 400 || gravado.length) throw new Error(`status ${res.cod}, gravou ${gravado.length}`);
+      });
+      await conf("endpoint: 20 envios nas últimas 24 h = 429", async () => { const { res } = await chamar({ token: "t", corpo: real, hoje: 20 }); if (res.cod !== 429) throw new Error("status " + res.cod); });
+      await conf("endpoint: caminho feliz = 200 e grava o user_id do TOKEN, não do corpo", async () => {
+        const c = { ...real, user_id: "outro-usuario" };
+        const { res, gravado } = await chamar({ token: "t", corpo: c });
+        if (res.cod !== 200) throw new Error("status " + res.cod + " " + JSON.stringify(res.corpo));
+        if (gravado.length !== 1 || gravado[0].user_id !== "u-token") throw new Error("gravou " + JSON.stringify(gravado));
+      });
+    } finally {
+      globalThis.fetch = fetchOriginal;
+      if (envOriginal === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = envOriginal;
+    }
+  }
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("placar ok") : vermelho(`${falhas.length} falha(s) no placar`)));
+  return ok;
+}
+
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
 let ok = true;
@@ -6759,6 +6872,7 @@ try {
   else if (cmd === "inicial") ok = await testarTelaInicial();
   else if (cmd === "rotas") ok = await testarRotas();
   else if (cmd === "save") ok = await testarSave();
+  else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "pro") ok = await testarColetivaEntrevista();
@@ -6825,6 +6939,7 @@ try {
         ["inicial", () => testarTelaInicial()],
         ["rotas", () => testarRotas()],
         ["save", () => testarSave()],
+        ["placar", () => testarPlacar()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],
