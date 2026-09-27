@@ -6950,6 +6950,35 @@ async function testarHub() {
     }
   });
 
+  await conf("lutador: cada atributo mostra as camadas base, treino e evento, sem camada zerada", async () => {
+    const X = novo(778201);
+    X.run(`st.treino={slpm:1.10};st.eventoMod={slpm:0.9};renderFicha();`);
+    const h = X.registro.ficha.innerHTML;
+    if (!/camada treino">treino \+10%/.test(h)) throw new Error("sem treino +10%");
+    if (!/camada evento cai">evento -10%/.test(h)) throw new Error("sem evento -10%");
+    const bases = (h.match(/camada base">base /g) || []).length;
+    if (bases < 8) throw new Error(bases + " camadas base");
+    if (/(treino|evento) [+-]?0%/.test(h)) throw new Error("camada zerada apareceu");
+    const delta = Math.round((1.10 * 0.9 - 1) * 100);
+    if (!h.includes(`class="dn">${delta}%`)) throw new Error("delta combinado sumiu (" + delta + "%)");
+  });
+
+  await conf("lutador: aposentar abre confirmação no estilo novo, Cancelar fecha sem encerrar", async () => {
+    const X = novo(778202);
+    X.run("renderFicha();");
+    const b = X.registro.btnAposentar;
+    if (!b || !b.onclick) throw new Error("sem botão Aposentar");
+    b.onclick();
+    const p = X.registro.painelAposentar;
+    if (p.style.display !== "flex") throw new Error("confirmação não abriu");
+    const bots = nosDe(p).filter(n => n.tagName === "button");
+    if (bots.length !== 2 || !bots.every(n => tem(n, "botao"))) throw new Error("botões: " + bots.map(n => n.className).join(","));
+    if (nosDe(p).some(n => /—/.test(String(n.innerHTML || "")))) throw new Error("travessão na confirmação");
+    bots.find(n => /Cancelar/.test(n.innerHTML)).onclick();
+    if (p.style.display !== "none") throw new Error("Cancelar não fechou");
+    if (X.run("fightNo") !== 0 || X.registro.app.children.length === 0) throw new Error("encerrou a carreira");
+  });
+
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("hub ok") : vermelho(`${falhas.length} falha(s) no hub`)));
   return ok;

@@ -656,3 +656,58 @@ html[data-tela="hub"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid va
   .painel-proxima{padding:22px 20px}
   .painel-proxima #controls .botao{flex:1 1 auto}
 }
+
+/* lutador (aba): ficha em tale of the tape */
+.tela-hub .ficha{position:static;background:none;border:0}
+.ficha-grade{display:grid;grid-template-columns:minmax(280px,380px) minmax(0,1fr);gap:22px;align-items:start}
+.ficha-perfil,.ficha-tape{background:rgba(17,19,26,.92);border:1px solid var(--linha)}
+.ficha-retrato{position:relative;display:grid;place-items:end center;height:300px;overflow:hidden;
+  background:radial-gradient(60% 70% at 50% 16%,rgba(242,238,230,.16),transparent 72%),linear-gradient(180deg,#1A1D26 0%,#0B0C10 100%)}
+.ficha-retrato::before{content:"";position:absolute;left:50%;top:0;width:420px;height:320px;transform:translateX(-50%);
+  background:conic-gradient(from 180deg at 50% 0,transparent 158deg,rgba(242,238,230,.11) 180deg,transparent 202deg)}
+.ficha-retrato::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--sangue)}
+.ficha-retrato svg{position:relative;width:220px;height:auto}
+.ficha-id{padding:18px 22px 6px}
+.ficha-id .nm{font-family:var(--f-titulo);font-weight:400;font-size:42px;line-height:.95;text-transform:uppercase;overflow-wrap:anywhere}
+.ficha-id .sub{margin-top:8px;font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--cinza)}
+.ficha-dados{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin:12px 22px 6px;background:var(--linha)}
+.ficha-dados div{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--sup)}
+.ficha-dados span{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.ficha-dados b{font-family:var(--f-ui);font-weight:700;font-size:17px;letter-spacing:.03em;color:var(--osso)}
+.tela-hub .ficha-sec{padding:16px 22px;border-bottom:1px solid var(--linha)}
+.tela-hub .ficha-sec:last-child{border-bottom:0}
+.tela-hub .ficha-sec h4{margin:0 0 10px;font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.22em;color:var(--cinza)}
+.tela-hub .cint .b{font-family:var(--f-ui);font-size:16px;letter-spacing:.14em;padding:3px 12px}
+.tela-hub .cint small{font-size:13px;color:var(--osso-2)}
+.tela-hub .passo-label{margin-top:14px;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.tela-hub .passo{margin-top:6px;font-size:15px;line-height:1.45;color:var(--osso-2);border-left:2px solid var(--sangue);padding-left:10px}
+.tela-hub .rank .pos{font-family:var(--f-titulo);font-weight:400;font-size:44px}
+.tela-hub .rank .de{font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--cinza)}
+.tela-hub .rank .mov{display:inline-flex;align-items:center;gap:4px;font-family:var(--f-ui);font-weight:700;font-size:18px}
+.tela-hub .rank .mov .ico{width:16px;height:16px}
+.tela-hub .rank-pico{font-size:15px;color:var(--osso-2)}
+.tela-hub .rank-pico b{color:var(--osso)}
+.botao-perigo{color:var(--sangue-vivo);box-shadow:inset 0 0 0 1px rgba(215,38,30,.6)}
+.tape-legenda{display:flex;flex-wrap:wrap;gap:8px;margin:-2px 0 18px}
+.tela-hub .atrs{display:grid;gap:16px}
+.tela-hub .atr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 12px;align-items:baseline}
+.tela-hub .atr .r{font-family:var(--f-ui);font-weight:700;font-size:16px;letter-spacing:.1em;color:var(--osso-2)}
+.tela-hub .atr .v{font-family:var(--f-titulo);font-weight:400;font-size:28px;line-height:1;color:var(--osso)}
+.tela-hub .atr .g,.tela-hub .atr .dn{margin-left:8px;font-family:var(--f-ui);font-weight:700;font-size:15px;vertical-align:5px}
+.tela-hub .atr.machucado .r{color:var(--sangue-vivo)}
+.atr-camadas{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.camada{display:inline-flex;align-items:center;padding:2px 8px;font-family:var(--f-ui);font-weight:600;font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--osso-2);background:var(--sup-2)}
+.camada.treino{color:var(--ganho);box-shadow:inset 0 0 0 1px rgba(47,191,113,.35)}
+.camada.evento{color:var(--ouro);box-shadow:inset 0 0 0 1px rgba(212,160,23,.35)}
+.camada.cai{color:var(--sangue-vivo);box-shadow:inset 0 0 0 1px rgba(215,38,30,.5)}
+.tela-hub .atrbar{height:8px;margin-top:2px}
+.tela-hub .atrbar .base{background:var(--osso-2);opacity:.4}
+.ficha-lesao{background:rgba(215,38,30,.08);box-shadow:inset 3px 0 0 var(--sangue)}
+.tela-hub .lesao-nome{font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.04em;text-transform:uppercase;color:var(--osso)}
+.tela-hub .lesao-mag{font-family:var(--f-ui);font-weight:700;font-size:16px}
+.tela-hub .lesao-dur{font-size:14px}
+.confirma-sair{max-width:520px;width:100%}
+.confirma-txt{margin:6px 0 22px;font-size:16px;line-height:1.5;color:var(--osso-2)}
+.confirma-acoes{display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-end}
+@media (max-width:860px){.ficha-grade{grid-template-columns:1fr}}
