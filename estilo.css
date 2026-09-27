@@ -966,3 +966,48 @@ html[data-noite="1"] .cfg-btn{z-index:70}
   .entrada-vs{font-size:40px}
 }
 @media (prefers-reduced-motion:reduce){.noite .pbp{animation:none}}
+
+/* resultado e pós-luta */
+.noite #resultado,.noite #posluta{display:none}
+.noite.etapa-resultado #stage{display:none}
+.noite.etapa-resultado #resultado{display:flex}
+.noite.etapa-resultado #posluta{display:block}
+#resultado{flex-direction:column;align-items:flex-start;gap:8px;margin:0 0 26px}
+.res-carimbo{padding:12px 28px 4px;font-family:var(--f-titulo);font-weight:400;font-size:clamp(84px,13vw,176px);line-height:.85;text-transform:uppercase;
+  color:#fff;background:var(--sangue);transform:rotate(-2deg);box-shadow:0 22px 60px rgba(215,38,30,.35);animation:carimbo .5s cubic-bezier(.2,1.4,.4,1) both}
+.res-carimbo.d{color:var(--osso-2);background:rgba(7,8,11,.6);box-shadow:inset 0 0 0 4px var(--cinza)}
+@keyframes carimbo{from{opacity:0;transform:scale(1.6) rotate(-6deg)}to{opacity:1;transform:scale(1) rotate(-2deg)}}
+.res-como{margin-top:18px;font-family:var(--f-ui);font-weight:600;font-size:22px;letter-spacing:.06em;text-transform:uppercase;color:var(--osso-2)}
+.res-como b{color:var(--osso)}
+.res-contra{display:flex;align-items:center;gap:10px;font-family:var(--f-ui);font-weight:600;font-size:16px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
+.res-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;width:100%;max-width:840px;margin-top:18px;background:var(--linha);border:1px solid var(--linha)}
+.res-num{display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:rgba(17,19,26,.95)}
+.res-rot{display:flex;align-items:center;gap:8px;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--cinza)}
+.res-rot .ico{width:16px;height:16px;color:var(--sangue)}
+.res-num b{font-family:var(--f-titulo);font-weight:400;font-size:42px;line-height:1;color:var(--osso)}
+.res-num .pos-mov{margin:0}
+#posluta{max-width:900px}
+.pos-luta{display:flex;flex-direction:column;gap:12px}
+.pos-luta:empty{display:none}
+.pos-luta>.entrevista-convite{order:9}
+.tela-hub #bouts>.pos-luta{margin:-2px 0 2px 66px}
+.tela-hub .dilema{margin:0;padding:22px 24px;background:rgba(17,19,26,.95);border:1px solid var(--linha);border-left:3px solid var(--sangue)}
+.tela-hub .dil-eyebrow{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--sangue)}
+.tela-hub .dil-t{margin:6px 0 10px;font-family:var(--f-titulo);font-weight:400;font-size:34px;line-height:1;text-transform:uppercase;color:var(--osso)}
+.tela-hub .dil-c{font-size:17px;line-height:1.55;color:var(--osso)}
+.tela-hub .dil-in{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:16px}
+.tela-hub .dil-in textarea{width:100%;min-height:100px;padding:14px;resize:vertical;font-family:var(--f-texto);font-size:16px;line-height:1.5;color:var(--osso);
+  background:var(--sup-2);border:1px solid var(--linha-forte);border-radius:0}
+.tela-hub .dil-in textarea:focus{outline:none;border-color:var(--sangue)}
+.tela-hub .dil-r{margin-top:14px;font-size:16px;font-style:italic;color:var(--osso-2)}
+.tela-hub .dil-o{margin-top:12px;padding-top:12px;border-top:1px solid var(--linha);font-size:17px;line-height:1.6;color:var(--osso)}
+.tela-hub .dil-fx{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-family:var(--f-ui);font-weight:700;font-size:15px}
+.entrevista-convite{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.entrevista-convite:has(.dil-eyebrow){padding:22px 24px;background:rgba(17,19,26,.95);border:1px solid var(--linha);border-left:3px solid var(--ouro)}
+.entrevista-convite .bloqueio-pro{display:inline-block}
+@media (max-width:560px){
+  .res-nums{grid-template-columns:minmax(0,1fr)}
+  .res-como{font-size:17px}
+  .tela-hub #bouts>.pos-luta{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){.res-carimbo{animation:fade .25s both}}

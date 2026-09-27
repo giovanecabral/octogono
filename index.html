@@ -912,13 +912,6 @@ function proAindaValido(row){
   if(row.expira_em&&new Date(row.expira_em).getTime()<=Date.now())return false;
   return true;
 }
-/* Selo Pro (2026-09-22, pedido explícito) — um selo só, reaproveitado em
-   TODO lugar que hoje é recurso Pro (Modo Lenda, coletiva, entrevista,
-   Modo Rival, e qualquer coisa nova que ganhar esse status depois): selo
-   semi-transparente, contorno amarelo (mesma cor de raridade, C.gold no
-   canvas / var(--gold) no CSS — nunca cor nova). Substitui o antigo
-   sufixo "🔒 Pro" solto no texto, que cada tela escrevia na mão. */
-function seloPro(){ return`<span class="selo-pro">Plano Pro</span>`; }
 async function meuAccessToken(){
   const sb=getSupabase();
   if(!sb)return null;
@@ -936,21 +929,6 @@ async function atualizarStatusPro(){
     meuPro=proAindaValido(data);
   }catch(e){meuPro=false;}
 }
-/* Oferta Pro (vitrine) — mesmo painel simples pras 2 entradas (coletiva e
-   entrevista). Sem link de pagamento AQUI de propósito: comprar exige
-   sair da luta em andamento (CPF, aceite), e essa tela aparece no meio
-   de uma luta — manda pro menu Conta em vez de tentar cobrar no meio do
-   fluxo. Troca o conteúdo do elemento chamador (nunca alert() — o jogo
-   inteiro evita dialog nativo de propósito, é a exceção que quebraria o
-   padrão visual em todo canto). */
-function abrirOfertaPro(el,aoContinuar){
-  el.innerHTML=`<div class="dil-eyebrow">Recurso Pro</div>
-    <div class="dil-c">Coletiva e entrevista reagem ao que você escreve, de verdade — recurso do plano Pro (R$9,99, libera 30 dias).</div>
-    <div class="dil-c" style="color:var(--faded);font-size:12px">Assine na tela Plano Pro, no menu principal.</div>
-    ${aoContinuar?`<div class="dil-in"><button class="btn btn-sm" id="ofertaProContinuar">Continuar</button></div>`:""}`;
-  if(aoContinuar)document.getElementById("ofertaProContinuar").onclick=()=>{SOM.toque();aoContinuar();};
-}
-
 /* Só tamanho, nada de exigir maiúscula/número/símbolo — regra complexa
    demais no cadastro afasta gente (decisão explícita). Precisa bater
    com o mínimo configurado no painel (Authentication → Providers →
@@ -1563,7 +1541,7 @@ async function renderPlanoPro(container,session){
   const cpfIn=el("input");cpfIn.type="text";cpfIn.placeholder="CPF (só números)";cpfIn.maxLength=14;cpfIn.inputMode="numeric";
   box.appendChild(cpfIn);
   /* innerHTML + getElementById pros links, não createTextNode — mesmo
-     padrão de abrirOfertaPro(). O DOM falso do testar.js não implementa
+     padrão da vitrine antiga do Pro. O DOM falso do testar.js não implementa
      document.createTextNode (achado rodando "tudo" completo: a suíte
      "inicial" reabre screenConta() já logada, então este bloco roda de
      verdade no sandbox, não só em produção). */
@@ -2626,10 +2604,10 @@ function fraseFallback(){
 }
 
 async function abrirDilema(dPronto){
-  const bouts=document.getElementById("bouts");
+  const alvo=posLutaAtual||document.getElementById("bouts");
   const box=el("div","dilema");
   box.innerHTML=`<div class="dil-t">Carregando…</div>`;
-  bouts.appendChild(box);
+  alvo.appendChild(box);
   box.scrollIntoView({behavior:"smooth",block:"nearest"});
 
   /* Save (revamp fase 3): dilema retomado de um save chega pronto
@@ -4120,14 +4098,14 @@ function historicoRivalTexto(){
 let entrevistaWrapAtual=null,entrevistaWrapRespondida=true;
 function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival){
   if(entrevistaWrapAtual&&!entrevistaWrapRespondida)entrevistaWrapAtual.innerHTML="";
-  const wrap=el("div","");
+  const wrap=el("div","entrevista-convite");
   entrevistaWrapAtual=wrap;entrevistaWrapRespondida=false;
-  const btn=el("button","btn btn-sm btn-ghost",`Dar entrevista${meuPro?"":seloPro()}`);
-  wrap.appendChild(btn);
+  const btn=el("button","botao botao-sec",`${ICONE("microfone")}<span>Dar entrevista</span>`);
+  btn.type="button";
   bouts.appendChild(wrap);
   btn.onclick=()=>{
     SOM.toque();
-    if(!meuPro){abrirOfertaPro(wrap);return;}
+    if(!meuPro)return;
     entrevistaAberta=true;atualizarControles();
     const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
     const{pergunta}=perguntaEntrevista(opp,won,r.method,r.round,r.clock,
@@ -4155,6 +4133,9 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
       aplicarEntrevista(wrap,pergunta,txt,j);
     };
   };
+  /* Revamp fase 5: sem Pro o convite aparece travado pelo componente
+     único bloqueioPro() (a vitrine continua, o clique não). */
+  wrap.appendChild(bloqueioPro(btn));
 }
 /* Botão "Continuar" depois da entrevista (2026-09-22, pedido explícito:
    "não tá dando tempo de ler") — sem isto, o automático (1,1s/speed) ou
@@ -6015,8 +5996,9 @@ function retomarPendente(){
     escolhaAberta=true;atualizarControles();
     telaAdversario(opts);
   }else if(p.tipo==="dilema"&&p.d){
-    dilemaAberto=true;atualizarControles();
-    abrirAbaHub("cartel");
+    dilemaAberto=true;
+    novoPosLuta(fightNo);
+    mostrarResultado(st.registro&&st.registro[st.registro.length-1],null);
     abrirDilema(p.d)
       .catch(()=>{})
       .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
@@ -6859,7 +6841,7 @@ function montarTelaCarreira(){
   if(cfgAberto)fecharConfig();
   document.documentElement.dataset.tela="hub";
   document.documentElement.dataset.noite="0";
-  noiteEtapa=null;ofertaAtual=null;escolhidoAtual=null;
+  noiteEtapa=null;ofertaAtual=null;escolhidoAtual=null;posLutaAtual=null;
   app.innerHTML="";
   const tela=el("div","tela tela-hub");
   const fundo=fundoTela("arena");fundo.id="hubFundo";
@@ -6952,7 +6934,56 @@ const ETAPAS_NOITE=[
   {id:"luta",rot:"Luta",fundo:"octogono-luz"},
   {id:"resultado",rot:"Resultado",fundo:"confete"},
 ];
-let noiteEtapa=null,ofertaAtual=null,escolhidoAtual=null;
+let noiteEtapa=null,ofertaAtual=null,escolhidoAtual=null,posLutaAtual=null;
+/* Pós-luta: um embrulho por luta dentro de #posluta recebe raro, evento
+   da IA, dilema e convite de entrevista. Quando a noite fecha ou a
+   próxima luta começa, o embrulho INTEIRO vai pro #bouts (Cartel) logo
+   depois da linha da luta dele; evento da IA que chega atrasado cai no
+   mesmo embrulho, então nunca aparece na luta errada. */
+function novoPosLuta(n){
+  const w=el("div","pos-luta");w.dataset.luta=String(n);
+  const box=document.getElementById("posluta");
+  if(box)box.appendChild(w);
+  posLutaAtual=w;
+  return w;
+}
+function arquivarPosLuta(){
+  const box=document.getElementById("posluta"),bouts=document.getElementById("bouts");
+  if(!box||!bouts)return;
+  [...box.children].forEach(c=>bouts.appendChild(c));
+  box.innerHTML="";
+  posLutaAtual=null;
+}
+/* Resultado: carimbo gigante, método e (logo depois da luta) bolsa,
+   seguidores e posição contando até o valor. Retomada de um dilema
+   aberto mostra só o carimbo, a partir de st.registro. */
+function mostrarResultado(reg,extra){
+  const box=document.getElementById("resultado");
+  if(!box||!reg)return;
+  const num=(fmt,rot,ico,valor,txt)=>`<div class="res-num"><span class="res-rot">${ICONE(ico)}${rot}</span><b data-conta="${valor}" data-fmt="${fmt}">${txt}</b></div>`;
+  const nums=extra?`<div class="res-nums">
+      ${num("dinheiro","Bolsa","carteira",reg.renda,`+R$ ${fmtNum(reg.renda)}`)}
+      ${num("seg","Seguidores","seguidores",extra.delta,`${extra.delta>=0?"+":"-"}${fmtNum(Math.abs(extra.delta))}`)}
+      ${extra.rk?`<div class="res-num"><span class="res-rot">${ICONE("grafico")}Posição</span><b>#${extra.rk.n}</b>${
+        extra.mov?`<span class="pos-mov ${extra.mov>0?"sobe":"cai"}">${ICONE(extra.mov>0?"sobe":"desce")}${Math.abs(extra.mov)}</span>`:""}</div>`:""}
+    </div>`:"";
+  box.innerHTML=`<div class="res-carimbo${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</div>
+    <div class="res-como"><b>${reg.metodo}</b> · round ${reg.round} · ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}</div>
+    <div class="res-contra">contra ${reg.adv}${reg.titulo?` <span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}</div>
+    ${nums}`;
+  mostrarNoite("resultado",reg.venceu?"confete":"apagado");
+  contarNumeros(box);
+}
+function contarNumeros(box){
+  if(reduceMotion()||!box.querySelectorAll||typeof requestAnimationFrame!=="function")return;
+  box.querySelectorAll("[data-conta]").forEach(b=>{
+    const alvo=+b.dataset.conta,fmt=b.dataset.fmt,t0=performance.now(),dur=900;
+    const txt=v=>fmt==="dinheiro"?`+R$ ${fmtNum(v)}`:`${alvo>=0?"+":"-"}${fmtNum(Math.abs(v))}`;
+    const passo=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);
+      b.textContent=txt(Math.round(alvo*e));if(k<1)requestAnimationFrame(passo);};
+    requestAnimationFrame(passo);
+  });
+}
 function montarNoite(){
   const noite=el("div","noite");noite.id="noite";noite.hidden=true;
   const nf=fundoTela("contrato");nf.id="noiteFundo";
@@ -6974,7 +7005,9 @@ function montarNoite(){
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
   stage.append(ctrl,live,escLuta);
   const ent=el("div","entrada");ent.id="entrada";
-  corpo.append(esc,ent,stage);
+  const res=el("div","resultado");res.id="resultado";
+  const pos=el("div","posluta");pos.id="posluta";
+  corpo.append(esc,ent,stage,res,pos);
   const rod=el("footer","noite-rodape");
   const prox=el("button","botao botao-grande","Próxima luta");prox.id="noiteProxima";prox.hidden=true;
   prox.onclick=()=>{SOM.toque();nextFight();};
@@ -7022,6 +7055,7 @@ function esconderNoite(){
   if(!n)return;
   n.hidden=true;noiteEtapa=null;
   document.documentElement.dataset.noite="0";
+  arquivarPosLuta();
   abrirAbaHub("painel");
   atualizarControles();
 }
@@ -7245,6 +7279,7 @@ function pickOpponent(){
 }
 function nextFight(){
   if(fightNo>=TOTAL_FIGHTS||playing||dilemaAberto||escolhaAberta||entrevistaAberta)return;
+  arquivarPosLuta();
   /* Único lugar que decide "é luta de título?" pra esta luta. Uma vez por
      luta, aqui, antes de existir tela ou pick automático — candidatos() e
      lutar() só leem st.tituloEstaLuta depois disso. */
@@ -8008,11 +8043,13 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   st.registro.push(reg);
   const bouts=document.getElementById("bouts");
   bouts.appendChild(linhaBout(reg));
+  const pos=novoPosLuta(fightNo);
+  const rkDepois=posicaoDivisao();
   (won?SOM.vitoria:SOM.derrota)();     // um só, no carimbo, seja qual for o método
   /* Plano Pro — "zebra" da entrevista reaproveita a MESMA definição de
      upset já medida acima (won&&fightNo>=6&&diferença>.20, ver LEIA-ME
      "Card de momento") — não inventa um segundo conceito de zebra. */
-  renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,upset,ehRival);
+  renderBotaoEntrevista(pos,opp,r,titleFight,won,td0,tdt0,upset,ehRival);
 
   /* dilema interativo a cada 5 lutas; nas outras, evento — um por luta
      agora (era só luta par ou com finish, throttle que existia pra poupar
@@ -8022,7 +8059,6 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      virou IA, sem fallback — ver dispararEventoIA(). */
   if(fightNo%5===0&&fightNo<TOTAL_FIGHTS){
     dilemaAberto=true;
-    esconderNoite();abrirAbaHub("cartel");
     if(auto){auto=false;clearTimeout(autoTimer);
       const b=document.getElementById("autob");
       b.classList.remove("on");b.textContent="Modo automático";}
@@ -8033,7 +8069,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   }else{
     const raro=sortearRaro(st,rng,rareUsed);
     if(raro){
-      bouts.appendChild(el("div","event rare",raro.t(me.name)));
+      pos.appendChild(el("div","event rare",raro.t(me.name)));
       registrarExtra({tipo:"raro",texto:raro.t(me.name)});
       tocarSom(raro.tom||0);
       st.events++;
@@ -8044,7 +8080,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
         st.momentos.push(mr);
       }
     }else{
-      dispararEventoIA(bouts,opp,r);   // assíncrono, não bloqueia nada — mesmo padrão do feed
+      dispararEventoIA(pos,opp,r);   // assíncrono; o embrulho da luta segura o lugar certo mesmo se chegar tarde
     }
   }
   /* Prioridade entre gatilhos da MESMA luta (achado jogando: cinturão +
@@ -8077,6 +8113,10 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      sem ele só dava pra medir até o fim do draft (terminou_draft), que é
      ANTES da primeira luta, ou até a luta 5, que é tarde demais pro corte
      que a fase 2 quer (3 minutos de crédito de quem clicou no anúncio). */
+  /* Resultado na noite (revamp fase 5). No automático a noite segue na
+     etapa da luta (a próxima começa em 1,1 s); dilema desliga o
+     automático antes daqui, então ele sempre aparece no pós-luta. */
+  if(!auto)mostrarResultado(reg,{delta,rk:rkDepois,mov:st.rankAnt!=null&&rkDepois?st.rankAnt-rkDepois.n:0});
   if(fightNo===1)evento("terminou_luta_1",{segundos:Math.round((Date.now()-TEMPO_ABERTURA)/1000)});
   if(fightNo===5)evento("terminou_luta_5");
   if(fightNo>=TOTAL_FIGHTS)evento("terminou_22");

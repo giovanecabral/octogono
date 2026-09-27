@@ -386,7 +386,7 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        ambiente de teste, meuPro é sempre false — "Pular" é o caminho de
        quem não quer engajar, sem chamar IA nem abrir oferta. O caminho
        Pro de verdade (meuPro=true, provocar, aplicarColetiva) e a
-       oferta pro grátis (abrirOfertaPro) têm suíte própria — ver
+       trava do Pro (bloqueioPro) têm suíte própria — ver
        testarColetivaEntrevista(). */
     const colPular = env.registro.colpular;
     if (colPular) colPular.onclick();
@@ -5012,16 +5012,20 @@ function testarColetivaEntrevista() {
     let chamouAiEntGratis=false;
     ai=async()=>{chamouAiEntGratis=true;return null;};
     const boutsAntesGratis=bouts.children.length;
+    entrevistaAberta=false;
     renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
-    passo("entrevista sem meuPro: botão AINDA aparece em #bouts",
+    passo("entrevista sem meuPro: convite AINDA aparece (vitrine)",
       bouts.children.length===boutsAntesGratis+1);
-    const btnEntGratis=bouts.children[bouts.children.length-1].children[0];
-    passo("entrevista sem meuPro: rótulo mostra o selo Pro",
-      btnEntGratis.innerHTML==='Dar entrevista<span class="selo-pro">Plano Pro</span>');
-    btnEntGratis.onclick();
-    passo("entrevista sem meuPro: clique abre a oferta Pro, nunca a pergunta",
-      bouts.children[bouts.children.length-1].innerHTML.includes("Recurso Pro"));
-    passo("entrevista sem meuPro: nunca chega a chamar a IA", !chamouAiEntGratis);
+    /* Revamp fase 5: vitrine pelo componente único bloqueioPro() (spec
+       seção 9), no lugar do selo no rótulo + oferta no clique. */
+    const wrapGratis=bouts.children[bouts.children.length-1];
+    const travaEnt=wrapGratis.children.find(n=>temCls(n,"bloqueio-pro"));
+    const btnEntGratis=travaEnt&&travaEnt.children.find(n=>temCls(n,"bloqueado"));
+    passo("entrevista sem meuPro: botão dentro do bloqueioPro (inert, selo Assine o Pro)",
+      !!btnEntGratis&&btnEntGratis.inert===true&&/Dar entrevista/.test(btnEntGratis.innerHTML)
+      &&travaEnt.children.some(n=>temCls(n,"selo-assine")));
+    passo("entrevista sem meuPro: o botão travado não tem clique", !btnEntGratis||!btnEntGratis.onclick);
+    passo("entrevista sem meuPro: nunca abre a pergunta nem chama a IA", !entrevistaAberta&&!chamouAiEntGratis);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
   }
@@ -6473,6 +6477,10 @@ async function jogarCarreiraAte(ctx, alvo, texto = "aceito, sem problema") {
     for (let k = 0; k < 3; k++) { ctx.drenar(); await respirarCarreira(); }
     if (await resolverDilemaTeste(ctx, texto)) continue;
     if (ctx.run("playing||dilemaAberto||escolhaAberta||entrevistaAberta")) continue;
+    /* confere de novo DEPOIS de drenar: o automático pode ter começado e
+       terminado a luta alvo inteira dentro da drenagem acima (fase 5:
+       sem isto o ajudante chamava uma luta a mais e parava em alvo+1) */
+    if (ctx.run("fightNo") >= alvo) break;
     ctx.run("auto=true;nextFight();");
   }
   for (let k = 0; k < 6; k++) { ctx.drenar(); await respirarCarreira(); await resolverDilemaTeste(ctx, texto); }
@@ -6631,6 +6639,9 @@ async function testarSave() {
     if (!save) throw new Error("nenhum save com a escolha gravada");
     if (!JSON.parse(save).pendente.escolha) throw new Error("save sem pendente.escolha");
     const B = retomarEm(save);
+    /* só a luta retomada interessa: o automático para nela (sem isto ele
+       seguia pra luta seguinte e a escolha DELA contava como "reabriu") */
+    B.sb.__alvo = JSON.parse(save).fightNo;
     B.run(`globalThis.__reabriu=0;abrirEscolhaLuta=function(){globalThis.__reabriu++;};auto=true;`);
     for (let k = 0; k < 6; k++) { B.drenar(); await respirarCarreira(); }
     if (B.run("globalThis.__reabriu") !== 0) throw new Error("retomada abriu a escolha de novo");
@@ -6658,7 +6669,8 @@ async function testarSave() {
     B.run(`globalThis.__pedidos=0;const __ai=ai;ai=function(tipo){if(tipo==="dilema")globalThis.__pedidos++;return __ai.apply(this,arguments);};`);
     for (let k = 0; k < 4; k++) { B.drenar(); await respirarCarreira(); }
     if (!B.run("dilemaAberto")) throw new Error("dilema não reabriu");
-    const box = B.registro.bouts.children.filter(n => (n.className || "").split(" ").includes("dilema")).pop();
+    const todosNos = (r, acc = []) => { if (!r) return acc; acc.push(r); (r.children || []).forEach(c => todosNos(c, acc)); return acc; };
+    const box = todosNos(B.registro.posluta).filter(n => (n.className || "").split(" ").includes("dilema")).pop();
     if (!box || !String(box.innerHTML).includes(String(pend.d.cena).slice(0, 40))) throw new Error("dilema reaberto com outro texto");
     if (B.run("globalThis.__pedidos") !== 0) throw new Error("retomada pediu dilema novo pra IA");
   });
@@ -7190,6 +7202,87 @@ async function testarHub() {
     const fim = X.registro.lutaNumeros.innerHTML;
     const golpes = [...fim.matchAll(/data-num="golpes-(eu|ele)"><b>(\d+)<\/b>/g)].map(m => +m[2]);
     if (golpes.length !== 2 || golpes[0] + golpes[1] === 0) throw new Error("golpes no fim: " + fim.slice(0, 300));
+  });
+
+  /* ---------- noite de luta (tarefa 7): resultado e pós-luta ---------- */
+  const lutarManual = async (X, iOpp = 0, iCamp = 0) => {
+    X.run("auto=false;nextFight();");
+    ultimasCartas(X, "opps", "opp")[iOpp].onclick();
+    ultimasCartas(X, "camps", "camp")[iCamp].onclick();
+    X.registro.colpular.onclick();
+    for (let k = 0; k < 20 && X.run("playing"); k++) {
+      X.drenar(); await respirarCarreira();
+      const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+      if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+    }
+    for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
+  };
+
+  await conf("resultado: a noite mostra VITÓRIA ou DERROTA, método, bolsa, seguidores e posição, com fundo próprio", async () => {
+    const X = novo(778701);
+    X.run("meuPro=true;");
+    await lutarManual(X);
+    if (X.run("noiteEtapa") !== "resultado") throw new Error("etapa " + X.run("noiteEtapa"));
+    const reg = JSON.parse(X.run("JSON.stringify(st.registro[st.registro.length-1])"));
+    const h = X.registro.resultado.innerHTML;
+    for (const t of [reg.venceu ? "Vitória" : "Derrota", reg.metodo, reg.adv, X.run(`fmtNum(${reg.renda})`), "#" + X.run("posicaoDivisao().n")])
+      if (!h.includes(t)) throw new Error(`resultado sem "${t}"`);
+    const fundo = String(X.registro.noiteFundo.style.cssText);
+    if (!fundo.includes(reg.venceu ? "img/confete.webp" : "img/apagado.webp")) throw new Error("fundo " + fundo);
+    if (X.registro.noiteProxima.hidden || X.registro.noiteHub.hidden) throw new Error("rodapé sem Próxima luta/Voltar ao painel");
+  });
+
+  await conf("pós-luta: extras nascem no embrulho da luta na noite e vão pro cartel logo depois da linha dela", async () => {
+    const X = novo(778702);
+    X.run("meuPro=true;");
+    await lutarManual(X);
+    const n = X.run("fightNo");
+    const emb = X.registro.posluta.children.filter(c => tem(c, "pos-luta"));
+    if (emb.length !== 1 || emb[0].dataset.luta !== String(n)) throw new Error("embrulho na noite: " + emb.length);
+    const w = emb[0];
+    if (!w.children.some(c => tem(c, "entrevista-convite"))) throw new Error("convite de entrevista fora do embrulho");
+    X.run("auto=false;nextFight();");
+    if (X.registro.posluta.children.length) throw new Error("pós-luta não esvaziou na luta seguinte");
+    const filhos = X.registro.bouts.children;
+    const iLinha = filhos.findIndex(c => tem(c, "bout") && c.innerHTML.includes(`>${String(n).padStart(2, "0")}<`));
+    if (iLinha < 0 || filhos[iLinha + 1] !== w) throw new Error("embrulho não ficou logo depois da linha da luta " + n);
+  });
+
+  await conf("pós-luta: evento da IA que chega DEPOIS do arquivamento cai no embrulho da luta certa", async () => {
+    const X = novo(778703);
+    X.run("meuPro=true;globalThis.__res=null;ai=(tipo)=>tipo==='evento'?new Promise(r=>{globalThis.__res=r;}):Promise.resolve(null);sortearRaro=()=>null;");
+    await lutarManual(X);
+    if (!X.run("typeof globalThis.__res==='function'")) throw new Error("evento da IA não foi pedido nesta luta");
+    const n = X.run("fightNo");
+    const w = X.registro.posluta.children.find(c => tem(c, "pos-luta"));
+    X.run("auto=false;nextFight();");
+    X.run(`globalThis.__res({texto:"O treino da semana virou assunto no bairro inteiro.",atributo:"nenhum",efeito:1});`);
+    for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); }
+    if (!nosDe(w).some(c => /virou assunto no bairro/.test(String(c.innerHTML)))) throw new Error("evento atrasado não caiu no embrulho da luta " + n);
+    if (nosDe(X.registro.posluta).some(c => /virou assunto no bairro/.test(String(c.innerHTML)))) throw new Error("evento atrasado caiu na noite da luta seguinte");
+  });
+
+  await conf("pós-luta: dilema abre dentro da noite e, respondido, destrava a próxima luta", async () => {
+    const X = novo(778704);
+    await jogarCarreiraAte(X, 4); X.run("auto=false;meuPro=true;");
+    await lutarManual(X);
+    if (X.run("fightNo") !== 5 || !X.run("dilemaAberto")) throw new Error("dilema da luta 5 não abriu");
+    if (X.run("noiteEtapa") !== "resultado") throw new Error("noite saiu do pós-luta: " + X.run("noiteEtapa"));
+    if (!nosDe(X.registro.posluta).some(c => tem(c, "dilema"))) throw new Error("dilema fora do pós-luta");
+    if (!X.registro.noiteProxima.hidden) throw new Error("Próxima luta liberada com dilema aberto");
+    X.registro.dilresp.value = "aceito, sem problema";
+    X.registro.dilgo.onclick();
+    for (let k = 0; k < 6; k++) { X.drenar(); await respirarCarreira(); }
+    if (X.run("dilemaAberto")) throw new Error("dilema continuou aberto");
+    if (X.registro.noiteProxima.hidden) throw new Error("Próxima luta não voltou depois do dilema");
+  });
+
+  await conf("pós-luta: sem Pro, Dar entrevista vem travado pelo bloqueioPro", async () => {
+    const X = novo(778705);
+    X.run("meuPro=false;");
+    await lutarManual(X);
+    const conv = nosDe(X.registro.posluta).find(c => tem(c, "entrevista-convite"));
+    if (!conv || !conv.children.some(c => tem(c, "bloqueio-pro"))) throw new Error("convite sem bloqueioPro");
   });
 
   const ok = !falhas.length;
