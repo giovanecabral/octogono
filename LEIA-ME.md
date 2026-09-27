@@ -786,9 +786,13 @@ golpe, e inventar um seria mentir para o jogador.
 
 ### O passo para o cinturão
 
-A ficha diz o que falta, em linguagem de UFC: entrar no ranking dos 15, subir,
-chegar ao top 5, vencer um contender, emplacar 3 vitórias. A mensagem é vermelho
-escuro porque é aviso do que falta, não alarme.
+A ficha diz o que falta, em linguagem de UFC: sair do card preliminar, subir
+vencendo quem está acima, chegar ao topo, vencer um contender, emplacar 3
+vitórias. Revamp fase 5: as três primeiras faixas falam na MESMA régua da
+posição que o Painel e a ficha mostram ("Chegar ao #48 da divisão", com o
+número que o limiar da faixa dá na tabela daquela divisão). Antes diziam "top
+5" e "ranking dos 15" numa hora em que a posição ao lado podia ser #95 de 236;
+a suíte `hub` reprova se "top 5" ou "ranking dos 15" voltarem.
 
 Os limiares de `standing` (0.35 / 0.60 / 0.80 / 0.88 + 3 vitórias seguidas)
 continuam sendo o motor de verdade — são os mesmos que passam no `testar.js` e
@@ -2631,10 +2635,28 @@ gerado (`abrirDilema(dPronto)`): recarregar reabre o mesmo, sem pedir outro
 à IA. Brecha conhecida e pequena: recarregar nos ~3 s entre enviar a
 resposta do dilema e o julgamento voltar deixa responder de novo.
 
+**Save coerente em qualquer instante (revamp fase 5).** Três buracos
+fechados, cada um com teste na suíte `hub` que reprovava antes:
+- **Oferta aberta** vai pro save (`PENDENTE` tipo `oferta`, os nomes e o
+  ganho de cada carta). Antes, comprar na loja ou trocar de aba com a oferta
+  aberta gravava o `rng` já avançado e recarregar sorteava OUTRA oferta.
+- **Dilema esperando a IA**: a semente vai pro `PENDENTE` no instante do
+  sorteio, antes da resposta. Antes, recarregar nesse intervalo perdia o
+  dilema (a carreira seguia sem ele e divergia da direta).
+- **Escolha na luta aberta**: `PENDENTE.escolhaRngAntes` guarda o estado do
+  `escolhaRng` de antes do trio e o save usa esse estado enquanto a escolha
+  não foi feita. Antes, recarregar com a escolha aberta sorteava outro trio.
+
+**A carreira mora em `#/carreira`.** Recarregar a página nela abre o save
+mais recente do usuário (`retomarMaisRecente()`); antes o endereço ficava
+em `#/nova` e recarregar caía no assistente de nova carreira. O fim de
+carreira tira o endereço de lá (o save da carreira acabada é apagado).
+
 **Onde grava.** `localStorage` na hora (chave `save:<userId>:<espaço>`) e
 tabela `saves` do Supabase 2 s depois (um upsert por rajada). Entre
-aparelho e nuvem vale o mais novo (`listarSaves()`). Indicador fixo no
-canto: "Salvando", "Salvo", "Sem conexão, salvo neste aparelho". Também
+aparelho e nuvem vale o mais novo (`listarSaves()`). Indicador: "Salvando",
+"Salvo", "Sem conexão, salvo neste aparelho" (fixo no canto nas telas do
+menu; na carreira, na barra do hub). Também
 grava na compra da loja, no evento de IA (chega depois da luta), na
 entrevista e ao sair da aba. Carreira encerrada apaga o save (o histórico
 vai pra `carreiras_usuario` e o placar). `VERSAO_SAVE` sobe se o formato
@@ -2675,6 +2697,89 @@ ponto clicável é o selo "Assine o Pro" (leva a `#/conta/pro`); com Pro,
 devolve o elemento intacto. Estreou em "Seja uma lenda" (antes o clique
 mostrava uma nota) e em "Sim, quero um rival" (antes abria a oferta do Pro
 no meio da criação). A trava de verdade continua no servidor.
+
+## Hub da carreira e noite de luta (revamp fase 5, 2026-09-27)
+
+A tela da carreira virou um hub: barra fixa (retrato, nome, cartel, luta N
+de 22, dinheiro, seguidores, save, Menu) e 7 abas com fundo próprio:
+Painel (arena), Lutador (vestiário), Cartel (túnel), Mídia (sala de
+imprensa), Loja (academia), Cards (parede de fotos) e Conquistas (troféus).
+No celular as abas viram barra inferior com 4 ícones e "Mais" (folha com
+Loja, Cards e Conquistas). Loja, Cards e Conquistas deixaram de ser
+sobreposição sem saída; toda aba tem "Voltar ao painel". Plano:
+`docs/superpowers/plans/2026-09-27-revamp-fase-5.md`.
+
+**A lógica não mudou de lugar, só o container.** O jogo continua achando
+tudo por id (`#next`, `#escolha`, `#stage`, `#live`, `#play`, `#bouts`,
+`#ficha`, `#phone`, `#painelTreinador`...). `montarTelaCarreira()` monta a
+casca nova e põe cada id na aba ou na etapa certa. Por isso as suítes que
+dirigem a carreira (interface, narracao, save, pro) passaram quase sem
+mudança.
+
+- **Painel**: bloco da próxima luta (com as ações), última luta carimbada,
+  caminho até o cinturão com barra, posição com seta, lesão, 2 posts da
+  repercussão.
+- **Lutador**: ficha em tale of the tape. Cada atributo mostra o valor
+  atual (com o delta combinado de sempre) e as três camadas que formam ele:
+  base do draft, treino, eventos e lesão. Camada zerada não aparece.
+- **Cartel**: resumo (vitórias, derrotas, métodos, lutas de cinturão) e uma
+  linha por luta. A linha reabre a narração inteira daquela luta:
+  `st.registro` guarda agora `seg` (seguidores depois), `fa` (medidor de fã)
+  e `narracao` (as linhas `[relógio, tipo, texto]`). Campos opcionais: save
+  antigo abre sem narração e sem gráfico. `VERSAO_SAVE` continua 1 (mudança
+  só aditiva).
+- **Mídia**: feed, medidores e gráfico de seguidores por luta (SVG).
+
+**Noite de luta** é uma camada em tela cheia (`#noite`) com etapas Oferta,
+Camp, Coletiva, Entrada, Luta, Resultado. Ela só troca de etapa DEPOIS que o
+estado do jogo mudou (`nextFight`, `telaCamp`, `telaColetiva`,
+`iniciarTelaLuta`, `finishFight`); não decide nada.
+- Voltar só antes da luta e nunca sorteia de novo: a oferta fica em
+  `ofertaAtual` e é redesenhada (`telaAdversario(guardadas)`). Voltar da
+  oferta fecha a noite com a oferta de pé; o Painel oferece voltar a ela.
+- Carta da oferta compara alcance, base e lutas: só dado público de ficha.
+  Atributo de luta do adversário continua escondido (ver `COUNTER_ATTR`).
+- Entrada: 1,5 s de tale of the tape, pulável, só no manual e sem
+  `prefers-reduced-motion`. Só atrasa o começo da narração; o round é
+  simulado no mesmo ponto da sequência (mesma luta com e sem entrada).
+- Luta: placar no topo, narração, e golpes/quedas/knockdowns ao lado,
+  atualizados no FIM de cada round narrado (mostrar antes seria contar o
+  resultado). Escolha na luta por cima da narração.
+- Resultado: VITÓRIA ou DERROTA gigante sobre fundo de confete ou luz
+  apagada, bolsa, seguidores e posição contando. No automático a noite
+  segue na etapa da luta.
+- **Pós-luta**: raro, evento da IA, dilema e convite de entrevista nascem
+  num embrulho por luta (`novoPosLuta()`), e o embrulho inteiro vai pro
+  Cartel logo depois da linha da luta quando a noite fecha ou a próxima
+  começa (`arquivarPosLuta()`). Evento da IA que chega atrasado cai no
+  embrulho certo e é registrado na luta dona dele (`registrarExtra(x, luta)`).
+
+**Pro**: coletiva e entrevista usam o `bloqueioPro()` (a vitrine com selo
+no rótulo e oferta no clique saiu, com `seloPro()` e `abrirOfertaPro()`).
+O componente agora também põe `inert` no elemento: o miolo sai do teclado,
+não só do mouse. Na coletiva, "Pular" fica fora do bloqueio.
+
+**Sair da carreira.** O Menu da barra salva e sai. `pararCarreira()` limpa
+os timers (narração, automático, entrada) e troca `CARREIRA_TOKEN`; toda
+continuação assíncrona (feed, evento da IA, dilema, julgamento, coletiva,
+entrevista, timers) guarda o token de quando começou e desiste se ele
+mudou. Antes, uma resposta atrasada da IA escrevia na carreira que
+estivesse na tela, inclusive uma carreira nova.
+
+**Fim de carreira e cards em imagem.** O fim de carreira usa o molde novo
+(nota gigante com parecer, legado, números, ações). Os cards em canvas
+(fim de carreira, momento, prévia do Pro) usam a paleta e as fontes da
+interface, esperam `document.fonts` antes de medir texto e desenham por
+trás a foto da série de fundos do jogo (no momento, a cena que combina com
+o que aconteceu). Sai o cabeçalho "Ficha do Lutador". Knockdown deixou de
+ser chamado de "queda" no Cartel e no fim (queda é takedown, como na
+narração e na entrevista).
+
+**Testes**: suíte nova `node testar.js hub` (casca, Painel, Lutador,
+Cartel, Mídia, noite, save em qualquer instante, saída, `#/carreira`, fim
+de carreira), toda checagem com dente provado. Conserto no ajudante
+`jogarCarreiraAte`: ele parava UMA luta depois do alvo quando o automático
+começava e terminava a luta alvo dentro da mesma drenagem.
 
 ## Histórico (2026-09-09) — aprovado, implementado
 

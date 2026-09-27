@@ -1959,7 +1959,7 @@ nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
 
-## 37. Revamp da interface (2026-09-26) — fases 1 e 2 feitas na branch `revamp-ui`
+## 37. Revamp da interface (2026-09-26): fases 1 a 5 feitas na branch `revamp-ui`
 
 Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
 console, mais conta obrigatória, save, placar, som e passada de texto.
@@ -1993,10 +1993,10 @@ luta a semente dela (`rngL`, já sai de um único `rng()`) + adversário e
 camp, e gravar a escolha do round 1 assim que feita. Recarregar no meio
 refaz a MESMA luta com a MESMA escolha: resultado idêntico.
 
-**Ainda no fluxo antigo, de propósito, até a fase certa:** `#/nova` abre o
-`screenName()` de sempre (fase 4 troca pelo assistente); hub da carreira é o
-antigo (fase 5). Voltar do navegador no meio da carreira volta pro menu e
-perde a carreira, igual recarregar perdia antes: o save da fase 3 resolve.
+**Fluxo antigo que restava (resolvido nas fases 4 e 5):** `#/nova` virou o
+assistente (fase 4); o hub da carreira e a noite de luta são novos (fase 5)
+e a carreira mora em `#/carreira`, então recarregar ou voltar do navegador
+não perde nada.
 
 **Riscos e achados registrados (não resolvidos nesta fase):**
 - Resend grátis manda 100 e-mails por dia; com confirmação de e-mail
@@ -2006,8 +2006,8 @@ perde a carreira, igual recarregar perdia antes: o save da fase 3 resolve.
 - Os CSVs de `data/` vêm do projeto `Greco1899/scrape_ufc_stats`, que é
   GPL-3.0 (o código do raspador). Estatística é fato público, mas vale o
   dono decidir se isso exige alguma nota além do crédito na página Créditos.
-- Sobram 6 "✓" como ícone em telas do hub (fase 5 troca por SVG) e 2 emojis
-  em posts simulados da repercussão (fase 7 decide).
+- ~~Sobram 6 "✓" como ícone em telas do hub~~ (fase 5: viraram SVG). Sobram
+  2 emojis em posts simulados da repercussão (fase 7 decide).
 - Travessões e "de verdade" na vitrine do Pro e no formulário de conta
   (texto antigo reaproveitado): entram na passada de texto da fase 7, depois
   das 10 amostras aprovadas.
@@ -2037,6 +2037,33 @@ cheios, placar com regra no servidor, "sua melhor posição". Suítes novas
   permite "sua melhor posição" sem endpoint extra.
 
 **Fase 4 feita (2026-09-27):** nova carreira em 5 passos (3 no desafio),
-`bloqueioPro()` estreando em Lenda e Rival. Próxima: fase 5, o hub da
-carreira em abas + noite de luta + fim de carreira (a tela da carreira
-ainda é a antiga, inclusive quando retomada de um save).
+`bloqueioPro()` estreando em Lenda e Rival.
+
+**Fase 5 feita (2026-09-27):** hub da carreira (barra + 7 abas com fundo,
+Loja/Cards/Conquistas como aba), noite de luta em tela cheia (oferta, camp,
+coletiva, entrada, luta, resultado, pós-luta), fim de carreira e cards em
+imagem na identidade nova. Save coerente em qualquer instante (oferta,
+dilema esperando a IA, escolha na luta), Menu que para a carreira de
+verdade, `#/carreira`. Suíte nova `hub`. Detalhes no LEIA-ME, "Hub da
+carreira e noite de luta". Próxima: fase 6, som.
+
+**Achados da fase 5 (registrados, não resolvidos aqui):**
+- **`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**
+  (`persona(rng)` pra cada post que a IA devolve). Com a IA no ar, a
+  sequência principal passa a depender de quando o feed chega em relação à
+  próxima luta (e de quantos posts a IA devolveu): link de desafio e a
+  equivalência do save podem divergir em produção. Offline (moldes locais)
+  continua determinístico, por isso as suítes não pegam. Conserto provável:
+  sortear a persona com gerador próprio ou hash do texto; como o caminho
+  offline não usa isso, não muda a sequência de ninguém. Fase 8.
+- **Chamadas à IA de produção durante os testes no Chrome.** `AI_URL` é
+  absoluta (`https://octogono.fun/api/ai`), então as carreiras automáticas
+  dos screenshots das fases 1 a 5 chamaram a IA de verdade (algumas dezenas
+  de chamadas, custo pequeno no OpenRouter) até eu perceber na fase 5. Os
+  scripts de navegador agora bloqueiam `/api/ai` (regra nova no CLAUDE.md).
+- Evento da IA ainda entra com "— " na frente e há travessão em textos de
+  lesão, escolha na luta e coletiva: passada de texto da fase 7.
+- Ajudante `jogarCarreiraAte` do `testar.js` parava uma luta depois do alvo
+  quando o automático terminava a luta alvo dentro da drenagem; corrigido,
+  e o teste de "escolha reaplicada ao retomar" (que só passava por causa da
+  luta a mais) ficou restrito à luta retomada.

@@ -29,8 +29,8 @@ docs/superpowers/   Spec e planos do revamp da interface.
 Spec: `docs/superpowers/specs/2026-09-26-revamp-ui-design.md`. Estado das
 fases em `PENDENCIAS.md` item 37. Enquanto a branch não voltar pro
 `master`: **nunca `vercel --prod` a partir dela** (o deploy sai dos
-arquivos locais e publicaria meio revamp). Duas regras novas que valem
-daqui pra frente:
+arquivos locais e publicaria meio revamp). Regras novas que valem daqui
+pra frente:
 
 - **Roteador por hash (`irPara`/`lerRota`)**: o Supabase devolve login com
   Google, confirmação de e-mail e recuperação de senha NO HASH
@@ -44,7 +44,23 @@ daqui pra frente:
 - **Save = estado + estado dos 8 geradores.** A regra da semente vale
   dobrado: mudar a ordem de consumo quebra link de desafio E save já
   gravado. `node testar.js save` prova carreira interrompida = direta.
-  Mudou o formato do save: sobe `VERSAO_SAVE`.
+  Mudou o formato do save de um jeito que save antigo não abre: sobe
+  `VERSAO_SAVE` (campo novo e opcional, como `seg`/`fa`/`narracao` no
+  registro da fase 5, não precisa). Todo `PENDENTE` guarda o que JÁ foi
+  sorteado (oferta, semente do dilema, gerador antes do trio da escolha):
+  salvar em qualquer instante tem que dar a mesma carreira (suíte `hub`).
+- **Carreira na tela tem token (`CARREIRA_TOKEN`).** Toda continuação
+  assíncrona da carreira (IA, timer, narração) guarda o token de quando
+  começou e desiste se ele mudou; `pararCarreira()` troca o token ao sair.
+  Continuação nova sem essa conferência escreve numa carreira que não é
+  mais a da tela. A carreira em andamento mora em `#/carreira`.
+- **Noite de luta e hub: a lógica acha tudo por id**; a casca nova só
+  decide ONDE cada id mora. Etapa da noite só muda depois que o estado do
+  jogo mudou; Voltar nunca sorteia de novo (`ofertaAtual`).
+- **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
+  absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
+  local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
+  scripts de ponta a ponta já abortam essas requisições.
 - **`api/placar.js` só existe em produção depois do deploy**, igual ao
   `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
   rota); a suíte `placar` compara as faixas com o `grade()` do jogo.
@@ -185,15 +201,11 @@ de contender (`st.desafianteIdx`, cada defesa enfrenta um nome diferente do
 número novo — reaproveita `hype`, recorde relativo tipo `st.peak`). Ver
 LEIA-ME.md "O passo para o cinturão" e "Card de momento".
 
-**Contradição ainda de pé, deixada de propósito pra quando alguém for mexer
-aqui de novo:** a ficha mostra a posição na divisão inteira (`#48 de 236`,
-`posicaoDivisao()`) e o `passoCinturao()` anuncia "chegar ao top 5" nas
-mesmas faixas de `standing` — "top 5" é linguagem de ranking oficial
-(campeão + 15), o número é do dataset inteiro. As duas seções da ficha (a
-nova "Ranking", que nomeia o campeão de verdade, e a antiga "Posição na
-divisão") convivem sem se contradizer porque não citam número uma da
-outra — mas o TEXTO de `passoCinturao()` ainda promete "top 5" num momento
-em que a posição literal pode ser #48 de 236.
+**Contradição do "top 5" resolvida (revamp fase 5):** `passoCinturao()`
+fala na mesma régua da posição que o Painel e a ficha mostram ("Chegar ao
+#48 da divisão", o número que o limiar da faixa dá na tabela), em vez de
+"top 5"/"ranking dos 15" ao lado de um #95 de 236. Limiares intocados; a
+suíte `hub` reprova se o texto antigo voltar.
 
 Falta ainda: cinturão interino quando o campeão se machuca · luta principal
 em evento numerado · queda no ranking por inatividade.
