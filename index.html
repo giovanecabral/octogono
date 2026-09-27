@@ -6641,9 +6641,14 @@ function mostraDossie(r){
 }
 
 function renderDraft(){
-  app.innerHTML="";
-  app.appendChild(el("div","eyebrow",
-    `${(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION} · montagem ${4-remaining.length+1} de 4 · cada escolha traz dois atributos do mesmo lutador`));
+  /* Passo 5 do assistente (revamp fase 4; 3 de 3 no desafio). Voltar só
+     antes da 1ª carta: depois dela a carta já gastou orçamento e sorteio,
+     voltar deixaria o draft pela metade. */
+  const dzPasso=lerDesafio(),totalP=dzPasso?3:5;
+  const voltarP=picks.length?null:(dzPasso?()=>screenCriador(me.name):()=>screenAtivarRival(me.name));
+  const c=montarPasso(totalP,totalP,{titulo:"Draft",fundo:"octogono-luz",voltar:voltarP});
+  c.appendChild(el("p","tela-sub",
+    `${(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION} · montagem ${4-remaining.length+1} de 4. Cada carta traz dois atributos do mesmo lutador real.`));
 
   const arena=el("div","arena");
   const esq=el("div","painel");
@@ -6658,7 +6663,7 @@ function renderDraft(){
     <p class="oct-legenda">Cada vértice é um atributo do seu lutador — a carta
       escolhida no momento pisca no vértice e na célula do dossiê que ela preenche.</p>`;
   arena.append(esq,meio,dir);
-  app.appendChild(arena);
+  c.appendChild(arena);
 
   const pl=budgetLeft/(TOTAL_WEIGHT*BUDGET_PCT);
   esq.innerHTML=`<div class="col-t">Escolha o próximo par</div>
@@ -6743,7 +6748,7 @@ function renderDraft(){
     grid.onclick=toqueForaDesseleciona;
     esq.onclick=toqueForaDesseleciona;
   }
-  if(picks.length===0)app.appendChild(el("div","legend",semHover()
+  if(picks.length===0)c.appendChild(el("div","legend",semHover()
     ?`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
      naquele atributo. Toque numa carta pra ver os dois lados que ela preenche —
      toque de novo pra confirmar.`
