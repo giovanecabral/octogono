@@ -3608,8 +3608,10 @@ function testarTelaInicial() {
       senha.value = "abc"; senha.oninput();
       const regraTam = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[0];
       if (!/falta/.test(regraTam.className)) throw new Error("classe da regra de tamanho não virou 'falta': " + regraTam.className);
-      if (!new RegExp(`faltam ${UI.SENHA_MIN - 3} caractere`).test(regraTam.textContent))
-        throw new Error(`texto não mostra a contagem certa (esperava faltam ${UI.SENHA_MIN - 3}): ` + regraTam.textContent);
+      /* revamp fase 5: a regra leva ícone SVG, então vem por innerHTML */
+      const txtTam = String(regraTam.innerHTML || regraTam.textContent);
+      if (!new RegExp(`faltam ${UI.SENHA_MIN - 3} caractere`).test(txtTam))
+        throw new Error(`texto não mostra a contagem certa (esperava faltam ${UI.SENHA_MIN - 3}): ` + txtTam);
       const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
       if (!btnCriar.disabled) throw new Error("botão deveria continuar desabilitado com senha curta");
     });
@@ -3622,7 +3624,8 @@ function testarTelaInicial() {
       const regraConf = env.todos.filter(n => n.className && n.className.startsWith("regra-senha")).slice(-2)[1];
       if (!/ ok/.test(regraTam.className)) throw new Error("regra de tamanho deveria estar ok: " + regraTam.className);
       if (!/falta/.test(regraConf.className)) throw new Error("regra de confirmação deveria acusar diferença: " + regraConf.className);
-      if (!/não conferem/.test(regraConf.textContent)) throw new Error("texto não avisa que as senhas não conferem: " + regraConf.textContent);
+      const txtConf = String(regraConf.innerHTML || regraConf.textContent);
+      if (!/não conferem/.test(txtConf)) throw new Error("texto não avisa que as senhas não conferem: " + txtConf);
       const btnCriar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop();
       if (!btnCriar.disabled) throw new Error("botão deveria continuar desabilitado com confirmação diferente");
     });

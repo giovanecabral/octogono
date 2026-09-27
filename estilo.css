@@ -1044,3 +1044,7 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .fim-semente{margin-top:10px;font-size:14px;color:var(--cinza)}
 @media (max-width:900px){.tela-fim .fim-topo{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:560px){.fim-quem{flex-direction:column;align-items:flex-start;padding:20px 20px 0}.fim-retrato svg{width:160px}.fim-letra{font-size:120px}}
+/* regras de senha e fechar do painel de opções: ícone SVG no lugar de caractere */
+.regra-senha{display:flex;align-items:center;gap:6px}
+.regra-senha .ico{width:15px;height:15px}
+.cfg-x .ico{width:18px;height:18px;vertical-align:middle}

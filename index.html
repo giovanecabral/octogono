@@ -1164,12 +1164,13 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
       const s=campoS.inp.value;
       const okTam=s.length>=SENHA_MIN;
       regraTam.className="regra-senha "+(okTam?"ok":(s.length?"falta":""));
-      regraTam.textContent=okTam?`✓ mínimo de ${SENHA_MIN} caracteres`:
-        `faltam ${Math.max(0,SENHA_MIN-s.length)} caractere(s) para o mínimo de ${SENHA_MIN}`;
+      regraTam.innerHTML=okTam?`${ICONE("check")}<span>mínimo de ${SENHA_MIN} caracteres</span>`:
+        `<span>faltam ${Math.max(0,SENHA_MIN-s.length)} caractere(s) para o mínimo de ${SENHA_MIN}</span>`;
       const c=campoC.inp.value;
       const okConf=c.length>0&&c===s;
       regraConf.className="regra-senha "+(okConf?"ok":(c.length?"falta":""));
-      regraConf.textContent=okConf?"✓ as senhas conferem":(c.length?"as senhas não conferem":"repete a senha para confirmar");
+      regraConf.innerHTML=okConf?`${ICONE("check")}<span>as senhas conferem</span>`
+        :`<span>${c.length?"as senhas não conferem":"repete a senha para confirmar"}</span>`;
       btnAcao.disabled=!formValido();
     }
 
@@ -3214,7 +3215,7 @@ function abrirConfig(){
 
   const p=el("div","cfg-painel");
   const topo=el("div","cfg-top","<h2>Configurações</h2>");
-  const fechar=el("button","cfg-x","&#10005;");
+  const fechar=el("button","cfg-x",ICONE("fechar"));
   fechar.id="cfgx"; fechar.type="button";
   fechar.setAttribute&&fechar.setAttribute("aria-label","Fechar");
   fechar.onclick=()=>{SOM.toque();fecharConfig();};
@@ -3986,12 +3987,10 @@ const ABERTURA_COLETIVA=[
 function textoColetivaAbertura(opp){
   return ABERTURA_COLETIVA[hashEstavel(opp.name)%ABERTURA_COLETIVA.length](opp);
 }
-/* Vitrine ligada (2026-09-22, item 5 pós-pagamento): o item 6 existe e
-   está no ar, então grátis PRECISA ver que isso existe — campo e botão
-   aparecem pra todo mundo, "Provocar 🔒 Pro" abre a oferta em vez de
-   chamar a IA só no clique (ver go.onclick abaixo). Antes disso, uma
-   trava aqui fora escondia a tela inteira enquanto ninguém podia
-   comprar — removida, o código de vitrine sempre existiu por baixo. */
+/* Vitrine ligada (2026-09-22, item 5 pós-pagamento): grátis PRECISA ver
+   que a coletiva existe. Revamp fase 5: a vitrine é o componente único
+   bloqueioPro() (área a 35%, sem clique, selo Assine o Pro), e "Pular"
+   fica fora do bloqueio. */
 function telaColetiva(escolhido,camp){
   const box=document.getElementById("escolha");
   box.style.display="";
@@ -5022,10 +5021,10 @@ async function abrirPainelMomentos(){
   p.appendChild(box);
 }
 
-/* Visual de documento — sem canto arredondado, "✓"/"·" continuam
-   caracteres de texto na frente do nome, não substituídos pelo ícone
-   (redundância de propósito, não custa nada e ajuda quem não distingue
-   a cor do glifo). O ícone (iconeConquista(), moldura+glifo por
+/* Visual de documento, sem canto arredondado. Na frente do nome, ícone de
+   check (desbloqueada) ou cadeado (travada): redundância de propósito,
+   ajuda quem não distingue a cor do glifo (revamp fase 5: eram os
+   caracteres "✓"/"·"; ícone só SVG). O ícone (iconeConquista(), moldura+glifo por
    categoria) e o rótulo de raridade (raridadeConquista(), badge
    reaproveitado) entraram em 2026-09-21 — ver comentário perto de
    CONQUISTAS/TAXA_MEDIDA_CONQUISTAS pro raciocínio completo. Igual ao
