@@ -6494,6 +6494,77 @@ async function testarSave() {
     if (!box || !String(box.innerHTML).includes(String(pend.d.cena).slice(0, 40))) throw new Error("dilema reaberto com outro texto");
     if (B.run("globalThis.__pedidos") !== 0) throw new Error("retomada pediu dilema novo pra IA");
   });
+  /* Armazenamento: aparelho na hora, nuvem 2 s depois (um upsert por
+     rajada de saves), indicador de estado, e o mais novo vence entre
+     aparelho e nuvem. Supabase falso registra o que recebe. */
+  const supabaseFalso = (estado) => ({
+    createClient: () => ({
+      auth: {
+        getSession: async () => ({ data: { session: { user: { id: "u1", email: "t@t.com" }, access_token: "tok" } } }),
+        onAuthStateChange: () => {},
+      },
+      from: (tabela) => ({
+        upsert: async (linha, opts) => { estado.chamadas.push(["upsert", tabela, linha, opts]); return { error: estado.falhar ? { message: "rede" } : null }; },
+        select: () => ({ eq: () => ({ then: (res) => res({ data: estado.nuvem, error: null }) }) }),
+        delete: () => ({ eq: () => ({ eq: async () => { estado.chamadas.push(["delete", tabela]); return { error: null }; } }) }),
+      }),
+    }),
+  });
+  await conf("salvarCarreira(): aparelho na hora, nuvem depois (upsert com o formato da tabela saves)", async () => {
+    const est = { chamadas: [], falhar: false, nuvem: [] };
+    const X = sandboxCarreira();
+    X.sb.window.supabase = supabaseFalso(est);
+    X.run("USUARIO_ID='u1';SLOT_ATUAL=2;");
+    iniciarCarreiraTeste(X, F, 777006);   // startCareer() já salva
+    if (!X.dadosLS["save:u1:2"]) throw new Error("não gravou no aparelho na hora");
+    if (est.chamadas.some(c => c[0] === "upsert")) throw new Error("mandou pra nuvem antes do atraso de 2 s");
+    X.drenar(); await respirarCarreira(); await respirarCarreira();
+    const ups = est.chamadas.filter(c => c[0] === "upsert");
+    if (ups.length !== 1) throw new Error(ups.length + " upserts (esperava 1)");
+    const [, tabela, linha, opts] = ups[0];
+    if (tabela !== "saves") throw new Error("tabela " + tabela);
+    for (const k of ["user_id", "slot", "versao", "dados", "nome", "divisao", "modo", "cartel", "luta_n", "campeao", "atualizado_em"])
+      if (!(k in linha)) throw new Error("linha sem " + k);
+    if (linha.user_id !== "u1" || linha.slot !== 2 || linha.versao !== 1 || linha.cartel !== "0-0" || linha.luta_n !== 0)
+      throw new Error("valores errados: " + JSON.stringify({ u: linha.user_id, s: linha.slot, v: linha.versao, c: linha.cartel, n: linha.luta_n }));
+    if (!opts || opts.onConflict !== "user_id,slot") throw new Error("upsert sem onConflict user_id,slot");
+    const ind = X.registro["indicador-save"];
+    if (!ind || !(ind.className || "").split(" ").includes("salvo")) throw new Error("indicador não ficou em 'salvo': " + (ind && ind.className));
+  });
+  await conf("nuvem falhando: indicador vira 'salvo neste aparelho' e o save local continua lá", async () => {
+    const est = { chamadas: [], falhar: true, nuvem: [] };
+    const X = sandboxCarreira();
+    X.sb.window.supabase = supabaseFalso(est);
+    X.run("USUARIO_ID='u1';SLOT_ATUAL=1;");
+    iniciarCarreiraTeste(X, F, 777007);
+    X.drenar(); await respirarCarreira(); await respirarCarreira();
+    const ind = X.registro["indicador-save"];
+    if (!ind || !(ind.className || "").split(" ").includes("local")) throw new Error("indicador não ficou em 'local': " + (ind && ind.className));
+    if (!/aparelho/.test(ind.innerHTML || "")) throw new Error("texto do indicador não avisa que ficou no aparelho");
+    if (!X.dadosLS["save:u1:1"]) throw new Error("save local sumiu");
+  });
+  await conf("listarSaves(): entre aparelho e nuvem, vale o mais novo; espaço vazio é null", async () => {
+    const est = { chamadas: [], falhar: false, nuvem: [] };
+    const X = sandboxCarreira();
+    X.sb.window.supabase = supabaseFalso(est);
+    X.run("USUARIO_ID='u1';");
+    const velho = { versao: 1, slot: 1, atualizadoEm: "2026-09-20T10:00:00.000Z", nome: "Local velho" };
+    const novo = { versao: 1, slot: 1, atualizadoEm: "2026-09-25T10:00:00.000Z", nome: "Nuvem nova" };
+    const localNovo = { versao: 1, slot: 2, atualizadoEm: "2026-09-26T10:00:00.000Z", nome: "Local novo" };
+    const nuvemVelha = { versao: 1, slot: 2, atualizadoEm: "2026-09-01T10:00:00.000Z", nome: "Nuvem velha" };
+    X.dadosLS["save:u1:1"] = JSON.stringify(velho);
+    X.dadosLS["save:u1:2"] = JSON.stringify(localNovo);
+    est.nuvem = [{ slot: 1, dados: novo, atualizado_em: novo.atualizadoEm }, { slot: 2, dados: nuvemVelha, atualizado_em: nuvemVelha.atualizadoEm }];
+    X.sb.__r = null;
+    X.run("listarSaves().then(r=>{globalThis.__r=r;})");
+    await respirarCarreira(); await respirarCarreira();
+    const r = X.sb.__r;
+    if (!r) throw new Error("listarSaves não resolveu");
+    if (!r[0] || r[0].nome !== "Nuvem nova") throw new Error("espaço 1 devia ser a nuvem (mais nova): " + (r[0] && r[0].nome));
+    if (!r[1] || r[1].nome !== "Local novo") throw new Error("espaço 2 devia ser o local (mais novo): " + (r[1] && r[1].nome));
+    if (r[2] !== null) throw new Error("espaço 3 devia ser vazio");
+    if (JSON.parse(X.dadosLS["save:u1:1"]).nome !== "Nuvem nova") throw new Error("a versão da nuvem não foi copiada pro aparelho");
+  });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));
   return ok;

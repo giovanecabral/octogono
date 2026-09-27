@@ -52,6 +52,7 @@
 </button>
 <div id="cfg" class="cfg-overlay" style="display:none"></div>
 <div id="corte" aria-hidden="true"></div>
+<div id="indicador-save" class="indicador-save" role="status" aria-live="polite"></div>
 
 <script>
 /* =========================================================================
@@ -2446,6 +2447,7 @@ async function dispararEventoIA(bouts,opp,r){
     st.eventoMod[atr]=(st.eventoMod[atr]||1)*mult;
   }
   renderFicha();
+  salvarCarreira();   // evento chega depois da luta, fora do save do fim dela
 }
 
 /* ---------- dilema: o jogador escreve o que faz, a IA julga ---------- */
@@ -4168,6 +4170,7 @@ function aplicarEntrevista(box,pergunta,txt,jBruto){
     nextFight();
   };
   renderFicha();
+  salvarCarreira();
 }
 
 
@@ -5170,6 +5173,7 @@ function abrirPainelTreinador(){
         if((st.dinheiro||0)<custo)return;
         st.dinheiro-=custo;
         item.comprar();
+        salvarCarreira();
         abrirPainelTreinador();        // redesenha já adquirido
       };
       rodape.appendChild(buy);
@@ -5855,13 +5859,74 @@ function retomarPendente(){
       .then(()=>{dilemaAberto=false;PENDENTE=null;verificarConquistas();atualizarControles();renderFicha();salvarCarreira();});
   }
 }
-/* Grava no aparelho (a nuvem entra na tarefa 6). Sem espaço ou sem
-   usuário (teste, carreira de desafio antes do login) não faz nada. */
+/* Armazenamento: grava no aparelho NA HORA (localStorage, síncrono,
+   sobrevive a recarregar mesmo sem rede) e manda pra nuvem 2 s depois
+   (tabela saves, uma chamada por rajada de saves seguidos). Sem espaço
+   ou sem usuário (teste, antes do login) não faz nada. Nada aqui pode
+   derrubar o jogo: falha vira aviso no indicador, nunca exceção. */
 const chaveSave=(uid,slot)=>`save:${uid}:${slot}`;
+function lerSaveLocal(uid,slot){ try{ return JSON.parse(localStorage.getItem(chaveSave(uid,slot))); }catch(e){ return null; } }
 function gravarSaveLocal(uid,slot,dados){ try{ localStorage.setItem(chaveSave(uid,slot),JSON.stringify(dados)); return true; }catch(e){ return false; } }
+function apagarSaveLocal(uid,slot){ try{ localStorage.removeItem(chaveSave(uid,slot)); }catch(e){} }
+let timerNuvem=null;
 function salvarCarreira(){
   if(!SLOT_ATUAL||!USUARIO_ID||!st||!me)return;
-  gravarSaveLocal(USUARIO_ID,SLOT_ATUAL,montarSave());
+  const d=montarSave();
+  const local=gravarSaveLocal(USUARIO_ID,SLOT_ATUAL,d);
+  indicadorSave(local?"salvando":"local");
+  clearTimeout(timerNuvem);
+  timerNuvem=setTimeout(()=>enviarSaveNuvem(d),2000);
+}
+async function enviarSaveNuvem(d){
+  const sb=getSupabase();
+  if(!sb){ indicadorSave("local"); return; }
+  try{
+    const{error}=await sb.from("saves").upsert({user_id:USUARIO_ID,slot:d.slot,versao:d.versao,dados:d,
+      nome:d.nome,divisao:d.divisao,modo:d.modo,cartel:`${d.st.wins}-${d.st.losses}`,luta_n:d.fightNo,
+      campeao:!!d.st.title,rosto:d.rosto||null,atualizado_em:d.atualizadoEm},{onConflict:"user_id,slot"});
+    indicadorSave(error?"local":"salvo");
+  }catch(e){ indicadorSave("local"); }
+}
+/* [save|null, save|null, save|null] (espaços 1..3). Entre aparelho e
+   nuvem vale o mais novo; a versão da nuvem mais nova é copiada pro
+   aparelho (jogou em outro celular, abre aqui e continua de lá). */
+async function listarSaves(){
+  const r=[null,null,null];
+  if(!USUARIO_ID)return r;
+  for(let s=1;s<=3;s++)r[s-1]=lerSaveLocal(USUARIO_ID,s);
+  const sb=getSupabase();
+  if(sb){
+    try{
+      const{data}=await sb.from("saves").select("slot,dados,atualizado_em").eq("user_id",USUARIO_ID);
+      (data||[]).forEach(l=>{
+        const i=l.slot-1,loc=r[i];
+        if(i<0||i>2||!l.dados)return;
+        if(!loc||new Date(l.atualizado_em)>new Date(loc.atualizadoEm)){ r[i]=l.dados; gravarSaveLocal(USUARIO_ID,l.slot,l.dados); }
+      });
+    }catch(e){}
+  }
+  return r;
+}
+async function apagarSave(slot){
+  apagarSaveLocal(USUARIO_ID,slot);
+  const sb=getSupabase();
+  if(sb){ try{ await sb.from("saves").delete().eq("user_id",USUARIO_ID).eq("slot",slot); }catch(e){} }
+}
+function indicadorSave(estado){
+  const i=document.getElementById("indicador-save");
+  if(!i)return;
+  const txt={salvando:"Salvando",salvo:"Salvo",local:"Sem conexão, salvo neste aparelho"}[estado];
+  i.className="indicador-save on "+estado;
+  i.innerHTML=`${ICONE(estado==="local"?"nuvem-off":"nuvem-ok")}<span>${txt}</span>`;
+  clearTimeout(i._t);
+  if(estado==="salvo")i._t=setTimeout(()=>{ i.className="indicador-save"; },2500);
+}
+/* sair da aba/fechar/trocar de app no celular: grava de novo na hora */
+function armarSave(){
+  try{
+    window.addEventListener("pagehide",()=>salvarCarreira());
+    document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden")salvarCarreira(); });
+  }catch(e){}
 }
 
 /* ---------- carregar dados ---------- */
@@ -7571,6 +7636,7 @@ function screenReport(){
 armarTrilha();
 armarConfig();
 armarRotas();
+armarSave();
 boot();
 </script>
 </body>

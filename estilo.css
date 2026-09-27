@@ -303,3 +303,13 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .tela-legal .pagina-legal h3{font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase;color:var(--osso);margin:28px 0 8px}
 .tela-legal .pagina-legal .rev{font-family:var(--f-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--cinza);font-size:14px}
 @media (max-width:600px){.tela-legal .pagina-legal{padding:20px 18px;font-size:15px}}
+
+/* ---------- indicador de save (fase 3) ---------- */
+.indicador-save{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:9980;
+  display:none;align-items:center;gap:8px;padding:8px 12px;background:rgba(17,19,26,.92);border:1px solid var(--linha-forte);
+  font-family:var(--f-ui);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--osso-2);
+  pointer-events:none}
+.indicador-save.on{display:inline-flex}
+.indicador-save .ico{width:16px;height:16px}
+.indicador-save.local{color:var(--ouro);border-color:rgba(212,160,23,.45)}
+.indicador-save.salvando .ico{animation:pisca 1s ease-in-out infinite}
