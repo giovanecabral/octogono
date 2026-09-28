@@ -23,16 +23,25 @@ export const STATUS_PAGO = new Set(["CONFIRMED", "RECEIVED"]);
    por evento, o cartão ganhava 60 dias). */
 export const EVENTOS_ATIVACAO = ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED", "CONFIRMADO_NO_RETORNO"];
 
+/* Chave de serviço do Supabase (2026-09-28: o painel de admin dava 401 em
+   tudo). Aceita os dois formatos que o painel do Supabase entrega:
+   - o antigo, um JWT ("eyJ..."), que vai no apikey E no Authorization;
+   - o novo, "sb_secret_...", que vai SÓ no apikey: no Authorization o
+     Supabase espera um JWT e recusa com 401.
+   Espaço ou quebra de linha colados junto no painel da Vercel também
+   davam 401: sai no trim. */
+export function chaveServico() {
+  return String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+}
+export function cabecalhoServico(extra = {}) {
+  const k = chaveServico();
+  return { apikey: k, ...(k.startsWith("eyJ") ? { Authorization: `Bearer ${k}` } : {}), "Content-Type": "application/json", ...extra };
+}
+
 export async function supabaseServiceRole(path, options = {}) {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers: cabecalhoServico(options.headers || {}),
   });
 }
 

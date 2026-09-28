@@ -7454,6 +7454,16 @@ async function testarAdmin() {
       const del = ops.find(o => o[0] === "DELETE placar");
       if (!del || !del[1].includes("user_id=eq." + U) || !del[1].includes("seed=eq.424242")) throw new Error(JSON.stringify(ops));
     });
+    await conf("chave de serviço: JWT antigo vai no apikey e no Authorization; sb_secret_ novo só no apikey; espaço colado some", async () => {
+      const Pro = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
+      process.env.SUPABASE_SERVICE_ROLE_KEY = " eyJhbGciOi.xyz.abc\n";
+      const a = Pro.cabecalhoServico();
+      if (a.apikey !== "eyJhbGciOi.xyz.abc" || a.Authorization !== "Bearer eyJhbGciOi.xyz.abc") throw new Error("JWT: " + JSON.stringify(a));
+      process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_abc123 ";
+      const b = Pro.cabecalhoServico();
+      if (b.apikey !== "sb_secret_abc123" || "Authorization" in b) throw new Error("sb_secret: " + JSON.stringify(b));
+      process.env.SUPABASE_SERVICE_ROLE_KEY = "service-falsa";
+    });
     await conf("conta banida não grava no ranking (403), mesmo com a sessão ainda aberta", async () => {
       ops = [["POST banidos"]];
       const res = resposta();

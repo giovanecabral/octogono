@@ -1081,3 +1081,5 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .admin-acoes .admin-motivo{flex:1 1 180px;min-width:0;max-width:280px}
 .admin-acoes .hint{margin:0}
 .btn.perigo{background:var(--sangue);border-color:var(--sangue);color:#fff}
+.admin-aviso{border-color:var(--sangue);margin-bottom:16px}
+.admin-aviso p{margin:6px 0 0;color:var(--osso-2)}

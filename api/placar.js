@@ -7,6 +7,7 @@
    Variáveis na Vercel: SUPABASE_SERVICE_ROLE_KEY (a mesma do webhook da
    Asaas). Nenhuma chave no código além da anon, que é pública. */
 import { validarEnvio } from "./_placar-regras.js";
+import { cabecalhoServico } from "./_pro.js";
 
 const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 const SUPABASE_ANON_KEY =
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
   } catch { /* rede: trata como sessão inválida */ }
   if (!userId) return res.status(401).json({ erro: "sessão inválida" });
 
-  const cab = { apikey: service, Authorization: `Bearer ${service}`, "Content-Type": "application/json" };
+  const cab = cabecalhoServico();   // JWT antigo ou sb_secret_ novo (ver api/_pro.js)
   /* conta banida no painel de admin (2026-09-28) não entra no ranking; o
      login já é bloqueado, isto cobre a sessão que ainda estava aberta */
   try {

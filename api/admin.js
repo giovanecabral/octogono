@@ -24,7 +24,7 @@
  *
  * Variáveis de ambiente: SUPABASE_SERVICE_ROLE_KEY, ADMIN_DONO_EMAIL.
  */
-import { SUPABASE_URL, supabaseServiceRole } from "./_pro.js";
+import { SUPABASE_URL, supabaseServiceRole, cabecalhoServico, chaveServico } from "./_pro.js";
 
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
@@ -66,7 +66,7 @@ async function rpc(nome, args) {
 /* Um jogador pelo id, com e-mail e se é admin (pra regras e registro). */
 async function jogador(userId) {
   const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-    headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
+    headers: cabecalhoServico(),
   });
   if (!r.ok) return null;
   const u = await r.json();
@@ -76,11 +76,7 @@ async function jogador(userId) {
 async function banirNoAuth(userId, duracao) {
   const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: "PUT",
-    headers: {
-      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: cabecalhoServico(),
     body: JSON.stringify({ ban_duration: duracao }),
   });
   if (!r.ok) throw new Error("Auth recusou o " + (duracao === "none" ? "desbanimento" : "banimento") + " (" + r.status + ")");
@@ -127,6 +123,16 @@ export default async function handler(req, res) {
 
   try {
     switch (corpo.acao) {
+      case "diagnostico": {
+        if (!dono) return res.status(403).json({ erro: "só o dono" });
+        const bruta = String(process.env.SUPABASE_SERVICE_ROLE_KEY || ""), k = chaveServico();
+        const formato = !k ? "ausente" : k.startsWith("eyJ") ? "jwt" : k.startsWith("sb_secret_") ? "sb_secret" : k.startsWith("sb_publishable_") ? "sb_publishable" : "outra";
+        const rRest = await supabaseServiceRole("placar?select=seed&limit=1");
+        const rAuth = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1`, { headers: cabecalhoServico() });
+        let papel = null;
+        if (formato === "jwt") { try { papel = JSON.parse(Buffer.from(k.split(".")[1], "base64url").toString()).role || null; } catch { papel = "ilegível"; } }
+        return res.status(200).json({ formato, papel, tinhaEspaco: bruta !== k, tamanho: k.length, rest: rRest.status, auth: rAuth.status });
+      }
       case "listar": {
         const pagina = Math.max(0, Math.floor(Number(corpo.pagina) || 0));
         const busca = String(corpo.busca || "").trim().slice(0, 120);

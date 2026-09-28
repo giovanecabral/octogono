@@ -1427,6 +1427,17 @@ function screenAdmin(aba){
   chamarAdmin("eu").then(eu=>{
     if(!eu||!eu.admin){ screen404(); return; }
     area.innerHTML="";
+    /* Dono: confere se a chave de serviço da Vercel funciona e, se não,
+       diz o que trocar (2026-09-28: tudo dava 401 por causa da chave). */
+    if(eu.dono)chamarAdmin("diagnostico").then(d=>{
+      if(!d||d.erro||(d.rest===200&&d.auth===200))return;
+      const dica=d.formato==="ausente"?"Falta a variável SUPABASE_SERVICE_ROLE_KEY na Vercel."
+        :d.formato==="sb_publishable"?"A SUPABASE_SERVICE_ROLE_KEY da Vercel é a chave pública (publishable). Troque pela secret key (sb_secret_...) ou pela service_role."
+        :d.formato==="jwt"&&d.papel!=="service_role"?`A SUPABASE_SERVICE_ROLE_KEY da Vercel é um JWT de papel "${d.papel}", não service_role. Copie a service_role em Supabase, Project Settings, API Keys.`
+        :"O Supabase recusou a chave de serviço (ela pode ter sido trocada no painel do Supabase). Copie a chave de novo em Project Settings, API Keys, cole em SUPABASE_SERVICE_ROLE_KEY na Vercel e faça um deploy.";
+      const aviso=el("div","painel-n admin-aviso",`<b>O painel não consegue falar com o banco.</b><p>${dica}</p><p class="admin-info">Chave: formato ${d.formato}${d.papel?", papel "+d.papel:""}, ${d.tamanho} caracteres${d.tinhaEspaco?", tinha espaço ou quebra de linha (já é ignorado)":""}. Banco respondeu ${d.rest}, login respondeu ${d.auth}.</p>`);
+      area.insertBefore?area.insertBefore(aviso,area.firstChild):area.appendChild(aviso);
+    });
     const abas=[["jogadores","Jogadores","usuario"],["ranking","Ranking","trofeu"],["registro","Registro","lista"]];
     if(eu.dono)abas.splice(2,0,["admins","Admins","chave"]);
     const atual=abas.some(a=>a[0]===aba)?aba:"jogadores";
