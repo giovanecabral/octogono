@@ -29,8 +29,9 @@ docs/superpowers/   Spec e planos do revamp da interface.
 
 Spec: `docs/superpowers/specs/2026-09-26-revamp-ui-design.md`. Estado das
 fases em `PENDENCIAS.md` item 37. **Fases 1 a 6 foram pro ar em
-2026-09-27** (merge no `master` + deploy, a pedido do dono). Fases 7
-(texto) e 8 (auditoria) continuam na branch `revamp-ui`; a regra vale
+2026-09-27** (merge no `master` + deploy, a pedido do dono). Fase 7
+(texto) está feita e a 8 (auditoria) em andamento, as duas só na branch
+`revamp-ui`; a regra vale
 igual: **nunca `vercel --prod` a partir da branch** (o deploy sai dos
 arquivos locais e publicaria trabalho pela metade). Merge no `master`
 primeiro, deploy do `master`. Regras novas que valem daqui
@@ -65,6 +66,12 @@ pra frente:
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
   scripts de ponta a ponta já abortam essas requisições.
+- **Texto sem travessão e sem frase de efeito** (fase 7; regras e amostras
+  no LEIA-ME, "Regras de texto"). `node testar.js texto` reprova travessão,
+  frase proibida e emoji ou seta em caractere em qualquer literal do
+  `index.html` (inclusive dentro de `${}`) e travessão em `api/`. Texto da
+  IA passa por `limparTextoIA()` em `tentarChamadaIA()`; resposta nova da
+  IA fora desse caminho precisa passar pelo filtro também.
 - **`api/placar.js` só existe em produção depois do deploy**, igual ao
   `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
   rota); a suíte `placar` compara as faixas com o `grade()` do jogo.

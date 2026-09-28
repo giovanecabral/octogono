@@ -1959,7 +1959,7 @@ nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
 
-## 37. Revamp da interface (2026-09-26): fases 1 a 6 no ar desde 2026-09-27; 7 e 8 na branch `revamp-ui`
+## 37. Revamp da interface (2026-09-26): fases 1 a 6 no ar desde 2026-09-27; 7 feita e 8 na branch `revamp-ui`
 
 Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
 console, mais conta obrigatória, save, placar, som e passada de texto.
@@ -2006,11 +2006,11 @@ não perde nada.
 - Os CSVs de `data/` vêm do projeto `Greco1899/scrape_ufc_stats`, que é
   GPL-3.0 (o código do raspador). Estatística é fato público, mas vale o
   dono decidir se isso exige alguma nota além do crédito na página Créditos.
-- ~~Sobram 6 "✓" como ícone em telas do hub~~ (fase 5: viraram SVG). Sobram
-  2 emojis em posts simulados da repercussão (fase 7 decide).
-- Travessões e "de verdade" na vitrine do Pro e no formulário de conta
-  (texto antigo reaproveitado): entram na passada de texto da fase 7, depois
-  das 10 amostras aprovadas.
+- ~~Sobram 6 "✓" como ícone em telas do hub~~ (fase 5: viraram SVG).
+  ~~Sobram 2 emojis em posts simulados da repercussão~~ (fase 7: saíram, e
+  a seta "→" do link "Ver Plano Pro" virou ícone do sprite).
+- ~~Travessões e "de verdade" na vitrine do Pro e no formulário de conta~~
+  (fase 7).
 
 **Fase 3 feita (2026-09-27), branch `revamp-ui`:** conta obrigatória
 (portão + intenção), save em 3 espaços (aparelho na hora + nuvem com 2 s
@@ -2074,6 +2074,35 @@ cada um (`*.vercel.app`); pra sumir de vez, apagar os deploys antigos no
 painel da Vercel ou ligar a proteção de deploys. E considerar o conteúdo
 dos dois arquivos como já público.
 
+**Fase 7 feita (2026-09-27):** texto sem travessão e sem frase de efeito
+em todo o jogo, a partir das 10 amostras aprovadas. Guia e números no
+LEIA-ME, "Regras de texto". Resumo: todo literal do `index.html` reescrito
+(narração, pós-luta, coletiva, entrevista, caminho do cinturão, legado,
+raros, cards de momento, parecer da nota, loja, dilemas de reserva, conta,
+vitrine do Pro, anúncio de rival, percentis do draft); Termos e Privacidade
+só na pontuação, sem mudar redação nem versão; `semTravessao()` em todo
+texto que volta da IA; prompts com `REGRA_TEXTO` e sem travessão. Suíte
+nova `texto`. Mais um bug achado e consertado: conta Pro sem data de
+expiração (plano "unico" ou liberada à mão, como a do dono depois do SQL de
+2026-09-27) aparecia como "Pro até 31/12/1969" e oferecia "Renovar", que
+gravaria 30 dias e encurtaria o acesso. Agora diz "sem data de expiração" e
+não mostra o formulário.
+
+**Depende de deploy:** `api/ai.js` (regra de texto nos prompts) e
+`api/criar-pagamento.js` (descrição da cobrança sem travessão) só mudam em
+produção depois do `vercel --prod`. O filtro no navegador já cobre o texto
+da IA até lá.
+
+**Depende do dono, fase 7:** ler os moldes reescritos (legado, raros e
+parecer da nota ficaram mais secos, no molde da amostra 8). Mantive as
+imagens dos cards de momento que foram escolhidas de propósito pra dar
+vontade de postar ("não deixou o locutor terminar de apresentar o
+adversário", "o reinado durou menos que a fila da pesagem"); se quiser
+essas secas também, é trocar uma linha cada. Achado, sem mexer (a regra
+era só pontuação): a Política de Privacidade ainda chama o Pro de
+"pagamento único de R$ 9,99", da época antes dos 30 dias; mudar a redação
+pede versão nova dos termos.
+
 **Achados da fase 5 (registrados, não resolvidos aqui):**
 - **`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**
   (`persona(rng)` pra cada post que a IA devolve). Com a IA no ar, a
@@ -2088,8 +2117,8 @@ dos dois arquivos como já público.
   dos screenshots das fases 1 a 5 chamaram a IA de verdade (algumas dezenas
   de chamadas, custo pequeno no OpenRouter) até eu perceber na fase 5. Os
   scripts de navegador agora bloqueiam `/api/ai` (regra nova no CLAUDE.md).
-- Evento da IA ainda entra com "— " na frente e há travessão em textos de
-  lesão, escolha na luta e coletiva: passada de texto da fase 7.
+- ~~Evento da IA ainda entra com "— " na frente e há travessão em textos de
+  lesão, escolha na luta e coletiva~~ (fase 7).
 - Ajudante `jogarCarreiraAte` do `testar.js` parava uma luta depois do alvo
   quando o automático terminava a luta alvo dentro da drenagem; corrigido,
   e o teste de "escolha reaplicada ao retomar" (que só passava por causa da

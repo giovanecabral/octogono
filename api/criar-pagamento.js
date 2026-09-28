@@ -73,7 +73,7 @@ export default async function handler(req, res) {
 
   const { token, cpf } = req.body || {};
   const usuario = await usuarioDoToken(token);
-  if (!usuario) return res.status(401).json({ error: "sessão inválida — entre na conta de novo" });
+  if (!usuario) return res.status(401).json({ error: "sessão inválida, entre na conta de novo" });
   if (!cpfValido(cpf)) return res.status(400).json({ error: "CPF inválido" });
   // sem trava de "já é Pro" — cada pagamento confirmado SOMA 30 dias
   // (ver ativarPro() em api/webhook-asaas.js), então renovar antes de
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
         value: PRECO_PRO,
         dueDate: vencimento,
         externalReference: usuario.id, // é isto que o webhook lê pra saber de qual conta é o pagamento
-        description: "Octógono — Plano Pro (30 dias)",
+        description: "Octógono: Plano Pro (30 dias)",
       }),
     });
     const pagamento = await rPagamento.json();

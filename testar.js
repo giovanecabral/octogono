@@ -3868,13 +3868,13 @@ function testarTelaInicial() {
     await passo("Plano Pro logado, não-Pro: CPF + aceite + 'Confirmar pagamento' aparecem", () => {
       if (marcado("aceite-pro").length !== aceitesAntesDeLogar + 1)
         throw new Error("formulário de aceite não apareceu com sessão ativa");
-      if (!env.todos.some(n => n.tagName === "button" && /Confirmar pagamento — R\$9,99/.test(n.innerHTML || "")))
+      if (!env.todos.some(n => n.tagName === "button" && /Confirmar pagamento de R\$9,99/.test(n.innerHTML || "")))
         throw new Error("botão 'Confirmar pagamento' não apareceu");
     });
     await passo("Conta, não-Pro: dispara o resumo", () => { UI.screenConta(); });
-    await passo("Conta, não-Pro: mostra link 'Ver Plano Pro →', não o formulário inteiro", () => {
-      const link = env.todos.filter(n => n.tagName === "a" && n.innerHTML === "Ver Plano Pro →").pop();
-      if (!link) throw new Error("link 'Ver Plano Pro →' não apareceu na Conta pra quem não é Pro");
+    await passo("Conta, não-Pro: mostra link 'Ver Plano Pro' (seta do sprite), não o formulário inteiro", () => {
+      const link = env.todos.filter(n => n.tagName === "a" && /^Ver Plano Pro <svg[^>]*><use href="img\/icones\.svg#chevron-dir">/.test(n.innerHTML || "")).pop();
+      if (!link) throw new Error("link 'Ver Plano Pro' não apareceu na Conta pra quem não é Pro");
     });
     await passo("Conta, Pro ativo: dispara o resumo", () => {
       assinaturaFalsa = { pro: true, expira_em: "2099-01-01T00:00:00.000Z" };
@@ -3884,6 +3884,24 @@ function testarTelaInicial() {
       const linha = marcado("pro-ativo-linha").pop();
       if (!linha || linha.innerHTML !== "PLANO PRO ATIVO")
         throw new Error("linha 'PLANO PRO ATIVO' não apareceu: " + (linha && linha.innerHTML));
+    });
+    /* Pro sem data de expiração (plano "unico" ou liberado à mão):
+       new Date(null) mostrava "Pro até 31/12/1969" e oferecia "Renovar",
+       que gravaria 30 dias e encurtaria o acesso. */
+    const aceitesAntesSemData = marcado("aceite-pro").length;
+    await passo("Plano Pro sem data de expiração: dispara a tela", () => {
+      assinaturaFalsa = { pro: true, expira_em: null };
+      UI.screenPlanoPro();
+    });
+    await passo("Plano Pro sem data de expiração: diz isso, sem data inventada e sem formulário de renovar", () => {
+      const t = ultimoTexto("hint") || "";
+      if (!/sem data de expiração/.test(t)) throw new Error("texto: " + t);
+      if (/19(69|70)/.test(t)) throw new Error("mostrou data de 1969/1970: " + t);
+      if (marcado("aceite-pro").length !== aceitesAntesSemData)
+        throw new Error("mostrou o formulário de pagamento pra conta que não expira");
+    });
+    await passo("Plano Pro sem data de expiração: volta a Pro com data pros passos seguintes", () => {
+      assinaturaFalsa = { pro: true, expira_em: "2099-01-01T00:00:00.000Z" };
     });
 
     /* ---------- 3 modelos de card (2026-09-22) ---------- */
@@ -3895,7 +3913,7 @@ function testarTelaInicial() {
       setas[1].onclick(); // GRÁTIS -> Ouro
       setas[1].onclick(); // Ouro -> Prata
       const legenda = marcado("pro-carrossel-legenda").pop();
-      if (!legenda || legenda.textContent !== "PRO — modelo Prata")
+      if (!legenda || legenda.textContent !== "PRO: modelo Prata")
         throw new Error("carrossel não chegou no modelo Prata: " + (legenda && legenda.textContent));
       const btn = env.todos.filter(n => n.tagName === "button" && /Usar modelo Prata/.test(n.innerHTML || "")).pop();
       if (!btn || btn.disabled) throw new Error("botão 'Usar modelo Prata' não apareceu habilitado");
@@ -5268,15 +5286,16 @@ function testarModoRival() {
     fightNo=2; // próxima luta = 3, 1ª aparição
     telaAdversario();
     const escolhaHtml1=document.getElementById("escolha").innerHTML;
-    passo("telaAdversario(): anuncia 'RIVALIDADE COMEÇA AGORA' na 1ª aparição",
-      /RIVALIDADE COME.A AGORA/.test(escolhaHtml1));
+    // fase 7: o anúncio era "RIVALIDADE COMEÇA AGORA" (frase de efeito)
+    passo("telaAdversario(): anuncia 'Novo rival' na 1ª aparição",
+      /class="rival-anuncio">Novo rival/.test(escolhaHtml1));
     passo("telaAdversario(): st.rivalAnunciado vira true depois do anúncio",
       st.rivalAnunciado===true);
     fightNo=6; // próxima = 7, reaparição — NÃO é mais a 1ª vez
     telaAdversario();
     const escolhaHtml2=document.getElementById("escolha").innerHTML;
     passo("telaAdversario(): reaparição NÃO repete o anúncio",
-      !/RIVALIDADE COME.A AGORA/.test(escolhaHtml2));
+      !/class="rival-anuncio"/.test(escolhaHtml2));
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message+"\\n"+e.stack,ok:false});
   }
@@ -7481,7 +7500,7 @@ async function testarSom() {
 
   await conf("cada linha da narração tem o efeito certo; linha de uma luta real nunca pede efeito inexistente", () => {
     const { run } = ambiente("ok");
-    const casos = [[{ kind: "rd", text: "Round 2" }, "sinoInicio"], [{ kind: "rd", text: "Fim do round 2 — X levou." }, "sinoFim"],
+    const casos = [[{ kind: "rd", text: "Round 2" }, "sinoInicio"], [{ kind: "rd", text: "Fim do round 2. X levou." }, "sinoFim"],
       [{ kind: "kd", text: "X foi ao chão! Levantou cambaleando." }, "knockdown"], [{ kind: "big", text: "Queda de X. Levou pro chão." }, "queda"],
       [{ kind: "big", text: "X tenta a finalização! Y escapa." }, "quaseFinalizacao"], [{ kind: "big", text: "X martelando por cima. Y só protege." }, "golpePesado"],
       [{ kind: "", text: "X acerta mais na troca, 5 a 2." }, "golpeLeve"], [{ kind: "", text: "Troca parelha, 3 a 3." }, "golpeLeve"],
@@ -7584,6 +7603,167 @@ async function testarSom() {
 
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("som ok") : vermelho(`${falhas.length} falha(s) no som`)));
+  return ok;
+}
+
+/* ================================================================== *
+ * TEXTO (revamp fase 7): sem travessão e sem frase de efeito em nenhum
+ *     texto do jogo; texto que vem da IA passa pelo filtro. Regras no
+ *     LEIA-ME ("Regras de texto").
+ * ================================================================== */
+const FRASES_PROIBIDAS = [
+  [/de verdade/i, "\"de verdade\" como reforço"],
+  [/começa agora/i, "\"começa agora\""],
+  [/sua jornada/i, "\"sua jornada\""],
+  [/\bnão é [^.,;:!?]{1,40}, é\b/i, "\"não é X, é Y\""],
+  [/!!/, "exclamação dupla"],
+];
+/* Literais de texto de um código JS: aspas, crases e o que está dentro
+   de ${} (texto aninhado em template também conta). Comentário e regex
+   ficam de fora. Um regex simples não serve: "${cheio?x:"—"}" some junto
+   com a expressão, e crase dentro de ${} corta o template no meio. */
+function literaisJS(src) {
+  const out = [];
+  let i = 0, prev = "";
+  const KW = /^(return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await)$/;
+  const regexPossivel = () => prev === "" || /^[(,=:[!&|?{};+\-*%<>~^]$/.test(prev) || KW.test(prev);
+  const escape = () => {
+    const e = src[i + 1];
+    if (e === "u" && src[i + 2] === "{") { const f = src.indexOf("}", i); const c = String.fromCodePoint(parseInt(src.slice(i + 3, f), 16)); i = f + 1; return c; }
+    if (e === "u") { const c = String.fromCharCode(parseInt(src.slice(i + 2, i + 6), 16)); i += 6; return c; }
+    i += 2; return e === "n" ? "\n" : (e || "");
+  };
+  const lerAspas = q => {
+    let t = ""; i++;
+    while (i < src.length && src[i] !== q && src[i] !== "\n") t += src[i] === "\\" ? escape() : src[i++];
+    i++; return t;
+  };
+  const lerCrase = () => {
+    let t = ""; i++;
+    while (i < src.length && src[i] !== "`") {
+      if (src[i] === "\\") { t += escape(); continue; }
+      if (src[i] === "$" && src[i + 1] === "{") { i += 2; codigo(true); t += " "; continue; }
+      t += src[i++];
+    }
+    i++; return t;
+  };
+  const pularRegex = () => {
+    i++;
+    let classe = false;
+    while (i < src.length && src[i] !== "\n") {
+      const c = src[i];
+      if (c === "\\") { i += 2; continue; }
+      if (c === "[") classe = true; else if (c === "]") classe = false;
+      else if (c === "/" && !classe) { i++; break; }
+      i++;
+    }
+    while (/[a-z]/.test(src[i] || "")) i++;
+  };
+  function codigo(emTemplate) {
+    let prof = 0;
+    while (i < src.length) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") { const f = src.indexOf("*/", i + 2); i = f < 0 ? src.length : f + 2; continue; }
+      if (c === "'" || c === '"') { out.push(lerAspas(c)); prev = "a"; continue; }
+      if (c === "`") { out.push(lerCrase()); prev = "a"; continue; }
+      if (c === "/") { if (regexPossivel()) { pularRegex(); prev = "a"; } else { i++; prev = "/"; } continue; }
+      if (c === "{") { prof++; i++; prev = "{"; continue; }
+      if (c === "}") { i++; if (emTemplate && prof === 0) return; prof--; prev = "}"; continue; }
+      if (/\s/.test(c)) { i++; continue; }
+      if (/[\w$]/.test(c)) { let w = ""; while (i < src.length && /[\w$]/.test(src[i])) w += src[i++]; prev = w; continue; }
+      prev = c; i++;
+    }
+  }
+  codigo(false);
+  return out.filter(t => t.trim());
+}
+/* Texto visível do HTML fora dos <script>: nós de texto e atributos. */
+function textosHTML(html) {
+  const semScript = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ");
+  const attrs = [...semScript.matchAll(/\s(?:title|alt|aria-label|placeholder|content)="([^"]*)"/g)].map(m => m[1]);
+  return [...semScript.replace(/<[^>]*>/g, "\n").split("\n"), ...attrs].map(t => t.trim()).filter(Boolean);
+}
+function stringsDoIndex() {
+  const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
+  const erro404 = fs.readFileSync(path.join(__dirname, "404.html"), "utf8");
+  const scripts404 = [...erro404.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
+  return [...scripts.flatMap(literaisJS), ...textosHTML(html), ...scripts404.flatMap(literaisJS), ...textosHTML(erro404)];
+}
+function problemasDeTexto(t) {
+  const p = [];
+  if (/[—–]|&[mn]dash;|&#821[12];/.test(t)) p.push("travessão");
+  for (const [re, nome] of FRASES_PROIBIDAS) if (re.test(t)) p.push(nome);
+  if ((t.replace(/<[^>]*>/g, "").match(/!/g) || []).length > 1) p.push("exclamação em série");
+  // ícone é SVG do sprite (ICONE()), nunca emoji nem seta/check em caractere
+  if (/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{FE0F}]/u.test(t)) p.push("emoji ou símbolo no lugar de ícone");
+  return p;
+}
+async function testarTexto() {
+  console.log("\n" + cinza("texto: sem travessão, sem frase de efeito, filtro no texto da IA"));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  await conf("nenhuma string do index.html tem travessão ou frase proibida", () => {
+    const ruins = stringsDoIndex().map(t => [t, problemasDeTexto(t)]).filter(([, p]) => p.length);
+    if (ruins.length) throw new Error(`${ruins.length} strings:\n` + ruins.slice(0, 12).map(([t, p]) => `           [${p.join(", ")}] ${t.replace(/\s+/g, " ").slice(0, 110)}`).join("\n")
+      + (ruins.length > 12 ? `\n           ...e mais ${ruins.length - 12}` : ""));
+  });
+  await conf("semTravessao(): fala perde o travessão, meio vira vírgula, intervalo vira hífen, resto intacto", () => {
+    const env = criarAmbiente();
+    vm.createContext(env.sandbox);
+    vm.runInContext(exportar(lerScript(), ["semTravessao", "limparTextoIA"]), env.sandbox, { filename: "index.html" });
+    const { semTravessao, limparTextoIA } = env.sandbox.__x;
+    if (typeof semTravessao !== "function") throw new Error("semTravessao não existe");
+    const casos = [["— Vai perder, garoto.", "Vai perder, garoto."], ["Ele venceu — por pouco.", "Ele venceu, por pouco."],
+      ["placar 30–27", "placar 30-27"], ["terminou assim —", "terminou assim"], ["sem nada pra trocar", "sem nada pra trocar"]];
+    for (const [a, b] of casos) if (semTravessao(a) !== b) throw new Error(`"${a}" virou "${semTravessao(a)}" (esperava "${b}")`);
+    const j = limparTextoIA({ reacao: "Riu — e saiu.", efeito: 1.1, posts: [{ nome: "Ana", texto: "— que luta" }], atributo: "slpm" });
+    if (JSON.stringify(j) !== JSON.stringify({ reacao: "Riu, e saiu.", efeito: 1.1, posts: [{ nome: "Ana", texto: "que luta" }], atributo: "slpm" }))
+      throw new Error("limparTextoIA: " + JSON.stringify(j));
+  });
+  await conf("todo texto que a IA devolve passa pelo filtro antes de chegar no jogo", async () => {
+    const env = criarAmbiente();
+    env.sandbox.fetch = async () => ({ ok: true, json: async () => ({ result: { texto: "O treino — pesado — rendeu.", atributo: "nenhum" } }) });
+    vm.createContext(env.sandbox);
+    vm.runInContext(lerScript(), env.sandbox, { filename: "index.html" });
+    const r = await vm.runInContext(`ai("evento",{})`, env.sandbox);
+    if (!r || /[—–]/.test(r.texto)) throw new Error("texto da IA chegou com travessão: " + JSON.stringify(r));
+  });
+  await conf("carreira inteira na tela (22 lutas e o fim) sem travessão nem frase proibida", async () => {
+    const F = lerLutadores();
+    const X = sandboxCarreira();
+    iniciarCarreiraTeste(X, F, 779001);
+    await jogarCarreiraAte(X, 22);
+    X.run("auto=false;screenReport();");
+    for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
+    const nosDe = (r, acc = []) => { if (!r) return acc; acc.push(r); (r.children || []).forEach(c => nosDe(c, acc)); return acc; };
+    const textos = new Set();
+    for (const id of Object.keys(X.registro)) for (const n of nosDe(X.registro[id])) {
+      const t = String(n.innerHTML || "") + " " + String(n.textContent || "");
+      if (t.trim()) textos.add(t);
+    }
+    const ruins = [...textos].map(t => [t, problemasDeTexto(t.replace(/<[^>]*>/g, " "))]).filter(([, p]) => p.length);
+    if (ruins.length) throw new Error(`${ruins.length} textos:\n` + ruins.slice(0, 8).map(([t, p]) => `           [${p.join(", ")}] ${t.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 110)}`).join("\n"));
+  });
+  await conf("prompts da api/ai.js pedem texto sem travessão e sem frase de efeito, e não usam travessão", () => {
+    const api = fs.readFileSync(path.join(__dirname, "api", "ai.js"), "utf8");
+    // a regra entra na VOZ, que abre o system de todo kind
+    if (!/const REGRA_TEXTO = `[^`]*travessão[^`]*"não é X, é Y"/.test(api)) throw new Error("api/ai.js sem REGRA_TEXTO");
+    if (!/const VOZ = `[^`]*\$\{REGRA_TEXTO\}`/.test(api)) throw new Error("REGRA_TEXTO fora da VOZ");
+    // o modelo imita a pontuação que lê: só a própria regra cita o travessão.
+    // Vale pros outros arquivos de api/ também (a descrição da cobrança
+    // aparece pro jogador na página de pagamento).
+    const arquivos = fs.readdirSync(path.join(__dirname, "api")).filter(f => f.endsWith(".js"));
+    const comTravessao = arquivos.flatMap(f => literaisJS(fs.readFileSync(path.join(__dirname, "api", f), "utf8"))
+      .filter(t => /[—–]/.test(t) && !/^Pontuação: NUNCA use travessão/.test(t)).map(t => f + ": " + t.replace(/\s+/g, " ").slice(0, 80)));
+    if (comTravessao.length) throw new Error("texto com travessão: " + comTravessao.join(" | "));
+  });
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("texto ok") : vermelho(`${falhas.length} falha(s) no texto`)));
   return ok;
 }
 
@@ -7735,6 +7915,7 @@ try {
   else if (cmd === "save") ok = await testarSave();
   else if (cmd === "hub") ok = await testarHub();
   else if (cmd === "som") ok = await testarSom();
+  else if (cmd === "texto") ok = await testarTexto();
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -7804,6 +7985,7 @@ try {
         ["save", () => testarSave()],
         ["hub", () => testarHub()],
         ["som", () => testarSom()],
+        ["texto", () => testarTexto()],
         ["placar", () => testarPlacar()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],

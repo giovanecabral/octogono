@@ -889,7 +889,7 @@ perder a defesa (`st.title` já true) e perder a disputa antes de nunca ter
 sido campeão (`st.title` ainda false) — senão a reconquista aproveita a
 concessão antiga do `holdRng` e nunca sorteia de novo. `st.foiCampeao` é um
 flag separado, permanente, só pra frase do `LEGACY` que fala em fato histórico
-irrevogável ("teve o cinturão nas mãos e isso ninguém tira") — precisa
+irrevogável ("${n} foi campeão da divisão", reescrita na fase 7) — precisa
 continuar valendo mesmo depois de perder.
 
 **`passoCinturao()` agora concorda com o mecanismo.** Ele nomeia o alvo nas
@@ -1967,7 +1967,7 @@ do `RARE`/`LEGACY`:
 |---|---|
 | KO rápido | "${n} não deixou o locutor terminar de apresentar o adversário." |
 | primeiro cinturão | "${n} levantou o cinturão e não soltou pra nenhuma foto." |
-| upset | "${opp} tinha tudo pra vencer, menos a luta." |
+| upset | "Quem apostou em ${n} contra ${opp} multiplicou o dinheiro." (fase 7: a anterior, "${opp} tinha tudo pra vencer, menos a luta", era fecho em aforismo) |
 | lesão vencida | "${n} entrou mancando e saiu com a mão levantada." |
 
 **Prévia no painel, não só texto e botão.** `abrirPainelMomentos()` agora
@@ -2772,6 +2772,78 @@ Cartel, Mídia, noite, save em qualquer instante, saída, `#/carreira`, fim
 de carreira), toda checagem com dente provado. Conserto no ajudante
 `jogarCarreiraAte`: ele parava UMA luta depois do alvo quando o automático
 começava e terminava a luta alvo dentro da mesma drenagem.
+
+## Regras de texto (revamp fase 7, 2026-09-27)
+
+Todo texto do jogo segue três regras (spec, seção 11; amostras aprovadas
+pelo dono antes de aplicar ao resto):
+
+1. **Zero travessão** (— e –). No lugar: ponto, vírgula, dois-pontos ou
+   parênteses. Fala de personagem vai entre aspas. Intervalo de anos usa
+   hífen (2005-2014). Marcador de vazio também não é travessão: some (bio
+   sem era não mostra a era) ou vira "?" (vértice do octógono ainda vazio).
+2. **Sem frase de efeito**: nada de "não é X, é Y", fecho em aforismo,
+   "sua jornada começa agora", "de verdade" como reforço, trio de
+   adjetivos, pergunta retórica chamando pra ação, exclamação em série.
+3. **Texto concreto**: número, nome, fato. Botão diz o que faz.
+
+As 10 amostras aprovadas:
+
+| antes | depois |
+|---|---|
+| Fim do round 2 — Kayo levou. | Fim do round 2. Kayo levou. |
+| …na troca — 18 a 0. | …na troca: 18 a 0. |
+| …só respondeu "quem?" — a sala riu. | …só respondeu "quem?". A sala riu. |
+| Poucos apostavam em você contra Alex — o que mudou? | Poucos apostavam em você contra Alex. O que mudou? |
+| Islam segue como campeão de verdade — a unificação vem por aí. | Islam continua campeão, e a próxima luta é a unificação. |
+| …a disputa contra Islam pode vir, ou não — lesão do campeão, política… | Você é o desafiante. A disputa contra Islam pode vir ou não: depende de lesão do campeão, política e prioridade da organização. |
+| Não tem cartel pra julgar — só a decisão de não ter um. | Não há cartel pra julgar. |
+| …Às vezes em primeiro, às vezes em quinto, mas sempre citado. | Kayo entra em toda lista dos melhores da história da divisão. |
+| Provoca o adversário de verdade — a reação dele muda o hype… | Provoque o adversário na coletiva. A reação dele muda o hype e a pressão da luta seguinte. |
+| Onde você mora agora combina com quem você virou… | Casa nova e mais visível: mais gente acompanha sua carreira. |
+
+**Imagem concreta não é frase de efeito.** Os cards de momento foram
+escritos de propósito com imagem pra dar vontade de postar (ver "Card de
+momento"). Ficaram as imagens: "levantou o cinturão e não soltou pra
+nenhuma foto", "não deixou o locutor terminar de apresentar o adversário",
+"o reinado durou menos que a fila da pesagem". Saiu o fecho que explica ou
+moraliza: "tinha tudo pra vencer, menos a luta", "O corpo lembrava, a mão
+levantou do mesmo jeito", "Isso vira lenda ou vira alerta, depende de quem
+conta", o "chamam de chato, chama de eficiente". O legado do fim de
+carreira (`LEGACY`) e o parecer da nota (`TIERS_NOTA`) viraram fato com
+número (cartel, finalizações, cinturão), no molde da amostra 8.
+
+**Texto da IA.** Os prompts (`api/ai.js`) ganharam `REGRA_TEXTO` dentro
+da `VOZ` (abre o system de todo kind) e pararam de usar travessão, porque o
+modelo imita a pontuação que lê. Pela regra geral (restrição no prompt não
+é garantia), o navegador filtra também: `tentarChamadaIA()` passa todo
+resultado por `limparTextoIA()`, que aplica `semTravessao()` em cada texto
+(fala que começa com travessão perde o travessão; intervalo entre números
+vira hífen; depois de pontuação o travessão só some; no meio da frase vira
+vírgula). Save gravado antes disso mostra narração, evento e texto de IA
+limpos: `linhaExtra()` e a narração do Cartel passam pelo filtro na hora
+de mostrar. A resposta digitada pelo jogador fica como ele escreveu.
+
+Medido em 2026-09-27, direto no OpenRouter com o mesmo corpo do handler
+(qwen3.7-flash, 6 chamadas por kind, 36 por versão do prompt): JSON válido
+36/36 antes e depois; travessão em 0 de 36 respostas antes e depois (o
+modelo atual quase não usa, então regra e filtro são garantia pra troca de
+modelo); frase proibida em 2/36 antes e 0/36 depois; custo de ~130 tokens
+de entrada a mais por chamada. A regra só vale em produção depois do deploy
+do `api/ai.js`; até lá, o filtro no navegador cobre.
+
+**Termos e Privacidade**: só a pontuação mudou. Redação e
+`VERSAO_TERMOS_PAGAMENTO` ficaram iguais.
+
+**Testes**: `node testar.js texto`. Varre todo literal de texto do
+`index.html` (aspas, crases e o que está dentro de `${}`; um tokenizador
+pula comentário e regex, porque um regex simples perdia o "—" aninhado em
+`${cheio?x:"—"}`), o texto visível do HTML e do `404.html`, e reprova
+travessão, as frases proibidas e emoji ou seta em caractere no lugar de
+ícone. Joga uma carreira inteira e confere o texto que chega na tela.
+Confere `semTravessao()`, o filtro no resultado da IA e que nenhum arquivo
+de `api/` usa travessão fora da própria regra (a descrição da cobrança
+aparece pro jogador na página de pagamento da Asaas).
 
 ## Histórico (2026-09-09) — aprovado, implementado
 

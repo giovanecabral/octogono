@@ -21,22 +21,22 @@
 
 ### Task 1: Suíte `texto` (falha primeiro)
 
-- [ ] Varre as strings do `index.html` (aspas, crases) fora de comentário: nenhum "—" ou "–"; nenhuma frase da lista ("de verdade", "começa agora", "sua jornada", "não é X, é Y", "!!", mais de uma exclamação na mesma string).
-- [ ] Testa `semTravessao()`: fala com travessão no começo perde o travessão; travessão no meio vira vírgula; intervalo numérico vira hífen; texto sem travessão sai igual.
-- [ ] Rodar: reprova (43 strings com travessão hoje).
+- [x] Varre as strings do `index.html` (aspas, crases) fora de comentário: nenhum "—" ou "–"; nenhuma frase da lista ("de verdade", "começa agora", "sua jornada", "não é X, é Y", "!!", mais de uma exclamação na mesma string).
+- [x] Testa `semTravessao()`: fala com travessão no começo perde o travessão; travessão no meio vira vírgula; intervalo numérico vira hífen; texto sem travessão sai igual.
+- [x] Rodar: reprova (43 strings com travessão hoje).
 
 ### Task 2: Reescrita
 
-- [ ] Todas as strings com travessão e as frases da lista, nas amostras aprovadas e no mesmo espírito: narração, escolha na luta, coletiva, entrevista, cards de momento, caminho do cinturão, legado, vitrine do Pro, loja, conta, anúncio de rival, lesão, percentis do draft, eras dos lutadores, marcadores vazios.
-- [ ] Moldes sem travessão mas com frase de efeito: legados, notas, raros, frases de momento, descrições de loja e conquista, dilemas de reserva (leitura um por um).
-- [ ] Os 2 emojis dos posts simulados saem.
-- [ ] Rodar `texto` e as suítes que conferem texto (interface, coerencia, lesao, cinturao, pro, momentos, conquistas, aposentadoria, hub).
+- [x] Todas as strings com travessão e as frases da lista, nas amostras aprovadas e no mesmo espírito: narração, escolha na luta, coletiva, entrevista, cards de momento, caminho do cinturão, legado, vitrine do Pro, loja, conta, anúncio de rival, lesão, percentis do draft, eras dos lutadores, marcadores vazios.
+- [x] Moldes sem travessão mas com frase de efeito: legados, notas, raros, frases de momento, descrições de loja e conquista, dilemas de reserva (leitura um por um).
+- [x] Os 2 emojis dos posts simulados saem.
+- [x] Rodar `texto` e as suítes que conferem texto (interface, coerencia, lesao, cinturao, pro, momentos, conquistas, aposentadoria, hub).
 
 ### Task 3: IA
 
-- [ ] `semTravessao()` em todo texto que volta da IA (feed, evento, dilema, julgamento, coletiva, entrevista).
-- [ ] Prompts do `api/ai.js` com a regra de texto (sem travessão, sem frase de efeito).
+- [x] `semTravessao()` em todo texto que volta da IA (feed, evento, dilema, julgamento, coletiva, entrevista).
+- [x] Prompts do `api/ai.js` com a regra de texto (sem travessão, sem frase de efeito).
 
 ### Task 4: Fechamento
 
-- [ ] Guia de texto no LEIA-ME; `node testar.js` completo; commit + push; checkpoint com o dono (deploy junto com a fase 8 ou antes, a critério dele).
+- [x] Guia de texto no LEIA-ME; `node testar.js` completo; commit + push; checkpoint com o dono (deploy junto com a fase 8 ou antes, a critério dele).

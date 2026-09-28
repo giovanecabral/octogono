@@ -203,9 +203,9 @@ function simularRound(A,B,round,rng,push,fin,scores){
   }
   const pa=(A.sigStrikes-snap.a)+(A.takedowns-snap.at)*6+(A.controlTicks-snap.ac)*.7;
   const pb=(B.sigStrikes-snap.b)+(B.takedowns-snap.bt)*6+(B.controlTicks-snap.bc)*.7;
-  if(pa>pb){scores.sa+=10;scores.sb+=9;push(round,"0:00","rd",`Fim do round ${round} — ${A.ref.name} levou.`);}
-  else if(pb>pa){scores.sb+=10;scores.sa+=9;push(round,"0:00","rd",`Fim do round ${round} — ${B.ref.name} levou.`);}
-  else{scores.sa+=10;scores.sb+=10;push(round,"0:00","rd",`Fim do round ${round} — round dividido.`);}
+  if(pa>pb){scores.sa+=10;scores.sb+=9;push(round,"0:00","rd",`Fim do round ${round}. ${A.ref.name} levou.`);}
+  else if(pb>pa){scores.sb+=10;scores.sa+=9;push(round,"0:00","rd",`Fim do round ${round}. ${B.ref.name} levou.`);}
+  else{scores.sa+=10;scores.sb+=10;push(round,"0:00","rd",`Fim do round ${round}. Round dividido.`);}
   A.damage*=.88;B.damage*=.88;
   return null;
 }
@@ -317,25 +317,25 @@ function rateAll(roster){
    relatório final. */
 const RARE=[
  {id:"invicto18",card:true,tom:1,when:s=>s.fightNo>=18&&s.losses===0,
-  t:n=>`Dezoito e zero. Um repórter perguntou como é não conhecer a derrota. ${n} respondeu que conhece, só não dentro do octógono.`},
+  t:n=>`Dezoito e zero. Nas casas de aposta, quem aposta contra ${n} recebe dez vezes o valor.`},
  {id:"invicto12",card:true,tom:1,when:s=>s.fightNo>=12&&s.losses===0,
-  t:n=>`Doze lutas, doze vitórias. Começaram a dizer que a divisão está fraca, porque é mais fácil do que admitir que ${n} é bom demais.`},
+  t:n=>`Doze lutas, doze vitórias. Já tem comentarista dizendo que a divisão está fraca pra explicar o cartel de ${n}.`},
  {tom:-1,when:s=>s.fightNo>=10&&s.wins===0,
   t:n=>`Dez derrotas em dez lutas. A comissão convocou ${n} pra uma conversa sobre continuar competindo.`},
  {tom:1,when:s=>s.streakW>=8,
-  t:n=>`Oito seguidas. Pararam de perguntar se ${n} ganha e começaram a perguntar como.`},
+  t:n=>`Oito vitórias seguidas. ${n} entra como favorito contra qualquer nome da divisão.`},
  {tom:-1,when:s=>s.streakL>=5,
   t:n=>`Cinco derrotas em sequência. O ginásio esvaziou antes da luta de ${n} terminar.`},
  {tom:-1,when:s=>s.koLosses>=4,
-  t:n=>`Quarto nocaute sofrido. O médico da comissão pediu tomografia e sugeriu, sem sugerir, que ${n} pensasse na vida.`},
+  t:n=>`Quarto nocaute sofrido. O médico da comissão pediu tomografia e perguntou a ${n} se já pensou em parar.`},
  {id:"finishStreak",card:true,tom:1,when:s=>s.fightNo>=8&&s.wins>=6&&s.finishes===s.wins,
-  t:n=>`${n} nunca precisou de cartão de juiz. Todas as vitórias antes do apito.`},
+  t:n=>`${n} nunca precisou dos juízes. Todas as vitórias terminaram antes do gongo final.`},
  {when:s=>s.fightNo>=14&&s.wins>=7&&s.finishes===0,
-  t:n=>`Sete vitórias, nenhuma antes do tempo. Chamam ${n} de chato. ${n} chama de eficiente.`},
+  t:n=>`Todas as vitórias de ${n} foram por decisão dos juízes, e a torcida já reclama da falta de finalização.`},
  {id:"lostBeltFast",tom:-1,when:s=>s.lostBeltFast,
   t:n=>`Perdeu o cinturão na primeira defesa. O reinado de ${n} durou menos que a fila da pesagem.`},
  {when:s=>s.kdTaken>=6,
-  t:n=>`${n} já foi ao chão seis vezes na carreira e levantou nas seis. Isso vira lenda ou vira alerta, depende de quem conta.`},
+  t:n=>`${n} já foi ao chão seis vezes na carreira e levantou nas seis.`},
 ];
 
 /* LEGADO — a frase de fecho. O primeiro que casar vence, então a ordem importa. */
@@ -346,36 +346,36 @@ const LEGACY=[
     pressupõe uma sequência invicta de verdade. Frase própria, honesta:
     não inventa carreira que não existiu. */
  {when:s=>s.wins===0&&s.losses===0,
-  t:n=>`${n} pendurou as luvas antes da primeira luta. Não tem cartel pra julgar — só a decisão de não ter um.`},
+  t:n=>`${n} pendurou as luvas antes da primeira luta. Não há cartel pra julgar.`},
  {when:s=>s.losses===0&&s.title,
-  t:n=>`Ninguém nunca botou ${n} no chão. Daqui a vinte anos vai ter discussão em mesa de bar sobre isso, e um cara vai jurar que estava lá.`},
+  t:n=>`${n} se aposentou invicto e campeão: ${st.wins} vitórias, nenhuma derrota.`},
  {when:s=>s.losses===0,
-  t:n=>`${n} saiu invicto e sem cinturão, que é o jeito mais garantido de virar assunto eterno. Todo bar tem um defensor de ${n}.`},
+  t:n=>`${n} se aposentou com cartel de ${st.wins}-0 e nunca disputou o cinturão.`},
  {when:s=>s.wins===0,
   /* Era "Vinte e duas lutas, vinte e duas derrotas" cravado — só batia
      certo pra quem perdia as 22 e nunca se aposentava mais cedo. wins===0
      sempre implica losses===fightNo (perdeu todas as que lutou), então o
      número de verdade é st.fightNo, não a constante da carreira inteira. */
-  t:n=>`${st.fightNo} lutas, ${st.fightNo} derrotas. Vão lembrar de ${n}, sim, mas por um compilado de dez minutos no YouTube com quatro milhões de views.`},
+  t:n=>`${st.fightNo} lutas, ${st.fightNo} derrotas. O compilado das derrotas de ${n} no YouTube passou de quatro milhões de views.`},
  {when:s=>s.title&&s.peak>=.98,
-  t:n=>`${n} vai ser citado sempre que alguém abrir a frase "os melhores da história". Às vezes em primeiro, às vezes em quinto, mas sempre citado.`},
+  t:n=>`${n} entra em toda lista dos melhores da história da divisão.`},
  /* foiCampeao, não title: o texto é sobre um fato histórico permanente ("isso
     ninguém tira") — precisa continuar valendo pra quem foi campeão e depois
     perdeu o cinturão numa defesa, não só pra quem termina a carreira com ele. */
  {when:s=>s.foiCampeao,
-  t:n=>`${n} teve o cinturão nas mãos e isso ninguém tira. Vão passar a luta do título de madrugada e alguém vai acordar o irmão pra assistir.`},
+  t:n=>`${n} foi campeão da divisão. A luta do título ainda passa em reprise de madrugada.`},
  {when:s=>s.peak>=.9,
-  t:n=>`Chegou perto o suficiente pra doer. ${n} é aquele nome que sempre aparece na conversa de "esse aí merecia ter sido campeão".`},
+  t:n=>`${n} chegou perto do cinturão e não ganhou. O nome aparece sempre que alguém lista quem merecia ter sido campeão.`},
  {when:s=>s.finishes>=8,
-  t:n=>`Ninguém lembra do cartel de ${n}, mas todo mundo lembra de pelo menos um nocaute. É um jeito melhor de ser lembrado do que a maioria consegue.`},
+  t:n=>`${n} venceu ${st.finishes} lutas por nocaute ou finalização, e essas lutas ainda rodam em compilado.`},
  {when:s=>s.wins>s.losses&&s.peak>=.6,
-  t:n=>`${n} foi bom o bastante pra ser reconhecido no aeroporto e não o bastante pra ser reconhecido fora dele. Vive bem assim.`},
+  t:n=>`${n} se aposentou com cartel de ${st.wins}-${st.losses} e chegou à metade de cima da divisão.`},
  {when:s=>s.wins>s.losses,
-  t:n=>`Carreira de gente séria. Daqui a dez anos um comentarista vai falar "${n}, lembra dele?" e metade da mesa vai lembrar.`},
+  t:n=>`${n} se aposentou com mais vitórias que derrotas: ${st.wins}-${st.losses}.`},
  {when:s=>s.wins>=6,
-  t:n=>`${n} vai ser lembrado na cidade onde nasceu e em mais nenhum lugar. O que já é bem mais do que quase todo mundo consegue.`},
+  t:n=>`${n} venceu ${st.wins} lutas na organização e virou nome conhecido na cidade onde nasceu.`},
  {when:()=>true,
-  t:n=>`Daqui a cinco anos ninguém vai lembrar de ${n}. Mas em algum lugar tem uma foto na parede de uma academia, e o dono dela sabe exatamente quem é.`},
+  t:n=>`${n} encerrou a carreira com ${st.wins} vitória${st.wins===1?"":"s"} e ${st.losses} derrota${st.losses===1?"":"s"}. Na academia onde treinava, a foto de ${n} continua na parede.`},
 ];
 
 /* =========================================================================
@@ -399,14 +399,14 @@ const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o ad
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
 /* Interino é anunciado como incompleto de propósito — nomeia quem está
    faltando enfrentar, não só "ganhou um cinturão". */
-const FRASE_CINTURAO_INTERINO=(n,campeao)=>`${n} é o novo campeão interino. ${campeao} segue como campeão de verdade — a unificação vem por aí.`;
-const FRASE_UNIFICACAO=(n,campeao)=>`${n} venceu ${campeao} e unificou os cinturões. Só existe um campeão agora, e é ${n}.`;
-const FRASE_UPSET=(n,opp)=>`${opp} tinha tudo pra vencer, menos a luta.`;
+const FRASE_CINTURAO_INTERINO=(n,campeao)=>`${n} é o novo campeão interino. ${campeao} continua campeão, e a próxima luta é a unificação.`;
+const FRASE_UNIFICACAO=(n,campeao)=>`${n} venceu ${campeao} e unificou os cinturões da divisão.`;
+const FRASE_UPSET=(n,opp)=>`Quem apostou em ${n} contra ${opp} multiplicou o dinheiro.`;
 /* "Desbancar o nº1" é a posição na TABELA INTEIRA (posicaoDivisao(), a
    mesma que a ficha já mostra como "#N de M"), não o RANKING oficial
    (campeão+15, ver "Campeão nomeado" no LEIA-ME) — de propósito, pra não
    inventar um número novo: reusa o que já existe e já é medido. */
-const FRASE_TOPO_DIVISAO=(n,total)=>`${n} é o nº 1 da tabela agora — o melhor entre ${total} lutadores da categoria.`;
+const FRASE_TOPO_DIVISAO=(n,total)=>`${n} é o nº 1 da tabela agora: o melhor entre ${total} lutadores da categoria.`;
 const FRASE_BONUS_NOITE=(n,opp)=>`A luta contra ${opp} foi a melhor atuação de ${n} até aqui.`;
 /* Duas frases, não uma — achado jogando em produção: o gatilho disparava
    pra QUALQUER st.lesao ativo, nocaute incluso, e "entrou mancando" narra
@@ -414,10 +414,10 @@ const FRASE_BONUS_NOITE=(n,opp)=>`A luta contra ${opp} foi a melhor atuação de
    lesão veio de apanhar. origem:"dilema" pega a decisão de verdade;
    origem:"nocaute" é sobre superar o próprio corpo, não uma escolha. */
 const FRASE_LESAO_VENCIDA=n=>`${n} entrou mancando e saiu com a mão levantada.`;
-const FRASE_LESAO_VENCIDA_NOCAUTE=n=>`${n} venceu ainda sentindo o nocaute da luta passada. O corpo lembrava, a mão levantou do mesmo jeito.`;
+const FRASE_LESAO_VENCIDA_NOCAUTE=n=>`${n} venceu ainda sentindo o nocaute da luta passada.`;
 /* neutra de propósito — dispara em vitória OU derrota, é sobre chegar lá,
    não sobre o resultado (ver "estreia no main card", item 8) */
-const FRASE_ESTREIA_MAIN_CARD=n=>`${n} entrou no octógono e o ginásio soube o nome.`;
+const FRASE_ESTREIA_MAIN_CARD=n=>`${n} lutou no card principal pela primeira vez, com o ginásio cheio.`;
 
 /* =========================================================================
    CONQUISTAS — troféu local, sem conta, sem IA. Cada check(st,modo) é
@@ -685,10 +685,10 @@ const TWEETS={
  koWin:[n=>`${n} DESLIGOU O CARA. levanta não, acabou`,
    n=>`assisti três vezes e ainda não vi o golpe que o ${n} acertou`,
    n=>`o ${n} tem mão de pedreiro pelo amor de deus`,
-   n=>`GENTE O ${n.toUpperCase()} 😭 tô passando mal aqui em casa`,
+   n=>`GENTE O ${n.toUpperCase()} tô passando mal aqui em casa`,
    n=>`quem apostou contra o ${n} merece perder mesmo`,
    n=>`o cara caiu antes do som chegar no microfone`,
-   n=>`${n} não veio pra ganhar ponto, veio pra apagar gente`,
+   n=>`${n} entrou pra nocautear desde o primeiro segundo`,
    n=>`meu vizinho gritou junto comigo e a gente nem se conhece`],
  subWin:[n=>`${n} pegou o pescoço e o cara desistiu na hora. jiu-jitsu é lindo`,
    n=>`o ${n} finaliza com uma facilidade que ofende`,
@@ -701,11 +701,11 @@ const TWEETS={
    n=>`o ${n} venceu certinho, quem falou que foi roubo não assistiu`,
    n=>`três rounds de abraço. obrigado ${n} por nada`,
    n=>`${n} lutou pra não perder e conseguiu, parabéns eu acho`,
-   n=>`tecnicamente perfeito e emocionalmente vazio, esse é o ${n}`],
+   n=>`venceu os três rounds e eu não lembro de um golpe do ${n}`],
  koLoss:[n=>`o ${n} desmaiou de pé, meu deus`,
    n=>`acabou pro ${n}. queixo não se treina`,
    n=>`já é o segundo nocaute feio do ${n}, alguém tira ele daí`,
-   n=>`não dá pra rir mas o jeito que o ${n} caiu 💀`,
+   n=>`não dá pra rir mas o jeito que o ${n} caiu`,
    n=>`${n} apagou e o córner demorou pra entender que acabou`],
  subLoss:[n=>`${n} bateu rapidinho hein kkkkk`,
    n=>`o ${n} entrou na guilhotina sozinho, treina defesa irmão`,
@@ -726,7 +726,7 @@ const TWEETS={
 
  /* HATERS: aparecem ganhando ou perdendo. Quanto mais famoso, mais tem. */
  hater:[n=>`${n} é superestimado e vocês sabem disso, só não admitem`,
-   n=>`cartel de papel. o ${n} nunca enfrentou ninguém de verdade`,
+   n=>`cartel de papel. o ${n} nunca enfrentou ninguém do top 15`,
    n=>`daqui a dois anos ninguém vai lembrar do nome ${n}`,
    n=>`a torcida do ${n} é mais chata que ele lutando`,
    n=>`${n} vive de highlight editado, na luta inteira ele some`,
@@ -951,7 +951,7 @@ function traduzErroSupabase(msg){
   if(m.includes("invalid login credentials"))
     return "E-mail ou senha incorretos.";
   if(m.includes("email not confirmed"))
-    return "Confirma seu e-mail antes de entrar — veja sua caixa de entrada.";
+    return "Confirma seu e-mail antes de entrar. O link está na sua caixa de entrada.";
   if(m.includes("password"))
     return "Sua senha não atende aos requisitos de segurança do site. Tenta uma senha diferente.";
   if(m.includes("rate limit")||m.includes("too many requests")||m.includes("for security purposes"))
@@ -1125,7 +1125,7 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
     p.append("Enviamos um link para ",el("b","",email),". Abra o link, volte aqui e entre com sua senha.");
     const aviso=el("p","hint","Não achou? Confere a caixa de spam.");
     const msg=el("p","hint","");
-    const btnEntrar=el("button","btn","Já confirmei — entrar");
+    const btnEntrar=el("button","btn","Já confirmei, entrar");
     btnEntrar.onclick=()=>{
       emailPendente=null;modo="entrar";render();
       const inp=document.getElementById("conta-email");
@@ -1431,7 +1431,7 @@ async function renderStatusProResumo(container,session){
   if(pro){
     container.appendChild(el("p","pro-ativo-linha","PLANO PRO ATIVO"));
   }else{
-    const link=el("a","","Ver Plano Pro →");
+    const link=el("a","",`Ver Plano Pro ${ICONE("chevron-dir")}`);
     link.href="#";link.onclick=e=>{e.preventDefault();screenPlanoPro();};
     container.appendChild(link);
   }
@@ -1444,10 +1444,10 @@ async function renderStatusProResumo(container,session){
    compra/renovação (renderPlanoPro() abaixo) só aparece com sessão. */
 const BENEFICIOS_PRO=[
   {ic:"coroa",t:"Modo Lenda",d:"Draft e adversários vêm dos campeões e ex-desafiantes da divisão, não do elenco comum."},
-  {ic:"microfone",t:"Coletiva antes da luta",d:"Provoca o adversário de verdade — a reação dele muda o hype e a pressão da luta que vem."},
+  {ic:"microfone",t:"Coletiva antes da luta",d:"Provoque o adversário na coletiva. A reação dele muda o hype e a pressão da luta seguinte."},
   {ic:"jornal",t:"Entrevista depois da luta",d:"O repórter pergunta sobre o que aconteceu; sua resposta muda fã, seguidor e patrocínio."},
-  {ic:"luta",t:"Modo Rival",d:"Escolhe um nome, cria uma rivalidade que atravessa a carreira: histórico, revanches, o rosto que volta."},
-  {ic:"cards",t:"Cards exclusivos",d:"Corte de canto e selo — reconhecível de relance no card de resultado e no de momento."},
+  {ic:"luta",t:"Modo Rival",d:"Escolha um nome e crie um rival que volta ao longo da carreira, com histórico e revanches."},
+  {ic:"cards",t:"Cards exclusivos",d:"Corte de canto e selo no card de resultado e no card de momento."},
 ];
 function montarBeneficiosPro(container){
   const lista=el("div","pro-beneficios");
@@ -1487,12 +1487,12 @@ function montarCarrosselPro(container){
     acao.innerHTML="";
     if(i===0){
       cvWrap.appendChild(desenharPreviewCard(false));
-      legenda.textContent="GRÁTIS — acabamento de sempre";
+      legenda.textContent="GRÁTIS: acabamento padrão";
       return;
     }
     const modelo=CORES_CARD_PRO[i-1];
     cvWrap.appendChild(desenharPreviewCard(true,modelo.cor));
-    legenda.textContent=`PRO — modelo ${modelo.nome}`;
+    legenda.textContent=`PRO: modelo ${modelo.nome}`;
     const jaEhEsta=meuPro&&corCardProEscolha===i-1;
     const btn=el("button","btn btn-sm"+(jaEhEsta?" btn-ghost":""),
       jaEhEsta?"Em uso":`Usar modelo ${modelo.nome}`);
@@ -1534,9 +1534,18 @@ async function renderPlanoPro(container,session){
   meuPro=pro;
   box.innerHTML="";
   box.appendChild(el("h4","","Plano Pro"));
+  if(pro&&!data.expira_em){
+    /* Pro sem data de expiração (plano "unico", o pagamento de antes dos
+       30 dias, ou conta liberada à mão): new Date(null) mostrava
+       "Pro até 31/12/1969". Sem formulário: não há o que renovar, e um
+       pagamento novo gravaria uma data (webhook-asaas.js soma 30 dias a
+       partir de agora), encurtando o acesso. */
+    box.appendChild(el("p","hint","Esta conta é Pro sem data de expiração: modo Lenda, coletiva de imprensa, entrevista pós-luta, Modo Rival e o acabamento de card estão liberados."));
+    return;
+  }
   if(pro){
     const ateFmt=new Date(data.expira_em).toLocaleDateString("pt-BR");
-    box.appendChild(el("p","hint",`Esta conta é Pro até ${ateFmt}: modo Lenda, coletiva de imprensa, entrevista pós-luta, Modo Rival e o acabamento de card estão liberados. Sem cobrança automática — pra continuar depois dessa data, é só pagar de novo, a qualquer momento.`));
+    box.appendChild(el("p","hint",`Esta conta é Pro até ${ateFmt}: modo Lenda, coletiva de imprensa, entrevista pós-luta, Modo Rival e o acabamento de card estão liberados. Sem cobrança automática: pra continuar depois dessa data, é só pagar de novo, a qualquer momento.`));
   }else if(data&&data.expira_em){
     box.appendChild(el("p","hint",`Seu Plano Pro expirou em ${new Date(data.expira_em).toLocaleDateString("pt-BR")}.`));
   }
@@ -1556,7 +1565,7 @@ async function renderPlanoPro(container,session){
   const aceiteBox=document.getElementById("aceiteProCheck");
   document.getElementById("aceiteProLinkT").onclick=e=>{e.preventDefault();screenTermos();};
   document.getElementById("aceiteProLinkP").onclick=e=>{e.preventDefault();screenPrivacidade();};
-  const btn=el("button","btn btn-sm",pro?"Renovar — R$9,99 (mais 30 dias)":"Confirmar pagamento — R$9,99 (30 dias)");
+  const btn=el("button","btn btn-sm",pro?"Renovar por R$9,99 (mais 30 dias)":"Confirmar pagamento de R$9,99 (30 dias)");
   btn.disabled=true;
   box.appendChild(btn);
   const msg=el("p","hint","");
@@ -1621,7 +1630,7 @@ function screenPaginaLegal(titulo,corpo){
 }
 function screenTermos(){
   screenPaginaLegal("Termos de Uso",`
-    <p class="rev">Versão 4 — última revisão: 22 de setembro de 2026.</p>
+    <p class="rev">Versão 4. Última revisão: 22 de setembro de 2026.</p>
 
     <h3>1. Aceitação e objeto</h3>
     <p>Estes Termos de Uso ("Termos") regem o acesso e a utilização do
@@ -1668,34 +1677,34 @@ function screenTermos(){
     valor monetário, sem lastro, sem conversibilidade em moeda real e sem
     qualquer mecanismo de aposta, prêmio ou sorteio. Essas unidades
     fictícias não se confundem com o valor em reais cobrado pelo Plano
-    Pro, upgrade opcional descrito na seção 6 — a compra do Plano Pro não
+    Pro, upgrade opcional descrito na seção 6. A compra do Plano Pro não
     altera o orçamento de draft, o dinheiro fictício de carreira nem o
     resultado de qualquer luta, e nenhuma luta, atributo ou desfecho pode
     ser comprado individualmente.</p>
 
-    <h3>6. Plano Pro — pagamento avulso, 30 dias por vez</h3>
+    <h3>6. Plano Pro: pagamento avulso, 30 dias por vez</h3>
     <p>O Octógono oferece um upgrade opcional e pago, o "Plano Pro", ao
     valor de R$ 9,99 (nove reais e noventa e nove centavos) por
     pagamento. Cada pagamento confirmado libera o Plano Pro por 30
-    (trinta) dias corridos a partir da confirmação — ou, se a conta
+    (trinta) dias corridos a partir da confirmação ou, se a conta
     ainda tiver dias ativos de um pagamento anterior, a partir do fim
     desse período, sem desperdiçar o tempo já pago. Não há cobrança
     automática, recorrente ou assinatura: a Octógono NUNCA cobra o
     usuário sem uma ação de pagamento nova e explícita dele. Passados os
-    30 dias sem novo pagamento, a conta volta sozinha à camada gratuita
-    — sem aviso prévio de cobrança porque não há cobrança nenhuma
+    30 dias sem novo pagamento, a conta volta sozinha à camada gratuita,
+    sem aviso prévio de cobrança porque não há cobrança nenhuma
     acontecendo, e sem qualquer efeito sobre o progresso da carreira em
     andamento. O Plano Pro desbloqueia, enquanto ativo: modo Lenda (pool
     de lutadores lendários no draft), coletiva de imprensa antes da
     luta, entrevista pós-luta, Modo Rival, e acabamento visual
     diferenciado nos cards de resultado e de momento. Nenhuma dessas
     funcionalidades altera a simulação da luta em si nem concede
-    qualquer vantagem sobre o resultado — são camadas de narrativa e
+    qualquer vantagem sobre o resultado: são camadas de narrativa e
     apresentação, adicionais à carreira gratuita completa.</p>
     <p>O pagamento é processado por intermediador financeiro terceirizado
     (Asaas Gestão Financeira S.A., ver Política de Privacidade, seção 4),
     por Pix ou cartão de crédito. O Octógono não recebe nem armazena dado
-    de cartão — essa informação é inserida diretamente na página do
+    de cartão: essa informação é inserida diretamente na página do
     processador de pagamento e fica sob custódia exclusiva dele. A
     confirmação do Plano Pro no Jogo depende da comunicação de pagamento
     confirmado enviada pelo processador; pode levar alguns minutos entre o
@@ -1723,7 +1732,7 @@ function screenTermos(){
     <p>O Jogo utiliza nomes e estatísticas públicas de desempenho
     esportivo de 1.527 lutadores reais de MMA, dado histórico de natureza
     pública. Nenhum desses lutadores reais recebe retrato ou representação
-    visual gerada pelo Jogo — apenas o lutador criado pelo próprio usuário
+    visual gerada pelo Jogo. Apenas o lutador criado pelo próprio usuário
     possui aparência gerada. Essa distinção é deliberada: estatística
     esportiva é fato público; a imagem de uma pessoa é direito da própria
     pessoa, protegido pelo art. 5º, X, da Constituição Federal e pelo
@@ -1809,10 +1818,10 @@ function screenTermos(){
 }
 function screenPrivacidade(){
   screenPaginaLegal("Política de Privacidade",`
-    <p class="rev">Versão 4 — última revisão: 22 de setembro de 2026.</p>
+    <p class="rev">Versão 4. Última revisão: 22 de setembro de 2026.</p>
 
     <p>Esta Política de Privacidade descreve, em conformidade com a Lei
-    nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais — "LGPD"),
+    nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais, "LGPD"),
     como o Octógono trata dados pessoais de seus usuários.</p>
 
     <h3>1. Controlador e encarregado</h3>
@@ -1829,42 +1838,42 @@ function screenPrivacidade(){
     tratado, a finalidade do tratamento e a hipótese legal que o
     autoriza, conforme o art. 7º da LGPD.</p>
     <ul>
-      <li><b>E-mail</b> (ao criar conta) — finalidade: autenticação e
+      <li><b>E-mail</b> (ao criar conta). Finalidade: autenticação e
       comunicação sobre a conta. Base legal: execução de contrato (art.
-      7º, V) — é o meio de identificação necessário à relação contratual
+      7º, V): é o meio de identificação necessário à relação contratual
       destes Termos de Uso.</li>
-      <li><b>Senha</b> (ao criar conta por e-mail) — armazenada com hash
+      <li><b>Senha</b> (ao criar conta por e-mail): armazenada com hash
       criptográfico pelo Supabase; o desenvolvedor não tem acesso à senha
       em texto plano. Finalidade e base legal: idênticas ao e-mail.</li>
-      <li><b>Nome e e-mail da conta Google</b> (ao entrar com Google) —
-      finalidade: autenticação alternativa. Base legal: execução de
+      <li><b>Nome e e-mail da conta Google</b> (ao entrar com Google).
+      Finalidade: autenticação alternativa. Base legal: execução de
       contrato (art. 7º, V), mediante o consentimento fornecido pelo
       próprio usuário ao Google no momento da autorização (art. 7º, I).</li>
       <li><b>Nome do lutador, cartel e nota da carreira concluída,
-      conquistas desbloqueadas</b> (só se houver conta) — finalidade:
+      conquistas desbloqueadas</b> (só se houver conta). Finalidade:
       sincronizar o progresso do jogador entre aparelhos. Base legal:
       execução de contrato (art. 7º, V).</li>
       <li><b>Texto livre digitado nos dilemas e, no Plano Pro, na
-      coletiva de imprensa e na entrevista pós-luta</b> — finalidade:
+      coletiva de imprensa e na entrevista pós-luta</b>. Finalidade:
       gerar a narrativa da carreira por meio de inteligência artificial,
       a pedido do próprio usuário ao usar essa função do Jogo. Base
       legal: execução de contrato/fornecimento do serviço solicitado
       (art. 7º, V) e consentimento tácito ao utilizar voluntariamente a
       funcionalidade (art. 7º, I).</li>
       <li><b>CPF, nome e dado de cobrança informados ao contratar o
-      Plano Pro</b> — finalidade: processar e comprovar o pagamento
+      Plano Pro</b>. Finalidade: processar e comprovar o pagamento
       único de R$ 9,99. O Octógono não recebe nem armazena número de
-      cartão de crédito ou dado sensível de pagamento — apenas o
+      cartão de crédito ou dado sensível de pagamento, apenas o
       identificador do cliente e do pagamento gerado pelo processador
       (Asaas), necessários para vincular a cobrança à conta do usuário.
       Base legal: execução de contrato (art. 7º, V) e cumprimento de
       obrigação legal fiscal (art. 7º, II).</li>
       <li><b>Status do Plano Pro</b> (se a conta é Pro, data em que o
       período de 30 dias pago expira, identificador do pagamento na
-      Asaas) — finalidade: liberar as funcionalidades pagas descritas
+      Asaas). Finalidade: liberar as funcionalidades pagas descritas
       nos Termos de Uso, seção 6, pelo período pago. Base legal:
       execução de contrato (art. 7º, V).</li>
-      <li><b>Endereço IP e identificação do navegador</b> — coletados de
+      <li><b>Endereço IP e identificação do navegador</b>: coletados de
       forma padrão pela infraestrutura de hospedagem (Vercel), não pelo
       código do Jogo. Finalidade: segurança, prevenção a fraude e
       cumprimento da obrigação de guarda de registros de acesso a
@@ -1872,7 +1881,7 @@ function screenPrivacidade(){
       12.965/2014). Base legal: cumprimento de obrigação legal (art. 7º,
       II) e legítimo interesse de segurança (art. 7º, IX).</li>
       <li><b>Métricas agregadas de uso</b> (ex.: quantas sessões concluem
-      o draft ou a carreira) — coletadas sem identificador pessoal e sem
+      o draft ou a carreira): coletadas sem identificador pessoal e sem
       cookie, via Vercel Analytics. Finalidade: entender uso do Jogo em
       caráter estatístico. Base legal: legítimo interesse (art. 7º, IX),
       por não haver tratamento de dado pessoal identificável.</li>
@@ -1881,7 +1890,7 @@ function screenPrivacidade(){
     <h3>3. Dados que permanecem apenas no dispositivo do usuário</h3>
     <p>Carreira em andamento, conquistas desbloqueadas, preferência de
     volume e a aparência do lutador do usuário ficam salvos no
-    <b>localStorage</b> do navegador — não são transmitidos a nenhum
+    <b>localStorage</b> do navegador. Não são transmitidos a nenhum
     servidor e são apagados caso o usuário limpe os dados do site em seu
     próprio navegador. Esse armazenamento local funciona integralmente
     sem necessidade de conta e não depende de cookie.</p>
@@ -1892,15 +1901,15 @@ function screenPrivacidade(){
     somente o dado necessário à função que executa, sem finalidade
     própria de uso dos dados e sem venda a terceiros:</p>
     <ul>
-      <li><b>Supabase</b> — autenticação de conta e banco de dados onde
+      <li><b>Supabase</b>: autenticação de conta e banco de dados onde
       ficam armazenados e-mail, histórico de carreiras e conquistas.</li>
-      <li><b>Vercel</b> — hospedagem do site, da função que intermedeia a
+      <li><b>Vercel</b>: hospedagem do site, da função que intermedeia a
       chamada de inteligência artificial, e registros técnicos de
       acesso.</li>
-      <li><b>Provedor de inteligência artificial, via OpenRouter</b> —
+      <li><b>Provedor de inteligência artificial, via OpenRouter</b>:
       processa o texto inserido pelo usuário e o estado da carreira para
       gerar dilemas, eventos e a repercussão simulada.</li>
-      <li><b>Asaas Gestão Financeira S.A.</b> — processa o pagamento do
+      <li><b>Asaas Gestão Financeira S.A.</b>: processa o pagamento do
       Plano Pro (Pix e cartão de crédito) e emite a cobrança; recebe
       CPF, nome e dado de pagamento necessários a essa função, sob seus
       próprios mecanismos de segurança e conformidade.</li>
@@ -1930,7 +1939,7 @@ function screenPrivacidade(){
     <h3>7. Retenção e eliminação</h3>
     <p>Os dados vinculados a uma conta são mantidos enquanto a conta
     existir. Ainda não há, na interface do Jogo, funcionalidade de
-    autoatendimento para exclusão ou exportação de dados — solicitações
+    autoatendimento para exclusão ou exportação de dados. Solicitações
     nesse sentido devem ser feitas pelo contato da seção 1 e serão
     processadas manualmente. Dados mantidos apenas no dispositivo (seção
     3) são eliminados diretamente pelo usuário ao limpar os dados do
@@ -1956,8 +1965,8 @@ function screenPrivacidade(){
       <li>revogação do consentimento, quando essa for a base legal
       aplicável;</li>
       <li>revisão de decisão tomada unicamente com base em tratamento
-      automatizado — não aplicável hoje: o conteúdo gerado por IA no
-      Jogo é narrativo e não produz decisão sobre a pessoa do usuário.</li>
+      automatizado (não aplicável hoje: o conteúdo gerado por IA no
+      Jogo é narrativo e não produz decisão sobre a pessoa do usuário).</li>
     </ul>
 
     <h3>9. Crianças e adolescentes</h3>
@@ -1982,7 +1991,7 @@ function screenPrivacidade(){
 
     <h3>11. Alterações desta política</h3>
     <p>Esta política pode ser alterada conforme o Jogo ganha
-    funcionalidade nova — a eventual introdução de cobrança, por
+    funcionalidade nova. A eventual introdução de cobrança, por
     exemplo, acrescentará seção específica sobre dado de pagamento. A
     data de revisão no topo sempre corresponde à versão vigente.</p>
 
@@ -2147,6 +2156,33 @@ const PODE_RETRY_429={dilema:true,julgar:true,coletiva:true,entrevista:true};
 const CIRCUITOS={evento:{pausadoAte:0,falhas:0},dilema:{pausadoAte:0,falhas:0},
   feed:{pausadoAte:0,falhas:0},coletiva:{pausadoAte:0,falhas:0},entrevista:{pausadoAte:0,falhas:0}};
 
+/* Regra de texto do jogo (LEIA-ME "Regras de texto"): nenhum travessão.
+   Os moldes já nascem sem; o que a IA escreve passa por aqui antes de
+   aparecer, porque o prompt pede e o modelo às vezes esquece. Fala que
+   começa com travessão perde o travessão; intervalo entre números vira
+   hífen; depois de pontuação o travessão só some; no meio da frase vira
+   vírgula. */
+function semTravessao(t){
+  if(typeof t!=="string"||!/[—–]/.test(t))return t;
+  return t.replace(/(\d)\s*[—–]\s*(?=\d)/g,"$1-")
+    .replace(/(^|\n)[ \t]*[—–][ \t]*/g,"$1")
+    .replace(/[ \t]*[—–][ \t]*($|\n)/g,"$1")
+    .replace(/([.!?:;,])[ \t]*[—–][ \t]*/g,"$1 ")
+    .replace(/[ \t]*[—–][ \t]*/g,", ")
+    .replace(/,\s*,/g,",").replace(/ {2,}/g," ");
+}
+/* Aplica semTravessao em todo texto de uma resposta da IA (objeto,
+   lista ou texto solto); número, booleano e chave ficam como vieram. */
+function limparTextoIA(v){
+  if(typeof v==="string")return semTravessao(v);
+  if(Array.isArray(v))return v.map(limparTextoIA);
+  if(v&&typeof v==="object"){
+    const o={};
+    for(const k of Object.keys(v))o[k]=limparTextoIA(v[k]);
+    return o;
+  }
+  return v;
+}
 async function ai(kind,data,ms=9500){
   /* Achado jogando: "aceito" (dilema binário comum) caiu no fallback
      genérico, e não tinha como saber POR QUÊ — ai() sempre devolvia null
@@ -2216,7 +2252,7 @@ async function tentarChamadaIA(kind,data,ms,podeRetentar){
       return null;
     }
     const j=await r.json();
-    return j.result??null;
+    return limparTextoIA(j.result??null);
   }catch(e){
     clearTimeout(t);
     c.falhas++;
@@ -2426,8 +2462,8 @@ async function dispararEventoIA(bouts,opp,r){
   if(conteudoInseguro(j.texto))return;
   const texto=String(j.texto).slice(0,300).trim();
   if(!texto)return;
-  bouts.appendChild(el("div","event","— "+texto));
-  registrarExtra({tipo:"evento",texto:"— "+texto},luta);
+  bouts.appendChild(el("div","event",texto));
+  registrarExtra({tipo:"evento",texto},luta);
   st.eventosRecentes=st.eventosRecentes||[];
   st.eventosRecentes.push(texto);
   if(st.eventosRecentes.length>3)st.eventosRecentes.shift();
@@ -2480,14 +2516,14 @@ function proximoDilemaSeed(){
    esse especificamente premiava esconder o sintoma, sem trava nenhuma
    no julgar depois. */
 const DILEMA_LOCAL=[
- {titulo:"Parceiro de treino de olho na sua vaga",cena:"Seu parceiro de treino, o mesmo peso, vem ganhando confiança demais nos últimos rounds de sparring. Ele comentou, meio de brincadeira, que também merecia uma chance como a sua."},
- {titulo:"O amigo de infância na aba",cena:"Um amigo de infância te chamou de lado, sem graça, pra pedir um empréstimo que ele nunca te pediu antes. Ele jurou que devolve, do jeito que sempre jura."},
+ {titulo:"Parceiro de treino de olho na sua vaga",cena:"Seu parceiro de treino, do mesmo peso, vem ganhando confiança demais nos últimos rounds de sparring. Ele comentou, meio de brincadeira, que também merecia uma chance como a sua."},
+ {titulo:"O amigo de infância na aba",cena:"Um amigo de infância te chamou de lado, sem graça, pra pedir um empréstimo que ele nunca te pediu antes. Ele jura que devolve em dois meses."},
  {titulo:"Convite pra virar rosto de marca",cena:"Uma agência quer você posando pra uma campanha de roupa, nada a ver com luta. O dinheiro é bom e a exposição também, mas não é assim que você imaginou aparecer."},
  {titulo:"Rumor no vestiário",cena:"Um preparador de outra academia comentou, baixinho, que viu algo estranho no protocolo do próximo adversário. Ele não teria motivo pra inventar isso, mas também não tem prova nenhuma."},
  {titulo:"Câmera querendo te seguir",cena:"Uma produtora quer gravar sua rotina pra um documentário, câmera dentro da academia e tudo. Parece bom pro nome, mas ninguém ali costuma treinar sendo filmado."},
- {titulo:"Festa na véspera errada",cena:"O casamento de um amigo caiu bem na pior semana possível pra sair de casa. Todo mundo vai entender se você faltar, e todo mundo vai notar do mesmo jeito."},
+ {titulo:"Festa na véspera errada",cena:"O casamento de um amigo caiu na véspera da pesagem, com festa até de madrugada. Ele faz questão da sua presença."},
  {titulo:"O primo com ideia",cena:"Seu primo apareceu com um plano de abrir uma academia com seu nome. Ele quer que você entre com tudo e não trouxe nenhum papel."},
- {titulo:"Técnico querendo mudar seu estilo",cena:"Seu técnico decidiu, do nada, que sua base inteira está errada e quer refazer sua postura da estaca zero, a poucas semanas de qualquer coisa. Ele jura que é pro seu bem, mas parece mais experimento do que plano."},
+ {titulo:"Técnico querendo mudar seu estilo",cena:"Seu técnico decidiu que sua base inteira está errada e quer refazer a postura do zero, a três semanas da próxima luta. Ele não mostrou nenhum vídeo nem plano de treino pra isso."},
 ];
 const MEM_DILEMA_LOCAL=Math.round(DILEMA_LOCAL.length*.6);
 /* Sem reposição + memória entre carreiras, mesmo tratamento do resto —
@@ -3406,7 +3442,7 @@ function abrirConfig(){
   p.append(topo,somL,mus.li,efe.li);
   p.appendChild(el("p","cfg-nota",
     "A trilha é cama de fundo e entra bem abaixo dos efeitos. Se quiser ouvir só "+
-    "o soco, zere a música — o resto continua igual."));
+    "o soco, zere a música: os efeitos continuam no mesmo volume."));
 
   /* Clique no fundo fecha; clique dentro do painel não. */
   cx.onclick=e=>{ if(!e||e.target===cx)fecharConfig(); };
@@ -3473,8 +3509,8 @@ function passoCinturao(){
      CHANCE_CINTURAO_INTERINO), então "campeão" sozinho, sem dizer contra
      quem, esconderia isso. */
   if(st.title&&st.cinturaoInterino){
-    const nm=RANKING&&RANKING.campeao?RANKING.campeao.name:"o campeão de verdade";
-    return `Você é o campeão interino. A unificação contra ${nm}, o campeão de verdade, vem na próxima luta`;
+    const nm=RANKING&&RANKING.campeao?RANKING.campeao.name:"o campeão linear";
+    return `Você é o campeão interino. A próxima luta é a unificação contra ${nm}`;
   }
   if(st.title)return null;
   const s=st.standing;
@@ -3504,8 +3540,8 @@ function passoCinturao(){
   const nm=st.exCampeao?st.exCampeao.name:(RANKING&&RANKING.campeao?RANKING.campeao.name:"o campeão");
   const concedida=st.disputaLiberada||st.tituloEstaLuta;
   return concedida
-    ? `Você é o desafiante: a disputa contra ${nm} vem na próxima luta`
-    : `Você é o desafiante: a disputa contra ${nm} pode vir, ou não — lesão do campeão, política, prioridade da organização`;
+    ? `Você é o desafiante. A disputa contra ${nm} vem na próxima luta`
+    : `Você é o desafiante. A disputa contra ${nm} pode vir ou não: depende de lesão do campeão, política e prioridade da organização`;
 }
 
 /* A posição sai da MESMA escala que escolhe adversário: candidatos() coloca o
@@ -3524,7 +3560,7 @@ function posicaoDivisao(s){
 }
 
 function textoDuracaoLesao(){
-  if(st.lesao.permanente)return "Lesão permanente — não cura";
+  if(st.lesao.permanente)return "Lesão permanente, não cura";
   const curaNaLuta=st.lesao.desdeLuta+st.lesao.duracao;
   if(curaNaLuta>TOTAL_FIGHTS)return "Dura até o fim da carreira";
   const restam=Math.max(0,curaNaLuta-(st.fightNo||0));
@@ -4015,8 +4051,7 @@ function dificuldade(opp){
 }
 function bioLutador(f){
   const t=f.titulos||{disputas:0,vitorias:0};
-  const era=f.era?`${f.era[0]}–${f.era[1]}`:"—";
-  const linhas=[`<b>${f.fights}</b> lutas · ${era}`];
+  const linhas=[`<b>${f.fights}</b> lutas`+(f.era?` · ${f.era[0]}-${f.era[1]}`:"")];
   if(t.vitorias>0)linhas.push(`<b>${t.vitorias}</b> ${t.vitorias>1?"vitórias":"vitória"} em luta de cinturão`);
   else if(t.disputas>0)linhas.push(`disputou o cinturão <b>${t.disputas}</b>x, nunca venceu`);
   if(f.destaque)linhas.push(`${f.destaque.eixo} no <b>${Math.round(f.destaque.pct*100)}º</b> percentil`);
@@ -4041,7 +4076,7 @@ function telaAdversario(guardadas){
     PENDENTE={tipo:"oferta",opts:opts.map(o=>({nome:o.f.name,ganho:o.ganho,rival:!!o.rival}))};
     salvarCarreira();
   }
-  box.innerHTML=`${rivalNovo?`<div class="rival-anuncio">RIVALIDADE COMEÇA AGORA<span class="sub">"${st.rival.nome}" entra na sua carreira — primeira vez que vocês se cruzam.</span></div>`:""}
+  box.innerHTML=`${rivalNovo?`<div class="rival-anuncio">Novo rival<span class="sub">"${st.rival.nome}" entra na sua carreira. É a primeira luta entre vocês.</span></div>`:""}
     <div class="esc-hd">Escolha o adversário</div>
     <div class="opps" id="opps"></div>`;
   const g=document.getElementById("opps");
@@ -4069,7 +4104,7 @@ function telaAdversario(guardadas){
       <span class="dbanda"><b>${d.rot}</b><span class="pips">${[1,2,3,4].map(i=>`<i class="${i<=d.pips?"on":""}"></i>`).join("")}</span></span>
       <span class="vs"><span class="quem">${me.name}</span><span class="vslabel">vs</span></span>
       <span class="nm">${o.f.name}</span>
-      <span class="arq">${o.f.arquetipo||"—"}</span>
+      ${o.f.arquetipo?`<span class="arq">${o.f.arquetipo}</span>`:""}
       <span class="bio">${bioOuHistorico}</span>
       ${compararOferta(o.f)}
       <span class="stake"><span>se vencer</span><b>+${Math.round(o.ganho*100)} ranking</b></span>`);
@@ -4143,11 +4178,11 @@ function telaCamp(escolhido){
 function hashEstavel(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h);}
 const ABERTURA_COLETIVA=[
   opp=>`${opp.name} disse, na coletiva, que essa luta "não devia nem estar marcada".`,
-  opp=>`${opp.name} sorriu pra câmera e falou que você "ainda não pegou ninguém de verdade".`,
+  opp=>`${opp.name} sorriu pra câmera e falou que você "ainda não pegou ninguém do top 10".`,
   opp=>`${opp.name} prometeu resolver isso "antes do intervalo", direto pro microfone.`,
-  opp=>`Perguntado sobre você, ${opp.name} só respondeu "quem?" — a sala riu.`,
+  opp=>`Perguntado sobre você, ${opp.name} só respondeu "quem?". A sala riu.`,
   opp=>`${opp.name} chamou seu estilo de "fácil de ler" na entrevista de ontem.`,
-  opp=>`${opp.name} disse que está cansado de "gente que fala mais que luta" — olhando pra você.`,
+  opp=>`${opp.name} disse que está cansado de "gente que fala mais que luta", olhando pra você.`,
 ];
 function textoColetivaAbertura(opp){
   return ABERTURA_COLETIVA[hashEstavel(opp.name)%ABERTURA_COLETIVA.length](opp);
@@ -4240,20 +4275,20 @@ function aplicarColetiva(box,opp,txt,jBruto,seguir){
 function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,tdApl,tdSof,fightNo){
   const par=fightNo%2===0;
   const comQuedas=s=>(tdApl>=1||tdSof>=1)?`${s} (foram ${tdApl} quedas aplicadas contra ${tdSof} sofridas)`:s;
-  if(title)return{pergunta:par?`O cinturão estava em jogo hoje — o que passou pela sua cabeça quando o sino tocou?`
+  if(title)return{pergunta:par?`O cinturão estava em jogo hoje. O que passou pela sua cabeça quando o sino tocou?`
     :`Essa era luta de cinturão. Depois de tudo isso, o que você sente agora?`,fatoObrigatorio:"cinturão"};
-  if(lesaoTxt)return{pergunta:par?`Você entrou nessa luta com ${lesaoTxt.toLowerCase()} — valeu a pena arriscar?`
+  if(lesaoTxt)return{pergunta:par?`Você entrou nessa luta com ${lesaoTxt.toLowerCase()}. Valeu a pena arriscar?`
     :`Como está ${lesaoTxt.toLowerCase()} depois do que aconteceu hoje contra ${opp.name}?`,fatoObrigatorio:"lesão"};
-  if(zebra)return{pergunta:par?`Poucos apostavam em você contra ${opp.name} — o que mudou?`
+  if(zebra)return{pergunta:par?`Poucos apostavam em você contra ${opp.name}. O que mudou?`
     :`Ninguém esperava esse resultado contra ${opp.name}. Você esperava?`,fatoObrigatorio:"zebra"};
   if(/ocaute/.test(metodo))return{pergunta:comQuedas(par
-    ?`Foi nocaute no round ${round}, aos ${clock} — o que você viu no momento do golpe?`
+    ?`Foi nocaute no round ${round}, aos ${clock}. O que você viu no momento do golpe?`
     :`${ganhou?"Você fechou":"Você sofreu"} por nocaute no round ${round}. Como foi aquele instante?`),fatoObrigatorio:"nocaute"};
   if(metodo==="Finalização")return{pergunta:comQuedas(par
-    ?`Foi finalização no round ${round} — em que momento você sentiu que ${ganhou?"tinha fechado":"não ia escapar"}?`
+    ?`Foi finalização no round ${round}. Em que momento você sentiu que ${ganhou?"tinha fechado":"não ia escapar"}?`
     :`${ganhou?"Você finalizou":"Você foi finalizado"} no round ${round}, aos ${clock}. Como foi por dentro?`),fatoObrigatorio:"finalização"};
   return{pergunta:comQuedas(par
-    ?`Foi pros cartões contra ${opp.name} — você achou que o placar refletiu a luta?`
+    ?`Foi pros cartões contra ${opp.name}. Você achou que o placar refletiu a luta?`
     :`Decisão dos juízes hoje contra ${opp.name}. Como você avalia essa luta?`),fatoObrigatorio:"decisão"};
 }
 /* Resume o histórico de um Rival em texto curto pro prompt — chamado tanto
@@ -4925,7 +4960,7 @@ function rodapeCard(x,M,h,pro,cor,semente){
   const yf=h-M-74;
   x.fillStyle=C.linhaForte;x.fillRect(M,yf,CARD_W-M*2,2);
   x.textAlign="left";x.fillStyle=C.osso;x.font=FONTE.ui(28,700);espacar(x,3);
-  x.fillText("MESMA CARREIRA, SUAS ESCOLHAS",M+(pro?34:0),yf+50);espacar(x,0);
+  x.fillText("JOGUE COM A MESMA SEMENTE",M+(pro?34:0),yf+50);espacar(x,0);
   x.textAlign="right";x.fillStyle=C.sangue;x.font=FONTE.titulo(48);x.fillText(semente,CARD_W-M,yf+58);
   x.fillStyle=C.cinza;x.font=FONTE.ui(22,700);espacar(x,4);x.fillText(DOMINIO_JOGO.toUpperCase(),CARD_W-M,yf+90);espacar(x,0);
   x.textAlign="left";
@@ -5236,7 +5271,7 @@ function abrirPainelConquistas(){
 const LOJA_ITENS=[
   {id:"treinador",nome:"Treinador melhor",custo:()=>CUSTO_TREINADOR,
    comprado:()=>!!st.treinadorComprado,
-   desc:()=>"Fisioterapia particular: se machucar, você volta muito mais rápido. Não some no fim da carreira.",
+   desc:()=>"Fisioterapia particular: se machucar, você volta muito mais rápido. Vale até o fim da carreira.",
    efeito:()=>{
      const antes=LESAO_TIPOS.temporaria.duracao,depois=Math.round(antes*REDUCAO_CURA_TREINADOR);
      return `Efeito: lesão temporária dura ${depois} lutas em vez de ${antes} (recuperação, não muda a força da lesão).`;
@@ -5254,7 +5289,7 @@ const LOJA_ITENS=[
    comprar:()=>{st.empresarioComprado=true;}},
   {id:"casa",nome:"Casa melhor",custo:()=>CUSTO_CASA,
    comprado:()=>!!st.casaComprada,
-   desc:()=>"Onde você mora agora combina com quem você virou: mais gente reparando na sua carreira.",
+   desc:()=>"Casa nova e mais visível: mais gente acompanha sua carreira.",
    efeito:()=>`Efeito: +${Math.round((CASA_FOLLOWER_MULT-1)*100)}% de seguidores por luta, vitória ou derrota.`,
    comprar:()=>{st.casaComprada=true;}},
   {id:"consultoria",nome:"Consultoria de mídia",custo:()=>CUSTO_CONSULTORIA,
@@ -5481,11 +5516,11 @@ const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;
 /* 5 faixas: o jogador precisa bater o olho e saber se é bom, sem fazer conta */
 const pctClass=p=>p>=.80?"p5":p>=.60?"p4":p>=.40?"p3":p>=.20?"p2":"p1";
 const pctLabel=p=>{const n=Math.round(p*100);
-  if(n>=90)return n+"% — elite";
-  if(n>=70)return n+"% — forte";
-  if(n>=45)return n+"% — mediano";
-  if(n>=25)return n+"% — fraco";
-  return n+"% — ruim";};
+  if(n>=90)return n+"% · elite";
+  if(n>=70)return n+"% · forte";
+  if(n>=45)return n+"% · mediano";
+  if(n>=25)return n+"% · fraco";
+  return n+"% · ruim";};
 const pctBar=p=>`<span class="pctwrap ${pctClass(p)}">
   <span class="pctbar"><i style="width:${Math.max(2,Math.round(p*100))}%"></i></span>
   <span class="pctnum">${pctLabel(p)}</span></span>`;
@@ -6600,7 +6635,7 @@ function validarNomeRival(digitado){
   const nome=String(digitado||"").trim();
   if(!nome)return"Escreve um nome pro rival.";
   const bateReal=(ROSTER||[]).some(f=>semAcento(f.name)===semAcento(nome));
-  if(bateReal)return"Esse nome já é de um lutador de verdade — escolhe outro.";
+  if(bateReal)return"Já existe um lutador real com esse nome. Escolhe outro.";
   if(conteudoInseguro(nome))return"Esse nome não pode ser usado.";
   return null;
 }
@@ -6611,7 +6646,7 @@ function screenAtivarRival(name){
   docmeta.textContent=`Registro · ${name}`;
   const box=el("div","tela-box rival-box");
   c.appendChild(box);
-  box.appendChild(el("p","tela-sub","Um rival reaparece ao longo da carreira, te persegue, e a história muda conforme vocês se enfrentam. O nome é seu; os números vêm de um lutador real."));
+  box.appendChild(el("p","tela-sub","Um rival volta a cruzar seu caminho ao longo da carreira, com histórico e revanches. Você escolhe o nome; os números vêm de um lutador real."));
 
   const opts=el("div","modos");
   const simBtn=el("button","modo",`${ICONE("luta","modo-ico")}<span class="n">Sim, quero um rival</span><span class="d">Recurso do Plano Pro</span>`);
@@ -6749,7 +6784,7 @@ function desenhaOctogono(destacar){
       (parRecem===s.par?" novo":"");
     d.style.left=x+"%"; d.style.top=y+"%";
     d.innerHTML=`<span class="lab">${s.lab}</span>
-      <span class="val">${cheio?FMT[s.k](v):"—"}</span>
+      <span class="val">${cheio?FMT[s.k](v):"?"}</span>
       <span class="src">${cheio?origem:"vazio"}</span>`;
     w.appendChild(d);
   });
@@ -6768,7 +6803,7 @@ function mostraDossie(r){
     const divNome=(DIVISOES.find(x=>x.id===DIVISION)||{}).nome||DIVISION;
     d.innerHTML=`<div class="col-t">Seu lutador</div>
     <div style="text-align:center;padding:6px 0 2px">${bonecoSVG(ROSTO||cfgPadrao(),{w:130})}</div>
-    <div class="nm" style="text-align:center">${me.name||"—"}</div>
+    <div class="nm" style="text-align:center">${me.name||""}</div>
     <div class="tags" style="justify-content:center"><span class="tag">${divNome}</span></div>
     <div class="vazio" style="padding:10px 0 0">${semHover()
       ?"Toque numa carta<br>pra ver o dossiê de quem preenche ela."
@@ -6778,7 +6813,7 @@ function mostraDossie(r){
   const f=r.src, t=f.titulos||{disputas:0,vitorias:0};
   const pa=PCT(r.pair.a.key,f[r.pair.a.key]), pb=PCT(r.pair.b.key,f[r.pair.b.key]);
   const tags=[`${f.fights} lutas`];
-  if(f.era)tags.push(`${f.era[0]}–${f.era[1]}`);
+  if(f.era)tags.push(`${f.era[0]}-${f.era[1]}`);
   if(f.stance)tags.push(f.stance);
   d.innerHTML=`<div class="col-t">Dossiê do lutador</div>
     <div class="nm">${f.name}</div>
@@ -6817,7 +6852,7 @@ function renderDraft(){
   const dir=el("div","painel dossie");dir.id="dossie";
   meio.innerHTML=`<div class="col-t">Seu octógono</div>
     <div class="oct-wrap" id="oct"></div>
-    <p class="oct-legenda">Cada vértice é um atributo do seu lutador — a carta
+    <p class="oct-legenda">Cada vértice é um atributo do seu lutador. A carta
       escolhida no momento pisca no vértice e na célula do dossiê que ela preenche.</p>`;
   arena.append(esq,meio,dir);
   c.appendChild(arena);
@@ -6907,8 +6942,8 @@ function renderDraft(){
   }
   if(picks.length===0)c.appendChild(el("div","legend",semHover()
     ?`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
-     naquele atributo. Toque numa carta pra ver os dois lados que ela preenche —
-     toque de novo pra confirmar.`
+     naquele atributo. Toque numa carta pra ver os dois lados que ela preenche.
+     Toque de novo pra confirmar.`
     :`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
      naquele atributo. Passe o mouse numa carta para ver os dois lados que ela preenche.`));
 }
@@ -7596,8 +7631,8 @@ function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
   let cabecalho;
   if(s.ctrlB>=3)cabecalho=`${opp.name} passou boa parte do round te segurando no chão.`;
   else if(s.tdB>0)cabecalho=`${opp.name} te derrubou ${s.tdB===1?"uma vez":s.tdB+" vezes"} no primeiro round.`;
-  else if(s.burstB>=s.burstA+3)cabecalho=`${opp.name} acertou muito mais que você na troca — ${s.burstB} a ${s.burstA}.`;
-  else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca — ${s.burstA} a ${s.burstB}.`;
+  else if(s.burstB>=s.burstA+3)cabecalho=`${opp.name} acertou muito mais que você na troca: ${s.burstB} a ${s.burstA}.`;
+  else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca: ${s.burstA} a ${s.burstB}.`;
   else cabecalho=`Round parelho, nada decidido ainda.`;
 
   /* Revamp fase 5: save com a escolha aberta grava o escolhaRng de ANTES
@@ -7875,7 +7910,7 @@ function linhaBout(reg){
     SOM.toque();
     if(!line.__narr){
       line.__narr=el("div","bout-narracao",reg.narracao.map(([c,k,t])=>
-        `<div class="pbp${k?" "+k:""}"><span class="clk">${c}</span><span>${t}</span></div>`).join(""));
+        `<div class="pbp${k?" "+k:""}"><span class="clk">${c}</span><span>${semTravessao(t)}</span></div>`).join(""));
       line.__narr.hidden=true;
       line.appendChild(line.__narr);
     }
@@ -7931,6 +7966,10 @@ function registrarExtra(x,luta){
   if(reg)(reg.extras=reg.extras||[]).push(x);
 }
 function linhaExtra(x){
+  /* Save gravado antes da regra de texto (fase 7) guarda narração, evento
+     ("— " na frente) e texto de IA com travessão: limpa na hora de mostrar.
+     A resposta digitada pelo jogador fica como ele escreveu. */
+  x={...x,titulo:semTravessao(x.titulo),cena:semTravessao(x.cena),texto:semTravessao(x.texto)};
   if(x.tipo==="dilema"||x.tipo==="entrevista"){
     const b=el("div","dilema");
     b.innerHTML=`<div class="dil-eyebrow">${x.tipo==="dilema"?"Decisão":"Entrevista"}</div>
@@ -8326,12 +8365,12 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
 /* ---------- tela 4: relatório ---------- */
 /* Faixas da nota (revamp fase 3: saíram de dentro de grade() pro placar
    no servidor, api/_placar-regras.js, conferir contra as mesmas). */
-const TIERS_NOTA=[[90,"S","Lenda. Vão passar essas lutas na TV por trinta anos."],
+const TIERS_NOTA=[[90,"S","Lenda. Uma das melhores carreiras da história da divisão."],
     [78,"A","Nome grande. Entrou no hall da fama da divisão."],
     [64,"B","Carreira sólida. Foi luta principal várias vezes."],
     [48,"C","Meio de card. Sustentou a família lutando."],
-    [32,"D","Ficou pelo caminho. Teve momentos."],
-    [0,"F","Não deu. Mas você entrou no octógono, que é mais do que a maioria."]];
+    [32,"D","Ficou pelo caminho, longe do topo da divisão."],
+    [0,"F","Não deu. A carreira terminou longe do ranking."]];
 const FAIXAS_NOTA=TIERS_NOTA.map(t=>[t[0],t[1]]);
 /* Corpo do envio ao placar (api/placar.js confere tudo isto de novo no
    servidor, com as mesmas faixas). Pontuação = nota bruta × 100
