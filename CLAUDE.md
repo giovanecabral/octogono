@@ -46,6 +46,11 @@ pra frente:
   unicode.** A suíte `rotas` reprova emoji em qualquer tela nova.
 - **Jogar exige conta** (revertido de propósito em 2026-09-27; ver
   LEIA-ME "Contas"). Rota que exige conta passa por `comConta()`.
+- **`meuPro` é cache e precisa estar fresco antes de qualquer tela com
+  `bloqueioPro()`.** Conferido ao abrir com sessão, no login e em
+  `comConta()`; tela do assistente que nasce travada chama
+  `reconferirPro(redesenhar)`. Sem isso um Pro de verdade vê a trava e cai
+  na tela de pagamento (achado em produção, 2026-09-27; suíte `rotas`).
 - **Save = estado + estado dos 8 geradores.** A regra da semente vale
   dobrado: mudar a ordem de consumo quebra link de desafio E save já
   gravado. `node testar.js save` prova carreira interrompida = direta.

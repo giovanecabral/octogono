@@ -2123,3 +2123,14 @@ pede versão nova dos termos.
   quando o automático terminava a luta alvo dentro da drenagem; corrigido,
   e o teste de "escolha reaplicada ao retomar" (que só passava por causa da
   luta a mais) ficou restrito à luta retomada.
+
+**Conserto em produção (2026-09-27, depois do deploy das fases 1-6):** conta
+Pro via Seja uma lenda e o Rival travados no assistente de nova carreira, e
+o selo mandava pra tela de pagamento. Achado pelo dono na própria conta,
+liberada à mão. Causa: `meuPro` não era conferido ao abrir o jogo nem ao
+logar, só na Conta e ao começar a carreira (que vem depois do assistente).
+Agora é conferido ao abrir com sessão, no login e antes do assistente, e a
+tela que nascer travada destrava sozinha. A mesma conta aparecia como "Pro
+até 31/12/1969" com o botão "Renovar", porque não tem data de expiração;
+isso também foi consertado. Os dois foram direto pro `master` e pro ar
+(hotfix), sem a fase 7. Detalhes no LEIA-ME, perto de `bloqueioPro`.

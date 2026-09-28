@@ -888,6 +888,15 @@ function getSupabase(){
           USUARIO_ID=session.user.id;
           if(rotaAtual==="menu"||rotaAtual===null){ const v=consumirIntencao(); if(v)seguirIntencao(v); }
         }
+        /* Pro (achado em produção, 2026-09-27): meuPro só era conferido na
+           Conta, no Plano Pro e ao começar ou retomar a carreira. Quem
+           abria o jogo e ia direto pra Nova carreira via Seja uma lenda e
+           o Rival travados, com o selo levando pra tela de pagamento.
+           Confere ao abrir com sessão salva (INITIAL_SESSION) e a cada
+           login; zera no logout. setTimeout porque chamar o Supabase de
+           dentro deste callback pode travar (aviso da própria biblioteca). */
+        if((event==="INITIAL_SESSION"||event==="SIGNED_IN")&&session)setTimeout(atualizarStatusPro,0);
+        if(event==="SIGNED_OUT")meuPro=false;
       });
     }catch(e){}
   }
@@ -928,6 +937,14 @@ async function atualizarStatusPro(){
     const{data}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle();
     meuPro=proAindaValido(data);
   }catch(e){meuPro=false;}
+}
+/* Tela com trava de Pro (assistente de nova carreira): se nasceu com
+   meuPro=false, confere de novo e redesenha quando a resposta disser Pro.
+   A conferência da entrada (comConta) espera no máximo 2,5 s; rede lenta
+   não pode deixar um Pro travado até sair e voltar da tela. */
+function reconferirPro(redesenhar){
+  if(meuPro)return;
+  atualizarStatusPro().then(()=>{ if(meuPro)redesenhar(); });
 }
 /* Só tamanho, nada de exigir maiúscula/número/símbolo — regra complexa
    demais no cadastro afasta gente (decisão explícita). Precisa bater
@@ -6227,7 +6244,14 @@ function consumirIntencao(){
 }
 async function comConta(intencao,fn){
   const s=await sessaoAtual();
-  if(s){ consumirIntencao(); fn(); return; }   // já logado: intenção velha não serve mais
+  if(s){
+    consumirIntencao();   // já logado: intenção velha não serve mais
+    /* As telas daqui pra frente mostram trava de Pro: confere antes de
+       abrir, sem prender o jogador mais que 2,5 s se a rede demorar (a
+       tela destrava sozinha depois, ver reconferirPro()). */
+    await Promise.race([atualizarStatusPro(),new Promise(r=>setTimeout(r,2500))]);
+    fn(); return;
+  }
   guardarIntencao(intencao);
   screenPortao(intencao);
 }
@@ -6619,6 +6643,7 @@ function screenDivisao(name){
       : "";
   };
   desenha();
+  reconferirPro(desenha);
 }
 /* Modo Rival — ativação (item 4, 2026-09-22). Vitrine igual coletiva/
    entrevista: aparece pra todo mundo, o clique em "Sim" é que trava pra
@@ -6649,9 +6674,9 @@ function screenAtivarRival(name){
   box.appendChild(el("p","tela-sub","Um rival volta a cruzar seu caminho ao longo da carreira, com histórico e revanches. Você escolhe o nome; os números vêm de um lutador real."));
 
   const opts=el("div","modos");
-  const simBtn=el("button","modo",`${ICONE("luta","modo-ico")}<span class="n">Sim, quero um rival</span><span class="d">Recurso do Plano Pro</span>`);
+  let simBtn=null;
   const naoBtn=el("button","modo on",`${ICONE("usuario","modo-ico")}<span class="n">Não, carreira normal</span><span class="d">Só você contra a divisão</span>`);
-  simBtn.type="button";naoBtn.type="button";
+  naoBtn.type="button";
   box.appendChild(opts);
 
   const nomeArea=el("div","");
@@ -6672,13 +6697,23 @@ function screenAtivarRival(name){
     nomeIn=el("input");nomeIn.type="text";nomeIn.placeholder="Nome do rival";nomeIn.maxLength=40;
     nomeArea.appendChild(nomeIn);
   };
-  simBtn.onclick=()=>{
-    SOM.toque();
-    if(!meuPro)return;   // sem Pro o botão nem chega a ter clique (bloqueioPro)
-    escolha="sim";marcar();renderNome();
+  /* Monta as duas opções; de novo se a conferência do Pro voltar depois
+     da tela nascer (reconferirPro). bloqueioPro() tira o clique do botão,
+     então o "Sim" liberado precisa ser um botão novo. */
+  const montarOpcoes=()=>{
+    simBtn=el("button","modo",`${ICONE("luta","modo-ico")}<span class="n">Sim, quero um rival</span><span class="d">Recurso do Plano Pro</span>`);
+    simBtn.type="button";
+    simBtn.onclick=()=>{
+      SOM.toque();
+      if(!meuPro)return;   // sem Pro o botão nem chega a ter clique (bloqueioPro)
+      escolha="sim";marcar();renderNome();
+    };
+    opts.innerHTML="";
+    opts.append(meuPro?simBtn:bloqueioPro(simBtn),naoBtn);
   };
   naoBtn.onclick=()=>{ SOM.toque(); escolha="nao";marcar();renderNome(); };
-  opts.append(meuPro?simBtn:bloqueioPro(simBtn),naoBtn);
+  montarOpcoes();
+  reconferirPro(montarOpcoes);
 
   continuar.onclick=()=>{
     SOM.toque();
