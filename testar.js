@@ -6957,6 +6957,194 @@ async function testarSave() {
 }
 
 /* ================================================================== *
+ * PAGAMENTO (2026-09-28): pagamento real de teste ficou sem Pro porque
+ *     só o webhook da Asaas ativava. Confere: a conferência de retorno
+ *     (api/confirmar-pagamento.js) ativa sozinha, um pagamento nunca
+ *     ativa duas vezes (cartão manda CONFIRMED e RECEIVED), falha de
+ *     gravação não marca como processado, e o jogo abre a cobrança numa
+ *     aba nova dentro do clique (senão o navegador bloqueia o pop-up).
+ * ================================================================== */
+async function testarPagamento() {
+  console.log("\n" + cinza("pagamento: Pro ativa pelo webhook OU na volta ao jogo, uma vez por pagamento; cobrança em aba nova"));
+  const url = require("url");
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  let WH = null, CF = null;
+  try {
+    WH = (await import(url.pathToFileURL(path.join(RAIZ, "api", "webhook-asaas.js")).href)).default;
+    CF = (await import(url.pathToFileURL(path.join(RAIZ, "api", "confirmar-pagamento.js")).href)).default;
+  } catch (e) { console.log(vermelho("  não carregou as funções de pagamento: " + e.message)); return false; }
+
+  /* Supabase + Asaas falsos, com estado em memória */
+  const fetchOriginal = globalThis.fetch;
+  const envOriginal = { ...process.env };
+  const logOriginal = console.log;
+  let banco, asaas, usuarios, falharEscrita;
+  const zerar = () => {
+    banco = { assinaturas: {}, processados: [], upsertsPro: 0 };
+    asaas = {};           // id -> cobrança
+    usuarios = { "tok-u1": { id: "u1", email: "a@a.com" } };
+    falharEscrita = false;
+  };
+  globalThis.fetch = async (u, op = {}) => {
+    u = String(u);
+    const ok = (corpo, status = 200) => ({ ok: status < 300, status, json: async () => corpo });
+    if (u.includes("/auth/v1/user")) {
+      const tok = String((op.headers || {}).Authorization || "").replace("Bearer ", "");
+      return usuarios[tok] ? ok(usuarios[tok]) : ok({}, 401);
+    }
+    if (u.includes("/rest/v1/pagamentos_processados")) {
+      if (op.method === "POST") {
+        if (falharEscrita) return ok({}, 500);
+        const l = JSON.parse(op.body);
+        if (!banco.processados.some(x => x.asaas_payment_id === l.asaas_payment_id && x.evento === l.evento)) banco.processados.push(l);
+        return ok(null, 201);
+      }
+      const id = decodeURIComponent((u.match(/asaas_payment_id=eq\.([^&]+)/) || [])[1] || "");
+      const ev = decodeURIComponent((u.match(/evento=in\.\(([^)]*)\)/) || [])[1] || "").split(",");
+      return ok(banco.processados.filter(x => x.asaas_payment_id === id && ev.includes(x.evento)));
+    }
+    if (u.includes("/rest/v1/assinaturas")) {
+      if (op.method === "POST") {
+        if (falharEscrita) return ok({}, 500);
+        const l = JSON.parse(op.body); banco.assinaturas[l.user_id] = { ...(banco.assinaturas[l.user_id] || {}), ...l }; banco.upsertsPro++;
+        return ok(null, 201);
+      }
+      const uid = decodeURIComponent((u.match(/user_id=eq\.([^&]+)/) || [])[1] || "");
+      return ok(banco.assinaturas[uid] ? [banco.assinaturas[uid]] : []);
+    }
+    if (u.startsWith("https://api.asaas.com/v3/payments?")) {
+      const ref = decodeURIComponent((u.match(/externalReference=([^&]+)/) || [])[1] || "");
+      return ok({ data: Object.values(asaas).filter(p => p.externalReference === ref || p.__vazaFiltro) });
+    }
+    if (u.startsWith("https://api.asaas.com/v3/payments/")) {
+      const id = decodeURIComponent(u.split("/payments/")[1]);
+      return asaas[id] ? ok(asaas[id]) : ok({}, 404);
+    }
+    return ok({}, 404);
+  };
+  Object.assign(process.env, { SUPABASE_SERVICE_ROLE_KEY: "service-falsa", ASAAS_API_KEY: "asaas-falsa", ASAAS_WEBHOOK_TOKEN: "tok-webhook" });
+  console.log = (...a) => { if (!/^(webhook-asaas|confirmar-pagamento)$/.test(String(a[0]))) logOriginal(...a); };
+  const resposta = () => ({ cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } });
+  const confirmar = async token => { const res = resposta(); await CF({ method: "POST", headers: {}, body: { token } }, res); return res; };
+  const webhook = async (evento, id, token = "tok-webhook") => { const res = resposta(); await WH({ method: "POST", headers: { "asaas-access-token": token }, body: { event: evento, payment: { id } } }, res); return res; };
+  const cobranca = (id, extra = {}) => (asaas[id] = { id, customer: "cus_1", externalReference: "u1", status: "RECEIVED", value: 9.99, ...extra });
+  try {
+    await conf("volta ao jogo sem sessão = 401", async () => { zerar(); const r = await confirmar(null); if (r.cod !== 401) throw new Error("status " + r.cod); });
+    await conf("volta ao jogo com Pix pago e SEM webhook: ativa 30 dias na hora", async () => {
+      zerar(); cobranca("pay_1");
+      const r = await confirmar("tok-u1");
+      if (r.cod !== 200 || !r.corpo.pro || r.corpo.ativados !== 1) throw new Error(JSON.stringify(r.corpo));
+      const dias = (new Date(banco.assinaturas.u1.expira_em) - Date.now()) / 864e5;
+      if (!(dias > 29.9 && dias < 30.1)) throw new Error("expira em " + dias.toFixed(2) + " dias");
+    });
+    await conf("conferir de novo não soma dias (um pagamento ativa uma vez)", async () => {
+      const antes = banco.upsertsPro;
+      const r = await confirmar("tok-u1");
+      if (r.corpo.ativados !== 0 || banco.upsertsPro !== antes) throw new Error(JSON.stringify(r.corpo));
+    });
+    await conf("webhook do MESMO pagamento chegando depois não soma dias", async () => {
+      const antes = banco.upsertsPro;
+      const r = await webhook("PAYMENT_RECEIVED", "pay_1");
+      if (r.cod !== 200 || banco.upsertsPro !== antes) throw new Error(`status ${r.cod}, ativações ${banco.upsertsPro - antes}`);
+    });
+    await conf("cartão: PAYMENT_CONFIRMED e depois PAYMENT_RECEIVED ativam UMA vez (antes davam 60 dias)", async () => {
+      zerar(); cobranca("pay_2", { status: "CONFIRMED" });
+      await webhook("PAYMENT_CONFIRMED", "pay_2");
+      asaas.pay_2.status = "RECEIVED";
+      await webhook("PAYMENT_RECEIVED", "pay_2");
+      if (banco.upsertsPro !== 1) throw new Error(banco.upsertsPro + " ativações");
+    });
+    await conf("cobrança de outra conta, de valor errado ou ainda pendente não ativa", async () => {
+      zerar();
+      cobranca("pay_3", { externalReference: "outro", __vazaFiltro: true });
+      cobranca("pay_4", { value: 1 });
+      cobranca("pay_5", { status: "PENDING" });
+      const r = await confirmar("tok-u1");
+      if (r.corpo.ativados !== 0 || r.corpo.pro || banco.upsertsPro) throw new Error(JSON.stringify(r.corpo));
+      if (r.corpo.pendentes !== 1) throw new Error("pendentes " + r.corpo.pendentes);
+    });
+    await conf("webhook: falha ao gravar = 500 (a Asaas reenvia) e nada fica marcado como processado", async () => {
+      zerar(); cobranca("pay_6"); falharEscrita = true;
+      const r = await webhook("PAYMENT_RECEIVED", "pay_6");
+      if (r.cod !== 500 || banco.processados.length) throw new Error(`status ${r.cod}, processados ${banco.processados.length}`);
+      falharEscrita = false;
+      const r2 = await webhook("PAYMENT_RECEIVED", "pay_6");
+      if (r2.cod !== 200 || banco.upsertsPro !== 1) throw new Error(`reenvio: status ${r2.cod}, ativações ${banco.upsertsPro}`);
+    });
+    await conf("webhook: token errado = 401, nada ativa", async () => {
+      zerar(); cobranca("pay_7");
+      const r = await webhook("PAYMENT_RECEIVED", "pay_7", "outro-token");
+      if (r.cod !== 401 || banco.upsertsPro) throw new Error("status " + r.cod);
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    for (const k of ["SUPABASE_SERVICE_ROLE_KEY", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN"]) {
+      if (envOriginal[k] === undefined) delete process.env[k]; else process.env[k] = envOriginal[k];
+    }
+    console.log = logOriginal;
+  }
+
+  /* jogo: aba nova DENTRO do clique, espera com "Já paguei, conferir" */
+  const env = criarAmbiente({ contarNos: true });
+  const ordem = [];
+  const aba = { closed: false, location: { href: "" }, document: { title: "", body: { innerHTML: "" } }, close() { this.closed = true; } };
+  let proNoServidor = false, conferencias = 0;
+  const sessao = { user: { id: "u1", email: "a@a.com" }, access_token: "tok-u1" };
+  env.sandbox.window.open = () => { ordem.push("open"); return aba; };
+  env.sandbox.fetch = async (u) => {
+    ordem.push("fetch " + u);
+    if (u === "/api/criar-pagamento") return { ok: true, status: 200, json: async () => ({ invoiceUrl: "https://www.asaas.com/i/abc" }) };
+    if (u === "/api/confirmar-pagamento") { conferencias++; return { ok: true, status: 200, json: async () => ({ ativados: proNoServidor ? 1 : 0, pro: proNoServidor, pendentes: proNoServidor ? 0 : 1 }) }; }
+    throw new Error("offline");
+  };
+  env.sandbox.window.supabase = { createClient: () => ({
+    auth: { getSession: async () => ({ data: { session: sessao } }), onAuthStateChange: () => {} },
+    from: (t) => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: t === "assinaturas" && proNoServidor ? { pro: true, expira_em: "2099-01-01T00:00:00Z" } : null }) }) }),
+      upsert: async () => { ordem.push("upsert " + t); return { error: null }; },
+    }),
+  }) };
+  vm.createContext(env.sandbox);
+  vm.runInContext(exportar(lerScript(), ["renderPlanoPro"]) + "\ntry{globalThis.__x.meuPro=()=>meuPro;}catch(e){}", env.sandbox, { filename: "index.html" });
+  const X = env.sandbox.__x;
+  const respirar = () => new Promise(r => setImmediate(r));
+  const tem = (n, c) => (n.className || "").split(" ").includes(c);
+  const caixa = env.sandbox.document.createElement("div");
+  await conf("jogo: abrir o Plano Pro sem Pro já confere na Asaas uma vez (pagou e o webhook não ativou)", async () => {
+    await X.renderPlanoPro(caixa, sessao); await respirar(); env.drenar(); await respirar();
+    if (conferencias !== 1) throw new Error(conferencias + " conferências");
+  });
+  await conf("jogo: pagar abre a aba nova ANTES de qualquer espera (senão vira pop-up bloqueado) e manda a cobrança pra ela", async () => {
+    const cpf = env.todos.filter(n => n.tagName === "input" && n.placeholder === "CPF (só números)").pop();
+    const aceite = env.registro.aceiteProCheck;
+    const btn = env.todos.filter(n => n.tagName === "button" && /Confirmar pagamento/.test(n.innerHTML || "")).pop();
+    if (!cpf || !aceite || !btn) throw new Error("formulário incompleto");
+    cpf.value = "52998224725"; aceite.checked = true; aceite.onchange();
+    ordem.length = 0;
+    const p = btn.onclick();
+    if (ordem[0] !== "open") throw new Error("primeira coisa no clique: " + ordem[0]);
+    await p; await respirar();
+    if (aba.location.href !== "https://www.asaas.com/i/abc") throw new Error("aba foi pra " + aba.location.href);
+  });
+  await conf("jogo: fica esperando com 'Já paguei, conferir'; conferir sem pagamento avisa, com pagamento libera o Pro", async () => {
+    const conf1 = env.registro.proConferir;
+    if (!conf1 || !conf1.onclick) throw new Error("sem o botão Já paguei");
+    await conf1.onclick();
+    if (X.meuPro()) throw new Error("liberou sem pagamento");
+    proNoServidor = true;
+    await conf1.onclick(); await respirar();
+    if (!X.meuPro()) throw new Error("não liberou com o pagamento confirmado");
+  });
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("pagamento ok") : vermelho(`${falhas.length} falha(s) no pagamento`)));
+  return ok;
+}
+
+/* ================================================================== *
  * HUB DA CARREIRA (revamp fase 5): barra fixa, 7 abas com fundo
  * próprio, Loja/Cards/Conquistas como aba, Voltar ao painel. Carreira
  * de verdade num sandbox (mesmo caminho da suíte save), DOM falso.
@@ -8085,6 +8273,7 @@ try {
   else if (cmd === "som") ok = await testarSom();
   else if (cmd === "texto") ok = await testarTexto();
   else if (cmd === "placar") ok = await testarPlacar();
+  else if (cmd === "pagamento") ok = await testarPagamento();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "pro") ok = await testarColetivaEntrevista();
@@ -8155,6 +8344,7 @@ try {
         ["som", () => testarSom()],
         ["texto", () => testarTexto()],
         ["placar", () => testarPlacar()],
+        ["pagamento", () => testarPagamento()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],
