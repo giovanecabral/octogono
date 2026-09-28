@@ -2690,6 +2690,27 @@ devolve o elemento intacto. Estreou em "Seja uma lenda" (antes o clique
 mostrava uma nota) e em "Sim, quero um rival" (antes abria a oferta do Pro
 no meio da criação). A trava de verdade continua no servidor.
 
+**`meuPro` fresco antes da tela travada (achado em produção, 2026-09-27).**
+`bloqueioPro()` decide pela variável `meuPro`, que é só cache do cliente.
+Ela era conferida na Conta, no Plano Pro e ao começar ou retomar a
+carreira, nunca ao abrir o jogo: um Pro que entrava e ia direto pra Nova
+carreira via Seja uma lenda e o Rival travados, e o selo levava pra tela
+de pagamento. Agora ela é conferida em quatro pontos:
+
+- em `INITIAL_SESSION`, quando o jogo abre com sessão salva;
+- em `SIGNED_IN`, a cada login (e zera em `SIGNED_OUT`);
+- em `comConta()`, antes de abrir o assistente ou o Continuar (espera no
+  máximo 2,5 s);
+- nas telas do assistente que nasceram travadas: elas conferem de novo e
+  redesenham quando a resposta disser Pro (`reconferirPro()`).
+
+Tela nova com `bloqueioPro()` fora da carreira precisa do mesmo cuidado.
+Suíte `rotas`. No mesmo conserto: conta Pro sem data de expiração
+(`expira_em` nulo, plano "unico" ou liberada à mão) aparecia como "Pro até
+31/12/1969" com o formulário de renovar. Agora diz "sem data de
+expiração" e não oferece pagamento, porque um pagamento novo gravaria 30
+dias e encurtaria o acesso.
+
 ## Hub da carreira e noite de luta (revamp fase 5, 2026-09-27)
 
 A tela da carreira virou um hub: barra fixa (retrato, nome, cartel, luta N

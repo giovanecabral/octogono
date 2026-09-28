@@ -3885,6 +3885,24 @@ function testarTelaInicial() {
       if (!linha || linha.innerHTML !== "PLANO PRO ATIVO")
         throw new Error("linha 'PLANO PRO ATIVO' não apareceu: " + (linha && linha.innerHTML));
     });
+    /* Pro sem data de expiração (plano "unico" ou liberado à mão):
+       new Date(null) mostrava "Pro até 31/12/1969" e oferecia "Renovar",
+       que gravaria 30 dias e encurtaria o acesso. */
+    const aceitesAntesSemData = marcado("aceite-pro").length;
+    await passo("Plano Pro sem data de expiração: dispara a tela", () => {
+      assinaturaFalsa = { pro: true, expira_em: null };
+      UI.screenPlanoPro();
+    });
+    await passo("Plano Pro sem data de expiração: diz isso, sem data inventada e sem formulário de renovar", () => {
+      const t = ultimoTexto("hint") || "";
+      if (!/sem data de expiração/.test(t)) throw new Error("texto: " + t);
+      if (/19(69|70)/.test(t)) throw new Error("mostrou data de 1969/1970: " + t);
+      if (marcado("aceite-pro").length !== aceitesAntesSemData)
+        throw new Error("mostrou o formulário de pagamento pra conta que não expira");
+    });
+    await passo("Plano Pro sem data de expiração: volta a Pro com data pros passos seguintes", () => {
+      assinaturaFalsa = { pro: true, expira_em: "2099-01-01T00:00:00.000Z" };
+    });
 
     /* ---------- 3 modelos de card (2026-09-22) ---------- */
     await passo("Carrossel Pro ativo: abre a tela de novo (meuPro já ficou true pelo passo acima)", () => {
@@ -6055,9 +6073,11 @@ function testarDivisoes() {
 /* Supabase falso genérico (revamp fase 3): sessão ligável por fora
    (estado.sessao), toda consulta encadeável devolve lista vazia. */
 function supabaseFalsoComSessao(estado) {
-  const cadeia = () => {
+  /* estado.assinatura: a linha de `assinaturas` desta conta ({pro,expira_em}),
+     ou nada (conta grátis). */
+  const cadeia = (tabela) => {
     const c = { eq: () => c, gt: () => c, gte: () => c, order: () => c, limit: () => c,
-      maybeSingle: async () => ({ data: null, error: null }),
+      maybeSingle: async () => ({ data: tabela === "assinaturas" ? (estado.assinatura || null) : null, error: null }),
       then: (r) => r({ data: [], error: null, count: 0 }) };
     return c;
   };
@@ -6068,7 +6088,7 @@ function supabaseFalsoComSessao(estado) {
         onAuthStateChange: (cb) => { estado.aoMudar = cb; },
         signOut: async () => { estado.sessao = null; return { error: null }; },
       },
-      from: () => ({ select: () => cadeia(), upsert: async () => ({ error: null }), delete: () => cadeia() }),
+      from: (tabela) => ({ select: () => cadeia(tabela), upsert: async () => ({ error: null }), delete: () => cadeia(tabela) }),
     }),
   };
 }
@@ -6081,8 +6101,10 @@ async function testarRotas() {
   env.sandbox.localStorage = { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } };
   vm.createContext(env.sandbox);
   try {
-    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso"])
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
+      "screenDivisao", "screenAtivarRival"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}"
+      + "\ntry{globalThis.__x.meuPro=()=>meuPro;}catch(e){}"
       + "\ntry{globalThis.__x.setMeuPro=(v)=>{meuPro=v;};}catch(e){}",
       env.sandbox, { filename: "index.html" });
   } catch (e) {
@@ -6260,6 +6282,60 @@ async function testarRotas() {
     if (!desde(m).some(n => tem(n, "tela-portao"))) throw new Error("portão não apareceu");
     if (desde(m).some(n => tem(n, "save-slot"))) throw new Error("mostrou os espaços sem conta");
     if (JSON.parse(dadosLS.intencao).tipo !== "continuar") throw new Error("intenção errada");
+  });
+  /* Achado em produção (2026-09-27, conta Pro do dono): meuPro só era
+     conferido na Conta, no Plano Pro e ao começar ou retomar a carreira.
+     Página recém-aberta, Nova carreira: Seja uma lenda e o Rival nasciam
+     travados, e o selo levava pra tela de pagamento. */
+  await conf("Pro no banco, página recém-aberta: Nova carreira confere o Pro antes do assistente", async () => {
+    estadoSb.sessao = { user: { id: "u1", email: "t@t.com" } };
+    estadoSb.assinatura = { pro: true, expira_em: null };
+    UI.setMeuPro(false);
+    UI.irPara("nova"); env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (UI.meuPro() !== true) throw new Error("meuPro continuou false depois de entrar em Nova carreira");
+  });
+  await conf("Pro: Seja uma lenda e o Rival nascem liberados no assistente, sem selo de pagamento", async () => {
+    const m = env.todos.length;
+    UI.screenDivisao("TesteBot"); env.drenar(); await respirar();
+    const lenda = desde(m).filter(n => n.id === "modo_lenda").pop();
+    if (!lenda || tem(lenda, "bloqueado") || !lenda.onclick) throw new Error("Seja uma lenda travado pra conta Pro");
+    const m2 = env.todos.length;
+    UI.screenAtivarRival("TesteBot"); env.drenar(); await respirar();
+    const sim = desde(m2).filter(n => n.tagName === "button" && /Sim, quero um rival/.test(n.innerHTML || "")).pop();
+    if (!sim || tem(sim, "bloqueado") || !sim.onclick) throw new Error("Rival travado pra conta Pro");
+    if (desde(m).some(n => tem(n, "selo-assine"))) throw new Error("selo Assine o Pro apareceu pra conta Pro");
+  });
+  await conf("tela do assistente que nasceu travada destrava sozinha quando a conferência do Pro volta", async () => {
+    UI.setMeuPro(false);   // a conferência ainda não tinha voltado quando a tela nasceu
+    const m = env.todos.length;
+    UI.screenDivisao("TesteBot");
+    const lenda0 = desde(m).filter(n => n.id === "modo_lenda").pop();
+    if (!lenda0 || !tem(lenda0, "bloqueado")) throw new Error("devia nascer travada (meuPro false)");
+    env.drenar(); await respirar(); env.drenar(); await respirar();
+    const lenda = desde(m).filter(n => n.id === "modo_lenda").pop();
+    if (!lenda || tem(lenda, "bloqueado") || !lenda.onclick) throw new Error("Seja uma lenda não destravou");
+    UI.setMeuPro(false);
+    const m2 = env.todos.length;
+    UI.screenAtivarRival("TesteBot");
+    env.drenar(); await respirar(); env.drenar(); await respirar();
+    const sim = desde(m2).filter(n => n.tagName === "button" && /Sim, quero um rival/.test(n.innerHTML || "")).pop();
+    if (!sim || tem(sim, "bloqueado") || !sim.onclick) throw new Error("Rival não destravou");
+  });
+  await conf("login confere o Pro na hora e logout zera", async () => {
+    UI.setMeuPro(false);
+    estadoSb.aoMudar("SIGNED_IN", estadoSb.sessao); env.drenar(); await respirar(); env.drenar(); await respirar();
+    if (UI.meuPro() !== true) throw new Error("SIGNED_IN não conferiu o Pro");
+    estadoSb.aoMudar("SIGNED_OUT", null); env.drenar(); await respirar();
+    if (UI.meuPro() !== false) throw new Error("SIGNED_OUT não zerou o Pro");
+  });
+  await conf("conta grátis continua com as travas no assistente", async () => {
+    estadoSb.assinatura = null;
+    UI.setMeuPro(false);
+    UI.irPara("nova"); env.drenar(); await respirar(); env.drenar(); await respirar();
+    const m = env.todos.length;
+    UI.screenDivisao("TesteBot"); env.drenar(); await respirar(); env.drenar(); await respirar();
+    const lenda = desde(m).filter(n => n.id === "modo_lenda").pop();
+    if (!lenda || !tem(lenda, "bloqueado") || lenda.onclick) throw new Error("Seja uma lenda liberado pra conta grátis");
   });
   /* saves sintéticos: só os campos que a tela de espaços lê */
   const saveFalso = (slot, nome, luta, horasAtras) => JSON.stringify({ versao: 1, slot, fase: "carreira", nome,
