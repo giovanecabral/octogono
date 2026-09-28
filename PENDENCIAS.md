@@ -2086,7 +2086,8 @@ nova `texto`. Mais um bug achado e consertado: conta Pro sem data de
 expiração (plano "unico" ou liberada à mão, como a do dono depois do SQL de
 2026-09-27) aparecia como "Pro até 31/12/1969" e oferecia "Renovar", que
 gravaria 30 dias e encurtaria o acesso. Agora diz "sem data de expiração" e
-não mostra o formulário.
+não mostra o formulário. Esse conserto já foi pro ar antes da fase 7, junto
+com o do `meuPro` (ver "Conserto em produção" abaixo).
 
 **Depende de deploy:** `api/ai.js` (regra de texto nos prompts) e
 `api/criar-pagamento.js` (descrição da cobrança sem travessão) só mudam em
