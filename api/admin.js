@@ -126,12 +126,15 @@ export default async function handler(req, res) {
       case "diagnostico": {
         if (!dono) return res.status(403).json({ erro: "só o dono" });
         const bruta = String(process.env.SUPABASE_SERVICE_ROLE_KEY || ""), k = chaveServico();
-        const formato = !k ? "ausente" : k.startsWith("eyJ") ? "jwt" : k.startsWith("sb_secret_") ? "sb_secret" : k.startsWith("sb_publishable_") ? "sb_publishable" : "outra";
+        const tipo = v => !v ? "ausente" : v.startsWith("eyJ") ? "jwt" : v.startsWith("sb_secret_") ? "sb_secret"
+          : v.startsWith("sb_publishable_") ? "sb_publishable" : v.startsWith("$aact_") ? "asaas" : "outra";
+        const formato = tipo(k);
+        const asaas = tipo(String(process.env.ASAAS_API_KEY || "").trim());   // tem que ser "asaas"
         const rRest = await supabaseServiceRole("placar?select=seed&limit=1");
         const rAuth = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1`, { headers: cabecalhoServico() });
         let papel = null;
         if (formato === "jwt") { try { papel = JSON.parse(Buffer.from(k.split(".")[1], "base64url").toString()).role || null; } catch { papel = "ilegível"; } }
-        return res.status(200).json({ formato, papel, tinhaEspaco: bruta !== k, tamanho: k.length, rest: rRest.status, auth: rAuth.status });
+        return res.status(200).json({ formato, papel, asaas, tinhaEspaco: bruta !== k, tamanho: k.length, rest: rRest.status, auth: rAuth.status });
       }
       case "listar": {
         const pagina = Math.max(0, Math.floor(Number(corpo.pagina) || 0));
