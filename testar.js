@@ -7418,6 +7418,176 @@ async function testarHub() {
 }
 
 /* ================================================================== *
+ * SOM (revamp fase 6): trilha por tela com crossfade, efeitos reais
+ *     com o sintetizado de reserva, arquivos com licença e créditos.
+ *     Web Audio e <audio> falsos: o que se confere é a decisão e a
+ *     fiação, não o som (ouvir fica com o dono).
+ * ================================================================== */
+async function testarSom() {
+  console.log("\n" + cinza("som: trilha por tela, efeitos com reserva sintetizada, licenças e orçamento"));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const respirar = () => new Promise(r => setImmediate(r));
+  /* Web Audio falso: registra o que a fiação pede */
+  const somFalso = (modo) => {
+    const reg = { osc: 0, fontes: 0, audios: [], fetches: [] };
+    const param = (v) => ({ value: v, alvo: v, setValueAtTime(x) { this.value = x; }, linearRampToValueAtTime(x) { this.alvo = x; },
+      exponentialRampToValueAtTime(x) { this.alvo = x; }, setTargetAtTime(x) { this.alvo = x; }, cancelScheduledValues() {} });
+    const no = (extra = {}) => Object.assign({ connect(n) { return n; }, start() {}, stop() {}, gain: param(1), frequency: param(20000), Q: param(1) }, extra);
+    class AC {
+      constructor() { this.currentTime = 0; this.state = "running"; this.destination = no(); this.sampleRate = 44100; }
+      resume() {}
+      createGain() { return no(); }
+      createOscillator() { reg.osc++; return no(); }
+      createBiquadFilter() { return no(); }
+      createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; }
+      createBufferSource() { reg.fontes++; return no(); }
+      createMediaElementSource(el) { return no({ el }); }
+      decodeAudioData() { return modo === "ok" ? Promise.resolve({ duration: 1 }) : Promise.reject(new Error("decode")); }
+    }
+    class FakeAudio {
+      constructor(src) { this.src = src; this.paused = true; this.loop = false; reg.audios.push(this); this.ouvintes = {}; }
+      play() { this.paused = false; return Promise.resolve(); }
+      pause() { this.paused = true; }
+      addEventListener(k, f) { this.ouvintes[k] = f; }
+    }
+    const fetchFalso = (url) => { reg.fetches.push(url); return Promise.resolve({ ok: modo !== "404", arrayBuffer: async () => new ArrayBuffer(8) }); };
+    return { reg, AC, FakeAudio, fetchFalso };
+  };
+  const ambiente = (modo) => {
+    const env = criarAmbiente();
+    const f = somFalso(modo);
+    env.sandbox.window.AudioContext = f.AC;
+    env.sandbox.Audio = f.FakeAudio;
+    env.sandbox.fetch = f.fetchFalso;
+    vm.createContext(env.sandbox);
+    vm.runInContext(lerScript(), env.sandbox, { filename: "index.html" });
+    const run = c => vm.runInContext(c, env.sandbox);
+    return { env, reg: f.reg, run };
+  };
+
+  await conf("cada tela escolhe a trilha certa (menu, páginas, hub, cada etapa da noite)", () => {
+    const { run } = ambiente("ok");
+    const casos = [["nova", null, "menu"], ["antiga", null, "menu"], ["hub", null, "hub"], ["hub", "oferta", "noite"],
+      ["hub", "camp", "noite"], ["hub", "coletiva", "noite"], ["hub", "resultado", "noite"], ["hub", "entrada", "walkout"], ["hub", "luta", "walkout"]];
+    for (const [tela, etapa, esperado] of casos) {
+      const got = run(`document.documentElement.dataset.tela=${JSON.stringify(tela)};noiteEtapa=${JSON.stringify(etapa)};contextoTrilha()`);
+      if (got !== esperado) throw new Error(`${tela}/${etapa}: ${got} (esperava ${esperado})`);
+    }
+  });
+
+  await conf("cada linha da narração tem o efeito certo; linha de uma luta real nunca pede efeito inexistente", () => {
+    const { run } = ambiente("ok");
+    const casos = [[{ kind: "rd", text: "Round 2" }, "sinoInicio"], [{ kind: "rd", text: "Fim do round 2 — X levou." }, "sinoFim"],
+      [{ kind: "kd", text: "X foi ao chão! Levantou cambaleando." }, "knockdown"], [{ kind: "big", text: "Queda de X. Levou pro chão." }, "queda"],
+      [{ kind: "big", text: "X tenta a finalização! Y escapa." }, "quaseFinalizacao"], [{ kind: "big", text: "X martelando por cima. Y só protege." }, "golpePesado"],
+      [{ kind: "", text: "X acerta mais na troca, 5 a 2." }, "golpeLeve"], [{ kind: "", text: "Troca parelha, 3 a 3." }, "golpeLeve"],
+      [{ kind: "", text: "X controla a posição." }, null], [{ kind: "fin", text: "X vence por nocaute" }, "nocaute"],
+      [{ kind: "fin", text: "X vence por finalização" }, "finalizacao"], [{ kind: "fin", text: "Vai pros cartões. X vence por decisão, 30-27." }, null]];
+    for (const [L, esperado] of casos) {
+      const got = run(`somDaLinha(${JSON.stringify(L)})`);
+      if (got !== esperado) throw new Error(`${JSON.stringify(L)}: ${got} (esperava ${esperado})`);
+    }
+    const inexistentes = run(`(()=>{const F=rateAll(${JSON.stringify(lerLutadores().slice(0, 40))});const out=[];
+      for(let s=1;s<=60;s++){const r=simulateFight(F[s%40],F[(s*7+3)%40],{seed:s});
+        r.log.forEach(L=>{const e=somDaLinha(L);if(e&&typeof SOM[e]!=="function")out.push(e);});}return out;})()`);
+    if (inexistentes.length) throw new Error("efeitos sem método no SOM: " + [...new Set(inexistentes)].join(","));
+  });
+
+  await conf("sem AudioContext e sem Audio nada quebra (o testar.js inteiro depende disso)", () => {
+    const env = criarAmbiente();
+    vm.createContext(env.sandbox);
+    vm.runInContext(lerScript() + `
+      ;audioLiberado=true;
+      Object.keys(SOM).forEach(k=>SOM[k]());
+      document.documentElement.dataset.tela="hub";noiteEtapa="luta";atualizarTrilha();
+      trocarTrilha("menu");tocarVinheta(true);torcidaAmbiente(true);abafarWalkout(true);definirMudo(true);definirMudo(false);`, env.sandbox);
+  });
+
+  await conf("arquivo que falha cai no sintetizado; arquivo carregado toca sem sintetizar", async () => {
+    const A = ambiente("404");
+    A.run("audioLiberado=true;carregaAudio();");
+    for (let k = 0; k < 4; k++) await respirar();
+    const oscAntes = A.reg.osc;
+    A.run("SOM.golpePesado();SOM.sinoFim();");
+    if (A.reg.osc <= oscAntes) throw new Error("arquivo com 404 e o sintetizado não tocou");
+    const B = ambiente("ok");
+    B.run("audioLiberado=true;carregaAudio();");
+    for (let k = 0; k < 4; k++) await respirar();
+    const oscB = B.reg.osc, fontesB = B.reg.fontes;
+    B.run("SOM.golpePesado();SOM.sinoFim();");
+    if (B.reg.osc !== oscB) throw new Error("arquivo carregado e ainda sintetizou");
+    if (B.reg.fontes < fontesB + 2) throw new Error("efeito carregado não tocou pelo buffer");
+  });
+
+  await conf("trilha troca com crossfade; na luta o walkout abafa e a torcida entra; mudo não carrega nada", async () => {
+    const { run, reg } = ambiente("ok");
+    run(`audioLiberado=true;document.documentElement.dataset.tela="hub";noiteEtapa=null;atualizarTrilha();`);
+    if (run("trilhaAtual") !== "hub") throw new Error("trilha " + run("trilhaAtual"));
+    const hub = reg.audios.find(a => /musica-hub/.test(a.src));
+    if (!hub || hub.paused) throw new Error("música do hub não tocou");
+    if (Math.abs(run("FAIXAS.hub.g.gain.alvo") - run("NIVEL_TRILHA.hub")) > 1e-9) throw new Error("hub não subiu pro nível dela");
+    run(`noiteEtapa="luta";atualizarTrilha();`);
+    if (run("trilhaAtual") !== "walkout") throw new Error("luta sem walkout");
+    if (run("FAIXAS.hub.g.gain.alvo") > .001) throw new Error("hub não desceu no crossfade");
+    if (run("FAIXAS.walkout.f.frequency.alvo") !== 380) throw new Error("walkout não abafou na luta");
+    const torcida = reg.audios.find(a => /torcida-ambiente/.test(a.src));
+    if (!torcida || torcida.paused) throw new Error("torcida não entrou na luta");
+    run(`noiteEtapa="entrada";atualizarTrilha();`);
+    if (run("FAIXAS.walkout.f.frequency.alvo") !== 20000) throw new Error("walkout abafado na entrada");
+    const M = ambiente("ok");
+    M.run(`definirMudo(true);audioLiberado=true;document.documentElement.dataset.tela="hub";atualizarTrilha();SOM.golpePesado();`);
+    if (M.reg.audios.length || M.reg.fetches.length) throw new Error("mudo carregou áudio");
+  });
+
+  await conf("mudo silencia na hora, desce e pausa a música que estava tocando, e ela não volta sozinha", async () => {
+    const { run, reg, env } = ambiente("ok");
+    run(`audioLiberado=true;document.documentElement.dataset.tela="hub";noiteEtapa=null;atualizarTrilha();tocarVinheta(true);`);
+    const hub = reg.audios.find(a => /musica-hub/.test(a.src));
+    if (!hub || hub.paused) throw new Error("hub não estava tocando");
+    run("definirMudo(true);");
+    if (run("MASTER.gain.alvo") !== 0) throw new Error("mudo não zerou o ganho mestre na hora");
+    if (run("FAIXAS.hub.g.gain.alvo") > .001) throw new Error("mudo não desceu a trilha");
+    env.drenar();
+    if (!hub.paused) throw new Error("trilha continuou tocando depois do mudo");
+    if (run("FAIXAS.hub.g.gain.alvo") > .001) throw new Error("a trilha subiu de novo com o jogo mudo (volta da vinheta)");
+    run("definirMudo(false);");
+    if (run("MASTER.gain.alvo") < .5) throw new Error("tirar o mudo não devolveu o ganho mestre");
+  });
+
+  await conf("todo arquivo de audio/ tem licença, crédito, uso no jogo, e o total cabe em 8 MB", () => {
+    const dir = path.join(__dirname, "audio");
+    const mp3 = fs.readdirSync(dir).filter(f => f.endsWith(".mp3"));
+    const lic = fs.readFileSync(path.join(dir, "LICENCAS.md"), "utf8");
+    const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    const semLic = mp3.filter(f => !lic.includes("`" + f + "`"));
+    if (semLic.length) throw new Error("sem licença: " + semLic.join(", "));
+    const { run } = ambiente("ok");
+    const usados = new Set(run(`[...Object.values(TRILHAS),...[].concat(...Object.values(EFEITOS)).map(n=>n+".mp3"),"torcida-ambiente.mp3"]`));
+    const faltam = [...usados].filter(f => !mp3.includes(f));
+    if (faltam.length) throw new Error("o jogo pede arquivo que não existe: " + faltam.join(", "));
+    const sobram = mp3.filter(f => !usados.has(f));
+    if (sobram.length) throw new Error("arquivo sem uso no jogo: " + sobram.join(", "));
+    const autores = [...lic.matchAll(/\| [^|]+ \| [^|]+ \| [^|]+ \| ([^|]+) \| \[/g)].map(m => m[1].replace(/\s*\(CC[^)]*\)/g, "").split(" + ")).flat()
+      .map(a => a.replace(/\s*\(.*$/, "").trim());
+    const semCredito = [...new Set(autores)].filter(a => !html.includes(a));
+    if (semCredito.length) throw new Error("autor sem crédito na página Créditos: " + semCredito.join(", "));
+    if (!/CC BY/.test(lic) || !/CC0/.test(lic)) throw new Error("tabela de licenças incompleta");
+    if (/[^A-Za-z]NC[^A-Za-z]|NonCommercial|-nc/.test(lic)) throw new Error("licença NC na tabela");
+    const total = mp3.reduce((s, f) => s + fs.statSync(path.join(dir, f)).size, 0);
+    if (total > 8 * 1024 * 1024) throw new Error(`audio/ tem ${(total / 1048576).toFixed(2)} MB`);
+    if (fs.existsSync(path.join(dir, "sintetiza.py"))) throw new Error("sintetiza.py continua lá");
+  });
+
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("som ok") : vermelho(`${falhas.length} falha(s) no som`)));
+  return ok;
+}
+
+/* ================================================================== *
  * PLACAR (revamp fase 3): a regra do servidor (api/_placar-regras.js)
  * aceita carreira real e recusa o impossível; o endpoint (api/placar.js)
  * exige sessão, limita envios e grava o user_id do TOKEN, nunca do corpo.
@@ -7564,6 +7734,7 @@ try {
   else if (cmd === "rotas") ok = await testarRotas();
   else if (cmd === "save") ok = await testarSave();
   else if (cmd === "hub") ok = await testarHub();
+  else if (cmd === "som") ok = await testarSom();
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -7632,6 +7803,7 @@ try {
         ["rotas", () => testarRotas()],
         ["save", () => testarSave()],
         ["hub", () => testarHub()],
+        ["som", () => testarSom()],
         ["placar", () => testarPlacar()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],

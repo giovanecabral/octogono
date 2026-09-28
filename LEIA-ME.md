@@ -1380,89 +1380,81 @@ de uma função que também muta o estado que o teste lê.
 
 ## Som
 
-Quatro arquivos em `audio/`, gerados por síntese (`audio/sintetiza.py`):
+**Revamp fase 6 (2026-09-27): música e efeitos reais, com licença de uso
+comercial.** O sintetizado virou rede de segurança. Plano:
+`docs/superpowers/plans/2026-09-27-revamp-fase-6.md`.
 
-| arquivo | duração | uso |
-|---|---|---|
-| `bgm_fight.ogg` | 1:55, loop perfeito | trilha contínua |
-| `button_click.wav` | 0,14 s | clique de interface |
-| `victory.wav` | 2,6 s | vitória |
-| `defeat.wav` | 2,8 s | derrota |
+**Fontes (todas CC0 ou CC BY; nenhuma NC).** Música do HoliznaCC0 (CC0, Free
+Music Archive): "Nine To Death" no menu, "Busted Jazz" no hub, "Re
+Adusjtment" (phonk) na noite de luta, "Pantheon" (phonk) no walkout, um trecho
+de "Chills" na vinheta de derrota. Torcida de Gregor Quendel (CC BY 4.0).
+Golpes, queda, interface, fichas e o acento da vinheta de vitória da Kenney
+(CC0). Sino e flashes de paparazzi do BigSoundBank (CC0). Vaia da Free Sounds
+Library (CC BY 4.0). Tabela arquivo por arquivo em `audio/LICENCAS.md`; os
+créditos estão na página Créditos. Eu (Claude) não ouço áudio: as faixas
+foram escolhidas pelo gênero declarado pelo autor, BPM, loudness e curva de
+energia medidos (`audio/preparar.py` imprime a tabela). **Pendente: o dono
+ouvir e aprovar.**
 
-Se algum faltar ou o navegador recusar o formato, o **som sintetizado na Web
-Audio API assume** — o jogo nunca fica mudo por um 404.
+**Como os arquivos nascem.** `python3 audio/preparar.py` (precisa de ffmpeg)
+baixa as fontes pra `audio/bruto/` (fora do git) conferindo a licença na
+página de cada uma, corta, faz fade, normaliza (música em -18 LUFS, efeito
+por pico) e codifica 27 MP3 (7,7 MB, orçamento de 8 MB). Rodar de novo refaz
+tudo igual e reescreve o `LICENCAS.md`.
+
+**Trilha por tela.** `contextoTrilha()` é pura: menu e páginas tocam o menu;
+hub toca o hub; oferta, camp, coletiva e resultado tocam a noite; entrada e
+luta tocam o walkout. Na entrada o walkout vem cheio; quando a luta começa
+ele continua por baixo com passa-baixa em 380 Hz e a torcida entra por cima.
+Troca é crossfade de 1 s. Música vem por `<audio>` em streaming ligado ao
+barramento de música (decodificar faixas de minutos custaria dezenas de MB
+no celular); efeitos curtos são decodificados em buffer depois do primeiro
+clique. Vinheta de vitória ou derrota abaixa a trilha e a próxima só sobe
+depois dela.
+
+**Efeitos.** A narração escolhe o efeito pelo tipo da linha e pelo texto
+(`somDaLinha()`): sino de começo e de fim de round, soco leve na troca, soco
+pesado no chão, baque na derrubada, knockdown com a torcida levantando,
+torcida subindo na tentativa de finalização e explodindo no nocaute ou na
+finalização. Vaia na derrota por decisão. Na interface: clique, hover (só
+mouse), troca de aba, carta entrando na oferta e no camp, fichas na compra
+da loja, som de conquista, flashes na coletiva. Variação entre golpes usa
+`Math.random`: som não é jogo e nunca toca um dos 8 geradores da carreira.
+
+**Rede de segurança.** Cada efeito tenta o arquivo e, se ele ainda não
+carregou ou falhou, toca o sintetizado de sempre (Web Audio); trilha que
+falha cai no bordão sintetizado. Volume de música, volume de efeitos e mudo
+continuam no painel da engrenagem; o mudo zera o ganho mestre na hora e para
+a música. Suíte `node testar.js som` (Web Audio e `<audio>` falsos): escolha
+de trilha, efeito por linha (inclusive de luta real), sem áudio nada quebra,
+arquivo que falha sintetiza, crossfade e walkout abafado, mudo, e todo
+arquivo com licença, crédito e uso, dentro do orçamento.
 
 ### Sons de evento
 
 Três sons curtos para o desfecho de eventos e dilemas: **bom** (terça maior
 subindo), **ruim** (segunda menor descendo com o chão saindo embaixo) e
-**neutro** (um toque só). Todos mais leves que vitória e derrota de propósito —
-tocam logo depois delas e não podem competir.
+**neutro** (um toque só). Continuam sintetizados. A direção sai de duas
+fontes, nesta ordem:
 
-A direção sai de duas fontes, nesta ordem:
+1. **Marca explícita** (`tom: 1 / -1`), usada nos eventos raros.
+2. **Efeito medido**: aplica o `fx` num clone e compara os atributos.
 
-1. **Marca explícita** (`tom: 1 / -1`), usada nos eventos raros. Eles são os mais
-   dramáticos do jogo e nenhum mexe em atributo, então o método automático não
-   os alcançava.
-2. **Efeito medido**: aplica o `fx` num clone e compara os atributos. Serve para
-   os eventos de camp e lesão sem precisar de rótulo.
+Evento sem marca e sem efeito toca o neutro. No dilema a direção é direta,
+dos números que a IA devolveu (já limitados pelo `lim()`).
 
-Evento sem marca e sem efeito toca o neutro. Hoje: 7 bons, 7 ruins, 24 neutros.
-
-No dilema a direção é direta, dos números que a IA devolveu (já limitados
-pelo `lim()`).
-
-### Como foram equilibrados
-
-A primeira versão saiu com **83% da energia abaixo de 60 Hz e 0,2% de médio**:
-ronco no fone e silêncio no alto-falante de celular. A correção não foi ajustar
-ganho no olho, foi escrever um equalizador que mede a energia por banda e
-corrige até bater o alvo (`equilibra()` no `sintetiza.py`).
-
-Distribuição final:
-
-| | sub 20-60 | grave 60-250 | médio 250-2k | alto 2k-6k |
-|---|---|---|---|---|
-| bgm_fight | 17% | 41% | 34% | 8% |
-| button_click | 6% | 50% | 43% | 2% |
-| victory | 22% | 42% | 37% | 0% |
-| defeat | 25% | 42% | 33% | 0% |
-
-Duas coisas que o equalizador **não** resolve, e por isso foram corrigidas na
-fonte: ele não realça médio que não existe. A derrota tinha o acorde em 73-110 Hz
-com filtro em 680 — subiu uma oitava. E uma nota em 36,7 Hz levava quase toda a
-energia para uma frequência que celular nem reproduz.
-
-### O loop
-
-A emenda dava um salto de 0,095, contra 0,037 da batida mais forte — clicava.
-Resolvido com 12 ms de crossfade de potência constante mais wrap-around das
-caudas (`add()` soma o que passaria do fim de volta no começo). Salto final:
-**0,0004**.
-
-Para regerar:
-
-```bash
-cd audio && python3 sintetiza.py     # precisa de numpy e scipy
-```
-
-
-
-Os sons de luta (golpe, queda, nocaute, sino) continuam **sintetizados na Web
-Audio API** — nenhum arquivo, nenhuma
-licença de sample, nenhum download. O jogo continua sendo um HTML só.
-
-Duas coisas que parecem detalhe e não são:
+### Duas regras que parecem detalhe e não são
 
 O navegador **bloqueia áudio antes do primeiro clique**, então o `AudioContext`
-só nasce quando o jogador interage. Criar antes falha silenciosamente e o som
-nunca mais volta.
+só nasce quando o jogador interage (`armarTrilha()`), e a música do menu só
+começa ali. Criar antes falha silenciosamente e o som nunca mais volta.
 
 Toda chamada de áudio está sob `try/catch`. Navegador sem `AudioContext` ou com
 `localStorage` bloqueado precisa jogar normalmente. O `testar.js` roda num
-ambiente sem os dois de propósito — se o som derrubar a carreira, ele quebra.
+ambiente sem os dois de propósito: se o som derrubar a carreira, ele quebra.
 
-O botão de mudo fica na barra fixa e a preferência é lembrada.
+(Até a fase 6 havia `audio/sintetiza.py` gerando 4 arquivos por síntese com
+equalizador por banda; saíram do repositório e continuam no histórico do git.)
 
 ## Ligar a IA (opcional)
 

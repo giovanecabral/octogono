@@ -1959,7 +1959,7 @@ nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
 
-## 37. Revamp da interface (2026-09-26): fases 1 a 5 feitas na branch `revamp-ui`
+## 37. Revamp da interface (2026-09-26): fases 1 a 6 feitas na branch `revamp-ui`
 
 Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
 console, mais conta obrigatória, save, placar, som e passada de texto.
@@ -2046,6 +2046,21 @@ imagem na identidade nova. Save coerente em qualquer instante (oferta,
 dilema esperando a IA, escolha na luta), Menu que para a carreira de
 verdade, `#/carreira`. Suíte nova `hub`. Detalhes no LEIA-ME, "Hub da
 carreira e noite de luta". Próxima: fase 6, som.
+
+**Fase 6 feita (2026-09-27):** música e efeitos reais com licença de uso
+comercial (HoliznaCC0, Kenney, BigSoundBank em CC0; Gregor Quendel e Free
+Sounds Library em CC BY 4.0), trilha por tela com crossfade, walkout na
+entrada que continua abafado na luta com a torcida, vinhetas, golpes, sino,
+torcida, vaia, interface. `audio/preparar.py` refaz tudo; `audio/LICENCAS.md`
+e a página Créditos listam cada fonte. Suíte nova `som`. Bug achado e
+consertado no caminho: com mudo, a música que estava tocando não parava
+(e a trilha agendada depois da vinheta voltaria a tocar).
+
+**Depende do dono, fase 6:** ouvir e aprovar as faixas e os efeitos. Eu não
+ouço áudio; escolhi por gênero, BPM, loudness e curva de energia. Trocar uma
+faixa é mudar a fonte em `audio/preparar.py` e rodar de novo. A "caixa
+registradora" da loja é um som de fichas de cassino (não achei caixa
+registradora CC0).
 
 **Achados da fase 5 (registrados, não resolvidos aqui):**
 - **`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**

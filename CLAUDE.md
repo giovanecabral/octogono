@@ -15,6 +15,7 @@ index.html          O JOGO INTEIRO (~7000 linhas de JS). Fonte única de verdade
 estilo.css          Visual NOVO (revamp 2026-09-26, identidade "Noite de Luta").
 legado.css          CSS antigo movido sem mudança; some quando a última tela antiga for trocada.
 img/                icones.svg (sprite Lucide), fundos .webp, gerar.py (gera e trata os fundos).
+audio/              27 MP3 (música e efeitos reais, CC0/CC BY), LICENCAS.md, preparar.py (baixa, corta, normaliza).
 404.html            Página de erro estática (a Vercel serve sozinha).
 fighters.json       1.527 lutadores reais com stats do ufcstats.
 testar.js           A única ferramenta de teste. Lê o motor de dentro do HTML.

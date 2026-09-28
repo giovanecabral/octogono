@@ -1268,6 +1268,7 @@ function tituloDoc(mostrar){
      com ele. */
   document.documentElement.dataset.tela="antiga";
   document.documentElement.dataset.noite="0";
+  atualizarTrilha();
   const h=document.getElementById("dochead-h1");
   if(h)h.style.display=mostrar?"":"none";
 }
@@ -3033,28 +3034,46 @@ function tom(f,{tipo="sine",pico=.09,dur=.3,atq=.006,em=0,corte=null,varre=null}
   env(g,t,pico,dur,atq); no.connect(g).connect(BUS);
   o.start(t); o.stop(t+dur+.12);
 }
+/* Cada efeito tenta o arquivo real primeiro (toca) e, se ele ainda não
+   carregou ou falhou, cai no sintetizado de sempre. */
+const synthGolpe=(pico=.11)=>{ const a=ctx();if(!a)return;const t=a.currentTime;
+  const s=ruido(.11);if(!s)return;
+  const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(500,t);
+  const g=a.createGain();env(g,t,pico,.12,.002);
+  s.connect(lp).connect(g).connect(BUS);s.start(t);
+  tom(70,{tipo:"sine",pico:pico*.64,dur:.1,varre:45}); };
+const synthKnockdown=()=>{ tom(96,{tipo:"sine",pico:.24,dur:.42,varre:34,atq:.005});
+  const a=ctx();if(!a)return;const t=a.currentTime;
+  const s=ruido(.3);if(!s)return;
+  const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(300,t);
+  const g=a.createGain();env(g,t,.13,.3,.004);
+  s.connect(lp).connect(g).connect(BUS);s.start(t); };
 const SOM={
-  toque(){ if(toca("click",.75))return; tom(150,{tipo:"triangle",pico:.05,dur:.06,varre:96,corte:900}); },
+  toque(){ if(toca("clique",.7))return; tom(150,{tipo:"triangle",pico:.05,dur:.06,varre:96,corte:900}); },
+  hover(){ toca("hover",.35); },
+  aba(){ if(toca("aba",.55))return; tom(180,{tipo:"triangle",pico:.04,dur:.07,varre:130,corte:1100}); },
+  carta(){ toca("carta",.55); },
+  caixa(){ if(toca("caixa",.8))return; SOM.bom(); },
+  conquista(){ if(toca("conquista",.8))return; SOM.bom(); },
+  flashes(){ toca("flashes",.45); },
+  vaia(){ toca("vaia",.6); },
 
   fixa(){ tom(98,{tipo:"sine",pico:.10,dur:.22,corte:700});
           tom(147,{tipo:"sine",pico:.07,dur:.26,em:.06,corte:800}); },
 
-  /* estalo abafado, tipo luva em corpo */
-  golpe(){ const a=ctx();if(!a)return;const t=a.currentTime;
-    const s=ruido(.11);if(!s)return;
-    const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(500,t);
-    const g=a.createGain();env(g,t,.11,.12,.002);
-    s.connect(lp).connect(g).connect(BUS);s.start(t);
-    tom(70,{tipo:"sine",pico:.07,dur:.1,varre:45}); },
+  /* golpe: luva em corpo */
+  golpe(){ if(toca("golpePesado",.8))return; synthGolpe(); },
+  golpeLeve(){ if(toca("golpeLeve",.45))return; synthGolpe(.06); },
+  golpePesado(){ if(toca("golpePesado",.85))return; synthGolpe(); },
+  /* queda = derrubada (takedown): corpo batendo na lona */
+  queda(){ if(toca("queda",.8))return; tom(80,{tipo:"sine",pico:.16,dur:.3,varre:40,atq:.004}); },
+  /* knockdown: golpe pesado e a torcida levantando */
+  knockdown(){ const ok=toca("golpePesado",.9); toca("torcidaExplode",.55); if(!ok)synthKnockdown(); },
+  quaseFinalizacao(){ toca("torcidaSobe",.55); },
+  finalizacao(){ if(toca("torcidaExplode",.85))return; SOM.bom(); },
 
-  queda(){ tom(96,{tipo:"sine",pico:.24,dur:.42,varre:34,atq:.005});
-    const a=ctx();if(!a)return;const t=a.currentTime;
-    const s=ruido(.3);if(!s)return;
-    const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(300,t);
-    const g=a.createGain();env(g,t,.13,.3,.004);
-    s.connect(lp).connect(g).connect(BUS);s.start(t); },
-
-  nocaute(){ tom(120,{tipo:"sine",pico:.38,dur:.85,varre:26,atq:.004});
+  nocaute(){ const ok=toca("golpePesado",1); toca("torcidaExplode",.9); if(ok)return;
+    tom(120,{tipo:"sine",pico:.38,dur:.85,varre:26,atq:.004});
     const a=ctx();if(!a)return;const t=a.currentTime;
     const s=ruido(2.2);if(!s)return;
     const bp=a.createBiquadFilter();bp.type="lowpass";bp.frequency.setValueAtTime(700,t);
@@ -3064,12 +3083,13 @@ const SOM={
     g.gain.exponentialRampToValueAtTime(.0001,t+2.2);
     s.connect(bp).connect(g).connect(BUS);s.start(t); },
 
-  /* sino de round: grave e abafado, não o triângulo agudo de antes */
-  sino(){ [330,495,660].forEach((f,i)=>
+  /* sino: uma batida no começo do round, três no fim */
+  sinoInicio(){ if(toca("sinoInicio",.7))return; tom(330,{tipo:"sine",pico:.05,dur:.9,atq:.002,corte:1200}); },
+  sinoFim(){ if(toca("sinoFim",.7))return; [330,495,660].forEach((f,i)=>
     tom(f,{tipo:"sine",pico:.055/(i+1),dur:1.4,atq:.002,corte:1200})); },
 
-  /* VITÓRIA: acorde maior grave que abre, com um peso embaixo */
-  vitoria(){ if(toca("vitoria",.85))return; tom(65,{tipo:"sine",pico:.16,dur:1.1,atq:.02});
+  /* VITÓRIA: vinheta de verdade; sem arquivo, acorde maior grave que abre */
+  vitoria(){ if(tocarVinheta(true))return; tom(65,{tipo:"sine",pico:.16,dur:1.1,atq:.02});
     [131,165,196].forEach((f,i)=>
       tom(f,{tipo:"triangle",pico:.085,dur:1.0,em:i*.10,atq:.02,corte:1000}));
     tom(262,{tipo:"sine",pico:.05,dur:1.2,em:.30,atq:.05,corte:900}); },
@@ -3090,66 +3110,209 @@ const SOM={
       tom(f,{tipo:"triangle",pico:.07,dur:.55,em:i*.09,atq:.012,corte:1100}));
     tom(87,{tipo:"sine",pico:.09,dur:.8,em:.28,atq:.04}); },
 
-  /* DERROTA: menor, desce, e a fundamental fica sozinha no fim */
-  derrota(){ if(toca("derrota",.85))return; tom(98,{tipo:"sine",pico:.14,dur:1.3,atq:.02});
+  /* DERROTA: vinheta de verdade; sem arquivo, menor que desce */
+  derrota(){ if(tocarVinheta(false))return; tom(98,{tipo:"sine",pico:.14,dur:1.3,atq:.02});
     [156,131,117].forEach((f,i)=>
       tom(f,{tipo:"triangle",pico:.075,dur:.8,em:i*.16,atq:.02,corte:700}));
     tom(58,{tipo:"sine",pico:.10,dur:1.6,em:.5,atq:.08}); },
 };
 
-/* O navegador só libera áudio depois de um gesto do usuário. Este ouvinte roda
-   uma vez e morre — é a única janela em que dá pra iniciar a trilha. */
-/* ---------------- ARQUIVOS ----------------
-   Os quatro áudios da pasta /audio substituem os sons sintetizados quando
-   carregam. Se algum faltar ou o navegador recusar o formato, o sintetizado
-   assume — o jogo nunca fica mudo por causa de um 404. */
-const ARQ={click:"audio/button_click.wav",vitoria:"audio/victory.wav",
-           derrota:"audio/defeat.wav",bgm:"audio/bgm_fight.ogg"};
-const BUF={};
-async function carregaAudio(){
-  const a=ctx(); if(!a) return;
-  await Promise.all(Object.entries(ARQ).map(async ([k,url])=>{
+/* ---------------- ARQUIVOS (revamp fase 6) ----------------
+   Música de verdade e efeitos reais, todos com licença de uso comercial
+   (CC0 ou CC BY; tabela em audio/LICENCAS.md, arquivos gerados por
+   audio/preparar.py). Música vem por <audio> em streaming ligado ao
+   barramento MUSICA (decodificar faixas de minutos custaria dezenas de MB
+   de memória no celular); efeitos curtos são decodificados em buffer.
+   Arquivo que falha cai no sintetizado de sempre: o jogo nunca fica mudo
+   por causa de um 404, e o testar.js roda sem áudio nenhum. */
+const DIR_AUDIO="audio/";
+const TRILHAS={menu:"musica-menu.mp3",hub:"musica-hub.mp3",noite:"musica-noite.mp3",walkout:"musica-walkout.mp3"};
+/* nível de cada trilha dentro do barramento de música (o volume do painel
+   multiplica por cima): cama por baixo dos efeitos, não primeiro plano */
+const NIVEL_TRILHA={menu:.5,hub:.42,noite:.55,walkout:.75};
+const EFEITOS={clique:["ui-clique"],hover:["ui-hover"],aba:["ui-aba"],carta:["carta"],caixa:["caixa"],
+  conquista:["conquista"],flashes:["flashes"],vaia:["vaia"],vitoria:["vinheta-vitoria"],derrota:["vinheta-derrota"],
+  golpeLeve:["golpe-leve-1","golpe-leve-2","golpe-leve-3"],golpePesado:["golpe-pesado-1","golpe-pesado-2","golpe-pesado-3"],
+  queda:["queda-1","queda-2"],sinoInicio:["sino-inicio"],sinoFim:["sino-fim"],
+  torcidaExplode:["torcida-explode"],torcidaSobe:["torcida-sobe"]};
+const BUF={};          // nome do arquivo -> AudioBuffer, ou false se falhou
+const CARREGANDO={};
+function carregarEfeito(nome){
+  const a=ctx(); if(!a)return Promise.resolve(null);
+  if(nome in BUF)return Promise.resolve(BUF[nome]);
+  if(!CARREGANDO[nome])CARREGANDO[nome]=(async()=>{
     try{
-      const r=await fetch(url); if(!r.ok)throw 0;
-      BUF[k]=await a.decodeAudioData(await r.arrayBuffer());
-    }catch(e){ /* fica sem: o sintetizado cobre */ }
-  }));
+      const r=await fetch(DIR_AUDIO+nome+".mp3"); if(!r.ok)throw 0;
+      BUF[nome]=await a.decodeAudioData(await r.arrayBuffer());
+    }catch(e){ BUF[nome]=false; }   // fica sem: o sintetizado cobre
+    return BUF[nome];
+  })();
+  return CARREGANDO[nome];
 }
+/* depois do primeiro gesto: baixa e decodifica os efeitos (~0,5 MB) em
+   segundo plano, pra nenhum tocar atrasado na primeira vez */
+function carregaAudio(){
+  return Promise.all([].concat(...Object.values(EFEITOS)).map(carregarEfeito));
+}
+/* Toca um efeito real; devolve false se ele não existe ainda (carregando
+   ou falhou) e quem chamou toca o sintetizado. A variação entre golpes usa
+   Math.random: som não é jogo, nunca toca um gerador da carreira. */
 function toca(k,ganho=1){
-  const a=ctx(); if(!a||!BUF[k])return false;
-  const s=a.createBufferSource(); s.buffer=BUF[k];
+  const a=ctx(); if(!a)return false;
+  const lista=EFEITOS[k]; if(!lista)return false;
+  const nome=lista[Math.floor(Math.random()*lista.length)];
+  const b=BUF[nome];
+  if(!b){ if(!(nome in BUF))carregarEfeito(nome); return false; }
+  const s=a.createBufferSource(); s.buffer=b;
   const g=a.createGain(); g.gain.value=ganho;
   s.connect(g).connect(BUS); s.start();
   return true;
 }
-let BGM=null;
-function bgmLiga(){
-  const a=ctx(); if(!a||!BUF.bgm||BGM) return false;
-  const s=a.createBufferSource(); s.buffer=BUF.bgm; s.loop=true;
-  const g=a.createGain(); g.gain.setValueAtTime(.0001,a.currentTime);
-  g.gain.exponentialRampToValueAtTime(.34,a.currentTime+2.5);
-  s.connect(g).connect(MUSICA); s.start();
-  BGM={s,g}; return true;
+
+/* ---------------- TRILHA POR TELA ----------------
+   Uma função pura decide a trilha a partir da tela (contextoTrilha) e a
+   troca é um crossfade de 1 s. O walkout entra na entrada da luta e, com
+   a luta começando, continua por baixo com passa-baixa (a "batida grave
+   baixa") e a torcida por cima. */
+let audioLiberado=false,trilhaAtual=null,vinhetaAte=0,TORCIDA=null;
+const FAIXAS={};
+function rampa(p,v,s,atraso=0){
+  if(!AC||!p)return;
+  try{
+    const t=AC.currentTime;
+    p.cancelScheduledValues(t);
+    p.setValueAtTime(Math.max(.0001,p.value),t);
+    if(atraso)p.setValueAtTime(Math.max(.0001,p.value),t+atraso);
+    p.linearRampToValueAtTime(Math.max(.0001,v),t+atraso+s);
+  }catch(e){ try{ p.value=v; }catch(e2){} }
 }
-function bgmDesliga(){
-  if(!BGM||!AC)return;
-  const t=AC.currentTime;
-  BGM.g.gain.cancelScheduledValues(t);
-  BGM.g.gain.setValueAtTime(Math.max(.0001,BGM.g.gain.value),t);
-  BGM.g.gain.exponentialRampToValueAtTime(.0001,t+.9);
-  const s=BGM.s; setTimeout(()=>{try{s.stop();}catch(e){}},1000);
-  BGM=null;
+function faixaAudio(arquivo,destino){
+  const a=ctx();
+  if(!a||typeof Audio==="undefined"||!a.createMediaElementSource)return null;
+  try{
+    const el=new Audio(DIR_AUDIO+arquivo); el.loop=true; el.preload="auto";
+    const f=a.createBiquadFilter(); f.type="lowpass"; f.frequency.value=20000;
+    const g=a.createGain(); g.gain.value=.0001;
+    a.createMediaElementSource(el).connect(f).connect(g).connect(destino);
+    return{el,f,g,falhou:false};
+  }catch(e){ return null; }
+}
+function faixa(nome){
+  if(FAIXAS[nome])return FAIXAS[nome];
+  const fx=faixaAudio(TRILHAS[nome],MUSICA);
+  if(!fx)return null;
+  fx.el.addEventListener("error",()=>{ fx.falhou=true; if(trilhaAtual===nome)trilhaLiga(); });
+  FAIXAS[nome]=fx;
+  return fx;
+}
+function tocarElemento(el){ try{ const p=el.play(); if(p&&p.catch)p.catch(()=>{}); }catch(e){} }
+function trocarTrilha(nome){
+  if(nome===trilhaAtual)return;
+  trilhaAtual=nome;
+  /* descer e pausar usa o AC que já existe (com mudo, ctx() devolve null
+     e a música que estava tocando continuaria); só subir precisa de ctx() */
+  Object.keys(FAIXAS).forEach(n=>{
+    if(n===nome)return;
+    const fx=FAIXAS[n];
+    rampa(fx.g.gain,.0001,1);
+    setTimeout(()=>{ if(trilhaAtual!==n){ try{ fx.el.pause(); }catch(e){} } },1150);
+  });
+  if(!nome){ trilhaDesliga(); return; }
+  const a=ctx(); if(!a)return;
+  const fx=faixa(nome);
+  if(!fx||fx.falhou){ trilhaLiga(); return; }      // sem arquivo, cai no bordão sintetizado
+  trilhaDesliga();
+  tocarElemento(fx.el);
+  /* vinheta tocando: a trilha nova espera ela acabar pra subir */
+  rampa(fx.g.gain,NIVEL_TRILHA[nome]||.5,1,Math.max(0,vinhetaAte-a.currentTime));
+}
+function abafarWalkout(sim){
+  const fx=FAIXAS.walkout;
+  if(!fx||!AC)return;
+  try{ fx.f.frequency.setTargetAtTime(sim?380:20000,AC.currentTime,sim?.35:.2); }catch(e){}
+  if(trilhaAtual==="walkout")rampa(fx.g.gain,(sim?.55:1)*NIVEL_TRILHA.walkout,.8);
+}
+function torcidaAmbiente(liga){
+  if(!AC)return;
+  if(liga){
+    if(!TORCIDA)TORCIDA=faixaAudio("torcida-ambiente.mp3",BUS);
+    if(!TORCIDA)return;
+    if(TORCIDA.el.paused)tocarElemento(TORCIDA.el);
+    rampa(TORCIDA.g.gain,.5,1.2);
+  }else if(TORCIDA){
+    rampa(TORCIDA.g.gain,.0001,1);
+    const t=TORCIDA;
+    setTimeout(()=>{ if(!(noiteEtapa==="luta"||noiteEtapa==="entrada")){ try{ t.el.pause(); }catch(e){} } },1150);
+  }
+}
+/* Qual trilha cabe na tela de agora. Pura: só lê a tela e a etapa da
+   noite de luta. */
+function contextoTrilha(){
+  const tela=document.documentElement.dataset.tela;
+  if(tela==="hub"){
+    if(noiteEtapa==="entrada"||noiteEtapa==="luta")return "walkout";
+    if(noiteEtapa)return "noite";
+    return "hub";
+  }
+  return "menu";
+}
+function atualizarTrilha(){
+  if(!audioLiberado||mudo)return;
+  trocarTrilha(contextoTrilha());
+  abafarWalkout(noiteEtapa==="luta");
+  torcidaAmbiente(document.documentElement.dataset.tela==="hub"&&(noiteEtapa==="luta"||noiteEtapa==="entrada"));
+}
+/* Vinheta de vitória ou derrota: abaixa a trilha de agora enquanto toca,
+   e a próxima trilha só sobe depois dela. */
+function tocarVinheta(ganhou){
+  const a=ctx(); if(!a)return false;
+  const ok=toca(ganhou?"vitoria":"derrota",.95);
+  if(!ok)return false;
+  vinhetaAte=a.currentTime+(ganhou?5.5:4.5);
+  const fx=trilhaAtual&&FAIXAS[trilhaAtual];
+  if(fx){
+    const n=trilhaAtual;
+    rampa(fx.g.gain,(NIVEL_TRILHA[n]||.5)*.25,.25);
+    setTimeout(()=>{ if(trilhaAtual===n)rampa(fx.g.gain,NIVEL_TRILHA[n]||.5,1.5); },(ganhou?5:4)*1000);
+  }
+  return true;
+}
+/* Efeito de cada linha da narração, pelo TIPO que o motor já dá e pelo
+   texto: queda é derrubada (takedown), knockdown é "foi ao chão".
+   Pura, testada na suíte som. */
+function somDaLinha(L){
+  const t=String(L&&L.text||"");
+  if(L.kind==="rd")return /^Round/.test(t)?"sinoInicio":/^Fim/.test(t)?"sinoFim":null;
+  if(L.kind==="kd")return "knockdown";
+  if(L.kind==="fin")return /ocaute/.test(t)?"nocaute":/finaliza/i.test(t)?"finalizacao":null;
+  if(L.kind==="big"){
+    if(/finaliza/i.test(t))return "quaseFinalizacao";
+    if(/^Queda de|Levou pro chão/.test(t))return "queda";
+    return "golpePesado";
+  }
+  if(/acerta mais na troca|Troca parelha/.test(t))return "golpeLeve";
+  return null;
 }
 
 function armarTrilha(){
   if(!document.addEventListener)return;      // ambiente sem eventos: sem trilha, sem erro
-  const arma=async()=>{
-    await carregaAudio();
-    if(!bgmLiga())trilhaLiga();          // sem arquivo, cai no bordão sintetizado
+  const arma=()=>{
+    audioLiberado=true;
+    if(!mudo){ carregaAudio(); atualizarTrilha(); }
     document.removeEventListener("pointerdown",arma);
     document.removeEventListener("keydown",arma); };
   document.addEventListener("pointerdown",arma);
   document.addEventListener("keydown",arma);
+  /* hover só com mouse de verdade (toque não tem hover), em card e botão */
+  let ultimo=null,quando=0;
+  document.addEventListener("pointerover",e=>{
+    if(!e||e.pointerType!=="mouse"||!audioLiberado||semHover())return;
+    const alvo=e.target&&e.target.closest&&e.target.closest(".cartao,.botao,.guia-hub,.opp,.camp,.el-opts button,.save-slot");
+    if(!alvo||alvo===ultimo)return;
+    ultimo=alvo;
+    const agora=Date.now(); if(agora-quando<70)return; quando=agora;
+    SOM.hover();
+  });
 }
 
 /* Rampa curta em vez de salto: arrastar a barra mexe no ganho dezenas de vezes
@@ -3172,14 +3335,14 @@ function definirVolume(qual,v){
 function definirMudo(v){
   mudo=!!v;
   try{localStorage.setItem("mudo",mudo?"1":"0");}catch(e){}
-  if(mudo){ bgmDesliga(); trilhaDesliga(); return; }
+  if(mudo){ ajustaGanho(MASTER,0); trocarTrilha(null); torcidaAmbiente(false); trilhaDesliga(); return; }
   SOM.toque();                 // é ele que faz o contexto nascer
+  ajustaGanho(MASTER,.9);
   aplicarVolumes();
-  /* Quem começou mudo nunca chegou a baixar os arquivos: o ctx() devolvia null
-     e o carregaAudio saía na primeira linha. Carrega agora, e só então escolhe
-     entre arquivo e bordão sintetizado. */
-  try{ carregaAudio().then(()=>{ if(!bgmLiga())trilhaLiga(); }); }
-  catch(e){ if(!bgmLiga())trilhaLiga(); }
+  audioLiberado=true;
+  trilhaAtual=null;
+  carregaAudio();
+  atualizarTrilha();
 }
 
 /* =========================================================================
@@ -3913,6 +4076,7 @@ function telaAdversario(guardadas){
     b.onclick=()=>{SOM.toque();telaCamp(o);};
     g.appendChild(b);
   });
+  SOM.carta();
   mostrarNoite("oferta");
 }
 /* Comparação na carta da oferta (revamp fase 5): só dado público de
@@ -3966,6 +4130,7 @@ function telaCamp(escolhido){
     b.onclick=()=>{SOM.toque();box.style.display="none";box.innerHTML="";telaColetiva(escolhido,c);};
     g.appendChild(b);
   });
+  SOM.carta();
   mostrarNoite("camp");
 }
 
@@ -4036,6 +4201,7 @@ function telaColetiva(escolhido,camp){
     aplicarColetiva(box,opp,txt,j,seguir);
   };
   if(meuPro)inp.focus();
+  SOM.flashes();
   mostrarNoite("coletiva");
 }
 function aplicarColetiva(box,opp,txt,jBruto,seguir){
@@ -5129,7 +5295,7 @@ function abrirPainelTreinador(){
         if((st.dinheiro||0)<custo)return;
         st.dinheiro-=custo;
         item.comprar();
-        SOM.toque();
+        SOM.caixa();
         salvarCarreira();
         renderBarraHub();
         abrirPainelTreinador();        // redesenha já adquirido
@@ -5400,6 +5566,7 @@ function montarTela({fundo=null,vivo=false,titulo=null,voltar="menu",classe=""}=
   if(cfgAberto)fecharConfig();
   document.documentElement.dataset.tela="nova";
   document.documentElement.dataset.noite="0";
+  atualizarTrilha();
   app.innerHTML="";
   const tela=el("div","tela"+(classe?" "+classe:""));
   if(fundo)tela.appendChild(fundoTela(fundo,{vivo}));
@@ -5866,6 +6033,12 @@ const CREDITOS=[
     {nome:"Raspagem dos dados",autor:"Greco1899/scrape_ufc_stats",licenca:"GPL-3.0 (código)",link:"https://github.com/Greco1899/scrape_ufc_stats"}]},
   {grupo:"Imagens",itens:[
     {nome:"Fundos do jogo",autor:"Gerados com Gemini 3 Pro Image (Google) via OpenRouter e tratados pelo Octógono",licenca:"Uso próprio",link:""}]},
+  {grupo:"Música e sons",itens:[
+    {nome:"Músicas: Nine To Death, Busted Jazz, Re Adusjtment, Pantheon, Chills",autor:"HoliznaCC0",licenca:"CC0 1.0 (domínio público)",link:"https://freemusicarchive.org/music/holiznacc0/"},
+    {nome:"Torcida: Free Crowd Cheering Sounds",autor:"Gregor Quendel",licenca:"CC BY 4.0",link:"https://opengameart.org/content/free-crowd-cheering-sounds"},
+    {nome:"Vaia: Crowd Booing",autor:"Free Sounds Library",licenca:"CC BY 4.0",link:"https://www.freesoundslibrary.com/crowd-booing/"},
+    {nome:"Golpes, interface, fichas e jingles: Impact Sounds, Interface Sounds, UI Audio, Casino Audio, Music Jingles",autor:"Kenney",licenca:"CC0 1.0 (domínio público)",link:"https://kenney.nl/assets/category:Audio"},
+    {nome:"Sino e flashes: Boxing bell #1, Paparazzi #2",autor:"Joseph Sardin (BigSoundBank)",licenca:"CC0 1.0 (domínio público)",link:"https://bigsoundbank.com"}]},
   {grupo:"Ícones",itens:[
     {nome:"Lucide",autor:"Lucide Contributors",licenca:"ISC",link:"https://lucide.dev"}]},
   {grupo:"Fontes",itens:[
@@ -6920,6 +7093,7 @@ function montarTelaCarreira(){
   app.appendChild(tela);
   abrirAbaHub("painel");
   atualizarControles();
+  atualizarTrilha();
 }
 /* =========================================================================
    NOITE DE LUTA (revamp fase 5): camada em tela cheia por cima do hub.
@@ -7051,6 +7225,7 @@ function mostrarNoite(etapa,fundo){
   if(l)l.innerHTML=`Luta <b>${Math.min(TOTAL_FIGHTS,antes?fightNo+1:fightNo)}</b> de ${TOTAL_FIGHTS}`;
   if(mudou)n.scrollTop=0;
   atualizarControles();
+  atualizarTrilha();
 }
 function esconderNoite(){
   const n=document.getElementById("noite");
@@ -7060,6 +7235,7 @@ function esconderNoite(){
   arquivarPosLuta();
   abrirAbaHub("painel");
   atualizarControles();
+  atualizarTrilha();
 }
 function voltarNoite(){
   SOM.toque();
@@ -7092,7 +7268,7 @@ function montarGuiasHub(){
     const g=el("button","guia-hub"+(ABAS_NA_FOLHA.includes(a.id)?" guia-folha":""),
       `${ICONE(a.ic)}<span class="guia-rot">${a.rot}</span><span class="guia-badge" id="badge_${a.id}"></span>`);
     g.type="button";g.id="guia_"+a.id;g.dataset.aba=a.id;
-    g.onclick=()=>{SOM.toque();abrirAbaHub(a.id);};
+    g.onclick=()=>{SOM.aba();abrirAbaHub(a.id);};
     nav.appendChild(g);
   });
   const mais=el("button","guia-hub guia-mais",`${ICONE("mais")}<span class="guia-rot">Mais</span>`);
@@ -7670,11 +7846,9 @@ function animarTrecho(lines,aoTerminar){
       `<span class="clk">${L.clock}</span><span>${L.text}</span>`);
     play.appendChild(row);
     row.scrollIntoView({behavior:"smooth",block:"nearest"});
-    /* o som sai do TIPO da linha, que o motor já classifica */
-    if(L.kind==="kd")SOM.queda();
-    else if(L.kind==="rd"&&/^Fim/.test(L.text))SOM.sino();
-    else if(L.kind==="big")SOM.golpe();
-    else if(L.kind==="fin"&&/ocaute/.test(L.text))SOM.nocaute();
+    /* o som sai do TIPO da linha e do texto (somDaLinha, fase 6) */
+    const efeito=somDaLinha(L);
+    if(efeito&&SOM[efeito])SOM[efeito]();
     if(L.kind==="fin"&&/ocaute/.test(L.text)&&!reduceMotion()){
       document.body.classList.add("ko");
       setTimeout(()=>document.body.classList.remove("ko"),440);
@@ -8110,7 +8284,8 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     st.momentos.length=momentosAntes;
     st.momentos.push(melhor);
   }
-  verificarConquistas();
+  if(verificarConquistas().length)setTimeout(()=>SOM.conquista(),won?1800:1200);
+  if(!won&&r.method==="Decisão")setTimeout(()=>SOM.vaia(),900);   // a arena vaia os cartões
   atualizarControles();renderFicha();
   /* luta terminada: some a pendência (se abriu dilema, abrirDilema() grava
      a pendência dele logo depois, quando o texto estiver pronto) */
