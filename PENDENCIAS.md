@@ -1775,6 +1775,46 @@ sozinho — causa raiz e conserto.** Usuário pagou R$9,99 de verdade
   painel da Asaas) é a fonte de verdade sobre se uma tentativa
   aconteceu; o log de quem recebe só mostra o que efetivamente chegou.
 
+**Incidente real (2026-09-28): pagamento de teste não ativou o Pro, de
+novo.** O dono pagou com a conta de teste giocabralpg@gmail.com; a Asaas
+gerou o comprovante e o Pro não ativou. Não deu pra ver o motivo exato: a
+Vercel (plano grátis) guarda log por pouco tempo e o webhook não escrevia
+nada. O ponto fraco era estrutural: **só o webhook ativava o Pro**, e ele
+falha calado de várias formas (evento desmarcado no painel, fila de
+webhooks pausada pela Asaas, token trocado, gravação no Supabase falhando
+e mesmo assim marcada como processada). Conserto (hotfix direto no
+`master`):
+
+- `api/confirmar-pagamento.js` (novo): quem volta pro jogo confere DIRETO
+  na Asaas (cobranças com `externalReference` = id da conta, provada pelo
+  token) e ativa na hora. O jogo chama isso:
+  - ao abrir o Plano Pro sem Pro;
+  - ao voltar pra aba com pagamento pendente (marca de 72 h);
+  - a cada 10 s por 15 min depois de abrir a cobrança;
+  - no botão "Já paguei, conferir";
+  - ao abrir o jogo com pagamento pendente.
+- Um pagamento ativa **uma vez só**, venha pelo webhook ou pela
+  conferência (`api/_pro.js`, `EVENTOS_ATIVACAO`). Achado no caminho:
+  cartão manda `PAYMENT_CONFIRMED` e depois `PAYMENT_RECEIVED`, e com a
+  chave por evento cada um somava 30 dias (60 no total).
+- Falha ao gravar no Supabase responde 500 (a Asaas reenvia) em vez de 200
+  com o pagamento marcado como processado.
+- O webhook escreve no log cada caminho de saída ("webhook-asaas ...", sem
+  segredo): `vercel logs` logo depois de um pagamento mostra onde parou.
+- A cobrança abre em **aba nova**, aberta dentro do clique (depois dos
+  awaits o navegador bloqueia como pop-up); se bloquear mesmo assim, a tela
+  mostra o link.
+- Suíte nova `pagamento`, com dente provado (quebrando cada conserto de
+  propósito).
+
+**Depende do dono:**
+1. Abrir o jogo com a conta de teste e entrar no Plano Pro: a conferência
+   deve achar o pagamento e liberar o Pro sozinha.
+2. No painel da Asaas, em Integrações → Webhooks: conferir se a fila está
+   ativa (não pausada), se os eventos de pagamento confirmado, recebido e
+   estornado estão marcados, e o que o log de entregas mostra pro
+   pagamento de hoje.
+
 ## 33. Plano Pro: visibilidade pós-pagamento (2026-09-22)
 
 Jogado depois do item 6 no ar, achado real (não teoria): o plano existia

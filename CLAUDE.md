@@ -74,6 +74,10 @@ metade). Regras do revamp que valem daqui pra frente:
   `index.html` (inclusive dentro de `${}`) e travessão em `api/`. Texto da
   IA passa por `limparTextoIA()` em `tentarChamadaIA()`; resposta nova da
   IA fora desse caminho precisa passar pelo filtro também.
+- **Pro não depende só do webhook da Asaas.** `api/confirmar-pagamento.js`
+  confere direto na Asaas quando o jogador volta; os dois usam
+  `api/_pro.js`, e um pagamento ativa uma vez só (cartão manda dois
+  eventos). Mexeu em pagamento: `node testar.js pagamento`.
 - **`api/placar.js` só existe em produção depois do deploy**, igual ao
   `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
   rota); a suíte `placar` compara as faixas com o `grade()` do jogo.

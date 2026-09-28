@@ -908,7 +908,8 @@ function getSupabase(){
            Confere ao abrir com sessão salva (INITIAL_SESSION) e a cada
            login; zera no logout. setTimeout porque chamar o Supabase de
            dentro deste callback pode travar (aviso da própria biblioteca). */
-        if((event==="INITIAL_SESSION"||event==="SIGNED_IN")&&session)setTimeout(atualizarStatusPro,0);
+        if((event==="INITIAL_SESSION"||event==="SIGNED_IN")&&session)
+          setTimeout(()=>{ if(pagamentoPendente())conferirPagamento().then(()=>atualizarStatusPro()); else atualizarStatusPro(); },0);
         if(event==="SIGNED_IN"&&session)avisarContaNovaGoogle(session.user);
         if(event==="SIGNED_OUT")meuPro=false;
       });
@@ -1585,7 +1586,44 @@ function montarCarrosselPro(container){
    ainda não estiver publicado, a resposta 503 vira a mensagem inline,
    sem esconder nada nem fingir estado que o cliente não pode saber de
    antemão. */
-async function renderPlanoPro(container,session){
+/* Pagamento em outra aba e conferência na volta (2026-09-28): pagamento
+   real de teste ficou sem Pro porque só o webhook da Asaas ativava. O
+   webhook continua sendo o caminho normal; quem volta pro jogo confere
+   direto na Asaas (api/confirmar-pagamento.js), que ativa na hora e nunca
+   duas vezes pelo mesmo pagamento. A marca de pagamento pendente (72 h)
+   faz o jogo conferir sozinho ao voltar pra aba e ao abrir o jogo. */
+const CHAVE_PAG_PENDENTE="pagamentoPendente";
+function marcarPagamentoPendente(){ try{ localStorage.setItem(CHAVE_PAG_PENDENTE,String(Date.now())); }catch(e){} }
+function pagamentoPendente(){ try{ const t=Number(localStorage.getItem(CHAVE_PAG_PENDENTE)); return !!t&&Date.now()-t<72*3600e3; }catch(e){ return false; } }
+function limparPagamentoPendente(){ try{ localStorage.removeItem(CHAVE_PAG_PENDENTE); }catch(e){} }
+let conferindoPagamento=null;
+function conferirPagamento(){
+  if(conferindoPagamento)return conferindoPagamento;
+  conferindoPagamento=(async()=>{
+    const token=await meuAccessToken();
+    if(!token)return null;
+    try{
+      const r=await fetch("/api/confirmar-pagamento",{method:"POST",
+        headers:{"Content-Type":"application/json"},body:JSON.stringify({token})});
+      const j=await r.json().catch(()=>null);
+      if(!r.ok||!j)return null;
+      if(j.pro){ meuPro=true; limparPagamentoPendente(); }
+      return j;
+    }catch(e){ return null; }
+  })();
+  conferindoPagamento.then(()=>{ conferindoPagamento=null; },()=>{ conferindoPagamento=null; });
+  return conferindoPagamento;
+}
+/* Voltou pra aba do jogo com pagamento pendente: confere; se liberou e a
+   tela do Plano Pro está aberta, redesenha. Um ouvinte só, pro jogo todo. */
+let redesenharPlanoPro=null;
+try{
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState!=="visible"||!pagamentoPendente())return;
+    conferirPagamento().then(j=>{ if(j&&j.pro&&redesenharPlanoPro)redesenharPlanoPro(); });
+  });
+}catch(e){}
+async function renderPlanoPro(container,session,{conferido=false}={}){
   const box=el("div","conta-pro");
   container.appendChild(box);
   box.appendChild(el("p","hint","Verificando Plano Pro…"));
@@ -1599,6 +1637,13 @@ async function renderPlanoPro(container,session){
   meuPro=pro;
   box.innerHTML="";
   box.appendChild(el("h4","","Plano Pro"));
+  const redesenhar=()=>{ if(box.remove)box.remove(); renderPlanoPro(container,session,{conferido:true}); };
+  redesenharPlanoPro=redesenhar;
+  if(!pro&&!conferido){
+    /* pagou e o webhook não ativou (ou ainda não chegou): a própria tela
+       confere na Asaas e redesenha já com o Pro */
+    conferirPagamento().then(j=>{ if(j&&j.ativados&&j.pro)redesenhar(); });
+  }
   if(pro&&!data.expira_em){
     /* Pro sem data de expiração (plano "unico", o pagamento de antes dos
        30 dias, ou conta liberada à mão): new Date(null) mostrava
@@ -1640,6 +1685,20 @@ async function renderPlanoPro(container,session){
   cpfIn.oninput=validar;
   const erro=(txt)=>{ msg.className="hint msg-erro"; msg.textContent=txt; };
   btn.onclick=async()=>{
+    /* Aba nova aberta JÁ, dentro do clique: depois dos awaits o navegador
+       trata window.open como pop-up e bloqueia. Ela mostra "abrindo" até a
+       cobrança existir; se o navegador bloquear mesmo assim, a tela mostra
+       um link pra abrir na mão. */
+    let aba=null;
+    try{
+      aba=window.open("","_blank");
+      if(aba){
+        try{ aba.opener=null; }catch(e){}
+        try{ aba.document.title="Octógono: pagamento";
+          aba.document.body.innerHTML='<p style="font-family:sans-serif;padding:24px">Abrindo a página de pagamento da Asaas…</p>'; }catch(e){}
+      }
+    }catch(e){ aba=null; }
+    const falhar=t=>{ try{ if(aba)aba.close(); }catch(e){} erro(t); validar(); };
     btn.disabled=true;
     msg.className="hint";
     msg.textContent="Processando…";
@@ -1648,8 +1707,7 @@ async function renderPlanoPro(container,session){
         {user_id:session.user.id,versao_termos:VERSAO_TERMOS_PAGAMENTO},
         {onConflict:"user_id,versao_termos",ignoreDuplicates:true});
     }catch(e){
-      erro("Não deu pra registrar o aceite dos Termos. Tenta de novo.");
-      validar();
+      falhar("Não deu pra registrar o aceite dos Termos. Tenta de novo.");
       return;
     }
     let r,j;
@@ -1661,16 +1719,53 @@ async function renderPlanoPro(container,session){
       });
       j=await r.json().catch(()=>({}));
     }catch(e){
-      erro("Falha de rede. Tenta de novo em instantes.");
-      validar();
+      falhar("Falha de rede. Tenta de novo em instantes.");
       return;
     }
-    if(r.status===503){ erro("Pagamento ainda não está disponível nesta versão."); validar(); return; }
-    if(!r.ok||!j.invoiceUrl){ erro("Não deu pra criar o pagamento agora. Tenta de novo em instantes."); validar(); return; }
-    msg.className="hint msg-ok";
-    msg.textContent="Redirecionando pro pagamento…";
-    location.href=j.invoiceUrl;
+    if(r.status===503){ falhar("Pagamento ainda não está disponível nesta versão."); return; }
+    if(!r.ok||!j.invoiceUrl){ falhar("Não deu pra criar o pagamento agora. Tenta de novo em instantes."); return; }
+    marcarPagamentoPendente();
+    let abriu=false;
+    if(aba&&!aba.closed){ try{ aba.location.href=j.invoiceUrl; abriu=true; }catch(e){} }
+    esperarPagamento(box,j.invoiceUrl,abriu,redesenhar);
   };
+}
+/* Depois de abrir a cobrança: o formulário sai, fica a espera. Confere
+   sozinho a cada 10 s por 15 min (Pix pago no celular, com o jogo aberto
+   no computador) e na volta pra aba; "Já paguei, conferir" confere na
+   hora. */
+function esperarPagamento(box,invoiceUrl,abriu,redesenhar){
+  box.innerHTML="";
+  box.appendChild(el("h4","","Plano Pro"));
+  box.appendChild(el("p","hint",abriu
+    ?"A página de pagamento da Asaas abriu em outra aba. Depois de pagar, volte aqui: o Pro é liberado sozinho assim que a Asaas confirmar (Pix leva segundos, cartão alguns minutos)."
+    :"Seu navegador bloqueou a aba nova. Abra a página de pagamento pelo link abaixo; depois de pagar, volte aqui."));
+  if(!abriu){
+    const a=el("a","botao",`<span>Abrir a página de pagamento</span>${ICONE("seta-dir")}`);
+    a.href=invoiceUrl;a.target="_blank";a.rel="noopener";
+    box.appendChild(a);
+  }
+  const conferir=el("button","btn btn-sm","Já paguei, conferir");conferir.id="proConferir";conferir.type="button";
+  box.appendChild(conferir);
+  const aviso=el("p","hint","");
+  box.appendChild(aviso);
+  const liberado=()=>{ SOM.caixa&&SOM.caixa(); redesenhar(); };
+  conferir.onclick=async()=>{
+    conferir.disabled=true;aviso.className="hint";aviso.textContent="Conferindo na Asaas…";
+    const j=await conferirPagamento();
+    conferir.disabled=false;
+    if(j&&j.pro)return liberado();
+    aviso.className="hint msg-erro";
+    aviso.textContent=j
+      ?"A Asaas ainda não mostra o pagamento como pago. Se você já pagou, espere um pouco e confira de novo."
+      :"Não deu pra conferir agora. Tenta de novo em instantes.";
+  };
+  const fim=Date.now()+15*60e3;
+  const rodada=()=>{
+    if(box.isConnected===false||Date.now()>fim||meuPro)return;
+    conferirPagamento().then(j=>{ if(j&&j.pro)liberado(); else setTimeout(rodada,10e3); });
+  };
+  setTimeout(rodada,10e3);
 }
 
 /* Histórico (2026-09-09) virou as abas "Carreiras encerradas" e
@@ -5810,6 +5905,13 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-09-28",titulo:"Lutas mais duras",itens:[
+    "O lutador montado no draft começa no meio da divisão, e os adversários vêm mais fortes: quem joga bem vence perto de metade das lutas, e o cinturão ficou raro.",
+    "Cada adversário mostra a sua chance real na luta: Acessível, Parelho, Duro ou Perigoso.",
+    "A repercussão segue o medidor de fã: com fã baixo, a maioria dos comentários é contra você.",
+    "Na coletiva, a reação fica na tela até você apertar Ir pra luta.",
+    "O Pro é liberado assim que a Asaas confirma o pagamento: ao voltar pro jogo, ele confere sozinho, e o botão Já paguei confere na hora.",
+    "A página de pagamento abre em outra aba, sem tirar você do jogo."]},
   {data:"2026-09-27",titulo:"Visual novo",itens:[
     "Menu novo com páginas próprias para conta, atualizações e o ranking das carreiras encerradas de todos os jogadores.",
     "Nova carreira em 5 passos e tela de carreira com abas: painel, lutador, cartel, mídia, loja, cards e conquistas.",
