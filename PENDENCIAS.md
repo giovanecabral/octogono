@@ -2062,6 +2062,18 @@ faixa é mudar a fonte em `audio/preparar.py` e rodar de novo. A "caixa
 registradora" da loja é um som de fichas de cassino (não achei caixa
 registradora CC0).
 
+**Vazamento achado no deploy de 2026-09-27 (fechado daqui pra frente):**
+não existia `.vercelignore`, e o `vercel --prod` sobe a pasta local
+inteira. Os deploys anteriores publicaram `PLANO-LANCAMENTO.md` e
+`ESTADO-ATUAL.md` (estratégia de lançamento, tirados do histórico do GitHub
+de propósito) em `https://octogono.fun/PLANO-LANCAMENTO.md` e
+`/ESTADO-ATUAL.md`, com resposta 200. O `.env.local` NÃO vazou (a Vercel
+ignora sozinha). O `.vercelignore` novo deixa só o jogo subir. **Depende do
+dono:** os deploys antigos continuam acessíveis pelo endereço próprio de
+cada um (`*.vercel.app`); pra sumir de vez, apagar os deploys antigos no
+painel da Vercel ou ligar a proteção de deploys. E considerar o conteúdo
+dos dois arquivos como já público.
+
 **Achados da fase 5 (registrados, não resolvidos aqui):**
 - **`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**
   (`persona(rng)` pra cada post que a IA devolve). Com a IA no ar, a

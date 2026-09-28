@@ -1,0 +1,26 @@
+# O deploy (vercel --prod) sobe os arquivos LOCAIS desta pasta, não o git.
+# Sem esta lista, tudo que estiver na pasta vira arquivo público do site.
+# Só o jogo vai pro ar: index.html, 404.html, CSS, fighters.json, img/,
+# audio/ e api/.
+
+# Privado: nunca publicar
+ESTADO-ATUAL.md
+PLANO-LANCAMENTO.md
+.env*
+.claude
+
+# Material bruto e ferramentas
+audio/bruto
+img/bruto
+*.py
+data
+docs
+testar.js
+supabase_schema.sql
+referencia-*.png
+
+# Documentação do repositório (pública no GitHub, não faz parte do site)
+CLAUDE.md
+LEIA-ME.md
+PENDENCIAS.md
+README.md

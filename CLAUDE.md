@@ -167,6 +167,12 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   `--scope` dá "Not authorized", o projeto está sob um time. Commit antes de
   todo deploy. Deploy obrigatório sempre que `api/ai.js` mudar, antes de
   qualquer medição contra a API real.
+- **O deploy sobe a PASTA, não o git: `.vercelignore` decide o que vira
+  público.** Sem ele, os deploys até 2026-09-27 publicaram
+  `PLANO-LANCAMENTO.md` e `ESTADO-ATUAL.md` (tirados do GitHub de
+  propósito) em octogono.fun. Arquivo novo que não é do jogo (bruto,
+  ferramenta, doc, privado) entra no `.vercelignore` antes do próximo
+  deploy; depois do deploy, conferir com `curl -I` que ele dá 404.
 - **Commit não é push, e push não é deploy — os três são passos separados,
   nenhum substitui o outro.** `git commit` só grava local. `git push` sobe
   pro GitHub (`octogono`, repositório público de portfólio — ver
