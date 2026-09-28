@@ -254,6 +254,7 @@ create table if not exists banidos (
   criado_em timestamptz not null default now()
 );
 alter table banidos enable row level security;
+drop policy if exists "usuário vê se está banido" on banidos;
 create policy "usuário vê se está banido" on banidos for select using (auth.uid() = user_id);
 
 create table if not exists admin_log (
