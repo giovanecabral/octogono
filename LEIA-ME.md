@@ -174,6 +174,71 @@ usada; retrato não.
 A função que derivava rosto para eles foi **removida**, não deixada sem uso, para
 ninguém reintroduzir sem perceber.
 
+## Balanço (2026-09-28)
+
+**Problema, medido antes de mexer:** quem jogava vencia quase tudo. Foram
+50 carreiras por perfil de jogador (`node testar.js balanco`), todas pelo
+caminho real (draft, lutas, dilemas):
+
+- vencia 17 de 22 lutas;
+- 16 a 20% das carreiras terminavam com no máximo 2 derrotas;
+- o cinturão saía em 46 a 66% das carreiras.
+
+A causa: o lutador draftado já nascia melhor que 84% da divisão
+(`BUDGET_PCT` .76). Cara a cara, ele vencia 75 a 90% da escada, porque a
+nota dos lutadores reais (contra o mediano) não prevê a luta contra um
+lutador sem ponto fraco.
+
+**Pedido do dono:** ~50% de vitórias pra quem joga bem (carreira típica
+perto de 11-11) e cinturão raro (1 em 5 ou menos).
+
+**O que mudou (cada alavanca medida sozinha antes):**
+
+| alavanca | antes | agora | efeito medido sozinho |
+|---|---|---|---|
+| `BUDGET_PCT` | .76 | .35 | 17,2 → 13,9 vitórias; lutador do 84º pro 51º percentil |
+| faixas de adversário | -16..-7%, -3..+3%, +8..+20% | -6..+3%, +7..+13%, +18..+30% | quase nada sozinho (17,2 → 17,0) |
+| centro da escada | `standing` | nunca abaixo de 25% da divisão | tira a fila de vitória fácil depois de perder |
+| `TETO_TREINO` | 1.18 | 1.10 | ~ -0,5 vitória |
+
+**Resultado:** 50 carreiras por perfil, peso-leve, modo normal:
+
+| perfil | vitórias em 22 | cinturão |
+|---|---|---|
+| automático | 12,0 | 6% |
+| aleatório | 11,6 | 4% |
+| escolhe bem | 11,3 | 6% |
+| sempre o mais difícil | 11,0 | 8% |
+| lê o rótulo e pega a mais fácil | 12,5 | 4% |
+
+Também medido com quem escolhe bem: peso-pesado 11,2, mosca 10,8, modo
+Lenda 11,3. `node testar.js balanco` reprova fora de 9 a 14 vitórias,
+cinturão acima de 20% ou mais de 10% de carreiras quase sem derrota.
+
+**Dificuldade e zebra pela chance real.** Com os adversários acima da
+posição no ranking, a régua antiga (nota do adversário menos `standing`)
+rotulava as três cartas como "Perigoso" e fazia quase toda vitória virar
+zebra. `chanceContra(opp)` simula 24 lutas do jogador de agora (draft ×
+treino × evento) contra aquele adversário, com semente própria (o rng da
+carreira não mexe). Os rótulos seguem essa chance:
+
+- Acessível: 64% ou mais;
+- Parelho: 48 a 63%;
+- Duro: 34 a 47%;
+- Perigoso: menos de 34%.
+
+Zebra (hype, feed e card de momento) é vencer com menos de 35% (feed e
+hype) ou menos de 30% a partir da luta 6 (card). Ler os rótulos vale pouco
+mais de uma vitória na carreira (12,5 contra 11,3), sem deixar fácil.
+
+**Testes recalibrados, com o porquê no código:**
+
+- `draft`: alvo do lutador draftado de ~70 pra ~48 (40 a 56).
+- `escolhas`: "perigoso > acessível + 30 pontos" virou proporção (3× e
+  pelo menos 15 pontos, custando vitórias). Chegar ao topo ficou raro pra
+  todo mundo: 1%, 10% e 31%.
+- `momentos`: zebra pela chance real.
+
 ## Progressão do lutador
 
 O treino é **permanente**, e por isso precisa de teto. Sem ele, 22 camps de +10%
@@ -184,7 +249,7 @@ Cada atributo tem um multiplicador que começa em 1.00 e satura em
 o teto, então o primeiro camp rende a maior parte do ganho e os últimos quase
 nada — evolução de atleta, não escada infinita.
 
-**`TETO_TREINO` era 1.26, baixado para 1.18 em 2026-09-06.** Motivo:
+**`TETO_TREINO` é 1.10 desde o balanço de 2026-09-28 (ver "Balanço").** Histórico: **era 1.26, baixado para 1.18 em 2026-09-06.** Motivo:
 investigando por que 69,6% das carreiras conquistavam o cinturão (medido em
 500 carreiras, sem tocar TUNING/WEIGHTS), a decomposição mostrou que nem a
 escada de adversários se autocompensando (efeito ~nulo, banda fixa deu

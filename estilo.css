@@ -870,6 +870,8 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .noite .coletiva-provocar textarea:focus{outline:none;border-color:var(--sangue)}
 .noite .bloqueio-pro{max-width:640px}
 .coletiva-pular{margin-top:18px}
+.coletiva-seguir{margin-top:22px}
+.coletiva-seguir .ico{width:18px;height:18px}
 /* luta (visual completo na tarefa 6) */
 .noite .stage{display:none;grid-template-columns:none}
 .noite-luta-ctrl{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}

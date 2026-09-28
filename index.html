@@ -256,7 +256,13 @@ const PAIRS=[
   b:{key:"strDef",label:"Defesa de golpes",fmt:v=>(v*100).toFixed(0)+"%"}},
 ];
 const TOTAL_WEIGHT=Object.values(WEIGHTS).reduce((a,b)=>a+b,0);
-const BUDGET_PCT=.76;
+/* Balanço 2026-09-28 (era .76): jogadores venciam quase tudo. Medido em
+   50 carreiras por perfil (node testar.js balanco): com .76 o lutador
+   draftado já nascia melhor que 84% da divisão e vencia 17 de 22 lutas,
+   com cinturão em 46 a 66% das carreiras. Com .35 ele nasce perto do
+   meio da divisão; junto com o teto de treino e a escada de adversários
+   (candidatos()), quem joga bem vence ~11 de 22. Ver LEIA-ME "Balanço". */
+const BUDGET_PCT=.35;
 
 function makePercentiler(pool){
   const s={};Object.keys(WEIGHTS).forEach(k=>s[k]=pool.map(f=>f[k]).sort((x,y)=>x-y));
@@ -646,7 +652,9 @@ function hypeOf(r,won,opp,me_,titleFight,myKd,oppKd){
   if(r.round>=3&&r.method!=="Decisão")h+=0.8;      /* guerra longa */
   h+=myKd*1.1+oppKd*0.6;                          /* apanhar também é drama */
   if(titleFight)h+=2.2;
-  const upset=(opp.rating||.5)-(me_.__rating||.5);
+  /* zebra: chance real de vencer esta luta (chanceContra(), gravada em
+     me.__chance antes dela); .5 - chance > .15 = vencer com menos de 35% */
+  const upset=.5-(me_.__chance??.5);
   if(won&&upset>.15)h+=2.0*Math.min(1,upset*3);   /* zebra */
   h+=won?1.4:-0.8;
   return Math.max(0,h);
@@ -757,7 +765,15 @@ const TWEETS={
    O bug antigo: numa vitória por finalização o único bucket era subWin, com 3
    moldes pra 4 linhas. O laço tentava 8 vezes, desistia e repetia o comentário.
    Agora hater e meme sempre entram no pool, então nunca falta candidato. */
-function buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,name,followers=0){
+/* Hater pelo medidor de fã (pedido do dono, 2026-09-28): fã baixo = a
+   timeline é contra você, fã alto = quase todo mundo a favor. Antes o hater
+   crescia com a FAMA (seguidores). Peso por bucket, igual aos outros;
+   medido (node testar.js feedfa): fã 0 → ~2/3 dos posts de hater, fã 10 →
+   quase nenhum. HATERS_IA é a mesma régua em número de posts, pro prompt
+   do feed da IA (api/ai.js). */
+const pesoHater=fa=>0.3+14*Math.pow(1-Math.max(0,Math.min(10,fa))/10,1.5);
+const HATERS_IA=fa=>fa<3?3:fa<5.5?2:fa<8?1:0;
+function buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,name,fa=5){
   const ko=/ocaute/.test(r.method),sub=r.method==="Finalização";
   const cand=[];
   /* peso é POR BUCKET, dividido entre os moldes dele. Sem isso o bucket com
@@ -773,10 +789,7 @@ function buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,name,followers=0){
   if(oppKd>0)add("knockdown",3);
   if(r.method==="Decisão"&&!titleFight)add("boring",3);
   add("meme",2);
-  /* fama atrai hater: quase nenhum no começo, presença real no topo.
-     Escala entre 2 mil (fama 0) e 1 milhão de seguidores (fama 1). */
-  const fama=Math.max(0,Math.min(1,(Math.log10(Math.max(100,followers))-3.3)/2.7));
-  add("hater",.5+fama*4.5,true);
+  add("hater",pesoHater(fa),true);
 
   const out=[],usados=new Set();
   for(let i=0;i<4&&cand.length;i++){
@@ -2347,7 +2360,8 @@ let feedPromise=null;
 function prefetchFeed(r,won,opp,titleFight,myKd,oppKd,upset){
   feedPromise=ai("feed",{name:me.name,opp:opp.name,won,method:r.method,
     round:r.round,clock:r.clock,myKd,oppKd,title:titleFight,upset,
-    record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers)});
+    record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),
+    fa:Math.round(st.fan*10)/10,haters:HATERS_IA(st.fan)});
 }
 async function resolveFeed(fallback){
   /* Persona dos posts da IA com gerador PRÓPRIO (revamp fase 8). Antes
@@ -3808,7 +3822,8 @@ function confirmarAposentadoria(){
    pela metade não mudava o título em nada, 70,0%=70,0%; baixar o teto de
    1.26→1.18→1.12 tirava 9-10 pontos por passo). Efeito em vitórias
    remedido no teto novo — ver LEIA-ME. */
-const TETO_TREINO=1.18;
+/* 1.18 -> 1.10 no balanço de 2026-09-28 (ver BUDGET_PCT). */
+const TETO_TREINO=1.10;
 const CAMPS=[
  {id:"boxe",nome:"Boxe",desc:"Semanas na luva, cabeça saindo da linha.",
   ganho:"defesa de golpes e volume",
@@ -4060,9 +4075,14 @@ function candidatos(){
   /* No topo do ranking não existe "acima": a faixa perigosa colapsava num
      único adversário repetido e virava a opção MAIS fácil. Recuamos o centro
      para que as três faixas sempre tenham gente de verdade. */
-  const larg=0.20;
-  const c=Math.floor(Math.min(st.standing,1-larg)*(N-1));
-  const faixas=[[-0.16,-0.07,0.045],[-0.03,0.03,0.075],[0.08,larg,0.125]];
+  /* Balanço 2026-09-28: as três faixas subiram na escada (eram -16..-7%,
+     -3..+3% e +8..+20%) e o centro nunca fica abaixo de 25% da divisão:
+     o fundo da tabela (quem quase não vence ninguém) não aparece mais, e
+     perder não devolve o jogador pra uma fila de vitória fácil. Medido em
+     node testar.js balanco (LEIA-ME "Balanço"). */
+  const larg=0.30;
+  const c=Math.floor((0.25+(1-larg-0.25)*Math.min(st.standing/(1-larg),1))*(N-1));
+  const faixas=[[-0.06,0.03,0.045],[0.07,0.13,0.075],[0.18,larg,0.125]];
   const out=[];
   for(const [lo,hi,ganho] of faixas){
     const a=Math.max(0,Math.min(N-1,c+Math.round(lo*N)));
@@ -4103,11 +4123,29 @@ function candidatos(){
   return out;
 }
 
+/* Chance de o jogador vencer ESTE adversário, com os atributos de agora
+   (draft × treino × evento): 24 lutas simuladas com semente própria
+   (simulateFight), o rng da carreira não mexe. Balanço 2026-09-28: a escada
+   de adversários ficou acima da posição no ranking, e nem st.standing nem
+   a nota dos lutadores reais (rateAll, contra o mediano) previam a luta
+   contra o lutador draftado; o rótulo da carta e a zebra passaram a sair
+   daqui. Guardada por adversário e estado do jogador. */
+let cacheChance=null;
+function chanceContra(opp){
+  if(!me||!opp)return .5;
+  const chave=opp.name+"|"+fightNo+"|"+JSON.stringify(st.treino||{})+JSON.stringify(st.eventoMod||{});
+  if(!cacheChance||cacheChance.base!==JSON.stringify([DIVISION,MODO,SEED]))cacheChance={base:JSON.stringify([DIVISION,MODO,SEED]),v:{}};
+  if(chave in cacheChance.v)return cacheChance.v[chave];
+  const eu=lutadorEfetivo();
+  let w=0;
+  for(let s=1;s<=24;s++)if(simulateFight(eu,opp,{seed:s*31+7}).winner===eu.name)w++;
+  return cacheChance.v[chave]=w/24;
+}
 function dificuldade(opp){
-  const d=(opp.rating??.5)-st.standing;
-  if(d<-0.10)return{n:1,rot:"Acessível",pips:1};
-  if(d<0.04) return{n:2,rot:"Parelho",pips:2};
-  if(d<0.16) return{n:3,rot:"Duro",pips:3};
+  const p=chanceContra(opp);
+  if(p>=.64)return{n:1,rot:"Acessível",pips:1};
+  if(p>=.48)return{n:2,rot:"Parelho",pips:2};
+  if(p>=.34)return{n:3,rot:"Duro",pips:3};
   return{n:4,rot:"Perigoso",pips:4};
 }
 function bioLutador(f){
@@ -4316,8 +4354,13 @@ function aplicarColetiva(box,opp,txt,jBruto,seguir){
     box.innerHTML=`<div class="dil-eyebrow">Coletiva</div>
       <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
       <div class="dil-o">${bruto}</div>`;
+    /* Botão em vez de tempo fixo (pedido do dono, 2026-09-28): em 2,2 s
+       não dava pra ler a reação. A luta só começa quando o jogador manda. */
     const tk=CARREIRA_TOKEN;
-    setTimeout(()=>{ if(tk===CARREIRA_TOKEN)seguir(); },2200);
+    const ir=el("button","botao coletiva-seguir",`<span>Ir pra luta</span>${ICONE("seta-dir")}`);
+    ir.id="colseguir";ir.type="button";
+    ir.onclick=()=>{ if(tk!==CARREIRA_TOKEN)return; SOM.toque(); seguir(); };
+    box.appendChild(ir);
   }else seguir();
 }
 
@@ -7769,7 +7812,7 @@ function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
 function finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0,ehRival){
   const finish0=res.method!=="Decisão";
   if(fightNo%2===0||finish0)
-    prefetchFeed(res,won0,opp,titleFight,kd0,kdt0,won0&&(opp.rating-st.standing)>.15);
+    prefetchFeed(res,won0,opp,titleFight,kd0,kdt0,won0&&chanceContra(opp)<.35);
   finishFight(opp,res,titleFight,td0,tdt0,ehRival);
 }
 function lutar(escolhido,camp){
@@ -7802,7 +7845,7 @@ function lutar(escolhido,camp){
    feita antes de recarregar; reaplicada sem abrir a escolha de novo. */
 function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
   const comCamp=lutadorEfetivo();
-  me.__rating=st.standing;
+  me.__chance=chanceContra(opp);   // zebra no hype: chance real nesta luta, não o ranking
   const rounds=titleFight?5:3;
 
   /* Driver round a round (item 3, "escolha na luta"): o que simulateFight()
@@ -8122,6 +8165,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      mudam aqui, mas capturar junto deixa claro que são "antes desta luta",
      não "antes desta função". */
   const standingPre=st.standing;
+  const chancePre=chanceContra(opp);   // zebra: a chance que o jogador TINHA nesta luta
   const foiCampeaoAntes=st.foiCampeao,lutandoMachucado=!!st.lesao;
   /* Antes de mexer no standing: é daqui que sai a seta de subiu/caiu na ficha. */
   const _rkAntes=posicaoDivisao();
@@ -8336,7 +8380,11 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      carreiras, 77% dos upsets caíam nas lutas 1-5 só porque standing começa
      baixo (.18) — não é zebra de verdade, é o jogador ainda subindo do
      fundo da tabela. Ver LEIA-ME "Card de momento". */
-  const upset=won&&fightNo>=6&&(opp.rating-standingPre)>.20;
+  /* Balanço 2026-09-28: zebra é vencer com chance real baixa (chancePre,
+     simulada antes do resultado), não contra o ranking: a escada agora
+     oferece adversários acima da posição, e contra o ranking quase toda
+     vitória virava zebra. */
+  const upset=won&&fightNo>=6&&chancePre<.30;
   if(upset)st.momentos.push(criarMomento("upset",FRASE_UPSET(me.name,opp.name),opp,r));
   const alvo=Math.max(0,Math.min(10,1.3+hype*1.30));
   st.fan=Math.max(0,Math.min(10,st.fan*.62+alvo*.38));      /* média móvel */
@@ -8352,7 +8400,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   st.lastDelta=delta;
   const ph=document.getElementById("phone");
   if(ph){
-    const molde=buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,me.name,st.followers);
+    const molde=buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,me.name,st.fan);
     ph.style.visibility="visible";
     const tk=CARREIRA_TOKEN;
     resolveFeed(molde).then(f=>{ if(tk===CARREIRA_TOKEN)renderPhone(f,st.fan,delta,st.followers); });

@@ -34,7 +34,14 @@ function lerScript() {
   const html = fs.readFileSync(HTML, "utf8");
   const a = html.indexOf("<script>"), b = html.lastIndexOf("</script>");
   if (a < 0 || b < 0) { console.error(vermelho("não achei o <script> no index.html")); process.exit(1); }
-  return html.slice(a + 8, b).replace(/\bboot\(\);?\s*$/m, "");
+  let js = html.slice(a + 8, b).replace(/\bboot\(\);?\s*$/m, "");
+  /* Só pra MEDIR alternativas sem editar o jogo (suíte balanco):
+     BALANCO_SUBST='[["const X=1;","const X=2;"]]' troca trechos exatos. */
+  if (process.env.BALANCO_SUBST) for (const [de, para] of JSON.parse(process.env.BALANCO_SUBST)) {
+    if (!js.includes(de)) { console.error(vermelho("BALANCO_SUBST não achou: " + de)); process.exit(1); }
+    js = js.split(de).join(para);
+  }
+  return js;
 }
 function lerLutadores() {
   if (!fs.existsSync(JSON_LUTADORES)) {
@@ -783,10 +790,15 @@ function testarDraft(div = "lightweight") {
   }
   let w = 0, tw = 0;
   keys.forEach(k => { w += (100 * sum[k] / N) * M.WEIGHTS[k]; tw += M.WEIGHTS[k]; });
-  const media = w / tw, ok1 = media >= 60 && media <= 76;
+  /* Alvo mudou no balanço de 2026-09-28 (era 60 a 76, "~70, elite real"):
+     com o lutador de elite o jogador vencia 17 de 22. O dono pediu ~50% de
+     vitórias pra quem joga bem, e BUDGET_PCT foi de .76 pra .35: o lutador
+     draftado fica no meio da divisão (medido 48), e o treino e as escolhas
+     fazem o resto. Ver LEIA-ME "Balanço" e node testar.js balanco. */
+  const media = w / tw, ok1 = media >= 40 && media <= 56;
   const pmortas = 100 * mortas / linhas, ok2 = pmortas < 3;
-  console.log(`  ${ok1 ? verde("ok   ") : vermelho("fora ")} lutador draftado no ${media.toFixed(0)}º percentil  ${cinza("alvo ~70 (elite real)")}`);
-  if (!ok1) console.log(cinza(`         ${media > 76 ? "baixe" : "suba"} BUDGET_PCT no index.html`));
+  console.log(`  ${ok1 ? verde("ok   ") : vermelho("fora ")} lutador draftado no ${media.toFixed(0)}º percentil  ${cinza("alvo ~48 (meio da divisão, balanço 2026-09-28)")}`);
+  if (!ok1) console.log(cinza(`         ${media > 56 ? "baixe" : "suba"} BUDGET_PCT no index.html`));
   console.log(`  ${ok2 ? verde("ok   ") : vermelho("fora ")} linhas mortas na mesa ${pmortas.toFixed(1)}%  ${cinza("tem que ficar perto de 0")}`);
   return ok1 && ok2;
 }
@@ -987,10 +999,15 @@ function testarEscolhas(div = "lightweight") {
     console.log(`  ${rots[r.k].padEnd(10)} ${r.w.toFixed(1)} vitórias   chegou ao topo em ${r.top.toFixed(0)}% das carreiras`);
   });
 
+  /* Risco e recompensa: o perigoso chega ao topo muitas vezes mais que o
+     acessível, e cobra isso em vitórias. Era "perigoso > acessível + 30
+     pontos", medido quando o perigoso chegava ao topo em 99%; no balanço
+     de 2026-09-28 (~50% de vitórias) chegar ao topo ficou raro pra todo
+     mundo (1% / 10% / 31%), então a régua virou proporção. */
   const facil = linhas[0], duro = linhas[2];
-  const topoMaior = duro.top > facil.top + 30;
-  if (!topoMaior) console.log(vermelho("  fora  enfrentar fortes devia levar ao topo muito mais vezes"));
-  else console.log(verde("  ok   ") + "enfrentar fortes leva ao topo muito mais vezes");
+  const topoMaior = duro.top >= 3 * Math.max(1, facil.top) && duro.top >= facil.top + 15 && duro.w < facil.w;
+  if (!topoMaior) console.log(vermelho("  fora  enfrentar fortes devia levar ao topo muito mais vezes, custando vitórias"));
+  else console.log(verde("  ok   ") + "enfrentar fortes leva ao topo muito mais vezes, custando vitórias");
   return topoMaior;
 }
 
@@ -2098,27 +2115,39 @@ function testarMomentos() {
     passo("perda na 4ª defesa (não a 1ª) NÃO dispara cinturaoPerdido",
       !st.momentos.some(m=>m.tipo==="cinturaoPerdido"));
 
-    /* --- upset: compara com o standing de ANTES da vitória, luta>=6, diff>.20.
-       standingPre=.40, opp.rating=.63 (diff .23>.20) — COM o bug antigo
-       (comparar depois da vitória subir o standing pra .47) a diferença cai
-       pra .16 e não dispararia. Prova que o conserto está no lugar certo. */
+    /* --- upset (balanço 2026-09-28): zebra é vencer com chance REAL baixa
+       nesta luta (chanceContra(), simulada antes do resultado), luta>=6,
+       chance < .30. Antes comparava o rating do adversário com o standing;
+       com a escada acima do ranking, quase toda vitória virava zebra. A
+       chance é fixada aqui pra isolar a regra do card. */
+    const chanceOriginal=chanceContra;
+    chanceContra=()=>.20;
     rng=mulberry32(1);
     st=stBase(); fightNo=6; st.fightNo=6; st.standing=.40; st.ganhoEscolhido=.07;
     finishFight({name:"Favorito",rating:.63},
       {winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
-    passo("upset (luta 6) dispara comparando com o standing PRÉ-luta (.40), não o pós (.47)",
+    passo("upset (luta 6) dispara quando a chance real era baixa (20%)",
       st.momentos.some(m=>m.tipo==="upset"));
 
-    /* --- upset: piso de luta 6, medido em 120 carreiras (77% dos upsets
-       caíam nas lutas 1-5, só por standing começar baixo — não é zebra de
-       verdade, ver LEIA-ME "Card de momento"). Mesma diferença de rating
-       (.23), luta 3 — NÃO pode disparar. */
+    chanceContra=()=>.45;
+    rng=mulberry32(1);
+    st=stBase(); fightNo=6; st.fightNo=6; st.standing=.10; st.ganhoEscolhido=.07;
+    finishFight({name:"Favorito",rating:.90},
+      {winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
+    passo("upset NÃO dispara com chance real de 45%, mesmo com o adversário muito acima no ranking",
+      !st.momentos.some(m=>m.tipo==="upset"));
+
+    /* --- piso de luta 6, medido em 120 carreiras (77% dos upsets caíam nas
+       lutas 1-5, ver LEIA-ME "Card de momento"). Luta 3 com chance baixa:
+       NÃO pode disparar. */
+    chanceContra=()=>.20;
     rng=mulberry32(1);
     st=stBase(); fightNo=3; st.fightNo=3; st.standing=.40; st.ganhoEscolhido=.07;
     finishFight({name:"Favorito",rating:.63},
       {winner:me.name,method:"Decisão",knockdowns:{},round:3,clock:"5:00"},false);
-    passo("upset NÃO dispara antes da luta 6, mesmo com diferença de rating grande (piso)",
+    passo("upset NÃO dispara antes da luta 6, mesmo com chance real baixa (piso)",
       !st.momentos.some(m=>m.tipo==="upset"));
+    chanceContra=chanceOriginal;
 
     /* --- número 1 da tabela: posicaoDivisao() só precisa de LADDER (pro
        tamanho) e st.standing — reservado da 1ª vitória, sem RANKING/ROSTER
@@ -4901,7 +4930,11 @@ function testarColetivaEntrevista() {
       st.coletivaPressao&&st.coletivaPressao.mult===0.90);
     passo("coletiva: atributoPressao válido vira st.coletivaPressao.atributo",
       st.coletivaPressao&&st.coletivaPressao.atributo==="tdDef");
-    __drenarAgora();   // dispara o setTimeout(seguir,2200) — só agora lutar() de fato roda
+    __drenarAgora();   // 2026-09-28: sem tempo fixo, a reação fica na tela até o jogador mandar
+    passo("coletiva: com a reação na tela, a luta NÃO começa sozinha (dá tempo de ler)", !lutarChamado);
+    const irLuta=document.getElementById("colseguir");
+    passo("coletiva: botão 'Ir pra luta' aparece depois da reação", !!(irLuta&&irLuta.onclick&&/Ir pra luta/.test(irLuta.innerHTML||"")));
+    irLuta.onclick();
     passo("coletiva: seguir() chama lutar() com o MESMO escolhido/camp da tela",
       lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
 
@@ -6594,7 +6627,7 @@ function iniciarCarreiraTeste(ctx, F, seed, modo = "normal", rosterJSON = null) 
   ctx.run(`(function(){
     ROSTER=globalThis.__RJ?JSON.parse(globalThis.__RJ):rateAll(globalThis.__F);
     CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
-    DIVISION="lightweight"; MODO=${JSON.stringify(modo)}; SEED=${seed};
+    DIVISION=${JSON.stringify(process.env.BALANCO_DIV || "lightweight")}; MODO=${JSON.stringify(modo)}; SEED=${seed};
     RIVAL_ATIVADO=false; RIVAL_NOME_ESCOLHIDO=null; ROSTO=null;
     startDraft("TesteBot");
     let left=budgetLeft, rem=[...remaining];
@@ -6953,6 +6986,185 @@ async function testarSave() {
   });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));
+  return ok;
+}
+
+/* ================================================================== *
+ * BALANÇO (2026-09-28): N carreiras por perfil de jogador, pelo caminho
+ *     real (draft guloso, startCareer, lutas de verdade no sandbox).
+ *     Mede o que o jogador sente: vitórias em 22, quantas carreiras quase
+ *     sem derrota, cinturão, e a força do lutador draftado contra a
+ *     divisão. Perfis: automático (o meio, camp aleatório, escolha
+ *     neutra), comum (adversário, camp e escolha na luta aleatórios),
+ *     esperto (o do meio, melhor camp, melhor escolha), ousado (o mais
+ *     difícil, melhor camp, melhor escolha).
+ * ================================================================== */
+async function testarBalanco(N = 50, soPerfil = null) {
+  console.log("\n" + cinza(`balanço: ${N} carreiras por perfil, caminho real`));
+  const F = lerLutadores();
+  const X0 = sandboxCarreira();
+  X0.sb.__F = F;
+  const rosterJSON = X0.run("JSON.stringify(rateAll(globalThis.__F))");
+  const perfis = ["automatico", "comum", "esperto", "ousado", "estrategista"].filter(p => !soPerfil || p === soPerfil);
+  const resumo = {};
+  for (const perfil of perfis) {
+    const linhas = [];
+    for (let i = 0; i < N; i++) {
+      const seed = 700001 + i * 7919;
+      const X = sandboxCarreira();
+      iniciarCarreiraTeste(X, F, seed, process.env.BALANCO_MODO || "normal", rosterJSON);
+      /* força do lutador draftado: mesma régua do rateAll (18 lutas contra
+         o lutador mediano da divisão), e o percentil disso na divisão */
+      const forca = JSON.parse(X.run(`(function(){
+        const pool=POOL; const med=k=>{const v=pool.map(f=>f[k]).sort((a,b)=>a-b);return v[Math.floor(v.length/2)];};
+        const ref={name:"__med__",division:DIVISION};
+        ["slpm","strAcc","strDef","kdAvg","tdAvg","tdAcc","tdDef","subAvg","durability","reach","sapm"].forEach(k=>ref[k]=med(k));
+        let w=0; for(let s=1;s<=18;s++)if(simulateFight(me,ref,{seed:s*31+7}).winner===me.name)w++;
+        const r=w/18; const pct=pool.filter(f=>f.rating<r).length/pool.length;
+        return JSON.stringify({r,pct});})()`));
+      if (perfil !== "automatico") {
+        X.sb.__perfil = perfil; X.sb.__sorte = seed;
+        X.run(`(function(){
+          const sorte=mulberry32(globalThis.__sorte^0x5bd1e995);
+          const perfil=globalThis.__perfil;
+          /* escolha na luta: melhor modificador (esperto/ousado) ou aleatória (comum) */
+          const orig=abrirEscolhaLuta;
+          abrirEscolhaLuta=function(sc,jog,opp,onEscolher){
+            orig.apply(this,arguments);
+            if(auto)return;
+            const box=document.getElementById("escolhaLuta");
+            const ops=(box.children||[]).find(c=>(c.className||"")==="el-opts");
+            const bs=ops?ops.children:[];
+            if(!bs.length)return;
+            let alvo=bs[Math.floor(sorte()*bs.length)];
+            if(perfil!=="comum"){let mx=-1;for(const b of bs){const a=ACOES_LUTA.find(x=>"el_"+x.id===b.id);const m=modificadorAcao(a,jog,opp);if(m>mx){mx=m;alvo=b;}}}
+            alvo.onclick();
+          };
+          globalThis.__rotulos=[];
+          globalThis.__decidir=function(){
+            const ops=ofertaAtual||[];
+            if(!ops.length)return false;
+            if(ops.length===3)globalThis.__rotulos.push(ops.map(o=>dificuldade(o.f).rot));
+            let op=perfil==="comum"?ops[Math.floor(sorte()*ops.length)]:perfil==="ousado"?ops[ops.length-1]:ops[Math.min(1,ops.length-1)];
+            /* estrategista: lê o rótulo das cartas e pega a de maior chance */
+            if(perfil==="estrategista")op=ops.reduce((m,o)=>chanceContra(o.f)>chanceContra(m.f)?o:m,ops[0]);
+            let camp;
+            if(perfil==="comum")camp=CAMPS[Math.floor(sorte()*CAMPS.length)];
+            else{let mx=-1;for(const c of CAMPS){let g=0;const al=Object.keys(c.alvos);for(const k of al){const at=(st.treino&&st.treino[k])||1;g+=(TETO_TREINO-at)*RITMO_TREINO*c.alvos[k];}g/=al.length;if(g>mx){mx=g;camp=c;}}}
+            escolhaAberta=false;
+            lutar(op,camp);
+            return true;
+          };
+        })()`);
+        X.run("auto=false;");
+        for (let guarda = 0; guarda < 900 && X.run("fightNo") < 22; guarda++) {
+          for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
+          if (await resolverDilemaTeste(X, "aceito, sem problema")) continue;
+          if (X.run("playing||dilemaAberto||entrevistaAberta")) continue;
+          if (X.run("escolhaAberta")) { X.run("globalThis.__decidir()"); continue; }
+          if (X.run("fightNo") >= 22) break;
+          X.run("nextFight();");
+        }
+        for (let k = 0; k < 6; k++) { X.drenar(); await respirarCarreira(); await resolverDilemaTeste(X, "aceito, sem problema"); }
+      } else {
+        await jogarCarreiraAte(X, 22);
+      }
+      const r = JSON.parse(X.run(`JSON.stringify({w:st.wins,l:st.losses,n:fightNo,camp:!!st.foiCampeao,seq:st.longestW||0,fin:st.finishes,rot:globalThis.__rotulos||[],
+        lutas:(st.registro||[]).map(g=>{const i=LADDER.findIndex(f=>f.name===g.adv);return[g.n,g.venceu?1:0,i<0?null:i/(LADDER.length-1)];})})`));
+      linhas.push({ ...r, ...forca });
+    }
+    const ws = linhas.map(x => x.w).sort((a, b) => a - b);
+    const q = p => ws[Math.min(ws.length - 1, Math.floor(p * ws.length))];
+    const media = (arr, k) => arr.reduce((s, x) => s + x[k], 0) / arr.length;
+    const r = {
+      vitorias: +media(linhas, "w").toFixed(1), p10: q(.1), p50: q(.5), p90: q(.9),
+      quaseInvicto: +(100 * linhas.filter(x => x.l <= 2).length / linhas.length).toFixed(0),
+      campeao: +(100 * linhas.filter(x => x.camp).length / linhas.length).toFixed(0),
+      seq: +media(linhas, "seq").toFixed(1), forca: +media(linhas, "r").toFixed(2), pctDivisao: +(100 * media(linhas, "pct")).toFixed(0),
+      incompletas: linhas.filter(x => x.n < 22).length,
+    };
+    /* onde as derrotas acontecem: por trecho da carreira e pela força do
+       adversário (posição dele na escada da divisão, 0 = pior, 1 = melhor) */
+    const lutas = linhas.flatMap(x => x.lutas);
+    const taxa = f => { const l = lutas.filter(f); return l.length ? Math.round(100 * l.filter(x => x[1]).length / l.length) + "% (" + l.length + ")" : "-"; };
+    r.porTrecho = [[1, 5], [6, 10], [11, 15], [16, 22]].map(([a, b]) => `${a}-${b}: ${taxa(x => x[0] >= a && x[0] <= b)}`).join("  ");
+    r.porAdversario = [[0, .5], [.5, .75], [.75, .9], [.9, 1.01]].map(([a, b]) => `${a}-${b}: ${taxa(x => x[2] != null && x[2] >= a && x[2] < b)}`).join("  ");
+    const rots = linhas.flatMap(x => x.rot || []);
+    if (rots.length) r.rotulos = [0, 1, 2].map(i => { const c = {}; rots.forEach(t => { c[t[i]] = (c[t[i]] || 0) + 1; });
+      return ["1ª", "2ª", "3ª"][i] + " carta: " + Object.entries(c).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(100 * v / rots.length)}%`).join(", "); }).join("  |  ");
+    resumo[perfil] = r;
+    console.log(`  ${perfil.padEnd(11)} vitórias ${r.vitorias} de 22 (p10 ${r.p10} · mediana ${r.p50} · p90 ${r.p90})  ` +
+      `≤2 derrotas ${r.quaseInvicto}%  cinturão ${r.campeao}%  maior sequência ${r.seq}  ` +
+      `lutador draftado: vence o mediano ${Math.round(r.forca * 100)}% (acima de ${r.pctDivisao}% da divisão)` +
+      (r.incompletas ? vermelho(`  ${r.incompletas} carreiras não chegaram ao fim`) : ""));
+    console.log(cinza(`              vitória por trecho da carreira  ${r.porTrecho}`));
+    console.log(cinza(`              vitória pela força do adversário (escada 0 a 1)  ${r.porAdversario}`));
+    if (r.rotulos) console.log(cinza(`              rótulo das cartas  ${r.rotulos}`));
+  }
+  globalThis.__balanco = resumo;
+  /* Faixas do balanço pedido pelo dono em 2026-09-28 ("~50% de vitórias pra
+     quem joga bem, cinturão raro, 1 em 5 ou menos"). Medido com 50
+     carreiras por perfil: 11,0 a 12,5 vitórias em 22, cinturão 4 a 8%. */
+  let ok = true;
+  for (const [perfil, r] of Object.entries(resumo)) {
+    const erros = [];
+    if (r.incompletas) erros.push(`${r.incompletas} carreiras não terminaram`);
+    if (!(r.vitorias >= 9 && r.vitorias <= 14)) erros.push(`vitórias ${r.vitorias} fora de 9 a 14`);
+    if (!(r.campeao <= 20)) erros.push(`cinturão ${r.campeao}% acima de 20%`);
+    if (!(r.quaseInvicto <= 10)) erros.push(`${r.quaseInvicto}% das carreiras com no máximo 2 derrotas`);
+    if (erros.length) { ok = false; console.log(vermelho(`  fora da faixa (${perfil}): ${erros.join("; ")}`)); }
+  }
+  console.log(ok ? verde("  balanço dentro da faixa") : vermelho("  balanço fora da faixa"));
+  return ok;
+}
+
+/* ================================================================== *
+ * FEED E FÃ (2026-09-28): o medidor de fã decide quantos haters aparecem
+ *     na repercussão (moldes locais e prompt da IA). Fã baixo = timeline
+ *     contra, fã alto = quase todo mundo a favor.
+ * ================================================================== */
+async function testarFeedFa() {
+  console.log("\n" + cinza("feed e fã: medidor de fã manda nos haters (moldes e IA)"));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const env = criarAmbiente();
+  vm.createContext(env.sandbox);
+  vm.runInContext(exportar(lerScript(), ["buildFeed", "mulberry32", "HATERS_IA", "prefetchFeed"])
+    + "\ntry{globalThis.__x.setup=(fa)=>{st={fan:fa,wins:3,losses:1,followers:5000};me={name:'Kayo'};};}catch(e){}"
+    + "\ntry{globalThis.__x.trocarAi=(f)=>{ai=f;};}catch(e){}", env.sandbox, { filename: "index.html" });
+  const X = env.sandbox.__x;
+  const r = { method: "Nocaute", round: 1, clock: "3:10" };
+  const fracao = fa => {
+    let h = 0, n = 0;
+    for (let s = 1; s <= 400; s++) {
+      const feed = X.buildFeed(r, s % 2 === 0, false, 0, 0, false, X.mulberry32(s * 97 + 13), "Kayo", fa);
+      feed.forEach(p => { n++; if (p.hater) h++; });
+    }
+    return h / n;
+  };
+  const f0 = fracao(0), f5 = fracao(5), f10 = fracao(10);
+  console.log(cinza(`  posts de hater: fã 0 → ${(100 * f0).toFixed(0)}%, fã 5 → ${(100 * f5).toFixed(0)}%, fã 10 → ${(100 * f10).toFixed(0)}%`));
+  await conf("moldes: fã 0 → maioria de hater (≥ 55% dos posts)", () => { if (!(f0 >= .55)) throw new Error((100 * f0).toFixed(0) + "%"); });
+  await conf("moldes: fã 5 → mistura (25% a 55%)", () => { if (!(f5 >= .25 && f5 <= .55)) throw new Error((100 * f5).toFixed(0) + "%"); });
+  await conf("moldes: fã 10 → quase nenhum hater (≤ 12%)", () => { if (!(f10 <= .12)) throw new Error((100 * f10).toFixed(0) + "%"); });
+  await conf("moldes: mais fã, menos hater (fã 0 > 5 > 10)", () => { if (!(f0 > f5 && f5 > f10)) throw new Error([f0, f5, f10].join(" ")); });
+  await conf("IA: o feed manda quantos haters, pela mesma régua (fã 1 → 3 de 4, fã 9 → 0)", async () => {
+    const pedidos = [];
+    X.trocarAi(async (kind, data) => { pedidos.push(data); return null; });
+    for (const fa of [1, 4, 7, 9]) { X.setup(fa); X.prefetchFeed(r, true, { name: "Rival" }, false, 0, 0, false); }
+    const h = pedidos.map(d => d.haters).join(",");
+    if (h !== "3,2,1,0") throw new Error("haters mandados: " + h);
+    if (pedidos.some(d => typeof d.fa !== "number")) throw new Error("fã não foi junto");
+  });
+  await conf("api/ai.js: o prompt do feed usa o número de haters", () => {
+    const api = fs.readFileSync(path.join(__dirname, "api", "ai.js"), "utf8");
+    if (!/Comentários de hater: \$\{/.test(api) || !/O usuário diz\s+quantos deles são de HATER/.test(api)) throw new Error("prompt sem a regra de haters");
+  });
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("feed e fã ok") : vermelho(`${falhas.length} falha(s) no feed e fã`)));
   return ok;
 }
 
@@ -8065,6 +8277,7 @@ try {
   else if (cmd === "espera") ok = testarEspera(div || "lightweight");
   else if (cmd === "frequencia") ok = await testarFrequenciaMomentos(Number(div) || 30);
   else if (cmd === "freqconquistas") ok = await testarFrequenciaConquistas(Number(div) || 150, process.argv[4] || "normal");
+  else if (cmd === "balanco") ok = await testarBalanco(Number(div) || 50, process.argv[4] || null);
   else if (cmd === "lesaonocaute") ok = testarLesaoNocaute();
   else if (cmd === "driverluta") ok = testarDriverRodada();
   else if (cmd === "narracao") ok = await testarNarracaoResultado(Number(div) || 8);
@@ -8084,6 +8297,7 @@ try {
   else if (cmd === "hub") ok = await testarHub();
   else if (cmd === "som") ok = await testarSom();
   else if (cmd === "texto") ok = await testarTexto();
+  else if (cmd === "feedfa") ok = await testarFeedFa();
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -8154,6 +8368,8 @@ try {
         ["hub", () => testarHub()],
         ["som", () => testarSom()],
         ["texto", () => testarTexto()],
+        ["feedfa", () => testarFeedFa()],
+        ["balanco", () => testarBalanco(30)],
         ["placar", () => testarPlacar()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],

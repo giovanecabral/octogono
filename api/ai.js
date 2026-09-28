@@ -69,8 +69,12 @@ FORMATO: responda EXATAMENTE assim, um objeto JSON, sem markdown:
 "nome" é o PRIMEIRO NOME DE QUEM ESTÁ COMENTANDO: um torcedor qualquer,
 inventado. NUNCA o nome de um lutador.
 "texto" tem no máximo 140 caracteres.
-Exatamente 4 comentários, com opiniões DIFERENTES entre si: um empolgado,
-um crítico, um zoando, um analítico. Nunca repita a mesma construção.`,
+Exatamente 4 comentários, com opiniões DIFERENTES entre si. O usuário diz
+quantos deles são de HATER: hater é contra o lutador (desmerece, zoa com
+crueldade, torce contra, diz que foi sorte ou que o adversário era fraco).
+Os outros são de fã: a favor dele (empolgado, defendendo, analisando a
+favor). Siga esse número à risca, mesmo que o lutador tenha vencido.
+Nunca repita a mesma construção.`,
     user: `Lutador do jogador: ${d.name}
 Adversário: ${d.opp}
 Resultado: ${d.won ? "o jogador VENCEU" : "o jogador PERDEU"}
@@ -78,7 +82,8 @@ Método: ${d.method}, round ${d.round} aos ${d.clock}
 Quedas aplicadas pelo jogador: ${d.myKd} | quedas sofridas: ${d.oppKd}
 ${d.title ? "ERA LUTA DE CINTURÃO." : ""}
 ${d.upset ? "FOI ZEBRA, ninguém dava nada pelo jogador." : ""}
-Cartel atual: ${d.record}. Seguidores: ${d.followers}.`,
+Cartel atual: ${d.record}. Seguidores: ${d.followers}.
+Comentários de hater: ${Number.isInteger(d.haters) ? Math.max(0, Math.min(4, d.haters)) : 1} de 4 (medidor de fã do lutador: ${d.fa ?? 5} de 10).`,
   }),
 
   /* cria um dilema aberto pro jogador responder com texto livre.

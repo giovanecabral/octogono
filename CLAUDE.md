@@ -154,8 +154,15 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **Pesos do draft medidos, não inventados.** `WEIGHTS` vem de análise de
   sensibilidade. Mexeu no `TUNING`, os pesos ficam errados sem nenhum erro
   aparecer na tela.
-- **Treino permanente com teto.** `TETO_TREINO = 1.26`, ganho proporcional ao que
-  falta. Sem teto, 22 camps de +10% viram +700%.
+- **Treino permanente com teto.** `TETO_TREINO = 1.10` (balanço de
+  2026-09-28), ganho proporcional ao que falta. Sem teto, 22 camps de +10%
+  viram +700%.
+- **Balanço pedido pelo dono em 2026-09-28: ~50% de vitórias pra quem joga
+  bem, cinturão raro.** `BUDGET_PCT` .35, faixas de adversário acima do
+  ranking com piso de 25% da divisão, rótulo de dificuldade e zebra pela
+  chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
+  motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
+  teste). Números no LEIA-ME "Balanço".
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`
   (permanente, com teto) × `st.eventoMod` (eventos). Evento escrevendo direto no
   atributo apagaria a base.
