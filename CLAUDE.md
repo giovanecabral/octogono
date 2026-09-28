@@ -28,9 +28,12 @@ docs/superpowers/   Spec e planos do revamp da interface.
 ## Revamp da interface em andamento (branch `revamp-ui`)
 
 Spec: `docs/superpowers/specs/2026-09-26-revamp-ui-design.md`. Estado das
-fases em `PENDENCIAS.md` item 37. Enquanto a branch não voltar pro
-`master`: **nunca `vercel --prod` a partir dela** (o deploy sai dos
-arquivos locais e publicaria meio revamp). Regras novas que valem daqui
+fases em `PENDENCIAS.md` item 37. **Fases 1 a 6 foram pro ar em
+2026-09-27** (merge no `master` + deploy, a pedido do dono). Fases 7
+(texto) e 8 (auditoria) continuam na branch `revamp-ui`; a regra vale
+igual: **nunca `vercel --prod` a partir da branch** (o deploy sai dos
+arquivos locais e publicaria trabalho pela metade). Merge no `master`
+primeiro, deploy do `master`. Regras novas que valem daqui
 pra frente:
 
 - **Roteador por hash (`irPara`/`lerRota`)**: o Supabase devolve login com

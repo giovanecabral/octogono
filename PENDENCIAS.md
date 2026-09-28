@@ -1959,7 +1959,7 @@ nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
 
-## 37. Revamp da interface (2026-09-26): fases 1 a 6 feitas na branch `revamp-ui`
+## 37. Revamp da interface (2026-09-26): fases 1 a 6 no ar desde 2026-09-27; 7 e 8 na branch `revamp-ui`
 
 Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
 console, mais conta obrigatória, save, placar, som e passada de texto.
