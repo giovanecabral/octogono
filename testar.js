@@ -7357,6 +7357,223 @@ async function testarPagamento() {
 }
 
 /* ================================================================== *
+ * ADMIN (2026-09-28): painel #/admin + api/admin.js. Só o dono
+ *     (ADMIN_DONO_EMAIL) e quem ele adicionar; toda ação decidida no
+ *     servidor; banido não loga nem entra no ranking.
+ * ================================================================== */
+async function testarAdmin() {
+  console.log("\n" + cinza("admin: acesso só de admin, ações no servidor, banimento, registro"));
+  const url = require("url");
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  let H = null, P = null;
+  try {
+    H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "admin.js")).href)).default;
+    P = (await import(url.pathToFileURL(path.join(RAIZ, "api", "placar.js")).href)).default;
+  } catch (e) { console.log(vermelho("  não carregou api/admin.js: " + e.message)); return false; }
+  const D = "11111111-1111-4111-8111-111111111111", A = "22222222-2222-4222-8222-222222222222", U = "33333333-3333-4333-8333-333333333333";
+  const contas = { [D]: { id: D, email: "dono@x.com" }, [A]: { id: A, email: "adm@x.com" }, [U]: { id: U, email: "u@x.com" } };
+  const tokens = { "tok-dono": D, "tok-adm": A, "tok-comum": U };
+  let ops;
+  const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, logOriginal = console.log;
+  globalThis.fetch = async (u, op = {}) => {
+    u = String(u); const m = op.method || "GET";
+    const ok = (corpo, status = 200) => ({ ok: status < 300, status, json: async () => corpo });
+    if (u.endsWith("/auth/v1/user")) { const id = tokens[String((op.headers || {}).Authorization || "").replace("Bearer ", "")]; return id ? ok(contas[id]) : ok({}, 401); }
+    const adm = u.match(/\/auth\/v1\/admin\/users\/([^/?]+)/);
+    if (adm) { const id = decodeURIComponent(adm[1]); if (m === "PUT") { ops.push(["ban", id, JSON.parse(op.body).ban_duration]); return ok({}); } return contas[id] ? ok(contas[id]) : ok({}, 404); }
+    if (u.includes("/rest/v1/admins?user_id=eq.")) { const id = decodeURIComponent(u.split("user_id=eq.")[1].split("&")[0]); return ok(m === "DELETE" ? null : (id === A ? [{ user_id: A }] : [])); }
+    if (u.includes("/rest/v1/rpc/admin_listar_usuarios")) { const b = JSON.parse(op.body).busca || ""; return ok(Object.values(contas).filter(c => c.email.includes(b)).map(c => ({ ...c, carreiras: 0, no_placar: 0, pro: false, banido: false, admin: c.id === A }))); }
+    if (u.includes("/rest/v1/banidos") && m === "GET") return ok(u.includes("user_id=eq." + U) && ops.some(o => o[0] === "POST banidos") ? [{ user_id: U }] : []);
+    const tab = (u.match(/\/rest\/v1\/([a-z_]+)/) || [])[1];
+    if (tab && m !== "GET") { ops.push([m + " " + tab, u, op.body ? JSON.parse(op.body) : null]); return ok(null, 201); }
+    if (tab) return ok([]);
+    return ok({}, 404);
+  };
+  Object.assign(process.env, { SUPABASE_SERVICE_ROLE_KEY: "service-falsa", ADMIN_DONO_EMAIL: "Dono@X.com" });
+  console.log = (...a) => { if (String(a[0]) !== "admin") logOriginal(...a); };
+  const resposta = () => ({ cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } });
+  const chamar = async (token, acao, extra = {}) => { const res = resposta(); await H({ method: "POST", headers: {}, body: { token, acao, ...extra } }, res); return res; };
+  try {
+    await conf("sem sessão válida = 401", async () => { ops = []; const r = await chamar("tok-x", "eu"); if (r.cod !== 401) throw new Error("status " + r.cod); });
+    await conf("'eu': comum não é admin; dono (e-mail da Vercel, sem diferença de maiúscula) é admin e dono; admin da tabela é admin", async () => {
+      ops = [];
+      const c = (await chamar("tok-comum", "eu")).corpo, d = (await chamar("tok-dono", "eu")).corpo, a = (await chamar("tok-adm", "eu")).corpo;
+      if (c.admin || !d.admin || !d.dono || !a.admin || a.dono) throw new Error(JSON.stringify({ c, d, a }));
+    });
+    await conf("conta comum não lista, não dá Pro, não bane (403) e nada é escrito", async () => {
+      ops = [];
+      for (const [acao, extra] of [["listar", {}], ["darPro", { userId: U, dias: null }], ["banir", { userId: U }]]) {
+        const r = await chamar("tok-comum", acao, extra);
+        if (r.cod !== 403) throw new Error(acao + ": status " + r.cod);
+      }
+      if (ops.length) throw new Error("escreveu: " + JSON.stringify(ops));
+    });
+    await conf("dar Pro sem prazo = plano único sem data; 30 dias = mensal com data; e vai pro registro", async () => {
+      ops = [];
+      await chamar("tok-dono", "darPro", { userId: U, dias: null });
+      await chamar("tok-adm", "darPro", { userId: U, dias: 30 });
+      const [sem, trinta] = ops.filter(o => o[0] === "POST assinaturas").map(o => o[2]);
+      if (!sem || sem.pro !== true || sem.plano !== "unico" || sem.expira_em !== null) throw new Error("sem prazo: " + JSON.stringify(sem));
+      const dias = (new Date(trinta.expira_em) - Date.now()) / 864e5;
+      if (trinta.plano !== "mensal" || !(dias > 29.9 && dias < 30.1)) throw new Error("30 dias: " + JSON.stringify(trinta));
+      if (ops.filter(o => o[0] === "POST admin_log").length !== 2) throw new Error("registro: " + ops.map(o => o[0]));
+    });
+    await conf("banir: grava em banidos, bloqueia o login no Auth (~100 anos) e registra o motivo", async () => {
+      ops = [];
+      const r = await chamar("tok-adm", "banir", { userId: U, motivo: "nome ofensivo" });
+      if (r.cod !== 200) throw new Error("status " + r.cod + " " + JSON.stringify(r.corpo));
+      const ban = ops.find(o => o[0] === "ban");
+      if (!ops.some(o => o[0] === "POST banidos" && o[2].motivo === "nome ofensivo") || !ban || ban[2] !== "876000h") throw new Error(JSON.stringify(ops));
+    });
+    await conf("desbanir: libera o login e apaga de banidos", async () => {
+      ops = [];
+      await chamar("tok-adm", "desbanir", { userId: U });
+      if (!ops.some(o => o[0] === "ban" && o[2] === "none") || !ops.some(o => o[0] === "DELETE banidos")) throw new Error(JSON.stringify(ops));
+    });
+    await conf("admin e dono não podem ser banidos; ninguém bane a si mesmo", async () => {
+      ops = [];
+      const a = await chamar("tok-dono", "banir", { userId: A }), d = await chamar("tok-adm", "banir", { userId: D }), s = await chamar("tok-adm", "banir", { userId: A });
+      if (a.cod !== 400 || d.cod !== 400 || s.cod !== 400 || ops.some(o => o[0] === "ban")) throw new Error([a.cod, d.cod, s.cod].join(","));
+    });
+    await conf("só o dono adiciona e tira admin", async () => {
+      ops = [];
+      const x = await chamar("tok-adm", "addAdmin", { email: "u@x.com" });
+      if (x.cod !== 403) throw new Error("admin adicionou admin: " + x.cod);
+      const y = await chamar("tok-dono", "addAdmin", { email: "u@x.com" });
+      if (y.cod !== 200 || !ops.some(o => o[0] === "POST admins" && o[2].user_id === U)) throw new Error("dono não adicionou: " + y.cod);
+      const z = await chamar("tok-adm", "removerAdmin", { userId: A });
+      if (z.cod !== 403) throw new Error("admin tirou admin: " + z.cod);
+    });
+    await conf("apagar do ranking apaga a carreira certa (usuário + semente)", async () => {
+      ops = [];
+      await chamar("tok-adm", "apagarRanking", { userId: U, seed: "424242", nome: "Kayo" });
+      const del = ops.find(o => o[0] === "DELETE placar");
+      if (!del || !del[1].includes("user_id=eq." + U) || !del[1].includes("seed=eq.424242")) throw new Error(JSON.stringify(ops));
+    });
+    await conf("conta banida não grava no ranking (403), mesmo com a sessão ainda aberta", async () => {
+      ops = [["POST banidos"]];
+      const res = resposta();
+      await P({ method: "POST", headers: { authorization: "Bearer tok-comum" }, body: { seed: 1 } }, res);
+      if (res.cod !== 403) throw new Error("status " + res.cod + " " + JSON.stringify(res.corpo));
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    for (const k of ["SUPABASE_SERVICE_ROLE_KEY", "ADMIN_DONO_EMAIL"]) { if (envOriginal[k] === undefined) delete process.env[k]; else process.env[k] = envOriginal[k]; }
+    console.log = logOriginal;
+  }
+
+  /* tela: quem não é admin vê a 404; admin vê as abas; banir pede 2 cliques */
+  const tela = async (resposta) => {
+    const env = criarAmbiente({ contarNos: true });
+    const chamadas = [];
+    env.sandbox.window.supabase = supabaseFalsoComSessao({ sessao: { user: { id: U, email: "u@x.com" }, access_token: "tok" } });
+    env.sandbox.fetch = async (u, op) => { const b = JSON.parse(op.body); chamadas.push(b.acao); return { ok: true, status: 200, json: async () => resposta(b) }; };
+    vm.createContext(env.sandbox);
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara"]), env.sandbox, { filename: "index.html" });
+    env.sandbox.__x.ready(lerLutadores());
+    const respirar = () => new Promise(r => setImmediate(r));
+    for (let k = 0; k < 3; k++) { env.drenar(); await respirar(); }
+    env.sandbox.__x.irPara("admin");
+    for (let k = 0; k < 6; k++) { env.drenar(); await respirar(); }
+    return { env, chamadas, respirar };
+  };
+  const tem = (n, c) => (n.className || "").split(" ").includes(c);
+  await conf("tela: quem não é admin cai na 404, sem aba nenhuma do painel", async () => {
+    const { env } = await tela(b => b.acao === "eu" ? { admin: false } : {});
+    if (!env.todos.some(n => tem(n, "erro-num"))) throw new Error("não mostrou a 404");
+    if (env.todos.some(n => n.dataset && n.dataset.aba === "jogadores")) throw new Error("mostrou aba do painel");
+  });
+  await conf("tela: admin vê Jogadores, Ranking e Registro (Admins só pro dono) e a lista vem do servidor", async () => {
+    const lista = [{ id: U, email: "u@x.com", criado_em: "2026-09-01T00:00:00Z", ultimo_acesso: null, pro: false, banido: false, admin: false, carreiras: 2, no_placar: 1 }];
+    const { env, chamadas } = await tela(b => b.acao === "eu" ? { admin: true, dono: false } : b.acao === "listar" ? { jogadores: lista, pagina: 0, porPagina: 50 } : {});
+    const abas = env.todos.filter(n => n.dataset && n.dataset.aba).map(n => n.dataset.aba);
+    if (abas.join(",") !== "jogadores,ranking,registro") throw new Error("abas: " + abas);
+    if (!chamadas.includes("listar") || !env.todos.some(n => tem(n, "admin-quem") && /u@x\.com/.test(n.innerHTML))) throw new Error("lista não apareceu");
+  });
+  await conf("tela: banir pede confirmação (1º clique não chama o servidor, 2º chama)", async () => {
+    const lista = [{ id: U, email: "u@x.com", criado_em: "2026-09-01T00:00:00Z", pro: false, banido: false, admin: false, carreiras: 0, no_placar: 0 }];
+    const { env, chamadas, respirar } = await tela(b => b.acao === "eu" ? { admin: true } : b.acao === "listar" ? { jogadores: lista, pagina: 0, porPagina: 50 } : { ok: true });
+    const banir = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Banir").pop();
+    if (!banir) throw new Error("sem botão Banir");
+    await banir.onclick(); await respirar();
+    if (chamadas.includes("banir")) throw new Error("baniu no 1º clique");
+    await banir.onclick(); await respirar();
+    if (!chamadas.includes("banir")) throw new Error("2º clique não baniu");
+  });
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("admin ok") : vermelho(`${falhas.length} falha(s) no admin`)));
+  return ok;
+}
+
+/* ================================================================== *
+ * PERSONAGEM (revamp dos personagens, 2026-09-28): boneco v2, arquétipos,
+ *     peças, e save/ranking antigos (v1) convertidos sem quebrar.
+ * ================================================================== */
+async function testarPersonagem() {
+  console.log("\n" + cinza("personagem: boneco v2, 8 arquétipos, peças, rosto antigo convertido"));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const env = criarAmbiente({ contarNos: true });
+  vm.createContext(env.sandbox);
+  vm.runInContext(exportar(lerScript(), ["bonecoSVG", "normalizarRosto", "ARQUETIPOS", "cfgPadrao", "screenCriador", "ready",
+    "PELES", "PORTES", "CABELO_TIPOS", "CORES_CABELO", "BARBAS", "ORELHAS", "NARIZES", "CICATRIZES", "TATUAGENS", "ENTRADAS", "PRAJIADS", "CORES_ENTRADA"])
+    + "\ntry{globalThis.__x.rosto=()=>ROSTO;}catch(e){}", env.sandbox, { filename: "index.html" });
+  const X = env.sandbox.__x;
+  const listas = { pele: X.PELES, porte: X.PORTES, cabelo: X.CABELO_TIPOS, corCabelo: X.CORES_CABELO, barba: X.BARBAS, orelha: X.ORELHAS,
+    nariz: X.NARIZES, cicatriz: X.CICATRIZES, tatuagem: X.TATUAGENS, entrada: X.ENTRADAS, prajiad: X.PRAJIADS, corEntrada: X.CORES_ENTRADA };
+  const valido = r => r && r.v === 2 && Object.entries(listas).every(([k, l]) => Number.isInteger(r[k]) && r[k] >= 0 && r[k] < l.length);
+  const svgOk = s => /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 10 200 240"/.test(s) && !/NaN|undefined/.test(s);
+  await conf("os 8 arquétipos desenham sem erro (sem NaN, xmlns pra virar imagem nos cards)", () => {
+    if (X.ARQUETIPOS.length !== 8) throw new Error(X.ARQUETIPOS.length + " arquétipos");
+    for (const a of X.ARQUETIPOS) { if (!valido(X.normalizarRosto({ v: 2, ...a.cfg }))) throw new Error(a.id + " inválido"); if (!svgOk(X.bonecoSVG({ v: 2, ...a.cfg }, { w: 100 }))) throw new Error(a.id + " quebrou"); }
+  });
+  await conf("toda peça de toda lista desenha sem erro", () => {
+    for (const [k, l] of Object.entries(listas)) for (let i = 0; i < l.length; i++) {
+      const s = X.bonecoSVG({ ...X.cfgPadrao(), [k]: i }, { w: 80 });
+      if (!svgOk(s)) throw new Error(`${k}=${i} quebrou`);
+    }
+  });
+  await conf("proporção igual à antiga (largura × 1,2): nenhum layout muda", () => {
+    const s = X.bonecoSVG(X.cfgPadrao(), { w: 150 });
+    if (!/width="150" height="180"/.test(s)) throw new Error(s.slice(0, 160));
+  });
+  await conf("rosto antigo (v1, save e ranking de antes) vira v2 válido; o protetor bucal antigo some", () => {
+    const antigos = [{ pele: 7, cabelo: 8, corCabelo: 11, barba: 7, olho: 3, corOlho: 2, sobrancelha: 4, boca: 5, cicatriz: 5, calcao: 7, porte: 2 },
+      { pele: 0, cabelo: 0, corCabelo: 0, barba: 0, cicatriz: 0, calcao: 0, porte: 0 }, {}, null, { pele: "x", porte: -3 }];
+    for (const a of antigos) {
+      const r = X.normalizarRosto(a);
+      if (!valido(r)) throw new Error("inválido: " + JSON.stringify(a) + " -> " + JSON.stringify(r));
+      if (!svgOk(X.bonecoSVG(a, { w: 60 }))) throw new Error("não desenhou: " + JSON.stringify(a));
+    }
+    const r = X.normalizarRosto({ pele: 7, cabelo: 5, barba: 3, cicatriz: 1, porte: 2 });
+    if (r.pele !== 5 || X.CABELO_TIPOS[r.cabelo] !== "moicano" || X.BARBAS[r.barba] !== "cavanhaque" || r.cicatriz !== 1 || r.porte !== 2)
+      throw new Error("conversão errada: " + JSON.stringify(r));
+  });
+  await conf("criador: a 1ª aba mostra os 8 arquétipos; escolher um monta o lutador inteiro", async () => {
+    X.ready(lerLutadores());
+    for (let k = 0; k < 3; k++) { env.drenar(); await new Promise(r => setImmediate(r)); }
+    const m = env.todos.length;
+    X.screenCriador("Kayo");
+    const cartas = env.todos.slice(m).filter(n => (n.className || "").split(" ").includes("arquetipo"));
+    if (cartas.length !== 8) throw new Error(cartas.length + " cartas de arquétipo");
+    const boxe = cartas.find(n => /Boxe/.test(n.innerHTML || ""));
+    boxe.onclick();
+    const r = X.rosto();
+    if (r.arquetipo !== "boxe" || X.ENTRADAS[r.entrada] !== "roupão" || X.CICATRIZES[r.cicatriz] !== "corte na sobrancelha") throw new Error(JSON.stringify(r));
+  });
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("personagem ok") : vermelho(`${falhas.length} falha(s) no personagem`)));
+  return ok;
+}
+
+/* ================================================================== *
  * HUB DA CARREIRA (revamp fase 5): barra fixa, 7 abas com fundo
  * próprio, Loja/Cards/Conquistas como aba, Voltar ao painel. Carreira
  * de verdade num sandbox (mesmo caminho da suíte save), DOM falso.
@@ -8488,6 +8705,8 @@ try {
   else if (cmd === "feedfa") ok = await testarFeedFa();
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "pagamento") ok = await testarPagamento();
+  else if (cmd === "admin") ok = await testarAdmin();
+  else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
   else if (cmd === "pro") ok = await testarColetivaEntrevista();
@@ -8561,6 +8780,8 @@ try {
         ["balanco", () => testarBalanco(30)],
         ["placar", () => testarPlacar()],
         ["pagamento", () => testarPagamento()],
+        ["admin", () => testarAdmin()],
+        ["personagem", () => testarPersonagem()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],

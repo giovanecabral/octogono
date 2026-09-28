@@ -233,3 +233,67 @@ create table if not exists placar (
 create index if not exists placar_ordem on placar (modo, pontuacao desc);
 alter table placar enable row level security;
 create policy "placar é público" on placar for select using (true);
+
+-- ---------------------------------------------------------------------
+-- Painel de admin (2026-09-28) — api/admin.js, tela #/admin.
+-- Quem acessa: o dono (e-mail em ADMIN_DONO_EMAIL, variável da Vercel) e
+-- quem estiver em `admins`. As três tabelas não têm policy de escrita
+-- pro usuário: só o servidor (service_role) mexe. `banidos` deixa cada um
+-- ler só a própria linha (o jogo pode avisar "conta suspensa").
+create table if not exists admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  adicionado_por uuid references auth.users(id),
+  criado_em timestamptz not null default now()
+);
+alter table admins enable row level security;
+
+create table if not exists banidos (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  motivo text,
+  banido_por uuid references auth.users(id),
+  criado_em timestamptz not null default now()
+);
+alter table banidos enable row level security;
+create policy "usuário vê se está banido" on banidos for select using (auth.uid() = user_id);
+
+create table if not exists admin_log (
+  id bigserial primary key,
+  admin_id uuid not null,
+  admin_email text,
+  acao text not null,
+  alvo_id uuid,
+  alvo_email text,
+  detalhe jsonb,
+  criado_em timestamptz not null default now()
+);
+alter table admin_log enable row level security;
+
+-- ranking esconde conta banida (a função lê `banidos` por cima da RLS)
+create or replace function public.esta_banido(uid uuid) returns boolean
+  language sql stable security definer set search_path = public
+  as $$ select exists(select 1 from banidos b where b.user_id = uid) $$;
+drop policy if exists "placar é público" on placar;
+drop policy if exists "placar é público, menos banido" on placar;
+create policy "placar é público, menos banido" on placar for select using (not public.esta_banido(user_id));
+
+-- lista de jogadores do painel: só o servidor chama (service_role)
+create or replace function public.admin_listar_usuarios(busca text default '', limite int default 50, deslocamento int default 0)
+returns table(id uuid, email text, criado_em timestamptz, ultimo_acesso timestamptz,
+              pro boolean, plano text, expira_em timestamptz, banido boolean, motivo_ban text,
+              carreiras bigint, no_placar bigint, admin boolean)
+language sql stable security definer set search_path = public, auth as $$
+  select u.id, u.email::text, u.created_at, u.last_sign_in_at,
+         coalesce(a.pro, false), a.plano, a.expira_em,
+         (b.user_id is not null), b.motivo,
+         (select count(*) from carreiras_usuario c where c.user_id = u.id),
+         (select count(*) from placar p where p.user_id = u.id),
+         exists(select 1 from admins ad where ad.user_id = u.id)
+  from auth.users u
+  left join assinaturas a on a.user_id = u.id
+  left join banidos b on b.user_id = u.id
+  where coalesce(busca, '') = '' or u.email ilike '%' || busca || '%'
+  order by u.created_at desc
+  limit least(greatest(limite, 1), 200) offset greatest(deslocamento, 0)
+$$;
+revoke execute on function public.admin_listar_usuarios(text, int, int) from public, anon, authenticated;
+grant execute on function public.admin_listar_usuarios(text, int, int) to service_role;

@@ -1389,6 +1389,196 @@ function screenConta(aba){
     abrir(atual);
   });
 }
+/* =========================================================================
+   PAINEL DE ADMIN (2026-09-28) — #/admin. Só o dono (ADMIN_DONO_EMAIL na
+   Vercel) e quem ele adicionar. A tela só mostra: toda ação é decidida e
+   registrada por api/admin.js, que confere o token a cada chamada. Quem não
+   é admin vê a mesma 404 de endereço inexistente (nada sobre o painel).
+   ========================================================================= */
+async function chamarAdmin(acao,dados={}){
+  const token=await meuAccessToken();
+  if(!token)return{erro:"Entre na conta."};
+  try{
+    const r=await fetch("/api/admin",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({token,acao,...dados})});
+    const j=await r.json().catch(()=>({}));
+    return r.ok?j:{erro:j.erro||("Falhou ("+r.status+")."),status:r.status};
+  }catch(e){ return{erro:"Falha de rede. Tenta de novo."}; }
+}
+const dataCurta=iso=>iso?new Date(iso).toLocaleDateString("pt-BR"):"nunca";
+/* Botão destrutivo pede confirmação na própria tela: o 1º clique troca o
+   rótulo, o 2º (em até 6 s) executa. Mesmo padrão de apagar save. */
+function botaoConfirma(rot,rotConfirma,acao){
+  const b=el("button","btn btn-sm btn-ghost",rot);b.type="button";
+  let armado=false,timer=null;
+  b.onclick=async()=>{
+    if(!armado){ armado=true; b.textContent=rotConfirma; b.classList.add("perigo"); timer=setTimeout(()=>{armado=false;b.textContent=rot;b.classList.remove("perigo");},6000); return; }
+    clearTimeout(timer); armado=false; b.disabled=true;
+    await acao();
+    b.disabled=false; b.textContent=rot; b.classList.remove("perigo");
+  };
+  return b;
+}
+function screenAdmin(aba){
+  const c=montarTela({fundo:"contrato",titulo:"Admin",voltar:"conta",classe:"tela-admin"});
+  const area=el("div","admin-area");
+  c.appendChild(area);
+  area.appendChild(el("p","carregando","Conferindo acesso"));
+  chamarAdmin("eu").then(eu=>{
+    if(!eu||!eu.admin){ screen404(); return; }
+    area.innerHTML="";
+    const abas=[["jogadores","Jogadores","usuario"],["ranking","Ranking","trofeu"],["registro","Registro","lista"]];
+    if(eu.dono)abas.splice(2,0,["admins","Admins","chave"]);
+    const atual=abas.some(a=>a[0]===aba)?aba:"jogadores";
+    const corpo=el("div","guia-corpo");
+    const abrir=id=>{
+      corpo.innerHTML="";
+      ({jogadores:()=>adminJogadores(corpo),ranking:()=>adminRanking(corpo),
+        admins:()=>adminAdmins(corpo),registro:()=>adminRegistro(corpo)})[id]();
+    };
+    area.append(montarGuias(abas,atual,id=>{ try{ history.replaceState(null,"","#/admin/"+id); }catch(e){} abrir(id); }),corpo);
+    abrir(atual);
+  });
+}
+function adminJogadores(corpo){
+  const p=el("div","painel-n admin-painel");
+  const busca=el("div","admin-busca");
+  const inp=el("input");inp.type="search";inp.id="admin-busca";inp.placeholder="Buscar por e-mail";
+  const ir=el("button","botao","Buscar");ir.type="button";
+  busca.append(inp,ir);
+  const msg=el("p","hint","");
+  const lista=el("div","admin-lista");
+  const mais=el("button","btn btn-sm btn-ghost","Carregar mais");mais.type="button";mais.hidden=true;
+  p.append(busca,msg,lista,mais);
+  corpo.appendChild(p);
+  let pagina=0;
+  const carregar=async(novo)=>{
+    if(novo){ pagina=0; lista.innerHTML=""; }
+    msg.className="hint";msg.textContent="Carregando";
+    const r=await chamarAdmin("listar",{busca:inp.value,pagina});
+    if(r.erro){ msg.className="hint msg-erro"; msg.textContent=r.erro; return; }
+    msg.textContent=r.jogadores.length||pagina?"":"Nenhuma conta encontrada.";
+    r.jogadores.forEach(j=>lista.appendChild(linhaJogador(j,()=>carregar(true))));
+    mais.hidden=r.jogadores.length<r.porPagina;
+    pagina++;
+  };
+  ir.onclick=()=>carregar(true);
+  inp.onkeydown=e=>{ if(e&&e.key==="Enter")carregar(true); };
+  mais.onclick=()=>carregar(false);
+  carregar(true);
+}
+function linhaJogador(j,recarregar){
+  const l=el("div","admin-linha");
+  const proValido=j.pro&&(!j.expira_em||new Date(j.expira_em).getTime()>Date.now());
+  const selos=[proValido?`<span class="admin-selo selo-pro">Pro ${j.expira_em?"até "+dataCurta(j.expira_em):"sem prazo"}</span>`:"",
+    j.banido?`<span class="admin-selo selo-ban">Banido</span>`:"",j.admin?`<span class="admin-selo">Admin</span>`:""].join("");
+  l.appendChild(el("div","admin-quem",`<b>${String(j.email||"").replace(/</g,"&lt;")}</b>${selos}`));
+  l.appendChild(el("div","admin-info",`Cadastro ${dataCurta(j.criado_em)} · último acesso ${dataCurta(j.ultimo_acesso)} · ${j.carreiras} carreira${j.carreiras==1?"":"s"} · ${j.no_placar} no ranking`
+    +(j.banido&&j.motivo_ban?`<br>Motivo do banimento: ${String(j.motivo_ban).replace(/</g,"&lt;")}`:"")));
+  const acoes=el("div","admin-acoes");
+  const msg=el("span","hint","");
+  const feito=async(r,ok)=>{ if(r.erro){ msg.className="hint msg-erro"; msg.textContent=r.erro; return; } msg.className="hint msg-ok"; msg.textContent=ok; setTimeout(recarregar,900); };
+  const proSem=el("button","btn btn-sm","Pro sem prazo");proSem.type="button";
+  proSem.onclick=async()=>feito(await chamarAdmin("darPro",{userId:j.id,dias:null}),"Pro liberado sem prazo.");
+  const pro30=el("button","btn btn-sm","Pro 30 dias");pro30.type="button";
+  pro30.onclick=async()=>feito(await chamarAdmin("darPro",{userId:j.id,dias:30}),"Pro liberado por 30 dias.");
+  acoes.append(proSem,pro30);
+  if(proValido)acoes.appendChild(botaoConfirma("Tirar Pro","Confirmar: tirar Pro",async()=>feito(await chamarAdmin("tirarPro",{userId:j.id}),"Pro retirado.")));
+  if(j.banido){
+    const des=el("button","btn btn-sm btn-ghost","Desbanir");des.type="button";
+    des.onclick=async()=>feito(await chamarAdmin("desbanir",{userId:j.id}),"Conta liberada.");
+    acoes.appendChild(des);
+  }else if(!j.admin){
+    const motivo=el("input");motivo.type="text";motivo.placeholder="Motivo do banimento";motivo.maxLength=300;motivo.className="admin-motivo";
+    acoes.append(motivo,botaoConfirma("Banir","Confirmar banimento",async()=>feito(await chamarAdmin("banir",{userId:j.id,motivo:motivo.value}),"Conta banida.")));
+  }
+  acoes.appendChild(msg);
+  l.appendChild(acoes);
+  return l;
+}
+function adminRanking(corpo){
+  const p=el("div","painel-n admin-painel");
+  const sel=el("select","campo-select");sel.id="admin-divisao";
+  sel.innerHTML=`<option value="">Todas as divisões</option>`+DIVISOES.map(d=>`<option value="${d.id}">${d.nome}${d.f?" fem.":""}</option>`).join("");
+  const msg=el("p","hint","");
+  const lista=el("div","admin-lista");
+  p.append(sel,msg,lista);
+  corpo.appendChild(p);
+  const carregar=async()=>{
+    lista.innerHTML="";msg.className="hint";msg.textContent="Carregando";
+    const r=await chamarAdmin("ranking",{divisao:sel.value});
+    if(r.erro){ msg.className="hint msg-erro"; msg.textContent=r.erro; return; }
+    msg.textContent=r.carreiras.length?"":"Nenhuma carreira no ranking.";
+    r.carreiras.forEach((k,i)=>{
+      const l=el("div","admin-linha");
+      l.appendChild(el("div","admin-quem",`<b>${i+1}º ${String(k.nome_lutador).replace(/</g,"&lt;")}</b>${k.banido?`<span class="admin-selo selo-ban">Banido</span>`:""}${k.modo==="lenda"?`<span class="admin-selo">Lenda</span>`:""}`));
+      l.appendChild(el("div","admin-info",`${k.pontuacao} pontos · nota ${k.nota} · ${k.cartel} · ${nomeDivisao(k.divisao)} · ${dataCurta(k.criado_em)}`));
+      const acoes=el("div","admin-acoes");
+      const m=el("span","hint","");
+      acoes.append(botaoConfirma("Apagar do ranking","Confirmar: apagar",async()=>{
+        const r2=await chamarAdmin("apagarRanking",{userId:k.user_id,seed:String(k.seed),nome:k.nome_lutador});
+        if(r2.erro){ m.className="hint msg-erro"; m.textContent=r2.erro; return; }
+        carregar();
+      }),m);
+      l.appendChild(acoes);
+      lista.appendChild(l);
+    });
+  };
+  sel.onchange=carregar;
+  carregar();
+}
+function adminAdmins(corpo){
+  const p=el("div","painel-n admin-painel");
+  p.appendChild(el("p","hint","Admins veem e mexem em tudo do painel, menos nesta aba: só você adiciona ou tira admin."));
+  const add=el("div","admin-busca");
+  const inp=el("input");inp.type="email";inp.id="admin-novo";inp.placeholder="E-mail da conta";
+  const ok=el("button","botao","Adicionar admin");ok.type="button";
+  add.append(inp,ok);
+  const msg=el("p","hint","");
+  const lista=el("div","admin-lista");
+  p.append(add,msg,lista);
+  corpo.appendChild(p);
+  const carregar=async()=>{
+    lista.innerHTML="";
+    const r=await chamarAdmin("admins");
+    if(r.erro){ msg.className="hint msg-erro"; msg.textContent=r.erro; return; }
+    if(r.donoEmail)lista.appendChild(el("div","admin-linha",`<div class="admin-quem"><b>${r.donoEmail}</b><span class="admin-selo selo-pro">Dono</span></div>`));
+    r.admins.forEach(a=>{
+      const l=el("div","admin-linha");
+      l.appendChild(el("div","admin-quem",`<b>${String(a.email||a.user_id).replace(/</g,"&lt;")}</b><span class="admin-selo">Admin desde ${dataCurta(a.criado_em)}</span>`));
+      const acoes=el("div","admin-acoes");
+      acoes.appendChild(botaoConfirma("Tirar admin","Confirmar: tirar admin",async()=>{ await chamarAdmin("removerAdmin",{userId:a.user_id}); carregar(); }));
+      l.appendChild(acoes);
+      lista.appendChild(l);
+    });
+  };
+  ok.onclick=async()=>{
+    ok.disabled=true;msg.className="hint";msg.textContent="Adicionando";
+    const r=await chamarAdmin("addAdmin",{email:inp.value});
+    ok.disabled=false;
+    if(r.erro){ msg.className="hint msg-erro"; msg.textContent=r.erro; return; }
+    msg.className="hint msg-ok";msg.textContent="Admin adicionado.";inp.value="";carregar();
+  };
+  carregar();
+}
+const ROTULO_ACAO_ADMIN={darPro:"deu Pro",tirarPro:"tirou o Pro",banir:"baniu",desbanir:"desbaniu",
+  apagarRanking:"apagou do ranking",addAdmin:"adicionou admin",removerAdmin:"tirou admin"};
+function adminRegistro(corpo){
+  const p=el("div","painel-n admin-painel");
+  const lista=el("div","admin-lista");
+  p.appendChild(lista);
+  corpo.appendChild(p);
+  chamarAdmin("registro").then(r=>{
+    if(r.erro){ lista.appendChild(el("p","hint msg-erro",r.erro)); return; }
+    if(!r.registro.length){ lista.appendChild(vazio("lista","Nada registrado ainda","Cada ação do painel aparece aqui, com quem fez e quando.")); return; }
+    r.registro.forEach(x=>{
+      const d=x.detalhe||{};
+      const extra=x.acao==="darPro"?(d.dias?` (${d.dias} dias)`:" (sem prazo)"):x.acao==="banir"&&d.motivo?` (${String(d.motivo).replace(/</g,"&lt;")})`:x.acao==="apagarRanking"&&d.nome?` (${String(d.nome).replace(/</g,"&lt;")})`:"";
+      lista.appendChild(el("div","admin-linha",`<div class="admin-info">${new Date(x.criado_em).toLocaleString("pt-BR")}</div>
+        <div class="admin-quem"><b>${String(x.admin_email||"admin").replace(/</g,"&lt;")}</b> ${ROTULO_ACAO_ADMIN[x.acao]||x.acao} ${String(x.alvo_email||"").replace(/</g,"&lt;")}${extra}</div>`));
+    });
+  });
+}
 function screenHistorico(){ irPara("conta","carreiras"); }
 function screenPlanoPro(){ irPara("conta","pro"); }
 
@@ -1426,6 +1616,13 @@ function montarPerfil(corpo,email,session){
   acoes.append(trocar,sair);
   p.append(acoes,formSenha);
   corpo.appendChild(p);
+  /* painel de admin: o link só aparece pra quem o servidor diz que é admin */
+  chamarAdmin("eu").then(r=>{
+    if(!r||!r.admin)return;
+    const b=el("button","botao botao-sec",`${ICONE("escudo")}<span>Painel de admin</span>`);
+    b.type="button";b.id="perfil-admin";b.onclick=()=>irPara("admin");
+    acoes.appendChild(b);
+  });
 }
 /* Vitrine do Pro: benefícios + carrossel dos modelos de card + (com
    sessão) o formulário de pagamento de sempre; sem sessão, avisa que
@@ -4597,383 +4794,280 @@ function aplicarEntrevista(box,pergunta,txt,jBruto){
 
 
 /* =========================================================================
-   BONECO — SVG desenhado por código, sem imagem nenhuma.
-   Mantém o jogo em arquivo único, escala em qualquer tamanho e acompanha as
-   variáveis de cor do tema. Os adversários também têm boneco, derivado do nome
-   e dos stats: se só o jogador tivesse, a tela de escolha ficaria torta.
+   BONECO v2 (revamp dos personagens, 2026-09-28): meio-corpo desenhado por
+   código, sem imagem. Traço grosso, sombra em bloco do lado direito e luz de
+   palco vermelha na borda esquerda (identidade "Noite de Luta"). Oito
+   arquétipos tirados de estilos reais de MMA (ARQUETIPOS) e as peças que o
+   criador mistura. Aprovado pelo dono em 2026-09-28, sem o protetor bucal.
+   Só o lutador do JOGADOR tem rosto: os lutadores reais continuam sem
+   retrato (direito de imagem).
+
+   Config v2: {v:2, pele, porte, cabelo, corCabelo, barba, orelha, nariz,
+   cicatriz, tatuagem, entrada, prajiad, corEntrada, arquetipo}, cada campo
+   um índice da lista de mesmo nome. Save e ranking antigos (v1, índices das
+   listas do boneco antigo) passam por normalizarRosto() na hora de desenhar.
+   Proporção do SVG igual à antiga (largura × 1,2): nenhum layout muda.
    ========================================================================= */
-/* =========================================================================
-   ROSTO v2 — busto em SVG construído sobre anatomia, não sobre coordenadas
-   soltas.
-
-   O sistema anterior quebrava porque cada peça tinha número fixo no código:
-   olho em x=39, boca em y=71. Trocar o formato da cabeça não movia nada disso,
-   então bastava mexer numa peça para as outras saírem do lugar.
-
-   Três decisões resolvem isso na raiz:
-
-   1. ANCORAGEM — o objeto A descreve a anatomia (linha dos olhos, base do
-      nariz, largura da mandíbula...). Toda peça se posiciona em relação a ele.
-      Mudar o porte move a mandíbula e barba, orelha e queixo acompanham.
-
-   2. SIMETRIA POR CONSTRUÇÃO — olho, sobrancelha e orelha são desenhados uma
-      vez e espelhados por transform. É impossível ficarem desalinhados ou de
-      tamanhos diferentes: são o mesmo desenho.
-
-   3. RECORTE — o cabelo é cortado pela região do crânio, a barba pela região da
-      mandíbula. Não conseguem invadir o rosto nem flutuar, por construção.
-
-   Sombra e realce saem do tom de pele por cálculo, então trocar a cor mantém a
-   iluminação coerente em rosto, pescoço e orelha.
-   ========================================================================= */
-
-/* ---------------------------- paletas ---------------------------- */
-const PELES=["#F5D6B8","#EAC39C","#DBA878","#C08B57","#9E6B3E","#7A4E2B","#573520","#3B2317"];
-const CABELOS=["#0F0C0A","#241A14","#3B2A1C","#5A3E24","#7E5A2E","#A8823F","#CBB077","#E0D2A8",
-               "#8A8A8A","#CFCFCF","#8C3327","#2B3F63"];
-const OLHOS_COR=["#4A2F1B","#6B4423","#8A6A3A","#4E6B4A","#3E6478","#5A6B7A","#2E2622"];
-const CALCOES=["#C0392B","#1F3A6E","#1E6B4A","#7A2D8C","#B9932F","#242A36","#0F5C6B","#8C3A1E"];
-
-const CABELO_TIPOS=["raspado","máquina","curto","social","topete","moicano","coque","dreads","longo"];
-const BARBAS=["nenhuma","por fazer","bigode","cavanhaque","curta","média","cheia","costeleta"];
-const OLHOS=["neutro","firme","fundo","inchado","cerrado"];
-const SOBRANCELHAS=["reta","grossa","angulada","fina","partida","arqueada"];
-const BOCAS=["neutra","cerrada","firme","larga","fina","protetor"];
-const CICATRIZES=["nenhuma","supercílio","maçã do rosto","abaixo do olho","queixo","lábio"];
-const PORTES=["magro","atlético","forte"];
-
-/* ---------------------- cor derivada do tom de pele ----------------------
-   Sombra e realce calculados a partir da base, então trocar o tom mantém a
-   iluminação coerente em rosto, pescoço e orelha ao mesmo tempo. */
-function mistura(hex,alvo,q){
-  const h=hex.replace("#","");
-  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
-  const a=alvo.replace("#","");
-  const r2=parseInt(a.slice(0,2),16),g2=parseInt(a.slice(2,4),16),b2=parseInt(a.slice(4,6),16);
-  const m=(x,y)=>Math.round(x+(y-x)*q).toString(16).padStart(2,"0");
-  return "#"+m(r,r2)+m(g,g2)+m(b,b2);
-}
-const sombrear=(c,q=.22)=>mistura(c,"#241512",q);
-const iluminar=(c,q=.16)=>mistura(c,"#FFF3E4",q);
-
-/* ---------------------------- anatomia ----------------------------
-   Todas as medidas em viewBox 0 0 100 120. Um único lugar. */
-function anatomia(porte){
-  const largura=[0,1,2].indexOf(porte)>=0?porte:1;
-  const jaw=[21.5,23.5,25.5][largura];      // meia-largura da mandíbula
-  return {
-    cx:50,
-    topo:18,                 // topo do crânio
-    testa:36,                // linha da testa
-    sobrancelha:44,          // linha da sobrancelha
-    olhos:50,                // linha dos olhos
-    nariz:60,                // base do nariz
-    boca:70,                 // linha da boca
-    queixo:90,               // ponta do queixo
-    jaw,                     // mandíbula
-    zigo:jaw+2.5,            // maçã do rosto: sempre mais larga que a mandíbula
-    tempora:jaw+1.5,
-    olhoDx:10.5,             // afastamento do centro (uma medida só: simetria)
-    olhoRx:5.0, olhoRy:3.3,
-    orelhaY:52,
-    pescocoW:[9,10.5,12][largura],
-    ombro:[30,35,40][largura],
-  };
-}
-
-/* silhueta da cabeça derivada da anatomia: mudar o porte muda tudo junto */
-function caminhoCabeca(A){
-  const {cx,topo,testa,olhos,nariz,queixo,jaw,zigo,tempora}=A;
-  return `M${cx-tempora} ${testa}
-    C${cx-tempora} ${topo+2} ${cx-13} ${topo} ${cx} ${topo}
-    C${cx+13} ${topo} ${cx+tempora} ${topo+2} ${cx+tempora} ${testa}
-    C${cx+zigo} ${olhos-1} ${cx+zigo} ${nariz} ${cx+jaw} ${nariz+7}
-    C${cx+jaw-1} ${queixo-11} ${cx+11} ${queixo} ${cx} ${queixo}
-    C${cx-11} ${queixo} ${cx-jaw+1} ${queixo-11} ${cx-jaw} ${nariz+7}
-    C${cx-zigo} ${nariz} ${cx-zigo} ${olhos-1} ${cx-tempora} ${testa}Z`;
-}
-/* região do crânio: recorta o cabelo. Ele não consegue invadir o rosto. */
-function caminhoCranio(A){
-  const {cx,topo,olhos,tempora,zigo,nariz}=A;
-  return `M${cx-tempora-7} ${olhos+4}
-    C${cx-tempora-7} ${topo-8} ${cx+tempora+7} ${topo-8} ${cx+tempora+7} ${olhos+4}
-    C${cx+zigo} ${nariz+2} ${cx-zigo} ${nariz+2} ${cx-tempora-7} ${olhos+4}Z`;
-}
-/* Região da barba. A borda de baixo é o próprio contorno da mandíbula; a de
-   cima sobe alto nas laterais (costeleta) e MERGULHA abaixo do nariz no centro.
-   Sem esse mergulho a barba cobria o nariz, que é o erro clássico de barba
-   colada por cima em vez de seguir o rosto. */
-function caminhoBarbaArea(A){
-  const {cx,olhos,queixo,jaw,zigo,nariz}=A;
-  return `M${cx-zigo+1} ${olhos+4}
-    C${cx-zigo} ${nariz+4} ${cx-jaw-1} ${queixo-9} ${cx} ${queixo-1}
-    C${cx+jaw+1} ${queixo-9} ${cx+zigo} ${nariz+4} ${cx+zigo-1} ${olhos+4}
-    C${cx+12} ${nariz+3} ${cx+7} ${nariz+5} ${cx} ${nariz+5}
-    C${cx-7} ${nariz+5} ${cx-12} ${nariz+3} ${cx-zigo+1} ${olhos+4}Z`;
+const PELES=[["#F1D2B6","#D9AE8C"],["#E2B48E","#C38D67"],["#C98E62","#A66F47"],
+             ["#A56B42","#83512F"],["#7A4B2C","#5C361E"],["#4E2F1D","#381F12"]];
+const CORES_CABELO=["#15110E","#2A1B12","#4A2E1A","#C29A55","#8B3A1C","#E6DECB","#9C978F"];
+const CABELO_TIPOS=["raspado","militar","moicano","trança nagô","dreads","coque","black power","cacheado","descolorido"];
+const BARBAS=["nenhuma","rala","sem bigode","cheia","cavanhaque","ferradura"];
+const ORELHAS=["normal","couve-flor"];
+const NARIZES=["reto","quebrado"];
+const CICATRIZES=["nenhuma","corte na sobrancelha","bochecha","olho roxo"];
+const TATUAGENS=["nenhuma","tribal no ombro","escrita no peito","braço fechado","pescoço","peito e braço","fechado"];
+const ENTRADAS=["nenhuma","mongkol","papakha","kimono","roupão","capuz","bandeira"];
+const PRAJIADS=["sem","com"];
+const CORES_ENTRADA=["#D7261E","#7A0F0B","#1F3A6E","#1E6B4A","#D4A017","#16181E","#F2EEE6","#6B3FA0"];
+const PORTES=["leve","médio","pesado"];
+/* Arquétipos: ponto de partida, não prisão; toda peça pode ser trocada.
+   Pesquisa por trás de cada um no LEIA-ME ("Personagens"). */
+const ARQUETIPOS=[
+  {id:"muaythai",nome:"Muay Thai",cfg:{pele:2,porte:0,cabelo:1,corCabelo:0,barba:0,orelha:0,nariz:0,cicatriz:0,tatuagem:4,entrada:1,prajiad:1,corEntrada:0}},
+  {id:"jiujitsu",nome:"Jiu-jitsu",cfg:{pele:1,porte:1,cabelo:0,corCabelo:2,barba:1,orelha:1,nariz:0,cicatriz:0,tatuagem:0,entrada:3,prajiad:0,corEntrada:6}},
+  {id:"wrestling",nome:"Wrestling",cfg:{pele:0,porte:2,cabelo:1,corCabelo:2,barba:0,orelha:1,nariz:1,cicatriz:0,tatuagem:0,entrada:0,prajiad:0,corEntrada:2}},
+  {id:"sambo",nome:"Sambo do Cáucaso",cfg:{pele:1,porte:1,cabelo:1,corCabelo:0,barba:2,orelha:1,nariz:0,cicatriz:0,tatuagem:0,entrada:2,prajiad:0,corEntrada:6}},
+  {id:"boxe",nome:"Boxe",cfg:{pele:4,porte:1,cabelo:3,corCabelo:0,barba:4,orelha:0,nariz:1,cicatriz:1,tatuagem:0,entrada:4,prajiad:0,corEntrada:1}},
+  {id:"brigao",nome:"Brigão",cfg:{pele:3,porte:1,cabelo:2,corCabelo:0,barba:5,orelha:0,nariz:0,cicatriz:0,tatuagem:6,entrada:0,prajiad:0,corEntrada:0}},
+  {id:"kickboxing",nome:"Kickboxing",cfg:{pele:5,porte:0,cabelo:4,corCabelo:0,barba:3,orelha:0,nariz:0,cicatriz:0,tatuagem:0,entrada:5,prajiad:0,corEntrada:5}},
+  {id:"veterano",nome:"Veterano",cfg:{pele:0,porte:2,cabelo:0,corCabelo:6,barba:3,orelha:1,nariz:1,cicatriz:3,tatuagem:0,entrada:6,prajiad:0,corEntrada:3}},
+];
+/* v1 -> v2. Índices das listas do boneco antigo, na ordem de lá:
+   pele (8 tons), cabelo (raspado, máquina, curto, social, topete, moicano,
+   coque, dreads, longo), corCabelo (12 cores), barba (nenhuma, por fazer,
+   bigode, cavanhaque, curta, média, cheia, costeleta), cicatriz (nenhuma,
+   supercílio, maçã do rosto, abaixo do olho, queixo, lábio), calcao (8
+   cores). Olhos, sobrancelha e boca não existem mais (o protetor bucal da
+   boca antiga saiu a pedido do dono). */
+function normalizarRosto(c){
+  const num=(v,n)=>{ const x=Math.floor(Number(v)); return Number.isFinite(x)?((x%n)+n)%n:0; };
+  if(c&&c.v===2){
+    const f={v:2};
+    const listas={pele:PELES,porte:PORTES,cabelo:CABELO_TIPOS,corCabelo:CORES_CABELO,barba:BARBAS,orelha:ORELHAS,
+      nariz:NARIZES,cicatriz:CICATRIZES,tatuagem:TATUAGENS,entrada:ENTRADAS,prajiad:PRAJIADS,corEntrada:CORES_ENTRADA};
+    for(const k in listas)f[k]=num(c[k],listas[k].length);
+    if(typeof c.arquetipo==="string"&&ARQUETIPOS.some(a=>a.id===c.arquetipo))f.arquetipo=c.arquetipo;
+    return f;
+  }
+  const o=c||{};
+  return{v:2,
+    pele:Math.min(5,Math.round(num(o.pele,8)*5/7)),
+    porte:num(o.porte??1,3),
+    cabelo:[0,1,1,1,7,2,5,4,5][num(o.cabelo??2,9)],
+    corCabelo:[0,0,1,2,2,3,3,5,6,5,4,0][num(o.corCabelo??1,12)],
+    barba:[0,1,5,4,1,3,3,1][num(o.barba??1,8)],
+    orelha:0,nariz:0,
+    cicatriz:[0,1,2,2,2,2][num(o.cicatriz,6)],
+    tatuagem:0,entrada:0,prajiad:0,
+    corEntrada:[0,2,3,7,4,5,2,1][num(o.calcao,8)]};
 }
 
 let _svgId=0;
 function bonecoSVG(c,{w=120,alt=null}={}){
-  const id="f"+(++_svgId);
-  const A=anatomia((c.porte||0)%3);
-  const {cx}=A;
-  const pele=PELES[(c.pele||0)%PELES.length];
-  const som=sombrear(pele), som2=sombrear(pele,.4), luz=iluminar(pele);
-  const cab=CABELOS[(c.corCabelo||0)%CABELOS.length];
-  const cabS=mistura(cab,"#000000",.28);
-  const iris=OLHOS_COR[(c.corOlho||0)%OLHOS_COR.length];
-  const cal=CALCOES[(c.calcao||0)%CALCOES.length];
-  const linha="#171B22";
-  const T=n=>CABELO_TIPOS[(c.cabelo||0)%CABELO_TIPOS.length]===n;
-  const B=n=>BARBAS[(c.barba||0)%BARBAS.length]===n;
-  const O=OLHOS[(c.olho||0)%OLHOS.length];
-  const S=SOBRANCELHAS[(c.sobrancelha||0)%SOBRANCELHAS.length];
-  const M=BOCAS[(c.boca||0)%BOCAS.length];
-  const CIC=CICATRIZES[(c.cicatriz||0)%CICATRIZES.length];
+  const r=normalizarRosto(c);
+  const id="b"+(++_svgId);
+  const [pele,sombra]=PELES[r.pele];
+  const cab=CORES_CABELO[r.corCabelo];
+  const corE=CORES_ENTRADA[r.corEntrada];
+  const J=[23,26,29][r.porte], N=[15,18,22][r.porte], S=[62,70,78][r.porte];
+  const cx=100, LINHA="#0A0A0C", TINTA="#101014";
+  const h=["raspado","militar","moicano","nago","dreads","coque","afro","cacheado","descolorido"][r.cabelo];
+  const b=["nenhuma","rala","caucaso","cheia","cavanhaque","ferradura"][r.barba];
+  const tat=[[],["tribal"],["peito"],["braco"],["pescoco"],["peito","braco"],["tribal","peito","braco","pescoco"]][r.tatuagem];
+  const eq=["","mongkol","papakha","kimono","roupao","capuz","bandeira"][r.entrada];
+  const P=[];
+  const add=s=>P.push(s);
 
-  /* ---- olho: desenhado UMA vez, espelhado. Não há como desalinhar. ---- */
-  const ex=cx-A.olhoDx, ey=A.olhos;
-  let rx=A.olhoRx, ry=A.olhoRy, tampa="";
-  if(O==="firme"){ry=2.7;}
-  if(O==="cerrado"){ry=2.1;}
-  if(O==="fundo"){ry=2.9;tampa=`<path d="M${ex-rx-1} ${ey+4.4} Q${ex} ${ey+6} ${ex+rx+1} ${ey+4.4}"
-      stroke="${som2}" stroke-width="1.1" fill="none" opacity=".75"/>`;}
-  if(O==="inchado"){ry=2.2;tampa=`<path d="M${ex-rx-1.5} ${ey+3.6} Q${ex} ${ey+6.6} ${ex+rx+1.5} ${ey+3.6}
-      Q${ex} ${ey+4.4} ${ex-rx-1.5} ${ey+3.6}Z" fill="#8E4A3C" opacity=".55"/>`;}
-  const olhoUm=`
-    <ellipse cx="${ex}" cy="${ey}" rx="${rx}" ry="${ry}" fill="#F6F3EE"/>
-    <circle cx="${ex+.4}" cy="${ey}" r="${Math.min(ry-.15,2.5)}" fill="${iris}"/>
-    <circle cx="${ex+.4}" cy="${ey}" r="${Math.min(ry-.15,2.5)*.45}" fill="#12100E"/>
-    <circle cx="${ex+1.5}" cy="${ey-1}" r=".8" fill="#FFFFFF" opacity=".85"/>
-    <path d="M${ex-rx-.6} ${ey-.4} Q${ex} ${ey-ry-1.6} ${ex+rx+.6} ${ey-.4}"
-      stroke="${linha}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-    ${tampa}`;
+  /* ---- atrás de tudo: capuz, gola do roupão, cabelo comprido ---- */
+  if(eq==="roupao")
+    add(`<path d="M${cx-34} 150 C${cx-40} 120 ${cx+40} 120 ${cx+34} 150 C${cx+22} 160 ${cx-22} 160 ${cx-34} 150Z" fill="${corE}" stroke="${LINHA}" stroke-width="2.2"/>`);
+  if(eq==="capuz")
+    add(`<path d="M${cx} 22 C${cx+44} 22 ${cx+52} 66 ${cx+48} 104 C${cx+46} 130 ${cx+40} 150 ${cx+30} 162 L${cx-30} 162 C${cx-40} 150 ${cx-46} 130 ${cx-48} 104 C${cx-52} 66 ${cx-44} 22 ${cx} 22Z" fill="${corE}" stroke="${LINHA}" stroke-width="2.4"/>`);
+  if(h==="dreads") for(let i=0;i<5;i++){
+    const xE=cx-35+i*2.2, xD=cx+35-i*2.2, y2=150+i*4;
+    add(`<path d="M${xE} 70 C${xE-6} 110 ${xE-4} 130 ${xE-8} ${y2}" stroke="${cab}" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <path d="M${xD} 70 C${xD+6} 110 ${xD+4} 130 ${xD+8} ${y2}" stroke="${cab}" stroke-width="7" stroke-linecap="round" fill="none"/>`);
+  }
+  if(h==="afro") add(`<ellipse cx="${cx}" cy="64" rx="47" ry="38" fill="${cab}" stroke="${LINHA}" stroke-width="2.2"/>`);
 
-  /* ---- sobrancelha: ancorada na linha da sobrancelha, também espelhada ---- */
-  const bx=cx-A.olhoDx, by=A.sobrancelha;
-  const CEJA={
-    reta:`<path d="M${bx-6.5} ${by+.5} Q${bx} ${by-1.6} ${bx+6} ${by+.2}" stroke="${cabS}"
-            stroke-width="3.1" fill="none" stroke-linecap="round"/>`,
-    grossa:`<path d="M${bx-7} ${by+1} Q${bx} ${by-2.6} ${bx+6.5} ${by-.2}" stroke="${cabS}"
-            stroke-width="5" fill="none" stroke-linecap="round"/>`,
-    angulada:`<path d="M${bx-6.8} ${by-2} L${bx+6.2} ${by+1.8}" stroke="${cabS}"
-            stroke-width="4" fill="none" stroke-linecap="round"/>`,
-    fina:`<path d="M${bx-6} ${by+.4} Q${bx} ${by-1.4} ${bx+5.5} ${by}" stroke="${cabS}"
-            stroke-width="1.9" fill="none" stroke-linecap="round"/>`,
-    partida:`<path d="M${bx-6.8} ${by+.6} Q${bx-4} ${by-1.6} ${bx-1.8} ${by-1.2}" stroke="${cabS}"
-            stroke-width="3.4" fill="none" stroke-linecap="round"/>
-           <path d="M${bx+1.4} ${by-.6} Q${bx+4} ${by-.8} ${bx+6.2} ${by+.6}" stroke="${cabS}"
-            stroke-width="3.4" fill="none" stroke-linecap="round"/>`,
-    arqueada:`<path d="M${bx-6.5} ${by+1.4} Q${bx-1} ${by-3.4} ${bx+6} ${by+.4}" stroke="${cabS}"
-            stroke-width="3.2" fill="none" stroke-linecap="round"/>`,
-  }[S];
+  /* ---- tronco e braços ---- */
+  const tronco=`M${cx-N-2} 146 C${cx-N-12} 158 ${cx-S+16} 166 ${cx-S} 177 C${cx-S-13} 186 ${cx-S-15} 212 ${cx-S-10} 252 L${cx+S+10} 252 C${cx+S+15} 212 ${cx+S+13} 186 ${cx+S} 177 C${cx+S-16} 166 ${cx+N+12} 158 ${cx+N+2} 146Z`;
+  add(`<clipPath id="t${id}"><path d="${tronco}"/></clipPath>
+    <path d="${tronco}" fill="${pele}" stroke="${LINHA}" stroke-width="2.4" stroke-linejoin="round"/>
+    <g clip-path="url(#t${id})">
+      <path d="M${cx+8} 146 L${cx+S+30} 146 L${cx+S+30} 252 L${cx+14} 252 C${cx+10} 220 ${cx+14} 196 ${cx+8} 146Z" fill="${sombra}" opacity=".75"/>
+      <path d="M${cx-S+18} 196 C${cx-S+22} 212 ${cx-S+20} 234 ${cx-S+22} 252 M${cx+S-18} 196 C${cx+S-22} 212 ${cx+S-20} 234 ${cx+S-22} 252" stroke="${LINHA}" stroke-width="1.8" fill="none" opacity=".7"/>
+      <path d="M${cx-4} 206 C${cx-16} 214 ${cx-S+26} 212 ${cx-S+20} 200 M${cx+4} 206 C${cx+16} 214 ${cx+S-26} 212 ${cx+S-20} 200" stroke="${LINHA}" stroke-width="1.7" fill="none" opacity=".55"/>
+      <path d="M${cx} 196 L${cx} 252" stroke="${LINHA}" stroke-width="1.3" opacity=".35"/>
+    </g>
+    <path d="M${cx-N-4} 150 C${cx-N-14} 160 ${cx-S+14} 168 ${cx-S-2} 179 C${cx-S-14} 188 ${cx-S-15} 214 ${cx-S-10} 250" stroke="#E8362D" stroke-width="2.2" fill="none" opacity=".75"/>`);
+  if(tat.includes("tribal"))
+    add(`<path d="M${cx-S-8} 196 C${cx-S+2} 186 ${cx-S+12} 184 ${cx-S+16} 190 C${cx-S+8} 190 ${cx-S+2} 196 ${cx-S-2} 206 C${cx-S+6} 200 ${cx-S+14} 202 ${cx-S+14} 210 C${cx-S+6} 208 ${cx-S} 214 ${cx-S-4} 224 C${cx-S-8} 214 ${cx-S-10} 204 ${cx-S-8} 196Z" fill="${TINTA}" opacity=".82"/>
+      <path d="M${cx-S-4} 228 C${cx-S+4} 224 ${cx-S+10} 228 ${cx-S+10} 236 C${cx-S+4} 234 ${cx-S} 238 ${cx-S-4} 246Z" fill="${TINTA}" opacity=".82"/>`);
+  if(tat.includes("peito"))
+    add(`<path d="M${cx-30} 198 c4 -8 10 -8 10 -1 c0 6 -8 8 -6 1 c2 -6 10 -8 13 -2 c2 4 -2 8 -4 5 c-2 -3 4 -8 9 -6 c5 2 3 8 0 7 c-3 -1 1 -7 7 -6 c5 1 5 7 1 7 c-3 0 0 -6 6 -6 c5 0 7 4 4 7" stroke="${TINTA}" stroke-width="1.8" fill="none" opacity=".85" stroke-linecap="round"/>`);
+  if(tat.includes("braco")){
+    const bx=cx+S+2;
+    add(`<g opacity=".85"><path d="M${bx-6} 186 C${bx+4} 184 ${bx+10} 192 ${bx+9} 200 C${bx+2} 196 ${bx-4} 198 ${bx-8} 204Z" fill="${TINTA}"/>
+      <circle cx="${bx-1}" cy="214" r="6" fill="none" stroke="${TINTA}" stroke-width="2"/>
+      <path d="M${bx-9} 224 L${bx+9} 222 L${bx+10} 230 L${bx-8} 232Z" fill="${TINTA}"/>
+      <path d="M${bx-8} 238 C${bx-2} 234 ${bx+6} 240 ${bx+12} 236 M${bx-8} 244 C${bx-2} 240 ${bx+6} 246 ${bx+12} 242" stroke="${TINTA}" stroke-width="2" fill="none"/></g>`);
+  }
+  if(r.prajiad) for(const lado of [-1,1]){
+    const x0=cx+lado*(S+2);
+    add(`<path d="M${x0-11} 214 L${x0+11} 211 L${x0+12} 220 L${x0-10} 223Z" fill="${corE}" stroke="${LINHA}" stroke-width="1.8"/>
+      <path d="M${x0+lado*10} 215 l${lado*10} 10 m${-lado*10} -8 l${lado*12} 4" stroke="${corE}" stroke-width="3" stroke-linecap="round"/>`);
+  }
 
-  /* ---- orelha: ancorada na têmpora, espelhada ---- */
-  const oy=A.orelhaY, ox=cx-A.tempora;
-  const orelhaUma=`
-    <path d="M${ox+1} ${oy-6} C${ox-6} ${oy-7} ${ox-7} ${oy+3} ${ox-3.5} ${oy+7}
-      C${ox-1} ${oy+9} ${ox+1} ${oy+7} ${ox+1} ${oy+5}Z" fill="${pele}"
-      stroke="${linha}" stroke-width="1.6"/>
-    <path d="M${ox-1.5} ${oy-2.5} C${ox-4} ${oy-2} ${ox-4} ${oy+2} ${ox-2.5} ${oy+4}"
-      stroke="${som2}" stroke-width="1.2" fill="none" opacity=".8"/>`;
+  /* ---- roupa de entrada por cima do tronco ---- */
+  if(eq==="kimono"){
+    const gi=["#F2EEE6","#1F3A6E","#16181E"].includes(corE)?corE:"#F2EEE6";
+    add(`<path d="${tronco}" fill="${gi}" stroke="${LINHA}" stroke-width="2.4"/>
+      <g clip-path="url(#t${id})"><path d="M${cx+10} 146 L${cx+S+30} 146 L${cx+S+30} 252 L${cx+18} 252Z" fill="#000" opacity=".14"/></g>
+      <path d="M${cx-N-2} 146 L${cx-N+10} 146 L${cx+22} 252 L${cx+10} 252Z" fill="${gi}" stroke="${LINHA}" stroke-width="2"/>
+      <path d="M${cx+N+2} 146 L${cx+N-8} 146 L${cx-4} 214 L${cx+4} 222Z" fill="${gi}" stroke="${LINHA}" stroke-width="2"/>
+      <path d="M${cx-S+18} 196 C${cx-S+22} 212 ${cx-S+20} 234 ${cx-S+22} 252 M${cx+S-18} 196 C${cx+S-22} 212 ${cx+S-20} 234 ${cx+S-22} 252" stroke="${LINHA}" stroke-width="1.6" fill="none" opacity=".6"/>`);
+  }
+  if(eq==="roupao"){
+    add(`<path d="${tronco}" fill="${corE}" stroke="${LINHA}" stroke-width="2.4"/>
+      <g clip-path="url(#t${id})">
+        <path d="M${cx-S-10} 176 C${cx-S+10} 172 ${cx-S+14} 200 ${cx-S+4} 252" stroke="#fff" stroke-width="6" opacity=".12" fill="none"/>
+        <path d="M${cx+10} 146 L${cx+S+30} 146 L${cx+S+30} 252 L${cx+18} 252Z" fill="#000" opacity=".25"/>
+      </g>
+      <path d="M${cx-N-4} 148 L${cx-2} 214 L${cx+N+4} 148 L${cx+N-4} 147 L${cx} 196 L${cx-N+4} 147Z" fill="${pele}" stroke="${LINHA}" stroke-width="2"/>
+      <path d="M${cx-N-4} 148 L${cx-2} 214 M${cx+N+4} 148 L${cx+2} 214" stroke="#D4A017" stroke-width="5" fill="none"/>`);
+  }
+  if(eq==="capuz"){
+    add(`<path d="${tronco}" fill="${corE}" stroke="${LINHA}" stroke-width="2.4"/>
+      <g clip-path="url(#t${id})"><path d="M${cx+10} 146 L${cx+S+30} 146 L${cx+S+30} 252 L${cx+18} 252Z" fill="#000" opacity=".3"/></g>
+      <path d="M${cx-8} 160 L${cx-10} 200 M${cx+8} 160 L${cx+10} 200" stroke="#C9CBD2" stroke-width="2.2" stroke-linecap="round"/>`);
+  }
+  if(eq==="bandeira") for(const lado of [-1,1]){
+    const xa=cx+lado*(N+2), xb=cx+lado*(S+8), xc=cx+lado*(S-26), xd=cx+lado*(N+10);
+    add(`<path d="M${xa} 148 C${cx+lado*(S-10)} 158 ${xb} 170 ${xb} 186 L${cx+lado*(S+4)} 252 L${xc} 252 C${cx+lado*(S-30)} 214 ${xd+lado*6} 176 ${xd} 160Z" fill="#1E8C45" stroke="${LINHA}" stroke-width="2.2"/>
+      <path d="M${cx+lado*(N+6)} 156 C${cx+lado*(S-14)} 166 ${cx+lado*(S-2)} 180 ${cx+lado*(S-4)} 196 L${cx+lado*(S-10)} 252 L${cx+lado*(S-20)} 252 C${cx+lado*(S-22)} 216 ${cx+lado*(N+14)} 180 ${cx+lado*(N+6)} 156Z" fill="#F2C619"/>
+      <circle cx="${cx+lado*(S-14)}" cy="226" r="7" fill="#1F3A93"/>`);
+  }
 
-  /* ---- boca: ancorada na linha da boca ---- */
-  const my=A.boca;
-  const BOCA={
-    neutra:`<path d="M${cx-7.5} ${my} Q${cx} ${my+2.6} ${cx+7.5} ${my}" stroke="${linha}"
-              stroke-width="2" fill="none" stroke-linecap="round"/>
-            <path d="M${cx-6} ${my-2.4} Q${cx} ${my-3.6} ${cx+6} ${my-2.4}" stroke="${som2}"
-              stroke-width="1.1" fill="none" opacity=".55"/>`,
-    cerrada:`<path d="M${cx-8} ${my} L${cx+8} ${my}" stroke="${linha}" stroke-width="2.6" stroke-linecap="round"/>
-             <path d="M${cx-6.5} ${my-2.6} Q${cx} ${my-4} ${cx+6.5} ${my-2.6}" stroke="${som2}"
-              stroke-width="1.2" fill="none" opacity=".6"/>`,
-    firme:`<path d="M${cx-8} ${my-.6} Q${cx} ${my+1.6} ${cx+8} ${my-.6}" stroke="${linha}"
-              stroke-width="2.4" fill="none" stroke-linecap="round"/>`,
-    larga:`<path d="M${cx-9.5} ${my} Q${cx} ${my+3} ${cx+9.5} ${my}" stroke="${linha}"
-              stroke-width="2.2" fill="none" stroke-linecap="round"/>
-           <path d="M${cx-7.5} ${my-2.6} Q${cx} ${my-4.2} ${cx+7.5} ${my-2.6}" stroke="${som2}"
-              stroke-width="1.2" fill="none" opacity=".55"/>`,
-    fina:`<path d="M${cx-6.5} ${my} Q${cx} ${my+1.6} ${cx+6.5} ${my}" stroke="${linha}"
-              stroke-width="1.7" fill="none" stroke-linecap="round"/>`,
-    protetor:`<path d="M${cx-8} ${my-3} Q${cx} ${my-5} ${cx+8} ${my-3}
-              L${cx+7.5} ${my+2.6} Q${cx} ${my+4.6} ${cx-7.5} ${my+2.6}Z"
-              fill="#DCE4EC" stroke="${linha}" stroke-width="1.2"/>
-            <path d="M${cx-4} ${my-3.6} L${cx-4} ${my+3.4} M${cx} ${my-4.2} L${cx} ${my+4}
-              M${cx+4} ${my-3.6} L${cx+4} ${my+3.4}" stroke="#A9B4C0" stroke-width=".9"/>`,
-  }[M];
+  /* ---- pescoço e orelhas ---- */
+  add(`<path d="M${cx-N} 118 L${cx-N-2} 156 Q${cx} 162 ${cx+N+2} 156 L${cx+N} 118Z" fill="${pele}" stroke="${LINHA}" stroke-width="2.2"/>
+    <path d="M${cx+2} 124 L${cx+N} 118 L${cx+N+2} 156 Q${cx+8} 160 ${cx+4} 158Z" fill="${sombra}" opacity=".8"/>
+    <path d="M${cx-N+1} 134 Q${cx} 146 ${cx+N-1} 134" fill="${sombra}" opacity=".55"/>`);
+  if(tat.includes("pescoco"))
+    add(`<path d="M${cx-N+2} 138 l3 -7 l3 7 l7 1 l-5 5 l2 7 l-7 -4 l-6 4 l2 -7 l-5 -5Z" fill="${TINTA}" opacity=".8"/>`);
+  for(const lado of [-1,1]){
+    const x=cx+lado*31, cor=lado<0?pele:sombra;
+    if(r.orelha===1)
+      add(`<path d="M${x} 86 C${x+lado*9} 82 ${x+lado*12} 90 ${x+lado*9} 95 C${x+lado*13} 99 ${x+lado*10} 106 ${x+lado*7} 106 C${x+lado*8} 111 ${x+lado*2} 112 ${x} 108Z" fill="${cor}" stroke="${LINHA}" stroke-width="2"/>
+        <circle cx="${x+lado*6}" cy="93" r="2.6" fill="${sombra}" stroke="${LINHA}" stroke-width="1.2"/>
+        <circle cx="${x+lado*6}" cy="101" r="2.2" fill="${sombra}" stroke="${LINHA}" stroke-width="1.2"/>`);
+    else
+      add(`<path d="M${x} 86 C${x+lado*8} 83 ${x+lado*10} 92 ${x+lado*8} 100 C${x+lado*7} 106 ${x+lado*3} 109 ${x} 107Z" fill="${cor}" stroke="${LINHA}" stroke-width="2"/>
+        <path d="M${x+lado*2} 91 C${x+lado*6} 91 ${x+lado*6} 99 ${x+lado*3} 101" stroke="${LINHA}" stroke-width="1.3" fill="none"/>`);
+  }
 
-  /* ---- cabelo ----------------------------------------------------------
-     A versão anterior desenhava o crânio cheio de cabelo e depois "apagava" a
-     testa com uma forma cor de pele. Essa forma descia até a linha dos olhos e
-     cobria olhos e sobrancelhas.
+  /* ---- cabeça: sombra em bloco à direita, luz de palco à esquerda ---- */
+  const cabeca=`M${cx} 45 C${cx+20} 45 ${cx+32} 59 ${cx+32} 80 C${cx+32} 93 ${cx+31} 104 ${cx+J+4} 116 C${cx+J+2} 125 ${cx+J-4} 131 ${cx+12} 136 C${cx+6} 139 ${cx-6} 139 ${cx-12} 136 C${cx-J+4} 131 ${cx-J-2} 125 ${cx-J-4} 116 C${cx-31} 104 ${cx-32} 93 ${cx-32} 80 C${cx-32} 59 ${cx-20} 45 ${cx} 45Z`;
+  add(`<clipPath id="c${id}"><path d="${cabeca}"/></clipPath>
+    <path d="${cabeca}" fill="${pele}" stroke="${LINHA}" stroke-width="2.6" stroke-linejoin="round"/>
+    <g clip-path="url(#c${id})">
+      <path d="M${cx+6} 40 C${cx+18} 70 ${cx+14} 110 ${cx+4} 142 L${cx+40} 142 L${cx+40} 40Z" fill="${sombra}" opacity=".78"/>
+      <path d="M${cx-24} 110 C${cx-14} 128 ${cx+14} 128 ${cx+24} 110 L${cx+30} 142 L${cx-30} 142Z" fill="${sombra}" opacity=".25"/>
+    </g>
+    <path d="M${cx-32} 82 C${cx-32} 96 ${cx-31} 106 ${cx-J-4} 116" stroke="#E8362D" stroke-width="2" fill="none" opacity=".8"/>`);
 
-     Agora o cabelo é UM caminho fechado que sobe do lado da têmpora, passa pelo
-     topo do crânio e desce do outro lado, fechando por uma LINHA DO CABELO
-     desenhada explicitamente. Não existe nada para apagar, então não há como
-     invadir o rosto. */
-  const capa=(linhaY,forma)=>{
-    const {cx,topo,tempora,olhos}=A;
-    const L=cx-tempora-1.5, R=cx+tempora+1.5;
-    return `M${L} ${olhos-2}
-      C${L-1} ${topo+3} ${cx-13} ${topo-2} ${cx} ${topo-2}
-      C${cx+13} ${topo-2} ${R+1} ${topo+3} ${R} ${olhos-2}
-      L${R} ${linhaY+3} ${forma} L${L} ${linhaY+3}Z`;
-  };
-  const tipoCab=CABELO_TIPOS[(c.cabelo||0)%CABELO_TIPOS.length];
-  const th=A.testa;                       // linha do cabelo padrão
-  const CABELO={
-    raspado:``,
-    "máquina":`<path d="${capa(th+1,`C${cx+A.tempora-4} ${th-2} ${cx-A.tempora+4} ${th-2} ${cx-A.tempora-1.5} ${th+1}`)}"
-                fill="${cab}" opacity=".45"/>`,
-    curto:`<path d="${capa(th,`C${cx+A.tempora-5} ${th-4} ${cx-A.tempora+5} ${th-4} ${cx-A.tempora-1.5} ${th}`)}"
-            fill="${cab}"/>`,
-    social:`<path d="${capa(th-1,`C${cx+A.tempora-3} ${th-6} ${cx-6} ${th-7} ${cx-A.tempora-1.5} ${th-1}`)}"
-            fill="${cab}"/>`,
-    topete:`<path d="${capa(th-2,`C${cx+A.tempora-5} ${th-7} ${cx-A.tempora+5} ${th-7} ${cx-A.tempora-1.5} ${th-2}`)}"
-            fill="${cab}"/>
-            <path d="M${cx-9} ${th-3} Q${cx-3} ${A.topo-12} ${cx+9} ${th-6} Q${cx} ${th-6} ${cx-9} ${th-3}Z"
-            fill="${cab}"/>`,
-    moicano:`<path d="${capa(th+2,`C${cx+A.tempora-4} ${th} ${cx-A.tempora+4} ${th} ${cx-A.tempora-1.5} ${th+2}`)}"
-             fill="${cab}" opacity=".3"/>
-             <path d="M${cx-6} ${th+1} C${cx-6} ${A.topo-10} ${cx+6} ${A.topo-10} ${cx+6} ${th+1}Z"
-             fill="${cab}"/>`,
-    coque:`<path d="${capa(th,`C${cx+A.tempora-5} ${th-4} ${cx-A.tempora+5} ${th-4} ${cx-A.tempora-1.5} ${th}`)}"
-           fill="${cab}"/>`,
-    dreads:`<path d="${capa(th+1,`C${cx+A.tempora-5} ${th-3} ${cx-A.tempora+5} ${th-3} ${cx-A.tempora-1.5} ${th+1}`)}"
-            fill="${cab}"/>`,
-    longo:`<path d="${capa(th,`C${cx+A.tempora-5} ${th-4} ${cx-A.tempora+5} ${th-4} ${cx-A.tempora-1.5} ${th}`)}"
-           fill="${cab}"/>`,
-  }[tipoCab];
+  /* ---- rosto: encarada ---- */
+  if(r.cicatriz===3) add(`<ellipse cx="${cx+13}" cy="92" rx="10" ry="7.5" fill="#5B2A6E" opacity=".55"/>`);
+  for(const lado of [-1,1]){
+    const x=cx+lado*13;
+    add(`<path d="M${x-7} 91 Q${x} 86.5 ${x+7} 91 Q${x} 94.5 ${x-7} 91Z" fill="#F4EFE6" stroke="${LINHA}" stroke-width="1.4"/>
+      <circle cx="${x-lado*.5}" cy="90.8" r="2.7" fill="#1A120C"/>
+      <path d="M${x-7.5} 90.6 Q${x} 86 ${x+7.5} 90.6" stroke="${LINHA}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`);
+  }
+  const corSob=r.corCabelo>=5?"#6F6A60":(h==="raspado"?"#2A1D14":cab);
+  for(const lado of [-1,1]){
+    const xi=cx+lado*5, xe=cx+lado*21;
+    add(`<path d="M${xi} 84.5 L${xe} 79.5 L${xe+lado} 83 L${xi} 88Z" fill="${corSob}" stroke="${LINHA}" stroke-width="1.2" stroke-linejoin="round"/>`);
+  }
+  if(r.nariz===1)
+    add(`<path d="M${cx-1} 92 L${cx+3} 100 L${cx-1} 108" stroke="${LINHA}" stroke-width="1.8" fill="none" opacity=".75"/>
+      <path d="M${cx-8} 110 Q${cx-9} 115 ${cx-3} 115 Q${cx} 117 ${cx+3} 115 Q${cx+10} 115 ${cx+8} 109" fill="${sombra}" stroke="${LINHA}" stroke-width="1.9"/>`);
+  else
+    add(`<path d="M${cx+2} 93 L${cx+3} 106" stroke="${LINHA}" stroke-width="1.6" fill="none" opacity=".6"/>
+      <path d="M${cx-6} 108 Q${cx-7} 113 ${cx-2} 113 Q${cx} 114.5 ${cx+2} 113 Q${cx+7} 113 ${cx+6} 108" fill="${sombra}" stroke="${LINHA}" stroke-width="1.8"/>`);
+  add(`<path d="M${cx-9} 123.5 Q${cx} 121.5 ${cx+9} 124" stroke="${LINHA}" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <path d="M${cx-5} 128 Q${cx} 129.5 ${cx+5} 128" stroke="${sombra}" stroke-width="2" fill="none" stroke-linecap="round"/>`);
 
-  /* peças que ficam FORA do crânio, desenhadas sobre o cabelo base */
-  const cabeloFora=tipoCab==="coque"
-    ? `<circle cx="${cx}" cy="${A.topo-7}" r="7.5" fill="${cab}" stroke="${cabS}" stroke-width="1.2"/>`
-    : tipoCab==="dreads"
-    ? [0,1,2,3,4,5].map(i=>{
-        const lado=i<3?-1:1,k=i%3;
-        const x=cx+lado*(A.tempora-1+k*3.2), y=A.olhos-6+k*2.6;
-        return `<rect x="${x-2.2}" y="${y}" width="4.4" height="${16+k*6}" rx="2.2" fill="${cab}"/>`;
-      }).join("")
-    : tipoCab==="longo"
-    ? `<path d="M${cx-A.tempora-1} ${A.testa+2} C${cx-A.zigo-5} ${A.nariz} ${cx-A.zigo-4} ${A.queixo-4}
-        ${cx-A.jaw-3} ${A.queixo+4} L${cx-A.jaw+1} ${A.queixo+4}
-        C${cx-A.zigo+2} ${A.nariz+2} ${cx-A.tempora+1} ${A.olhos} ${cx-A.tempora+1} ${A.testa+3}Z" fill="${cab}"/>
-       <path d="M${cx+A.tempora+1} ${A.testa+2} C${cx+A.zigo+5} ${A.nariz} ${cx+A.zigo+4} ${A.queixo-4}
-        ${cx+A.jaw+3} ${A.queixo+4} L${cx+A.jaw-1} ${A.queixo+4}
-        C${cx+A.zigo-2} ${A.nariz+2} ${cx+A.tempora-1} ${A.olhos} ${cx+A.tempora-1} ${A.testa+3}Z" fill="${cab}"/>`
-    : "";
+  /* ---- barba ---- */
+  if(b!=="nenhuma"){
+    const bigode=`M${cx-12} 121 C${cx-8} 115 ${cx+8} 115 ${cx+12} 121 C${cx+6} 119 ${cx-6} 119 ${cx-12} 121Z`;
+    if(b==="cavanhaque")
+      add(`<path d="M${cx-11} 127 C${cx-10} 136 ${cx+10} 136 ${cx+11} 127 C${cx+6} 131 ${cx-6} 131 ${cx-11} 127Z" fill="${cab}" stroke="${LINHA}" stroke-width="1.4"/>
+        <path d="${bigode}" fill="${cab}" stroke="${LINHA}" stroke-width="1.4"/>
+        <path d="M${cx-12} 121 C${cx-13} 124 ${cx-12} 127 ${cx-11} 127 M${cx+12} 121 C${cx+13} 124 ${cx+12} 127 ${cx+11} 127" stroke="${cab}" stroke-width="3"/>`);
+    else if(b==="ferradura")
+      add(`<path d="${bigode}" fill="${cab}" stroke="${LINHA}" stroke-width="1.4"/>
+        <path d="M${cx-11} 121 L${cx-12} 138 M${cx+11} 121 L${cx+12} 138" stroke="${cab}" stroke-width="5" stroke-linecap="round"/>`);
+    else{
+      const opac=b==="rala"?.42:1, q=b==="caucaso"?146:141, tr=b==="rala"?"none":LINHA;
+      add(`<path d="M${cx-31} 96 C${cx-31} 106 ${cx-J-4} 114 ${cx-J-3} 118 C${cx-J} 128 ${cx-14} ${q-3} ${cx} ${q} C${cx+14} ${q-3} ${cx+J} 128 ${cx+J+3} 118 C${cx+J+4} 114 ${cx+31} 106 ${cx+31} 96 L${cx+26} 98 C${cx+24} 110 ${cx+15} 118 ${cx+11} 125 C${cx+8} 131 ${cx-8} 131 ${cx-11} 125 C${cx-15} 118 ${cx-24} 110 ${cx-26} 98Z" fill="${cab}" opacity="${opac}" stroke="${tr}" stroke-width="1.6"/>`);
+      if(b!=="caucaso") add(`<path d="${bigode}" fill="${cab}" opacity="${opac}" stroke="${tr}" stroke-width="1.4"/>`);
+    }
+  }
+  if(r.cicatriz===1)
+    add(`<path d="M${cx-20} 76 L${cx-13} 79" stroke="#8E1510" stroke-width="2" stroke-linecap="round"/>
+      <rect x="${cx-21}" y="75.5" width="9" height="3.4" rx="1" fill="#F4EFE6" stroke="${LINHA}" stroke-width=".9" transform="rotate(20 ${cx-16} 77)"/>`);
+  if(r.cicatriz===2)
+    add(`<path d="M${cx+17} 99 L${cx+24} 112" stroke="#F0C7B0" stroke-width="1.8" stroke-linecap="round" opacity=".9"/>
+      <path d="M${cx+18} 103 l3 -1 M${cx+20} 107 l3 -1" stroke="#F0C7B0" stroke-width="1.2"/>`);
 
-  /* ---- barba: recortada pela mandíbula, acompanha o formato do rosto ---- */
-  const areaBarba=caminhoBarbaArea(A);
-  const bigode=`<path d="M${cx-7} ${my-3.4} Q${cx} ${my-6} ${cx+7} ${my-3.4}
-      Q${cx} ${my-1.4} ${cx-7} ${my-3.4}Z" fill="${cab}"/>`;
-  const queixinho=`<path d="M${cx-4.5} ${my+4} Q${cx} ${my+2.6} ${cx+4.5} ${my+4}
-      Q${cx+4} ${A.queixo-3} ${cx} ${A.queixo-1.5} Q${cx-4} ${A.queixo-3} ${cx-4.5} ${my+4}Z" fill="${cab}"/>`;
-  const manto=(op,topo)=>`<path d="${areaBarba}" fill="${cab}" opacity="${op}"
-      clip-path="url(#bar${id})" transform="translate(0 ${topo})"/>`;
-  const BARBA={
-    nenhuma:``,
-    "por fazer":`<path d="${areaBarba}" fill="${cab}" opacity=".22" clip-path="url(#bar${id})"/>`,
-    bigode:bigode,
-    cavanhaque:bigode+queixinho,
-    curta:`<path d="${areaBarba}" fill="${cab}" opacity=".55" clip-path="url(#bar${id})"/>`+bigode,
-    "média":`<path d="${areaBarba}" fill="${cab}" opacity=".8" clip-path="url(#bar${id})"/>`+bigode,
-    cheia:`<path d="${areaBarba}" fill="${cab}" clip-path="url(#bar${id})"/>`+bigode,
-    costeleta:`<path d="M${cx-A.tempora+1} ${A.olhos-2} L${cx-A.jaw-1} ${A.nariz+8}
-        L${cx-A.jaw+4} ${A.nariz+8} L${cx-A.tempora+5} ${A.olhos-2}Z" fill="${cab}"/>
-      <path d="M${cx+A.tempora-1} ${A.olhos-2} L${cx+A.jaw+1} ${A.nariz+8}
-        L${cx+A.jaw-4} ${A.nariz+8} L${cx+A.tempora-5} ${A.olhos-2}Z" fill="${cab}"/>`,
-  }[BARBAS[(c.barba||0)%BARBAS.length]];
+  /* ---- cabelo ---- */
+  const capa=(corte=62)=>`M${cx-32} 82 C${cx-33} 60 ${cx-22} 44 ${cx} 43 C${cx+22} 44 ${cx+33} 60 ${cx+32} 82 C${cx+30} 72 ${cx+26} 66 ${cx+22} ${corte} C${cx+10} ${corte-4} ${cx-10} ${corte-4} ${cx-22} ${corte} C${cx-26} 66 ${cx-30} 72 ${cx-32} 82Z`;
+  if(h==="militar"||h==="descolorido"||h==="nago"){
+    add(`<path d="${capa(60)}" fill="${h==="descolorido"?CORES_CABELO[5]:cab}" stroke="${LINHA}" stroke-width="2.2"/>`);
+    if(h==="nago") for(let i=-2;i<=2;i++) add(`<path d="M${cx+i*9} 58 C${cx+i*11} 50 ${cx+i*10} 46 ${cx+i*8} 43" stroke="#000" stroke-width="1.6" opacity=".55" fill="none"/>`);
+  }else if(h==="moicano"){
+    add(`<path d="${capa(60)}" fill="${cab}" opacity=".25"/>
+      <path d="M${cx-9} 58 L${cx-12} 30 L${cx-4} 38 L${cx} 24 L${cx+4} 38 L${cx+12} 30 L${cx+9} 58 C${cx+4} 56 ${cx-4} 56 ${cx-9} 58Z" fill="${cab}" stroke="${LINHA}" stroke-width="2"/>`);
+  }else if(h==="coque"){
+    add(`<circle cx="${cx}" cy="36" r="10" fill="${cab}" stroke="${LINHA}" stroke-width="2"/>
+      <path d="${capa(58)}" fill="${cab}" stroke="${LINHA}" stroke-width="2.2"/>
+      <path d="M${cx-18} 56 C${cx-10} 50 ${cx-4} 47 ${cx} 46 M${cx+18} 56 C${cx+10} 50 ${cx+4} 47 ${cx} 46" stroke="#000" stroke-width="1.3" opacity=".4" fill="none"/>`);
+  }else if(h==="afro"){
+    add(`<path d="${capa(58)}" fill="${cab}"/>`);
+  }else if(h==="cacheado"){
+    add(`<path d="${capa(60)}" fill="${cab}" stroke="${LINHA}" stroke-width="2.2"/>`);
+    for(let i=0;i<7;i++) add(`<circle cx="${cx-24+i*8}" cy="${(50-Math.sin(i/6*Math.PI)*8).toFixed(1)}" r="6" fill="${cab}" stroke="${LINHA}" stroke-width="1.4"/>`);
+  }else if(h==="dreads"){
+    add(`<path d="${capa(60)}" fill="${cab}" stroke="${LINHA}" stroke-width="2.2"/>`);
+    for(let i=-2;i<=2;i++) add(`<path d="M${cx+i*9} 58 L${cx+i*9.5} 44" stroke="#000" stroke-width="2.4" opacity=".4"/>`);
+  }else{
+    add(`<path d="M${cx-16} 54 C${cx-8} 48 ${cx+2} 47 ${cx+8} 49" stroke="#fff" stroke-width="3" opacity=".22" fill="none" stroke-linecap="round"/>`);
+  }
 
-  /* ---- cicatriz: segue a anatomia da região, com relevo em vez de risco ---- */
-  const cicCor="#B5806E";
-  const CICS={
-    nenhuma:``,
-    "supercílio":`<path d="M${bx-3} ${by-4} L${bx-1.5} ${by+5}" stroke="${cicCor}" stroke-width="1.8"
-        stroke-linecap="round"/><path d="M${bx-3.4} ${by-2} L${bx-1} ${by-1.4}
-        M${bx-2.6} ${by+2} L${bx-.4} ${by+2.6}" stroke="${cicCor}" stroke-width=".9" opacity=".8"/>`,
-    "maçã do rosto":`<path d="M${cx+A.zigo-4} ${A.olhos+6} Q${cx+A.zigo-6} ${A.nariz-1} ${cx+A.jaw-5} ${A.nariz+4}"
-        stroke="${cicCor}" stroke-width="1.9" fill="none" stroke-linecap="round"/>`,
-    "abaixo do olho":`<path d="M${ex-4} ${ey+6.5} L${ex+3.5} ${ey+7.6}" stroke="${cicCor}"
-        stroke-width="1.7" stroke-linecap="round"/>`,
-    queixo:`<path d="M${cx-3} ${A.queixo-6} L${cx+2} ${A.queixo-3}" stroke="${cicCor}"
-        stroke-width="1.8" stroke-linecap="round"/>`,
-    "lábio":`<path d="M${cx+3.5} ${my-4.5} L${cx+5} ${my+3}" stroke="${cicCor}"
-        stroke-width="1.7" stroke-linecap="round"/>`,
-  };
+  /* ---- na cabeça ---- */
+  if(eq==="mongkol"){
+    const arco=`M${cx-31} 66 C${cx-18} 58 ${cx+18} 58 ${cx+31} 66`, rabo=`M${cx} 60 C${cx-6} 44 ${cx-2} 30 ${cx+6} 22`;
+    add(`<path d="${arco}" stroke="${LINHA}" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <path d="${arco}" stroke="${corE}" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="${arco}" stroke="#F2EEE6" stroke-width="6" fill="none" stroke-dasharray="3 5" opacity=".75"/>
+      <path d="${rabo}" stroke="${LINHA}" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="${rabo}" stroke="${corE}" stroke-width="3.4" fill="none" stroke-linecap="round"/>`);
+  }
+  if(eq==="papakha"){
+    const la=corE==="#16181E"?"#2A2724":"#E4DED0";
+    add(`<path d="M${cx-34} 66 C${cx-36} 40 ${cx-34} 22 ${cx-26} 16 C${cx-10} 10 ${cx+10} 10 ${cx+26} 16 C${cx+34} 22 ${cx+36} 40 ${cx+34} 66 C${cx+18} 60 ${cx-18} 60 ${cx-34} 66Z" fill="${la}" stroke="${LINHA}" stroke-width="2.4"/>`);
+    for(let y=22;y<62;y+=8) for(let x=-28;x<=28;x+=8) add(`<path d="M${cx+x+((y/8)%2)*4-3} ${y+3} q3 -5 6 0" stroke="${la==="#2A2724"?"#fff":"#000"}" stroke-width="1.2" opacity=".28" fill="none"/>`);
+    add(`<path d="M${cx+8} 14 C${cx+26} 16 ${cx+34} 30 ${cx+34} 66 C${cx+26} 62 ${cx+18} 61 ${cx+12} 61Z" fill="#000" opacity=".15"/>`);
+  }
+  if(eq==="capuz")
+    add(`<path d="M${cx-36} 110 C${cx-44} 70 ${cx-30} 36 ${cx} 34 C${cx+30} 36 ${cx+44} 70 ${cx+36} 110 C${cx+40} 76 ${cx+26} 48 ${cx} 47 C${cx-26} 48 ${cx-40} 76 ${cx-36} 110Z" fill="${corE}" stroke="${LINHA}" stroke-width="2.2"/>`);
 
   const altura=alt||Math.round(w*1.2);
-  /* xmlns explícito: sem ele, o navegador aceita o SVG normalmente quando
-     injetado direto no innerHTML (o parser de HTML já sabe que é SVG por
-     contexto), mas REJEITA como recurso de imagem autônomo — data: URI ou
-     Blob viram Image() que nunca carrega (onerror, sem mensagem útil).
-     Confirmado com teste real em Chrome: falha sem xmlns, carrega normal
-     com — é o que desenharCardMomento() precisa pra pôr o busto no canvas
-     (ver "Card de momento" no LEIA-ME). Inofensivo pro uso inline de
-     sempre, xmlns em SVG dentro de HTML é ignorado sem efeito. */
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="${w}" height="${altura}" class="boneco" aria-hidden="true">
-  <defs>
-    <clipPath id="cra${id}"><path d="${caminhoCranio(A)}"/></clipPath>
-    <clipPath id="bar${id}"><path d="${caminhoCabeca(A)}"/></clipPath>
-    <linearGradient id="luz${id}" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${luz}" stop-opacity=".55"/>
-      <stop offset=".55" stop-color="${pele}" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-
-  <!-- ombros -->
-  <path d="M${cx-A.ombro} 120 C${cx-A.ombro+4} ${104} ${cx-14} ${100} ${cx} ${99}
-           C${cx+14} ${100} ${cx+A.ombro-4} ${104} ${cx+A.ombro} 120Z"
-    fill="${cal}" stroke="${linha}" stroke-width="1.8"/>
-  <path d="M${cx} 99 L${cx} 120" stroke="${mistura(cal,'#000000',.3)}" stroke-width="1.4"/>
-
-  <!-- pescoço: largura vem da anatomia, encaixa sob a mandíbula -->
-  <path d="M${cx-A.pescocoW} ${A.queixo-9} L${cx-A.pescocoW-1} ${A.queixo+12}
-           Q${cx} ${A.queixo+16} ${cx+A.pescocoW+1} ${A.queixo+12}
-           L${cx+A.pescocoW} ${A.queixo-9}Z" fill="${pele}" stroke="${linha}" stroke-width="1.7"/>
-  <path d="M${cx-A.pescocoW+1} ${A.queixo-6} Q${cx} ${A.queixo+3} ${cx+A.pescocoW-1} ${A.queixo-6}"
-    fill="${som}" opacity=".55"/>
-  <!-- trapézio -->
-  <path d="M${cx-A.ombro+3} ${106} Q${cx} ${A.queixo+8} ${cx+A.ombro-3} ${106}"
-    fill="none" stroke="${mistura(cal,'#000000',.22)}" stroke-width="1.2"/>
-
-  <!-- orelhas (espelhadas): antes da cabeça, para ficarem atrás -->
-  ${orelhaUma}
-  <g transform="translate(${cx*2} 0) scale(-1 1)">${orelhaUma}</g>
-
-  <!-- cabeça -->
-  <path d="${caminhoCabeca(A)}" fill="${pele}" stroke="${linha}" stroke-width="2"/>
-  <path d="${caminhoCabeca(A)}" fill="url(#luz${id})"/>
-  <!-- maçãs do rosto e têmporas -->
-  <path d="M${cx-A.zigo+2} ${A.olhos+4} Q${cx-A.jaw+3} ${A.nariz+3} ${cx-A.jaw+7} ${A.nariz+7}"
-    stroke="${som}" stroke-width="1.6" fill="none" opacity=".35"/>
-  <path d="M${cx+A.zigo-2} ${A.olhos+4} Q${cx+A.jaw-3} ${A.nariz+3} ${cx+A.jaw-7} ${A.nariz+7}"
-    stroke="${som}" stroke-width="1.6" fill="none" opacity=".35"/>
-
-  ${BARBA}
-
-  <!-- nariz: base ancorada, quebrado como o de lutador -->
-  <path d="M${cx-1.5} ${A.olhos+2} L${cx-2.5} ${A.nariz-3} Q${cx-4.5} ${A.nariz} ${cx-3} ${A.nariz+1.5}
-    Q${cx} ${A.nariz+2.6} ${cx+3} ${A.nariz+1.5} Q${cx+4.5} ${A.nariz} ${cx+2.5} ${A.nariz-3}
-    L${cx+1.5} ${A.olhos+2}" fill="${som}" opacity=".3"/>
-  <path d="M${cx-4.2} ${A.nariz+.6} Q${cx} ${A.nariz+3.2} ${cx+4.2} ${A.nariz+.6}"
-    stroke="${linha}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <circle cx="${cx-2.4}" cy="${A.nariz+.4}" r=".9" fill="${linha}" opacity=".7"/>
-  <circle cx="${cx+2.4}" cy="${A.nariz+.4}" r=".9" fill="${linha}" opacity=".7"/>
-
-  <!-- olhos e sobrancelhas: desenhados uma vez, espelhados -->
-  ${olhoUm}
-  <g transform="translate(${cx*2} 0) scale(-1 1)">${olhoUm}</g>
-  ${CEJA}
-  <g transform="translate(${cx*2} 0) scale(-1 1)">${CEJA}</g>
-
-  ${BOCA}
-  ${CICS[CIC]||""}
-
-  <!-- cabelo por último, recortado pelo crânio -->
-  ${CABELO}
-  ${cabeloFora}
-</svg>`;
+  /* xmlns explícito: sem ele o SVG funciona inline mas NÃO carrega como
+     imagem autônoma (data: URI no canvas dos cards). */
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 10 200 240" width="${w}" height="${altura}" class="boneco" aria-hidden="true">${P.join("")}</svg>`;
 }
 
 /* Hash estável: o mesmo lutador tem sempre o mesmo rosto, em qualquer sessão. */
@@ -4983,8 +5077,8 @@ function hashNome(s){
   return x;
 }
 function cfgPadrao(){
-  return{pele:1,cabelo:2,corCabelo:1,barba:1,olho:0,corOlho:0,sobrancelha:0,
-         boca:0,cicatriz:0,calcao:0,porte:1};
+  return{v:2,pele:2,porte:1,cabelo:1,corCabelo:0,barba:1,orelha:0,nariz:0,cicatriz:0,
+         tatuagem:0,entrada:0,prajiad:0,corEntrada:0};
 }
 /* Não existe rosto para os lutadores do dataset, e é deliberado: eles são
    pessoas reais e retrato reconhecível é direito de imagem. Só o lutador do
@@ -5892,6 +5986,7 @@ registrarRota("carreira",()=>{
   comConta({tipo:"continuar"},retomarMaisRecente);
 });
 registrarRota("conta",p=>screenConta(p));
+registrarRota("admin",p=>screenAdmin(p));
 registrarRota("atualizacoes",screenAtualizacoes);
 registrarRota("ranking",screenRanking);
 registrarRota("creditos",screenCreditos);
@@ -5905,6 +6000,10 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-09-28",titulo:"Lutadores novos",itens:[
+    "Criador refeito: oito arquétipos tirados de estilos reais de MMA (Muay Thai, Jiu-jitsu, Wrestling, Sambo do Cáucaso, Boxe, Brigão, Kickboxing e Veterano).",
+    "Peças novas: orelha de couve-flor, nariz quebrado, cicatrizes, tatuagens e roupa de entrada, como mongkol, papakha, kimono, roupão, capuz e bandeira.",
+    "Quem já tinha um lutador salvo continua com ele, no traço novo."]},
   {data:"2026-09-28",titulo:"Lutas mais duras",itens:[
     "O lutador montado no draft começa no meio da divisão, e os adversários vêm mais fortes: quem joga bem vence perto de metade das lutas, e o cinturão ficou raro.",
     "Cada adversário mostra a sua chance real na luta: Acessível, Parelho, Duro ou Perigoso.",
@@ -6647,25 +6746,29 @@ function screenName(nomeInicial=""){
 /* Criador: personagem grande no palco, categorias em abas, alteração imediata.
    As categorias são declarativas — acrescentar uma opção nova é adicionar uma
    linha aqui, sem tocar em layout. */
+/* Abas do criador (revamp dos personagens, 2026-09-28). A primeira monta
+   o lutador inteiro a partir de um arquétipo; as outras trocam uma peça. */
 const CATEGORIAS=[
- {rot:"Rosto",  itens:[["cor","Tom de pele",()=>PELES,"pele"],
-                       ["lista","Porte",()=>PORTES,"porte"]]},
- {rot:"Cabelo", itens:[["lista","Estilo",()=>CABELO_TIPOS,"cabelo"],
-                       ["cor","Cor",()=>CABELOS,"corCabelo"]]},
- {rot:"Barba",  itens:[["lista","Estilo",()=>BARBAS,"barba"]]},
- {rot:"Olhos",  itens:[["lista","Formato",()=>OLHOS,"olho"],
-                       ["cor","Cor da íris",()=>OLHOS_COR,"corOlho"],
-                       ["lista","Sobrancelha",()=>SOBRANCELHAS,"sobrancelha"]]},
- {rot:"Boca",   itens:[["lista","Formato",()=>BOCAS,"boca"]]},
- {rot:"Marcas", itens:[["lista","Cicatriz",()=>CICATRIZES,"cicatriz"],
-                       ["cor","Cor do calção",()=>CALCOES,"calcao"]]},
+ {rot:"Arquétipo",arquetipos:true},
+ {rot:"Corpo",    itens:[["cor","Tom de pele",()=>PELES.map(p=>p[0]),"pele"],
+                         ["lista","Porte",()=>PORTES,"porte"]]},
+ {rot:"Cabelo",   itens:[["lista","Corte",()=>CABELO_TIPOS,"cabelo"],
+                         ["cor","Cor",()=>CORES_CABELO,"corCabelo"]]},
+ {rot:"Barba",    itens:[["lista","Estilo",()=>BARBAS,"barba"]]},
+ {rot:"Marcas",   itens:[["lista","Orelha",()=>ORELHAS,"orelha"],
+                         ["lista","Nariz",()=>NARIZES,"nariz"],
+                         ["lista","Cicatriz",()=>CICATRIZES,"cicatriz"]]},
+ {rot:"Tatuagem", itens:[["lista","Tatuagem",()=>TATUAGENS,"tatuagem"]]},
+ {rot:"Entrada",  itens:[["lista","Roupa de entrada",()=>ENTRADAS,"entrada"],
+                         ["lista","Prajiad (braçadeira)",()=>PRAJIADS,"prajiad"],
+                         ["cor","Cor",()=>CORES_ENTRADA,"corEntrada"]]},
 ];
 let CAT_ATIVA=0;
 
 function screenCriador(name){
   /* Passo 2 do assistente (revamp fase 4): mesma lógica de sempre, na
      moldura nova. Voltar leva ao Passo 1 com o nome preenchido. */
-  ROSTO=ROSTO||cfgPadrao();
+  ROSTO=normalizarRosto(ROSTO||cfgPadrao());
   const dzPasso=lerDesafio();
   const c=montarPasso(2,dzPasso?3:5,{titulo:"Visual",fundo:"vestiario",voltar:()=>screenName(name)});
   docmeta.textContent=`Registro · ${name}`;
@@ -6696,6 +6799,26 @@ function screenCriador(name){
   function corpo(){
     const alvo=document.getElementById("corpoC");
     alvo.innerHTML="";
+    if(CATEGORIAS[CAT_ATIVA].arquetipos){
+      /* cada arquétipo é um botão com o próprio retrato; escolher monta o
+         lutador inteiro, e as outras abas ajustam dali */
+      const g=el("div","arquetipos");
+      ARQUETIPOS.forEach(a=>{
+        const on=ROSTO.arquetipo===a.id;
+        const b=el("button","chip arquetipo"+(on?" on":""),`${bonecoSVG({v:2,...a.cfg},{w:84})}<span>${a.nome}</span>`);
+        b.type="button";
+        if(b.setAttribute)b.setAttribute("aria-pressed",String(on));
+        b.onclick=()=>{
+          ROSTO={v:2,...a.cfg,arquetipo:a.id};SOM.toque();
+          g.querySelectorAll(".arquetipo").forEach(x=>{ const sim=x===b; x.classList.toggle("on",sim); if(x.setAttribute)x.setAttribute("aria-pressed",String(sim)); });
+          desenha();
+        };
+        g.appendChild(b);
+      });
+      alvo.appendChild(el("p","hint","O arquétipo monta o visual inteiro. Depois, cada aba troca uma peça."));
+      alvo.appendChild(g);
+      return;
+    }
     CATEGORIAS[CAT_ATIVA].itens.forEach(([tipo,rot,fonte,campo])=>{
       const lista=fonte();
       const bloco=el("div","linhaC");
@@ -6727,12 +6850,12 @@ function screenCriador(name){
     });
   }
 
+  /* aleatório (e o "Pular"): sorteia um arquétipo e varia pele e cor do
+     cabelo, pra dois lutadores sorteados raramente saírem iguais */
   const rostoAleatorio=()=>{
     const r=n=>Math.floor(Math.random()*n);
-    return{pele:r(PELES.length),cabelo:r(CABELO_TIPOS.length),corCabelo:r(CABELOS.length),
-      barba:r(BARBAS.length),olho:r(OLHOS.length),corOlho:r(OLHOS_COR.length),
-      sobrancelha:r(SOBRANCELHAS.length),boca:r(BOCAS.length),
-      cicatriz:r(CICATRIZES.length),calcao:r(CALCOES.length),porte:r(3)};
+    const a=ARQUETIPOS[r(ARQUETIPOS.length)];
+    return{v:2,...a.cfg,arquetipo:a.id,pele:r(PELES.length),corCabelo:r(CORES_CABELO.length)};
   };
   const dz=lerDesafio();
   /* pular() e ok.onclick avançam pro mesmo lugar — pular só decide o rosto

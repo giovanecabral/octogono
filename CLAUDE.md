@@ -78,6 +78,10 @@ metade). Regras do revamp que valem daqui pra frente:
   confere direto na Asaas quando o jogador volta; os dois usam
   `api/_pro.js`, e um pagamento ativa uma vez só (cartão manda dois
   eventos). Mexeu em pagamento: `node testar.js pagamento`.
+- **Painel de admin (`#/admin`, `api/admin.js`): a tela só mostra, o
+  servidor decide.** Dono pelo e-mail em `ADMIN_DONO_EMAIL` (Vercel, nunca
+  no código); admins na tabela `admins`. Toda ação nova do painel passa
+  pela checagem de admin no servidor e grava em `admin_log`. Suíte `admin`.
 - **`api/placar.js` só existe em produção depois do deploy**, igual ao
   `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
   rota); a suíte `placar` compara as faixas com o `grade()` do jogo.
@@ -170,6 +174,10 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`
   (permanente, com teto) × `st.eventoMod` (eventos). Evento escrevendo direto no
   atributo apagaria a base.
+- **Boneco v2 (personagens, 2026-09-28).** Config versionada (`v:2`); rosto
+  antigo de save e ranking passa por `normalizarRosto()` na hora de
+  desenhar, nunca é regravado. Peça nova entra na lista E no teste
+  `personagem`. Proporção do SVG fixa (largura × 1,2).
 - **Nada de rosto para os lutadores reais.** Só o lutador do jogador tem retrato.
   Os 1.527 são pessoas reais e semelhança facial é direito de imagem.
   Estatística de luta é fato público; retrato não. A função que derivava rosto

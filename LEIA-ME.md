@@ -3019,6 +3019,129 @@ imagem e música, e as duas já baixam só quando aparecem.
 - Ativação do Pro de ponta a ponta com pagamento de verdade fica com o
   dono (PENDENCIAS item 37).
 
+## Painel de admin (2026-09-28)
+
+`#/admin`, pedido do dono pra controlar Pro, banimento e ranking. Quem
+entra:
+
+- o **dono**, pelo e-mail na variável `ADMIN_DONO_EMAIL` da Vercel (fora
+  do código, que é público no GitHub);
+- quem estiver na tabela `admins`. Só o dono adiciona ou tira admin.
+
+**A tela só mostra; quem decide é `api/admin.js`.** Cada chamada confere o
+token de quem pediu e se ele é admin, com a service role. Quem não é admin
+e abre `#/admin` vê a mesma 404 de endereço inexistente. O link "Painel de
+admin" só aparece no Perfil de quem o servidor confirma como admin.
+
+**Abas:**
+
+- **Jogadores:** busca por e-mail, com cadastro, último acesso, Pro (até
+  quando), banido e quantas carreiras. Ações:
+  - dar Pro sem prazo (plano "unico", sem data) ou por 30 dias;
+  - tirar Pro;
+  - banir, com motivo, e desbanir.
+- **Ranking:** apagar uma carreira do placar.
+- **Admins:** só o dono vê.
+- **Registro:** as últimas 100 ações (quem, o quê, em quem, quando), da
+  tabela `admin_log`. Toda ação que muda algo grava ali.
+
+Ação que tira ou apaga pede confirmação na própria tela: o 1º clique troca
+o rótulo, o 2º executa.
+
+**Banir faz três coisas:**
+
+1. bloqueia o login no Supabase Auth (`ban_duration` de ~100 anos);
+2. esconde as carreiras da conta no ranking (a política de leitura do
+   `placar` passa por `esta_banido()`);
+3. faz `api/placar.js` recusar envio (403), o que cobre a sessão que
+   ainda estava aberta.
+
+Desbanir desfaz o 1 e o 2. Admin e dono não podem ser banidos, e ninguém
+bane a si mesmo.
+
+**Banco:** tabelas `admins`, `banidos` e `admin_log` e as funções
+`esta_banido()` e `admin_listar_usuarios()`, no fim do
+`supabase_schema.sql`. É preciso rodar o SQL uma vez no painel do Supabase.
+A lista de jogadores vem de `admin_listar_usuarios()`, que só a service
+role executa.
+
+**Testes:** `node testar.js admin`. Cobre:
+
+- o acesso: comum, admin e dono;
+- que nada é escrito sem permissão;
+- Pro com e sem prazo;
+- banir e desbanir, e as proteções;
+- que só o dono mexe em admin;
+- apagar do ranking;
+- o placar recusando banido;
+- a tela: 404 pra quem não é admin, as abas e a confirmação em 2 cliques.
+
+## Personagens (revamp de 2026-09-28)
+
+Pedido do dono: os personagens estavam "sem graça e sem personalidade", e
+nada podia ser inventado sem base. Proposta com amostras aprovada antes de
+codar; saiu só o protetor bucal, que o dono não gostou.
+
+**Traço novo (`bonecoSVG`, boneco v2):**
+
+- meio-corpo, pra caber braçadeira, tatuagem e kimono;
+- traço grosso, sombra em bloco do lado direito e luz de palco vermelha na
+  borda esquerda (identidade "Noite de Luta");
+- rosto sempre na encarada;
+- a mesma proporção do antigo (largura × 1,2), então nenhum layout mudou;
+- continua auto-contido (xmlns, sem imagem externa), e os cards em canvas
+  usam o mesmo SVG.
+
+**Arquétipos (`ARQUETIPOS`)**, cada um tirado de um estilo real e da
+tradição dele:
+
+| arquétipo | o que tem | base |
+|---|---|---|
+| Muay Thai | mongkol na cabeça, prajiad nos braços | faixa trançada da academia, tirada pelo mestre antes do gongo; braçadeira da bênção da família ([YOKKAO](https://yokkao.com/pages/muay-thai-mongkhon-and-pra-jiad)) |
+| Jiu-jitsu | orelha de couve-flor, kimono | hematoma de anos de pegada na cabeça ([Hayabusa](https://www.hayabusafight.com/blogs/community/what-is-cauliflower-ear-causes-prevention-and-protection)) |
+| Wrestling | porte pesado, orelhas estouradas, nariz quebrado | luta olímpica |
+| Sambo do Cáucaso | barba sem bigode, papakha | chapéu de lã do Daguestão usado na entrada ([papakha](https://en.wikipedia.org/wiki/Papakha)) |
+| Boxe | roupão com friso, trança nagô, corte na sobrancelha com fita | |
+| Brigão | moicano, bigode ferradura, tatuagens | |
+| Kickboxing | capuz na caminhada, dreads | |
+| Veterano | bandeira nos ombros, barba grisalha, cicatriz, olho roxo | |
+
+O arquétipo só dá o ponto de partida. Toda peça pode ser trocada nas
+outras abas do criador:
+
+- corpo;
+- cabelo (9 cortes);
+- barba (6 estilos);
+- marcas (orelha, nariz, cicatriz);
+- tatuagem;
+- entrada (roupa, prajiad e cor).
+
+"Sortear" e "Pular" sorteiam um arquétipo e variam a pele e a cor do
+cabelo.
+
+**Config v2:** `{v:2, pele, porte, cabelo, corCabelo, barba, orelha, nariz,
+cicatriz, tatuagem, entrada, prajiad, corEntrada, arquetipo}`, cada campo
+um índice da lista de mesmo nome. Save e ranking antigos (v1) guardam
+índices das listas do boneco antigo. `normalizarRosto()` converte na hora
+de desenhar:
+
+- cabelo, barba, cicatriz e cor viram a peça mais próxima;
+- olho, sobrancelha e boca saem;
+- a cor do calção vira a cor de entrada.
+
+Nada é regravado: o ranking continua com o rosto antigo e desenha no traço
+novo.
+
+**Só o seu lutador tem rosto.** Os lutadores reais continuam sem retrato
+(direito de imagem, ver o topo deste arquivo).
+
+**Testes:** `node testar.js personagem` confere:
+
+- os 8 arquétipos e todas as peças desenhando sem erro;
+- a proporção;
+- a conversão de rosto antigo (inclusive lixo e `null`);
+- a aba de arquétipos do criador.
+
 ## Histórico (2026-09-09) — aprovado, implementado
 
 Carreiras anteriores (nome, cartel, nota, data) e conquistas

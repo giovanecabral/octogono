@@ -31,11 +31,18 @@ export default async function handler(req, res) {
   } catch { /* rede: trata como sessão inválida */ }
   if (!userId) return res.status(401).json({ erro: "sessão inválida" });
 
+  const cab = { apikey: service, Authorization: `Bearer ${service}`, "Content-Type": "application/json" };
+  /* conta banida no painel de admin (2026-09-28) não entra no ranking; o
+     login já é bloqueado, isto cobre a sessão que ainda estava aberta */
+  try {
+    const ban = await fetch(`${SUPABASE_URL}/rest/v1/banidos?select=user_id&user_id=eq.${userId}`, { headers: cab });
+    if (ban.ok && (await ban.json()).length) return res.status(403).json({ erro: "conta suspensa" });
+  } catch { /* rede: segue, o login banido já está bloqueado no Auth */ }
+
   const corpo = typeof req.body === "string" ? (() => { try { return JSON.parse(req.body); } catch { return null; } })() : req.body;
   const v = validarEnvio(corpo);
   if (!v.ok) return res.status(400).json({ erro: v.erro });
 
-  const cab = { apikey: service, Authorization: `Bearer ${service}`, "Content-Type": "application/json" };
   try {
     const desde = new Date(Date.now() - 864e5).toISOString();
     const cont = await fetch(`${SUPABASE_URL}/rest/v1/placar?select=seed&user_id=eq.${userId}&criado_em=gte.${encodeURIComponent(desde)}`, { headers: cab });
