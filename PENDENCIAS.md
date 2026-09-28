@@ -1959,7 +1959,7 @@ nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
 
-## 37. Revamp da interface (2026-09-26): fases 1 a 6 no ar desde 2026-09-27; 7 e 8 feitas na branch `revamp-ui`, esperando deploy
+## 37. Revamp da interface (2026-09-26): as 8 fases no ar desde 2026-09-27
 
 Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
 console, mais conta obrigatória, save, placar, som e passada de texto.
@@ -2125,9 +2125,11 @@ pede versão nova dos termos.
   fazem pagamento real.
 - **Celular de verdade:** abrir um dilema e conferir que o Decidir
   aparece com o teclado aberto.
-- **Deploy das fases 7 e 8:** só com o ok do dono. Depois do deploy,
-  conferir `/api/ai` de produção (a regra de texto nos prompts só vale lá
-  depois dele).
+- ~~**Deploy das fases 7 e 8**~~ feito em 2026-09-27 com o ok do dono.
+  Conferido depois: `/api/ai` de produção com a regra nova. Feed, dilema e
+  julgar voltaram 3 de 3; evento, 2 de 3 e depois 3 de 3 (falha
+  passageira, o cliente já tenta de novo). Nenhum travessão nas
+  respostas. Arquivos privados dão 404.
 
 **Achados da fase 5 (registrados, não resolvidos aqui):**
 - ~~**`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**~~ (fase 8: gerador próprio)
