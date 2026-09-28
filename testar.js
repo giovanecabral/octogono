@@ -61,6 +61,9 @@ function criarAmbiente({ contarNos = false } = {}) {
       appendChild(c) { this.children.push(c); if (c && c.id) registro[c.id] = c; return c; },
       append(...cs) { cs.forEach(c => this.appendChild(c)); },
       scrollIntoView: noop, focus: noop, addEventListener: noop, remove: noop,
+      /* atributos (aria-label, tabindex...): a varredura de acessibilidade lê */
+      setAttribute(k, v) { (this.attrs = this.attrs || {})[k] = String(v); },
+      getAttribute(k) { return this.attrs && k in this.attrs ? this.attrs[k] : null; },
       /* o criador de personagem consulta os filhos para marcar a opção ativa */
       querySelector(sel){
         const id = String(sel).replace(/^#/, "");
@@ -91,7 +94,7 @@ function criarAmbiente({ contarNos = false } = {}) {
       documentElement: makeEl(),
       /* o nó criado sob demanda precisa carregar o id, senão o teste não
          consegue achar elementos que a interface monta via innerHTML */
-      getElementById: id => registro[id] || (registro[id] = Object.assign(makeEl(), { id })),
+      getElementById: id => registro[id] || (registro[id] = Object.assign(makeEl(), { id, __auto: true })),
       createElement: t => makeEl(t),
       querySelector: () => makeEl(),
       /* o jogo arma um ouvinte de primeiro clique para iniciar a trilha */
@@ -498,6 +501,43 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   await passo("fim de carreira não oferece criar conta (jogar já exige conta)", () => {
     const campos = env.todos.filter(n => n.id === "conta-email" || n.id === "conta-senha");
     if (campos.length) throw new Error("formulário de conta apareceu no fim da carreira");
+  });
+
+  /* Fase 8, acessibilidade, sobre tudo que o caminho montou (menu,
+     assistente, draft, carreira, noite, fim): 1) botão ou link só com
+     ícone tem nome (aria-label ou title), senão o leitor de tela diz só
+     "botão"; 2) nada clicável que não seja botão ou link fica sem tabindex
+     (o teclado não chega). Confere os nós do DOM falso e os botões
+     escritos dentro de innerHTML. */
+  await passo("acessibilidade: botão só com ícone tem nome, e nada clicável fica fora do teclado", () => {
+    const soIcone = h => !String(h || "").replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "");
+    const temNome = n => n.attrs && (n.attrs["aria-label"] || n.attrs.title);
+    const temTexto = n => n && (String(n.textContent || "").trim() || !soIcone(n.innerHTML));
+    /* Fundo do overlay de Configurações (fecha clicando fora) e o painel
+       dele (segura o clique): não são controles; o teclado fecha com Esc
+       e com o X, que é botão. */
+    const naoControle = n => n.id === "cfg" || (n.className || "").split(" ").includes("cfg-painel");
+    const ruins = new Set();
+    for (const n of env.todos) {
+      /* nó criado pelo getElementById falso (id escrito dentro de um
+         innerHTML) não tem a tag de verdade: a tag real é conferida na
+         varredura do HTML logo abaixo */
+      if (n.__auto) continue;
+      if ((n.tagName === "button" || n.tagName === "a") && !temTexto(n) && !temNome(n))
+        ruins.add(`<${n.tagName} class="${n.className}"> sem nome: ${String(n.innerHTML).slice(0, 50)}`);
+      if (!["button", "a", "input", "textarea", "select", "label"].includes(n.tagName) && typeof n.onclick === "function"
+          && !(n.attrs && n.attrs.tabindex != null) && !n.inert && !naoControle(n))
+        ruins.add(`<${n.tagName} class="${n.className}" id="${n.id}"> clicável sem teclado`);
+    }
+    for (const n of env.todos) {
+      for (const m of String(n._html || "").matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g)) {
+        if (!soIcone(m[3]) || /aria-label=|title=/.test(m[2])) continue;
+        const id = (m[2].match(/\bid="([^"]+)"/) || [])[1];
+        if (id && temTexto(env.registro[id])) continue;   // texto posto depois, por id
+        ruins.add("html: " + m[0].slice(0, 90));
+      }
+    }
+    if (ruins.size) throw new Error(`${ruins.size} problema(s): ` + [...ruins].slice(0, 12).join(" | "));
   });
 
   const nos = env.todos.length;
@@ -4846,6 +4886,10 @@ function testarColetivaEntrevista() {
     ai=async(kind,data)=>{dataRecebida={kind,data};
       return{reacao:"Ele revirou os olhos e saiu resmungando pro microfone.",hype:5,pressao:-3,atributoPressao:"tdDef"};};
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    /* fase 8: no celular o teclado virtual cobria o botão */
+    const rolaAteBotao=(campoId,botaoId)=>{let rolou=false;const b=document.getElementById(botaoId);b.scrollIntoView=()=>{rolou=true;};
+      const c=document.getElementById(campoId);if(typeof c.onfocus!=="function")return false;c.onfocus();return rolou;};
+    passo("coletiva: focar o campo rola até o Provocar (teclado do celular cobria o botão)",rolaAteBotao("colresp","colgo"));
     document.getElementById("colresp").value="vai ver quando o sino tocar";
     await document.getElementById("colgo").onclick();
     passo("coletiva Pro: manda kind certo e o texto do jogador em 'resposta'",
@@ -4945,6 +4989,7 @@ function testarColetivaEntrevista() {
     renderBotaoEntrevista(bouts,opp,r,false,true,2,1,false);
     const btnEnt=bouts.children[bouts.children.length-1].children[0];
     btnEnt.onclick();
+    passo("entrevista: focar o campo rola até o Responder (teclado do celular cobria o botão)",rolaAteBotao("entresp","entgo"));
     document.getElementById("entresp").value="sentir, senti, mas não ia parar";
     await document.getElementById("entgo").onclick();
     passo("entrevista Pro: manda kind certo e a resposta do jogador",
@@ -6088,6 +6133,7 @@ function supabaseFalsoComSessao(estado) {
         getSession: async () => ({ data: { session: estado.sessao } }),
         onAuthStateChange: (cb) => { estado.aoMudar = cb; },
         signOut: async () => { estado.sessao = null; return { error: null }; },
+        signUp: async ({ email }) => ({ data: { session: null, user: { id: "novo-" + email } }, error: null }),
       },
       from: (tabela) => ({ select: () => cadeia(tabela), upsert: async () => ({ error: null }), delete: () => cadeia(tabela) }),
     }),
@@ -6098,12 +6144,14 @@ async function testarRotas() {
   const env = criarAmbiente({ contarNos: true });
   const estadoSb = { sessao: { user: { id: "u1", email: "t@t.com" } } };
   env.sandbox.window.supabase = supabaseFalsoComSessao(estadoSb);
+  const eventosVA = [];
+  env.sandbox.window.va = (t, o) => { if (t === "event") eventosVA.push(o && o.name); };
   const dadosLS = {};
   env.sandbox.localStorage = { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } };
   vm.createContext(env.sandbox);
   try {
     vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
-      "screenDivisao", "screenAtivarRival"])
+      "screenDivisao", "screenAtivarRival", "criarConta", "avisarConfirmacaoEmail"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}"
       + "\ntry{globalThis.__x.meuPro=()=>meuPro;}catch(e){}"
       + "\ntry{globalThis.__x.setMeuPro=(v)=>{meuPro=v;};}catch(e){}",
@@ -6328,6 +6376,34 @@ async function testarRotas() {
     if (UI.meuPro() !== true) throw new Error("SIGNED_IN não conferiu o Pro");
     estadoSb.aoMudar("SIGNED_OUT", null); env.drenar(); await respirar();
     if (UI.meuPro() !== false) throw new Error("SIGNED_OUT não zerou o Pro");
+  });
+  /* Fase 8: eventos de funil da conta (spec, seções 6 e 12). */
+  await conf("funil: cadastro por e-mail manda criou_conta", async () => {
+    eventosVA.length = 0;
+    const r = await UI.criarConta("novo@t.com", "senha-boa-123");
+    if (!r || !r.ok) throw new Error("cadastro falso falhou: " + JSON.stringify(r));
+    if (!eventosVA.includes("criou_conta")) throw new Error("eventos: " + eventosVA.join(","));
+  });
+  await conf("funil: 1º login pelo Google manda criou_conta uma vez só; conta antiga não manda", async () => {
+    eventosVA.length = 0;
+    const nova = { user: { id: "g-novo", email: "g@t.com", created_at: new Date().toISOString(), app_metadata: { provider: "google" } } };
+    estadoSb.aoMudar("SIGNED_IN", nova); env.drenar(); await respirar();
+    estadoSb.aoMudar("SIGNED_IN", nova); env.drenar(); await respirar();
+    const antiga = { user: { id: "g-antigo", email: "h@t.com", created_at: "2026-01-01T00:00:00Z", app_metadata: { provider: "google" } } };
+    estadoSb.aoMudar("SIGNED_IN", antiga); env.drenar(); await respirar();
+    const n = eventosVA.filter(e => e === "criou_conta").length;
+    if (n !== 1) throw new Error(`criou_conta ${n} vez(es): ` + eventosVA.join(","));
+  });
+  await conf("funil: volta do link de confirmação (hash com type=signup) manda confirmou_email", async () => {
+    eventosVA.length = 0;
+    const antes = env.sandbox.location.hash;
+    env.sandbox.location.hash = "#access_token=abc&refresh_token=def&type=signup";
+    UI.avisarConfirmacaoEmail();
+    env.sandbox.location.hash = "#/menu";
+    UI.avisarConfirmacaoEmail();
+    env.sandbox.location.hash = antes;
+    const n = eventosVA.filter(e => e === "confirmou_email").length;
+    if (n !== 1) throw new Error(`confirmou_email ${n} vez(es): ` + eventosVA.join(","));
   });
   await conf("conta grátis continua com as travas no assistente", async () => {
     estadoSb.assinatura = null;
@@ -6851,6 +6927,30 @@ async function testarSave() {
     const linhas = (Y.registro.bouts.children || []).filter(n => (n.className || "").split(" ").includes("bout"));
     if (linhas.length !== 5) throw new Error(`${linhas.length} linhas de luta no histórico retomado`);
   });
+  /* Fase 8: resolveFeed() sorteava a persona de cada post da IA com o rng
+     principal DEPOIS da resposta chegar. Com a IA no ar, a sequência
+     dependia de quando o feed chegava e de quantos posts vieram: link de
+     desafio e save deixavam de reproduzir a carreira. Offline (moldes
+     locais) nunca aparecia, por isso nenhuma suíte pegava. */
+  await conf("feed da IA não mexe na semente: carreira com posts da IA = carreira sem IA", async () => {
+    const assinatura = ctx => ctx.run("JSON.stringify({reg:st.registro.map(r=>[r.n,r.adv,r.venceu,r.metodo,r.round,r.relogio]),g:estadoGeradores(),w:st.wins,l:st.losses})");
+    const semIA = sandboxCarreira();
+    iniciarCarreiraTeste(semIA, F, 515151);
+    await jogarCarreiraAte(semIA, 6);
+    const comIA = sandboxCarreira();
+    let postsEntregues = 0;
+    comIA.sb.fetch = async (url, op) => {
+      const { kind } = JSON.parse(op.body);
+      if (kind !== "feed") throw new Error("offline");
+      postsEntregues += 4;
+      return { ok: true, json: async () => ({ result: [1, 2, 3, 4].map(i => ({ nome: "Fã" + i, texto: "post " + i + " da luta" })) }) };
+    };
+    iniciarCarreiraTeste(comIA, F, 515151);
+    await jogarCarreiraAte(comIA, 6);
+    if (!postsEntregues) throw new Error("a IA falsa nunca foi chamada (o teste não prova nada)");
+    const a = assinatura(semIA), b = assinatura(comIA);
+    if (a !== b) throw new Error(`carreiras divergiram (${postsEntregues} posts da IA): ${a.slice(0, 160)} ... x ... ${b.slice(0, 160)}`);
+  });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("save ok") : vermelho(`${falhas.length} falha(s) no save`)));
   return ok;
@@ -7350,6 +7450,12 @@ async function testarHub() {
     if (X.run("noiteEtapa") !== "resultado") throw new Error("noite saiu do pós-luta: " + X.run("noiteEtapa"));
     if (!nosDe(X.registro.posluta).some(c => tem(c, "dilema"))) throw new Error("dilema fora do pós-luta");
     if (!X.registro.noiteProxima.hidden) throw new Error("Próxima luta liberada com dilema aberto");
+    // fase 8: no celular o teclado virtual cobria o Decidir
+    let rolou = false;
+    X.registro.dilgo.scrollIntoView = () => { rolou = true; };
+    if (typeof X.registro.dilresp.onfocus !== "function") throw new Error("campo do dilema sem gancho de foco (teclado cobre o Decidir)");
+    X.registro.dilresp.onfocus();
+    if (!rolou) throw new Error("focar o campo do dilema não rolou até o Decidir");
     X.registro.dilresp.value = "aceito, sem problema";
     X.registro.dilgo.onclick();
     for (let k = 0; k < 6; k++) { X.drenar(); await respirarCarreira(); }
@@ -7458,8 +7564,12 @@ async function testarHub() {
     Object.assign(Y.dadosLS, X.dadosLS);
     Y.sb.window.supabase = supabaseFalsoComSessao({ sessao: { user: { id: "u1", email: "t@t.com" } } });
     Y.sb.__F = F; Y.sb.__RJ = rosterJSON;
+    const vaY = [];
+    Y.sb.window.va = (t, o) => { if (t === "event") vaY.push(o && o.name); };
     Y.run(`ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;location.hash="#/carreira";irPara("carreira");`);
     for (let k = 0; k < 8; k++) { Y.drenar(); await respirarCarreira(); }
+    // fase 8: evento de funil de quem voltou pra uma carreira salva
+    if (!vaY.includes("continuou_save")) throw new Error("retomar não mandou continuou_save: " + vaY.join(","));
     if (Y.run("document.documentElement.dataset.tela") !== "hub") throw new Error("não abriu o hub: " + Y.run("document.documentElement.dataset.tela"));
     if (Y.run("fightNo") !== X.run("fightNo") || Y.run("SLOT_ATUAL") !== 2) throw new Error(`retomou luta ${Y.run("fightNo")} no espaço ${Y.run("SLOT_ATUAL")}`);
   });

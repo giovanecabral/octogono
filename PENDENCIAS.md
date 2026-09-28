@@ -1959,7 +1959,7 @@ nova: `compartilhar` (meuPro reconferido fresco, contagem de downloads
 4→5), `pro` (convite limpo/preservado certo, Continuar trava/libera
 entrevistaAberta e chama nextFight()).
 
-## 37. Revamp da interface (2026-09-26): fases 1 a 6 no ar desde 2026-09-27; 7 feita e 8 na branch `revamp-ui`
+## 37. Revamp da interface (2026-09-26): fases 1 a 6 no ar desde 2026-09-27; 7 e 8 feitas na branch `revamp-ui`, esperando deploy
 
 Pedido do dono: menu e hub novos com identidade própria, nível de jogo de
 console, mais conta obrigatória, save, placar, som e passada de texto.
@@ -2104,8 +2104,33 @@ era só pontuação): a Política de Privacidade ainda chama o Pro de
 "pagamento único de R$ 9,99", da época antes dos 30 dias; mudar a redação
 pede versão nova dos termos.
 
+**Fase 8 feita (2026-09-27), auditoria.** Detalhes e números no LEIA-ME,
+"Auditoria final":
+
+- o feed da IA não consome mais o `rng` principal; link de desafio e save
+  reproduzem a carreira com a IA no ar;
+- eventos novos `criou_conta`, `confirmou_email` e `continuou_save`;
+- `html{overflow-x:hidden}` saiu, medido sem transbordo em 28 telas nas
+  três larguras;
+- o teclado virtual não cobre mais o botão do dilema, da coletiva e da
+  entrevista;
+- varredura de acessibilidade na suíte `interface`, com dois consertos
+  (amostras de cor sem nome, linhas do Cartel fora do teclado);
+- peso medido;
+- RLS do Supabase e as APIs de pagamento e placar conferidas sem login.
+
+**Depende do dono, fase 8:**
+- **Pagamento de ponta a ponta:** 1 pagamento real do Pro, conferindo que
+  a conta vira Pro sozinha (o webhook grava `assinaturas`). Os testes não
+  fazem pagamento real.
+- **Celular de verdade:** abrir um dilema e conferir que o Decidir
+  aparece com o teclado aberto.
+- **Deploy das fases 7 e 8:** só com o ok do dono. Depois do deploy,
+  conferir `/api/ai` de produção (a regra de texto nos prompts só vale lá
+  depois dele).
+
 **Achados da fase 5 (registrados, não resolvidos aqui):**
-- **`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**
+- ~~**`resolveFeed()` consome o `rng` principal DEPOIS da IA responder**~~ (fase 8: gerador próprio)
   (`persona(rng)` pra cada post que a IA devolve). Com a IA no ar, a
   sequência principal passa a depender de quando o feed chega em relação à
   próxima luta (e de quantos posts a IA devolveu): link de desafio e a

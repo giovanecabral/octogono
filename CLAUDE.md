@@ -29,9 +29,10 @@ docs/superpowers/   Spec e planos do revamp da interface.
 
 Spec: `docs/superpowers/specs/2026-09-26-revamp-ui-design.md`. Estado das
 fases em `PENDENCIAS.md` item 37. **Fases 1 a 6 foram pro ar em
-2026-09-27** (merge no `master` + deploy, a pedido do dono). Fase 7
-(texto) está feita e a 8 (auditoria) em andamento, as duas só na branch
-`revamp-ui`; a regra vale
+2026-09-27** (merge no `master` + deploy, a pedido do dono), e um
+conserto do Pro foi direto pro `master` depois. Fases 7 (texto) e 8
+(auditoria) estão feitas na branch `revamp-ui`, esperando o ok do dono
+pro deploy; a regra vale
 igual: **nunca `vercel --prod` a partir da branch** (o deploy sai dos
 arquivos locais e publicaria trabalho pela metade). Merge no `master`
 primeiro, deploy do `master`. Regras novas que valem daqui

@@ -16,6 +16,12 @@
   --ease-soco:cubic-bezier(.2,.8,.2,1);
 }
 
+/* Foco visível em tudo que o teclado alcança (revamp fase 8). O legado.css
+   tinha a mesma regra com a cor antiga; mora aqui pra sobreviver quando ele
+   sair. Cada componente pode trocar por um destaque próprio (.cartao pinta
+   o fundo), nunca só tirar. */
+:focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
+
 /* telas novas: fundo e largura próprios; "Ficha do Lutador" some */
 html[data-tela="nova"] body{background:var(--fundo)}
 html[data-tela="nova"] .doc-head{display:none}

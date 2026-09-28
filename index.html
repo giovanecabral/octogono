@@ -896,6 +896,7 @@ function getSupabase(){
            login; zera no logout. setTimeout porque chamar o Supabase de
            dentro deste callback pode travar (aviso da própria biblioteca). */
         if((event==="INITIAL_SESSION"||event==="SIGNED_IN")&&session)setTimeout(atualizarStatusPro,0);
+        if(event==="SIGNED_IN"&&session)avisarContaNovaGoogle(session.user);
         if(event==="SIGNED_OUT")meuPro=false;
       });
     }catch(e){}
@@ -928,6 +929,23 @@ async function meuAccessToken(){
   try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){ return null; }
   return session?session.access_token:null;
 }
+/* Funil (revamp fase 8): conta nova pelo Google não passa por criarConta();
+   é o 1º login dela (criada há menos de 2 min). Uma vez por conta neste
+   aparelho: o SIGNED_IN se repete. */
+function avisarContaNovaGoogle(u){
+  if(!u||!u.app_metadata||u.app_metadata.provider!=="google")return;
+  if(!(Date.now()-new Date(u.created_at).getTime()<12e4))return;
+  const chave="criouConta:"+u.id;
+  try{ if(localStorage.getItem(chave))return; localStorage.setItem(chave,"1"); }catch(e){}
+  evento("criou_conta",{via:"google"});
+}
+/* Funil: a volta do link de confirmação traz type=signup no hash, antes
+   do Supabase ler e limpar. Chamada uma vez, no boot. */
+function avisarConfirmacaoEmail(){
+  let h="";
+  try{ h=String(location.hash||""); }catch(e){}
+  if(/type=signup/.test(h))evento("confirmou_email");
+}
 async function atualizarStatusPro(){
   const sb=getSupabase();
   if(!sb){meuPro=false;return;}
@@ -937,6 +955,22 @@ async function atualizarStatusPro(){
     const{data}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle();
     meuPro=proAindaValido(data);
   }catch(e){meuPro=false;}
+}
+/* Celular: o teclado virtual cobre a metade de baixo da tela e o botão de
+   confirmar (Decidir, Provocar, Responder) ficava escondido embaixo dele.
+   Ao focar o campo, agora e depois do teclado abrir, rola até o botão; se
+   o navegador avisa que o teclado mudou a área visível (visualViewport),
+   rola de novo. */
+function manterBotaoVisivel(campo,botao){
+  const rolar=()=>{ try{ botao.scrollIntoView({block:"nearest"}); }catch(e){} };
+  campo.onfocus=()=>{ rolar(); setTimeout(rolar,350); };
+  const vv=typeof window!=="undefined"&&window.visualViewport;
+  if(!vv||!vv.addEventListener)return;
+  const aoMudar=()=>{
+    if(campo.isConnected===false){ vv.removeEventListener("resize",aoMudar); return; }
+    if(document.activeElement===campo)rolar();
+  };
+  vv.addEventListener("resize",aoMudar);
 }
 /* Tela com trava de Pro (assistente de nova carreira): se nasceu com
    meuPro=false, confere de novo e redesenha quando a resposta disser Pro.
@@ -994,6 +1028,7 @@ async function criarConta(email,senha){
   try{
     const{data,error}=await sb.auth.signUp({email,password:senha});
     if(error)return{ok:false,erro:error.message};
+    evento("criou_conta",{via:"email"});
     /* Supabase devolve sessão nula quando confirmação de e-mail está
        ligada (o normal) — cadastro funcionou, só falta confirmar. */
     return{ok:true,precisaConfirmar:!data.session};
@@ -2314,12 +2349,20 @@ function prefetchFeed(r,won,opp,titleFight,myKd,oppKd,upset){
     round:r.round,clock:r.clock,myKd,oppKd,title:titleFight,upset,
     record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers)});
 }
-async function resolveFeed(fallback,rng){
+async function resolveFeed(fallback){
+  /* Persona dos posts da IA com gerador PRÓPRIO (revamp fase 8). Antes
+     saía do rng principal, depois da resposta chegar: com a IA no ar, a
+     sequência da carreira dependia de quando o feed chegava e de quantos
+     posts vieram, e link de desafio e save deixavam de reproduzir a
+     carreira (offline nunca aparecia). Semente da carreira + luta: a
+     mesma carreira mostra as mesmas personas. Sorteado ANTES do await,
+     com a luta desta repercussão. */
+  const g=mulberry32((SEED^Math.imul(fightNo+1,0x9E3779B1))>>>0);
   const got=await(feedPromise||Promise.resolve(null));
   feedPromise=null;
   if(!Array.isArray(got)||got.length===0)return fallback;
   return got.slice(0,4).map(o=>{
-    const p=persona(rng);
+    const p=persona(g);
     if(o&&typeof o.nome==="string"&&o.nome.trim())
       {p.name=o.nome.trim().slice(0,14);p.initials=p.name.slice(0,2).toUpperCase();}
     return{p,text:String(o&&o.texto||"").slice(0,180)||"..."};
@@ -2716,6 +2759,7 @@ async function abrirDilema(dPronto){
      Enter quebra linha, não envia — só o botão Decidir envia. */
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
   inp.addEventListener("input",cresce);
+  manterBotaoVisivel(inp,go);
   inp.focus();
   const enviar=async()=>{
     const txt=inp.value.trim();
@@ -4228,6 +4272,7 @@ function telaColetiva(escolhido,camp){
   const inp=document.getElementById("colresp"),go=document.getElementById("colgo");
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
   inp.addEventListener("input",cresce);
+  manterBotaoVisivel(inp,go);
   pular.onclick=()=>{SOM.toque();seguir();};
   go.onclick=async()=>{
     const txt=inp.value.trim();
@@ -4348,6 +4393,7 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
     const inp=document.getElementById("entresp"),go=document.getElementById("entgo");
     const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
     inp.addEventListener("input",cresce);
+    manterBotaoVisivel(inp,go);
     inp.focus();
     go.onclick=async()=>{
       const txt=inp.value.trim();
@@ -5726,7 +5772,10 @@ const ATUALIZACOES=[
     "Nova carreira em 5 passos e tela de carreira com abas: painel, lutador, cartel, mídia, loja, cards e conquistas.",
     "Noite de luta em tela cheia, da oferta de adversários ao resultado.",
     "Jogar agora pede uma conta grátis. A carreira fica salva nela, em até 3 espaços, e recarregar a página não perde nada.",
-    "Música e efeitos sonoros novos."]},
+    "Música e efeitos sonoros novos.",
+    "Textos do jogo revisados: frases mais diretas, com número e nome.",
+    "Conta Pro reconhecida assim que você entra, sem precisar abrir a Conta antes.",
+    "No Cartel, a narração de cada luta também abre pelo teclado (Tab e Enter)."]},
   {data:"2026-09-22",titulo:"Plano Pro",itens:[
     "R$ 9,99 liberam 30 dias, sem cobrança automática.",
     "O Pro libera o modo Lenda, a coletiva de imprensa, a entrevista depois da luta, o modo Rival e três modelos de card: Ouro, Prata e Bronze."]},
@@ -6160,6 +6209,7 @@ function aplicarSave(s){
   auto=false;speed=1;playing=false;dilemaAberto=false;escolhaAberta=false;entrevistaAberta=false;
 }
 function retomarCarreira(s){
+  evento("continuou_save",{luta:s&&s.fightNo});
   aplicarSave(s);
   atualizarStatusPro();
   montarTelaCarreira();
@@ -6351,6 +6401,7 @@ async function boot(){
      depois (fetch do fighters.json caindo em askForFile()) — "abriu" não
      deveria depender de nada dar certo depois. */
   evento("abriu");
+  avisarConfirmacaoEmail();
   app.innerHTML=`<p class="hint" style="margin-top:30px">Carregando os lutadores…</p>`;
   let data=null;
   try{
@@ -6512,11 +6563,16 @@ function screenCriador(name){
         const b=tipo==="cor"
           ? el("button","sw"+(ROSTO[campo]===i?" on":""),"")
           : el("button","chip"+(ROSTO[campo]===i?" on":""),item);
-        if(tipo==="cor")b.style.background=item;
+        if(tipo==="cor"){
+          b.style.background=item;
+          /* amostra de cor não tem texto: sem nome o leitor de tela lê só "botão" */
+          if(b.setAttribute)b.setAttribute("aria-label",`${rot} ${i+1}`);
+        }
+        if(b.setAttribute)b.setAttribute("aria-pressed",String(ROSTO[campo]===i));
         b.onclick=()=>{
           ROSTO[campo]=i;SOM.toque();
           g.querySelectorAll(tipo==="cor"?".sw":".chip")
-            .forEach((x,j)=>x.classList.toggle("on",j===i));
+            .forEach((x,j)=>{ x.classList.toggle("on",j===i); if(x.setAttribute)x.setAttribute("aria-pressed",String(j===i)); });
           const v=bloco.querySelector("#v_"+campo);
           if(v&&tipo==="lista")v.textContent=item;
           desenha();
@@ -7941,7 +7997,12 @@ function linhaBout(reg){
   /* Cartel (revamp fase 5): a linha reabre a narração daquela luta. Nasce
      como FILHO da linha, desenhada só no primeiro clique: a linha continua
      filha direta de #bouts e o texto dela não muda (a suíte narracao lê). */
-  if(temNarr)line.onclick=()=>{
+  if(!temNarr)return line;
+  /* Teclado (fase 8): a linha é o botão que abre a narração; Tab chega
+     nela e Enter/Espaço abrem, igual ao clique. */
+  const atr=(k,v)=>{ if(line.setAttribute)line.setAttribute(k,v); };
+  atr("tabindex","0");atr("role","button");atr("aria-expanded","false");
+  line.onclick=()=>{
     SOM.toque();
     if(!line.__narr){
       line.__narr=el("div","bout-narracao",reg.narracao.map(([c,k,t])=>
@@ -7951,6 +8012,13 @@ function linhaBout(reg){
     }
     line.__narr.hidden=!line.__narr.hidden;
     line.className="bout"+(reg.titulo?" title-fight":"")+" com-narracao"+(line.__narr.hidden?"":" aberta");
+    atr("aria-expanded",String(!line.__narr.hidden));
+  };
+  line.onkeydown=e=>{
+    if(!e||(e.key!=="Enter"&&e.key!==" "))return;
+    if(e.target&&e.target!==line)return;   // tecla dentro da narração aberta não fecha
+    if(e.preventDefault)e.preventDefault();
+    line.onclick();
   };
   return line;
 }
@@ -8287,7 +8355,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     const molde=buildFeed(r,won,titleFight,myKd,oppKd,upset,rng,me.name,st.followers);
     ph.style.visibility="visible";
     const tk=CARREIRA_TOKEN;
-    resolveFeed(molde,rng).then(f=>{ if(tk===CARREIRA_TOKEN)renderPhone(f,st.fan,delta,st.followers); });
+    resolveFeed(molde).then(f=>{ if(tk===CARREIRA_TOKEN)renderPhone(f,st.fan,delta,st.followers); });
   }
 
   /* Registro da luta como DADO (revamp fase 3): o save guarda isto e a

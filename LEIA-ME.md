@@ -2173,7 +2173,7 @@ cd .. && pip3 install pandas && python3 atualizar-dados.py && node testar.js
 
 ## Dívidas conhecidas
 
-**Remendo, não conserto — `html{overflow-x:hidden}` (2026-09-16).**
+**RESOLVIDO na fase 8 do revamp (2026-09-27): a regra saiu, medido sem transbordo em 28 telas × 3 larguras (ver "Auditoria final").** Histórico: **Remendo, não conserto — `html{overflow-x:hidden}` (2026-09-16).**
 Medido em 380px (auditoria mobile, Fase 4 do redesign): `#controls
 .row` (o bloco "Próxima luta / Modo automático / Conquistas / Loja",
 presente em toda tela de carreira) reporta `scrollWidth` 22px maior
@@ -2865,6 +2865,94 @@ travessão, as frases proibidas e emoji ou seta em caractere no lugar de
 Confere `semTravessao()`, o filtro no resultado da IA e que nenhum arquivo
 de `api/` usa travessão fora da própria regra (a descrição da cobrança
 aparece pro jogador na página de pagamento da Asaas).
+
+## Auditoria final (revamp fase 8, 2026-09-27)
+
+**Feed da IA não mexe mais na semente.** `resolveFeed()` sorteava a
+persona de cada post da IA com o `rng` principal, DEPOIS da resposta
+chegar. Com a IA no ar, a sequência da carreira dependia de quando o feed
+chegava e de quantos posts vieram: link de desafio e save deixavam de
+reproduzir a carreira. Offline (moldes locais) nunca aparecia, por isso
+nenhuma suíte pegava. Agora a persona sai de um gerador próprio, semeado
+pela semente da carreira e pelo número da luta, sorteado antes do `await`.
+Teste na suíte `save`: carreira com posts da IA = carreira sem IA (antes
+divergia).
+
+**Eventos de funil novos** (spec, seções 6 e 12), além de `abriu`,
+`terminou_draft`, `terminou_luta_1`, `terminou_luta_5` e `terminou_22`:
+
+- `criou_conta`: cadastro por e-mail com sucesso (`criarConta()`,
+  `via:"email"`); 1º login pelo Google de uma conta criada há menos de
+  2 minutos (`via:"google"`, uma vez por conta neste aparelho, porque o
+  `SIGNED_IN` se repete).
+- `confirmou_email`: a página abriu com `type=signup` no hash (volta do
+  link de confirmação), conferido no `boot()` antes do Supabase limpar.
+- `continuou_save`: `retomarCarreira()` (Continuar e recarregar em
+  `#/carreira`), com o número da luta.
+
+Testes nas suítes `rotas` e `hub`.
+
+**`html{overflow-x:hidden}` saiu.** Era o remendo do `#controls` antigo
+(ver "Dívidas conhecidas"). Medido no Chrome sem a regra, em 1440, 820 e
+380 px, 28 telas cada (menu, páginas, portão, os 5 passos da nova
+carreira, as 7 abas do hub, cada etapa da noite e o fim): nenhum
+transbordo horizontal e nenhum erro de página.
+
+**Teclado virtual.** No celular o teclado cobria o botão de confirmar do
+dilema (Decidir), da coletiva (Provocar) e da entrevista (Responder).
+`manterBotaoVisivel(campo, botao)`: ao focar o campo, rola até o botão
+agora e de novo depois do teclado abrir; com `visualViewport`, rola
+também quando a área visível muda. Testes nas suítes `hub` e `pro`;
+conferir num celular de verdade continua valendo (o Chrome de mesa não
+abre teclado virtual).
+
+**Acessibilidade.** A suíte `interface` ganhou uma varredura sobre tudo
+que o caminho completo monta (menu, assistente, draft, carreira, noite,
+fim): botão ou link só com ícone precisa de nome (`aria-label` ou
+`title`), e nada clicável que não seja botão ou link pode ficar fora do
+teclado. Achou e consertou:
+
+- as amostras de cor do criador (pele, cabelo...) não tinham nome; agora
+  têm `aria-label` ("Pele 3") e `aria-pressed`;
+- as linhas do Cartel, que abrem a narração da luta, não chegavam pelo
+  teclado; agora têm `tabindex`, `role="button"`, `aria-expanded`, e
+  Enter ou Espaço abrem.
+
+O foco visível global (`:focus-visible`) mudou do `legado.css` pro
+`estilo.css`, com a cor nova, pra sobreviver quando o legado sair. Toda
+regra que tira o `outline` troca por outro destaque (borda ou fundo).
+
+**Peso, medido em produção (comprimido, 2026-09-27).** Ao abrir o menu:
+
+| arquivo | peso |
+|---|---|
+| `index.html` | 165 KB |
+| `fighters.json` | 101 KB |
+| CSS (os dois) | 38 KB |
+| fundos | ~100 KB cada (menu: fundo + 5 cards ≈ 450 KB) |
+| fontes | ~100 KB |
+
+Depois do 1º clique:
+
+- a música do menu (2 MB, em streaming: toca antes de terminar de baixar);
+- o lote de efeitos (~0,5 MB).
+
+No celular os fundos usam as variantes `-m`. Nada mudou: o que pesa é
+imagem e música, e as duas já baixam só quando aparecem.
+
+**Integrações conferidas sem gastar nada:**
+
+- Supabase com a chave anon, sem login:
+  - `assinaturas`, `saves`, `aceites_termos`, `carreiras_usuario`,
+    `conquistas_usuario` e `pagamentos_processados` não devolvem linha
+    nenhuma;
+  - inserir em qualquer uma delas, e no `placar`, é recusado pela RLS
+    (401, código 42501);
+  - o `placar` é de leitura pública.
+- `api/criar-pagamento`, `api/webhook-asaas` e `api/placar` recusam
+  chamada sem token (401).
+- Ativação do Pro de ponta a ponta com pagamento de verdade fica com o
+  dono (PENDENCIAS item 37).
 
 ## Histórico (2026-09-09) — aprovado, implementado
 

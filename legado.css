@@ -66,7 +66,10 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-html{overflow-x:hidden}
+/* html{overflow-x:hidden} saiu na fase 8 do revamp (2026-09-27): era
+   remendo pro #controls antigo, que não existe mais. Medido no Chrome em
+   1440, 820 e 380 px, 28 telas cada, sem a regra: nenhum transbordo
+   horizontal. Voltar a esconder transbordo esconde bug de layout. */
 body{
   background:var(--stock);
   color:var(--ink);
