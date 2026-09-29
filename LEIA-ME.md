@@ -2780,6 +2780,29 @@ forjada e plausível passa (o motor roda no navegador). `node testar.js
 placar` testa a regra com uma carreira real e o endpoint com `fetch` falso.
 **O endpoint só roda depois do merge + deploy** (função serverless).
 
+**Pontos de legado (nome dado em 2026-09-28).** O dono achou o número ao
+lado de cada jogador sem nome ("suponho que sejam pontos"). Também havia
+duas escalas pro mesmo número: o fim de carreira mostrava "78 de 100" e o
+ranking "7.823". Agora é um número só, com nome, nos dois lugares:
+
+- `grade()` devolve `pontos` (a nota × 100, pra baixo, o mesmo que vai
+  pro placar em `corpoPlacar`) e `partes`, as cinco parcelas da nota:
+  pico no ranking (até 4.000), melhor vitória (até 3.000), aproveitamento
+  (até 1.200), vitórias antes do fim (até 800) e cinturão (1.000). Cada
+  parte arredonda pra baixo e o que sobra vai pras de maior fração (maior
+  resto), então a conta mostrada sempre fecha o total;
+- fim de carreira: "3.320 pontos de legado" embaixo da letra, com as
+  cinco partes; a linha de envio diz com quantos pontos entrou;
+- ranking: a página explica o que conta; o pódio mostra "pontos de
+  legado" e cada linha "pontos" embaixo do número; a prévia do menu, "pts".
+
+A soma de sempre ficou na mesma ordem (a faixa da letra no servidor
+depende do mesmo número). Testes: `rotas` (nome no pódio, nas linhas e na
+explicação) e `hub` (fim com o nome, sem "de 100", 5 partes, o mesmo número
+do placar, e 400 carreiras sorteadas com as partes fechando o total). Dente
+provado: pódio sem o nome, fim na escala antiga e partes sem o maior resto
+reprovam.
+
 ## Nova carreira em 5 passos (revamp fase 4, 2026-09-27)
 
 A criação do lutador virou um assistente: Nome, Visual, Divisão e modo,
@@ -3267,6 +3290,21 @@ respondida, o convite vira o resumo (é o que vai pro Cartel) e "Continuar
 pra próxima luta" segue, ou volta pro resultado na última luta e com
 dilema aberto. Na coletiva, sem reação da IA a tela mostra uma frase
 neutra e o Ir pra luta, em vez de pular pra luta sem mostrar nada.
+
+**O que a coletiva muda, agora na tela (2026-09-28).** O dono perguntou se
+era bug a coletiva não mexer em fã e seguidores. Não é: ela mexe na LUTA.
+O hype (×0,85 a ×1,20) multiplica o hype daquela luta, e os seguidores e o
+fã saem dele depois do resultado; a pressão, quando a reação narra o
+adversário perdendo o foco, muda um atributo dele só naquela luta (até
+10%). O problema era ser invisível. Agora "O que aconteceu" mostra "Hype
+desta luta +17%" e "Adversário abalado: defesa de queda −8% nesta luta"
+(`efeitoColetivaHTML`), ou "sem mudança"; e o resultado mostra, embaixo
+dos seguidores, quanto veio da coletiva ("+77 da coletiva"). A parte da
+coletiva é a mesma conta de `finishFight()` sem o multiplicador dela, só
+pra exibir (nada muda no que a luta rende); fica também no registro da
+luta (`reg.coletiva`, campo opcional). Testes: `pro` (a cena mostra o
+hype e o adversário abalado, e "sem mudança" sem reação) e `hub` (luta
+com hype +20% mostra a parte, luta sem coletiva não mostra).
 
 **Custo:** uma chamada a mais por coletiva e por entrevista respondidas,
 só pra quem é Pro (a cena gasta ~1.300 a 1.400 tokens de entrada e ~85 de

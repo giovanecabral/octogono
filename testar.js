@@ -5044,6 +5044,10 @@ function testarColetivaEntrevista() {
       st.coletivaPressao&&st.coletivaPressao.mult===0.90);
     passo("coletiva: atributoPressao válido vira st.coletivaPressao.atributo",
       st.coletivaPressao&&st.coletivaPressao.atributo==="tdDef");
+    const desfechoPro=document.getElementById("coldesfecho").innerHTML;
+    passo("coletiva: 'o que aconteceu' mostra o hype da luta (+20%) e o adversário abalado (defesa de queda −10%)",
+      desfechoPro.includes("Hype desta luta +20%")&&desfechoPro.includes("Adversário abalado: defesa de queda −10% nesta luta")
+      &&/o resultado mostra quanto veio da coletiva/.test(desfechoPro));
     passo("coletiva: a resposta vai pro balão do jogador e a reação pro 'o que aconteceu'",
       document.getElementById("colbalao").innerHTML.includes("vai ver quando o sino tocar")
       &&document.getElementById("coldesfecho").innerHTML.includes("revirou os olhos")&&!document.getElementById("coldesfecho").hidden);
@@ -5143,6 +5147,9 @@ function testarColetivaEntrevista() {
     passo("coletiva: texto inseguro do JOGADOR corta ANTES de chamar a IA (mesma rede de baixo do dilema)",
       !chamouAiInseguro);
     passo("coletiva: sem chamada de IA, hype/pressao ficam neutros", st.coletivaHype===1&&st.coletivaPressao===null);
+    passo("coletiva: sem reação da IA, a cena diz que o hype não mudou (em vez de não dizer nada)",
+      /Hype desta luta sem mudança/.test(document.getElementById("coldesfecho").innerHTML)
+      &&!/Adversário/.test(document.getElementById("coldesfecho").innerHTML));
     passo("coletiva: sem reação, 'o que aconteceu' mostra a frase neutra e o Ir pra luta segue (a luta nunca trava)",
       /assessoria/.test(document.getElementById("coldesfecho").innerHTML)&&!!document.getElementById("colseguir").onclick
       &&(document.getElementById("colseguir").onclick(),!!lutarChamado));
@@ -6487,6 +6494,11 @@ async function testarRotas() {
     if (!podio || podio.children.length !== 3) throw new Error("pódio não tem 3 degraus");
     if (!lista || lista.children.length !== 3) throw new Error("lista não tem as 3 linhas restantes");
     if (!tem(podio.children[1], "degrau-1")) throw new Error("1º lugar não está no meio do pódio");
+    /* 2026-09-28: o número ao lado de cada jogador diz o que é */
+    if (!podio.children.every(d => /\d\.\d{3}<small>pontos de legado<\/small>/.test(d.innerHTML))) throw new Error("pódio sem 'pontos de legado' junto do número");
+    if (!lista.children.every(l => /<small>pontos<\/small>/.test(l.innerHTML))) throw new Error("linha do ranking sem 'pontos' junto do número");
+    if (!desde(m).some(n => tem(n, "tela-sub") && /pontos de legado/.test(n.innerHTML) && /10\.000/.test(n.innerHTML)))
+      throw new Error("a página do ranking não explica os pontos de legado");
     const area2 = { innerHTML: "", children: [], appendChild(c) { this.children.push(c); return c; } };
     UI.desenharRanking(area2, linhas, { nome_lutador: "Eu Mesmo", divisao: "lightweight", pontuacao: 4321, cartel: "12-10", nota: "D", cinturoes: 0, rosto: null, posicao: 41 });
     const minha = area2.children.find(n => tem(n, "rank-minha"));
@@ -8320,6 +8332,30 @@ async function testarHub() {
       throw new Error("estilo.css sem [hidden]{display:none!important}: .botao escondido pelo JS continua na tela");
   });
 
+  await conf("resultado: seguidores mostram quanto veio da coletiva, e só quando teve coletiva", async () => {
+    const X = novo(778705);
+    X.run("meuPro=true;auto=false;nextFight();");
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    X.run("st.coletivaHype=1.2;");            // como se a resposta tivesse rendido +20% de hype
+    X.registro.colpular.onclick();
+    for (let k = 0; k < 20 && X.run("playing"); k++) {
+      X.drenar(); await respirarCarreira();
+      const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+      if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+    }
+    for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
+    const reg = JSON.parse(X.run("JSON.stringify(st.registro[st.registro.length-1])"));
+    const delta = X.run("st.lastDelta");
+    if (!reg.coletiva || !(reg.coletiva.seg > 0) || !(reg.coletiva.seg < delta)) throw new Error("parte da coletiva: " + JSON.stringify(reg.coletiva) + " de " + delta);
+    if (!(reg.coletiva.fa >= 0)) throw new Error("fã da coletiva negativo com hype +20%: " + reg.coletiva.fa);
+    if (!X.registro.resultado.innerHTML.includes(`+${X.run(`fmtNum(${reg.coletiva.seg})`)} da coletiva`)) throw new Error("resultado sem a parte da coletiva");
+    if (X.run("st.coletivaHype") !== 1) throw new Error("hype da coletiva vazou pra próxima luta");
+    await lutarManual(X);
+    const reg2 = JSON.parse(X.run("JSON.stringify(st.registro[st.registro.length-1])"));
+    if (reg2.coletiva || X.registro.resultado.innerHTML.includes("da coletiva")) throw new Error("luta sem coletiva mostrou parte da coletiva");
+  });
+
   await conf("pós-luta: extras nascem no embrulho da luta na noite e vão pro cartel logo depois da linha dela", async () => {
     const X = novo(778702);
     X.run("meuPro=true;");
@@ -8497,6 +8533,19 @@ async function testarHub() {
     if (!nota || !String(nota.innerHTML).includes(`fim-letra nota-${g.letter}">${g.letter}</div>`) || !String(nota.innerHTML).includes(g.verdict))
       throw new Error("sem a nota " + g.letter + " e o parecer");
     if (!nos.some(n => tem(n, "fim-legado"))) throw new Error("sem legado");
+    /* pontos de legado (2026-09-28): mesma escala e mesmo número do ranking, com as partes que fecham a conta */
+    const pl = X.run("fmtPontos(grade().pontos)");
+    if (!String(nota.innerHTML).includes(`<b>${pl}</b> pontos de legado`)) throw new Error("fim sem os pontos de legado: " + String(nota.innerHTML).slice(0, 200));
+    if (/de 100/.test(String(nota.innerHTML))) throw new Error("fim ainda mostra a escala antiga (de 100)");
+    if ((String(nota.innerHTML).match(/<li>/g) || []).length !== 5) throw new Error("fim sem as 5 partes dos pontos");
+    if (X.run("corpoPlacar(grade()).pontuacao") !== X.run("grade().pontos")) throw new Error("o fim e o ranking mostram números diferentes");
+    const conta = JSON.parse(X.run(`(function(){const r=mulberry32(4242),erros=[];
+      for(let i=0;i<400;i++){st.peak=r();st.bestBeaten=r();st.wins=Math.floor(r()*23);st.losses=Math.floor(r()*(23-st.wins));
+        st.finishes=Math.floor(r()*(st.wins+1));st.title=r()<.3;const g=grade();
+        const soma=g.partes.reduce((a,x)=>a+x.v,0);
+        if(soma!==g.pontos||g.pontos!==Math.floor(g.bruto*100)||g.partes.some(x=>x.v<0))erros.push(JSON.stringify({soma,p:g.pontos}));}
+      return JSON.stringify(erros.slice(0,3));})()`));
+    if (conta.length) throw new Error("as partes não fecham o total: " + conta.join(" "));
     if (nos.filter(n => tem(n, "fim-num")).length < 10) throw new Error("poucos números");
     for (const t of ["Salvar imagem", "Copiar imagem", "Copiar desafio", "Nova carreira"])
       if (!nos.some(n => n.tagName === "button" && n.innerHTML === t && n.onclick)) throw new Error("sem botão " + t);

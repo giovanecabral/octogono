@@ -2229,10 +2229,11 @@ lançamento").
 - `Mapa.png` (rascunho do dono) fica só local: está no `.vercelignore` e
   fora do git.
 
-**Depende do dono:**
-1. Jogar uma coletiva e uma entrevista com a conta Pro depois do deploy e
-   dizer se as perguntas estão no tom certo (a qualidade é do Qwen 3.7
-   Flash; às vezes ele ainda escapa da regra, e o cliente corta o pior).
-2. Conferir se o banner do painel de admin sumiu e se a conta de teste
-   ficou Pro ao abrir Conta → Plano Pro (pendente de antes).
+**Depois (mesmo dia), a pedido do dono:** a coletiva mostra o que mudou na
+luta (hype e adversário abalado) e o resultado mostra quantos seguidores
+vieram dela; o número do ranking virou "pontos de legado", na mesma escala
+no fim da carreira, com a conta de cada parte. O dono confirmou ("isso
+tudo já deu certo") o lote anterior (orçamento, cena da coletiva e da
+entrevista, automático, Créditos, botão) e as pendências do painel de
+admin e da conta de teste. Nada deste item depende mais do dono.
 

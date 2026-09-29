@@ -1552,7 +1552,7 @@ function adminRanking(corpo){
     r.carreiras.forEach((k,i)=>{
       const l=el("div","admin-linha");
       l.appendChild(el("div","admin-quem",`<b>${i+1}º ${String(k.nome_lutador).replace(/</g,"&lt;")}</b>${k.banido?`<span class="admin-selo selo-ban">Banido</span>`:""}${k.modo==="lenda"?`<span class="admin-selo">Lenda</span>`:""}`));
-      l.appendChild(el("div","admin-info",`${k.pontuacao} pontos · nota ${k.nota} · ${k.cartel} · ${nomeDivisao(k.divisao)} · ${dataCurta(k.criado_em)}`));
+      l.appendChild(el("div","admin-info",`${fmtPontos(k.pontuacao)} pontos de legado · nota ${k.nota} · ${k.cartel} · ${nomeDivisao(k.divisao)} · ${dataCurta(k.criado_em)}`));
       const acoes=el("div","admin-acoes");
       const m=el("span","hint","");
       acoes.append(botaoConfirma("Apagar do ranking","Confirmar: apagar",async()=>{
@@ -4933,6 +4933,22 @@ function telaColetiva(escolhido,camp){
   SOM.flashes();
   mostrarNoite("coletiva");
 }
+/* O que a coletiva muda na luta (pedido do dono, 2026-09-28: "a coletiva
+   não mexe em fã e seguidores, é bug?"). Não mexe na hora, mexe na luta:
+   o hype multiplica o hype desta luta (seguidores e fã saem dele depois
+   do resultado) e a pressão, quando a IA narra o adversário perdendo o
+   foco, muda um atributo dele só nesta luta. Antes isso era invisível. */
+function efeitoColetivaHTML(){
+  const pct=Math.round(((st.coletivaHype||1)-1)*100);
+  const pr=st.coletivaPressao,pp=pr?Math.round((pr.mult-1)*100):0;
+  const partes=[];
+  partes.push(pct?`<span class="delta ${pct>0?"up":"down"}">Hype desta luta ${pct>0?"+":"−"}${Math.abs(pct)}%</span>`
+    :`<span class="delta">Hype desta luta sem mudança</span>`);
+  if(pr&&pp)partes.push(`<span class="delta ${pp<0?"up":"down"}">Adversário ${pp<0?"abalado":"mais ligado"}: ${
+    (ROTULO_ATTR[pr.atributo]||pr.atributo).toLowerCase()} ${pp>0?"+":"−"}${Math.abs(pp)}% nesta luta</span>`);
+  return `<div class="dil-fx">${partes.join("")}</div>`+
+    (pct?`<p class="cena-nota">O hype multiplica os seguidores e o fã que a luta render: o resultado mostra quanto veio da coletiva.</p>`:"");
+}
 function aplicarColetiva(p,opp,txt,jBruto,seguir){
   const jSeguro=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
   const j=jSeguro;
@@ -4946,7 +4962,8 @@ function aplicarColetiva(p,opp,txt,jBruto,seguir){
   mostrarResposta(p,txt);
   /* Sem reação (IA fora, texto cortado): a resposta fica registrada e a
      sala segue, em vez de pular pra luta sem mostrar nada. */
-  mostrarDesfecho(p,bruto?semTag(bruto):"A assessoria anotou a resposta e passou a palavra pro próximo repórter.");
+  mostrarDesfecho(p,bruto?semTag(bruto):"A assessoria anotou a resposta e passou a palavra pro próximo repórter.",
+    efeitoColetivaHTML());
   /* Botão em vez de tempo fixo (pedido do dono, 2026-09-28): a luta só
      começa quando o jogador manda. */
   const tk=CARREIRA_TOKEN;
@@ -6344,7 +6361,9 @@ const ATUALIZACOES=[
     "O repórter faz uma pergunta nova a cada luta, sobre o que está acontecendo na sua carreira, e sempre acontece alguma coisa na sala antes dela.",
     "O orçamento do draft virou teto e nunca fica negativo. Sem dinheiro pra nenhuma carta, a mesa oferece a carta mínima de cada par, de graça.",
     "Saíram o modo automático e a página Créditos. O crédito dos sons que pedem autoria fica na engrenagem.",
-    "Depois da luta, a próxima escolha de adversário começa em Próxima luta."]},
+    "Depois da luta, a próxima escolha de adversário começa em Próxima luta.",
+    "A coletiva mostra o que mudou na luta: o hype (que multiplica os seguidores e o fã que a luta render) e, quando acontece, o adversário abalado. O resultado mostra quantos seguidores vieram da coletiva.",
+    "O número do ranking ganhou nome: pontos de legado. É o mesmo no fim da carreira, com a conta de cada parte: pico no ranking, melhor vitória, aproveitamento, vitórias antes do fim e cinturão."]},
   {data:"2026-09-28",titulo:"Lutadores novos",itens:[
     "Criador refeito: oito arquétipos tirados de estilos reais de MMA (Muay Thai, Jiu-jitsu, Wrestling, Sambo do Cáucaso, Boxe, Brigão, Kickboxing e Veterano).",
     "Peças novas: orelha de couve-flor, nariz quebrado, cicatrizes, tatuagens e roupa de entrada, como mongkol, papakha, kimono, roupão, capuz e bandeira.",
@@ -6501,7 +6520,7 @@ async function preencherPreviaRanking(){
   if(!alvo)return;
   alvo.innerHTML=linhas.length
     ? linhas.map((l,i)=>`<span class="previa-linha"><span class="previa-pos">${i+1}</span>`+
-        `<span class="previa-txt">${l.nome_lutador}</span><span class="previa-num">${fmtPontos(l.pontuacao)}</span></span>`).join("")
+        `<span class="previa-txt">${l.nome_lutador}</span><span class="previa-num">${fmtPontos(l.pontuacao)} pts</span></span>`).join("")
     : `<span class="previa-linha"><span class="previa-txt">Nenhuma carreira no placar ainda.</span></span>`;
 }
 async function preencherPreviaConta(chip){
@@ -6635,7 +6654,7 @@ function screenEscolherEspaco(saves){
 let filtroRanking={divisao:null,modo:"normal"};
 function screenRanking(){
   const c=montarTela({fundo:"cinturao",titulo:"Ranking",classe:"tela-ranking"});
-  c.appendChild(el("p","tela-sub","Carreiras encerradas de todos os jogadores, pela pontuação final."));
+  c.appendChild(el("p","tela-sub","Carreiras encerradas de todos os jogadores, pelos pontos de legado: pico no ranking, melhor vitória, aproveitamento, vitórias antes do fim e cinturão (até 10.000)."));
   const filtros=el("div","filtros");
   const sel=el("select","campo-select",
     `<option value="">Todas as divisões</option>`+DIVISOES.map(d=>`<option value="${d.id}">${d.nome}</option>`).join(""));
@@ -6703,7 +6722,7 @@ function degrauPodio(l,pos){
      <span class="degrau-pos">${pos}º</span>
      <span class="degrau-nome">${l.nome_lutador}</span>
      <span class="degrau-meta">${nomeDivisao(l.divisao)} · ${l.cartel}${l.cinturoes?` · ${ICONE("medalha")} ${l.cinturoes}`:""}</span>
-     <span class="degrau-pontos">${fmtPontos(l.pontuacao)}</span>`);
+     <span class="degrau-pontos">${fmtPontos(l.pontuacao)}<small>pontos de legado</small></span>`);
 }
 function linhaRanking(l,pos){
   return el("li","rank-linha",
@@ -6713,7 +6732,7 @@ function linhaRanking(l,pos){
      <span class="rank-meta">${l.cartel}</span>
      <span class="rank-meta">${l.cinturoes?`${ICONE("medalha")} ${l.cinturoes}`:""}</span>
      <span class="rank-nota">${l.nota}</span>
-     <span class="rank-pontos">${fmtPontos(l.pontuacao)}</span>`);
+     <span class="rank-pontos">${fmtPontos(l.pontuacao)}<small>pontos</small></span>`);
 }
 /* =========================================================================
    SAVE (revamp fase 3). O save é DADO: estado da carreira + estado interno
@@ -7870,10 +7889,13 @@ function arquivarPosLuta(){
 function mostrarResultado(reg,extra){
   const box=document.getElementById("resultado");
   if(!box||!reg)return;
-  const num=(fmt,rot,ico,valor,txt)=>`<div class="res-num"><span class="res-rot">${ICONE(ico)}${rot}</span><b data-conta="${valor}" data-fmt="${fmt}">${txt}</b></div>`;
+  const num=(fmt,rot,ico,valor,txt,sub="")=>`<div class="res-num"><span class="res-rot">${ICONE(ico)}${rot}</span><b data-conta="${valor}" data-fmt="${fmt}">${txt}</b>${sub}</div>`;
+  /* quanto dos seguidores veio da coletiva (só quando teve coletiva com efeito) */
+  const col=extra&&extra.coletiva&&extra.coletiva.seg;
+  const subColetiva=col?`<span class="res-coletiva">${col>0?"+":"−"}${fmtNum(Math.abs(col))} da coletiva</span>`:"";
   const nums=extra?`<div class="res-nums">
       ${num("dinheiro","Bolsa","carteira",reg.renda,`+R$ ${fmtNum(reg.renda)}`)}
-      ${num("seg","Seguidores","seguidores",extra.delta,`${extra.delta>=0?"+":"-"}${fmtNum(Math.abs(extra.delta))}`)}
+      ${num("seg","Seguidores","seguidores",extra.delta,`${extra.delta>=0?"+":"-"}${fmtNum(Math.abs(extra.delta))}`,subColetiva)}
       ${extra.rk?`<div class="res-num"><span class="res-rot">${ICONE("grafico")}Posição</span><b>#${extra.rk.n}</b>${
         extra.mov?`<span class="pos-mov ${extra.mov>0?"sobe":"cai"}">${ICONE(extra.mov>0?"sobe":"desce")}${Math.abs(extra.mov)}</span>`:""}</div>`:""}
     </div>`:"";
@@ -8863,7 +8885,8 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      st.coletivaHype é 1 (neutro) quando não houve coletiva ou ela caiu no
      fallback; nunca null, pra não precisar de "||1" espalhado. Resetado
      em resetColetiva() (ver nextFight()) — vale só PRA ESTA luta. */
-  const hype=hypeOf(r,won,opp,me,titleFight,myKd,oppKd)*(st.coletivaHype||1);
+  const hypeBase=hypeOf(r,won,opp,me,titleFight,myKd,oppKd),multColetiva=st.coletivaHype||1;
+  const hype=hypeBase*multColetiva;
   /* Já consumido acima (mAttr foi lido na construção de B, em lutar(); hype
      acabou de ler st.coletivaHype) — limpa pra próxima luta não herdar por
      engano. Reset aqui, não em nextFight(): telaColetiva() da PRÓXIMA luta
@@ -8933,13 +8956,19 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   const upset=won&&fightNo>=6&&chancePre<.30;
   if(upset)st.momentos.push(criarMomento("upset",FRASE_UPSET(me.name,opp.name),opp,r));
   const alvo=Math.max(0,Math.min(10,1.3+hype*1.30));
+  const fanAntesLuta=st.fan;
   st.fan=Math.max(0,Math.min(10,st.fan*.62+alvo*.38));      /* média móvel */
   /* Casa melhor (loja): bônus permanente aplicado no delta já calculado,
      vitória ou derrota — não entra em followerDelta() (função pura,
      testada isolada) pra não misturar mecânica do motor com item de
      compra opcional. */
-  const delta=Math.round(followerDelta(st.followers,hype,won,st.standing)
-    *(st.casaComprada?CASA_FOLLOWER_MULT:1)*(st.consultoriaAtiva?CASA_FOLLOWER_MULT:1));
+  const multLoja=(st.casaComprada?CASA_FOLLOWER_MULT:1)*(st.consultoriaAtiva?CASA_FOLLOWER_MULT:1);
+  const delta=Math.round(followerDelta(st.followers,hype,won,st.standing)*multLoja);
+  /* Parte da coletiva (2026-09-28): a mesma conta sem o multiplicador
+     dela. Só exibição: nada aqui muda o que a luta rendeu. */
+  const coletivaNaLuta=multColetiva===1?null:{hype:multColetiva,
+    seg:delta-Math.round(followerDelta(st.followers,hypeBase,won,st.standing)*multLoja),
+    fa:Math.round((st.fan-Math.max(0,Math.min(10,fanAntesLuta*.62+Math.max(0,Math.min(10,1.3+hypeBase*1.30))*.38)))*10)/10};
   st.followers=Math.max(120,st.followers+delta);
   st.peakFollowers=Math.max(st.peakFollowers,st.followers);
   st.consultoriaAtiva=false;   // pontual — consumida nesta luta, precisa comprar de novo
@@ -8963,6 +8992,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     cartoes:r.cards||null,kd:[myKd,oppKd],renda:rendaLuta,titulo:!!titleFight,extras:[],
     seg:st.followers,fa:Math.round(st.fan*10)/10,
     narracao:(r.log||[]).map(L=>[L.clock,L.kind||"",L.text])};
+  if(coletivaNaLuta)reg.coletiva=coletivaNaLuta;   // opcional: save antigo não tem
   st.registro.push(reg);
   const bouts=document.getElementById("bouts");
   bouts.appendChild(linhaBout(reg));
@@ -9038,7 +9068,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
   /* Resultado na noite (revamp fase 5). No automático a noite segue na
      etapa da luta (a próxima começa em 1,1 s); dilema desliga o
      automático antes daqui, então ele sempre aparece no pós-luta. */
-  if(!auto)mostrarResultado(reg,{delta,rk:rkDepois,mov:st.rankAnt!=null&&rkDepois?st.rankAnt-rkDepois.n:0});
+  if(!auto)mostrarResultado(reg,{delta,rk:rkDepois,mov:st.rankAnt!=null&&rkDepois?st.rankAnt-rkDepois.n:0,coletiva:coletivaNaLuta});
   if(fightNo===1)evento("terminou_luta_1",{segundos:Math.round((Date.now()-TEMPO_ABERTURA)/1000)});
   if(fightNo===5)evento("terminou_luta_5");
   if(fightNo>=TOTAL_FIGHTS)evento("terminou_22");
@@ -9073,7 +9103,7 @@ const FAIXAS_NOTA=TIERS_NOTA.map(t=>[t[0],t[1]]);
 function corpoPlacar(g){
   return{seed:SEED,nome:me.name,divisao:DIVISION,modo:MODO,wins:st.wins,losses:st.losses,
     finishes:st.finishes,cinturoes:st.vezesCampeao||0,title:!!st.title,
-    pontuacao:Math.floor(g.bruto*100),nota:g.letter,rosto:ROSTO||null};
+    pontuacao:g.pontos,nota:g.letter,rosto:ROSTO||null};
 }
 async function enviarPlacar(g,linha){
   const sb=getSupabase();
@@ -9086,13 +9116,27 @@ async function enviarPlacar(g,linha){
       headers:{"Content-Type":"application/json",Authorization:"Bearer "+session.access_token},
       body:JSON.stringify(corpoPlacar(g))});
     let j={};try{ j=await r.json(); }catch(e){}
-    if(linha)linha.textContent=r.ok?"Carreira enviada ao ranking.":`Não entrou no ranking: ${j.erro||"erro no servidor"}.`;
+    if(linha)linha.textContent=r.ok?`Carreira enviada ao ranking com ${fmtPontos(g.pontos)} pontos de legado.`:`Não entrou no ranking: ${j.erro||"erro no servidor"}.`;
   }catch(e){ if(linha)linha.textContent="Não deu pra enviar ao ranking agora."; }
 }
+/* Pontos de legado (nome dado em 2026-09-28, pedido do dono: o número ao
+   lado de cada jogador no ranking não dizia o que era). É a nota da
+   carreira × 100, a MESMA escala no fim de carreira e no ranking (antes o
+   fim mostrava "78 de 100" e o ranking "7.823"). As cinco partes somam o
+   total exato: cada uma arredonda pra baixo e o que sobra vai pras de
+   maior fração (maior resto), então a conta mostrada fecha. */
 function grade(){
   const winPct=st.wins/Math.max(1,st.wins+st.losses);
   const finishPct=st.finishes/Math.max(1,st.wins);
-  const score=st.peak*40+st.bestBeaten*30+winPct*12+finishPct*8+(st.title?10:0);
+  const brutas=[["Pico no ranking",st.peak*40],["Melhor vitória",st.bestBeaten*30],
+    ["Aproveitamento",winPct*12],["Vitórias antes do fim",finishPct*8],["Cinturão",st.title?10:0]];
+  const score=brutas.reduce((a,[,v])=>a+v,0);   // mesma ordem de soma de sempre: o placar confere a faixa
+  const pontos=Math.floor(score*100);
+  const cem=brutas.map(([,v])=>v*100),partes=cem.map(Math.floor);
+  let falta=pontos-partes.reduce((a,b)=>a+b,0);
+  const porFracao=cem.map((v,i)=>[v-Math.floor(v),i]).sort((a,b)=>b[0]-a[0]);
+  for(let k=0;falta>0&&k<porFracao.length;k++,falta--)partes[porFracao[k][1]]++;
+  while(falta<0){const i=partes.indexOf(Math.max(...partes));partes[i]--;falta++;}   // só em erro de ponto flutuante
   const tiers=TIERS_NOTA;
   const t=tiers.find(x=>score>=x[0]);
   /* fightNo===0 (aposentadoria antes da 1ª luta) sempre cai no score baixo
@@ -9102,7 +9146,8 @@ function grade(){
   const verdict=st.fightNo===0
     ?"Não chegou a entrar no octógono. Aposentado antes da primeira luta."
     :t[2];
-  return{score:Math.round(score),bruto:score,letter:t[1],verdict};
+  return{score:Math.round(score),bruto:score,pontos,letter:t[1],verdict,
+    partes:brutas.map(([rot],i)=>({rot,v:partes[i]}))};
 }
 function screenReport(){
   const g=grade();
@@ -9122,7 +9167,8 @@ function screenReport(){
       <span class="fim-sub">${st.wins}-${st.losses} · ${idadeAtual()} anos · ${nomeDivisao(DIVISION)}${MODO==="lenda"?" · Seja uma lenda":""}</span></div>`));
   topo.appendChild(el("div","fim-nota",`<span class="fim-rot">Parecer da comissão</span>
     <div class="fim-letra nota-${g.letter}">${g.letter}</div>
-    <span class="fim-pontos">${g.score} de 100</span><p class="fim-parecer">${g.verdict}</p>`));
+    <span class="fim-pontos"><b>${fmtPontos(g.pontos)}</b> pontos de legado</span><p class="fim-parecer">${g.verdict}</p>
+    <ul class="fim-partes">${g.partes.map(x=>`<li><span>${x.rot}</span><b>${fmtPontos(x.v)}</b></li>`).join("")}</ul>`));
   c.appendChild(topo);
   c.appendChild(el("blockquote","fim-legado",LEGACY.find(l=>l.when(st)).t(me.name)));
   const num=(rot,v)=>`<div class="fim-num"><span>${rot}</span><b>${v}</b></div>`;
