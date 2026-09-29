@@ -99,6 +99,9 @@ function criarAmbiente({ contarNos = false } = {}) {
       /* html[data-estado-carreira]/[data-aba-carreira] (atualizarEstadoCarreira())
          precisa de um nó estável — sem isto, undefined.dataset explode. */
       documentElement: makeEl(),
+      /* o nocaute pisca a tela (document.body.classList): sem body, a luta
+         que termina em nocaute sem reduce-motion quebrava só no teste */
+      body: makeEl("body"),
       /* o nó criado sob demanda precisa carregar o id, senão o teste não
          consegue achar elementos que a interface monta via innerHTML */
       getElementById: id => registro[id] || (registro[id] = Object.assign(makeEl(), { id, __auto: true })),
@@ -509,8 +512,10 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     const temTexto = n => n && (String(n.textContent || "").trim() || !soIcone(n.innerHTML));
     /* Fundo do overlay de Configurações (fecha clicando fora) e o painel
        dele (segura o clique): não são controles; o teclado fecha com Esc
-       e com o X, que é botão. */
-    const naoControle = n => n.id === "cfg" || (n.className || "").split(" ").includes("cfg-painel");
+       e com o X, que é botão. O fundo do tutorial "Como jogar"
+       (2026-09-28) é o mesmo caso: Esc, setas e os botões dele. */
+    const naoControle = n => n.id === "cfg" || (n.className || "").split(" ").includes("cfg-painel")
+      || (n.className || "").split(" ").includes("tutorial");
     const ruins = new Set();
     for (const n of env.todos) {
       /* nó criado pelo getElementById falso (id escrito dentro de um
@@ -781,10 +786,17 @@ function testarDraft(div = "lightweight") {
      vitórias pra quem joga bem, e BUDGET_PCT foi de .76 pra .35: o lutador
      draftado fica no meio da divisão (medido 48), e o treino e as escolhas
      fazem o resto. Ver LEIA-ME "Balanço" e node testar.js balanco. */
-  const media = w / tw, ok1 = media >= 40 && media <= 56;
+  /* Alvo mudou de novo no mesmo dia (era ~48, 40 a 56): o dono pediu
+     mais orçamento porque o jogador ficava zerado quase sempre, e
+     BUDGET_PCT foi de .52 pra .70. O lutador do bot guloso nasce no ~65º
+     percentil e o ~50% de vitórias passou a vir dos adversários (escada
+     mais alta em candidatos()) e do teto de treino (1.05). O que este
+     teste guarda agora é o orçamento não sair de novo do lugar sem que
+     o balanço seja medido junto (node testar.js balanco). */
+  const media = w / tw, ok1 = media >= 58 && media <= 72;
   const pmortas = 100 * mortas / linhas, ok2 = pmortas < 3;
-  console.log(`  ${ok1 ? verde("ok   ") : vermelho("fora ")} lutador draftado no ${media.toFixed(0)}º percentil  ${cinza("alvo ~48 (meio da divisão, balanço 2026-09-28)")}`);
-  if (!ok1) console.log(cinza(`         ${media > 56 ? "baixe" : "suba"} BUDGET_PCT no index.html`));
+  console.log(`  ${ok1 ? verde("ok   ") : vermelho("fora ")} lutador draftado no ${media.toFixed(0)}º percentil  ${cinza("alvo ~65 (orçamento .70, 2026-09-28)")}`);
+  if (!ok1) console.log(cinza(`         ${media > 72 ? "baixe" : "suba"} BUDGET_PCT no index.html (e meça o balanço junto)`));
   console.log(`  ${ok2 ? verde("ok   ") : vermelho("fora ")} linhas mortas na mesa ${pmortas.toFixed(1)}%  ${cinza("tem que ficar perto de 0")}`);
   return ok1 && ok2;
 }
@@ -909,6 +921,126 @@ async function testarOrcamento() {
   if (totalFalhas > falhas.length) console.log(vermelho(`  ... e mais ${totalFalhas - falhas.length}`));
   const ok = !totalFalhas;
   console.log(ok ? verde("  orçamento nunca negativo, carta mínima certa na mesa e na tela") : vermelho("  orçamento furado"));
+  return ok;
+}
+
+/* ================================================================== *
+ * 3c. COMO JOGAR (2026-09-28, pedido do dono: "algumas pessoas não
+ *     entenderam") — tutorial com prints anotados no draft e na primeira
+ *     noite de luta: abre sozinho uma vez, reabre pelo botão, navega,
+ *     fecha, nunca no automático, e todo print existe (computador e
+ *     celular) com uma anotação por item da lista.
+ * ================================================================== */
+async function testarTutorial() {
+  console.log("\n" + cinza("como jogar: tutorial do draft e da luta, prints anotados"));
+  const F = lerLutadores();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const R0 = sandboxCarreira(); R0.sb.__F = F;
+  const RJ = R0.run("JSON.stringify(rateAll(globalThis.__F))");
+  const abrirDraft = (X, seed) => {
+    X.sb.__RJ = RJ;
+    X.run(`(function(){ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      DIVISION="lightweight";MODO="normal";SEED=${seed};RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null;ROSTO=null;startDraft("T");})()`);
+  };
+  const caixa = X => { const t = X.registro.tutorial, c = t && t.children[0]; return c ? c.children.map(n => String(n.innerHTML)).join(" ") : ""; };
+  const aberto = X => X.run("TUTORIAL_ABERTO");
+
+  await conf("draft: abre sozinho na primeira montagem, no passo 1 de 3, com os dois prints, e fica marcado como visto", async () => {
+    const X = sandboxCarreira(); abrirDraft(X, 101);
+    if (aberto(X) !== "draft") throw new Error("não abriu: " + aberto(X));
+    const h = caixa(X);
+    if (!/1 de 3/.test(h)) throw new Error("não está no passo 1 de 3: " + h.slice(0, 120));
+    if (!h.includes("img/tutorial/draft-1.webp") || !h.includes("img/tutorial/draft-1-m.webp")) throw new Error("passo 1 sem os dois prints");
+    if (X.dadosLS["tutorial:draft"] !== "1") throw new Error("não marcou como visto");
+  });
+
+  await conf("draft: Próximo avança, Voltar volta, Entendi no último fecha, e a mesa de cartas continua lá", async () => {
+    const X = sandboxCarreira(); abrirDraft(X, 102);
+    X.registro.tutorialProximo.onclick();
+    if (!/2 de 3/.test(caixa(X))) throw new Error("Próximo não foi pro passo 2");
+    X.registro.tutorialVoltar.onclick();
+    if (!/1 de 3/.test(caixa(X))) throw new Error("Voltar não voltou pro passo 1");
+    X.registro.tutorialProximo.onclick(); X.registro.tutorialProximo.onclick();
+    if (!/3 de 3/.test(caixa(X)) || !/Entendi/.test(X.registro.tutorialProximo.innerHTML)) throw new Error("último passo sem Entendi");
+    X.registro.tutorialProximo.onclick();
+    if (aberto(X) !== null) throw new Error("Entendi não fechou");
+    if (!((X.registro.cards || {}).children || []).some(n => (n.className || "").split(" ").includes("card"))) throw new Error("sem cartas depois do tutorial");
+  });
+
+  await conf("draft: não abre de novo na montagem seguinte (nem com o localStorage bloqueado, na mesma sessão) nem pra quem já viu", async () => {
+    const X = sandboxCarreira(); abrirDraft(X, 103);
+    X.run("fecharTutorial();");
+    delete X.dadosLS["tutorial:draft"];          // navegador que não guarda nada
+    abrirDraft(X, 104);
+    if (aberto(X) !== null) throw new Error("abriu de novo na mesma sessão");
+    const Y = sandboxCarreira(); Y.dadosLS["tutorial:draft"] = "1"; abrirDraft(Y, 105);
+    if (aberto(Y) !== null) throw new Error("abriu pra quem já tinha visto");
+  });
+
+  await conf("draft: Como jogar reabre no passo 1; Esc e o X fecham", async () => {
+    const Y = sandboxCarreira(); Y.dadosLS["tutorial:draft"] = "1"; abrirDraft(Y, 106);
+    const b = Y.registro.comoJogar_draft;
+    if (!b || !b.onclick) throw new Error("sem o botão Como jogar no draft");
+    b.onclick();
+    if (aberto(Y) !== "draft" || !/1 de 3/.test(caixa(Y))) throw new Error("Como jogar não reabriu no passo 1");
+    Y.registro.tutorial.onkeydown({ key: "Escape" });
+    if (aberto(Y) !== null) throw new Error("Esc não fechou");
+    b.onclick(); Y.registro.tutorialX.onclick();
+    if (aberto(Y) !== null) throw new Error("o X não fechou");
+  });
+
+  await conf("luta: abre sozinho na primeira noite de luta, no passo 1 de 5, e nunca no modo automático", async () => {
+    const X = sandboxCarreira(); X.dadosLS["tutorial:draft"] = "1";
+    iniciarCarreiraTeste(X, F, 107, "normal", RJ);
+    X.run("auto=false;nextFight();");
+    if (aberto(X) !== "luta") throw new Error("não abriu na primeira noite: " + aberto(X));
+    if (!/1 de 5/.test(caixa(X)) || !caixa(X).includes("img/tutorial/luta-1.webp")) throw new Error("não está no passo 1 de 5");
+    const Z = sandboxCarreira(); Z.dadosLS["tutorial:draft"] = "1";
+    iniciarCarreiraTeste(Z, F, 108, "normal", RJ);
+    await jogarCarreiraAte(Z, 3);
+    if (Z.run("!!TUTORIAL_NA_SESSAO.luta") || Z.dadosLS["tutorial:luta"]) throw new Error("abriu no modo automático");
+    /* a trava em si (a carreira automática nem passa pela tela da oferta) */
+    if (Z.run("auto=true;abrirTutorialSeNovo('luta');TUTORIAL_ABERTO") !== null) throw new Error("abrirTutorialSeNovo abriu com auto ligado");
+  });
+
+  await conf("luta: Como jogar na noite abre no passo da etapa (oferta no 1, camp no 2)", async () => {
+    const X = sandboxCarreira(); X.dadosLS["tutorial:draft"] = "1"; X.dadosLS["tutorial:luta"] = "1";
+    iniciarCarreiraTeste(X, F, 109, "normal", RJ);
+    X.run("auto=false;nextFight();");
+    if (aberto(X) !== null) throw new Error("abriu pra quem já tinha visto");
+    const b = X.registro.comoJogar_luta;
+    if (!b || !b.onclick) throw new Error("sem o botão Como jogar na noite");
+    b.onclick();
+    if (!/1 de 5/.test(caixa(X))) throw new Error("na oferta não abriu no passo 1");
+    X.run("fecharTutorial();");
+    X.registro.opps.children.find(n => (n.className || "").split(" ").includes("opp")).onclick();
+    b.onclick();
+    if (!/2 de 5/.test(caixa(X))) throw new Error("no camp não abriu no passo 2");
+  });
+
+  await conf("prints: todo passo tem as versões de computador e celular, uma anotação por item, e o gerador fica fora do ar", async () => {
+    const X = sandboxCarreira();
+    const tut = JSON.parse(X.run("JSON.stringify(Object.fromEntries(Object.entries(TUTORIAIS).map(([k,t])=>[k,t.passos.map(p=>({img:p.img,n:p.itens.length}))])))"));
+    const cap = fs.readFileSync(path.join(__dirname, "img", "tutorial", "capturar.mjs"), "utf8");
+    const anot = {};
+    for (const m of cap.matchAll(/print\(page, "([\w-]+)" \+ suf, \[([^\]]*)\]\)/g)) anot[m[1]] = (m[2].match(/"[^"]+"/g) || []).length;
+    let n = 0;
+    for (const passos of Object.values(tut)) for (const p of passos) {
+      for (const suf of ["", "-m"])
+        if (!fs.existsSync(path.join(__dirname, "img", "tutorial", p.img + suf + ".webp"))) throw new Error("falta img/tutorial/" + p.img + suf + ".webp");
+      if (anot[p.img] !== p.n) throw new Error(`${p.img}: ${p.n} itens na lista e ${anot[p.img]} anotações no capturar.mjs`);
+      n++;
+    }
+    if (n < 8) throw new Error("só " + n + " passos");
+    if (!/^img\/tutorial\/\*\.mjs$/m.test(fs.readFileSync(path.join(__dirname, ".vercelignore"), "utf8"))) throw new Error(".vercelignore não tira o capturar.mjs do ar");
+  });
+
+  const ok = !falhas.length;
+  console.log(ok ? verde("  tutorial ok") : vermelho(`  ${falhas.length} falha(s) no tutorial`));
   return ok;
 }
 
@@ -6841,6 +6973,9 @@ function sandboxCarreira() {
     console: { log: noop, warn: noop, error: noop },
     document: {
       documentElement: makeEl("html"),
+      /* o nocaute pisca a tela (document.body.classList): sem body, a luta
+         que termina em nocaute sem reduce-motion quebrava só aqui */
+      body: makeEl("body"),
       getElementById: id => registro[id] || (registro[id] = Object.assign(makeEl("div"), { id })),
       createElement: t => makeEl(t), querySelector: () => makeEl("div"),
       addEventListener: noop, removeEventListener: noop,
@@ -9024,6 +9159,7 @@ try {
   else if (cmd === "motor") ok = testarMotor();
   else if (cmd === "draft") ok = testarDraft(div || "lightweight");
   else if (cmd === "orcamento") ok = await testarOrcamento();
+  else if (cmd === "tutorial") ok = await testarTutorial();
   else if (cmd === "pesos") ok = medirPesos(div || "lightweight");
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
@@ -9103,6 +9239,7 @@ try {
         ["motor", () => testarMotor()],
         ["draft", () => testarDraft(div || "lightweight")],
         ["orcamento", () => testarOrcamento()],
+        ["tutorial", () => testarTutorial()],
         ["escolhas", () => testarEscolhas(div || "lightweight")],
         ["treino", () => testarTreino(div || "lightweight")],
         ["desafio", () => testarDesafio(div || "lightweight")],

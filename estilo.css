@@ -1144,3 +1144,32 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .btn.perigo{background:var(--sangue);border-color:var(--sangue);color:#fff}
 .admin-aviso{border-color:var(--sangue);margin-bottom:16px}
 .admin-aviso p{margin:6px 0 0;color:var(--osso-2)}
+
+/* ---------- como jogar: tutorial com prints anotados (2026-09-28) ---------- */
+.tutorial{position:fixed;inset:0;z-index:95;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;overscroll-behavior:contain;
+  padding:28px 16px;background:rgba(4,5,8,.88);animation:fade .2s both}
+.tutorial-caixa{width:min(1000px,100%);margin:auto 0;padding:22px 24px 20px;color:var(--osso);font-family:var(--f-texto);
+  background:var(--sup);border:1px solid var(--linha-forte);border-top:3px solid #FFD60A}
+.tutorial-cab{position:relative;margin:0 0 14px;padding-right:56px}
+.tutorial-rot{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:#FFD60A}
+.tutorial-cab h2{margin:6px 0 0;font-family:var(--f-titulo);font-weight:400;font-size:clamp(28px,4vw,40px);line-height:1;text-transform:uppercase}
+.tutorial-x{position:absolute;right:0;top:0;display:grid;place-items:center;width:44px;height:44px;color:var(--osso);background:none;
+  border:1px solid var(--linha-forte);cursor:pointer}
+.tutorial-x .ico{width:20px;height:20px}
+.tutorial-print{margin:0;background:#000;border:1px solid var(--linha)}
+.tutorial-print img{display:block;width:100%;height:auto}
+.tutorial-itens{display:grid;gap:10px;margin:16px 0 0;padding:0;list-style:none}
+.tutorial-itens li{display:flex;align-items:flex-start;gap:12px;font-size:16px;line-height:1.5;color:var(--osso)}
+.tutorial-num{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;
+  font-family:var(--f-ui);font-weight:800;font-size:16px;color:#111;background:#FFD60A}
+.tutorial-pe{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:20px}
+.tutorial-pe .tutorial-pular{margin-right:auto}
+.tutorial-pe .ico{width:18px;height:18px}
+.botao-ajuda{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;font-family:var(--f-ui);font-weight:700;font-size:13px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--osso);background:rgba(17,19,26,.72);border:1px solid var(--linha-forte);cursor:pointer}
+.botao-ajuda .ico{width:16px;height:16px;color:#FFD60A}
+.tela-criacao>.botao-ajuda{margin:0 0 16px}
+@media (hover:hover) and (pointer:fine){.botao-ajuda:hover,.tutorial-x:hover{border-color:#FFD60A}}
+@media (max-width:760px){.tutorial{padding:10px}.tutorial-caixa{padding:16px 14px}.tutorial-itens li{font-size:15px}}
+@media (prefers-reduced-motion:reduce){.tutorial{animation:none}}
+

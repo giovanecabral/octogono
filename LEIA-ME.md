@@ -272,6 +272,43 @@ lutador do bot guloso nasce no 49º percentil (suíte `draft`). Quem espalha
 o orçamento pelos quatro pares monta melhor que o guloso: agora o draft tem
 decisão de verdade, em vez de "pega a mais cara que o resto se ajeita".
 
+### Orçamento maior, adversários mais fortes (mesmo dia)
+
+**Pedido do dono:** "precisa aumentar o orçamento inicial, todas as vezes
+o jogador está ficando zerado". Medido antes (300 montagens por divisão, 4
+divisões): com `.52`, quem pega sempre a carta mais cara precisava da
+carta mínima em **88%** das montagens; quem espalha o dinheiro (deixa uma
+reserva pros pares que faltam), em 35%; quem escolhe ao acaso, em 27%.
+
+| `BUDGET_PCT` | mais cara | espalha | ao acaso | lutador (mais cara) |
+|---|---|---|---|---|
+| .52 | 88% | 35% | 27% | 49º percentil |
+| .60 | 71% | 24% | 10% | 56º |
+| .65 | 48% | 14% | 5% | 61º |
+| **.70** | **25%** | **6,5%** | **1%** | **65º** |
+| .75 | 9% | 2,5% | 0,5% | 68º |
+
+Ficou **.70**. Sozinho, ele quebra o balanço (14,2 a 15,9 vitórias em 22,
+cinturão até 27%), então os adversários subiram junto. Medido em 30
+carreiras por perfil, cada alavanca antes de combinar:
+
+| combinação (orçamento .70) | vitórias em 22 | cinturão |
+|---|---|---|
+| sem compensar | 14,2 a 15,9 | 17 a 27% |
+| piso da escada .45 | 14,2 a 14,9 | 17 a 33% |
+| piso .40, faixas +8%, teto 1.05 | 11,9 a 14,0 | 7 a 13% |
+| piso .45, faixas +12%, teto 1.05 | 11,6 a 13,3 | 0 a 13% |
+| piso .45, faixas +12%, teto 1.03 | 11,9 a 12,7 | 0 a 10% |
+| **piso .45, faixas +16%, teto 1.05** | **11,3 a 12,5** | **0 a 3%** |
+
+A escolhida é a última: o balanço aprovado era 11,0 a 12,5 vitórias. Em
+`candidatos()`, o centro da escada nunca fica abaixo de 45% da divisão
+(era 25%) e as três faixas sobem 16% (eram -6..+3%, +7..+13%,
++18..+30%). `TETO_TREINO` 1.10 -> 1.05: cada camp rende a metade, e a
+montagem pesa mais que o treino. A suíte `draft` mudou de alvo (~48 pra
+~65, 58 a 72) e agora guarda que o orçamento não saia do lugar sem o
+balanço ser medido junto.
+
 **Teste:** suíte `orcamento`. 2.160 drafts (todas as divisões jogáveis,
 normal e lenda, três jeitos de escolher: mais cara, aleatória, mais barata)
 nunca deixam o orçamento negativo, a carta mínima só aparece quando nada
@@ -3315,6 +3352,52 @@ direita sem o adversário, pergunta da IA e fallback, cache, saneamento,
 variedade do molde, cartela sem repetição, etapa da entrevista, voltar,
 última luta). Dente provado: colunas trocadas, cena sem IA, tema com
 reposição e molde fixo reprovam.
+
+## Como jogar: tutorial com prints anotados (2026-09-28)
+
+**Pedido do dono:** "tutorial básico de como jogar ao chegar na parte de
+draft e depois em uma luta, prints com setas e círculos totalmente
+explicativos (algumas pessoas não entenderam)".
+
+**Como funciona:** dois tutoriais (`TUTORIAIS` no `index.html`): "Como
+montar o lutador" (3 passos) abre sozinho na primeira montagem, e "Como
+funciona uma luta" (5 passos: adversário, camp, coletiva, luta,
+resultado) na primeira noite de luta. Cada passo é um print do próprio
+jogo com cada parte circulada, uma seta e um número; embaixo, a lista
+explica cada número. Cada tutorial abre uma vez por aparelho
+(`localStorage` `tutorial:draft`/`tutorial:luta`, e uma vez por sessão se
+o navegador não guarda nada) e nunca no modo automático dos testes. O
+botão "Como jogar" (draft e cabeçalho da noite) reabre; na noite ele abre
+no passo da etapa em que o jogador está. Teclado: Esc fecha, setas
+navegam. O texto do passo que fala de passar o mouse muda no toque
+(`semHover()`).
+
+**Os prints** (`img/tutorial/`, 16 WebP, ~660 KB, carregados só quando o
+tutorial abre) saem de `img/tutorial/capturar.mjs`: ele abre o jogo local
+no Chrome (puppeteer-core), leva cada tela ao estado certo, desenha as
+anotações por cima e recorta a região anotada. Duas versões: computador
+(1280 de largura; círculo nos blocos pequenos, retângulo arredondado nos
+grandes, número onde tiver espaço livre) e celular (390 com toque; os
+números numa faixa escura à esquerda, com seta reta, pra nunca cobrir o
+conteúdo). O número N do print é o item N da lista: **mexeu na ordem ou na
+quantidade de itens, rode o `capturar.mjs` de novo** (a suíte `tutorial`
+reprova se a lista e as anotações do script tiverem tamanhos diferentes).
+Mudou a tela que aparece no print, também vale rodar de novo. O script
+não vai pro ar (`.vercelignore`) e bloqueia a IA de produção.
+
+**Teste:** suíte `tutorial` (abre sozinho uma vez, navega, fecha pelo
+Entendi, pelo X e pelo Esc, não reabre na mesma sessão nem pra quem já
+viu, nunca no automático, "Como jogar" abre no passo da etapa, todo print
+existe nas duas versões). Dente provado: sem abrir no draft, abrindo no
+automático e com um item a mais na lista, reprova. O fundo escuro do
+tutorial (clique fora fecha) entrou na exceção do teste de
+acessibilidade, igual ao das Configurações.
+
+**Achado no caminho:** o DOM falso dos testes não tinha `document.body`,
+e o piscar de tela do nocaute (`document.body.classList`) quebrava a luta
+de teste que terminava em nocaute sem reduce-motion. O balanço novo mudou
+os lutadores e uma luta da suíte `hub` passou a terminar assim. No
+navegador nunca quebrou; o DOM falso ganhou `body`.
 
 ## Reta final para o lançamento (2026-09-28)
 

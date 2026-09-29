@@ -164,26 +164,31 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   aparecer na tela.
 - **Orçamento do draft é teto (2026-09-28).** A mesa só mostra carta que
   cabe (`cartasDaMesa`); sem nenhuma, oferece a carta mínima de custo 0.00
-  de cada par (`cartaMinima`). `BUDGET_PCT` .52 foi medido COM o teto (o
-  .35 antigo contava com o furo). Mexeu em qualquer um dos dois: `node
-  testar.js orcamento` e `node testar.js balanco`.
+  de cada par (`cartaMinima`). `BUDGET_PCT` .70 (pedido do dono: o
+  jogador ficava zerado quase sempre com .52), medido COM o teto e com a
+  escada de adversários mais alta pra compensar. Mexeu em qualquer um
+  dos dois: `node testar.js orcamento` e `node testar.js balanco`.
 - **`[hidden]{display:none!important}` global no `estilo.css`.** Sem ela,
   classe com `display` (`.botao` é inline-flex) vence o `hidden` e o botão
   escondido pelo JS continua na tela (foi assim que "Voltar à escolha do
   adversário" aparecia depois da luta). O DOM falso não lê CSS: a suíte
   `hub` confere a regra no arquivo.
+- **Tutorial "Como jogar": o número do print é o item da lista.** Prints
+  em `img/tutorial/`, gerados por `img/tutorial/capturar.mjs`. Mudou a
+  ordem ou a quantidade de itens em `TUTORIAIS`, ou a tela do print: rode
+  o script de novo (a suíte `tutorial` confere os tamanhos).
 - **Coletiva e entrevista: a imprensa é fictícia e escolhida no cliente.**
   Card da direita é foto do lugar + repórter de `REPORTERES` (nunca o
   adversário, nunca jornalista real). A IA só escreve a cena
   (`coletivaCena`/`entrevistaCena`) com o nome pronto; tema, cartela e
   repórter saem de hash/gerador local, nunca de um dos 8 geradores.
-- **Treino permanente com teto.** `TETO_TREINO = 1.10` (balanço de
-  2026-09-28), ganho proporcional ao que falta. Sem teto, 22 camps de +10%
-  viram +700%.
+- **Treino permanente com teto.** `TETO_TREINO = 1.05` (balanço de
+  2026-09-28, junto com o orçamento .70), ganho proporcional ao que falta.
+  Sem teto, 22 camps de +10% viram +700%.
 - **Balanço pedido pelo dono em 2026-09-28: ~50% de vitórias pra quem joga
-  bem, cinturão raro.** `BUDGET_PCT` .52 (era .35 antes do orçamento virar
-  teto, ver o item acima), faixas de adversário acima do
-  ranking com piso de 25% da divisão, rótulo de dificuldade e zebra pela
+  bem, cinturão raro.** `BUDGET_PCT` .70 (ver o item acima), faixas de
+  adversário +16% acima do ranking com piso de 45% da divisão, teto de
+  treino 1.05, rótulo de dificuldade e zebra pela
   chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
   motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
   teste). Números no LEIA-ME "Balanço".

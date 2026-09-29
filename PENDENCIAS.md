@@ -2237,3 +2237,14 @@ tudo já deu certo") o lote anterior (orçamento, cena da coletiva e da
 entrevista, automático, Créditos, botão) e as pendências do painel de
 admin e da conta de teste. Nada deste item depende mais do dono.
 
+**Ainda no mesmo dia, dois pedidos novos:**
+- **Orçamento maior** ("o jogador está ficando zerado todas as vezes"):
+  com .52, 88% das montagens de quem pega a carta mais cara precisavam da
+  carta mínima. Agora .70 (25%; 6,5% pra quem espalha), com a escada de
+  adversários mais alta (piso .45, faixas +16%) e o teto do treino em
+  1.05 pra manter ~50% de vitórias (11,3 a 12,5 em 22). Números no
+  LEIA-ME, "Balanço".
+- **Tutorial "Como jogar"** com prints anotados (círculo, seta e número)
+  no primeiro draft e na primeira noite de luta, versões de computador e
+  celular, botão pra reabrir. Suíte nova `tutorial`.
+

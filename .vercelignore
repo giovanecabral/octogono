@@ -18,6 +18,8 @@ docs
 testar.js
 supabase_schema.sql
 referencia-*.png
+# ferramenta que gera os prints do tutorial (os .webp vão pro ar, o script não)
+img/tutorial/*.mjs
 # rascunho de layout do dono (coletiva/entrevista, 2026-09-28): fica só local
 Mapa.png
 mapa.png
