@@ -259,10 +259,16 @@ const TOTAL_WEIGHT=Object.values(WEIGHTS).reduce((a,b)=>a+b,0);
 /* Balanço 2026-09-28 (era .76): jogadores venciam quase tudo. Medido em
    50 carreiras por perfil (node testar.js balanco): com .76 o lutador
    draftado já nascia melhor que 84% da divisão e vencia 17 de 22 lutas,
-   com cinturão em 46 a 66% das carreiras. Com .35 ele nasce perto do
+   com cinturão em 46 a 66% das carreiras. Com .35 ele nascia perto do
    meio da divisão; junto com o teto de treino e a escada de adversários
-   (candidatos()), quem joga bem vence ~11 de 22. Ver LEIA-ME "Balanço". */
-const BUDGET_PCT=.35;
+   (candidatos()), quem joga bem vencia ~11 de 22. Ver LEIA-ME "Balanço".
+   Reta final (mesmo dia): o orçamento virou teto de verdade
+   (cartasDaMesa). Os .35 contavam com o estouro (sem carta que coubesse,
+   a mesa dava a mais barata acima do saldo); sem ele, .35 caiu pra 6 a 7
+   vitórias em 22. Medido de novo, 30 carreiras por perfil: .50 dá 9,7 a
+   11,1; .52 dá 10,6 a 12,0 com cinturão 0 a 7%, o mais perto do balanço
+   aprovado (11,0 a 12,5, cinturão 4 a 8%); .55 já dá 12,0 a 13,1. */
+const BUDGET_PCT=.52;
 
 function makePercentiler(pool){
   const s={};Object.keys(WEIGHTS).forEach(k=>s[k]=pool.map(f=>f[k]).sort((x,y)=>x-y));
@@ -285,6 +291,27 @@ function rollTable(pool,remaining,rng,pct){
     cand.forEach(src=>rows.push({pair,src,cost:cost(pair,src,pct)}));
   }
   return rows;
+}
+/* Orçamento é teto: nunca fica negativo (reta final, 2026-09-28). Antes,
+   sem nenhuma carta no bolso, a mesa mostrava a mais barata MESMO acima do
+   que sobrava, e um jogador terminou o draft com -0.17. Agora, quando nada
+   cabe, a mesa oferece a carta mínima de cada par que falta: os dois
+   atributos no piso da divisão (percentil 0, então a própria fórmula de
+   custo dá 0.00) e os atributos que vão junto (precisão, golpes sofridos)
+   na mediana, que não entram no preço. Não consome rng: trocar a carta
+   mostrada não mexe no sorteio da mesa nem nos adversários do desafio. */
+function cartaMinima(pair,pool,pct){
+  const ord=k=>pool.map(f=>f[k]).sort((x,y)=>x-y);
+  const src={name:"mínimo da divisão",minimo:true,fights:0};
+  [pair.a.key,pair.b.key].forEach(k=>{
+    src[k]=ord(k)[0];
+    (RIDERS[k]||[]).forEach(rk=>{const v=ord(rk);src[rk]=v[Math.floor(v.length/2)];});
+  });
+  return{pair,src,cost:cost(pair,src,pct)};
+}
+function cartasDaMesa(rows,left,remaining,pool,pct){
+  const cabem=rows.filter(r=>r.cost<=left);
+  return cabem.length?cabem:remaining.map(p=>cartaMinima(p,pool,pct));
 }
 
 /* =========================================================================
@@ -2518,10 +2545,15 @@ const AI_PAUSA_MS=60000;
    coletiva/entrevista ainda, estendido por analogia com dilema/julgar —
    mesmo formato "reage a texto livre", mesma lógica de "vale uma segunda
    tentativa antes de desistir") controla o retry único de sempre. */
+/* Reta final (2026-09-28): coletivaCena/entrevistaCena (a cena: o que
+   acontece e a pergunta do repórter) entram na família da reação delas.
+   Respeitam a pausa: rodam ANTES de existir resposta do jogador e têm
+   molde local, igual ao "dilema" em relação ao "julgar". */
 const FAMILIA_DO_KIND={evento:"evento",dilema:"dilema",julgar:"dilema",
-  feed:"feed",coletiva:"coletiva",entrevista:"entrevista"};
+  feed:"feed",coletiva:"coletiva",entrevista:"entrevista",
+  coletivaCena:"coletiva",entrevistaCena:"entrevista"};
 const RESPEITA_PAUSA={evento:true,dilema:true,julgar:false,
-  feed:true,coletiva:true,entrevista:false};
+  feed:true,coletiva:true,entrevista:false,coletivaCena:true,entrevistaCena:true};
 const PODE_RETRY_429={dilema:true,julgar:true,coletiva:true,entrevista:true};
 const CIRCUITOS={evento:{pausadoAte:0,falhas:0},dilema:{pausadoAte:0,falhas:0},
   feed:{pausadoAte:0,falhas:0},coletiva:{pausadoAte:0,falhas:0},entrevista:{pausadoAte:0,falhas:0}};
@@ -3823,6 +3855,15 @@ function abrirConfig(){
   p.appendChild(el("p","cfg-nota",
     "A trilha é cama de fundo e entra bem abaixo dos efeitos. Se quiser ouvir só "+
     "o soco, zere a música: os efeitos continuam no mesmo volume."));
+  /* A página Créditos saiu na reta final (2026-09-28, pedido do dono). O
+     que a licença obriga a creditar fica aqui, junto do som: a torcida e a
+     vaia são CC BY 4.0 (crédito obrigatório). O resto do áudio é CC0, os
+     ícones (Lucide, ISC) levam a nota de licença dentro de img/icones.svg
+     e as fontes vêm do Google Fonts. Tabela completa em audio/LICENCAS.md. */
+  p.appendChild(el("p","cfg-nota cfg-creditos",
+    `Sons de torcida: Gregor Quendel (<a href="https://opengameart.org/content/free-crowd-cheering-sounds" target="_blank" rel="noopener">OpenGameArt</a>). `+
+    `Vaia: <a href="https://www.freesoundslibrary.com/crowd-booing/" target="_blank" rel="noopener">Free Sounds Library</a>. `+
+    `Os dois sob <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.`));
 
   /* Clique no fundo fecha; clique dentro do painel não. */
   cx.onclick=e=>{ if(!e||e.target===cx)fecharConfig(); };
@@ -4052,7 +4093,7 @@ function renderFicha(){
      próxima chamada (achado testando: renderFicha() roda ANTES de
      iniciarTelaLuta() setar playing=true em lutar()). Quem decide
      visualmente é o CSS via html[data-estado-carreira] (ver @media no
-     fim do legado.css, mesmo mecanismo de #next/#autob) — sempre correto
+     fim do legado.css, mesmo mecanismo de #next) — sempre correto
      porque atualizarEstadoCarreira() já roda em toda transição real.
      Botão vive dentro do innerHTML de cima (a ficha inteira é uma string
      só) — liga o handler de verdade depois, mesmo padrão de #nomeIn em
@@ -4573,78 +4614,326 @@ function telaCamp(escolhido){
   mostrarNoite("camp");
 }
 
-/* ---------- Plano Pro: coletiva de imprensa pré-luta ---------- */
-/* Hash estável (não-rng) só pra escolher QUAL variante de abertura mostrar
-   pro mesmo adversário — nunca pode consumir rng()/qualquer stream, senão
-   desloca a sequência e o link de desafio compartilhado para de reproduzir
-   a mesma carreira pra quem abre sem ser Pro (Modo Rival vai usar o mesmo
-   truque, ver PENDENCIAS.md item "Plano Pro"). */
+/* ---------- Plano Pro: coletiva (antes da luta) e entrevista (depois) ----------
+   Reta final (2026-09-28), pedido do dono: "coletiva e entrevistas estão
+   sem graça, não ocorre nada demais e sempre estão surgindo perguntas
+   genéricas". Antes, a abertura da coletiva saía de 6 frases fixas (a
+   mesma pro mesmo adversário) e a pergunta da entrevista de 2 moldes por
+   tipo de fato. Agora a CENA (o que acontece e a pergunta do repórter) é
+   da IA, com tema forçado por carreira (cartela sem reposição, mesma lição
+   do evento: forçar bate sugerir) e as cenas recentes no prompt pra não
+   repetir. Sem IA (grátis, falha, pausa) a cena sai dos moldes locais, que
+   também variam por tema e citam fato da luta.
+   Layout do mapa do dono: o lutador do jogador à esquerda, quem pergunta à
+   direita (a imprensa, com foto do lugar: lutador real nunca tem retrato,
+   é direito de imagem), a conversa no meio (a fala da IA aponta pra ela, a
+   resposta do jogador aponta pra ele) e o que aconteceu embaixo. */
+
+/* Hash estável (não-rng): escolhe variante, repórter e cartela sem consumir
+   nenhum gerador da carreira, senão o link de desafio e o save deixariam de
+   reproduzir a mesma carreira pra quem abre sem ser Pro. */
 function hashEstavel(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h);}
-const ABERTURA_COLETIVA=[
-  opp=>`${opp.name} disse, na coletiva, que essa luta "não devia nem estar marcada".`,
-  opp=>`${opp.name} sorriu pra câmera e falou que você "ainda não pegou ninguém do top 10".`,
-  opp=>`${opp.name} prometeu resolver isso "antes do intervalo", direto pro microfone.`,
-  opp=>`Perguntado sobre você, ${opp.name} só respondeu "quem?". A sala riu.`,
-  opp=>`${opp.name} chamou seu estilo de "fácil de ler" na entrevista de ontem.`,
-  opp=>`${opp.name} disse que está cansado de "gente que fala mais que luta", olhando pra você.`,
-];
-function textoColetivaAbertura(opp){
-  return ABERTURA_COLETIVA[hashEstavel(opp.name)%ABERTURA_COLETIVA.length](opp);
+const semTag=s=>String(s==null?"":s).replace(/</g,"&lt;");
+/* corta no fim de frase mais próximo do limite, nunca no meio da palavra */
+function cortarFrase(s,n){
+  s=String(s||"").trim();
+  if(s.length<=n)return s;
+  const c=s.slice(0,n),i=Math.max(c.lastIndexOf(". "),c.lastIndexOf("? "),c.lastIndexOf("! "));
+  return i>n*.4?c.slice(0,i+1):c.replace(/\s+\S*$/,"")+".";
 }
-/* Vitrine ligada (2026-09-22, item 5 pós-pagamento): grátis PRECISA ver
-   que a coletiva existe. Revamp fase 5: a vitrine é o componente único
-   bloqueioPro() (área a 35%, sem clique, selo Assine o Pro), e "Pular"
-   fica fora do bloqueio. */
+
+/* Repórteres e veículos inventados: nunca um jornalista real. A IA recebe o
+   nome pronto e o prompt proíbe inventar outro. */
+const REPORTERES=["Lia Monteverde","Otávio Paranhos","Débora Venturini","Caio Serrat","Bianca Tavora",
+  "Hugo Lessa","Renata Brum","Tiago Arantes","Marta Quintela","Ícaro Vilhena","Sônia Barreto","Lucas Amaral Pinho"];
+const VEICULOS=["Portal Guarda Alta","Rádio Três Rounds","TV Octógono","Revista Mão Pesada",
+  "Canal Chão e Pancada","Jornal do Cinturão"];
+function reporterDaCena(tipo){
+  const h=hashEstavel(`${SEED}:${fightNo}:${tipo}`);
+  return{nome:REPORTERES[h%REPORTERES.length],veiculo:VEICULOS[Math.floor(h/7)%VEICULOS.length]};
+}
+const TEMAS_COLETIVA=["provocação do adversário","encarada que esquenta","pergunta incômoda sobre o cartel",
+  "o camp escolhido","algo dá errado na sala","equipe do adversário se mete","torcida na coletiva",
+  "bolsa e contrato","a pesagem (todo mundo dentro do limite)","o estilo do adversário"];
+/* Ângulo da entrevista: cada um tem a versão da derrota (medido: com um
+   ângulo só, o modelo perguntava "a quem você dedica essa derrota?"). */
+const ANGULOS_ENTREVISTA=["o momento que decidiu a luta","o que ouviu do adversário depois","a quem dedica",
+  "o plano de jogo","a torcida na arena","o corpo depois da luta","as críticas de antes da luta",
+  "o que o treinador disse no corner","a família","o que esta luta prova"];
+const ANGULO_NA_DERROTA={"a quem dedica":"o que deve pra quem apostou nele","o plano de jogo":"onde o plano de jogo falhou",
+  "a torcida na arena":"a torcida que foi ver ele perder","as críticas de antes da luta":"as críticas que vêm agora",
+  "o que esta luta prova":"o que esta derrota ensina"};
+/* Cartela por carreira, sem reposição: os 10 primeiros temas nunca se
+   repetem. Embaralhada por um gerador LOCAL e descartável (não é um dos 8
+   do save); a cartela em si mora em st e vai no save. */
+function proximoTemaCena(tipo){
+  const lista=tipo==="coletiva"?TEMAS_COLETIVA:ANGULOS_ENTREVISTA;
+  st.cartelaCena=st.cartelaCena||{};
+  if(!st.cartelaCena[tipo]||!st.cartelaCena[tipo].length){
+    const g=mulberry32(hashEstavel(`${SEED}:${tipo}:${fightNo}`)>>>0),c=[...lista];
+    for(let i=c.length-1;i>0;i--){const j=Math.floor(g()*(i+1));[c[i],c[j]]=[c[j],c[i]];}
+    st.cartelaCena[tipo]=c;
+  }
+  return st.cartelaCena[tipo].pop();
+}
+function cenasRecentes(tipo){return((st.cenasRecentes||{})[tipo]||[]).slice(-4);}
+function lembrarCena(tipo,c){
+  st.cenasRecentes=st.cenasRecentes||{};
+  const l=st.cenasRecentes[tipo]=st.cenasRecentes[tipo]||[];
+  l.push(cortarFrase(`${c.evento?c.evento+" ":""}Pergunta: ${c.pergunta}`,240));
+  if(l.length>6)l.splice(0,l.length-6);
+}
+/* O que a IA devolveu vira cena só se tiver pergunta, passar no filtro de
+   conteúdo e não repetir uma pergunta recente; senão fica o molde local.
+   Na coletiva a luta ainda não aconteceu: o evento perde a frase que
+   afirma resultado (a pergunta é pergunta, não afirma nada). */
+/* Medido no modelo de produção (2026-09-28, 20 cenas): mesmo com a regra no
+   prompt, ele às vezes abre a pergunta com o nome do repórter ("Renata
+   Brum: ...", "Hugo Lessa, do Canal X, pergunta: ...") e às vezes põe o
+   lutador do JOGADOR agindo no evento (quem decide o que ele faz é o
+   jogador). O prefixo sai; pergunta em terceira pessoa ("Fulano pergunta
+   se...") e evento que começa pelo lutador do jogador são descartados. */
+const escRe=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+function limparPergunta(q){
+  /* aspas em volta saem: a tela já põe as da fala */
+  let t=String(q||"").trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g,"").trim();
+  const nomes=REPORTERES.map(escRe).join("|");
+  t=t.replace(new RegExp(`^(?:${nomes})(?:,[^:?]{0,60})?(?:\\s+pergunta)?\\s*:\\s*`,"i"),"");
+  if(new RegExp(`^(?:${nomes})\\b[^.?!]{0,60}\\bpergunt`,"i").test(t))return "";
+  return t.replace(/^[a-zà-ú]/,c=>c.toUpperCase());
+}
+function eventoDosOutros(ev){
+  const primeiro=String(me&&me.name||"").trim().split(/\s+/)[0];
+  return primeiro&&new RegExp(`^(?:o |a )?${escRe(primeiro)}\\b`,"i").test(String(ev).trim())?"":ev;
+}
+function cenaDaIA(j,local,tipo){
+  if(!j||typeof j!=="object")return local;
+  let evento=eventoDosOutros(typeof j.evento==="string"?j.evento.trim():"");
+  const pergunta=cortarFrase(limparPergunta(typeof j.pergunta==="string"?j.pergunta:""),280);
+  if(!pergunta||conteudoInseguro(evento+" "+pergunta))return local;
+  if(tipo==="coletiva")evento=semResultadoDeLuta(evento);
+  evento=cortarFrase(evento,320);
+  const ja=cenasRecentes(tipo).join(" ").toLowerCase();
+  if(ja.includes(pergunta.toLowerCase()))return local;
+  return{evento,pergunta,ia:true};
+}
+
+/* Moldes locais da coletiva: um ou dois por tema, cada um com fato da luta
+   (nome, cartel, sequência, camp, estilo). A variante sai do hash da luta,
+   não do adversário, então o mesmo adversário não repete a mesma frase. */
+function cenaColetivaLocal(opp,camp,tema,escolhido){
+  const h=hashEstavel(`${SEED}:${fightNo}:${opp.name}:${tema}`);
+  const rec=`${st.wins}-${st.losses}`,estreia=st.wins+st.losses===0,estilo=`estilo ${(opp.arquetipo||"completo").toLowerCase()}`;
+  const campNome=String(camp&&camp.nome||"treino").toLowerCase();
+  const hist=escolhido&&escolhido.rival&&st.rival&&st.rival.historico&&st.rival.historico.length?st.rival.historico:null;
+  if(hist&&h%2===0){
+    const u=hist[hist.length-1];
+    return{evento:`${opp.name} sentou e a primeira coisa que fez foi lembrar da última luta entre vocês.`,
+      pergunta:`${u.ganhou?"Você venceu":"Ele venceu"} o último encontro, por ${String(u.metodo).toLowerCase()}. O que ficou daquela noite?`};
+  }
+  if(st.tituloEstaLuta&&h%3===0)
+    return{evento:`O cinturão ficou em cima da mesa, entre você e ${opp.name}, a coletiva inteira.`,
+      pergunta:`O cinturão está a um metro de você. O que passa pela sua cabeça quando olha pra ele?`};
+  const M={
+    "provocação do adversário":[
+      {evento:`${opp.name} pediu o microfone antes da hora e disse que você "ainda não pegou ninguém do top 15".`,
+       pergunta:`Ele falou isso olhando pra você. Qual é a resposta?`},
+      estreia?{evento:`${opp.name} riu alto quando o mediador anunciou que esta é a sua estreia.`,
+        pergunta:`Ele achou graça da sua estreia. Isso te incomoda?`}
+      :{evento:`${opp.name} riu alto quando o mediador leu o seu cartel, ${rec}.`,
+       pergunta:`Ele achou graça do seu ${rec}. Isso te incomoda?`}],
+    "encarada que esquenta":[
+      {evento:`Na encarada, ${opp.name} deu um passo à frente e a segurança precisou separar os dois.`,
+       pergunta:`O que ele falou no seu ouvido na hora da encarada?`},
+      {evento:`${opp.name} ficou a dois dedos do seu rosto até o mediador pedir distância.`,
+       pergunta:`Você não desviou o olho nenhuma vez. Era recado pra ele?`}],
+    "pergunta incômoda sobre o cartel":[st.streakL>0
+      ?{evento:`Um repórter abriu a coletiva lembrando que você vem de ${st.streakL>1?`${st.streakL} derrotas seguidas`:"derrota"}.`,
+        pergunta:`${st.streakL>1?`${st.streakL} derrotas seguidas`:"Você perdeu a última"}. O que muda contra ${opp.name}?`}
+      :estreia?{evento:`Um repórter abriu a coletiva lembrando que você nunca lutou nesta organização.`,
+        pergunta:`Estreia contra ${opp.name}, que já tem ${opp.fights||"várias"} lutas. Foi você que pediu esse nome?`}
+      :{evento:`Um repórter abriu a coletiva com o seu cartel, ${rec}, anotado no bloco.`,
+        pergunta:`${rec}. Quem você ainda precisa vencer pra ser levado a sério nesta divisão?`}],
+    "o camp escolhido":[
+      {evento:`O telão mostrou um trecho do seu camp de ${campNome} e ${opp.name} cochichou alguma coisa com o treinador.`,
+       pergunta:`Camp de ${campNome} contra o ${estilo} dele. Por que esse caminho?`}],
+    "algo dá errado na sala":[
+      {evento:`O microfone da sua mesa falhou duas vezes e ${opp.name} ofereceu o dele, rindo.`,
+       pergunta:`Ele te emprestou o microfone rindo. Você leu aquilo como deboche?`},
+      {evento:`Um fotógrafo derrubou o tripé na frente da mesa e a coletiva parou por um minuto.`,
+       pergunta:`Retomando: ${opp.name} é do ${estilo}. Que parte do jogo dele você mais estudou?`}],
+    "equipe do adversário se mete":[
+      {evento:`O treinador de ${opp.name} tomou o microfone pra dizer que você "foge da troca".`,
+       pergunta:`O treinador dele diz que você foge da troca. Foge?`}],
+    "torcida na coletiva":[
+      {evento:`Um grupo com uma faixa com o seu nome entrou na sala e foi retirado pela segurança.`,
+       pergunta:`A sua torcida foi posta pra fora agora há pouco. Que recado você manda pra eles?`}],
+    "bolsa e contrato":[
+      {evento:`Circulou na sala que a sua bolsa é uma das menores da noite.`,
+       pergunta:`Dizem que você ganha menos que quase todo mundo neste card. Isso pesa?`}],
+    "a pesagem (todo mundo dentro do limite)":[
+      {evento:`${opp.name} apareceu comendo um sanduíche na mesa e brincou que "a balança é só amanhã".`,
+       pergunta:`Ele parece tranquilo com o peso. E você, chega no limite com folga?`}],
+    "o estilo do adversário":[
+      {evento:`A organização passou no telão os melhores momentos de ${opp.name}.`,
+       pergunta:`Ele é do ${estilo}. Você vai aceitar o jogo dele ou levar a luta pro seu?`}],
+  };
+  const op=M[tema]||M["provocação do adversário"];
+  return op[h%op.length];
+}
+/* Molde local do que acontece na entrevista, coerente com o resultado. A
+   pergunta local continua sendo perguntaEntrevista() (fato obrigatório). */
+function eventoEntrevistaLocal(won,titleFight,opp){
+  const h=hashEstavel(`${SEED}:${fightNo}:entrevista:${opp.name}`);
+  const op=titleFight&&won?[`O cinturão ainda estava no seu ombro quando o repórter chegou com o microfone.`]
+    :won?[`A sua equipe invadiu a área da entrevista e te levantou antes da primeira pergunta.`,
+          `A torcida gritou o seu nome enquanto o repórter ajeitava o cabo do microfone.`,
+          `${opp.name} passou atrás da câmera e bateu no seu ombro sem dizer nada.`]
+    :[`O médico pediu um minuto pra olhar o seu supercílio antes de liberar a entrevista.`,
+      `Você sentou no banco da área de imprensa com gelo no rosto e o repórter esperou.`,
+      `${opp.name} comemorava do outro lado da grade enquanto o repórter se aproximava.`];
+  return op[h%op.length];
+}
+/* O fato que a pergunta da IA TEM que tratar: o mesmo da prioridade fixa de
+   perguntaEntrevista() (cinturão > lesão > zebra > método), escrito por
+   extenso. A IA só escolhe o caminho até ele (o ângulo). */
+function fatoDaEntrevista(fato,won,r,lesaoTxt,td0,tdt0){
+  const res=won?"venceu":"perdeu";
+  const quedas=(td0>=1||tdt0>=1)?` (${td0} quedas aplicadas, ${tdt0} sofridas)`:"";
+  if(fato==="cinturão")return`era luta de cinturão e ele ${res}`;
+  if(fato==="lesão")return`lutou com ${String(lesaoTxt||"uma lesão").toLowerCase()} e ${res}`;
+  if(fato==="zebra")return`ninguém apostava nele e ele ${res}`;
+  if(fato==="nocaute")return`${won?"venceu por nocaute":"foi nocauteado"} no round ${r.round}, aos ${r.clock}${quedas}`;
+  if(fato==="finalização")return`${won?"finalizou o adversário":"foi finalizado"} no round ${r.round}, aos ${r.clock}${quedas}`;
+  return`${res} por decisão dos juízes${quedas}`;
+}
+
+/* A cena, montada igual pras duas: lutador à esquerda, imprensa à direita,
+   conversa no meio. Nós com id pra lógica (e os testes) acharem. */
+let CENA_TOKEN=0;
+function montarCena(box,tipo,reporter,imagem){
+  const cena=el("div",`cena-imprensa cena-${tipo}`);
+  const jog=el("figure","cena-lado cena-jogador",
+    `<div class="cena-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:240})}</div>
+     <figcaption class="cena-nome"><b>${semTag(me.name)}</b><small>${st.wins+st.losses?`${st.wins}-${st.losses} no cartel`:"estreia"}</small></figcaption>`);
+  const meio=el("div","cena-meio");
+  const ia=el("figure","cena-lado cena-ia",
+    `<div class="cena-retrato"><img src="img/${imagem}.webp" alt=""></div>
+     <figcaption class="cena-nome"><b>${reporter.nome}</b><small>${reporter.veiculo}</small></figcaption>`);
+  cena.append(jog,meio,ia);
+  box.appendChild(cena);
+  return meio;
+}
+function pecasDaConversa(prefixo,reporter){
+  const evento=el("p","cena-evento","");evento.id=prefixo+"evento";evento.hidden=true;
+  const fala=el("div","balao balao-ia",`<span class="balao-quem">${reporter.nome}</span>
+    <span class="digitando" role="status" aria-label="${reporter.nome} está perguntando"><i></i><i></i><i></i></span>`);
+  fala.id=prefixo+"pergunta";
+  const resp=el("div","balao balao-jogador");resp.id=prefixo+"balao";
+  const desfecho=el("div","cena-desfecho");desfecho.id=prefixo+"desfecho";desfecho.hidden=true;
+  const acoes=el("div","cena-acoes");acoes.id=prefixo+"acoes";
+  return{evento,fala,resp,desfecho,acoes};
+}
+function mostrarPergunta(p,reporter,c){
+  p.evento.innerHTML=semTag(c.evento||"");
+  p.evento.hidden=!c.evento;
+  p.fala.innerHTML=`<span class="balao-quem">${reporter.nome}</span><span class="balao-txt">"${semTag(c.pergunta)}"</span>`;
+}
+function mostrarResposta(p,txt){
+  p.resp.innerHTML=`<span class="balao-quem">${semTag(me.name)}</span><span class="balao-txt">"${semTag(txt)}"</span>`;
+}
+function mostrarDesfecho(p,texto,fx){
+  p.desfecho.innerHTML=`<div class="cena-desfecho-t">O que aconteceu</div><p>${texto}</p>${fx||""}`;
+  p.desfecho.hidden=false;
+}
+/* Cena guardada por luta: voltar pro camp e voltar à coletiva (ou sair e
+   voltar à entrevista) mostra a MESMA cena, sem outra chamada de IA e sem
+   gastar outro tema da cartela. */
+let cacheColetiva=null,cacheEntrevista=null;
+function cenaGuardada(cache,local,pedir,tipo){
+  if(cache.cena||cache.promessa)return;
+  if(!meuPro){cache.cena=local;lembrarCena(tipo,local);return;}
+  const tk=CARREIRA_TOKEN;
+  cache.promessa=(async()=>{
+    try{return cenaDaIA(await pedir(await meuAccessToken()),local,tipo);}catch(e){return local;}
+  })();
+  /* resposta que chega depois de trocar de carreira não escreve no st novo */
+  cache.promessa.then(c=>{if(tk!==CARREIRA_TOKEN)return;cache.cena=c;lembrarCena(tipo,c);});
+}
+
+/* Vitrine ligada (2026-09-22): grátis PRECISA ver que a coletiva existe.
+   Revamp fase 5: a vitrine é o componente único bloqueioPro() (área a
+   35%, sem clique, selo Assine o Pro) e "Pular" fica fora do bloqueio. */
 function telaColetiva(escolhido,camp){
   const box=document.getElementById("escolha");
   box.style.display="";
   const opp=escolhido.f,dif=dificuldade(opp);
-  const abertura=textoColetivaAbertura(opp);
-  const seguir=()=>{box.style.display="none";box.innerHTML="";lutar(escolhido,camp);};
-  /* Revamp fase 5: sem Pro, a área de provocar aparece travada pelo
-     componente único bloqueioPro() (35%, sem clique, selo Assine o Pro);
-     "Pular" fica FORA do bloqueio e segue pra luta. */
+  const ct=++CENA_TOKEN;
+  const seguir=()=>{CENA_TOKEN++;box.style.display="none";box.innerHTML="";lutar(escolhido,camp);};
+  const chave=`${SEED}:${fightNo}:${opp.name}`;
+  if(!cacheColetiva||cacheColetiva.chave!==chave)
+    cacheColetiva={chave,tema:proximoTemaCena("coletiva"),reporter:reporterDaCena("coletiva"),cena:null,promessa:null};
+  const cache=cacheColetiva,{reporter,tema}=cache;
+  const local=cenaColetivaLocal(opp,camp,tema,escolhido);
+  const historicoRival=escolhido.rival?historicoRivalTexto():null;
+  cenaGuardada(cache,local,token=>ai("coletivaCena",{name:me.name,record:`${st.wins}-${st.losses}`,
+    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
+    sequencia:st.streakW>1?`${st.streakW} vitórias seguidas`:st.streakL>1?`${st.streakL} derrotas seguidas`:null,
+    opp:opp.name,estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
+    camp:camp&&camp.nome,lesao:st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null,
+    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,tema,recentes:cenasRecentes("coletiva"),token}),"coletiva");
+
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Coletiva · ${me.name} x ${opp.name}`));
-  box.appendChild(el("div","contra coletiva-abertura",abertura));
-  const area=el("div","dil-in coletiva-provocar",`<textarea id="colresp" maxlength="200" rows="3" placeholder="O que você responde?"></textarea>
-      <button class="botao" id="colgo" type="button">Provocar</button>`);
-  box.appendChild(bloqueioPro(area));
+  const meio=montarCena(box,"coletiva",reporter,"coletiva-mesa");
+  const p=pecasDaConversa("col",reporter);
+  const area=el("div","cena-responder",`<textarea id="colresp" maxlength="200" rows="3" placeholder="Sua resposta"></textarea>
+      <button class="botao" id="colgo" type="button">Responder</button>`);
+  p.resp.appendChild(bloqueioPro(area));
   const pular=el("button","botao botao-sec coletiva-pular","Pular a coletiva");pular.id="colpular";pular.type="button";
-  box.appendChild(pular);
+  p.acoes.appendChild(pular);
+  meio.append(p.evento,p.fala,p.resp,p.desfecho,p.acoes);
   const inp=document.getElementById("colresp"),go=document.getElementById("colgo");
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
   inp.addEventListener("input",cresce);
   manterBotaoVisivel(inp,go);
   pular.onclick=()=>{SOM.toque();seguir();};
+  let cena=cache.cena||local;
+  if(cache.cena)mostrarPergunta(p,reporter,cena);
+  else{
+    inp.disabled=true;go.disabled=true;
+    const tk=CARREIRA_TOKEN;
+    cache.promessa.then(c=>{
+      if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
+      cena=c;mostrarPergunta(p,reporter,c);
+      inp.disabled=false;go.disabled=false;if(!semHover())inp.focus();
+    });
+  }
   go.onclick=async()=>{
     const txt=inp.value.trim();
     if(!txt)return inp.focus();
-    /* Grátis é vitrine (mesmo tratamento da entrevista, ver
-       renderBotaoEntrevista()): campo e botão aparecem, clique abre a
-       oferta do Pro em vez de chamar a IA — nunca gasta chamada com quem
-       não pode receber o resultado (api/ai.js recusaria com 403 de
-       qualquer jeito, isto só evita a viagem de rede). */
+    /* Grátis é vitrine: o clique nunca chama a IA (api/ai.js recusaria com
+       403 de qualquer jeito, isto só evita a viagem de rede). */
     if(!meuPro)return;
-    go.disabled=true;inp.disabled=true;go.textContent="…";
+    go.disabled=true;inp.disabled=true;go.textContent="…";pular.hidden=true;
     const volta=document.getElementById("noiteVoltar");if(volta)volta.hidden=true;   // resposta a caminho: sem voltar
     const tk=CARREIRA_TOKEN;
     const token=await meuAccessToken();
-    /* Corta ANTES de chamar a IA — mesmo motivo do dilema: mais barato e
-       não depende de a IA ter obedecido a instrução de conteúdo inseguro. */
-    const historicoRival=escolhido.rival?historicoRivalTexto():null;
+    /* Corta ANTES de chamar a IA: mais barato e não depende de a IA ter
+       obedecido a instrução de conteúdo inseguro. */
     const j=conteudoInseguro(txt)?null:await ai("coletiva",{name:me.name,opp:opp.name,
       estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
-      abertura,resposta:txt,record:`${st.wins}-${st.losses}`,
+      evento:cena.evento,pergunta:cena.pergunta,resposta:txt,record:`${st.wins}-${st.losses}`,
       followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,token});
-    if(tk!==CARREIRA_TOKEN)return;
-    aplicarColetiva(box,opp,txt,j,seguir);
+    if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
+    aplicarColetiva(p,opp,txt,j,seguir);
   };
-  if(meuPro)inp.focus();
+  /* foco só com mouse: no toque ele abre o teclado por cima da pergunta */
+  if(cache.cena&&meuPro&&!semHover())inp.focus();
   SOM.flashes();
   mostrarNoite("coletiva");
 }
-function aplicarColetiva(box,opp,txt,jBruto,seguir){
+function aplicarColetiva(p,opp,txt,jBruto,seguir){
   const jSeguro=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
   const j=jSeguro;
   st.coletivaHype=lim(j&&j.hype,.85,1.20,1);
@@ -4652,36 +4941,31 @@ function aplicarColetiva(box,opp,txt,jBruto,seguir){
   const atr=["slpm","strDef","tdAvg","tdDef","subAvg","kdAvg","durability"].includes(j&&j.atributoPressao)?j.atributoPressao:null;
   st.coletivaPressao=atr?{atributo:atr,mult}:null;
   /* mesma rede de baixo do dilema: nunca deixa a IA afirmar quem ganha a
-     luta que ainda vai acontecer — semResultadoDeLuta() já existe pra
-     isso, reaproveitado aqui igual foi feito no dilema. */
+     luta que ainda vai acontecer (semResultadoDeLuta). */
   const bruto=(j&&j.reacao)?semResultadoDeLuta(String(j.reacao)).slice(0,800):"";
-  if(bruto){
-    box.innerHTML=`<div class="dil-eyebrow">Coletiva</div>
-      <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
-      <div class="dil-o">${bruto}</div>`;
-    /* Botão em vez de tempo fixo (pedido do dono, 2026-09-28): em 2,2 s
-       não dava pra ler a reação. A luta só começa quando o jogador manda. */
-    const tk=CARREIRA_TOKEN;
-    const ir=el("button","botao coletiva-seguir",`<span>Ir pra luta</span>${ICONE("seta-dir")}`);
-    ir.id="colseguir";ir.type="button";
-    ir.onclick=()=>{ if(tk!==CARREIRA_TOKEN)return; SOM.toque(); seguir(); };
-    box.appendChild(ir);
-  }else seguir();
+  mostrarResposta(p,txt);
+  /* Sem reação (IA fora, texto cortado): a resposta fica registrada e a
+     sala segue, em vez de pular pra luta sem mostrar nada. */
+  mostrarDesfecho(p,bruto?semTag(bruto):"A assessoria anotou a resposta e passou a palavra pro próximo repórter.");
+  /* Botão em vez de tempo fixo (pedido do dono, 2026-09-28): a luta só
+     começa quando o jogador manda. */
+  const tk=CARREIRA_TOKEN;
+  p.acoes.innerHTML="";
+  const ir=el("button","botao coletiva-seguir",`<span>Ir pra luta</span>${ICONE("seta-dir")}`);
+  ir.id="colseguir";ir.type="button";
+  ir.onclick=()=>{ if(tk!==CARREIRA_TOKEN)return; SOM.toque(); seguir(); };
+  p.acoes.appendChild(ir);
 }
 
-/* ---------- Plano Pro: entrevista pós-luta ---------- */
+/* ---------- entrevista pós-luta ---------- */
 /* Fato obrigatório: prioridade FIXA, decidida por string interpolation no
-   cliente — NÃO pela IA, NÃO por sorteio. Garante citação de fato real na
-   pergunta por CONSTRUÇÃO, não por instrução de prompt (mesma lição já
-   medida no evento — forçar bate sugerir, ver EVENTO_TEMAS/proximoTema()).
-   Ordem: cinturão > lesão > zebra > método (nocaute/finalização vs
-   decisão) — "quedas" não é um 6º degrau separado (método sempre existe
-   pra toda luta, então um degrau abaixo dele nunca seria alcançado); em
-   vez disso entra como ENRIQUECIMENTO da pergunta de método quando há
-   quedas de verdade pra citar, sem competir na prioridade. par (paridade
-   de fightNo, sem rng) só varia a REDAÇÃO entre 2 frases por categoria,
-   pra não repetir a mesma pergunta palavra por palavra toda vez que o
-   mesmo tipo de fato aparece. */
+   cliente, NÃO pela IA, NÃO por sorteio. Ordem: cinturão > lesão > zebra >
+   método (nocaute/finalização vs decisão); quedas entram como
+   enriquecimento da pergunta de método. Desde a reta final (2026-09-28)
+   a pergunta da tela é da IA (entrevistaCena), que recebe este fato por
+   extenso (fatoDaEntrevista) e TEM que tratar dele; a pergunta daqui
+   continua como molde local quando a IA não responde. par (paridade de
+   fightNo, sem rng) só varia a redação entre 2 frases por categoria. */
 function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,tdApl,tdSof,fightNo){
   const par=fightNo%2===0;
   const comQuedas=s=>(tdApl>=1||tdSof>=1)?`${s} (foram ${tdApl} quedas aplicadas contra ${tdSof} sofridas)`:s;
@@ -4701,23 +4985,17 @@ function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,t
     ?`Foi pros cartões contra ${opp.name}. Você achou que o placar refletiu a luta?`
     :`Decisão dos juízes hoje contra ${opp.name}. Como você avalia essa luta?`),fatoObrigatorio:"decisão"};
 }
-/* Resume o histórico de um Rival em texto curto pro prompt — chamado tanto
-   por coletiva (telaColetiva) quanto entrevista (aqui embaixo), sempre a
-   MESMA frase pros dois, pra não inventar dois jeitos de contar a mesma
-   rivalidade. null quando não há histórico ainda (1º encontro) — o prompt
-   não recebe a chave nesse caso, não "histórico vazio". */
+/* Resume o histórico de um Rival em texto curto pro prompt: a MESMA frase
+   pra coletiva e entrevista. null quando não há histórico (1º encontro). */
 function historicoRivalTexto(){
   if(!st.rival||!st.rival.historico.length)return null;
   const linhas=st.rival.historico.map(h=>`${h.ganhou?"você venceu":"ele venceu"} por ${h.metodo.toLowerCase()}`);
   return `${st.rival.historico.length}º encontro entre os dois. Anteriores: ${linhas.join("; ")}.`;
 }
-/* entrevistaWrapAtual/entrevistaWrapRespondida (2026-09-22, achado
-   jogando: "o botão de dar entrevista das lutas passadas continuam
-   aparecendo") — cada luta chamava isto e só ACRESCENTAVA um wrap novo
-   em #bouts, nunca tirando o convite da luta anterior que ficou sem
-   resposta. #bouts continua mostrando o HISTÓRICO completo (cada linha
-   de resultado fica pra sempre, é o cartel) — só o CONVITE não
-   respondido é que não devia sobreviver pra próxima luta. */
+/* O convite fica no embrulho da luta (pós-luta, que depois vai pro Cartel).
+   Convite de luta anterior sem resposta some quando a próxima luta chama
+   de novo (achado jogando, 2026-09-22); respondido, vira o resumo da
+   entrevista e fica no histórico. */
 let entrevistaWrapAtual=null,entrevistaWrapRespondida=true;
 function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival){
   if(entrevistaWrapAtual&&!entrevistaWrapRespondida)entrevistaWrapAtual.innerHTML="";
@@ -4726,51 +5004,91 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
   const btn=el("button","botao botao-sec",`${ICONE("microfone")}<span>Dar entrevista</span>`);
   btn.type="button";
   bouts.appendChild(wrap);
+  const luta=fightNo;
   btn.onclick=()=>{
     SOM.toque();
-    if(!meuPro)return;
-    entrevistaAberta=true;atualizarControles();
-    const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
-    const{pergunta}=perguntaEntrevista(opp,won,r.method,r.round,r.clock,
-      titleFight,zebra,lesaoTxt,td0,tdt0,fightNo);
-    wrap.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
-      <div class="dil-c">"${pergunta}"</div>
-      <div class="dil-in">
-        <textarea id="entresp" maxlength="200" rows="3" placeholder="Sua resposta"></textarea>
-        <button class="btn btn-sm" id="entgo">Responder</button></div>`;
-    const inp=document.getElementById("entresp"),go=document.getElementById("entgo");
-    const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
-    inp.addEventListener("input",cresce);
-    manterBotaoVisivel(inp,go);
-    inp.focus();
-    go.onclick=async()=>{
-      const txt=inp.value.trim();
-      if(!txt)return inp.focus();
-      go.disabled=true;inp.disabled=true;go.textContent="…";
-      const tk=CARREIRA_TOKEN;
-      const token=await meuAccessToken();
-      const historicoRival=ehRival?historicoRivalTexto():null;
-      const j=conteudoInseguro(txt)?null:await ai("entrevista",{name:me.name,opp:opp.name,
-        ganhou:won,metodo:r.method,round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,
-        zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,pergunta,resposta:txt,
-        record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
-        rendaBase:RENDA_BASE,historicoRival,token});
-      if(tk!==CARREIRA_TOKEN)return;
-      aplicarEntrevista(wrap,pergunta,txt,j);
-    };
+    if(!meuPro||luta!==fightNo||entrevistaWrapAtual!==wrap||entrevistaWrapRespondida)return;
+    abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival});
   };
   /* Revamp fase 5: sem Pro o convite aparece travado pelo componente
      único bloqueioPro() (a vitrine continua, o clique não). */
   wrap.appendChild(bloqueioPro(btn));
 }
+/* A entrevista abre como etapa própria da noite (fundo do lugar), no mesmo
+   #escolha da oferta/camp/coletiva. entrevistaAberta trava "Próxima luta"
+   até o jogador sair dela (Continuar ou Voltar ao resultado). */
+function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival}){
+  const box=document.getElementById("escolha");
+  if(!box)return;
+  entrevistaAberta=true;
+  box.style.display="";
+  const ct=++CENA_TOKEN;
+  const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
+  const base=perguntaEntrevista(opp,won,r.method,r.round,r.clock,titleFight,zebra,lesaoTxt,td0,tdt0,fightNo);
+  const chave=`${SEED}:${fightNo}:${opp.name}`;
+  if(!cacheEntrevista||cacheEntrevista.chave!==chave)
+    cacheEntrevista={chave,angulo:proximoTemaCena("entrevista"),reporter:reporterDaCena("entrevista"),cena:null,promessa:null};
+  const cache=cacheEntrevista,{reporter,angulo}=cache;
+  const local={evento:eventoEntrevistaLocal(won,titleFight,opp),pergunta:base.pergunta};
+  const historicoRival=ehRival?historicoRivalTexto():null;
+  cenaGuardada(cache,local,token=>ai("entrevistaCena",{name:me.name,record:`${st.wins}-${st.losses}`,
+    followers:fmtNum(st.followers),fan:st.fan.toFixed(1),opp:opp.name,ganhou:won,metodo:r.method,
+    round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,
+    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,
+    fato:fatoDaEntrevista(base.fatoObrigatorio,won,r,lesaoTxt,td0,tdt0),
+    angulo:won?angulo:(ANGULO_NA_DERROTA[angulo]||angulo),
+    recentes:cenasRecentes("entrevista"),token}),"entrevista");
+
+  box.innerHTML="";
+  box.appendChild(el("div","esc-hd",`Entrevista · ${won?"depois da vitória":"depois da derrota"}`));
+  const meio=montarCena(box,"entrevista",reporter,"entrevista-microfone");
+  const p=pecasDaConversa("ent",reporter);
+  const area=el("div","cena-responder",`<textarea id="entresp" maxlength="200" rows="3" placeholder="Sua resposta"></textarea>
+      <button class="botao" id="entgo" type="button">Responder</button>`);
+  p.resp.appendChild(area);
+  const voltar=el("button","botao botao-sec","Voltar ao resultado");voltar.id="entvoltar";voltar.type="button";
+  p.acoes.appendChild(voltar);
+  meio.append(p.evento,p.fala,p.resp,p.desfecho,p.acoes);
+  const inp=document.getElementById("entresp"),go=document.getElementById("entgo");
+  const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
+  inp.addEventListener("input",cresce);
+  manterBotaoVisivel(inp,go);
+  const sair=()=>{CENA_TOKEN++;entrevistaAberta=false;box.style.display="none";box.innerHTML="";};
+  const fundoResultado=won?"confete":"apagado";
+  voltar.onclick=()=>{SOM.toque();sair();mostrarNoite("resultado",fundoResultado);};
+  let cena=cache.cena||local;
+  if(cache.cena){mostrarPergunta(p,reporter,cena);if(!semHover())inp.focus();}
+  else{
+    inp.disabled=true;go.disabled=true;
+    const tk=CARREIRA_TOKEN;
+    cache.promessa.then(c=>{
+      if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
+      cena=c;mostrarPergunta(p,reporter,c);
+      inp.disabled=false;go.disabled=false;if(!semHover())inp.focus();
+    });
+  }
+  go.onclick=async()=>{
+    const txt=inp.value.trim();
+    if(!txt)return inp.focus();
+    go.disabled=true;inp.disabled=true;go.textContent="…";voltar.hidden=true;
+    const tk=CARREIRA_TOKEN;
+    const token=await meuAccessToken();
+    const j=conteudoInseguro(txt)?null:await ai("entrevista",{name:me.name,opp:opp.name,
+      ganhou:won,metodo:r.method,round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,
+      zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,evento:cena.evento,pergunta:cena.pergunta,resposta:txt,
+      record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
+      rendaBase:RENDA_BASE,historicoRival,token});
+    if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
+    aplicarEntrevista({p,wrap,cena,txt,j,sair,fundoResultado});
+  };
+  SOM.flashes();
+  mostrarNoite("entrevista");
+}
 /* Botão "Continuar" depois da entrevista (2026-09-22, pedido explícito:
-   "não tá dando tempo de ler") — sem isto, o automático (1,1s/speed) ou
-   um clique cedo em "Próxima luta" cortava a resposta da IA antes do
-   jogador terminar de ler. entrevistaAberta trava os dois (ver
-   atualizarControles()/nextFight()/o timer do automático) até este
-   botão ser clicado — aí sim segue pra próxima luta, de propósito
-   (pedido foi "um botão de ir pra luta", não só "fechar o painel"). */
-function aplicarEntrevista(box,pergunta,txt,jBruto){
+   "não tá dando tempo de ler"): entrevistaAberta trava a próxima luta até
+   ele ser clicado, e aí segue pra próxima luta de propósito. Na última luta
+   ou com dilema aberto não há próxima luta pra abrir: volta pro resultado. */
+function aplicarEntrevista({p,wrap,cena,txt,j:jBruto,sair,fundoResultado}){
   const j=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
   const dFan=lim(j&&j.fa,-2,2,0);
   const dSeg=lim(j&&j.seguidores,-.30,.50,0);
@@ -4783,24 +5101,33 @@ function aplicarEntrevista(box,pergunta,txt,jBruto){
   const dif=st.followers-antes;
   st.entrevistasFeitas=(st.entrevistasFeitas||0)+1;
   const bruto=(j&&j.reacao)?String(j.reacao).slice(0,800):"";
-  const reacao=bruto||fraseFallback();
+  const reacao=semTag(bruto||fraseFallback());
   entrevistaWrapRespondida=true;             // fica pra sempre no histórico, não é mais "pendente"
-  registrarExtra({tipo:"entrevista",cena:`"${pergunta}"`,resposta:txt.replace(/</g,"&lt;"),texto:reacao});
-  box.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
-    <div class="dil-c">"${pergunta}"</div>
-    <div class="dil-r">"${txt.replace(/</g,"&lt;")}"</div>
-    <div class="dil-o">${reacao}</div>
-    <div class="dil-fx">
+  registrarExtra({tipo:"entrevista",cena:`${cena.evento?semTag(cena.evento)+" ":""}"${semTag(cena.pergunta)}"`,
+    resposta:semTag(txt),texto:reacao});
+  const fx=`<div class="dil-fx">
       ${dif!==0?`<span class="delta ${dif>=0?"up":"down"}">${dif>=0?"+":"−"}${fmtNum(Math.abs(dif))} seguidores</span>`:""}
       ${Math.abs(dFan)>=0.05?`<span class="delta ${dFan>=0?"up":"down"}">${dFan>=0?"+":"−"}${Math.abs(dFan).toFixed(1)} de fã</span>`:""}
-      ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}</div>
-    <div class="dil-in"><button class="btn btn-sm" id="entcontinuar">${fightNo>=TOTAL_FIGHTS?"Continuar":"Continuar pra próxima luta"}</button></div>`;
-  document.getElementById("entcontinuar").onclick=()=>{
+      ${dDinheiro!==0?`<span class="delta ${dDinheiro>=0?"up":"down"}">${dDinheiro>=0?"+":"−"}R$${fmtNum(Math.abs(dDinheiro))}</span>`:""}</div>`;
+  /* resumo no embrulho da luta: é o que vai pro Cartel */
+  wrap.innerHTML=`<div class="dil-eyebrow">Entrevista</div>
+    <div class="dil-c">"${semTag(cena.pergunta)}"</div>
+    <div class="dil-r">"${semTag(txt)}"</div>
+    <div class="dil-o">${reacao}</div>${fx}`;
+  mostrarResposta(p,txt);
+  mostrarDesfecho(p,reacao,fx);
+  p.acoes.innerHTML="";
+  const semProxima=()=>fightNo>=TOTAL_FIGHTS||dilemaAberto;
+  const cont=el("button","botao",semProxima()?"Voltar ao resultado":"Continuar pra próxima luta");
+  cont.id="entcontinuar";cont.type="button";
+  cont.onclick=()=>{
     SOM.toque();
-    entrevistaAberta=false;
+    sair();
     atualizarControles();
-    nextFight();
+    if(semProxima())mostrarNoite("resultado",fundoResultado);
+    else nextFight();
   };
+  p.acoes.appendChild(cont);
   renderFicha();
   salvarCarreira();
 }
@@ -6002,7 +6329,6 @@ registrarRota("conta",p=>screenConta(p));
 registrarRota("admin",p=>screenAdmin(p));
 registrarRota("atualizacoes",screenAtualizacoes);
 registrarRota("ranking",screenRanking);
-registrarRota("creditos",screenCreditos);
 registrarRota("termos",screenTermos);
 registrarRota("privacidade",screenPrivacidade);
 registrarRota("404",screen404);
@@ -6013,6 +6339,12 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-09-28",titulo:"Coletiva e entrevista novas",itens:[
+    "A coletiva e a entrevista viraram cena: você de um lado, a imprensa do outro e a conversa no meio, com o que aconteceu embaixo.",
+    "O repórter faz uma pergunta nova a cada luta, sobre o que está acontecendo na sua carreira, e sempre acontece alguma coisa na sala antes dela.",
+    "O orçamento do draft virou teto e nunca fica negativo. Sem dinheiro pra nenhuma carta, a mesa oferece a carta mínima de cada par, de graça.",
+    "Saíram o modo automático e a página Créditos. O crédito dos sons que pedem autoria fica na engrenagem.",
+    "Depois da luta, a próxima escolha de adversário começa em Próxima luta."]},
   {data:"2026-09-28",titulo:"Lutadores novos",itens:[
     "Criador refeito: oito arquétipos tirados de estilos reais de MMA (Muay Thai, Jiu-jitsu, Wrestling, Sambo do Cáucaso, Boxe, Brigão, Kickboxing e Veterano).",
     "Peças novas: orelha de couve-flor, nariz quebrado, cicatrizes, tatuagens e roupa de entrada, como mongkol, papakha, kimono, roupão, capuz e bandeira.",
@@ -6156,7 +6488,7 @@ function screenMenu(){
   const rod=el("footer","menu-rodape");
   const lk=(txt,rota)=>{ const a=el("a","",txt); a.href="#/"+rota;
     a.onclick=e=>{ e.preventDefault(); irPara(rota); }; return a; };
-  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),lk("Créditos","creditos"),
+  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),
     el("span","menu-contato","Contato: contato@octogono.fun"));
   c.appendChild(rod);
 
@@ -6383,39 +6715,6 @@ function linhaRanking(l,pos){
      <span class="rank-nota">${l.nota}</span>
      <span class="rank-pontos">${fmtPontos(l.pontuacao)}</span>`);
 }
-/* Créditos: obrigatório pelas licenças (CC-BY da música na fase 6, ISC
-   do Lucide, OFL das fontes). A fase 6 acrescenta o grupo "Música e
-   efeitos sonoros". */
-const CREDITOS=[
-  {grupo:"Dados",itens:[
-    {nome:"Estatísticas de luta",autor:"UFCStats",licenca:"Dados públicos",link:"http://ufcstats.com"},
-    {nome:"Raspagem dos dados",autor:"Greco1899/scrape_ufc_stats",licenca:"GPL-3.0 (código)",link:"https://github.com/Greco1899/scrape_ufc_stats"}]},
-  {grupo:"Imagens",itens:[
-    {nome:"Fundos do jogo",autor:"Gerados com Gemini 3 Pro Image (Google) via OpenRouter e tratados pelo Octógono",licenca:"Uso próprio",link:""}]},
-  {grupo:"Música e sons",itens:[
-    {nome:"Músicas: Nine To Death, Busted Jazz, Re Adusjtment, Pantheon, Chills",autor:"HoliznaCC0",licenca:"CC0 1.0 (domínio público)",link:"https://freemusicarchive.org/music/holiznacc0/"},
-    {nome:"Torcida: Free Crowd Cheering Sounds",autor:"Gregor Quendel",licenca:"CC BY 4.0",link:"https://opengameart.org/content/free-crowd-cheering-sounds"},
-    {nome:"Vaia: Crowd Booing",autor:"Free Sounds Library",licenca:"CC BY 4.0",link:"https://www.freesoundslibrary.com/crowd-booing/"},
-    {nome:"Golpes, interface, fichas e jingles: Impact Sounds, Interface Sounds, UI Audio, Casino Audio, Music Jingles",autor:"Kenney",licenca:"CC0 1.0 (domínio público)",link:"https://kenney.nl/assets/category:Audio"},
-    {nome:"Sino e flashes: Boxing bell #1, Paparazzi #2",autor:"Joseph Sardin (BigSoundBank)",licenca:"CC0 1.0 (domínio público)",link:"https://bigsoundbank.com"}]},
-  {grupo:"Ícones",itens:[
-    {nome:"Lucide",autor:"Lucide Contributors",licenca:"ISC",link:"https://lucide.dev"}]},
-  {grupo:"Fontes",itens:[
-    {nome:"Anton",autor:"Vernon Adams",licenca:"SIL Open Font License 1.1",link:"https://fonts.google.com/specimen/Anton"},
-    {nome:"Barlow e Barlow Condensed",autor:"Jeremy Tribby",licenca:"SIL Open Font License 1.1",link:"https://fonts.google.com/specimen/Barlow"}]},
-];
-function screenCreditos(){
-  const c=montarTela({fundo:"arquibancada",titulo:"Créditos",classe:"tela-creditos"});
-  c.appendChild(el("p","tela-sub","Quem fez o que o jogo usa, e sob qual licença."));
-  CREDITOS.forEach(g=>{
-    const sec=el("section","creditos-grupo",`<h2 class="creditos-titulo">${g.grupo}</h2>`);
-    g.itens.forEach(it=>sec.appendChild(el("div","credito",
-      `<b>${it.nome}</b><span>${it.autor}</span><span class="credito-lic">${it.licenca}</span>`+
-      (it.link?`<a href="${it.link}" target="_blank" rel="noopener">${it.link.replace(/^https?:\/\//,"")}</a>`:"<span></span>"))));
-    c.appendChild(sec);
-  });
-}
-
 /* =========================================================================
    SAVE (revamp fase 3). O save é DADO: estado da carreira + estado interno
    dos 8 geradores (mulberry32 .estado()/.restaurar()). A tela é
@@ -7184,6 +7483,22 @@ function mostraDossie(r){
   }
   const f=r.src, t=f.titulos||{disputas:0,vitorias:0};
   const pa=PCT(r.pair.a.key,f[r.pair.a.key]), pb=PCT(r.pair.b.key,f[r.pair.b.key]);
+  if(f.minimo){
+    d.innerHTML=`<div class="col-t">Carta mínima</div>
+    <div class="nm">Atributos mínimos</div>
+    <p>O orçamento que sobrou não paga nenhuma carta da mesa. ${r.pair.label} entra
+      com o piso da divisão, de graça.</p>
+    <div class="grid">
+      <div class="cel mira"><small>${r.pair.a.label}</small><b>${r.pair.a.fmt(f[r.pair.a.key])}</b></div>
+      <div class="cel mira"><small>${r.pair.b.label}</small><b>${r.pair.b.fmt(f[r.pair.b.key])}</b></div>
+    </div>
+    ${pctBar(pa)}${pctBar(pb)}
+    <div class="grid" style="margin-top:11px">
+      <div class="cel"><small>Custo</small><b>${r.cost.toFixed(2)}</b></div>
+      <div class="cel"><small>Sobra</small><b>${(budgetLeft-r.cost).toFixed(2)}</b></div>
+    </div>`;
+    return;
+  }
   const tags=[`${f.fights} lutas`];
   if(f.era)tags.push(`${f.era[0]}-${f.era[1]}`);
   if(f.stance)tags.push(f.stance);
@@ -7255,8 +7570,7 @@ function renderDraft(){
   };
 
   const rows=rollTable(POOL,remaining,rng,PCT);
-  const afford=rows.filter(r=>r.cost<=budgetLeft);
-  const shown=afford.length?afford:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+  const shown=cartasDaMesa(rows,budgetLeft,remaining,POOL,PCT);
   const grid=document.getElementById("cards");
   /* Sem hover, o toque não tem "passar por cima de graça" — o 1º toque faz
      o que o mouseenter fazia (mostra dossiê/octógono) e SÓ o 2º toque na
@@ -7281,9 +7595,11 @@ function renderDraft(){
         <span class="attr-l">${d.label}${p>=.90?'<span class="elite">elite</span>':""}</span>
         <span class="attr-v">${d.fmt(r.src[d.key])}</span></span>
       ${pctBar(p)}</span>`;
-    const c=el("button","card",`
+    const c=el("button","card"+(r.src.minimo?" card-minima":""),`
       <span class="pair">${r.pair.label}</span>
-      <span class="src"><b style="color:var(--ink);font-weight:600;font-size:12.5px">${r.src.name}</b> · ${r.src.fights} lutas</span>
+      <span class="src">${r.src.minimo
+        ?`<b style="color:var(--ink);font-weight:600;font-size:12.5px">Atributos mínimos</b> · piso da divisão, de graça`
+        :`<b style="color:var(--ink);font-weight:600;font-size:12.5px">${r.src.name}</b> · ${r.src.fights} lutas`}</span>
       ${attr(r.pair.a,pa)}${attr(r.pair.b,pb)}
       <span class="cost"><span>custo</span><b>${r.cost.toFixed(2)}</b></span>`);
     if(semHover()){
@@ -7323,6 +7639,9 @@ function pick(r){
   me[r.pair.a.key]=r.src[r.pair.a.key];
   me[r.pair.b.key]=r.src[r.pair.b.key];
   [r.pair.a.key,r.pair.b.key].forEach(k=>(RIDERS[k]||[]).forEach(rk=>me[rk]=r.src[rk]));
+  /* a mesa só mostra o que cabe (cartasDaMesa); a trava fica aqui também
+     pra nenhum caminho futuro deixar o orçamento negativo */
+  if(r.cost>budgetLeft)return;
   budgetLeft-=r.cost;
   picks.push({pair:r.pair,from:r.src.name});
   parRecem=r.pair.id;SOM.fixa();
@@ -7422,6 +7741,7 @@ function montarTelaCarreira(){
   document.documentElement.dataset.noite="0";
   CARREIRA_TOKEN++;
   noiteEtapa=null;ofertaAtual=null;escolhidoAtual=null;posLutaAtual=null;
+  cacheColetiva=null;cacheEntrevista=null;
   /* a carreira em andamento mora em #/carreira: recarregar volta pra ela */
   rotaAtual="carreira";
   try{ if(location.hash!=="#/carreira")history.replaceState(null,"","#/carreira"); }catch(e){}
@@ -7464,9 +7784,12 @@ function montarTelaCarreira(){
   const proxCab=el("div","proxima-cab");proxCab.id="painelProxima";
   const row=el("div","hub-acoes");row.id="controls";
   const next=el("button","botao botao-grande","Próxima luta");next.id="next";next.onclick=()=>nextFight();
-  const ab=el("button","botao botao-sec","Modo automático");ab.id="autob";ab.onclick=toggleAuto;
+  /* Sem botão de modo automático (reta final, 2026-09-28: pedido do dono,
+     a carreira é jogada luta a luta). A flag `auto` continua existindo só
+     como gancho dos testes (jogarCarreiraAte liga ela pra rodar carreiras
+     inteiras pelo caminho real); nada no jogo liga ela. */
   const hint=el("span","hub-contador",`0 de ${TOTAL_FIGHTS}`);hint.id="counter";
-  row.append(next,ab,hint);
+  row.append(next,hint);
   /* oferta aberta com a noite fechada (Voltar na oferta): a escolha
      continua de pé, sem sortear de novo; este botão reabre a noite nela */
   const vn=el("button","botao botao-grande","Voltar à escolha do adversário");vn.id="voltarNoite";vn.hidden=true;
@@ -7513,10 +7836,13 @@ function montarTelaCarreira(){
 const ETAPAS_NOITE=[
   {id:"oferta",rot:"Oferta",fundo:"contrato"},
   {id:"camp",rot:"Camp",fundo:"saco"},
-  {id:"coletiva",rot:"Coletiva",fundo:"imprensa"},
+  {id:"coletiva",rot:"Coletiva",fundo:"coletiva"},
   {id:"entrada",rot:"Entrada",fundo:"entrada"},
   {id:"luta",rot:"Luta",fundo:"octogono-luz"},
   {id:"resultado",rot:"Resultado",fundo:"confete"},
+  /* reta final (2026-09-28): a entrevista abre como etapa própria, com o
+     fundo do lugar; no cabeçalho ela conta como parte do Resultado */
+  {id:"entrevista",rot:"Entrevista",fundo:"entrevista"},
 ];
 let noiteEtapa=null,ofertaAtual=null,escolhidoAtual=null,posLutaAtual=null;
 /* Pós-luta: um embrulho por luta dentro de #posluta recebe raro, evento
@@ -7583,8 +7909,7 @@ function montarNoite(){
   const stage=el("div","stage");stage.id="stage";stage.style.display="none";
   const ctrl=el("div","noite-luta-ctrl");
   const sp=el("button","botao botao-sec","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
-  const na=el("button","botao botao-sec","Modo automático");na.id="noiteAuto";na.onclick=toggleAuto;
-  ctrl.append(sp,na);
+  ctrl.append(sp);
   const live=el("div","live");live.id="live";
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
   stage.append(ctrl,live,escLuta);
@@ -7621,9 +7946,9 @@ function mostrarNoite(etapa,fundo){
     else f.style.cssText=`--img:url(img/${img}.webp);--img-m:url(img/${img}-m.webp)`;
   }
   const et=document.getElementById("noiteEtapas");
-  const atual=e.id==="entrada"?"luta":e.id;
+  const atual=e.id==="entrada"?"luta":e.id==="entrevista"?"resultado":e.id;
   const pos=ETAPAS_NOITE.findIndex(x=>x.id===atual);
-  if(et)et.innerHTML=ETAPAS_NOITE.filter(x=>x.id!=="entrada").map(x=>{
+  if(et)et.innerHTML=ETAPAS_NOITE.filter(x=>x.id!=="entrada"&&x.id!=="entrevista").map(x=>{
     const j=ETAPAS_NOITE.findIndex(y=>y.id===x.id);
     return `<span class="noite-etapa${x.id===atual?" on":j<pos?" feita":""}">${x.rot}</span>`;}).join("");
   const antes=["oferta","camp","coletiva"].includes(e.id);
@@ -7798,14 +8123,12 @@ function atualizarEstadoCarreira(){
    quatro lugares e um deles esquecia o automático. */
 function atualizarControles(){
   const next=document.getElementById("next");
-  const ab=document.getElementById("autob");
   const ctrl=document.getElementById("controls");
   const cont=document.getElementById("counter");
-  if(!next||!ab)return;
+  if(!next)return;
   atualizarEstadoCarreira();
   const fim=fightNo>=TOTAL_FIGHTS;
   next.disabled=dilemaAberto||escolhaAberta||entrevistaAberta||playing||auto||fim;
-  ab.disabled=dilemaAberto||entrevistaAberta||fim;
   if(ctrl)ctrl.classList.toggle("travado",dilemaAberto||escolhaAberta||entrevistaAberta);
   if(cont&&dilemaAberto)cont.textContent="responda para continuar";
   else if(cont&&escolhaAberta)cont.textContent="escolha o adversário";
@@ -7817,8 +8140,6 @@ function atualizarControles(){
   const vn=document.getElementById("voltarNoite");
   if(vn)vn.hidden=!(escolhaAberta&&!noiteEtapa);
   next.hidden=!!(escolhaAberta&&!noiteEtapa);
-  const naut=document.getElementById("noiteAuto");
-  if(naut){naut.textContent=auto?"Parar automático":"Modo automático";naut.disabled=ab.disabled;}
   const livre=!playing&&!dilemaAberto&&!entrevistaAberta&&!escolhaAberta&&!auto;
   const posLuta=noiteEtapa==="luta"||noiteEtapa==="resultado";
   const np=document.getElementById("noiteProxima");if(np)np.hidden=!(posLuta&&livre&&!fim);
@@ -7839,19 +8160,6 @@ function atualizarBadgeConquistas(){
 function cycleSpeed(){
   speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
   document.getElementById("speedb").textContent=`Velocidade ${speed}x`;
-}
-function toggleAuto(){
-  if(dilemaAberto||entrevistaAberta)return; // não dá pra pular um dilema/entrevista aberta
-  auto=!auto;
-  if(auto&&escolhaAberta){                // automático assume as escolhas
-    escolhaAberta=false;
-    const b=document.getElementById("escolha");
-    if(b){b.style.display="none";b.innerHTML="";}
-  }
-  const b=document.getElementById("autob");
-  if(b){b.classList.toggle("on",auto);b.textContent=auto?"Parar automático":"Modo automático";}
-  atualizarControles();
-  if(auto&&!playing)nextFight();
 }
 function pickOpponent(){
   const center=Math.floor(st.standing*(LADDER.length-1));
@@ -8674,9 +8982,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      virou IA, sem fallback — ver dispararEventoIA(). */
   if(fightNo%5===0&&fightNo<TOTAL_FIGHTS){
     dilemaAberto=true;
-    if(auto){auto=false;clearTimeout(autoTimer);
-      const b=document.getElementById("autob");
-      b.classList.remove("on");b.textContent="Modo automático";}
+    if(auto){auto=false;clearTimeout(autoTimer);}
     atualizarControles();
     abrirDilema()
       .catch(()=>{})                       // falha do dilema não pode travar a carreira

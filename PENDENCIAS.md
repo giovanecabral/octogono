@@ -2045,7 +2045,8 @@ não perde nada.
   barrar de vez exige rerodar a carreira no servidor. Fora de escopo.
 - Os CSVs de `data/` vêm do projeto `Greco1899/scrape_ufc_stats`, que é
   GPL-3.0 (o código do raspador). Estatística é fato público, mas vale o
-  dono decidir se isso exige alguma nota além do crédito na página Créditos.
+  dono decidir se isso exige alguma nota além do crédito no README (a
+  página Créditos saiu em 2026-09-28, a pedido do dono).
 - ~~Sobram 6 "✓" como ícone em telas do hub~~ (fase 5: viraram SVG).
   ~~Sobram 2 emojis em posts simulados da repercussão~~ (fase 7: saíram, e
   a seta "→" do link "Ver Plano Pro" virou ícone do sprite).
@@ -2202,3 +2203,36 @@ tela que nascer travada destrava sozinha. A mesma conta aparecia como "Pro
 até 31/12/1969" com o botão "Renovar", porque não tem data de expiração;
 isso também foi consertado. Os dois foram direto pro `master` e pro ar
 (hotfix), sem a fase 7. Detalhes no LEIA-ME, perto de `bloqueioPro`.
+
+## 38. Reta final para o lançamento (2026-09-28)
+
+Pedido do dono, tudo de uma vez: orçamento nunca negativo, coletiva e
+entrevista com cara de cena e perguntas novas da IA, fim do modo
+automático, fim da página Créditos e o "Voltar à escolha do adversário"
+fora depois da luta. Detalhes e números no LEIA-ME ("Balanço" →
+"Orçamento é teto", "Coletiva e entrevista", "Reta final para o
+lançamento").
+
+- **Orçamento:** carta mínima de custo 0.00 quando nada cabe. O balanço
+  aprovado dependia do furo; `BUDGET_PCT` foi de .35 pra .52 (medido: .35
+  com o teto dava 6 a 7 vitórias em 22; .52 dá 10,6 a 12,0). Suíte nova
+  `orcamento`.
+- **Coletiva e entrevista:** layout do `Mapa.png`, cena da IA
+  (`coletivaCena`/`entrevistaCena`, só Pro) com tema forçado, recentes e
+  saneamento no cliente, moldes locais variados, 4 imagens novas. Precisa
+  de deploy (os kinds novos só existem no `api/ai.js` de produção depois
+  dele; antes disso a cena cai no molde local).
+- **Modo automático e Créditos:** saíram. Crédito CC BY dos sons na
+  engrenagem; nota ISC do Lucide no sprite.
+- **Botão de voltar à oferta:** era CSS (`.botao` vencia o `[hidden]`),
+  regra global `[hidden]{display:none!important}`.
+- `Mapa.png` (rascunho do dono) fica só local: está no `.vercelignore` e
+  fora do git.
+
+**Depende do dono:**
+1. Jogar uma coletiva e uma entrevista com a conta Pro depois do deploy e
+   dizer se as perguntas estão no tom certo (a qualidade é do Qwen 3.7
+   Flash; às vezes ele ainda escapa da regra, e o cliente corta o pior).
+2. Conferir se o banner do painel de admin sumiu e se a conta de teste
+   ficou Pro ao abrir Conta → Plano Pro (pendente de antes).
+

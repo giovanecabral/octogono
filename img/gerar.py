@@ -7,6 +7,9 @@ salvando WebP em duas versões: <tema>.webp (1920px, paisagem) e
 A chave NUNCA fica no repositório: é lida de ~/.octogono-openrouter
 (arquivo com só a chave, chmod 600).
 
+Os RETRATOS (card da imprensa na coletiva e na entrevista) saem em 2:3,
+num arquivo só: <tema>.webp (720px de largura), sem versão de celular.
+
 uso: python3 img/gerar.py              gera os temas que ainda não têm bruto
      python3 img/gerar.py arena tunel  (re)gera só esses
      python3 img/gerar.py --tratar     só refaz o tratamento a partir dos brutos
@@ -43,6 +46,14 @@ TEMAS = {
   "lona": "Extreme close-up of the canvas floor of a fight cage with drops of water and sweat, dark and moody, the fence out of focus.",
   "entrada": "Smoke and moving spotlights over an arena entrance ramp before a fighter walks out, silhouettes of crowd at the edges.",
   "trofeus": "A shelf in a dim gym office with generic trophies and medals without any text, a single warm light, dust in the air.",
+  # reta final (2026-09-28): lugares da coletiva e da entrevista
+  "coletiva": "A packed press conference for a fight event seen from the back of the room: a raised stage with a long table draped in black cloth, a cluster of microphones in the middle of the table, two empty chairs at opposite ends, rows of photographers and reporters seen from behind in silhouette raising their cameras, bursts of camera flash in the haze, a blank dark backdrop behind the stage.",
+  "entrevista": "Post-fight interview area inside an arena: a television camera on a tripod and a softbox light in the foreground seen from behind, a reporter in silhouette holding a microphone toward an empty spot lit by a hard spotlight, a blank dark backdrop, the fence of the fight cage blurred in the background with haze and stage lights.",
+}
+# retrato 2:3 pro card da direita (quem pergunta: a imprensa, nunca um lutador real)
+RETRATOS = {
+  "coletiva-mesa": "Close-up of a press conference table: a dense cluster of broadcast microphones of different shapes pointing at an empty chair, a glass of water and a blank name placard, a hard spotlight from above, camera flashes blurred in the dark background.",
+  "entrevista-microfone": "A reporter's hand holding a television microphone with a blank square microphone flag, pointed toward the camera, the stage lights and the fence of a fight cage blurred behind, haze.",
 }
 
 def chave():
@@ -52,9 +63,10 @@ def chave():
     return open(p).read().strip()
 
 def gerar(tema):
+    retrato = tema in RETRATOS
     corpo = {"model": MODELO, "modalities": ["image", "text"],
-             "image_config": {"aspect_ratio": "16:9", "image_size": "2K"},   # 2K custa o mesmo que 1K no Gemini 3 Pro
-             "messages": [{"role": "user", "content": ESTILO + TEMAS[tema]}]}
+             "image_config": {"aspect_ratio": "2:3" if retrato else "16:9", "image_size": "2K"},   # 2K custa o mesmo que 1K no Gemini 3 Pro
+             "messages": [{"role": "user", "content": ESTILO + (RETRATOS[tema] if retrato else TEMAS[tema])}]}
     req = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions",
         data=json.dumps(corpo).encode(), headers={"Authorization": "Bearer " + chave(),
         "Content-Type": "application/json", "HTTP-Referer": "https://octogono.fun", "X-Title": "Octogono"})
@@ -109,6 +121,11 @@ def tratar(tema):
     grao = np.random.default_rng(7).normal(0, 7, t.shape)[..., None]
     out = Image.fromarray(np.clip(cor + grao, 0, 255).astype(np.uint8))
     w, h = out.size
+    if tema in RETRATOS:
+        out.resize((720, round(h * 720 / w)), Image.LANCZOS).save(
+            os.path.join(AQUI, tema + ".webp"), "WEBP", quality=72, method=6)
+        print(tema, "tratado (retrato):", os.path.getsize(os.path.join(AQUI, tema + ".webp")) // 1024, "KB")
+        return
     out.resize((1920, round(h * 1920 / w)), Image.LANCZOS).save(
         os.path.join(AQUI, tema + ".webp"), "WEBP", quality=70, method=6)
     rw = round(h * 0.6)                                     # recorte retrato central (3:5)
@@ -123,9 +140,9 @@ def tratar(tema):
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     so_tratar = "--tratar" in sys.argv
-    alvos = args or list(TEMAS)
+    alvos = args or list(TEMAS) + list(RETRATOS)
     for tema in alvos:
-        assert tema in TEMAS, f"tema desconhecido: {tema}"
+        assert tema in TEMAS or tema in RETRATOS, f"tema desconhecido: {tema}"
         if not so_tratar and (args or not os.path.exists(os.path.join(BRUTO, tema + ".png"))):
             gerar(tema)
         tratar(tema)

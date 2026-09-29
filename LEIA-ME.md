@@ -239,6 +239,49 @@ mais de uma vitória na carreira (12,5 contra 11,3), sem deixar fácil.
   todo mundo: 1%, 10% e 31%.
 - `momentos`: zebra pela chance real.
 
+### Orçamento é teto (reta final, 2026-09-28)
+
+**Achado do dono jogando:** terminou o draft com -0.17 de orçamento e ainda
+via cartas de 0.79. Quando nenhuma carta cabia, a mesa mostrava a mais
+barata MESMO acima do saldo, então o orçamento furava.
+
+**Regra agora (`cartasDaMesa`, perto de `rollTable`):** a mesa só mostra
+carta que cabe no que sobrou. Quando nada cabe, ela oferece a **carta
+mínima** de cada par que falta (`cartaMinima`): os dois atributos no piso
+da divisão (percentil 0, então a própria fórmula de custo dá 0.00) e os
+atributos que vão junto (precisão, golpes sofridos) na mediana, porque eles
+não entram no preço. `pick()` recusa carta acima do saldo como segunda
+trava. Nada disso consome `rng`: a mesa sorteada é a mesma, só muda o que
+aparece, e os adversários do link de desafio continuam iguais.
+
+**O balanço dependia do furo.** O `.35` foi medido com o bot guloso
+estourando o orçamento (pegava a carta mais cara, e o que faltava vinha da
+mais barata acima do saldo). Com o teto de verdade, o mesmo `.35` derrubou
+o lutador draftado do 48º pro 33º percentil e as vitórias pra 6 a 7 em 22.
+Medido de novo (30 carreiras por perfil, `node testar.js balanco 30`):
+
+| `BUDGET_PCT` | vitórias em 22 (5 perfis) | cinturão |
+|---|---|---|
+| .35 (teto novo) | 6,1 a 7,2 | 0% |
+| .50 | 9,7 a 11,1 | 0 a 3% |
+| **.52** | **10,6 a 12,0** | **0 a 7%** |
+| .55 | 12,0 a 13,1 | 0 a 10% |
+
+Ficou **.52**, o mais perto do balanço aprovado (11,0 a 12,5 e 4 a 8%). O
+lutador do bot guloso nasce no 49º percentil (suíte `draft`). Quem espalha
+o orçamento pelos quatro pares monta melhor que o guloso: agora o draft tem
+decisão de verdade, em vez de "pega a mais cara que o resto se ajeita".
+
+**Teste:** suíte `orcamento`. 2.160 drafts (todas as divisões jogáveis,
+normal e lenda, três jeitos de escolher: mais cara, aleatória, mais barata)
+nunca deixam o orçamento negativo, a carta mínima só aparece quando nada
+cabe, custa exatamente 0 e tem o piso da divisão; e a tela de verdade
+(`renderDraft` no DOM falso, sempre clicando a carta mais cara) nunca
+mostra carta acima do saldo. Dente provado três vezes: mesa antiga no
+motor, tela ignorando a regra e piso errado (reprovam 1.800+, 10 e 1.400+
+casos). As cópias do draft guloso dentro do `testar.js` (dez) usam a mesma
+`cartasDaMesa` do jogo.
+
 ## Progressão do lutador
 
 O treino é **permanente**, e por isso precisa de teto. Sem ele, 22 camps de +10%
@@ -1455,8 +1498,10 @@ Adusjtment" (phonk) na noite de luta, "Pantheon" (phonk) no walkout, um trecho
 de "Chills" na vinheta de derrota. Torcida de Gregor Quendel (CC BY 4.0).
 Golpes, queda, interface, fichas e o acento da vinheta de vitória da Kenney
 (CC0). Sino e flashes de paparazzi do BigSoundBank (CC0). Vaia da Free Sounds
-Library (CC BY 4.0). Tabela arquivo por arquivo em `audio/LICENCAS.md`; os
-créditos estão na página Créditos. Eu (Claude) não ouço áudio: as faixas
+Library (CC BY 4.0). Tabela arquivo por arquivo em `audio/LICENCAS.md`. A
+página Créditos saiu em 2026-09-28 (pedido do dono); o crédito que a
+licença obriga (os dois CC BY) fica no painel da engrenagem, junto do som,
+e a suíte `som` reprova se algum autor CC BY da tabela sumir de lá. Eu (Claude) não ouço áudio: as faixas
 foram escolhidas pelo gênero declarado pelo autor, BPM, loudness e curva de
 energia medidos (`audio/preparar.py` imprime a tabela). **Pendente: o dono
 ouvir e aprovar.**
@@ -2368,8 +2413,8 @@ o link de confirmação e o login com Google voltam pra página SEM a rota, e
 a intenção é seguida quando o Supabase avisa `SIGNED_IN`. Consequência
 aceita: quem abre um link de desafio também cria conta antes de jogar. O
 fim da carreira não oferece mais criar conta (só confirma a sincronização).
-Menu, Ranking, Atualizações, Termos, Privacidade e Créditos continuam
-abertos sem conta. Risco registrado: Resend grátis manda 100 e-mails por
+Menu, Ranking, Atualizações, Termos e Privacidade continuam abertos sem
+conta (a página Créditos saiu em 2026-09-28). Risco registrado: Resend grátis manda 100 e-mails por
 dia (PENDENCIAS.md item 37).
 
 O texto abaixo descreve a conta como era antes (opcional) e continua certo
@@ -2644,10 +2689,12 @@ conferido contra o `git log`), Ranking (placar global; lê a tabela `placar`
 que a fase 3 cria; sem tabela, mostra estado vazio), Conta (sem login:
 formulário + vitrine do Pro; com login: abas Perfil, Plano Pro, Carreiras
 encerradas, Conquistas), Continuar (3 espaços; a fase 3 liga o save),
-Créditos, Termos e Privacidade.
+Termos e Privacidade. (Créditos existiu até 2026-09-28; saiu a pedido do
+dono. O crédito dos sons CC BY foi pro painel da engrenagem e a nota ISC
+do Lucide pra dentro do próprio `img/icones.svg`.)
 
-**Ícones**: sprite `img/icones.svg` com símbolos do Lucide (ISC, licença em
-`img/LICENCAS.md`); `ICONE(nome)` devolve o `<svg><use>`. Nenhum emoji ou
+**Ícones**: sprite `img/icones.svg` com símbolos do Lucide (ISC, nota de
+licença num comentário no topo do próprio sprite); `ICONE(nome)` devolve o `<svg><use>`. Nenhum emoji ou
 caractere fazendo papel de ícone: a vitrine do Pro tinha 5 emojis e as setas
 do carrossel eram `‹ ›`, trocados. A suíte `rotas` reprova emoji em tela nova.
 
@@ -2658,7 +2705,8 @@ nunca fica no repositório: o script lê `~/.octogono-openrouter`. Regras dos
 prompts: sem pessoa real, sem rosto reconhecível, sem marca.
 
 **Teste**: `node testar.js rotas` (menu, Voltar em toda tela, 404, hash do
-Supabase, créditos, ranking com pódio, sem emoji/travessão). Dente provado:
+Supabase, a rota Créditos fora e a nota do Lucide no sprite, ranking com
+pódio, sem emoji/travessão). Dente provado:
 tirar o Voltar do molde reprova 7 telas; tirar a proteção do hash reprova com
 o token virando nome de rota. Verificação visual com screenshots em 1440, 820
 e 380 px (puppeteer-core com o Chrome instalado, ferramenta fora do repo).
@@ -3141,6 +3189,117 @@ novo.
 - a proporção;
 - a conversão de rosto antigo (inclusive lixo e `null`);
 - a aba de arquétipos do criador.
+
+## Coletiva e entrevista (reta final, 2026-09-28)
+
+**Pedido do dono:** "coletiva e entrevistas estão sem graça, não ocorre nada
+demais e sempre estão surgindo perguntas genéricas demais; a IA precisa
+sempre inovar nas perguntas e nos eventos". Antes, a abertura da coletiva
+saía de 6 frases fixas escolhidas pelo nome do adversário (o mesmo
+adversário repetia a mesma frase) e a pergunta da entrevista de 2 moldes
+por tipo de fato.
+
+**Layout (mapa desenhado pelo dono, `Mapa.png`, só local):** o lutador do
+jogador à esquerda (boneco + nome), a imprensa à direita (foto do lugar +
+repórter), a conversa no meio (a fala do repórter aponta pra direita, a
+resposta do jogador aponta pra esquerda) e "O que aconteceu" embaixo. No
+celular os dois cards ficam lado a lado em cima e a conversa desce. O card
+da direita nunca é o adversário: lutador real não tem retrato (direito de
+imagem). Componentes: `montarCena`, `pecasDaConversa`; CSS `.cena-*` e
+`.balao-*` no `estilo.css`.
+
+**Imagens novas** (`img/gerar.py`, US$ 0,14 cada): fundos `coletiva` (sala
+de coletiva cheia de fotógrafos de costas) e `entrevista` (área de
+entrevista com câmera e grade ao fundo), e os retratos 2:3 dos cards
+`coletiva-mesa` (mesa com microfones) e `entrevista-microfone` (mão com
+microfone de TV). `gerar.py` ganhou `RETRATOS` (2:3, um arquivo de 720px).
+
+**A cena é da IA** (kinds novos no `api/ai.js`, só Pro): `coletivaCena` e
+`entrevistaCena` devolvem `{evento, pergunta}`: algo que acontece na sala
+antes da pergunta e a pergunta do repórter. Sem número nenhum: quem mexe no
+jogo continua sendo a reação à resposta (`coletiva`, `entrevista`), que
+agora recebe o evento e a pergunta da cena. Anti-repetição, mesmas lições
+do evento de vida:
+
+- **tema forçado** por chamada, de uma cartela por carreira sem reposição
+  (`proximoTemaCena`): 10 temas na coletiva (provocação, encarada, cartel,
+  camp, algo dá errado na sala, equipe do adversário, torcida, bolsa,
+  pesagem, estilo) e 10 ângulos na entrevista, cada um com a versão da
+  derrota (`ANGULO_NA_DERROTA`: medido, com um ângulo só o modelo perguntou
+  "a quem você dedica essa derrota?");
+- **fato obrigatório** na entrevista: a mesma prioridade fixa de antes
+  (cinturão > lesão > zebra > método), escrita por extenso
+  (`fatoDaEntrevista`), que a pergunta TEM que tratar;
+- **cenas recentes** da carreira no prompt (`st.cenasRecentes`) e pergunta
+  igual a uma recente descartada.
+
+**Repórter fictício, escolhido no cliente** (`REPORTERES`, `VEICULOS`, por
+hash da semente e da luta): a IA recebe o nome pronto e nunca escolhe
+jornalista. **Nada disso consome gerador da carreira**: hash e um gerador
+local descartável pra embaralhar a cartela (a suíte `hub` confere os 8
+geradores antes e depois de abrir a coletiva).
+
+**Medido no modelo de produção antes do deploy** (Qwen 3.7 Flash, prompt do
+`api/ai.js` local, 3 rodadas, 50 cenas): pergunta em 49 de 50, nenhum
+travessão, 1 pergunta genérica na 1ª rodada e nenhuma depois do ajuste. O que o prompt sozinho não
+segurou e o cliente conserta (`limparPergunta`, `eventoDosOutros`):
+pergunta aberta com o nome do repórter ("Renata Brum: ...") perde o
+prefixo; pergunta em terceira pessoa ("Fulano pergunta se") e evento que
+começa pelo lutador do jogador (quem decide o que ele faz é o jogador) caem
+fora; aspas em volta saem. Na coletiva, o evento perde a frase que afirma
+resultado da luta futura (`semResultadoDeLuta`). Qualquer falha cai no
+molde local.
+
+**Sem IA** (grátis, falha, pausa): moldes locais por tema
+(`cenaColetivaLocal`, 1 ou 2 por tema, com cartel, camp, estilo, sequência,
+rival, cinturão e estreia) e, na entrevista, `perguntaEntrevista` com um
+evento local coerente com o resultado. Grátis vê a cena inteira com o molde
+local e a resposta travada pelo `bloqueioPro`.
+
+**Fluxo:** a coletiva fica em `#escolha` (etapa "coletiva"); a entrevista
+virou etapa própria da noite (`entrevista`, fundo do lugar, conta como
+Resultado no cabeçalho). Enquanto a pergunta não chega, o balão mostra que
+o repórter está escrevendo e Responder espera. A cena fica guardada por
+luta (`cacheColetiva`/`cacheEntrevista`): voltar do camp e ir de novo, ou
+sair da entrevista e voltar, mostra a mesma cena sem outra chamada.
+Entrevista: "Voltar ao resultado" sai sem responder (o convite continua);
+respondida, o convite vira o resumo (é o que vai pro Cartel) e "Continuar
+pra próxima luta" segue, ou volta pro resultado na última luta e com
+dilema aberto. Na coletiva, sem reação da IA a tela mostra uma frase
+neutra e o Ir pra luta, em vez de pular pra luta sem mostrar nada.
+
+**Custo:** uma chamada a mais por coletiva e por entrevista respondidas,
+só pra quem é Pro (a cena gasta ~1.300 a 1.400 tokens de entrada e ~85 de
+saída; no preço do Qwen 3.7 Flash, menos de US$ 0,0001 por cena).
+
+**Teste:** suíte `pro` reescrita pra cena (ordem das colunas, card da
+direita sem o adversário, pergunta da IA e fallback, cache, saneamento,
+variedade do molde, cartela sem repetição, etapa da entrevista, voltar,
+última luta). Dente provado: colunas trocadas, cena sem IA, tema com
+reposição e molde fixo reprovam.
+
+## Reta final para o lançamento (2026-09-28)
+
+- **Modo automático saiu** (os dois botões, painel e noite). A flag `auto`
+  continua só como gancho dos testes (`jogarCarreiraAte` roda carreiras
+  inteiras com ela); nada no jogo liga ela. `toggleAuto` foi removida. A
+  suíte `hub` reprova se `#autob`/`#noiteAuto` ou um botão "Modo
+  automático" voltar.
+- **Página Créditos saiu** (rota, link do rodapé, tela, CSS). O que a
+  licença obriga: crédito dos sons CC BY no painel da engrenagem; nota ISC
+  do Lucide dentro de `img/icones.svg`. O resto não exige crédito na tela:
+  áudio CC0, fontes servidas pelo Google Fonts, estatística pública. O
+  `README.md` do repositório continua citando o ufcstats.
+- **"Voltar à escolha do adversário" aparecia depois da luta.** O JS sempre
+  marcou `hidden` certo; a causa era CSS: `.botao{display:inline-flex}`
+  vence o `[hidden]` do navegador, então o botão ficava na tela e levava a
+  uma noite com a oferta velha. Regra global
+  `[hidden]{display:none!important}` no `estilo.css` (vale pra todo botão
+  escondido pelo JS; "Próxima luta" do painel tinha o mesmo problema ao
+  contrário). A suíte `hub` confere o estado depois da luta e a regra no
+  arquivo; conferido também no Chrome (`display:none` no painel).
+- **Orçamento é teto:** ver "Balanço".
+- **Coletiva e entrevista:** ver a seção acima.
 
 ## Histórico (2026-09-09) — aprovado, implementado
 

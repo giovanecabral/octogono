@@ -134,7 +134,7 @@ function exportar(js, nomes) {
     nomes.map(n => `try{globalThis.__x.${n}=${n};}catch(e){}`).join("\n");
 }
 const API_MOTOR = ["simulateFight", "simularRound", "mkState", "mulberry32", "rateAll", "makePercentiler",
-  "rollTable", "PAIRS", "WEIGHTS", "TOTAL_WEIGHT", "BUDGET_PCT", "TUNING",
+  "rollTable", "cartasDaMesa", "cartaMinima", "PAIRS", "WEIGHTS", "TOTAL_WEIGHT", "BUDGET_PCT", "TUNING",
   "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
   "TETO_TREINO", "RITMO_TREINO", "ATTR_TREINAVEIS",
   "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES",
@@ -411,9 +411,10 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     const escBox = env.registro.escolhaLuta;
     if (escBox && escBox.style.display !== "none") {
       /* teste explícito pedido: escolha aberta, jogador aperta "Próxima
-         luta" e liga o automático — nada pode acontecer (mesma garantia
-         que testarEscolhaLuta() prova de forma isolada; aqui é a versão
-         de ponta a ponta, com a escolha de verdade na tela). */
+         luta" — nada pode acontecer (mesma garantia que testarEscolhaLuta()
+         prova de forma isolada; aqui é a versão de ponta a ponta, com a
+         escolha de verdade na tela). O botão de modo automático saiu do
+         jogo na reta final (2026-09-28); a parte dele saiu daqui junto. */
       const fightNoAntes = UI.st().fightNo;
       env.registro.next.onclick();
       env.drenar(); await respirar();
@@ -423,17 +424,6 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
         throw new Error("clicar 'próxima luta' com a escolha aberta fechou o painel sozinho");
       if (UI.escolhaAberta())
         throw new Error("clicar 'próxima luta' com a escolha aberta reabriu a tela de adversário por baixo");
-      env.registro.autob.onclick();          // liga o automático com a escolha aberta
-      env.drenar(); await respirar();
-      if (UI.st().fightNo !== fightNoAntes)
-        throw new Error("ligar o automático com a escolha aberta avançou a luta");
-      if (escBox.style.display === "none")
-        throw new Error("ligar o automático com a escolha aberta fechou o painel sozinho");
-      if (UI.escolhaAberta())
-        throw new Error("ligar o automático com a escolha aberta reabriu a tela de adversário por baixo");
-      if (env.registro.autob.textContent !== "Parar automático")
-        throw new Error("automático não ligou (é só UI, deveria ligar mesmo com a escolha aberta)");
-      env.registro.autob.onclick();          // desliga de novo, não interfere no resto do teste
 
       /* item 6 (v2): ids dinâmicos ("el_"+id da ação, varia por round/pool),
          não mais 3 nomes fixos — acha pelo prefixo. */
@@ -454,15 +444,12 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     if (!temDilema) return;
     dilemasVistos++;
 
-    if (!env.registro.autob.disabled)
-      throw new Error("dilema aberto mas o modo automático continua clicável");
     if (!env.registro.next.disabled)
       throw new Error("dilema aberto mas a próxima luta continua clicável");
-
-    env.registro.autob.onclick();       // o clique indevido que travava tudo
+    env.registro.next.onclick();        // o clique indevido: não pode furar a trava
     env.drenar(); await respirar();
     if (!env.registro.next.disabled)
-      throw new Error("clique no automático furou a trava do dilema");
+      throw new Error("clique na próxima luta furou a trava do dilema");
 
     campo.value = "resposta de teste";
     botao.onclick();
@@ -780,8 +767,7 @@ function testarDraft(div = "lightweight") {
     while (rem.length) {
       const rows = M.rollTable(pool, rem, rng, PCT);
       rem.forEach(p => { linhas++; if (rows.filter(r => r.pair.id === p.id).every(r => r.src[p.a.key] === 0)) mortas++; });
-      const aff = rows.filter(r => r.cost <= left);
-      const shown = aff.length ? aff : [rows.reduce((m, r) => r.cost < m.cost ? r : m)];
+      const shown = M.cartasDaMesa(rows, left, rem, pool, PCT);
       const r = shown[shown.reduce((b, x, i, a) => x.cost > a[b].cost ? i : b, 0)];
       f[r.pair.a.key] = r.src[r.pair.a.key]; f[r.pair.b.key] = r.src[r.pair.b.key];
       left -= r.cost; rem = rem.filter(p => p.id !== r.pair.id);
@@ -801,6 +787,129 @@ function testarDraft(div = "lightweight") {
   if (!ok1) console.log(cinza(`         ${media > 56 ? "baixe" : "suba"} BUDGET_PCT no index.html`));
   console.log(`  ${ok2 ? verde("ok   ") : vermelho("fora ")} linhas mortas na mesa ${pmortas.toFixed(1)}%  ${cinza("tem que ficar perto de 0")}`);
   return ok1 && ok2;
+}
+
+/* ================================================================== *
+ * 3b. ORÇAMENTO (reta final, 2026-09-28) — o orçamento do draft nunca
+ *     fica negativo. Achado do dono jogando: terminou com -0.17 e ainda
+ *     via cartas de 0.79, porque sem carta que coubesse a mesa mostrava a
+ *     mais barata MESMO acima do saldo. Agora, quando nada cabe, a mesa
+ *     oferece a carta mínima de cada par que falta, de custo 0.00.
+ * ================================================================== */
+async function testarOrcamento() {
+  console.log("\n" + cinza("orçamento do draft: nunca negativo, carta mínima de custo zero quando nada cabe"));
+  const M = carregarMotor(), F = lerLutadores();
+  const R = M.rateAll(F);               // rating: o modo lenda filtra por ele
+  const falhas = [];
+  let totalFalhas = 0;
+  const falha = m => { totalFalhas++; if (falhas.length < 12) falhas.push(m); };
+  let drafts = 0, comMinima = 0;
+  for (const d of M.DIVISOES) for (const modo of ["normal", "lenda"]) {
+    let pool = R.filter(f => f.division === d.id);
+    if (modo === "lenda") pool = pool.filter(M.ehLenda);
+    if (pool.length < M.MIN_LUTADORES) continue;
+    const PCT = M.makePercentiler(pool);
+    for (let s = 0; s < 40; s++) for (const estr of ["caro", "aleatorio", "barato"]) {
+      const rng = M.mulberry32(9100 + s * 31), esc = M.mulberry32(77 + s);
+      let left = M.TOTAL_WEIGHT * M.BUDGET_PCT, rem = [...M.PAIRS], usouMinima = false;
+      const id = `${d.id}/${modo}/semente ${s}/${estr}`;
+      drafts++;
+      while (rem.length) {
+        const rows = M.rollTable(pool, rem, rng, PCT);
+        const shown = M.cartasDaMesa(rows, left, rem, pool, PCT);
+        if (!shown.length) { falha(`${id}: mesa vazia`); break; }
+        const acima = shown.filter(r => r.cost > left);
+        if (acima.length) falha(`${id}: mesa mostrou carta de ${acima[0].cost.toFixed(2)} com ${left.toFixed(2)} no bolso`);
+        if (shown.some(r => r.src.minimo)) {
+          usouMinima = true;
+          if (rows.some(r => r.cost <= left)) falha(`${id}: carta mínima apareceu com carta de verdade cabendo no bolso`);
+          if (!shown.every(r => r.src.minimo)) falha(`${id}: carta mínima misturada com carta de lutador`);
+          if (shown.length !== rem.length) falha(`${id}: ${shown.length} cartas mínimas pra ${rem.length} pares faltando`);
+          for (const r of shown) {
+            if (r.cost !== 0) falha(`${id}: carta mínima custou ${r.cost}`);
+            for (const k of [r.pair.a.key, r.pair.b.key]) {
+              const piso = Math.min(...pool.map(f => f[k]));
+              if (r.src[k] !== piso) falha(`${id}: carta mínima com ${k}=${r.src[k]}, o piso da divisão é ${piso}`);
+            }
+          }
+        }
+        const r = estr === "caro" ? shown.reduce((m, x) => x.cost > m.cost ? x : m, shown[0])
+          : estr === "barato" ? shown.reduce((m, x) => x.cost < m.cost ? x : m, shown[0])
+          : shown[Math.floor(esc() * shown.length)];
+        left -= r.cost;
+        if (left < 0) falha(`${id}: orçamento ficou em ${left.toFixed(3)}`);
+        rem = rem.filter(p => p.id !== r.pair.id);
+      }
+      if (usouMinima) comMinima++;
+    }
+  }
+  const pctMin = 100 * comMinima / drafts;
+  console.log(cinza(`  ${drafts} drafts (todas as divisões jogáveis, normal e lenda, 3 jeitos de escolher); ` +
+    `${pctMin.toFixed(0)}% chegaram a precisar da carta mínima`));
+  if (!comMinima) falha("nenhum draft chegou na carta mínima: o teste não exercitou o caso que importa");
+
+  /* a TELA de verdade: renderDraft() no DOM falso, sempre clicando a carta
+     mais cara que aparece (o jeito mais rápido de zerar o bolso) */
+  const RJ = JSON.stringify(R);
+  const abrirDraft = seed => {
+    const X = sandboxCarreira();
+    X.sb.__RJ = RJ;
+    X.run(`(function(){
+      ROSTER=JSON.parse(globalThis.__RJ);
+      CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+      DIVISION="lightweight"; MODO="normal"; SEED=${seed};
+      RIVAL_ATIVADO=false; RIVAL_NOME_ESCOLHIDO=null; ROSTO=null;
+      startDraft("TesteBot");
+    })()`);
+    return X;
+  };
+  const cartasNaTela = X => ((X.registro.cards || {}).children || []).filter(n => (n.className || "").split(" ").includes("card"));
+  const custoDa = n => Number((/class="cost"><span>custo<\/span><b>([\d.]+)<\/b>/.exec(n.innerHTML) || [])[1]);
+  let telasComMinima = 0;
+  for (const seed of [4242, 4343, 4444, 4545, 4646, 4747, 4848, 4949]) {
+    const X = abrirDraft(seed);
+    for (let passo = 0; passo < 4; passo++) {
+      const cartas = cartasNaTela(X), bolso = X.run("budgetLeft");
+      if (!cartas.length) { falha(`tela ${seed}: escolha ${passo + 1} sem carta nenhuma`); break; }
+      const custos = cartas.map(custoDa);
+      if (custos.some(c => !(c <= Number(bolso.toFixed(2)))))
+        falha(`tela ${seed}: carta de ${Math.max(...custos).toFixed(2)} na tela com ${bolso.toFixed(2)} de orçamento`);
+      if (cartas.some(n => n.innerHTML.includes("Atributos mínimos"))) telasComMinima++;
+      delete X.registro.cards;           // a próxima montagem nasce num nó novo
+      cartas[custos.indexOf(Math.max(...custos))].onclick();
+      const depois = X.run("budgetLeft");
+      if (depois < 0) falha(`tela ${seed}: orçamento ficou em ${depois.toFixed(3)} depois da escolha ${passo + 1}`);
+    }
+  }
+  if (!telasComMinima) falha("a tela nunca mostrou a carta mínima zerando o bolso");
+
+  /* bolso zerado na marra: as 4 cartas da mesa são as mínimas, custo 0.00,
+     e escolher uma não mexe no orçamento */
+  {
+    const X = abrirDraft(5151);
+    delete X.registro.cards;
+    X.run("budgetLeft=0; renderDraft();");
+    const cartas = cartasNaTela(X);
+    if (cartas.length !== 4) falha(`bolso zerado: ${cartas.length} cartas na mesa, esperava as 4 mínimas`);
+    if (!cartas.every(n => n.innerHTML.includes("Atributos mínimos") && custoDa(n) === 0))
+      falha("bolso zerado: alguma carta não é a mínima de custo 0.00");
+    if (cartas.length) {
+      delete X.registro.cards;
+      cartas[0].onclick();
+      const r = JSON.parse(X.run(`JSON.stringify(picks[0]?{b:budgetLeft,from:picks[0].from,
+        ok:PAIRS.filter(p=>p.label===picks[0].pair.label).every(p=>[p.a.key,p.b.key].every(k=>me[k]===Math.min(...POOL.map(f=>f[k]))))}:{semEscolha:true})`));
+      if (r.semEscolha) falha("bolso zerado: clicar a carta não registrou escolha nenhuma (carta acima do saldo?)");
+      else if (r.b !== 0) falha(`bolso zerado: escolher a carta mínima deixou o orçamento em ${r.b}`);
+      if (!r.semEscolha && r.from !== "mínimo da divisão") falha(`bolso zerado: a ficha registrou "${r.from}" como origem`);
+      if (!r.semEscolha && !r.ok) falha("bolso zerado: o lutador não ficou com o piso da divisão nos dois atributos da carta");
+    }
+  }
+
+  for (const f of falhas) console.log(vermelho("  " + f));
+  if (totalFalhas > falhas.length) console.log(vermelho(`  ... e mais ${totalFalhas - falhas.length}`));
+  const ok = !totalFalhas;
+  console.log(ok ? verde("  orçamento nunca negativo, carta mínima certa na mesa e na tela") : vermelho("  orçamento furado"));
+  return ok;
 }
 
 /* ================================================================== *
@@ -826,8 +935,7 @@ function testarDesafio(div = "lightweight") {
     let left = M.TOTAL_WEIGHT * M.BUDGET_PCT, rem = [...M.PAIRS];
     while (rem.length) {
       const rows = M.rollTable(pool, rem, rng, PCT);
-      const aff = rows.filter(r => r.cost <= left);
-      const shown = aff.length ? aff : [rows.reduce((m, r) => r.cost < m.cost ? r : m)];
+      const shown = M.cartasDaMesa(rows, left, rem, pool, PCT);
       const r = shown[0];
       left -= r.cost; rem = rem.filter(p => p.id !== r.pair.id);
     }
@@ -937,8 +1045,7 @@ function testarEscolhas(div = "lightweight") {
     const f={name:"P",division:DIVISION,sapm:3.2};
     while(rem.length){
       const rows=rollTable(POOL,rem,rng,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
       left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -1072,8 +1179,7 @@ function testarDinheiro(div = "lightweight") {
     const f={name:"P",division:DIVISION,sapm:3.2};
     while(rem.length){
       const rows=rollTable(POOL,rem,rng,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
       left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -1235,8 +1341,7 @@ function testarEspera(div = "lightweight") {
     const f={name:"P",division:DIVISION,sapm:3.2};
     while(rem.length){
       const rows=rollTable(POOL,rem,rng,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
       left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -1326,8 +1431,7 @@ function testarCinturao(div = "heavyweight") {
       const f={name:"TesteBot",division:DIVISION,sapm:3.2};
       while(rem.length){
         const rows=rollTable(POOL,rem,rng,PCT);
-        const aff=rows.filter(r=>r.cost<=left);
-        const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+        const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
         const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
         f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
         left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -2399,8 +2503,7 @@ function testarFrequenciaMomentos(N = 30) {
     const f={name:"TesteBot",division:DIVISION,sapm:3.2};
     while(rem.length){
       const rows=rollTable(POOL,rem,rngD,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
       left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -2422,7 +2525,7 @@ function testarFrequenciaMomentos(N = 30) {
   document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
   document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
   document.getElementById("escolhaLuta").style.display="none";
-  document.getElementById("controls"); document.getElementById("next"); document.getElementById("autob");
+  document.getElementById("controls"); document.getElementById("next");
   globalThis.__ehPlaying=()=>playing;
   globalThis.__ehDilema=()=>dilemaAberto;
   globalThis.__campo=()=>document.getElementById("dilresp");
@@ -2554,8 +2657,7 @@ function testarFrequenciaConquistas(N = 150, modo = "normal", dilrespTexto = "ac
     const f={name:"TesteBot",division:DIVISION,sapm:3.2};
     while(rem.length){
       const rows=rollTable(POOL,rem,rngD,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
       left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -2577,7 +2679,7 @@ function testarFrequenciaConquistas(N = 150, modo = "normal", dilrespTexto = "ac
   document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
   document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
   document.getElementById("escolhaLuta").style.display="none";
-  document.getElementById("controls"); document.getElementById("next"); document.getElementById("autob");
+  document.getElementById("controls"); document.getElementById("next");
   globalThis.__ehPlaying=()=>playing;
   globalThis.__ehDilema=()=>dilemaAberto;
   globalThis.__campo=()=>document.getElementById("dilresp");
@@ -2662,8 +2764,9 @@ function testarFrequenciaConquistas(N = 150, modo = "normal", dilrespTexto = "ac
    pausa ainda NÃO existe (é o próximo passo, não este commit). O que este
    teste prova é a invariante que o ponto de pausa vai se apoiar em cima:
    `playing` já bloqueia `nextFight()` sozinho, sem flag nova nenhuma —
-   ver o guard em nextFight() ("...||playing||...") e o de toggleAuto()
-   ("if(auto&&!playing)nextFight()"). É EXATAMENTE a classe do bug
+   ver o guard em nextFight() ("...||playing||..."). (O cenário do
+   toggleAuto() saiu junto com o botão de modo automático, reta final
+   2026-09-28.) É EXATAMENTE a classe do bug
    histórico (clicar automático com o dilema aberto rodava nextFight() por
    cima e travava a carreira — ver o comentário em testarInterface), só
    que aplicada ao estado que o ponto de pausa vai herdar (`playing===true`
@@ -2835,29 +2938,6 @@ function testarEscolhaLuta() {
     passo("playing=true: nextFight() não incrementa fightNo (não rodou por cima)",
       fightNo===fightNoAntes);
 
-    /* cenário 2: exatamente o bug histórico, só que com playing em vez de
-       dilemaAberto — clicar "automático" NO MEIO de playing=true não pode
-       disparar nextFight() por baixo do pano. auto pode virar true (é só
-       um toggle de UI), mas nextFight() não pode rodar por causa disso. */
-    playing=true; auto=false;
-    const fightNoAntesToggle=fightNo;
-    toggleAuto();
-    passo("toggleAuto() durante playing=true: auto vira true normalmente (é só UI)",
-      auto===true);
-    passo("toggleAuto() durante playing=true: NÃO disparou nextFight() por baixo (fightNo intocado)",
-      fightNo===fightNoAntesToggle);
-
-    /* cenário 3 (controle): com playing=false e auto=true, toggleAuto()
-       PODE disparar nextFight() — é o comportamento normal fora da
-       narração, não pode ter quebrado. Só confirma que fightNo tentou
-       avançar (nextFight() chama candidatos(), que aqui não tem
-       RANKING/LADDER montado e lança — o que já prova que tentou rodar;
-       não é o alvo deste teste medir o resultado, só o disparo). */
-    playing=false; auto=false;
-    let tentouRodar=false;
-    try{ toggleAuto(); }catch(e){ tentouRodar=true; }
-    passo("controle: playing=false permite toggleAuto() tentar nextFight() (comportamento normal preservado)",
-      tentouRodar);
   }catch(e){
     passos.push({nome:"erro inesperado: "+e.message,ok:false});
   }
@@ -3038,8 +3118,7 @@ function testarNarracaoResultado(N = 8) {
     const f={name:"TesteBot",division:DIVISION,sapm:3.2};
     while(rem.length){
       const rows=rollTable(POOL,rem,rngD,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       f[r.pair.a.key]=r.src[r.pair.a.key]; f[r.pair.b.key]=r.src[r.pair.b.key];
       left-=r.cost; rem=rem.filter(p=>p.id!==r.pair.id);
@@ -3061,7 +3140,7 @@ function testarNarracaoResultado(N = 8) {
   document.getElementById("app"); document.getElementById("stage"); document.getElementById("phone");
   document.getElementById("live"); document.getElementById("bouts"); document.getElementById("ficha");
   document.getElementById("escolhaLuta").style.display="none";
-  document.getElementById("controls"); document.getElementById("next"); document.getElementById("autob");
+  document.getElementById("controls"); document.getElementById("next");
   globalThis.__ehPlaying=()=>playing;
   globalThis.__ehDilema=()=>dilemaAberto;
   globalThis.__campo=()=>document.getElementById("dilresp");
@@ -4907,29 +4986,67 @@ function testarColetivaEntrevista() {
         lesao:null,tituloEstaLuta:false,coletivaHype:1,coletivaPressao:null,entrevistasFeitas:0};
     fightNo=6;
 
-    /* ---------- COLETIVA: Pro, resposta boa, números clampados ---------- */
+    /* ---------- COLETIVA (reta final, 2026-09-28): a cena ----------
+       Mapa do dono: lutador à esquerda, imprensa à direita (foto do lugar,
+       nunca lutador real), conversa no meio, o que aconteceu embaixo. A
+       pergunta vem da IA (coletivaCena), com tema forçado e recentes. */
+    const temCls=(n,c)=>(n.className||"").split(" ").includes(c);
+    const nosDe=(raiz,acc=[])=>{if(!raiz)return acc;acc.push(raiz);(raiz.children||[]).forEach(c=>nosDe(c,acc));return acc;};
+    const tick=async()=>{for(let k=0;k<4;k++)await Promise.resolve();};
     let lutarChamado=null;
     lutar=(escolhido,camp)=>{lutarChamado={escolhido,camp};};
     meuPro=true;
-    let dataRecebida=null;
-    ai=async(kind,data)=>{dataRecebida={kind,data};
+    const chamadas=[];
+    let respostaCena={evento:"O treinador dele pegou o microfone pra dizer que você foge da troca.",
+      pergunta:"O treinador dele disse que você foge da troca. Você foge?"};
+    ai=async(kind,data)=>{chamadas.push({kind,data});
+      if(kind==="coletivaCena")return respostaCena;
       return{reacao:"Ele revirou os olhos e saiu resmungando pro microfone.",hype:5,pressao:-3,atributoPressao:"tdDef"};};
+    fightNo=6;
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    const box=document.getElementById("escolha");
+    const cena=box.children.find(n=>temCls(n,"cena-imprensa"));
+    const colunas=cena?cena.children.map(n=>n.className):[];
+    passo("coletiva: cena em 3 colunas na ordem do mapa (lutador, conversa, imprensa)",
+      !!cena&&temCls(cena,"cena-coletiva")&&colunas.length===3&&colunas[0].includes("cena-jogador")
+      &&colunas[1].includes("cena-meio")&&colunas[2].includes("cena-ia"));
+    const jogCard=cena&&cena.children[0],iaCard=cena&&cena.children[2];
+    passo("coletiva: card da esquerda tem o boneco do jogador e o nome dele",
+      !!jogCard&&/<svg/.test(jogCard.innerHTML)&&jogCard.innerHTML.includes("TesteBot"));
+    passo("coletiva: card da direita é a imprensa (foto do lugar + repórter fictício), nunca o adversário",
+      !!iaCard&&iaCard.innerHTML.includes("img/coletiva-mesa.webp")&&REPORTERES.some(r=>iaCard.innerHTML.includes(r))
+      &&!iaCard.innerHTML.includes(opp.name));
+    passo("coletiva Pro: enquanto a pergunta não chega, o balão da IA mostra que está escrevendo e o Responder espera",
+      /digitando/.test(document.getElementById("colpergunta").innerHTML)&&document.getElementById("colgo").disabled===true);
+    await tick();
+    const pedidoCena=chamadas.find(c=>c.kind==="coletivaCena");
+    passo("coletiva Pro: pede a cena à IA com tema da lista, repórter, camp e recentes",
+      !!pedidoCena&&TEMAS_COLETIVA.includes(pedidoCena.data.tema)&&/\\(/.test(pedidoCena.data.reporter)
+      &&pedidoCena.data.camp==="Boxe"&&Array.isArray(pedidoCena.data.recentes)&&pedidoCena.data.opp==="Rival");
+    passo("coletiva Pro: a pergunta da IA aparece no balão da IA e o evento em cima",
+      document.getElementById("colpergunta").innerHTML.includes("Você foge?")
+      &&document.getElementById("colevento").innerHTML.includes("pegou o microfone")&&!document.getElementById("colevento").hidden);
+    passo("coletiva Pro: com a pergunta na tela, o Responder libera", document.getElementById("colgo").disabled===false);
     /* fase 8: no celular o teclado virtual cobria o botão */
     const rolaAteBotao=(campoId,botaoId)=>{let rolou=false;const b=document.getElementById(botaoId);b.scrollIntoView=()=>{rolou=true;};
       const c=document.getElementById(campoId);if(typeof c.onfocus!=="function")return false;c.onfocus();return rolou;};
-    passo("coletiva: focar o campo rola até o Provocar (teclado do celular cobria o botão)",rolaAteBotao("colresp","colgo"));
+    passo("coletiva: focar o campo rola até o Responder (teclado do celular cobria o botão)",rolaAteBotao("colresp","colgo"));
     document.getElementById("colresp").value="vai ver quando o sino tocar";
     await document.getElementById("colgo").onclick();
-    passo("coletiva Pro: manda kind certo e o texto do jogador em 'resposta'",
-      dataRecebida&&dataRecebida.kind==="coletiva"&&dataRecebida.data.resposta==="vai ver quando o sino tocar");
+    const reacaoCol=chamadas.filter(c=>c.kind==="coletiva").pop();
+    passo("coletiva Pro: a reação recebe a pergunta e o evento da cena, e o texto do jogador em 'resposta'",
+      !!reacaoCol&&reacaoCol.data.resposta==="vai ver quando o sino tocar"&&reacaoCol.data.pergunta===respostaCena.pergunta
+      &&reacaoCol.data.evento===respostaCena.evento);
     passo("coletiva Pro: manda o nome do adversário e o record atual",
-      dataRecebida.data.opp==="Rival"&&dataRecebida.data.record==="5-1");
+      reacaoCol.data.opp==="Rival"&&reacaoCol.data.record==="5-1");
     passo("coletiva: hype trava no teto 1.20 (resposta mandou 5)", st.coletivaHype===1.20);
     passo("coletiva: pressao trava no piso 0.90 (resposta mandou -3)",
       st.coletivaPressao&&st.coletivaPressao.mult===0.90);
     passo("coletiva: atributoPressao válido vira st.coletivaPressao.atributo",
       st.coletivaPressao&&st.coletivaPressao.atributo==="tdDef");
+    passo("coletiva: a resposta vai pro balão do jogador e a reação pro 'o que aconteceu'",
+      document.getElementById("colbalao").innerHTML.includes("vai ver quando o sino tocar")
+      &&document.getElementById("coldesfecho").innerHTML.includes("revirou os olhos")&&!document.getElementById("coldesfecho").hidden);
     __drenarAgora();   // 2026-09-28: sem tempo fixo, a reação fica na tela até o jogador mandar
     passo("coletiva: com a reação na tela, a luta NÃO começa sozinha (dá tempo de ler)", !lutarChamado);
     const irLuta=document.getElementById("colseguir");
@@ -4938,138 +5055,257 @@ function testarColetivaEntrevista() {
     passo("coletiva: seguir() chama lutar() com o MESMO escolhido/camp da tela",
       lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
 
-    /* ---------- COLETIVA: atributoPressao inválido não vira pressão ---------- */
-    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
-    ai=async()=>({reacao:"Ele nem comentou nada de mais.",hype:1,pressao:1,atributoPressao:"velocidade_da_luz"});
+    /* ---------- COLETIVA: a cena fica guardada na luta (voltar e voltar não gasta outra chamada) ---------- */
+    fightNo=7;chamadas.length=0;
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
+    const perg1=document.getElementById("colpergunta").innerHTML;
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
+    passo("coletiva: reabrir a mesma coletiva (Voltar do camp e ir de novo) não pede outra cena à IA",
+      chamadas.filter(c=>c.kind==="coletivaCena").length===1);
+    passo("coletiva: e mostra a MESMA pergunta", document.getElementById("colpergunta").innerHTML===perg1);
+
+    /* ---------- COLETIVA: resposta atrasada de outra carreira ---------- */
+    fightNo=30;
+    let soltar;ai=async(kind)=>kind==="coletivaCena"?new Promise(r=>{soltar=()=>r({evento:"",pergunta:"Pergunta atrasada da carreira anterior?"});}):null;
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    await tick();                           // a cena já foi pedida e está no ar
+    CARREIRA_TOKEN++;                       // jogador saiu e começou outra carreira
+    const recentesAntes=JSON.stringify(st.cenasRecentes||{});
+    soltar();await tick();await tick();
+    passo("cena: resposta da IA que chega depois de trocar de carreira não escreve nos recentes da carreira nova",
+      JSON.stringify(st.cenasRecentes||{})===recentesAntes&&!document.getElementById("colpergunta").innerHTML.includes("atrasada"));
+    ai=async(kind,data)=>{chamadas.push({kind,data});
+      if(kind==="coletivaCena")return respostaCena;
+      return{reacao:"Ele revirou os olhos e saiu resmungando pro microfone.",hype:5,pressao:-3,atributoPressao:"tdDef"};};
+
+    /* ---------- COLETIVA: IA fora, cena inválida ou repetida caem no molde local ---------- */
+    const perguntaLocal=()=>{const h=document.getElementById("colpergunta").innerHTML;return h.includes("balao-txt")&&!h.includes("Você foge?");};
+    fightNo=8;respostaCena=null;
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
+    passo("coletiva: IA sem resposta, a pergunta sai do molde local (nunca fica vazia)", perguntaLocal());
+    fightNo=9;respostaCena={evento:"Tudo normal.",pergunta:"eu me corto quando fico ansioso?"};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
+    passo("coletiva: cena da IA com conteúdo inseguro cai no molde local", perguntaLocal());
+    fightNo=10;respostaCena={evento:"x",pergunta:"O treinador dele disse que você foge da troca. Você foge?"};
+    st.cenasRecentes={coletiva:["O treinador dele disse que você foge da troca. Você foge?"]};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
+    passo("coletiva: pergunta da IA igual a uma recente cai no molde local", perguntaLocal());
+    fightNo=11;respostaCena={evento:"Ele chegou atrasado. Ele vai perder por nocaute no primeiro round.",pergunta:"Ele chegou atrasado de propósito?"};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
+    passo("coletiva: o evento da IA perde a frase que afirma o resultado da luta futura",
+      document.getElementById("colevento").innerHTML.includes("chegou atrasado")&&!document.getElementById("colevento").innerHTML.includes("nocaute"));
+
+    /* medido no modelo de produção: prefixo com nome de repórter, pergunta em
+       terceira pessoa e o lutador do JOGADOR agindo no evento */
+    passo("cena: prefixo com nome de repórter sai da pergunta da IA",
+      limparPergunta("Renata Brum: Kayo, seu cartel é 5-3. Isso pesa?")==="Kayo, seu cartel é 5-3. Isso pesa?"
+      &&limparPergunta("Hugo Lessa, do Canal Chão e Pancada, pergunta: você aguenta?")==="Você aguenta?");
+    passo("cena: pergunta em terceira pessoa ('Fulano pergunta se') é descartada",
+      limparPergunta("Lia Monteverde pergunta se ele vai aguentar.")==="");
+    passo("cena: aspas em volta da pergunta saem (a tela já põe as da fala)",
+      limparPergunta("'Kayo, o valor é baixo?'")==="Kayo, o valor é baixo?"&&limparPergunta("“Você aceita?”")==="Você aceita?");
+    passo("cena: pergunta que começa pelo nome do lutador continua inteira",
+      limparPergunta("Kayo, você foge da troca?")==="Kayo, você foge da troca?");
+    passo("cena: evento em que o lutador do JOGADOR age é descartado (quem decide o que ele faz é o jogador)",
+      (()=>{const n=me.name;me.name="Kayo Brasa";const a=eventoDosOutros("Kayo Brasa ignorou o microfone da mesa.");
+        const b=eventoDosOutros("O treinador dele riu da pergunta.");me.name=n;return a===""&&b==="O treinador dele riu da pergunta.";})());
+
+    /* ---------- COLETIVA: variedade do molde local (o problema que o dono apontou) ---------- */
+    const temasVistos=[];
+    st.cartelaCena=null;
+    for(let n=20;n<30;n++){fightNo=n;temasVistos.push(proximoTemaCena("coletiva"));}
+    passo("coletiva: os 10 primeiros temas da carreira nunca se repetem (cartela sem reposição)",
+      new Set(temasVistos).size===10);
+    const perguntasLocais=new Set(TEMAS_COLETIVA.map((t,n)=>{fightNo=40+n;return cenaColetivaLocal(opp,{nome:"Boxe"},t,{f:opp}).pergunta;}));
+    passo("coletiva: molde local muda com o tema, mesmo adversário (antes eram 6 frases fixas por adversário)",
+      perguntasLocais.size>=9);
+    passo("coletiva: molde local cita fato da luta (cartel, camp ou estilo)",
+      TEMAS_COLETIVA.some(t=>/5-1/.test(cenaColetivaLocal(opp,{nome:"Boxe"},t,{f:opp}).pergunta))
+      &&/boxe/.test(cenaColetivaLocal(opp,{nome:"Boxe"},"o camp escolhido",{f:opp}).pergunta));
+
+    /* ---------- COLETIVA: atributoPressao inválido não vira pressão ---------- */
+    fightNo=12;respostaCena=null;
+    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
+    ai=async(kind)=>kind==="coletivaCena"?null:({reacao:"Ele nem comentou nada de mais.",hype:1,pressao:1,atributoPressao:"velocidade_da_luz"});
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
     document.getElementById("colresp").value="beleza";
     await document.getElementById("colgo").onclick();
     passo("coletiva: atributoPressao fora da lista de atributos válidos vira null (não quebra)",
       st.coletivaPressao===null);
 
     /* ---------- COLETIVA: CONTEUDO_INSEGURO descarta o j INTEIRO ---------- */
-    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
+    fightNo=13;st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
     let chamouAiInseguro=false;
-    ai=async()=>{chamouAiInseguro=true;return{reacao:"ok",hype:1.2,pressao:.9,atributoPressao:"nenhum"};};
-    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    ai=async(kind)=>{if(kind==="coletivaCena")return null;chamouAiInseguro=true;return{reacao:"ok",hype:1.2,pressao:.9,atributoPressao:"nenhum"};};
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
     document.getElementById("colresp").value="eu me corto quando fico ansioso, isso não muda nada";
     await document.getElementById("colgo").onclick();
     passo("coletiva: texto inseguro do JOGADOR corta ANTES de chamar a IA (mesma rede de baixo do dilema)",
       !chamouAiInseguro);
     passo("coletiva: sem chamada de IA, hype/pressao ficam neutros", st.coletivaHype===1&&st.coletivaPressao===null);
-    passo("coletiva: mesmo sem reacao, seguir() ainda roda (a luta nunca trava)", !!lutarChamado);
+    passo("coletiva: sem reação, 'o que aconteceu' mostra a frase neutra e o Ir pra luta segue (a luta nunca trava)",
+      /assessoria/.test(document.getElementById("coldesfecho").innerHTML)&&!!document.getElementById("colseguir").onclick
+      &&(document.getElementById("colseguir").onclick(),!!lutarChamado));
 
     /* ---------- COLETIVA: semResultadoDeLuta corta só a frase ofensora ---------- */
-    st.coletivaHype=1;st.coletivaPressao=null;
-    ai=async()=>({reacao:"Ele ficou irritado com a provocação. Vai perder por nocaute no primeiro round, aposto.",
+    fightNo=14;st.coletivaHype=1;st.coletivaPressao=null;
+    ai=async(kind)=>kind==="coletivaCena"?null:({reacao:"Ele ficou irritado com a provocação. Vai perder por nocaute no primeiro round, aposto.",
       hype:1.1,pressao:.95,atributoPressao:"nenhum"});
-    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
+    telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});await tick();
     document.getElementById("colresp").value="ele não passa do primeiro round";
     await document.getElementById("colgo").onclick();
-    const boxColetiva=document.getElementById("escolha");
+    const desfechoCol=document.getElementById("coldesfecho").innerHTML;
     passo("coletiva: RESULTADO_LUTA corta a frase que afirma quem ganha a luta futura",
-      !boxColetiva.innerHTML.includes("Vai perder por nocaute"));
+      !desfechoCol.includes("Vai perder por nocaute"));
     passo("coletiva: a frase SEGURA da mesma reacao continua aparecendo",
-      boxColetiva.innerHTML.includes("Ele ficou irritado"));
+      desfechoCol.includes("Ele ficou irritado"));
 
     /* ---------- COLETIVA: sem meuPro, VITRINE (2026-09-22, item 5) ----------
-       Item 6 (pagamento) existe e está no ar — grátis TEM que ver que a
-       coletiva existe, senão o plano não vende sozinho. telaColetiva()
-       mostra a mesma tela pra todo mundo agora; só o clique em
-       "Provocar" que diverge (abre oferta em vez de chamar a IA). */
-    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
+       Grátis TEM que ver que a coletiva existe: a cena aparece inteira,
+       com a pergunta do molde local (nunca a IA); a resposta fica travada
+       pelo bloqueioPro e "Pular" fica fora dele. */
+    fightNo=15;st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;
     meuPro=false;
     let chamouAiGratis=false;
     ai=async()=>{chamouAiGratis=true;return null;};
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
     passo("coletiva sem meuPro: mostra a tela (não pula pra lutar())", !lutarChamado);
-    /* Revamp fase 5: a vitrine virou o componente único bloqueioPro()
-       (spec seção 9): a área de provocar aparece a 35%, inert, com o selo
-       Assine o Pro por cima; "Pular" fica fora do bloqueio. */
-    const temCls=(n,c)=>(n.className||"").split(" ").includes(c);
-    const travaCol=document.getElementById("escolha").children.find(n=>temCls(n,"bloqueio-pro"));
-    passo("coletiva sem meuPro: Provocar fica dentro do bloqueioPro (selo Assine o Pro, área inert)",
+    passo("coletiva sem meuPro: a pergunta do molde local já está no balão da IA",
+      document.getElementById("colpergunta").innerHTML.includes("balao-txt"));
+    const travaCol=document.getElementById("colbalao").children.find(n=>temCls(n,"bloqueio-pro"));
+    passo("coletiva sem meuPro: a resposta fica dentro do bloqueioPro (selo Assine o Pro, área inert)",
       !!travaCol&&travaCol.children.some(n=>temCls(n,"selo-assine"))
       &&travaCol.children.some(n=>temCls(n,"bloqueado")&&n.inert===true));
     document.getElementById("colresp").value="ele não passa do primeiro round";
-    document.getElementById("colgo").onclick();
-    passo("coletiva sem meuPro: Provocar acionado por fora da tela NUNCA chama a IA", !chamouAiGratis);
-    passo("coletiva sem meuPro: Provocar não segue pra luta sozinho", !lutarChamado);
+    await document.getElementById("colgo").onclick();
+    await tick();
+    passo("coletiva sem meuPro: nem a cena nem a resposta chamam a IA", !chamouAiGratis);
+    passo("coletiva sem meuPro: Responder não segue pra luta sozinho", !lutarChamado);
     document.getElementById("colpular").onclick();
     passo("coletiva sem meuPro: 'Pular' fica fora do bloqueio e chama lutar() com o mesmo escolhido/camp",
       !!lutarChamado&&lutarChamado.escolhido.f===opp&&lutarChamado.camp.nome==="Boxe");
 
     /* ---------- COLETIVA: 'Pular' não mexe em nada, segue direto ---------- */
-    st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;meuPro=true;
+    fightNo=16;st.coletivaHype=1;st.coletivaPressao=null;lutarChamado=null;meuPro=true;
     let chamouAiPular=false;
-    ai=async()=>{chamouAiPular=true;return null;};
+    ai=async(kind)=>{if(kind!=="coletivaCena")chamouAiPular=true;return null;};
     telaColetiva({f:opp,ganho:.08},{nome:"Boxe"});
     document.getElementById("colpular").onclick();
-    passo("coletiva: 'Pular' não chama a IA", !chamouAiPular);
+    await tick();
+    passo("coletiva: 'Pular' não chama a reação da IA", !chamouAiPular);
     passo("coletiva: 'Pular' ainda assim chama lutar()", !!lutarChamado);
 
     /* ================= ENTREVISTA ================= */
     const bouts=document.getElementById("bouts");
     const r={method:"Nocaute",round:1,clock:"3:12"};
 
-    /* ---------- ENTREVISTA: Pro, resposta boa, payload certo ---------- */
+    /* ---------- ENTREVISTA: Pro, cena, resposta boa, payload certo ---------- */
+    fightNo=6;
     st.lesao={atributo:"strDef",nome:"Ombro travado"};
     st.dinheiro=0;st.followers=8000;st.fan=5;meuPro=true;
-    dataRecebida=null;
-    ai=async(kind,data)=>{dataRecebida={kind,data};
-      return{reacao:"A sala riu junto: 'sentir, senti — mas parar era pior.' Fechou um patrocínio pequeno com uma loja da cidade.",
+    chamadas.length=0;
+    let cenaEnt={evento:"O médico interrompeu pra olhar o supercílio antes da primeira pergunta.",
+      pergunta:"Você lutou com o ombro travado e fechou no primeiro round. Em que momento esqueceu a dor?"};
+    ai=async(kind,data)=>{chamadas.push({kind,data});
+      if(kind==="entrevistaCena")return cenaEnt;
+      return{reacao:"A sala riu junto: 'sentir, senti, mas parar era pior.' Fechou um patrocínio pequeno com uma loja da cidade.",
         fa:2.5,seguidores:.8,dinheiro:.3};};
     renderBotaoEntrevista(bouts,opp,r,false,true,2,1,false);
-    const btnEnt=bouts.children[bouts.children.length-1].children[0];
-    btnEnt.onclick();
+    const wrap6=bouts.children[bouts.children.length-1];
+    wrap6.children[0].onclick();
+    passo("entrevista: 'Dar entrevista' abre entrevistaAberta=true", entrevistaAberta===true);
+    passo("entrevista: abre como etapa própria da noite (fundo do lugar da entrevista)", noiteEtapa==="entrevista");
+    const cenaE=document.getElementById("escolha").children.find(n=>temCls(n,"cena-imprensa"));
+    passo("entrevista: mesma cena do mapa (lutador, conversa, imprensa com o microfone)",
+      !!cenaE&&temCls(cenaE,"cena-entrevista")&&cenaE.children.length===3&&temCls(cenaE.children[0],"cena-jogador")
+      &&cenaE.children[2].innerHTML.includes("img/entrevista-microfone.webp"));
+    await tick();
+    const pedidoEnt=chamadas.find(c=>c.kind==="entrevistaCena");
+    passo("entrevista: pede a cena à IA com o fato obrigatório por extenso e um ângulo da lista",
+      !!pedidoEnt&&typeof pedidoEnt.data.fato==="string"&&pedidoEnt.data.fato.length>10&&ANGULOS_ENTREVISTA.includes(pedidoEnt.data.angulo)
+      &&/\\(/.test(pedidoEnt.data.reporter));
+    passo("entrevista: lesão vence método no fato obrigatório (prioridade fixa continua valendo)",
+      /lutou com/.test(pedidoEnt.data.fato));
+    passo("entrevista: sem lesão, o fato por extenso do nocaute cita round, tempo e quedas",
+      /venceu por nocaute no round 1, aos 3:12 \\(2 quedas aplicadas, 1 sofridas\\)/.test(fatoDaEntrevista("nocaute",true,r,null,2,1)));
+    passo("entrevista: a pergunta da IA aparece no balão da IA",
+      document.getElementById("entpergunta").innerHTML.includes("esqueceu a dor"));
     passo("entrevista: focar o campo rola até o Responder (teclado do celular cobria o botão)",rolaAteBotao("entresp","entgo"));
     document.getElementById("entresp").value="sentir, senti, mas não ia parar";
     await document.getElementById("entgo").onclick();
-    passo("entrevista Pro: manda kind certo e a resposta do jogador",
-      dataRecebida&&dataRecebida.kind==="entrevista"&&dataRecebida.data.resposta==="sentir, senti, mas não ia parar");
+    const reacaoEnt=chamadas.filter(c=>c.kind==="entrevista").pop();
+    passo("entrevista Pro: manda kind certo, a resposta do jogador e a pergunta/evento da cena",
+      !!reacaoEnt&&reacaoEnt.data.resposta==="sentir, senti, mas não ia parar"&&reacaoEnt.data.pergunta===cenaEnt.pergunta
+      &&reacaoEnt.data.evento===cenaEnt.evento);
     passo("entrevista Pro: manda método/round/clock da luta que ACABOU de acontecer",
-      dataRecebida.data.metodo==="Nocaute"&&dataRecebida.data.round===1&&dataRecebida.data.clock==="3:12");
+      reacaoEnt.data.metodo==="Nocaute"&&reacaoEnt.data.round===1&&reacaoEnt.data.clock==="3:12");
     passo("entrevista Pro: manda quedas aplicadas/sofridas certas (td0/tdt0)",
-      dataRecebida.data.tdApl===2&&dataRecebida.data.tdSof===1);
+      reacaoEnt.data.tdApl===2&&reacaoEnt.data.tdSof===1);
     passo("entrevista Pro: manda a lesão ativa formatada (ROTULO_ATTR)",
-      typeof dataRecebida.data.lesao==="string"&&dataRecebida.data.lesao.includes("machucado"));
+      typeof reacaoEnt.data.lesao==="string"&&reacaoEnt.data.lesao.includes("machucado"));
     passo("entrevista: fã clampado corretamente (2.5 dentro do teto 2)", st.fan===5+2);
-    passo("entrevista: seguidores aplicado (0.8 dentro do teto 0.50 — trava em 0.50)",
+    passo("entrevista: seguidores aplicado (0.8 dentro do teto 0.50, trava em 0.50)",
       st.followers===Math.round(8000*(1+0.50)));
     passo("entrevista: dinheiro aplicado (reacao menciona 'patrocínio')",
       st.dinheiro===Math.round(RENDA_BASE*.3));
     passo("entrevistasFeitas incrementou", st.entrevistasFeitas===1);
+    passo("entrevista: 'o que aconteceu' mostra a reação e os números",
+      document.getElementById("entdesfecho").innerHTML.includes("patrocínio")&&/seguidores/.test(document.getElementById("entdesfecho").innerHTML));
+    passo("entrevista: o convite vira o resumo da entrevista no embrulho da luta (é o que vai pro Cartel)",
+      /Entrevista/.test(wrap6.innerHTML)&&wrap6.innerHTML.includes("esqueceu a dor"));
 
-    /* ---------- ENTREVISTA: "Continuar" trava/libera nextFight (2026-09-24) ----------
-       Achado jogando: "não tá dando tempo de ler" — sem isto, o
-       automático ou um clique cedo em 'Próxima luta' cortava a resposta
-       da IA. entrevistaAberta abre no clique de "Dar entrevista" e só
-       fecha quando "Continuar" é clicado, chamando nextFight() de
-       verdade (aqui trocado por um contador — a suíte de coletiva/
-       entrevista não monta draft/LADDER, testar nextFight() de ponta a
-       ponta é papel da suíte de interface). */
+    /* ---------- ENTREVISTA: "Continuar" trava/libera nextFight (2026-09-24) ---------- */
     let nextFightChamado=0;
     nextFight=()=>{nextFightChamado++;};
-    passo("entrevista: 'Dar entrevista' abre entrevistaAberta=true", entrevistaAberta===true);
-    const boxRespondida=bouts.children[bouts.children.length-1];
-    passo("entrevista: box respondida mostra o botão 'Continuar pra próxima luta' no innerHTML",
-      /Continuar pra próxima luta/.test(boxRespondida.innerHTML||""));
     const btnContinuar=document.getElementById("entcontinuar");
+    passo("entrevista: depois da resposta, a cena mostra 'Continuar pra próxima luta'",
+      !!btnContinuar&&/Continuar pra próxima luta/.test(btnContinuar.innerHTML||""));
     btnContinuar.onclick();
     passo("entrevista: clicar 'Continuar' fecha entrevistaAberta e chama nextFight()",
       entrevistaAberta===false&&nextFightChamado===1);
+
+    /* ---------- ENTREVISTA: sair sem responder e voltar ---------- */
+    fightNo=7;chamadas.length=0;cenaEnt=null;st.lesao=null;
+    st.cartelaCena={...(st.cartelaCena||{}),entrevista:["a quem dedica"]};
+    renderBotaoEntrevista(bouts,opp,{method:"Decisão",round:3,clock:"5:00"},false,false,0,0,false);
+    const wrap7=bouts.children[bouts.children.length-1];
+    wrap7.children[0].onclick();await tick();
+    passo("entrevista: na derrota o ângulo vira a versão da derrota (medido: 'a quem você dedica essa derrota?')",
+      chamadas.find(c=>c.kind==="entrevistaCena").data.angulo==="o que deve pra quem apostou nele");
+    passo("entrevista: IA sem resposta, a pergunta sai do molde local do fato (decisão)",
+      /decis|cartões/i.test(document.getElementById("entpergunta").innerHTML));
+    passo("entrevista: derrota tem evento coerente (sem comemoração)",
+      !/levantou|gritou o seu nome/.test(document.getElementById("entevento").innerHTML));
+    let fundoPedido=null;const mostrarOrig=mostrarNoite;mostrarNoite=(e,f)=>{fundoPedido=f;return mostrarOrig(e,f);};
+    document.getElementById("entvoltar").onclick();
+    mostrarNoite=mostrarOrig;
+    passo("entrevista: 'Voltar ao resultado' sai sem responder (destrava a próxima luta)",
+      entrevistaAberta===false&&noiteEtapa==="resultado");
+    passo("entrevista: e volta com o fundo da derrota (não o confete da vitória)", fundoPedido==="apagado");
+    passo("entrevista: o convite continua lá pra dar a entrevista depois", /Dar entrevista/.test(wrap7.children[0].innerHTML||""));
+    wrap7.children[0].onclick();await tick();
+    passo("entrevista: reabrir na mesma luta não pede outra cena à IA", chamadas.filter(c=>c.kind==="entrevistaCena").length===1);
+    document.getElementById("entvoltar").onclick();
+
+    /* ---------- ENTREVISTA: última luta, Continuar volta pro resultado ---------- */
+    fightNo=TOTAL_FIGHTS;nextFightChamado=0;cenaEnt=null;
+    ai=async(kind)=>kind==="entrevistaCena"?null:({reacao:"Ele agradeceu a equipe e saiu.",fa:0,seguidores:0,dinheiro:0});
+    renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false);
+    bouts.children[bouts.children.length-1].children[0].onclick();await tick();
+    document.getElementById("entresp").value="obrigado a todos";
+    await document.getElementById("entgo").onclick();
+    passo("entrevista: na última luta o botão diz 'Voltar ao resultado'",
+      /Voltar ao resultado/.test(document.getElementById("entcontinuar").innerHTML||""));
+    document.getElementById("entcontinuar").onclick();
+    passo("entrevista: e volta pro resultado sem chamar nextFight()", noiteEtapa==="resultado"&&nextFightChamado===0&&!entrevistaAberta);
 
     /* ---------- ENTREVISTA: convite de luta anterior some na luta seguinte ----------
        Achado jogando: "o botão de dar entrevista das lutas passadas
        continuam aparecendo". */
     fightNo=7;
-    ai=async()=>null; // não vai responder esta — só testar limpeza
+    ai=async()=>null; // não vai responder esta: só testar limpeza
     renderBotaoEntrevista(bouts,opp,r,false,true,0,0,false); // luta 7: convite NOVO, sem responder
     const wrapLuta7=bouts.children[bouts.children.length-1];
-    // o botão é appendChild() de verdade (não innerHTML de template) — o
-    // DOM falso só reflete appendChild em .children, nunca em .innerHTML
-    // (achado com o mesmo engano no botão "Provocar" mais acima nesta
-    // sessão). Checa via .children, não via innerHTML, antes da limpeza.
     passo("entrevista: convite da luta 7 nasce com o botão 'Dar entrevista' (children, não innerHTML)",
       wrapLuta7.children.length===1&&/Dar entrevista/.test(wrapLuta7.children[0].innerHTML||""));
     fightNo=8;
@@ -5077,7 +5313,7 @@ function testarColetivaEntrevista() {
     passo("entrevista: convite SEM RESPOSTA da luta anterior é limpo quando a próxima luta chama de novo",
       wrapLuta7.innerHTML==="");
     passo("entrevista: convite da luta 6 (JÁ RESPONDIDO, lá em cima) continua no histórico, não foi limpo",
-      boxRespondida.innerHTML!==""&&/Continuar/.test(boxRespondida.innerHTML));
+      wrap6.innerHTML!==""&&/Entrevista/.test(wrap6.innerHTML));
 
     /* ---------- ENTREVISTA: dinheiro só com fato financeiro no texto ---------- */
     st.dinheiro=0;st.followers=8000;st.fan=5;st.entrevistasFeitas=0;
@@ -6213,7 +6449,7 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
   });
 
-  await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade/Créditos e contato em texto", () => {
+  await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade e contato em texto (sem Créditos)", () => {
     UI.irPara("menu"); env.drenar();
     const cards = env.todos.filter(n => tem(n, "menu-card")).slice(-5);
     const grandes = cards.filter(n => tem(n, "menu-card-grande")).map(n => n.dataset.rota);
@@ -6222,8 +6458,10 @@ async function testarRotas() {
     const rod = env.todos.filter(n => tem(n, "menu-rodape")).pop();
     if (!rod) throw new Error("sem rodapé");
     const txt = rod.children.map(c => String(c.innerHTML)).join(" | ");
-    for (const t of ["Termos", "Privacidade", "Créditos", "contato@octogono.fun"])
+    for (const t of ["Termos", "Privacidade", "contato@octogono.fun"])
       if (!txt.includes(t)) throw new Error("rodapé sem " + t + ": " + txt);
+    /* reta final (2026-09-28): o dono tirou a página Créditos */
+    if (txt.includes("Créditos")) throw new Error("rodapé voltou a ter Créditos: " + txt);
   });
 
   await conf("atualizações: linha do tempo com todas as entradas, mais recente primeiro", () => {
@@ -6264,22 +6502,23 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "nova") throw new Error("espaço vazio foi pra " + UI.rotaAtual());
   });
 
-  await conf("créditos: lista dados, imagens, ícones e fontes, cada item com licença", () => {
-    const m = env.todos.length;
-    UI.irPara("creditos"); env.drenar();
-    const itens = desde(m).filter(n => tem(n, "credito"));
-    if (itens.length < 5) throw new Error("só " + itens.length + " créditos");
-    for (const t of ["Lucide", "ISC", "SIL Open Font License", "scrape_ufc_stats"])
-      if (!itens.some(n => String(n.innerHTML).includes(t))) throw new Error("créditos sem " + t);
+  /* A página Créditos saiu (reta final, 2026-09-28). O crédito que a
+     licença obriga (sons CC BY) mora no painel da engrenagem, conferido na
+     suíte som; a nota ISC do Lucide mora dentro de img/icones.svg. */
+  await conf("créditos: a rota saiu, e a nota de licença do Lucide está no sprite", () => {
+    if (UI.ROTAS && UI.ROTAS.creditos) throw new Error("a rota #/creditos continua registrada");
+    const svg = fs.readFileSync(path.join(__dirname, "img", "icones.svg"), "utf8");
+    for (const t of ["Lucide", "ISC License", "Permission to use, copy, modify"])
+      if (!svg.includes(t)) throw new Error("img/icones.svg sem a nota de licença (" + t + ")");
   });
 
   await conf("todas as rotas do spec estão registradas", () => {
-    const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking", "creditos",
+    const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking",
       "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);
     if (faltam.length) throw new Error("faltam: " + faltam.join(","));
   });
 
-  for (const r of ["continuar", "ranking", "atualizacoes", "conta", "creditos", "termos", "privacidade"]) {
+  for (const r of ["continuar", "ranking", "atualizacoes", "conta", "termos", "privacidade"]) {
     await conf(`#/${r}: abre, tem Voltar, Voltar leva ao menu`, async () => {
       const m = env.todos.length;
       UI.irPara(r);
@@ -6322,7 +6561,7 @@ async function testarRotas() {
      texto da fase 7, depois das amostras aprovadas pelo dono. */
   await conf("telas novas sem emoji (todas) e sem travessão (as de texto novo)", async () => {
     const sujos = [];
-    const SEM_TRAVESSAO = ["menu", "continuar", "ranking", "atualizacoes", "creditos", "nao-existe"];
+    const SEM_TRAVESSAO = ["menu", "continuar", "ranking", "atualizacoes", "nao-existe"];
     for (const r of [...SEM_TRAVESSAO, "conta", "termos", "privacidade"]) {
       const m = env.todos.length;
       UI.irPara(r);
@@ -6618,7 +6857,8 @@ function sandboxCarreira() {
   return { sb, registro, drenar, dadosLS, run: c => sb.__run(c) };
 }
 /* começa uma carreira pelo caminho real: startDraft, draft guloso (mais
-   caro que cabe no orçamento, mesmo critério do freqconquistas), startCareer */
+   caro que cabe no orçamento, mesmo critério do freqconquistas; sem carta
+   que caiba, a carta mínima de custo zero, igual à mesa do jogo), startCareer */
 function iniciarCarreiraTeste(ctx, F, seed, modo = "normal", rosterJSON = null) {
   ctx.sb.__F = F;
   /* rosterJSON: ROSTER já avaliado (rateAll é determinístico e é a parte
@@ -6633,8 +6873,7 @@ function iniciarCarreiraTeste(ctx, F, seed, modo = "normal", rosterJSON = null) 
     let left=budgetLeft, rem=[...remaining];
     while(rem.length){
       const rows=rollTable(POOL,rem,rng,PCT);
-      const aff=rows.filter(r=>r.cost<=left);
-      const sh=aff.length?aff:[rows.reduce((m,r)=>r.cost<m.cost?r:m)];
+      const sh=cartasDaMesa(rows,left,rem,POOL,PCT);
       const r=sh.reduce((m,x)=>x.cost>m.cost?x:m,sh[0]);
       me[r.pair.a.key]=r.src[r.pair.a.key]; me[r.pair.b.key]=r.src[r.pair.b.key];
       picks.push({pair:r.pair,from:r.src.name});
@@ -7700,9 +7939,13 @@ async function testarHub() {
   await conf("ids da lógica continuam montados dentro do hub", async () => {
     const X = novo(778007);
     const dentro = new Set(nosDe(X.registro.app).map(n => n.id).filter(Boolean));
-    for (const id of ["controls", "next", "autob", "counter", "ficha", "bouts", "phone", "escolha", "stage", "live",
+    for (const id of ["controls", "next", "counter", "ficha", "bouts", "phone", "escolha", "stage", "live",
       "escolhaLuta", "painelTreinador", "painelMomentos", "painelConquistas", "painelAposentar", "hubMenu"])
       if (!dentro.has(id)) throw new Error("fora do hub: #" + id);
+    /* reta final (2026-09-28): o dono tirou o modo automático do jogo */
+    for (const id of ["autob", "noiteAuto"]) if (dentro.has(id)) throw new Error("modo automático voltou: #" + id);
+    const autoBtn = nosDe(X.registro.app).find(n => /Modo automático|Parar automático/.test(String(n.innerHTML || "") + String(n.textContent || "")));
+    if (autoBtn) throw new Error("botão de modo automático voltou: " + (autoBtn.id || autoBtn.tagName));
   });
 
   await conf("hub sem emoji em nenhum nó", async () => {
@@ -7914,13 +8157,18 @@ async function testarHub() {
     if (X.run("noiteEtapa") === "oferta" || X.registro.noiteVoltar.hidden === false) throw new Error("Voltar visível durante a luta");
   });
 
-  await conf("noite: coletiva com Pro não trava", async () => {
+  await conf("noite: coletiva com Pro não trava, e a cena (tema, repórter, molde) não consome gerador nenhum da carreira", async () => {
     const X = novo(778504);
     X.run("meuPro=true;");
     abrirOferta(X);
     ultimasCartas(X, "opps", "opp")[0].onclick();
+    const geradores = "JSON.stringify([rng,holdRng,fraseRng,escolhaRng,lesaoRng,eventoRng,dilemaRng,rivalRng].map(g=>g.estado()))";
+    const antes = X.run(geradores);
     ultimasCartas(X, "camps", "camp")[0].onclick();
+    await respirarN(X);
     if (nosDe(X.registro.escolha).some(n => tem(n, "bloqueio-pro"))) throw new Error("travou com Pro");
+    if (!nosDe(X.registro.escolha).some(n => tem(n, "cena-imprensa"))) throw new Error("coletiva sem a cena nova");
+    if (X.run(geradores) !== antes) throw new Error("abrir a coletiva consumiu gerador da carreira (link de desafio e save quebrariam)");
   });
 
   await conf("save: oferta aberta + compra na loja + recarregar = mesma oferta e a mesma luta de quem jogou direto", async () => {
@@ -8037,6 +8285,39 @@ async function testarHub() {
     const fundo = String(X.registro.noiteFundo.style.cssText);
     if (!fundo.includes(reg.venceu ? "img/confete.webp" : "img/apagado.webp")) throw new Error("fundo " + fundo);
     if (X.registro.noiteProxima.hidden || X.registro.noiteHub.hidden) throw new Error("rodapé sem Próxima luta/Voltar ao painel");
+  });
+
+  /* reta final (2026-09-28, achado do dono): depois de uma luta, "Voltar à
+     escolha do adversário" não pode aparecer. A oferta daquela luta já foi
+     usada; o próximo adversário só existe depois de Próxima luta. */
+  await conf("depois da luta, Voltar à escolha do adversário some (resultado, painel, com e sem Pro)", async () => {
+    for (const pro of [false, true]) {
+      const X = novo(pro ? 778711 : 778712);
+      X.run(`meuPro=${pro};`);
+      await lutarManual(X);
+      const estado = onde => JSON.stringify({ onde, etapa: X.run("noiteEtapa"), esc: X.run("escolhaAberta"),
+        vn: X.registro.voltarNoite && X.registro.voltarNoite.hidden, nv: X.registro.noiteVoltar && X.registro.noiteVoltar.hidden });
+      const vnVisivel = () => X.registro.voltarNoite && !X.registro.voltarNoite.hidden;
+      const nvVisivel = () => X.registro.noiteVoltar && !X.registro.noiteVoltar.hidden;
+      if (vnVisivel() || nvVisivel()) throw new Error("no resultado: " + estado("resultado"));
+      for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); }
+      if (vnVisivel() || nvVisivel()) throw new Error("no pós-luta: " + estado("pos-luta"));
+      X.registro.noiteHub.onclick();
+      await respirarN(X);
+      if (vnVisivel()) throw new Error("no painel: " + estado("painel"));
+      if (X.registro.next.hidden) throw new Error("no painel, Próxima luta sumiu: " + estado("painel"));
+      /* e o caminho certo continua: Próxima luta abre a oferta nova */
+      const f0 = X.run("fightNo");
+      X.registro.next.onclick();
+      if (X.run("noiteEtapa") !== "oferta" || !X.run("escolhaAberta")) throw new Error("Próxima luta não abriu a oferta nova: " + estado("depois"));
+      if (X.run("fightNo") !== f0) throw new Error("abrir a oferta mudou fightNo");
+    }
+    /* O JS sempre marcou hidden certo; quem mostrava o botão era o CSS:
+       .botao{display:inline-flex} vence o [hidden] do navegador. O DOM
+       falso não lê CSS, então a regra global é conferida no arquivo. */
+    const css = fs.readFileSync(path.join(__dirname, "estilo.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    if (!/(^|\})\s*\[hidden\]\s*\{\s*display\s*:\s*none\s*!important\s*;?\s*\}/.test(css))
+      throw new Error("estilo.css sem [hidden]{display:none!important}: .botao escondido pelo JS continua na tela");
   });
 
   await conf("pós-luta: extras nascem no embrulho da luta na noite e vão pro cartel logo depois da linha dela", async () => {
@@ -8385,10 +8666,23 @@ async function testarSom() {
     if (faltam.length) throw new Error("o jogo pede arquivo que não existe: " + faltam.join(", "));
     const sobram = mp3.filter(f => !usados.has(f));
     if (sobram.length) throw new Error("arquivo sem uso no jogo: " + sobram.join(", "));
-    const autores = [...lic.matchAll(/\| [^|]+ \| [^|]+ \| [^|]+ \| ([^|]+) \| \[/g)].map(m => m[1].replace(/\s*\(CC[^)]*\)/g, "").split(" + ")).flat()
+    /* Crédito dentro do jogo só é obrigatório pra CC BY (CC0 dispensa). A
+       página Créditos saiu na reta final (2026-09-28); o crédito CC BY
+       mora no painel da engrenagem (abrirConfig), conferido abaixo. Numa
+       linha com mais de um autor, quem vem marcado "(CC0 ...)" é CC0. */
+    const autoresCCBY = [...lic.matchAll(/\| [^|]+ \| [^|]+ \| [^|]+ \| ([^|]+) \| ([^|]+) \|/g)]
+      .filter(m => /CC BY/.test(m[2]))
+      .flatMap(m => m[1].split(" + ").filter(a => !/\(CC0/.test(a)))
       .map(a => a.replace(/\s*\(.*$/, "").trim());
-    const semCredito = [...new Set(autores)].filter(a => !html.includes(a));
-    if (semCredito.length) throw new Error("autor sem crédito na página Créditos: " + semCredito.join(", "));
+    if (!autoresCCBY.length) throw new Error("não achei nenhum autor CC BY na tabela (regex quebrou?)");
+    const X = sandboxCarreira();
+    X.run("abrirConfig();");
+    const cfgNos = []; const junta = n => { if (!n) return; cfgNos.push(n); (n.children || []).forEach(junta); };
+    junta(X.registro.cfg);
+    const cfgTxt = cfgNos.map(n => String(n.innerHTML || "") + String(n.textContent || "")).join(" ");
+    const semCredito = [...new Set(autoresCCBY)].filter(a => !cfgTxt.includes(a));
+    if (semCredito.length) throw new Error("autor CC BY sem crédito no painel de configurações: " + semCredito.join(", "));
+    if (!cfgTxt.includes("CC BY 4.0")) throw new Error("painel de configurações sem o nome da licença CC BY 4.0");
     if (!/CC BY/.test(lic) || !/CC0/.test(lic)) throw new Error("tabela de licenças incompleta");
     if (/[^A-Za-z]NC[^A-Za-z]|NonCommercial|-nc/.test(lic)) throw new Error("licença NC na tabela");
     const total = mp3.reduce((s, f) => s + fs.statSync(path.join(dir, f)).size, 0);
@@ -8680,6 +8974,7 @@ try {
   if (cmd === "interface") ok = await testarInterface(Number(div) || 3, (process.argv[4] || "normal").toLowerCase());
   else if (cmd === "motor") ok = testarMotor();
   else if (cmd === "draft") ok = testarDraft(div || "lightweight");
+  else if (cmd === "orcamento") ok = await testarOrcamento();
   else if (cmd === "pesos") ok = medirPesos(div || "lightweight");
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
@@ -8758,6 +9053,7 @@ try {
       const suites = [
         ["motor", () => testarMotor()],
         ["draft", () => testarDraft(div || "lightweight")],
+        ["orcamento", () => testarOrcamento()],
         ["escolhas", () => testarEscolhas(div || "lightweight")],
         ["treino", () => testarTreino(div || "lightweight")],
         ["desafio", () => testarDesafio(div || "lightweight")],

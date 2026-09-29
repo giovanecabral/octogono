@@ -22,6 +22,14 @@
    o fundo), nunca só tirar. */
 :focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
 
+/* hidden vale sempre (reta final, 2026-09-28, achado do dono). Regra de
+   classe com display (.botao é inline-flex) vence o [hidden] do navegador,
+   e o botão que o JS escondia continuava na tela: "Voltar à escolha do
+   adversário" aparecia no painel depois da luta e levava a uma noite com a
+   oferta velha. As regras [hidden] de cada componente mais abaixo ficam
+   redundantes, mas não atrapalham. */
+[hidden]{display:none!important}
+
 /* telas novas: fundo e largura próprios; "Ficha do Lutador" some */
 html[data-tela="nova"] body{background:var(--fundo)}
 html[data-tela="nova"] .doc-head{display:none}
@@ -294,16 +302,7 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .slot-vazio-ico .ico{width:26px;height:26px;color:var(--sangue)}
 @media (max-width:900px){.slots{grid-template-columns:1fr}.save-slot{min-height:200px}}
 
-/* ---------- créditos e páginas legais ---------- */
-.creditos-grupo{margin:0 0 26px;max-width:980px}
-.creditos-titulo{font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.24em;text-transform:uppercase;color:var(--sangue);margin:0 0 10px}
-.credito{display:grid;grid-template-columns:1.1fr 1.5fr .9fr 1.1fr;gap:4px 16px;align-items:baseline;padding:12px 16px;
-  background:rgba(17,19,26,.82);border-left:3px solid var(--linha-forte);margin-bottom:6px}
-.credito b{font-family:var(--f-ui);font-size:18px;letter-spacing:.03em}
-.credito span{color:var(--osso-2)}
-.credito .credito-lic{font-family:var(--f-ui);font-weight:700;letter-spacing:.06em;color:var(--osso)}
-.credito a{color:var(--osso-2);overflow-wrap:anywhere}
-@media (max-width:760px){.credito{grid-template-columns:1fr}}
+/* ---------- páginas legais ---------- */
 .tela-legal .pagina-legal{max-width:80ch;background:rgba(17,19,26,.88);border:1px solid var(--linha);padding:28px 34px;
   font-family:var(--f-texto);font-size:16px;line-height:1.7;color:var(--osso-2)}
 .tela-legal .pagina-legal h3{font-family:var(--f-ui);font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase;color:var(--osso);margin:28px 0 8px}
@@ -472,6 +471,8 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 .tela-criacao .card .attr-v{font-family:var(--f-ui);font-weight:700;font-size:16px;color:var(--osso)}
 .tela-criacao .card .cost b{font-family:var(--f-titulo);font-weight:400;font-size:22px;color:var(--osso)}
 .tela-criacao .card.sel{box-shadow:inset 0 0 0 2px var(--sangue);background:rgba(215,38,30,.14)}
+/* carta mínima (orçamento acabou): tracejada, lê como reserva e não como lutador */
+.tela-criacao .card.card-minima{border-style:dashed}
 .tela-criacao .card .confirma{font-family:var(--f-ui);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--sangue)}
 .tela-criacao .oct-mid .n{font-family:var(--f-titulo)}
 .tela-criacao .oct-legenda,.tela-criacao .legend{font-family:var(--f-texto);color:var(--cinza)}
@@ -820,7 +821,7 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .noite-luta b{margin:0 3px;font-family:var(--f-titulo);font-weight:400;font-size:30px;letter-spacing:.02em;color:var(--osso)}
 .noite-corpo{flex:1}
 .noite #escolha,.noite #stage{display:none;margin:0}
-.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha{display:block;animation:entra .5s var(--ease-soco) both}
+.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha,.noite.etapa-entrevista #escolha{display:block;animation:entra .5s var(--ease-soco) both}
 .noite.etapa-luta #stage,.noite.etapa-resultado #stage{display:block}
 .noite-rodape{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:26px}
 .noite-rodape .botao[hidden]{display:none}
@@ -868,16 +869,66 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .noite .camp .g{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--ganho)}
 .noite .camp .pctnum{font-family:var(--f-titulo);font-weight:400;font-size:22px}
 .noite .camp-cap{font-family:var(--f-ui);font-size:12px;letter-spacing:.14em;color:var(--cinza)}
-/* coletiva */
-.noite .coletiva-abertura{margin:0 0 22px;max-width:62ch;padding-left:16px;border-left:3px solid var(--sangue);font-size:20px;line-height:1.5;font-style:italic;color:var(--osso)}
-.coletiva-provocar{display:flex;flex-direction:column;align-items:flex-start;gap:12px;max-width:640px}
-.noite .coletiva-provocar textarea{width:100%;min-height:100px;padding:14px;resize:vertical;font-family:var(--f-texto);font-size:16px;line-height:1.5;
-  color:var(--osso);background:var(--sup-2);border:1px solid var(--linha-forte);border-radius:0}
-.noite .coletiva-provocar textarea:focus{outline:none;border-color:var(--sangue)}
-.noite .bloqueio-pro{max-width:640px}
-.coletiva-pular{margin-top:18px}
-.coletiva-seguir{margin-top:22px}
+/* coletiva e entrevista: a cena (reta final, 2026-09-28, mapa do dono).
+   Lutador à esquerda, imprensa à direita, conversa no meio: a fala do
+   repórter aponta pra ele (direita), a resposta aponta pro lutador
+   (esquerda), e o que aconteceu fecha embaixo. No celular os dois cards
+   ficam lado a lado em cima e a conversa desce inteira. */
+.cena-imprensa{display:grid;grid-template-columns:minmax(170px,250px) minmax(0,1fr) minmax(170px,250px);
+  grid-template-areas:"jog meio ia";gap:26px;align-items:stretch}
+.cena-lado{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:460px;margin:0;overflow:hidden;
+  background:rgba(17,19,26,.94);box-shadow:inset 0 0 0 1px var(--linha-forte);
+  clip-path:polygon(var(--corte) 0,100% 0,100% calc(100% - var(--corte)),calc(100% - var(--corte)) 100%,0 100%,0 var(--corte))}
+.cena-jogador{grid-area:jog}
+.cena-ia{grid-area:ia}
+.cena-retrato{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center}
+.cena-jogador .cena-retrato{background:radial-gradient(70% 55% at 50% 28%,rgba(242,238,230,.13),transparent 72%)}
+.cena-jogador .cena-retrato svg{display:block;width:100%;max-width:240px;height:auto;margin-bottom:72px;filter:drop-shadow(0 18px 30px rgba(0,0,0,.6))}
+.cena-ia .cena-retrato img{display:block;width:100%;height:100%;object-fit:cover}
+.cena-nome{position:relative;z-index:1;display:flex;flex-direction:column;gap:4px;padding:48px 18px 18px;
+  background:linear-gradient(rgba(7,8,11,0),rgba(7,8,11,.94) 42%)}
+.cena-nome b{font-family:var(--f-titulo);font-weight:400;font-size:30px;line-height:1;text-transform:uppercase;color:var(--sangue-vivo);overflow-wrap:anywhere}
+.cena-nome small{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--osso-2)}
+.cena-meio{grid-area:meio;display:flex;flex-direction:column;gap:18px;min-width:0;padding:4px 0}
+.noite .cena-evento{margin:0;padding:12px 16px;font-size:16px;line-height:1.5;font-style:italic;color:var(--osso-2);
+  background:rgba(7,8,11,.78);border-left:3px solid var(--ouro)}
+.balao{position:relative;width:fit-content;max-width:88%;padding:16px 20px;font-size:18px;line-height:1.5;color:var(--osso)}
+.balao-quem{display:block;margin-bottom:6px;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--cinza)}
+.balao-ia{align-self:flex-end;background:var(--sup-2)}
+.balao-ia::after{content:"";position:absolute;top:24px;right:-16px;width:17px;height:24px;background:var(--sup-2);clip-path:polygon(0 0,100% 50%,0 100%)}
+.balao-jogador{align-self:flex-start;background:#3A1411}
+.balao-jogador::before{content:"";position:absolute;top:24px;left:-16px;width:17px;height:24px;background:#3A1411;clip-path:polygon(100% 0,0 50%,100% 100%)}
+.balao-jogador .balao-quem{color:#F08A84}
+.balao-jogador:has(textarea){width:88%}
+.digitando{display:inline-flex;gap:6px;padding:6px 0}
+.digitando i{width:8px;height:8px;border-radius:50%;background:var(--osso-2);animation:digita 1.1s ease-in-out infinite}
+.digitando i:nth-child(2){animation-delay:.18s}
+.digitando i:nth-child(3){animation-delay:.36s}
+@keyframes digita{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
+.cena-responder{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.noite .cena-responder textarea{width:100%;min-height:96px;padding:12px 14px;resize:vertical;font-family:var(--f-texto);font-size:16px;line-height:1.5;
+  color:var(--osso);background:rgba(7,8,11,.55);border:1px solid rgba(240,138,132,.35);border-radius:0}
+.noite .cena-responder textarea:focus{outline:none;border-color:var(--sangue)}
+.noite .cena-responder textarea:disabled{opacity:.55}
+.noite .balao-jogador .bloqueio-pro{max-width:none}
+.cena-desfecho{margin-top:auto;padding:18px 22px;background:rgba(7,8,11,.9);border:1px solid var(--linha);border-top:3px solid var(--sangue)}
+.cena-desfecho-t{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--sangue)}
+.cena-desfecho p{margin:8px 0 0;font-size:17px;line-height:1.6;color:var(--osso)}
+.cena-desfecho .dil-fx{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-family:var(--f-ui);font-weight:700;font-size:15px}
+.cena-desfecho .dil-fx:empty{display:none}
+.cena-acoes{display:flex;flex-wrap:wrap;gap:12px}
 .coletiva-seguir .ico{width:18px;height:18px}
+@media (max-width:760px){
+  .cena-imprensa{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"jog ia" "meio meio";gap:12px}
+  .cena-lado{min-height:250px}
+  .cena-jogador .cena-retrato svg{max-width:150px;margin-bottom:58px}
+  .cena-nome{padding:36px 12px 12px}
+  .cena-nome b{font-size:21px}
+  .cena-nome small{font-size:11px;letter-spacing:.12em}
+  .balao{max-width:94%;font-size:17px}
+  .balao-jogador:has(textarea){width:94%}
+}
+@media (prefers-reduced-motion:reduce){.digitando i{animation:none;opacity:.7}}
 /* luta (visual completo na tarefa 6) */
 .noite .stage{display:none;grid-template-columns:none}
 .noite-luta-ctrl{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
@@ -893,7 +944,7 @@ html[data-noite="1"] .cfg-btn{z-index:70}
   .noite-luta{margin-left:0}
   .noite .opp .nm{font-size:30px}
 }
-@media (prefers-reduced-motion:reduce){.noite>.tela-fundo{animation:none}.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha{animation:fade .25s both}}
+@media (prefers-reduced-motion:reduce){.noite>.tela-fundo{animation:none}.noite.etapa-oferta #escolha,.noite.etapa-camp #escolha,.noite.etapa-coletiva #escolha,.noite.etapa-entrevista #escolha{animation:fade .25s both}}
 
 /* entrada (tale of the tape antes do round 1) */
 .noite #entrada{display:none}

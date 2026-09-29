@@ -1,8 +1,9 @@
 # Licenças dos sons (revamp fase 6)
 
 Gerado por `audio/preparar.py`. Só entra som com licença de uso comercial:
-CC0 (domínio público) ou CC BY (crédito obrigatório, dado na página Créditos
-do jogo e aqui). Cada arquivo final, de onde veio e com que licença:
+CC0 (domínio público) ou CC BY (crédito obrigatório, dado no painel de
+configurações do jogo, a engrenagem, e aqui; a página Créditos saiu em
+2026-09-28). Cada arquivo final, de onde veio e com que licença:
 
 | Arquivo | Uso no jogo | Obra original | Autor | Licença | Página |
 |---|---|---|---|---|---|
