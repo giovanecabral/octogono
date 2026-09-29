@@ -177,6 +177,13 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   em `img/tutorial/`, gerados por `img/tutorial/capturar.mjs`. Mudou a
   ordem ou a quantidade de itens em `TUTORIAIS`, ou a tela do print: rode
   o script de novo (a suíte `tutorial` confere os tamanhos).
+- **Memória narrativa: fala do jogador é literal e ninguém inventa fala
+  dele.** `st.memoria.falas` guarda o texto que ele escreveu; o trecho é
+  recortado do texto dele (`trechoLiteral`), nunca o que a IA reescreveu;
+  promessa é julgada pelo resultado real (`avaliarPromessa`). Todo texto
+  de IA novo que possa falar do jogador passa por `falasAtribuidasOk`
+  (suíte `memoria`). A memória vem na MESMA chamada da reação: não criar
+  chamada nova de IA pra isso.
 - **Coletiva e entrevista: a imprensa é fictícia e escolhida no cliente.**
   Card da direita é foto do lugar + repórter de `REPORTERES` (nunca o
   adversário, nunca jornalista real). A IA só escreve a cena

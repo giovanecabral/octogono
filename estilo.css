@@ -893,6 +893,11 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .cena-nome b{font-family:var(--f-titulo);font-weight:400;font-size:30px;line-height:1;text-transform:uppercase;color:var(--sangue-vivo);overflow-wrap:anywhere}
 .cena-nome small{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--osso-2)}
 .cena-meio{grid-area:meio;display:flex;flex-direction:column;gap:18px;min-width:0;padding:4px 0}
+/* memória narrativa (2026-09-29): o que ele disse antes, literal, e o que aconteceu depois */
+.noite .cena-memoria{display:flex;flex-direction:column;gap:4px;margin:0;padding:12px 16px;background:rgba(212,160,23,.1);border-left:3px solid var(--ouro)}
+.cena-memoria-rot{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--ouro)}
+.cena-memoria-fala{font-size:17px;line-height:1.45;font-style:italic;color:var(--osso)}
+.cena-memoria-res{font-family:var(--f-ui);font-weight:600;font-size:14px;letter-spacing:.06em;color:var(--osso-2)}
 .noite .cena-evento{margin:0;padding:12px 16px;font-size:16px;line-height:1.5;font-style:italic;color:var(--osso-2);
   background:rgba(7,8,11,.78);border-left:3px solid var(--ouro)}
 .balao{position:relative;width:fit-content;max-width:88%;padding:16px 20px;font-size:18px;line-height:1.5;color:var(--osso)}

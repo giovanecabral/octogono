@@ -3353,6 +3353,71 @@ variedade do molde, cartela sem repetição, etapa da entrevista, voltar,
 última luta). Dente provado: colunas trocadas, cena sem IA, tema com
 reposição e molde fixo reprovam.
 
+## Memória narrativa (etapa 1 do plano de evolução, 2026-09-29)
+
+**Pedido do dono:** coletiva, resultado e entrevista formam uma história
+contínua, e a imprensa recupera declarações REAIS do jogador, nunca
+inventadas. **Achado da auditoria:** até aqui a entrevista NÃO sabia nada
+da coletiva (a resposta da coletiva não era gravada em lugar nenhum); a
+referência que o dono viu jogando foi a IA inventando.
+
+**O que é guardado** (`st.memoria.falas`, vai no save; sem tabela nova):
+cada resposta do jogador na coletiva e na entrevista vira uma fala com o
+texto literal inteiro, um trecho literal, o tom (provocação, promessa,
+respeito, neutro) e, se houver, a promessa verificável (vencer, nocaute,
+finalização, decisão, até o round N). No máximo 20 falas por carreira.
+
+- **Nenhuma chamada nova de IA.** A reação que já existia (`coletiva`,
+  `entrevista`) devolve também o campo `declaracao`. Medido no modelo real
+  (30 respostas variadas): estrutura válida 30/30, trecho literal 28/30,
+  tom certo 27/30, promessa certa 25/30.
+- **O trecho é sempre palavra do jogador.** A IA só aponta qual parte é a
+  mais forte; o jogo recorta essa parte do texto dele, na grafia dele
+  (`trechoLiteral`, comparação sem acento e sem pontuação). Se o que a IA
+  apontou não está no texto, fica o começo da resposta.
+- **Quem julga a promessa é o jogo**, pelo resultado real
+  (`avaliarPromessa`): cumpriu, "parcial" (venceu, mas não do jeito que
+  prometeu) ou não cumpriu. Na decisão entra o placar real dos juízes
+  (medido: sem ele, a IA inventava um).
+
+**Onde a memória aparece:**
+
+- **Entrevista da mesma luta:** se na coletiva ele provocou ou prometeu, a
+  pergunta TEM que tratar disso, ligada ao resultado
+  (`situacaoDaFala`: cumpriu, parcial, quebrou, confirmou a provocação ou
+  perdeu depois de provocar). A IA recebe a fala literal e o desfecho; a
+  tela mostra "Na coletiva você disse: '...'" com o resultado. O molde
+  local (sem IA) faz o mesmo, uma pergunta diferente por desfecho.
+  Medido: 14 de 20 perguntas da IA citaram a fala literal e passaram no
+  filtro; as outras 6 caíram no molde local.
+- **Coletivas futuras** (`falaParaColetiva`): revanche sempre traz a fala
+  do encontro anterior; fora isso, só às vezes (no máximo uma coletiva a
+  cada três, e nem toda chance vira cobrança), só fala recente e marcante,
+  e cada fala é cobrada no máximo duas vezes. Nada disso consome gerador.
+- **Cartel:** a coletiva entra como extra da luta (`reg.extras`).
+
+**Ninguém põe fala na boca dele** (`falasAtribuidasOk`). Regra mecânica:
+toda frase que atribui fala ao jogador ("você disse", "você prometeu",
+"você chamou ... de", "suas palavras", o nome dele com verbo de fala)
+precisa trazer uma citação entre aspas (duplas ou simples) que esteja
+numa fala real dele. Nas perguntas e cenas da coletiva e da entrevista, e
+no evento de vida e na cena do dilema, atribuição sem citação reprova o
+texto (entra o molde local; o evento some). Na reação e no desfecho do
+dilema, paráfrase da resposta de agora é normal e passa; citação é
+conferida. Limite conhecido: forma indireta rara ("mandou avisar que...")
+não é pega pela regra; o prompt proíbe. Medido: 24 de 24 eventos passam
+(a primeira versão derrubava "mandou Pix" por engano).
+
+**Teste:** suíte nova `memoria` (fala literal, trecho inventado, tom e
+promessa inválidos, texto inseguro, teto de falas, promessa julgada pelo
+resultado, uma pergunta por desfecho citando a fala, fluxo real coletiva,
+luta e entrevista com a fala e o resultado indo pra IA e pra tela, zero
+chamada nova, anti-invenção em pergunta, reação e evento, revanche e
+cobrança espaçada, reabrir a coletiva sem contar duas vezes, save). Dente
+provado: sem fechar a fala no fim da luta, sem a trava anti-invenção, com
+o trecho da IA sem conferir, sem o cache da cena, sem aspas simples e com
+"mandou" solto, reprova.
+
 ## Como jogar: tutorial com prints anotados (2026-09-28)
 
 **Pedido do dono:** "tutorial básico de como jogar ao chegar na parte de

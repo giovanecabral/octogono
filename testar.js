@@ -1045,6 +1045,247 @@ async function testarTutorial() {
 }
 
 /* ================================================================== *
+ * 3d. MEMÓRIA NARRATIVA (etapa 1 do plano de 2026-09-29) — a fala real do
+ *     jogador vira memória da carreira; a entrevista liga a fala da
+ *     coletiva ao resultado; coletivas futuras cobram falas antigas; e
+ *     nenhum texto da IA atribui a ele uma fala que ele não disse.
+ * ================================================================== */
+async function testarMemoria() {
+  console.log("\n" + cinza("memória narrativa: fala literal, promessa julgada pelo jogo, entrevista ligada ao resultado, nada inventado"));
+  const F = lerLutadores();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const R0 = sandboxCarreira(); R0.sb.__F = F;
+  const RJ = R0.run("JSON.stringify(rateAll(globalThis.__F))");
+  const tem = (n, c) => (n.className || "").split(" ").includes(c);
+  const respirarN = async (X, n = 3) => { for (let k = 0; k < n; k++) { X.drenar(); await respirarCarreira(); } };
+  const nova = (seed) => {
+    const X = sandboxCarreira();
+    X.dadosLS["tutorial:draft"] = "1"; X.dadosLS["tutorial:luta"] = "1";
+    iniciarCarreiraTeste(X, F, seed, "normal", RJ);
+    X.run("auto=false;meuPro=true;");
+    return X;
+  };
+  const J = (X, c) => JSON.parse(X.run(`JSON.stringify(${c})`));
+
+  /* ---------- registro da fala ---------- */
+  await conf("fala: a resposta literal inteira é guardada; o trecho é recortado do próprio texto, na grafia dele", async () => {
+    const X = nova(301);
+    const f = J(X, `registrarFala({onde:"coletiva",luta:1,adv:"Fulano",texto:"Esse cara é SUPERESTIMADO, vou provar no sábado.",
+      decl:{tom:"provocacao",trecho:"esse cara e superestimado",promessa:null}})`);
+    if (f.texto !== "Esse cara é SUPERESTIMADO, vou provar no sábado.") throw new Error("texto literal mudou: " + f.texto);
+    if (f.trecho !== "Esse cara é SUPERESTIMADO") throw new Error("trecho não saiu do texto dele: " + f.trecho);
+    if (f.tom !== "provocacao" || f.promessa !== null) throw new Error("tom/promessa: " + JSON.stringify(f));
+    if (J(X, "st.memoria.falas.length") !== 1) throw new Error("não entrou na memória");
+  });
+  await conf("fala: trecho que não está na resposta vira o começo da resposta real; tom inválido vira neutro; promessa inválida some", async () => {
+    const X = nova(302);
+    const f = J(X, `registrarFala({onde:"coletiva",luta:1,adv:"F",texto:"Treinei muito e vou dar o meu melhor lá dentro.",
+      decl:{tom:"arrogante",trecho:"ele é um lixo",promessa:{metodo:"voadora",round:9}}})`);
+    if (f.trecho !== "Treinei muito e vou dar o meu melhor lá dentro.") throw new Error("trecho inventado passou: " + f.trecho);
+    if (f.tom !== "neutro" || f.promessa !== null) throw new Error("tom/promessa inválidos passaram: " + JSON.stringify(f));
+  });
+  await conf("fala: promessa válida entra (round só de 1 a 5); texto inseguro não entra; sem IA fica a resposta literal com tom neutro", async () => {
+    const X = nova(303);
+    const f = J(X, `registrarFala({onde:"coletiva",luta:2,adv:"F",texto:"Nocaute no primeiro round.",decl:{tom:"neutro",trecho:"nocaute no primeiro round",promessa:{metodo:"nocaute",round:1}}})`);
+    if (f.tom !== "promessa" || !f.promessa || f.promessa.metodo !== "nocaute" || f.promessa.round !== 1) throw new Error("promessa: " + JSON.stringify(f));
+    if (J(X, `registrarFala({onde:"coletiva",luta:3,adv:"F",texto:"eu me corto quando fico ansioso",decl:{tom:"neutro"}})`) !== null) throw new Error("texto inseguro entrou");
+    const g = J(X, `registrarFala({onde:"entrevista",luta:3,adv:"F",texto:"Foi uma boa luta.",decl:null})`);
+    if (g.tom !== "neutro" || g.texto !== "Foi uma boa luta.") throw new Error("sem IA: " + JSON.stringify(g));
+    X.run(`for(let i=0;i<30;i++)registrarFala({onde:"entrevista",luta:10+i,adv:"F",texto:"fala "+i,decl:null});`);
+    if (J(X, "st.memoria.falas.length") !== 20) throw new Error("teto de falas não segurou: " + J(X, "st.memoria.falas.length"));
+  });
+
+  /* ---------- promessa julgada pelo jogo ---------- */
+  await conf("promessa: quem julga é o resultado real (cumpriu, parcial, não cumpriu, round)", async () => {
+    const X = nova(304);
+    const casos = J(X, `[
+      avaliarPromessa({metodo:"nocaute",round:null},true,"Nocaute",2),
+      avaliarPromessa({metodo:"nocaute",round:null},true,"Decisão",3),
+      avaliarPromessa({metodo:"nocaute",round:null},false,"Nocaute",1),
+      avaliarPromessa({metodo:"vencer",round:2},true,"Finalização",2),
+      avaliarPromessa({metodo:"vencer",round:1},true,"Nocaute",2),
+      avaliarPromessa({metodo:"decisao",round:null},true,"Decisão",3)]`);
+    const esperado = [true, "parcial", false, true, "parcial", true];
+    if (JSON.stringify(casos) !== JSON.stringify(esperado)) throw new Error(JSON.stringify(casos) + " em vez de " + JSON.stringify(esperado));
+  });
+
+  /* ---------- entrevista ligada ao resultado ---------- */
+  await conf("entrevista: a pergunta local cita a fala literal E o que o resultado fez com ela (cada desfecho, uma pergunta diferente)", async () => {
+    const X = nova(305);
+    const r = J(X, `(function(){
+      const base={onde:"coletiva",luta:4,adv:"Rival X",texto:"Ele não passa do segundo round, pode anotar.",trecho:"Ele não passa do segundo round",cobrada:0};
+      const casos=[
+        {...base,tom:"promessa",promessa:{metodo:"vencer",round:2},resultado:{venceu:true,metodo:"Nocaute",round:1},cumprida:true},
+        {...base,tom:"promessa",promessa:{metodo:"vencer",round:2},resultado:{venceu:true,metodo:"Decisão",round:3},cumprida:"parcial"},
+        {...base,tom:"promessa",promessa:{metodo:"vencer",round:2},resultado:{venceu:false,metodo:"Finalização",round:2},cumprida:false},
+        {...base,tom:"provocacao",promessa:null,resultado:{venceu:true,metodo:"Decisão",round:3},cumprida:null},
+        {...base,tom:"provocacao",promessa:null,resultado:{venceu:false,metodo:"Nocaute",round:1},cumprida:null}];
+      return casos.map(f=>{const sit=situacaoDaFala(f);return{tipo:sit.tipo,txt:sit.txt,p:perguntaSobreFala(f,sit)};});})()`);
+    const tipos = r.map(x => x.tipo).join(",");
+    if (tipos !== "cumpriu,parcial,quebrou,confirmou,contradisse") throw new Error("desfechos: " + tipos);
+    for (const x of r) if (!x.p.includes("'Ele não passa do segundo round'")) throw new Error("pergunta sem a fala literal: " + x.p);
+    if (new Set(r.map(x => x.p)).size !== r.length) throw new Error("desfechos diferentes deram a mesma pergunta");
+    if (!/perdeu/.test(r[2].txt) || !/perdeu/.test(r[4].txt) || !/não do jeito/.test(r[1].txt) || !/cumpriu/.test(r[0].txt)) throw new Error("o resultado não entrou: " + r.map(x => x.txt).join(" | "));
+  });
+
+  await conf("entrevista de verdade: depois de provocar na coletiva, a IA recebe a fala literal e o resultado, e a tela mostra 'Na coletiva você disse'", async () => {
+    const X = nova(306);
+    X.run(`globalThis.__ch=[];ai=async(kind,data)=>{__ch.push({kind,data:JSON.parse(JSON.stringify(data))});
+      if(kind==="coletiva")return{reacao:"A sala ficou em cima dele.",hype:1.1,pressao:1,atributoPressao:"nenhum",
+        declaracao:{tom:"provocacao",trecho:"ele é superestimado",promessa:null}};
+      return null;};nextFight();`);
+    X.registro.opps.children.find(n => tem(n, "opp")).onclick();
+    X.registro.camps.children.find(n => tem(n, "camp")).onclick();
+    await respirarN(X);
+    X.registro.colresp.value = "Ele é superestimado e todo mundo vai ver.";
+    await X.registro.colgo.onclick();
+    await respirarN(X);
+    const fala = J(X, "st.memoria.falas.find(f=>f.onde==='coletiva')");
+    if (!fala || fala.texto !== "Ele é superestimado e todo mundo vai ver." || fala.trecho !== "Ele é superestimado") throw new Error("fala da coletiva: " + JSON.stringify(fala));
+    X.registro.colseguir.onclick();
+    for (let k = 0; k < 25 && X.run("playing"); k++) {
+      await respirarN(X, 1);
+      const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+      if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+    }
+    await respirarN(X);
+    const reg = J(X, "st.registro[st.registro.length-1]");
+    const f2 = J(X, "st.memoria.falas.find(f=>f.onde==='coletiva')");
+    if (!f2.resultado || f2.resultado.venceu !== reg.venceu || f2.resultado.metodo !== reg.metodo) throw new Error("a fala não recebeu o resultado real: " + JSON.stringify(f2.resultado));
+    if (!reg.extras.length || reg.extras[0].tipo !== "coletiva" || !reg.extras[0].resposta.includes("superestimado")) throw new Error("a coletiva não entrou no Cartel: " + JSON.stringify(reg.extras));
+    const emb = X.registro.posluta.children.filter(c => tem(c, "pos-luta")).pop();
+    const convite = emb && emb.children.find(c => tem(c, "entrevista-convite"));
+    convite.children[0].onclick();
+    await respirarN(X);
+    const pedido = J(X, "__ch.filter(c=>c.kind==='entrevistaCena').pop()");
+    if (!pedido || !pedido.data.fato.includes('"Ele é superestimado"')) throw new Error("a IA não recebeu a fala literal: " + (pedido && pedido.data.fato));
+    if (!new RegExp(reg.venceu ? "venceu" : "perdeu").test(pedido.data.fato)) throw new Error("o fato não traz o resultado: " + pedido.data.fato);
+    const chip = X.registro.entmemoria;
+    if (!chip || chip.hidden || !chip.innerHTML.includes("Na coletiva você disse") || !chip.innerHTML.includes("Ele é superestimado")) throw new Error("a tela não mostra a fala da coletiva");
+    if (!X.registro.entpergunta.innerHTML.includes("Ele é superestimado")) throw new Error("a pergunta (molde) não cita a fala");
+    if (J(X, "st.memoria.falas.find(f=>f.onde==='coletiva').cobrada") !== 1) throw new Error("não contou a cobrança");
+    /* nenhuma chamada a mais por causa da memória: 2 na coletiva e, até
+       aqui, 1 da cena da entrevista (repercussão e evento da luta são as
+       de sempre) */
+    const kinds = J(X, "__ch.map(c=>c.kind).filter(k=>/coletiva|entrevista/i.test(k))").join(",");
+    if (kinds !== "coletivaCena,coletiva,entrevistaCena") throw new Error("chamadas de IA: " + kinds);
+  });
+
+  await conf("entrevista: sem provocação nem promessa na coletiva, a pergunta segue o fato da luta (nada de fala)", async () => {
+    const X = nova(307);
+    const r = J(X, `(function(){
+      registrarFala({onde:"coletiva",luta:fightNo,adv:"F",texto:"Respeito muito ele, vai ser uma grande luta.",decl:{tom:"respeito",trecho:"Respeito muito ele"}});
+      const f=st.memoria.falas[0];f.resultado={venceu:true,metodo:"Decisão",round:3};
+      return {usa:!!(f&&(f.tom==="provocacao"||f.tom==="promessa"))};})()`);
+    if (r.usa) throw new Error("respeito virou cobrança");
+  });
+
+  /* ---------- nada inventado ---------- */
+  await conf("anti-invenção: pergunta da IA que cita fala que ele não disse é descartada; a fala real passa; paráfrase sem aspas é descartada", async () => {
+    const X = nova(308);
+    const r = J(X, `(function(){
+      const local={evento:"",pergunta:"molde local"};
+      const real="Ele é superestimado e todo mundo vai ver.";
+      const q=p=>cenaDaIA({evento:"",pergunta:p},local,"entrevista",{permitidas:[real]}).pergunta;
+      return [
+        q('Você disse "vou arrancar a cabeça dele". Arrepende?'),
+        q('Você disse "Ele é superestimado". Mantém depois da derrota?'),
+        q('Você disse que ele era fraco. Mantém?'),
+        q('Como foi o segundo round?'),
+        cenaDaIA({evento:"",pergunta:'Na coletiva você chamou ele de "piada". E agora?'},local,"entrevista",{permitidas:[]}).pergunta,
+        cenaDaIA({evento:"",pergunta:"Como está o corpo?"},local,"entrevista",{permitidas:[real],exige:real}).pergunta,
+        q("Kayo, você disse na coletiva que 'Ele é superestimado'. E agora?"),
+        q("Você chamou ele de 'piada' na coletiva. E agora?"),
+        q("Você falou com o seu treinador depois do segundo round?")];})()`);
+    if (r[0] !== "molde local") throw new Error("fala inventada passou: " + r[0]);
+    if (r[1] === "molde local") throw new Error("fala real foi recusada");
+    if (r[2] !== "molde local") throw new Error("paráfrase sem aspas passou: " + r[2]);
+    if (r[3] === "molde local") throw new Error("pergunta sem atribuição foi recusada");
+    if (r[4] !== "molde local") throw new Error("'chamou ele de' inventado passou");
+    if (r[5] !== "molde local") throw new Error("cena que tinha que cobrar a fala passou sem citar");
+    /* medido no modelo: ele cita com aspas simples dentro do JSON */
+    if (r[6] === "molde local") throw new Error("citação real com aspas simples foi recusada");
+    if (r[7] !== "molde local") throw new Error("'chamou ele de' com citação inventada passou");
+    if (r[8] === "molde local") throw new Error("'falou com o treinador' foi tratado como fala");
+  });
+  await conf("anti-invenção: reação que cita fala inexistente vale como reação nenhuma; evento que põe fala na boca dele some", async () => {
+    const X = nova(309);
+    const r = J(X, `(function(){
+      const nome=me.name;
+      return [
+        falasAtribuidasOk(nome+' disse "vou aposentar ele" e a sala riu.',["Treinei muito."],nome,{exigeCitacao:false}),
+        falasAtribuidasOk(nome+' disse "Treinei muito" e a sala riu.',["Treinei muito."],nome,{exigeCitacao:false}),
+        falasAtribuidasOk('Depois que ele disse que treinou muito, a sala riu.',["Treinei muito."],nome,{exigeCitacao:false}),
+        falasAtribuidasOk('Um vídeo em que você diz que vai parar viralizou.',[],nome),
+        falasAtribuidasOk('Você disse na rádio que o adversário é fraco.',[],nome),
+        falasAtribuidasOk('A academia fechou mais cedo por causa da chuva.',[],nome),
+        /* medido no modelo: dois eventos derrubados por engano */
+        falasAtribuidasOk('O irmão pediu dinheiro e o '+nome+' mandou Pix na hora.',[],nome),
+        falasAtribuidasOk(nome+' mandou devolver a camisa com um recado na etiqueta.',[],nome),
+        falasAtribuidasOk('Na rádio, '+nome+" disse que 'o cinturão é dele'.",[],nome)];})()`);
+    if (JSON.stringify(r) !== "[false,true,true,true,false,true,true,true,false]") throw new Error(JSON.stringify(r));
+  });
+
+  /* ---------- coletivas futuras ---------- */
+  await conf("coletiva futura: revanche traz a fala do encontro anterior; luta comum sem gancho não traz nada; cobrança espaçada e com teto", async () => {
+    const X = nova(310);
+    const r = J(X, `(function(){
+      st.memoria={falas:[]};fightNo=6;
+      registrarFala({onde:"coletiva",luta:3,adv:"Velho Rival",texto:"Ele não passa do segundo round.",decl:{tom:"promessa",trecho:"Ele não passa do segundo round",promessa:{metodo:"vencer",round:2}}});
+      const f=st.memoria.falas[0];f.resultado={venceu:false,metodo:"Nocaute",round:1};f.cumprida=false;f.cobrada=2;
+      const rev=falaParaColetiva({name:"Velho Rival"});
+      const comum=falaParaColetiva({name:"Outro Qualquer"});      // cobrada 2: fora
+      f.cobrada=0;st.memoria.ultimaCobranca=6;
+      const espacada=falaParaColetiva({name:"Outro Qualquer"});   // última cobrança foi agora há pouco
+      st.memoria.ultimaCobranca=0;st.memoria.falas.forEach(x=>x.luta=1);
+      const velha=falaParaColetiva({name:"Outro Qualquer"});      // fala de 6 lutas atrás: fora
+      return{rev:rev&&rev.motivo,comum,espacada,velha};})()`);
+    if (r.rev !== "revanche") throw new Error("revanche não trouxe a fala: " + JSON.stringify(r));
+    if (r.comum || r.espacada || r.velha) throw new Error("cobrou sem gancho: " + JSON.stringify(r));
+  });
+  await conf("coletiva futura de verdade: a IA recebe a fala antiga literal com o resultado, a tela mostra, e reabrir a coletiva não conta duas vezes", async () => {
+    const X = nova(311);
+    X.run(`globalThis.__ch=[];ai=async(kind,data)=>{__ch.push({kind,data:JSON.parse(JSON.stringify(data))});return null;};nextFight();`);
+    const adv = X.run("ofertaAtual[0].f.name");
+    X.run(`registrarFala({onde:"coletiva",luta:0,adv:${JSON.stringify(adv)},texto:"Vou nocautear esse cara.",decl:{tom:"promessa",trecho:"Vou nocautear esse cara",promessa:{metodo:"nocaute",round:null}}});
+      const f=st.memoria.falas[0];f.resultado={venceu:false,metodo:"Decisão",round:3};f.cumprida=false;`);
+    X.registro.opps.children.find(n => tem(n, "opp")).onclick();
+    X.registro.camps.children.find(n => tem(n, "camp")).onclick();
+    await respirarN(X);
+    const pedido = J(X, "__ch.filter(c=>c.kind==='coletivaCena').pop()");
+    if (!pedido || !pedido.data.memoria.length || !pedido.data.memoria[0].includes('"Vou nocautear esse cara"') || !/perdeu/.test(pedido.data.memoria[0]))
+      throw new Error("a IA não recebeu a fala antiga com o resultado: " + JSON.stringify(pedido && pedido.data.memoria));
+    if (!/revanche/.test(pedido.data.tema)) throw new Error("tema não é de revanche: " + pedido.data.tema);
+    if (!X.registro.colmemoria || X.registro.colmemoria.hidden || !X.registro.colmemoria.innerHTML.includes("Vou nocautear esse cara")) throw new Error("a tela não mostra a fala antiga");
+    if (!X.registro.colpergunta.innerHTML.includes("Vou nocautear esse cara")) throw new Error("a pergunta local não cita a fala");
+    const antes = J(X, "st.memoria.falas[0].cobrada");
+    X.run("telaColetiva(escolhidoAtual,CAMPS[0]);");
+    await respirarN(X);
+    if (J(X, "st.memoria.falas[0].cobrada") !== antes) throw new Error("reabrir a coletiva contou a cobrança de novo");
+    if (J(X, "__ch.filter(c=>c.kind==='coletivaCena').length") !== 1) throw new Error("reabrir pediu outra cena à IA");
+  });
+
+  /* ---------- persistência ---------- */
+  await conf("save: a memória vai no save e volta igual; save antigo sem memória abre e cria na hora", async () => {
+    const X = nova(312);
+    X.run(`registrarFala({onde:"coletiva",luta:1,adv:"F",texto:"Vou vencer.",decl:{tom:"promessa",trecho:"Vou vencer",promessa:{metodo:"vencer"}}});`);
+    const d = J(X, "montarSave()");
+    if (!d.st || !d.st.memoria || d.st.memoria.falas[0].texto !== "Vou vencer.") throw new Error("a memória não está no save");
+    const Y = nova(313);
+    Y.run("delete st.memoria;");
+    if (J(Y, "memoriaDa().falas.length") !== 0) throw new Error("save sem memória não criou uma vazia");
+  });
+
+  const ok = !falhas.length;
+  console.log(ok ? verde("  memória ok") : vermelho(`  ${falhas.length} falha(s) na memória`));
+  return ok;
+}
+
+/* ================================================================== *
  * 4. DESAFIO — a mesma semente dá os mesmos adversários?
  *
  * A promessa MUDOU nesta leva: "Rolar novamente" (draft) consome rng sob
@@ -9160,6 +9401,7 @@ try {
   else if (cmd === "draft") ok = testarDraft(div || "lightweight");
   else if (cmd === "orcamento") ok = await testarOrcamento();
   else if (cmd === "tutorial") ok = await testarTutorial();
+  else if (cmd === "memoria") ok = await testarMemoria();
   else if (cmd === "pesos") ok = medirPesos(div || "lightweight");
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
@@ -9240,6 +9482,7 @@ try {
         ["draft", () => testarDraft(div || "lightweight")],
         ["orcamento", () => testarOrcamento()],
         ["tutorial", () => testarTutorial()],
+        ["memoria", () => testarMemoria()],
         ["escolhas", () => testarEscolhas(div || "lightweight")],
         ["treino", () => testarTreino(div || "lightweight")],
         ["desafio", () => testarDesafio(div || "lightweight")],

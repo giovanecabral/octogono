@@ -2248,3 +2248,20 @@ admin e da conta de teste. Nada deste item depende mais do dono.
   no primeiro draft e na primeira noite de luta, versões de computador e
   celular, botão pra reabrir. Suíte nova `tutorial`.
 
+## 39. Plano de evolução: experiência, retenção e conversão do Pro (2026-09-29)
+
+Plano do dono aprovado com ordem fixa: 1. memória narrativa; 2. amostra
+grátis (coletiva e entrevista completas na luta 1 de cada carreira, cota
+controlada no servidor); 3. menos travas pro grátis; 4. nova apresentação
+do Pro ("Sua voz. Sua reputação. Sua lenda.", fluxo da Asaas e preço
+intactos); 5. analytics (sem texto do jogador); 6. segurança (login em
+toda chamada de IA, cota de 400/24 h ajustável, Lenda no placar só Pro);
+7. consequências por estilo, ADIADA. Cada etapa só avança depois de o dono
+ver o resultado da anterior. Nenhum SQL roda sem aprovação explícita dele.
+
+- **Etapa 1 (memória narrativa): feita.** Ver LEIA-ME "Memória
+  narrativa". SQL nenhum.
+- **SQL da etapa 2 (tabela `uso_ia` e função `consumir_uso_ia`):
+  apresentado ao dono, NÃO executado.** Ele roda no Supabase quando
+  aprovar.
+

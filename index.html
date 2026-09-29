@@ -2879,6 +2879,9 @@ async function dispararEventoIA(bouts,opp,r){
      confundia "onde ele foi desenhado pra proteger" com "todo texto que
      a IA gera" — são problemas diferentes. */
   if(conteudoInseguro(j.texto))return;
+  /* memória narrativa (2026-09-29): o evento não recebe fala nenhuma do
+     jogador, então qualquer fala atribuída a ele seria invenção */
+  if(!falasAtribuidasOk(j.texto,[],me.name))return;
   const texto=String(j.texto).slice(0,300).trim();
   if(!texto)return;
   bouts.appendChild(el("div","event",texto));
@@ -3093,6 +3096,7 @@ async function abrirDilema(dPronto){
        título repetir um dos recentes — a instrução de não repetir (acima,
        no prompt) reduz mas não garante, mesma regra do evento. */
     if(!d||!d.cena||conteudoInseguro(d.cena)||conteudoInseguro(d.titulo)||
+      !falasAtribuidasOk(`${d.titulo||""}. ${d.cena}`,[],me.name)||   // cena não põe fala na boca dele
       recentes.some(t=>t.toLowerCase()===String(d.titulo||"").toLowerCase()))
       d=proximoDilemaFallback();
     st.dilemaRecentes=st.dilemaRecentes||[];
@@ -3232,7 +3236,10 @@ function aplicarDilema(box,d,txt,jBruto){
      cujo desfecho narrou automutilação/violência/sexual não é confiável em
      NENHUM campo, não só no texto — descarta o objeto inteiro, não só a
      frase. A partir daqui só se usa jSeguro, nunca jBruto. */
-  const jSeguro=(jBruto&&conteudoInseguro(jBruto.desfecho))?null:jBruto;
+  /* citação atribuída ao jogador tem que ser da resposta dele (paráfrase da
+     resposta de agora é normal num desfecho e continua valendo) */
+  const jSeguro=(jBruto&&(conteudoInseguro(jBruto.desfecho)||
+    !falasAtribuidasOk(jBruto.desfecho,[txt],me.name,{exigeCitacao:false})))?null:jBruto;
   const j=jSeguro;
   /* Todo número volta limitado. O jogador digita texto livre que entra no
      prompt, então nada que o modelo devolve é aceito sem trava. */
@@ -4701,6 +4708,220 @@ function lembrarCena(tipo,c){
    conteúdo e não repetir uma pergunta recente; senão fica o molde local.
    Na coletiva a luta ainda não aconteceu: o evento perde a frase que
    afirma resultado (a pergunta é pergunta, não afirma nada). */
+/* ---------- memória narrativa (etapa 1 do plano de 2026-09-29) ----------
+   Pedido do dono: coletiva, resultado e entrevista formam uma história, e
+   a imprensa só cobra o que o jogador disse DE VERDADE. Cada resposta dele
+   na coletiva e na entrevista vira uma "fala" guardada na carreira
+   (st.memoria, que vai no save: sem tabela nova), com:
+   - o texto literal que ele escreveu, inteiro (o campo tem 200 letras);
+   - um trecho literal, recortado do próprio texto (a IA só aponta qual
+     parte; se o que ela devolve não estiver no texto, fica o começo dele);
+   - o tom e, se houver, a promessa, classificados na MESMA chamada da
+     reação (campo "declaracao"): nenhuma chamada nova de IA.
+   Quem decide se a promessa foi cumprida é o jogo, pelo resultado real
+   (avaliarPromessa). E nenhum texto da IA pode atribuir ao jogador uma
+   fala que não esteja aqui (falasAtribuidasOk). */
+const TONS_FALA=["provocacao","promessa","respeito","neutro"];
+const METODOS_PROMESSA=["vencer","nocaute","finalizacao","decisao"];
+const MAX_FALAS=20;
+function memoriaDa(){
+  st.memoria=st.memoria||{falas:[]};
+  st.memoria.falas=st.memoria.falas||[];
+  return st.memoria;
+}
+/* Forma de comparar texto: minúsculas, sem acento, pontuação vira espaço.
+   O mapa diz de qual letra do original veio cada letra da forma
+   normalizada, pra recortar o trecho na grafia do próprio jogador. */
+function normalizarComMapa(s){
+  s=String(s||"");
+  let out="",esp=true;
+  const mapa=[];
+  for(let i=0;i<s.length;i++){
+    const c=s[i].normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+    for(const ch of c){
+      if(/[a-z0-9]/.test(ch)){out+=ch;mapa.push(i);esp=false;}
+      else if(!esp){out+=" ";mapa.push(i);esp=true;}
+    }
+  }
+  if(out.endsWith(" ")){out=out.slice(0,-1);mapa.pop();}
+  return{out,mapa};
+}
+const formaComparavel=s=>normalizarComMapa(s).out;
+/* corta na última palavra inteira e marca o corte; nunca acrescenta
+   pontuação ou palavra que o jogador não escreveu */
+function cortarLiteral(s,n){
+  s=String(s||"").trim();
+  if(s.length<=n)return s;
+  const c=s.slice(0,n),i=c.lastIndexOf(" ");
+  return(i>n*.5?c.slice(0,i):c).replace(/[\s,;:]+$/,"")+"…";
+}
+function trechoLiteral(texto,trechoIA){
+  const T=normalizarComMapa(texto),P=formaComparavel(trechoIA);
+  if(P.length>=4){
+    const k=T.out.indexOf(P);
+    if(k>=0){
+      const ini=T.mapa[k],fim=T.mapa[k+P.length-1];
+      const t=String(texto).slice(ini,fim+1).trim();
+      if(t)return cortarLiteral(t,140);
+    }
+  }
+  return cortarLiteral(texto,120);
+}
+/* Grava a fala. decl é o campo "declaracao" da reação, já passado pelo
+   limparTextoIA; tudo nele é conferido aqui. Texto inseguro do jogador não
+   entra na memória (não pode voltar numa pergunta futura). */
+function registrarFala({onde,luta,adv,texto,decl}){
+  const t=String(texto||"").trim().slice(0,200);
+  if(!t||conteudoInseguro(t))return null;
+  const d=decl&&typeof decl==="object"?decl:{};
+  let promessa=null;
+  if(d.promessa&&typeof d.promessa==="object"&&METODOS_PROMESSA.includes(d.promessa.metodo)){
+    const rd=Number(d.promessa.round);
+    promessa={metodo:d.promessa.metodo,round:Number.isInteger(rd)&&rd>=1&&rd<=5?rd:null};
+  }
+  let tom=TONS_FALA.includes(d.tom)?d.tom:"neutro";
+  if(promessa&&tom!=="provocacao")tom="promessa";
+  const f={id:`${onde}-${luta}`,luta,onde,adv:String(adv||""),texto:t,
+    trecho:trechoLiteral(t,typeof d.trecho==="string"?d.trecho:""),
+    tom,promessa,resultado:null,cumprida:null,cobrada:0};
+  const m=memoriaDa();
+  m.falas=m.falas.filter(x=>x.id!==f.id);
+  m.falas.push(f);
+  if(m.falas.length>MAX_FALAS)m.falas.splice(0,m.falas.length-MAX_FALAS);
+  return f;
+}
+/* true: cumpriu; "parcial": venceu, mas não do jeito prometido; false: perdeu */
+function avaliarPromessa(p,won,metodo,round){
+  if(!p)return null;
+  if(!won)return false;
+  const jeito=p.metodo==="vencer"||(p.metodo==="nocaute"&&/ocaute/.test(metodo))||
+    (p.metodo==="finalizacao"&&metodo==="Finalização")||(p.metodo==="decisao"&&metodo==="Decisão");
+  const noTempo=!p.round||(metodo!=="Decisão"&&round<=p.round);
+  return jeito&&noTempo?true:"parcial";
+}
+function descreverResultado(res,adv){
+  const m=String(res.metodo||"").toLowerCase();
+  /* placar real dos juízes na decisão (medido: sem ele, a IA inventava um) */
+  const pl=String(res.cartoes||"").split("-").map(Number);
+  const placar=pl.length===2&&pl.every(Number.isFinite)?` (${Math.max(...pl)}-${Math.min(...pl)})`:"";
+  const como=res.metodo==="Decisão"?`por decisão${placar}`:`por ${m} no round ${res.round}`;
+  return res.venceu?`venceu ${adv} ${como}`:`perdeu pra ${adv} ${como}`;
+}
+function descreverPromessa(p){
+  const ate=p.round?` até o round ${p.round}`:"";
+  return p.metodo==="nocaute"?`nocaute${ate}`:p.metodo==="finalizacao"?`finalização${ate}`
+    :p.metodo==="decisao"?"vencer por decisão":`vencer${ate}`;
+}
+/* Como o resultado conversa com a fala: é isto que faz a pergunta ligar a
+   declaração ao combate, em vez de só repetir a frase. */
+function situacaoDaFala(f){
+  if(!f.resultado)return null;
+  const res=descreverResultado(f.resultado,f.adv);
+  if(f.promessa){
+    const pr=descreverPromessa(f.promessa);
+    if(f.cumprida===true)return{tipo:"cumpriu",res,txt:`prometeu ${pr} e cumpriu: ${res}`};
+    if(f.cumprida==="parcial")return{tipo:"parcial",res,txt:`prometeu ${pr} e ${res}, mas não do jeito que prometeu`};
+    return{tipo:"quebrou",res,txt:`prometeu ${pr} e ${res}`};
+  }
+  if(f.tom==="provocacao")return{tipo:f.resultado.venceu?"confirmou":"contradisse",res,txt:`provocou o adversário e ${res}`};
+  if(f.tom==="respeito")return{tipo:"respeito",res,txt:`falou com respeito do adversário e ${res}`};
+  return{tipo:"neutro",res,txt:res};
+}
+/* A fala da coletiva recebe o resultado real assim que a luta acaba. */
+function fecharFalaDaLuta(won,r){
+  const f=memoriaDa().falas.find(x=>x.onde==="coletiva"&&x.luta===fightNo);
+  if(!f)return null;
+  f.resultado={venceu:won,metodo:r.method,round:r.round,cartoes:r.cards||null};
+  f.cumprida=avaliarPromessa(f.promessa,won,r.method,r.round);
+  return f;
+}
+/* Ninguém atribui ao jogador uma fala que ele não disse. Regra mecânica
+   sobre qualquer texto da IA: toda frase que atribui fala a ele ("você
+   disse", "você prometeu", "você chamou ... de", "suas palavras", ou o
+   nome dele + verbo de fala) precisa trazer uma citação entre aspas, e
+   toda citação dessa frase tem que estar numa fala real permitida (as da
+   memória que foram pro prompt, ou a resposta de agora). Atribuição sem
+   citação reprova: paráfrase não dá pra conferir. */
+/* Medido no modelo (2026-09-29): "mandou Pix", "mandou devolver", "falou com
+   o treinador" não são fala; esses verbos só contam com "que", dois-pontos
+   ou aspas logo depois. "chamou ... de" é fala (xingamento, apelido). */
+const VERBO_FALA="(?:j[aá]\\s+)?(?:disse|dizia|prometeu|afirmou|garantiu|declarou|jurou|provocou|(?:falou|falava|avisou|contou|mandou)(?=\\s*(?:que\\b|:|[\"“'])))|chamou(?:\\s+\\S+){1,3}\\s+de";
+const ATRIBUI_FALA=new RegExp(`\\b(?:voc[eê]|vc)\\s+(?:${VERBO_FALA})\\b|\\bsuas?\\s+(?:palavras|fala|frase|declara[cç][aã]o|promessa|provoca[cç][aã]o)\\b`,"i");
+/* citação: entre aspas duplas ou simples (o modelo usa as simples dentro do
+   JSON); apóstrofo no meio da palavra não conta */
+function citacoesDe(texto){
+  const t=String(texto||"");
+  return [...t.matchAll(/["“”]([^"“”]{2,})["“”]/g),...t.matchAll(/(?<![A-Za-zÀ-ú])['‘’]([^'‘’]{2,}?)['‘’](?![A-Za-zÀ-ú])/g)]
+    .map(m=>formaComparavel(m[1])).filter(c=>c.length>=3);
+}
+function falasAtribuidasOk(texto,permitidas,nome,{exigeCitacao=true}={}){
+  const P=(permitidas||[]).map(formaComparavel).filter(Boolean);
+  const primeiro=String(nome||"").trim().split(/\s+/)[0];
+  const peloNome=primeiro?new RegExp(`\\b${escRe(primeiro)}\\b(?:\\s+\\S+){0,2}?\\s+(?:${VERBO_FALA})\\b`,"i"):null;
+  for(const frase of String(texto||"").split(/(?<=[.!?])\s+/)){
+    if(!ATRIBUI_FALA.test(frase)&&!(peloNome&&peloNome.test(frase)))continue;
+    const cits=citacoesDe(frase);
+    if(!cits.length){if(exigeCitacao)return false;continue;}
+    if(!cits.every(c=>P.some(p=>p.includes(c))))return false;
+  }
+  return true;
+}
+const cap=s=>String(s||"").replace(/^./,c=>c.toUpperCase());
+/* linha da memória que vai pro prompt: a fala literal e o que aconteceu depois */
+function linhaMemoria(f){
+  const sit=situacaoDaFala(f);
+  return `luta ${f.luta}, ${f.onde==="coletiva"?"na coletiva antes da luta":"na entrevista depois da luta"} contra ${f.adv}: "${f.trecho}"${sit?`. Depois: ${sit.txt}`:""}`;
+}
+/* Qual fala antiga (se alguma) esta coletiva cobra. Revanche sempre traz a
+   fala do encontro anterior; fora isso, só às vezes (no máximo uma coletiva
+   a cada três, e nem toda chance vira cobrança), só fala recente e marcante
+   (provocação ou promessa já decidida), e cada fala é cobrada no máximo
+   duas vezes. Nada disso consome gerador da carreira (hash da semente). */
+function falaParaColetiva(opp){
+  const m=memoriaDa(),prox=fightNo+1;
+  const antes=m.falas.filter(f=>f.luta<prox&&f.tom!=="neutro");
+  const revanche=antes.filter(f=>f.adv===opp.name).pop();
+  if(revanche)return{fala:revanche,motivo:"revanche"};
+  if(m.ultimaCobranca&&prox-m.ultimaCobranca<3)return null;
+  const recentes=antes.filter(f=>prox-f.luta<=4&&f.cobrada<2&&(f.tom==="provocacao"||(f.promessa&&f.cumprida!=null)));
+  if(!recentes.length)return null;
+  if(hashEstavel(`${SEED}:${prox}:cobranca`)%3===0)return null;
+  const alvo=recentes.find(f=>f.cumprida===false||f.cumprida==="parcial")||recentes[recentes.length-1];
+  return{fala:alvo,motivo:"cobranca"};
+}
+function cenaColetivaMemoria(opp,cob){
+  const f=cob.fala,sit=situacaoDaFala(f),t=`'${f.trecho}'`;
+  const quando=f.onde==="coletiva"?`na coletiva da luta ${f.luta}`:`na entrevista depois da luta ${f.luta}`;
+  if(cob.motivo==="revanche")
+    return{evento:`${opp.name} chegou lembrando do último encontro entre vocês.`,
+      pergunta:`${cap(quando)} você disse ${t}${sit?`, e ${sit.res}`:""}. Agora é contra ele de novo. O que mudou?`};
+  if(sit&&(sit.tipo==="quebrou"||sit.tipo==="parcial"))
+    return{evento:`Um repórter leu em voz alta o que você disse ${quando}.`,
+      pergunta:`${cap(quando)} você disse ${t}. Depois, ${sit.res}. Por que acreditar em você agora, contra ${opp.name}?`};
+  return{evento:`Um repórter leu em voz alta o que você disse ${quando}.`,
+    pergunta:`${cap(quando)} você disse ${t}${sit?`, e ${sit.res}`:""}. Vai manter esse tom contra ${opp.name}?`};
+}
+/* Pergunta local da entrevista quando a coletiva teve provocação ou
+   promessa: cita a fala literal E o que o resultado fez com ela. */
+function perguntaSobreFala(f,sit){
+  const t=`'${f.trecho}'`,h=hashEstavel(`${SEED}:${f.id}:entrevista`)%2;
+  if(sit.tipo==="cumpriu")return h?`Na coletiva você disse ${t}. E cumpriu: ${sit.res}. Estava tudo planejado?`
+    :`Você disse ${t} antes da luta e ${sit.res}. O que você diz pra quem duvidou?`;
+  if(sit.tipo==="parcial")return`Na coletiva você disse ${t}. Venceu, mas não do jeito que prometeu. O que faltou?`;
+  if(sit.tipo==="quebrou")return h?`Na coletiva você disse ${t}. No fim, ${sit.res}. Você se arrepende do que prometeu?`
+    :`Você disse ${t} antes da luta, e ${sit.res}. O que você diz pra quem acreditou?`;
+  if(sit.tipo==="confirmou")return h?`Antes da luta você disse ${t}. Depois de ${sit.res.replace(/^venceu /,"vencer ")}, mantém o que disse?`
+    :`Você disse ${t} e ${sit.res}. Ele estava no nível que você falou?`;
+  return h?`Na coletiva você disse ${t}. O resultado: ${sit.res}. Mantém o que disse?`
+    :`Você disse ${t} antes da luta e ${sit.res}. Deve alguma coisa a ${f.adv} agora?`;
+}
+function mostrarMemoria(p,rotulo,f){
+  const sit=situacaoDaFala(f);
+  p.memoria.innerHTML=`<span class="cena-memoria-rot">${rotulo}</span><span class="cena-memoria-fala">"${semTag(f.trecho)}"</span>${
+    sit?`<span class="cena-memoria-res">${semTag(cap(sit.res))}</span>`:""}`;
+  p.memoria.hidden=false;
+}
+
 /* Medido no modelo de produção (2026-09-28, 20 cenas): mesmo com a regra no
    prompt, ele às vezes abre a pergunta com o nome do repórter ("Renata
    Brum: ...", "Hugo Lessa, do Canal X, pergunta: ...") e às vezes põe o
@@ -4720,13 +4941,21 @@ function eventoDosOutros(ev){
   const primeiro=String(me&&me.name||"").trim().split(/\s+/)[0];
   return primeiro&&new RegExp(`^(?:o |a )?${escRe(primeiro)}\\b`,"i").test(String(ev).trim())?"":ev;
 }
-function cenaDaIA(j,local,tipo){
+function cenaDaIA(j,local,tipo,{permitidas=[],exige=null}={}){
   if(!j||typeof j!=="object")return local;
   let evento=eventoDosOutros(typeof j.evento==="string"?j.evento.trim():"");
   const pergunta=cortarFrase(limparPergunta(typeof j.pergunta==="string"?j.pergunta:""),280);
   if(!pergunta||conteudoInseguro(evento+" "+pergunta))return local;
   if(tipo==="coletiva")evento=semResultadoDeLuta(evento);
   evento=cortarFrase(evento,320);
+  /* memória narrativa: fala atribuída ao jogador só se estiver na memória
+     que foi pro prompt; e cena que tem que cobrar uma fala cita essa fala */
+  if(!falasAtribuidasOk(`${pergunta} ${evento}`,permitidas,me&&me.name))return local;
+  if(exige){
+    const cits=citacoesDe(pergunta);
+    const alvo=formaComparavel(exige);
+    if(!cits.length||!cits.every(c=>alvo.includes(c)))return local;
+  }
   const ja=cenasRecentes(tipo).join(" ").toLowerCase();
   if(ja.includes(pergunta.toLowerCase()))return local;
   return{evento,pergunta,ia:true};
@@ -4839,6 +5068,7 @@ function montarCena(box,tipo,reporter,imagem){
   return meio;
 }
 function pecasDaConversa(prefixo,reporter){
+  const memoria=el("div","cena-memoria","");memoria.id=prefixo+"memoria";memoria.hidden=true;
   const evento=el("p","cena-evento","");evento.id=prefixo+"evento";evento.hidden=true;
   const fala=el("div","balao balao-ia",`<span class="balao-quem">${reporter.nome}</span>
     <span class="digitando" role="status" aria-label="${reporter.nome} está perguntando"><i></i><i></i><i></i></span>`);
@@ -4846,7 +5076,7 @@ function pecasDaConversa(prefixo,reporter){
   const resp=el("div","balao balao-jogador");resp.id=prefixo+"balao";
   const desfecho=el("div","cena-desfecho");desfecho.id=prefixo+"desfecho";desfecho.hidden=true;
   const acoes=el("div","cena-acoes");acoes.id=prefixo+"acoes";
-  return{evento,fala,resp,desfecho,acoes};
+  return{memoria,evento,fala,resp,desfecho,acoes};
 }
 function mostrarPergunta(p,reporter,c){
   p.evento.innerHTML=semTag(c.evento||"");
@@ -4864,12 +5094,12 @@ function mostrarDesfecho(p,texto,fx){
    voltar à entrevista) mostra a MESMA cena, sem outra chamada de IA e sem
    gastar outro tema da cartela. */
 let cacheColetiva=null,cacheEntrevista=null;
-function cenaGuardada(cache,local,pedir,tipo){
+function cenaGuardada(cache,local,pedir,tipo,opcoes={}){
   if(cache.cena||cache.promessa)return;
   if(!meuPro){cache.cena=local;lembrarCena(tipo,local);return;}
   const tk=CARREIRA_TOKEN;
   cache.promessa=(async()=>{
-    try{return cenaDaIA(await pedir(await meuAccessToken()),local,tipo);}catch(e){return local;}
+    try{return cenaDaIA(await pedir(await meuAccessToken()),local,tipo,opcoes);}catch(e){return local;}
   })();
   /* resposta que chega depois de trocar de carreira não escreve no st novo */
   cache.promessa.then(c=>{if(tk!==CARREIRA_TOKEN)return;cache.cena=c;lembrarCena(tipo,c);});
@@ -4885,17 +5115,25 @@ function telaColetiva(escolhido,camp){
   const ct=++CENA_TOKEN;
   const seguir=()=>{CENA_TOKEN++;box.style.display="none";box.innerHTML="";lutar(escolhido,camp);};
   const chave=`${SEED}:${fightNo}:${opp.name}`;
-  if(!cacheColetiva||cacheColetiva.chave!==chave)
-    cacheColetiva={chave,tema:proximoTemaCena("coletiva"),reporter:reporterDaCena("coletiva"),cena:null,promessa:null};
-  const cache=cacheColetiva,{reporter,tema}=cache;
-  const local=cenaColetivaLocal(opp,camp,tema,escolhido);
+  if(!cacheColetiva||cacheColetiva.chave!==chave){
+    const cobranca=falaParaColetiva(opp);
+    if(cobranca){cobranca.fala.cobrada++;memoriaDa().ultimaCobranca=fightNo+1;}
+    cacheColetiva={chave,cobranca,reporter:reporterDaCena("coletiva"),cena:null,promessa:null,
+      tema:cobranca?(cobranca.motivo==="revanche"?"revanche: o que o lutador disse no último encontro entre os dois"
+        :"cobrança de uma fala antiga do lutador"):proximoTemaCena("coletiva")};
+  }
+  const cache=cacheColetiva,{reporter,tema,cobranca}=cache;
+  const local=cobranca?cenaColetivaMemoria(opp,cobranca):cenaColetivaLocal(opp,camp,tema,escolhido);
   const historicoRival=escolhido.rival?historicoRivalTexto():null;
+  const falaAntiga=cobranca?linhaMemoria(cobranca.fala):null;
   cenaGuardada(cache,local,token=>ai("coletivaCena",{name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
     sequencia:st.streakW>1?`${st.streakW} vitórias seguidas`:st.streakL>1?`${st.streakL} derrotas seguidas`:null,
     opp:opp.name,estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
     camp:camp&&camp.nome,lesao:st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null,
-    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,tema,recentes:cenasRecentes("coletiva"),token}),"coletiva");
+    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,tema,recentes:cenasRecentes("coletiva"),
+    memoria:falaAntiga?[falaAntiga]:[],token}),"coletiva",
+    {permitidas:cobranca?[cobranca.fala.texto]:[],exige:cobranca?cobranca.fala.texto:null});
 
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Coletiva · ${me.name} x ${opp.name}`));
@@ -4906,7 +5144,9 @@ function telaColetiva(escolhido,camp){
   p.resp.appendChild(bloqueioPro(area));
   const pular=el("button","botao botao-sec coletiva-pular","Pular a coletiva");pular.id="colpular";pular.type="button";
   p.acoes.appendChild(pular);
-  meio.append(p.evento,p.fala,p.resp,p.desfecho,p.acoes);
+  meio.append(p.memoria,p.evento,p.fala,p.resp,p.desfecho,p.acoes);
+  if(cobranca)mostrarMemoria(p,cobranca.fala.onde==="coletiva"?`Na coletiva da luta ${cobranca.fala.luta} você disse`
+    :`Depois da luta ${cobranca.fala.luta} você disse`,cobranca.fala);
   const inp=document.getElementById("colresp"),go=document.getElementById("colgo");
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
   inp.addEventListener("input",cresce);
@@ -4938,9 +5178,9 @@ function telaColetiva(escolhido,camp){
     const j=conteudoInseguro(txt)?null:await ai("coletiva",{name:me.name,opp:opp.name,
       estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
       evento:cena.evento,pergunta:cena.pergunta,resposta:txt,record:`${st.wins}-${st.losses}`,
-      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,token});
+      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,falaAntiga,token});
     if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
-    aplicarColetiva(p,opp,txt,j,seguir);
+    aplicarColetiva(p,opp,txt,j,seguir,{cena,cobranca});
   };
   /* foco só com mouse: no toque ele abre o teclado por cima da pergunta */
   if(cache.cena&&meuPro&&!semHover())inp.focus();
@@ -4963,8 +5203,11 @@ function efeitoColetivaHTML(){
   return `<div class="dil-fx">${partes.join("")}</div>`+
     (pct?`<p class="cena-nota">O hype multiplica os seguidores e o fã que a luta render: o resultado mostra quanto veio da coletiva.</p>`:"");
 }
-function aplicarColetiva(p,opp,txt,jBruto,seguir){
-  const jSeguro=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
+function aplicarColetiva(p,opp,txt,jBruto,seguir,{cena=null,cobranca=null}={}){
+  /* reação que atribui ao jogador uma citação que ele não disse vale como
+     reação nenhuma (mesma rede de baixo do conteúdo inseguro) */
+  const jSeguro=(jBruto&&(conteudoInseguro(jBruto.reacao)||
+    !falasAtribuidasOk(jBruto.reacao,[txt].concat(cobranca?[cobranca.fala.texto]:[]),me.name,{exigeCitacao:false})))?null:jBruto;
   const j=jSeguro;
   st.coletivaHype=lim(j&&j.hype,.85,1.20,1);
   const mult=lim(j&&j.pressao,.90,1.10,1);
@@ -4974,10 +5217,18 @@ function aplicarColetiva(p,opp,txt,jBruto,seguir){
      luta que ainda vai acontecer (semResultadoDeLuta). */
   const bruto=(j&&j.reacao)?semResultadoDeLuta(String(j.reacao)).slice(0,800):"";
   mostrarResposta(p,txt);
+  /* memória narrativa: a resposta literal vira fala da carreira, com o tom
+     e a promessa que vieram na mesma chamada (nada se a IA falhou: fica a
+     resposta literal, com tom neutro) */
+  registrarFala({onde:"coletiva",luta:fightNo+1,adv:opp.name,texto:txt,decl:j&&j.declaracao});
   /* Sem reação (IA fora, texto cortado): a resposta fica registrada e a
      sala segue, em vez de pular pra luta sem mostrar nada. */
-  mostrarDesfecho(p,bruto?semTag(bruto):"A assessoria anotou a resposta e passou a palavra pro próximo repórter.",
-    efeitoColetivaHTML());
+  const reacaoTxt=bruto?semTag(bruto):"A assessoria anotou a resposta e passou a palavra pro próximo repórter.";
+  mostrarDesfecho(p,reacaoTxt,efeitoColetivaHTML());
+  /* a coletiva entra no Cartel junto com a luta (o registro dela só nasce
+     no fim da luta, em finishFight) */
+  if(cena&&!conteudoInseguro(txt))
+    st.coletivaDaLuta={tipo:"coletiva",luta:fightNo+1,cena:`"${semTag(cena.pergunta)}"`,resposta:semTag(txt),texto:reacaoTxt};
   /* Botão em vez de tempo fixo (pedido do dono, 2026-09-28): a luta só
      começa quando o jogador manda. */
   const tk=CARREIRA_TOKEN;
@@ -5057,18 +5308,31 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
   const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
   const base=perguntaEntrevista(opp,won,r.method,r.round,r.clock,titleFight,zebra,lesaoTxt,td0,tdt0,fightNo);
   const chave=`${SEED}:${fightNo}:${opp.name}`;
-  if(!cacheEntrevista||cacheEntrevista.chave!==chave)
-    cacheEntrevista={chave,angulo:proximoTemaCena("entrevista"),reporter:reporterDaCena("entrevista"),cena:null,promessa:null};
-  const cache=cacheEntrevista,{reporter,angulo}=cache;
-  const local={evento:eventoEntrevistaLocal(won,titleFight,opp),pergunta:base.pergunta};
+  if(!cacheEntrevista||cacheEntrevista.chave!==chave){
+    /* memória narrativa: se na coletiva desta luta ele provocou ou
+       prometeu, a entrevista trata DISSO, ligado ao resultado real (cada
+       fala é cobrada no máximo duas vezes na carreira) */
+    const fc=memoriaDa().falas.find(f=>f.onde==="coletiva"&&f.luta===fightNo&&f.resultado);
+    const falaCol=fc&&(fc.tom==="provocacao"||fc.tom==="promessa")&&fc.cobrada<2?fc:null;
+    if(falaCol)falaCol.cobrada++;
+    cacheEntrevista={chave,falaCol,angulo:falaCol?null:proximoTemaCena("entrevista"),
+      reporter:reporterDaCena("entrevista"),cena:null,promessa:null};
+  }
+  const cache=cacheEntrevista,{reporter,angulo,falaCol}=cache;
+  const sitFala=falaCol?situacaoDaFala(falaCol):null;
+  const local={evento:eventoEntrevistaLocal(won,titleFight,opp),
+    pergunta:falaCol?perguntaSobreFala(falaCol,sitFala):base.pergunta};
   const historicoRival=ehRival?historicoRivalTexto():null;
+  const falaColetiva=falaCol?{trecho:falaCol.trecho,situacao:sitFala.txt}:null;
   cenaGuardada(cache,local,token=>ai("entrevistaCena",{name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),opp:opp.name,ganhou:won,metodo:r.method,
     round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,
     historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,
-    fato:fatoDaEntrevista(base.fatoObrigatorio,won,r,lesaoTxt,td0,tdt0),
-    angulo:won?angulo:(ANGULO_NA_DERROTA[angulo]||angulo),
-    recentes:cenasRecentes("entrevista"),token}),"entrevista");
+    fato:falaCol?`antes desta luta, na coletiva, ele disse: "${falaCol.trecho}". O que aconteceu: ${sitFala.txt}`
+      :fatoDaEntrevista(base.fatoObrigatorio,won,r,lesaoTxt,td0,tdt0),
+    angulo:falaCol?"o que o resultado da luta fez com a fala da coletiva":won?angulo:(ANGULO_NA_DERROTA[angulo]||angulo),
+    recentes:cenasRecentes("entrevista"),token}),"entrevista",
+    {permitidas:falaCol?[falaCol.texto]:[],exige:falaCol?falaCol.texto:null});
 
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Entrevista · ${won?"depois da vitória":"depois da derrota"}`));
@@ -5079,7 +5343,8 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
   p.resp.appendChild(area);
   const voltar=el("button","botao botao-sec","Voltar ao resultado");voltar.id="entvoltar";voltar.type="button";
   p.acoes.appendChild(voltar);
-  meio.append(p.evento,p.fala,p.resp,p.desfecho,p.acoes);
+  meio.append(p.memoria,p.evento,p.fala,p.resp,p.desfecho,p.acoes);
+  if(falaCol)mostrarMemoria(p,"Na coletiva você disse",falaCol);
   const inp=document.getElementById("entresp"),go=document.getElementById("entgo");
   const cresce=()=>{inp.style.height="auto";inp.style.height=inp.scrollHeight+"px";};
   inp.addEventListener("input",cresce);
@@ -5108,9 +5373,9 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
       ganhou:won,metodo:r.method,round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,
       zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,evento:cena.evento,pergunta:cena.pergunta,resposta:txt,
       record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
-      rendaBase:RENDA_BASE,historicoRival,token});
+      rendaBase:RENDA_BASE,historicoRival,falaColetiva,token});
     if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
-    aplicarEntrevista({p,wrap,cena,txt,j,sair,fundoResultado});
+    aplicarEntrevista({p,wrap,cena,txt,j,sair,fundoResultado,opp,falaCol});
   };
   SOM.flashes();
   mostrarNoite("entrevista");
@@ -5119,8 +5384,13 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
    "não tá dando tempo de ler"): entrevistaAberta trava a próxima luta até
    ele ser clicado, e aí segue pra próxima luta de propósito. Na última luta
    ou com dilema aberto não há próxima luta pra abrir: volta pro resultado. */
-function aplicarEntrevista({p,wrap,cena,txt,j:jBruto,sair,fundoResultado}){
-  const j=(jBruto&&conteudoInseguro(jBruto.reacao))?null:jBruto;
+function aplicarEntrevista({p,wrap,cena,txt,j:jBruto,sair,fundoResultado,opp=null,falaCol=null}){
+  /* reação que atribui ao jogador uma citação que ele não disse vale como
+     reação nenhuma (mesma rede de baixo do conteúdo inseguro) */
+  const j=(jBruto&&(conteudoInseguro(jBruto.reacao)||
+    !falasAtribuidasOk(jBruto.reacao,[txt].concat(falaCol?[falaCol.texto]:[]),me.name,{exigeCitacao:false})))?null:jBruto;
+  /* memória narrativa: a resposta literal da entrevista também vira fala */
+  registrarFala({onde:"entrevista",luta:fightNo,adv:opp?opp.name:"",texto:txt,decl:j&&j.declaracao});
   const dFan=lim(j&&j.fa,-2,2,0);
   const dSeg=lim(j&&j.seguidores,-.30,.50,0);
   const mencionaDinheiro=MENCIONA_DINHEIRO.test(semAcento(j&&j.reacao||""));
@@ -6497,6 +6767,11 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-09-29",titulo:"A imprensa lembra",itens:[
+    "O que você responde na coletiva fica guardado na carreira, com as suas palavras.",
+    "Na entrevista depois da luta, o repórter cobra o que você disse antes, de acordo com o resultado: promessa cumprida, promessa quebrada, provocação confirmada ou desmentida.",
+    "Numa revanche, e de vez em quando nas coletivas seguintes, a imprensa volta a uma fala sua. Ninguém põe na sua boca uma frase que você não disse.",
+    "A coletiva agora aparece no Cartel, junto da luta."]},
   {data:"2026-09-28",titulo:"Como jogar",itens:[
     "Tutorial com prints do próprio jogo, com cada parte circulada e numerada: abre na primeira montagem do lutador e na primeira noite de luta. O botão Como jogar abre de novo quando quiser.",
     "Orçamento do draft maior: ficou bem mais difícil terminar a montagem sem dinheiro pras últimas cartas.",
@@ -8832,9 +9107,9 @@ function linhaExtra(x){
      ("— " na frente) e texto de IA com travessão: limpa na hora de mostrar.
      A resposta digitada pelo jogador fica como ele escreveu. */
   x={...x,titulo:semTravessao(x.titulo),cena:semTravessao(x.cena),texto:semTravessao(x.texto)};
-  if(x.tipo==="dilema"||x.tipo==="entrevista"){
+  if(x.tipo==="dilema"||x.tipo==="entrevista"||x.tipo==="coletiva"){
     const b=el("div","dilema");
-    b.innerHTML=`<div class="dil-eyebrow">${x.tipo==="dilema"?"Decisão":"Entrevista"}</div>
+    b.innerHTML=`<div class="dil-eyebrow">${x.tipo==="dilema"?"Decisão":x.tipo==="coletiva"?"Coletiva":"Entrevista"}</div>
       ${x.titulo?`<div class="dil-t">${x.titulo}</div>`:""}
       ${x.cena?`<div class="dil-c">${x.cena}</div>`:""}
       ${x.resposta?`<div class="dil-r">"${x.resposta}"</div>`:""}
@@ -9141,10 +9416,17 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     seg:st.followers,fa:Math.round(st.fan*10)/10,
     narracao:(r.log||[]).map(L=>[L.clock,L.kind||"",L.text])};
   if(coletivaNaLuta)reg.coletiva=coletivaNaLuta;   // opcional: save antigo não tem
+  /* memória narrativa: a fala da coletiva desta luta ganha o resultado
+     real, e a promessa é julgada pelo jogo; a coletiva vira o 1º extra */
+  fecharFalaDaLuta(won,r);
+  const coletivaReg=st.coletivaDaLuta&&st.coletivaDaLuta.luta===fightNo?st.coletivaDaLuta:null;
+  st.coletivaDaLuta=null;
+  if(coletivaReg)reg.extras.push(coletivaReg);
   st.registro.push(reg);
   const bouts=document.getElementById("bouts");
   bouts.appendChild(linhaBout(reg));
   const pos=novoPosLuta(fightNo);
+  if(coletivaReg)pos.appendChild(linhaExtra(coletivaReg));
   const rkDepois=posicaoDivisao();
   (won?SOM.vitoria:SOM.derrota)();     // um só, no carimbo, seja qual for o método
   /* Plano Pro — "zebra" da entrevista reaproveita a MESMA definição de
