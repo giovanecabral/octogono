@@ -2288,3 +2288,22 @@ IA real.
 - As medições com a IA real só rodam com autorização do dono.
 - Não há /favicon.ico (404 no navegador, já era assim antes).
 
+## 41. Entrevista pós-luta com pauta (2026-10-01)
+
+Pedido do dono: perguntas artificiais, desconexas e sem sentido na
+entrevista. Ver LEIA-ME "Entrevista pós-luta com pauta". Só a entrevista
+mudou; coletiva, motor, balanço, geradores, banco, saves e Free/Pro ficam
+como estavam, e o número de chamadas de IA é o mesmo.
+
+- A IA ainda erra em parte das cenas: nas duas últimas rodadas, 46% das
+  respostas caíram no molde da mesma pauta (nocaute chamado de
+  "finalizou", "senhor", fala parafraseada, vantagem inventada, tempo
+  errado). O filtro barra o que dá pra conferir com os fatos; o que não dá
+  (frase truncada, construção desajeitada) passa, em cerca de 2 de 26 na
+  rodada independente. O modelo de produção é o qwen3.7-flash; um modelo
+  maior erraria menos, com custo maior (decisão do dono).
+- Cada rodada nova com a IA real achou um tipo de erro novo; as regras do
+  filtro crescem com caso medido, cada uma com teste. Medir de novo só com
+  autorização do dono (cerca de US$ 0,0013 por rodada de 26).
+- O dono confere em produção com conta Pro e Free de verdade e a IA real.
+

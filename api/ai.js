@@ -651,35 +651,89 @@ Acontecimentos já usados nesta carreira: ${d.eventosUsados.slice(0, 8).map(e =>
 Histórico real da carreira (use só o que servir à pergunta; nunca invente outro fato): ${String(d.dossie).slice(0, 420)}.` : ""}${cenaRecentes(d)}`,
 });
 
+/* Entrevista pós-luta com pauta (2026-10-01, pedido do dono: perguntas
+   "artificiais, desconexas e sem sentido"). Medido: o prompt começava com a
+   voz de torcedor do feed ("erros de digitação são bem-vindos") e o formato
+   compartilhado mandava a pergunta "nascer do evento"; a IA juntava a
+   chegada do repórter, uma situação sorteada e o fato obrigatório numa
+   pergunta só. Agora a entrevista tem voz e formato próprios: a pergunta
+   parte dos fatos da luta e segue a pauta (o que o repórter quer
+   descobrir), escolhida pelo jogo. A coletiva continua com VOZ e
+   CENA_FORMATO, sem mudança. */
+const VOZ_REPORTER = `Você escreve como repórter esportivo brasileiro de MMA, na área de
+entrevista logo depois da luta: português correto e falado, frases curtas,
+sem gíria de internet, sem erro de digitação, sem tom de torcedor.
+Palavra comum em português, nunca o inglês solto: luta (nunca "fight"),
+médico (nunca "doctor"), empresário (nunca "manager" ou "promoter"),
+treinador ou técnico (nunca "coach"), academia (nunca "gym"). Termo técnico
+do esporte que o brasileiro usa (grappling, camp, clinch) pode aparecer.
+Nunca narre automutilação, violência gráfica ou conteúdo sexual.
+${REGRA_TEXTO}`;
+const ENTREVISTA_FORMATO = `Responda SOMENTE com JSON, sem markdown:
+{"evento":"1 ou 2 frases: o que acontece na área de entrevista quando o repórter chega",
+ "pergunta":"a pergunta do repórter, falando direto com o lutador do jogador"}
+
+O "evento" é só o cenário da chegada do repórter, com gente fazendo coisa
+(equipe, adversário, torcida, médico, organização). Conte o "Evento de
+base" do seu jeito, sem mudar o tipo de acontecimento e sem parecer com os
+"Acontecimentos já usados". O lutador do jogador não faz nem fala nada no
+evento. O evento não é um fato da luta e não cria fato novo: nada de
+lesão, número, golpe ou declaração.
+
+Como o repórter pensa a pergunta:
+1. Parte do que aconteceu na luta (está em "O que aconteceu na luta"),
+   nunca do evento: não repita nem resuma o evento na pergunta.
+2. Segue a pauta: o que ele quer descobrir.
+3. Pergunta como numa entrevista real na beira do octógono: no máximo uma
+   frase curta de contexto, com um fato da luta, e uma pergunta aberta
+   (como, o que, por que, em que momento, qual).
+Proibido na pergunta:
+- escolha entre duas palavras vagas ("te ajudou ou te atrapalhou", "te empurrou ou te pressionou");
+- pergunta que serviria pra qualquer luta ("como você se sente", "o que passou pela sua cabeça");
+- juízes, cartões, pontuação ou decisão, se a luta não foi pros cartões;
+- dizer que a decisão foi dividida, unânime ou majoritária (o jogo tem um placar só);
+- número, golpe, round ou acontecimento que não está nos fatos;
+- afirmar o que ele sentiu, pensou ou quis (pergunte, não afirme);
+- fala do treinador, do adversário, da torcida ou de qualquer pessoa (ninguém disse nada nos dados);
+- falar da próxima luta dele.
+Pra mencionar o que o lutador disse, use SÓ a fala que vier nos dados,
+copiada palavra por palavra entre aspas simples, sem mudar nenhuma
+palavra, e ligue ao resultado da luta sem inventar contradição que não
+existe. Nunca descreva a fala com outras palavras e nunca invente uma fala
+dele.
+O repórter já vem dado (nome, veículo e linha editorial): é ele quem
+pergunta. A linha editorial muda o jeito de perguntar, nunca o assunto: o
+assunto é sempre a pauta, e a pauta é a luta (nada de contrato, bolsa,
+dinheiro ou próxima luta). Não diga qual é a linha editorial. A pergunta
+nunca começa pelo nome do repórter nem chama outra pessoa pelo nome.
+Placar: descreva só como os dados dizem (apertada é um ponto de diferença;
+nunca "placar baixo"; sem placar nos dados, não diga se foi apertada).
+Tempo: "1min50 depois do início do round" quer dizer que a luta acabou com
+1min50 de round; nunca "faltando" nem "nos últimos". As quedas são da luta
+toda, não de um round.
+Trate o lutador por você, nunca por senhor. Fuja de fórmula de questionário
+("qual foi o detalhe técnico", "qual ajuste técnico ou leitura", "precisão
+do resultado"): pergunte como um repórter conversa.
+Lutador de MMA luta no octógono, nunca "ringue".`;
+
 PROMPTS.entrevistaCena = d => ({
-  system: `${VOZ}
-Você monta a cena da entrevista logo DEPOIS de uma luta de MMA: o que acontece na hora e a pergunta que o repórter faz para o lutador do jogador.
-${CENA_FORMATO}
-A pergunta TEM que tratar deste fato da luta: ${d.fato}. Chegue nele pela
-situação e pela forma pedidas, por um caminho diferente do óbvio.
-Se o fato trouxer uma fala do lutador entre aspas, a pergunta cita essa fala
-exatamente, entre aspas, e a confronta com o resultado da luta (cumpriu,
-não cumpriu, venceu mas não do jeito que disse, perdeu depois de provocar):
-nunca só repete a fala. Sem fala no fato, não mencione nada que ele tenha
-dito antes.
-Coerente com o resultado: quem perdeu não comemora e ninguém dedica derrota; na derrota o
-ângulo vira cobrança ou explicação. O lugar é a área de entrevista logo
-depois da luta, ainda na arena.
-Você NUNCA menciona, sugere ou prediz nada sobre a PRÓXIMA luta dele
-(adversário, resultado, quando é).`,
+  system: `${VOZ_REPORTER}
+Você monta a entrevista logo DEPOIS de uma luta de MMA: o que acontece na área de entrevista e a pergunta que o repórter faz para o lutador do jogador.
+${ENTREVISTA_FORMATO}
+Coerente com o resultado: quem perdeu não comemora e ninguém dedica
+derrota; na derrota a pauta é explicação, não festa.`,
   user: `Lutador do jogador: ${d.name}, cartel ${d.record}.
-Resultado: ${d.ganhou ? "venceu" : "perdeu"} ${d.opp} por ${d.metodo}, round ${d.round} aos ${d.clock}.${d.title ? " ERA LUTA DE CINTURÃO." : " Não valia cinturão."}${d.zebra ? " FOI ZEBRA." : ""}${d.lesao ? `
-Está machucado: ${d.lesao}.` : ""}${d.historicoRival ? `
+O que aconteceu na luta: ${d.resumo || `${d.ganhou ? "venceu" : "perdeu para"} ${d.opp} por ${d.metodo}, round ${d.round}.`}${d.title ? `
+Era luta de cinturão.` : ""}${d.zebra ? `
+Ele chegou como azarão.` : ""}${d.lesao ? `
+Lutou com lesão: ${d.lesao}.` : ""}${d.historicoRival ? `
 Histórico com este rival: ${d.historicoRival}` : ""}
-Quedas aplicadas: ${d.tdApl} | quedas sofridas: ${d.tdSof}.
-Repórter: ${d.reporter}.${d.linhaReporter ? ` Linha editorial: ${d.linhaReporter}.` : ""}
-Fato que a pergunta tem que tratar: ${d.fato}.
-Situação desta vez: ${d.angulo}.${d.estrutura ? `
-Forma da pergunta: ${d.estrutura}.` : ""}${d.anterior ? `
-Luta anterior dele: ${d.anterior}.` : ""}${d.eventoBase ? `
+Pauta do repórter (o que ele quer descobrir): ${d.pauta || d.angulo || "como a luta foi decidida"}.
+Fato central da pauta: ${d.fato}.
+Repórter: ${d.reporter}.${d.linhaReporter ? ` Linha editorial: ${d.linhaReporter}.` : ""}${d.eventoBase ? `
 Evento de base: ${String(d.eventoBase).slice(0, 220)}` : ""}${Array.isArray(d.eventosUsados) && d.eventosUsados.length ? `
 Acontecimentos já usados nesta carreira: ${d.eventosUsados.slice(0, 8).map(e => String(e).slice(0, 110)).join(" | ")}` : ""}${d.dossie ? `
-Histórico real da carreira (use só o que servir à pergunta; nunca invente outro fato): ${String(d.dossie).slice(0, 420)}.` : ""}${cenaRecentes(d)}`,
+Histórico real da carreira (use só o que servir à pauta; nunca invente outro fato): ${String(d.dossie).slice(0, 420)}.` : ""}${cenaRecentes(d)}`,
 });
 
 /* Plano Pro (2026-09-21) — kinds que exigem assinatura Pro ativa. Ver

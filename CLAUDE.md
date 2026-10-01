@@ -191,9 +191,18 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   `LIMITE_AMOSTRA_IA`, padrão 6). Banco fora = recusa; IA falhou depois
   de contar = `devolver_uso_ia`. `AMOSTRA_NEGADA` no cliente é só
   interface. Nada da carreira entra na cota. Suítes `amostra` e `hub`.
-- **Narrativa das cenas (2026-10-01).** A cena é uma dupla situação ×
-  forma de pergunta escolhida no cliente (`escolherCena`, sem os 8
-  geradores; memória entre carreiras só reordena). O prompt não leva
+- **Entrevista pós-luta com pauta (2026-10-01).** A pergunta parte dos
+  fatos da luta (`fatosDaLuta`, só do log e do resultado; um placar, nunca
+  "dividida") e de uma pauta escolhida por eles (`PAUTAS_ENTREVISTA`). O
+  filtro `motivoPerguntaRuim` vale pra IA e pros moldes; molde novo passa
+  na varredura da suíte `entrevista`. O prompt da entrevista tem voz e
+  formato próprios; a coletiva continua com `VOZ`/`CENA_FORMATO` (a suíte
+  confere a impressão digital do prompt da coletiva). Limpeza nova da
+  pergunta da entrevista vai no bloco da entrevista em `avaliarCenaDaIA`,
+  nunca em `limparPergunta` (a coletiva usa a mesma).
+- **Narrativa das cenas (2026-10-01).** Na coletiva, a cena é uma dupla
+  situação × forma de pergunta escolhida no cliente (`escolherCena`, sem os
+  8 geradores; memória entre carreiras só reordena). O prompt não leva
   exemplo fixo (a IA copia). Passado só quando a cena foi escolhida pra
   olhar pro passado, com alternância; o filtro de similaridade
   (`cenaParecidaDemais`) e a anti-invenção (`falasAtribuidasOk`) ficam.

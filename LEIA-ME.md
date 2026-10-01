@@ -3418,6 +3418,135 @@ provado: sem fechar a fala no fim da luta, sem a trava anti-invenção, com
 o trecho da IA sem conferir, sem o cache da cena, sem aspas simples e com
 "mandou" solto, reprova.
 
+## Entrevista pós-luta com pauta: perguntas que fazem sentido (2026-10-01)
+
+**Pedido do dono:** a entrevista fazia perguntas artificiais, desconexas e
+sem sentido. Exemplos dele: depois de "O treinador ainda estava com a
+toalha no ombro quando o repórter chegou", a pergunta "O seu treinador ainda
+estava com a toalha no ombro quando o repórter chegou. Ele disse algo
+específico no corner sobre a decisão dos juízes?"; e "A arena te empurrou
+ou te pressionou?". A coletiva estava boa e ficou como está.
+
+**Causa (achada no código e no modelo):**
+- a pergunta juntava quatro peças sem relação: uma situação sorteada da
+  cartela ("o que o treinador disse no corner"), uma forma que mandava
+  partir do evento ("parte do que outra pessoa fez ou disse no evento"), o
+  evento da chegada do repórter e um fato obrigatório (o método);
+- o prompt começava com a voz do feed ("torcedor no Twitter... erros de
+  digitação são bem-vindos") e o formato dizia que a pergunta "nasce do
+  evento";
+- a IA recebia pouco da luta (método, round, quedas) e nada do que o
+  motor registra round a round;
+- os moldes locais tinham escolha vazia (o "empurrou ou pressionou" era um
+  molde nosso) e pergunta genérica;
+- nenhum filtro barrava pergunta incoerente: só segurança, fala atribuída
+  e repetição.
+
+**O que mudou** (`index.html`, `api/ai.js`; a coletiva usa o mesmo código
+de antes):
+- **Fatos da luta** (`fatosDaLuta`): método, round e tempo desde o início
+  do round, quem levou cada round ("Fim do round N. Fulano levou." no log),
+  knockdowns, tentativas de finalização, quedas da luta toda e o placar. O
+  motor tem UM placar, não três juízes: decisão é "apertada" (um ponto) ou
+  "clara", nunca dividida nem unânime. `resumoDaLuta` escreve isso pra IA,
+  sem ambiguidade de tempo.
+- **Pauta** (`PAUTAS_ENTREVISTA`, 21 pautas): o que o repórter quer
+  descobrir, escolhida pelos fatos. Nível 3 é fato forte (cinturão, lesão
+  nova, zebra), nível 2 é fato desta luta (nocaute, nocaute rápido,
+  finalização, nocauteado, finalizado, caiu e venceu, derrubou e perdeu,
+  virou depois de perder o 1º round, começou bem e perdeu, decisão apertada
+  ou clara, quedas, tentativa de finalização) ou continuidade (revanche,
+  volta depois de derrota, tropeço depois de vitória, com alternância);
+  nível 1 é a pauta geral, pra luta com pouca informação, ainda presa a
+  ela. A mesma pauta não volta na entrevista seguinte se houver outra, e a
+  variação de cada pauta gira na carreira (vai no save). Repórter por pauta
+  num mapa só da entrevista (`REPORTERES_DA_PAUTA`), com os mesmos 12
+  repórteres, veículos e linhas editoriais.
+- **Moldes locais por pauta**, com o fato real na pergunta. A fala da
+  coletiva (memória) continua com as regras de antes e ganhou perguntas
+  mais naturais (sem sim ou não solto, sem presumir que o plano deu
+  errado); o ponto final da fala sai da citação quando ela fica no meio da
+  frase ("Você disse 'Vou nocautear ele no segundo round' antes da luta").
+- **Evento é só cenário** da chegada do repórter, coerente com o resultado;
+  a pergunta nunca parte dele.
+- **Prompt da entrevista** com voz de repórter (`VOZ_REPORTER`) e formato
+  próprio (`ENTREVISTA_FORMATO`): a pergunta parte do que aconteceu na luta
+  e segue a pauta; a linha editorial muda o jeito de perguntar, nunca o
+  assunto.
+- **Filtro de coerência** (`motivoPerguntaRuim`), na resposta da IA e nos
+  moldes. Barra: repetir o evento; juízes, cartões ou decisão numa luta que
+  não foi pros cartões; fim de luta que não aconteceu (inclusive
+  "finalizar" num nocaute); decisão dividida, unânime ou "três cartões";
+  fala de treinador, adversário, torcida ou juiz sem evidência; escolha
+  vazia ("te ajudou ou te atrapalhou"); pergunta genérica ou sem ligação
+  com a luta; emoção afirmada; placar descrito errado; tempo invertido
+  ("faltando 35 segundos" num nocaute aos 35 segundos); minutos que não
+  batem com o relógio; resultado invertido; golpe ou posição que não está
+  no log; assunto fora da luta (contrato, bolsa, próxima luta); fórmula de
+  questionário ("qual foi o detalhe técnico", "senhor"); zebra invertida;
+  vantagem que ele nunca teve ("onde você perdeu a vantagem" numa derrota
+  sem round, queda ou knockdown a favor dele; round vencido conta pelo log
+  ou pelo placar); pergunta de sentimento ("o que você sentiu"); margem da
+  decisão inventada sem placar ("a luta não foi decisiva", "equilibrada");
+  a pauta vazando no texto ("Nosso foco é entender..."); o total de quedas
+  posto num round só (o motor só tem o total; knockdown tem round no log e
+  vale); segundos e "1min50" conferidos com o relógio, como os minutos ("1
+  minuto e 50 segundos" agora passa: antes a conferência só via "1 minuto"
+  e barrava a pergunta certa); "guarda" (o log nunca registra guarda).
+  Frase sobre luta passada ("da última vez") não entra nas regras do
+  método de hoje. Limpeza, só na entrevista: "O repórter pergunta:", nome
+  entre aspas, o nome inteiro do repórter abrindo a pergunta como vocativo
+  ou apresentação ("Sônia Barreto, você perdeu...", "Otávio Paranhos aqui
+  na Rádio Três Rounds.") e o vocativo "Lutador,". A `limparPergunta`, que
+  a coletiva também usa, não mudou.
+
+**Antes e depois, medido nos mesmos contextos:** os moldes antigos
+(código da `master` antes desta mudança), nos 26 contextos com 4 sementes,
+dão 43 perguntas de 104 (41%) que o filtro novo barra: 31 sem ligação com
+a luta ("Como a sua família passa a semana de luta?"), 7 escolhas vazias
+("Faltou plano ou faltou execução?", "Você perdeu a luta em pé ou no
+chão?"), 3 genéricas, 2 com juiz num nocaute (essas duas falam do árbitro
+levantando o braço e seriam aceitáveis). Os moldes novos: 0 de 104, e 0 na
+varredura de mais de 60 mil.
+
+**Avaliação qualitativa** (suíte `entrevista` com `ENTREVISTA_IA=real`): 26
+contextos de luta, sete rodadas no modelo de produção (182 chamadas, cerca
+de US$ 0,008 no total). As rodadas 1 a 6 serviram pra achar erros e
+desenhar regras; a 7 foi feita depois de todas as regras, sem ajuste
+nenhum em cima dela. Na 7: 14 perguntas da IA aceitas e 12 com o molde da
+mesma pauta. Das 26 que o jogador vê, 24 estão no padrão pedido (fato da
+luta, intenção clara, português falado), uma é desajeitada ("Como foi essa
+vitória por 30 a 27 para confirmar essas palavras?") e uma tem um trecho
+sem sentido ("com uma queda no placar final"). Nenhuma repete a narração,
+atribui fala a alguém ou inventa fato que os dados permitam conferir. O
+que a IA errou e o filtro barrou: nocaute chamado de "finalizou",
+"senhor", fala do jogador parafraseada ou inventada ("Você disse que
+controlou o segundo round"), vantagem que ele nunca teve, "guarda",
+segundos errados, nome do repórter como vocativo. 429 do provedor em
+rodada seguida também cai no molde (no jogo é uma chamada por luta, com
+uma retentativa em 429).
+
+**Fallback:** nas rodadas 6 e 7, 12 de 26 respostas da IA (46%) caíram no
+molde, contra 20 a 25% na narrativa anterior. É o filtro mais rigoroso
+funcionando: o molde é da mesma pauta e passa no mesmo filtro. "Senhor"
+aparece em 8 de 121 respostas (6,6%), quase tudo do repórter de rádio; a
+linha editorial dele não mudou porque a coletiva usa a mesma.
+
+**Consumo:** a mesma chamada de cena e a mesma de reação por entrevista. O
+prompt da entrevista ficou menor: cerca de 1.300 tokens de entrada por
+cena (1.326 medidos na rodada 7), contra 1.800 a 2.000 por cena antes.
+
+**Teste:** suíte nova `entrevista` (em `tudo`): 26 contextos (pauta, molde
+com o fato, juízes só em decisão, evento coerente, fala da coletiva, pedido
+pra IA), varredura de todos os moldes de todas as pautas em milhares de
+lutas (mais de 60 mil perguntas, todas aprovadas no filtro), os exemplos
+ruins do dono barrados pelo motivo certo, perguntas boas aprovadas, limpeza
+de prefixo e aspas, e o prompt da coletiva igual ao de antes (impressão
+digital). Modos: `ENTREVISTA_IA=real` (gasta crédito; teto
+`ENTREVISTA_MAX`) e `ENTREVISTA_REAVALIAR` (refaz o filtro nas respostas
+gravadas, sem custo). Dente provado com 22 quebras (cada regra e cada
+limpeza removida em memória com `BALANCO_SUBST` reprova o teste dela).
+
 ## Narrativa das cenas: menos repetição, mais continuidade (2026-10-01)
 
 **Pedido do dono:** coletivas e entrevistas repetitivas. Reduzir a

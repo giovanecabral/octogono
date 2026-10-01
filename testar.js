@@ -1050,6 +1050,385 @@ async function testarTutorial() {
  *     coletiva ao resultado; coletivas futuras cobram falas antigas; e
  *     nenhum texto da IA atribui a ele uma fala que ele não disse.
  * ================================================================== */
+/* ================================================================== *
+ * ENTREVISTA PÓS-LUTA (2026-10-01): a pergunta tem que fazer sentido.
+ * Pedido do dono: perguntas artificiais, desconexas e sem sentido. A
+ * pergunta parte dos fatos da luta (fatosDaLuta) e de uma pauta escolhida
+ * por eles; o filtro motivoPerguntaRuim barra o que não faz sentido, na
+ * resposta da IA e nos moldes. Aqui:
+ *   - contextos de luta (nocaute, finalização, decisão apertada e clara,
+ *     vitória, derrota, virada entre rounds, pouca informação, cinturão,
+ *     zebra, lesão, revanche, fala da coletiva, amostra);
+ *   - todos os moldes de todas as pautas, em milhares de lutas, passam no
+ *     filtro;
+ *   - os exemplos ruins do pedido do dono são barrados e os bons passam;
+ *   - o prompt da coletiva não mudou (mesma impressão digital);
+ *   - ENTREVISTA_IA=real: as mesmas lutas no modelo de produção (teto
+ *     ENTREVISTA_MAX, padrão 40), pra avaliação qualitativa.
+ * ================================================================== */
+const ENT_OPP = "Rival Teste";
+const ENT_FIXTURES = [
+  { nome: "nocaute rápido, vitória", won: true, r: { method: "Nocaute", round: 1, clock: "4:25", log: [] }, td: [0, 0], pautas: ["nocaute-rapido", "nocaute-venceu"], cita: /primeiro round|segundos/ },
+  { nome: "nocaute no 2º round depois de perder o 1º (virada)", won: true, r: { method: "Nocaute", round: 2, clock: "3:10", log: [{ round: 1, clock: "0:00", kind: "rd", text: "Fim do round 1. ELE levou." }] }, td: [0, 0], pautas: ["virou", "nocaute-venceu"], cita: /round/ },
+  { nome: "nocauteado no 3º round", won: false, r: { method: "Nocaute", round: 3, clock: "1:00", log: [] }, td: [0, 0], pautas: ["nocauteado"], cita: /terceiro round|golpe/ },
+  { nome: "finalização, vitória", won: true, r: { method: "Finalização", round: 2, clock: "2:40", log: [] }, td: [2, 0], pautas: ["finalizacao-venceu", "quedas-venceu"], cita: /finaliza|quedas/ },
+  { nome: "finalizado no 1º round", won: false, r: { method: "Finalização", round: 1, clock: "3:05", log: [] }, td: [0, 1], pautas: ["finalizado"], cita: /finaliz/ },
+  { nome: "decisão apertada, vitória 29-28", won: true, r: { method: "Decisão", round: 3, clock: "0:00", cards: "29-28", log: [] }, td: [1, 1], pautas: ["decisao-apertada"], cita: /29-28/ },
+  { nome: "decisão clara, vitória 30-27", won: true, r: { method: "Decisão", round: 3, clock: "0:00", cards: "30-27", log: [] }, td: [0, 0], pautas: ["decisao-clara"], cita: /30-27/ },
+  { nome: "decisão apertada, derrota 28-29", won: false, r: { method: "Decisão", round: 3, clock: "0:00", cards: "28-29", log: [] }, td: [0, 1], pautas: ["decisao-apertada"], cita: /29-28/ },
+  { nome: "decisão clara, derrota 27-30", won: false, r: { method: "Decisão", round: 3, clock: "0:00", cards: "27-30", log: [] }, td: [0, 0], pautas: ["decisao-clara"], cita: /30-27/ },
+  { nome: "foi ao chão e venceu por nocaute", won: true, r: { method: "Nocaute", round: 3, clock: "2:00", log: [{ round: 1, clock: "3:00", kind: "kd", text: "EU foi ao chão! Levantou cambaleando." }] }, td: [0, 0], pautas: ["caiu-e-venceu", "nocaute-venceu"], cita: /ch[aã]o|round/ },
+  { nome: "começou bem e perdeu (mudança de ritmo)", won: false, r: { method: "Decisão", round: 3, clock: "0:00", cards: "28-29", log: [{ round: 1, clock: "0:00", kind: "rd", text: "Fim do round 1. EU levou." }, { round: 2, clock: "0:00", kind: "rd", text: "Fim do round 2. ELE levou." }, { round: 3, clock: "0:00", kind: "rd", text: "Fim do round 3. ELE levou." }] }, td: [0, 0], pautas: ["comecou-bem", "decisao-apertada"], cita: /primeiro round|29-28/ },
+  { nome: "derrubou o adversário e perdeu", won: false, r: { method: "Nocaute", round: 3, clock: "1:30", log: [{ round: 1, clock: "2:00", kind: "kd", text: "ELE foi ao chão! Levantou cambaleando." }] }, td: [0, 0], pautas: ["derrubou-e-perdeu", "nocauteado"], cita: /derrub|round/ },
+  { nome: "vitória pelas quedas (4 a 0)", won: true, r: { method: "Decisão", round: 3, clock: "0:00", cards: "30-27", log: [] }, td: [4, 0], pautas: ["quedas-venceu", "decisao-clara"], cita: /quedas|30-27/ },
+  { nome: "derrota pelas quedas (0 a 4)", won: false, r: { method: "Decisão", round: 3, clock: "0:00", cards: "27-30", log: [] }, td: [0, 4], pautas: ["quedas-perdeu", "decisao-clara"], cita: /ch[aã]o|30-27/ },
+  { nome: "tentou finalizar e perdeu nos cartões", won: false, r: { method: "Decisão", round: 3, clock: "0:00", cards: "28-29", log: [{ round: 2, clock: "2:10", kind: "big", text: "EU tenta a finalização! ELE escapa." }] }, td: [0, 0], pautas: ["tentativa", "decisao-apertada"], cita: /finaliza|29-28/ },
+  { nome: "pouca informação, vitória (decisão sem placar)", won: true, r: { method: "Decisão", round: 3, clock: "0:00", cards: null, log: [] }, td: [0, 0], pautas: ["geral"], cita: new RegExp(ENT_OPP) },
+  { nome: "pouca informação, derrota (decisão sem placar)", won: false, r: { method: "Decisão", round: 3, clock: "0:00", cards: null, log: [] }, td: [0, 0], pautas: ["geral"], cita: new RegExp(ENT_OPP) },
+  { nome: "cinturão conquistado por nocaute", won: true, titulo: true, r: { method: "Nocaute", round: 4, clock: "2:50", log: [] }, td: [0, 0], pautas: ["cinturao"], cita: /cintur/ },
+  { nome: "cinturão perdido nos cartões", won: false, titulo: true, r: { method: "Decisão", round: 5, clock: "0:00", cards: "46-49", log: [] }, td: [0, 0], pautas: ["cinturao"], cita: /cintur/ },
+  { nome: "zebra: venceu o favorito", won: true, zebra: true, r: { method: "Decisão", round: 3, clock: "0:00", cards: "29-28", log: [] }, td: [0, 0], pautas: ["zebra"], cita: /favorit|apostava/ },
+  { nome: "lutou com lesão nova", won: true, lesao: true, r: { method: "Finalização", round: 3, clock: "4:00", log: [] }, td: [0, 0], pautas: ["lesao"], cita: /les[aã]o/ },
+  { nome: "revanche (já se enfrentaram)", won: true, registro: [{ adv: "ELE", venceu: false, metodo: "Decisão", round: 3, cartoes: "28-29" }], r: { method: "Finalização", round: 2, clock: "1:10", log: [] }, td: [0, 0], pautas: ["reencontro", "finalizacao-venceu", "volta"], cita: /round|última vez|derrota/ },
+  { nome: "vitória depois de uma derrota", won: true, registro: [{ adv: "Outro Lutador", venceu: false, metodo: "Nocaute", round: 2 }], r: { method: "Decisão", round: 3, clock: "0:00", cards: "30-27", log: [] }, td: [0, 0], pautas: ["volta", "decisao-clara"], cita: /Outro Lutador|30-27/ },
+  { nome: "coletiva: promessa cumprida (nocaute prometido e entregue)", won: true, fala: { texto: "Vou nocautear ele no segundo round.", decl: { tom: "promessa", trecho: "Vou nocautear ele no segundo round", promessa: { metodo: "nocaute", round: 2 } } }, r: { method: "Nocaute", round: 2, clock: "2:20", log: [] }, td: [0, 0], pautas: [null], cita: /'Vou nocautear ele no segundo round'/ },
+  { nome: "coletiva: promessa quebrada (prometeu nocaute, perdeu nos cartões)", won: false, fala: { texto: "Vou nocautear ele no segundo round.", decl: { tom: "promessa", trecho: "Vou nocautear ele no segundo round", promessa: { metodo: "nocaute", round: 2 } } }, r: { method: "Decisão", round: 3, clock: "0:00", cards: "28-29", log: [] }, td: [0, 0], pautas: [null], cita: /'Vou nocautear ele no segundo round'/ },
+  { nome: "amostra Free: fala neutra da coletiva volta", won: true, amostra: true, fala: { texto: "Fiz um camp bom e estou pronto.", decl: { tom: "neutro", trecho: "estou pronto", promessa: null } }, r: { method: "Decisão", round: 3, clock: "0:00", cards: "30-27", log: [] }, td: [0, 0], pautas: [null], cita: /'estou pronto'/ },
+];
+/* mesma impressão digital do prompt da coletiva medida antes desta mudança */
+const COLETIVA_PROMPT_DIGITAL = "ca78f9da12ee93b4 42b45f5cb9e9730d";
+const COLETIVA_DADOS_DIGITAL = [
+  { name: "Kayo Brasa", record: "3-1", followers: "12 mil", fan: "6.0", sequencia: "2 vitórias seguidas", opp: "Rival Teste", estilo: "Wrestler", dificuldade: "Duro", title: false, camp: "Boxe", lesao: null, historicoRival: null, reporter: "Lia Monteverde (Portal Guarda Alta)", linhaReporter: "tática", tema: "o estilo do adversário e como enfrentá-lo", estrutura: "oferece duas opções concretas e pede que ele escolha uma", anterior: null, dossie: null, eventoBase: "A organização passou no telão os melhores momentos de Rival Teste.", eventosUsados: ["Um torcedor gritou da porta."], recentes: ["Pergunta: Você vai aceitar o jogo dele?"], memoria: [], token: "t" },
+  { name: "Kayo Brasa", record: "5-2", opp: "Outro", estilo: "Completo", title: true, camp: "Wrestling", reporter: "Caio Serrat (Rádio Três Rounds)", tema: "cobrança de uma fala antiga do lutador", memoria: ["luta 3, na coletiva: \"Vou nocautear\". Depois: perdeu"], recentes: [], token: "t" },
+];
+async function testarEntrevista() {
+  const modo = process.env.ENTREVISTA_IA || "";
+  console.log("\n" + cinza("entrevista: a pergunta parte dos fatos da luta e faz sentido (pauta, filtro de coerência, moldes)"));
+  const url = require("url"), os = require("os"), crypto = require("crypto");
+  const F = lerLutadores();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const R0 = sandboxCarreira(); R0.sb.__F = F;
+  const RJ = R0.run("JSON.stringify(rateAll(globalThis.__F))");
+  const nova = (seed) => {
+    const X = sandboxCarreira();
+    X.dadosLS["tutorial:draft"] = "1"; X.dadosLS["tutorial:luta"] = "1";
+    iniciarCarreiraTeste(X, F, seed, "normal", RJ);
+    X.run("auto=false;meuPro=true;");
+    return X;
+  };
+  const J = (X, c) => JSON.parse(X.run(`JSON.stringify(${c})`));
+  /* monta a entrevista de um contexto, pelo caminho do jogo (prepararEntrevista) */
+  const PREPARAR = `(function(fx){
+    const o={name:${JSON.stringify(ENT_OPP)},arquetipo:"Completo"};
+    const troca=t=>String(t).replace(/EU/g,me.name).replace(/ELE/g,o.name);
+    st.narrativa=null;st.memoria={falas:[]};st.lesao=fx.lesao?{atributo:"strDef",desdeLuta:4,duracao:3,mult:.9}:null;
+    fightNo=5;
+    const r={method:fx.r.method,round:fx.r.round,clock:fx.r.clock,cards:fx.r.cards||null,log:(fx.r.log||[]).map(L=>({...L,text:troca(L.text)}))};
+    /* a luta atual já está no registro quando a entrevista abre (finishFight) */
+    st.registro=[...(fx.registro||[]).map(x=>({...x,adv:troca(x.adv)})),{adv:o.name,venceu:fx.won,metodo:r.method,round:r.round,cartoes:r.cards}];
+    if(fx.fala){registrarFala({onde:"coletiva",luta:5,adv:o.name,texto:fx.fala.texto,decl:fx.fala.decl});fecharFalaDaLuta(fx.won,r);}
+    const op={opp:o,r,titleFight:!!fx.titulo,won:fx.won,td0:fx.td[0],tdt0:fx.td[1],zebra:!!fx.zebra,ehRival:false,amostra:!!fx.amostra};
+    const prep=prepararEntrevista(op);
+    const nomes=[me.name,...REPORTERES,o.name];
+    globalThis.__ultimo={prep,op};
+    return{pauta:prep.pauta?prep.pauta.id:null,fala:prep.falaCol?prep.falaCol.texto:null,pergunta:prep.local.pergunta,evento:prep.local.evento,
+      motivo:motivoPerguntaRuim(prep.local.pergunta,prep.local.evento,prep.f,nomes),reporter:prep.reporter.nome+" ("+prep.reporter.veiculo+")",
+      pedido:pedidoDaEntrevista(prep,op,"tok"),resumo:prep.dados.resumo};
+  })`;
+  const X = nova(401);
+  const resultados = ENT_FIXTURES.map(fx => ({ fx, r: J(X, `${PREPARAR}(${JSON.stringify(fx)})`) }));
+
+  await conf(`contextos de luta (${ENT_FIXTURES.length}): pauta certa, pergunta do molde ligada ao fato da luta e aprovada no filtro de coerência`, async () => {
+    const erros = [];
+    for (const { fx, r } of resultados) {
+      if (!fx.pautas.includes(r.pauta)) erros.push(`${fx.nome}: pauta ${r.pauta} (esperava ${fx.pautas.join("/")})`);
+      if (r.motivo) erros.push(`${fx.nome}: molde reprovado (${r.motivo}): ${r.pergunta}`);
+      if (!fx.cita.test(r.pergunta)) erros.push(`${fx.nome}: não cita o fato: ${r.pergunta}`);
+      if (/undefined|null|NaN|\s{2}|\bpor\s*[.?]/.test(r.pergunta + " " + r.evento)) erros.push(`${fx.nome}: molde quebrado: ${r.pergunta}`);
+    }
+    if (erros.length) throw new Error(erros.join("\n         "));
+  });
+  await conf("decisão: juízes e cartões só aparecem quando a luta foi pros cartões; nunca 'dividida' nem 'unânime'", async () => {
+    const erros = [];
+    for (const { fx, r } of resultados) {
+      const t = r.pergunta + " " + r.pedido.resumo + " " + r.pedido.fato;
+      if (fx.r.method !== "Decisão" && /ju[ií]z|cart[oõ]es|pontua|por decis/i.test(r.pergunta)) erros.push(`${fx.nome}: ${r.pergunta}`);
+      if (/dividida|un[aâ]nime|majorit/i.test(t)) erros.push(`${fx.nome}: tipo de decisão inventado: ${t}`);
+    }
+    if (erros.length) throw new Error(erros.join("\n         "));
+  });
+  await conf("evento é só cenário: a pergunta do molde nunca repete a narração; o evento combina com o resultado", async () => {
+    const erros = [];
+    for (const { fx, r } of resultados) {
+      if (r.motivo === "repete o evento") erros.push(`${fx.nome}: ${r.pergunta}`);
+      if (!fx.won && /gritava o seu nome|invadiu a área|comemor[ao] (?:com|a sua)/i.test(r.evento)) erros.push(`${fx.nome}: derrota com festa: ${r.evento}`);
+      if (fx.won && /gelo|em silêncio|comemorava do outro lado/i.test(r.evento)) erros.push(`${fx.nome}: vitória com evento de derrota: ${r.evento}`);
+    }
+    if (erros.length) throw new Error(erros.join("\n         "));
+  });
+  await conf("coletiva na entrevista: a fala volta copiada entre aspas e ligada ao resultado; o pedido pra IA leva a fala e o desfecho", async () => {
+    for (const { fx, r } of resultados.filter(x => x.fx.fala)) {
+      if (!r.fala || !fx.cita.test(r.pergunta)) throw new Error(`${fx.nome}: ${r.pergunta}`);
+      if (!/O que aconteceu: .*\b(venceu|perdeu)\b/.test(r.pedido.fato)) throw new Error(`${fx.nome}: pedido sem o desfecho: ${r.pedido.fato}`);
+    }
+  });
+  await conf("fala da coletiva sem recorte da IA: o ponto final sai da citação no meio da pergunta; as reticências ficam", async () => {
+    const r = J(X, `(function(){
+      const out=[];
+      for(const texto of ["Vou nocautear ele no segundo round.","Ele não aguenta três rounds, pode escrever..."])
+        for(let i=0;i<3;i++){
+          const f={onde:"coletiva",luta:5,adv:"Rival X",texto,trecho:trechoLiteral(texto,""),tom:"neutro",promessa:null,
+            resultado:{venceu:false,metodo:"Decisão",round:3,cartoes:"28-29"},cumprida:null,cobrada:0};
+          out.push(perguntaSobreFala(f,situacaoDaFala(f)));
+        }
+      return out;})()`);
+    for (const p of r.slice(0, 3)) if (!p.includes("'Vou nocautear ele no segundo round'") || /\.'/.test(p)) throw new Error("ponto final dentro da citação: " + p);
+    for (const p of r.slice(3)) if (!p.includes("pode escrever...'")) throw new Error("reticências cortadas: " + p);
+    if (new Set(r.slice(0, 3)).size !== 3) throw new Error("as três formas da fala neutra não giraram: " + r.slice(0, 3).join(" | "));
+  });
+  await conf("o pedido pra IA leva o resumo da luta, a pauta e o repórter com a linha editorial; nada de situação sorteada nem forma da pergunta", async () => {
+    for (const { fx, r } of resultados) {
+      const p = r.pedido;
+      if (!p.resumo || !p.resumo.includes(ENT_OPP) || !p.pauta || !p.fato || !p.linhaReporter || !/\(/.test(p.reporter)) throw new Error(`${fx.nome}: ${JSON.stringify(p).slice(0, 300)}`);
+      if ("estrutura" in p || "anterior" in p) throw new Error(`${fx.nome}: pedido ainda leva a dupla da coletiva`);
+    }
+  });
+  await conf("todos os moldes de todas as pautas, em milhares de lutas, passam no filtro de coerência (sem placeholder quebrado)", async () => {
+    const r = J(X, `(function(){
+      const o={name:${JSON.stringify(ENT_OPP)}},nomes=[me.name,...REPORTERES,o.name];
+      const regs=[[],[{adv:o.name,venceu:true,metodo:"Nocaute",round:2}],[{adv:"Outro",venceu:false,metodo:"Decisão",round:3,cartoes:"28-29"}],[{adv:"Outro",venceu:true,metodo:"Finalização",round:1}]];
+      let casos=0;const ruins=[],pautasVistas=new Set();
+      for(const metodo of ["Nocaute","Finalização","Decisão"])for(const won of [true,false])for(const round of [1,3])
+      for(const kd of [null,"eu","ele"])for(const td of [[0,0],[3,0],[0,3]])for(const r1 of [null,"eu","ele"])
+      for(const flag of [null,"titulo","zebra","lesao"])for(const reg of regs){
+        const log=[];
+        if(r1)log.push({round:1,clock:"0:00",kind:"rd",text:"Fim do round 1. "+(r1==="eu"?me.name:o.name)+" levou."});
+        if(kd)log.push({round:1,clock:"2:00",kind:"kd",text:(kd==="eu"?me.name:o.name)+" foi ao chão! Levantou cambaleando."});
+        if(metodo==="Decisão"||kd===null)log.push({round:1,clock:"1:00",kind:"big",text:me.name+" tenta a finalização! "+o.name+" escapa."});
+        const cards=metodo==="Decisão"?(round===1?(won?"29-28":"28-29"):kd==="ele"?null:(won?"30-27":"27-30")):null;
+        const r={method:metodo,round:metodo==="Decisão"?3:round,clock:metodo==="Decisão"?"0:00":"3:35",cards,log};
+        st.registro=[...reg,{adv:o.name,venceu:won,metodo,round:r.round,cartoes:cards}];
+        const f=fatosDaLuta(r,won,o,td[0],td[1],{titulo:flag==="titulo",zebra:flag==="zebra",lesao:flag==="lesao"?"Defesa machucada":null});
+        const evs=eventosDaEntrevista(f);
+        for(const p of PAUTAS_ENTREVISTA){if(!p.cond(f))continue;pautasVistas.add(p.id);
+          for(const q of p.q(f)){casos++;
+            if(/undefined|null|NaN|\\s{2}/.test(q))ruins.push("quebrado: "+q);
+            for(const e of evs){const m=motivoPerguntaRuim(q,e,f,nomes);if(m){ruins.push(m+": "+q+" | "+e);break;}}
+          }}
+      }
+      return{casos,ruins:[...new Set(ruins)].slice(0,8),pautas:pautasVistas.size,total:PAUTAS_ENTREVISTA.length};})()`);
+    if (r.ruins.length) throw new Error(`${r.ruins.length} reprovados em ${r.casos}:\n         ` + r.ruins.join("\n         "));
+    if (r.pautas !== r.total || r.casos < 5000) throw new Error(`cobertura: ${r.pautas}/${r.total} pautas, ${r.casos} moldes`);
+    console.log(cinza(`         ${r.casos} perguntas de molde conferidas, ${r.pautas} pautas`));
+  });
+  await conf("filtro de coerência: os exemplos ruins do pedido do dono são barrados, pelo motivo certo", async () => {
+    const r = J(X, `(function(){
+      const o={name:${JSON.stringify(ENT_OPP)}},nomes=[me.name,...REPORTERES,o.name];
+      const dec=fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"29-28",log:[]},true,o,0,0);
+      const ko=fatosDaLuta({method:"Nocaute",round:2,clock:"3:00",log:[]},true,o,0,0);
+      const t=(p,e,f)=>motivoPerguntaRuim(p,e,f,nomes);
+      const ev0="A torcida ainda gritava o seu nome.";
+      return{
+        toalha:t("O seu treinador ainda estava com a toalha no ombro quando o repórter chegou. Ele disse algo específico no corner sobre a decisão dos juízes?","O seu treinador ainda estava com a toalha no ombro quando o repórter chegou.",dec),
+        arena:t("A arena te empurrou ou te pressionou?","Parte da arena aplaudiu "+o.name+" quando o resultado apareceu no telão.",dec),
+        pressao:t("A pressão te ajudou ou te atrapalhou?","A torcida ainda gritava o seu nome.",ko),
+        cabeca:t("O que passou pela sua cabeça quando o resultado apareceu?","A torcida ainda gritava o seu nome.",ko),
+        juizesNoNocaute:t("Os juízes estavam vendo a luta do seu lado antes do nocaute?","A torcida ainda gritava o seu nome.",ko),
+        dividida:t("A decisão dividida te surpreendeu?","O locutor leu os cartões.",dec),
+        treinadorDisse:t("O seu treinador disse que você relaxou no segundo round. Concorda?","A torcida ainda gritava o seu nome.",ko),
+        adversarioDisse:t(o.name+" disse que você fugiu da troca. O que você responde?","A torcida ainda gritava o seu nome.",ko),
+        emocao:t("Você ficou nervoso no começo da luta. O que mudou no segundo round?","A torcida ainda gritava o seu nome.",ko),
+        generica:t("Como foi a semana de preparação para você?","A torcida ainda gritava o seu nome.",ko),
+        nocauteInventado:t("O nocaute no terceiro round era o plano?","O locutor leu os cartões.",dec),
+        contrato:t("Você venceu "+o.name+" nos cartões por 29-28. Como isso impacta a negociação do seu próximo contrato?","O locutor leu os cartões.",dec),
+        placarBaixo:t("Você venceu por 30 a 27. O placar baixo mostra que faltou agressividade?","O locutor leu os cartões.",fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"30-27",log:[]},true,o,0,0)),
+        finalizarNoNocaute:t("Qual foi a leitura que te levou a encontrar a abertura para finalizar "+o.name+"?","A torcida ainda gritava o seu nome.",ko),
+        finalizacaoNoNocaute:t("Você nocauteou "+o.name+" no segundo round. Qual foi a chave para essa finalização?","A torcida ainda gritava o seu nome.",ko),
+        tempoInvertido:t("No primeiro round, faltando 35 segundos, qual foi a chance que você viu?","A torcida ainda gritava o seu nome.",fatosDaLuta({method:"Nocaute",round:1,clock:"4:25",log:[]},true,o,0,0)),
+        apertadaSemPlacar:t("A vitória veio nos cartões e a disputa foi apertada. O que fez a diferença contra "+o.name+"?","O locutor leu os cartões.",fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:null,log:[]},true,o,0,0)),
+        detalheTecnico:t("Com 30-27 nos cartões, qual foi o detalhe técnico que fez a diferença?","O locutor leu os cartões.",fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"30-27",log:[]},true,o,0,0)),
+        senhor:t("Senhor, como o senhor controlou as quedas contra "+o.name+"?","O locutor leu os cartões.",dec),
+        leituraTecnica:t("Como foi a leitura técnica que te levou a buscar o nocaute no segundo round?","A torcida ainda gritava o seu nome.",ko),
+        zebraInvertida:t("Você venceu "+o.name+" por 29 a 28, mesmo sendo considerado o favorito. Como controlou a luta?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"29-28",log:[]},true,o,0,0,{zebra:true})),
+        resultadoInvertido:t("Você garantiu a vitória por um ponto, 29 a 28. Em que momento fechou o placar?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"28-29",log:[]},false,o,0,0)),
+        minutoErrado:t("Você foi finalizado no primeiro round com apenas um minuto de luta. Como a queda virou finalização?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Finalização",round:1,clock:"3:05",log:[]},false,o,0,1)),
+        golpeInventado:t("O que você viu no clinch do segundo round para acertar o golpe que acabou a luta?","A torcida ainda gritava o seu nome.",ko),
+        tresCartoes:t("Como você manteve a vantagem até os três cartões fecharem em 30-27?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"30-27",log:[]},true,o,0,0)),
+        vantagemInventada:t("O placar foi 30 a 27, uma diferença grande nos cartões. Onde exatamente você sentiu que perdeu a vantagem técnica para "+o.name+"?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"27-30",log:[1,2,3].map(n=>({round:n,clock:"0:00",kind:"rd",text:"Fim do round "+n+". "+o.name+" levou."}))},false,o,0,4)),
+        sentiuGolpe:t("O que você sentiu no momento em que recebeu o golpe que encerrou a luta no terceiro round?",ev0,
+          fatosDaLuta({method:"Nocaute",round:3,clock:"2:00",log:[]},false,o,0,0)),
+        naoDecisiva:t("Você venceu nos cartões, mas a luta não foi decisiva. Qual foi a chave para fechar esse placar?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:null,log:[]},true,o,0,0)),
+        pautaVazou:t("Nosso foco é entender como a finalização apareceu, então me conta: em que momento você percebeu a abertura para aplicar o golpe no segundo round?",ev0,
+          fatosDaLuta({method:"Finalização",round:2,clock:"2:40",log:[]},true,o,0,0)),
+        quedasNoRound:t("No segundo round, você derrubou o adversário duas vezes antes de aplicar a finalização em 2min20. Em que momento exato você percebeu que tinha a chave pronta para encerrar?",ev0,
+          fatosDaLuta({method:"Finalização",round:2,clock:"2:40",log:[]},true,o,2,0)),
+        trintaSegundos:t("Nos primeiros trinta segundos do segundo round, qual leitura você fez na defesa dele que permitiu montar a sequência final?",ev0,
+          fatosDaLuta({method:"Nocaute",round:2,clock:"3:10",log:[]},true,o,0,0)),
+        minFormatoErrado:t("A finalização saiu com 2min20 do segundo round. Como você chegou à posição?",ev0,
+          fatosDaLuta({method:"Finalização",round:2,clock:"1:10",log:[]},true,o,0,0)),
+        guardaInventada:t("Em que momento a guarda de "+o.name+" abriu para a finalização no segundo round?",ev0,
+          fatosDaLuta({method:"Finalização",round:2,clock:"2:40",log:[]},true,o,0,0))};})()`);
+    const esperado = { toalha: "repete o evento", arena: "escolha vazia", pressao: "escolha vazia", cabeca: "genérica", juizesNoNocaute: "juízes sem decisão",
+      dividida: "tipo de decisão inventado", treinadorDisse: "fala de terceiro sem evidência", adversarioDisse: "fala de terceiro sem evidência",
+      emocao: "emoção afirmada", generica: "sem ligação com a luta", nocauteInventado: "fim de luta que não aconteceu",
+      contrato: "assunto fora da luta", placarBaixo: "placar descrito errado", finalizarNoNocaute: "fim de luta que não aconteceu",
+      finalizacaoNoNocaute: "fim de luta que não aconteceu", tempoInvertido: "tempo descrito errado", apertadaSemPlacar: "placar descrito errado",
+      detalheTecnico: "fórmula de questionário", senhor: "fórmula de questionário", leituraTecnica: "fórmula de questionário", zebraInvertida: "fato invertido",
+      resultadoInvertido: "resultado invertido", minutoErrado: "tempo descrito errado", golpeInventado: "golpe que não está na luta", tresCartoes: "tipo de decisão inventado",
+      vantagemInventada: "fato invertido", sentiuGolpe: "genérica", naoDecisiva: "placar descrito errado",
+      pautaVazou: "pauta vazou na pergunta", quedasNoRound: "número fora dos fatos", trintaSegundos: "tempo descrito errado",
+      minFormatoErrado: "tempo descrito errado", guardaInventada: "golpe que não está na luta" };
+    const errados = Object.entries(esperado).filter(([k, v]) => r[k] !== v).map(([k, v]) => `${k}: ${r[k]} (esperava ${v})`);
+    if (errados.length) throw new Error(errados.join("\n         "));
+  });
+  await conf("limpeza da entrevista: prefixo 'O repórter pergunta:' e nome entre aspas saem, e a pergunta boa fica", async () => {
+    const r = J(X, `(function(){const o={name:${JSON.stringify(ENT_OPP)}};
+      const f=fatosDaLuta({method:"Nocaute",round:1,clock:"4:25",log:[]},true,o,0,0);
+      const a=avaliarCenaDaIA({evento:"A torcida ainda gritava o seu nome.",pergunta:"O repórter pergunta: '"+me.name+", esse nocaute em 35 segundos foi plano ou oportunidade que apareceu na hora?"},"entrevista",{nomes:[o.name],fatos:f});
+      const b=avaliarCenaDaIA({evento:"A torcida ainda gritava o seu nome.",pergunta:"No primeiro round, o que você viu em '"+o.name+"' antes do golpe?"},"entrevista",{nomes:[o.name],fatos:f});
+      const tit=fatosDaLuta({method:"Decisão",round:5,clock:"0:00",cards:"46-49",log:[]},false,o,0,0,{titulo:true});
+      const c=avaliarCenaDaIA({evento:o.name+" comemorava do outro lado da grade.",pergunta:"Sônia Barreto, você perdeu por 49 a 46. O que faltou para vencer a disputa pelo cinturão?"},"entrevista",{nomes:[o.name],fatos:tit});
+      const dec=fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"30-27",log:[]},true,o,0,0);
+      const d=avaliarCenaDaIA({evento:"O locutor leu os cartões.",pergunta:"Otávio Paranhos aqui na Rádio Três Rounds. Você venceu por 30 a 27. Qual parte do seu jogo "+o.name+" não conseguiu responder?"},"entrevista",{nomes:[o.name],fatos:dec});
+      const tent=fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"28-29",log:[{round:2,clock:"2:00",kind:"big",text:me.name+" tenta a finalização! "+o.name+" escapa."}]},false,o,0,0);
+      const e=avaliarCenaDaIA({evento:o.name+" comemorava do outro lado da grade.",pergunta:"Lutador, você tentou uma finalização no segundo round. Por que a tentativa não fechou?"},"entrevista",{nomes:[o.name],fatos:tent});
+      return{a:a.cena&&a.cena.pergunta,b:b.cena&&b.cena.pergunta,c:c.cena?c.cena.pergunta:c.motivo,d:d.cena?d.cena.pergunta:d.motivo,e:e.cena?e.cena.pergunta:e.motivo};})()`);
+    if (!r.a || /rep[oó]rter|^'/.test(r.a)) throw new Error("prefixo ficou: " + r.a);
+    if (!r.b || /'/.test(r.b)) throw new Error("aspas no nome ficaram: " + r.b);
+    if (r.c !== "Você perdeu por 49 a 46. O que faltou para vencer a disputa pelo cinturão?") throw new Error("nome do repórter como vocativo: " + r.c);
+    if (!/^Você venceu por 30 a 27\./.test(r.d || "")) throw new Error("apresentação do repórter ficou: " + r.d);
+    if (r.e !== "Você tentou uma finalização no segundo round. Por que a tentativa não fechou?") throw new Error("vocativo 'Lutador' ficou: " + r.e);
+  });
+  await conf("filtro de coerência: perguntas boas, do jeito pedido pelo dono, passam", async () => {
+    const r = J(X, `(function(){
+      const o={name:${JSON.stringify(ENT_OPP)}},nomes=[me.name,...REPORTERES,o.name];
+      const ko=fatosDaLuta({method:"Nocaute",round:2,clock:"3:00",log:[]},true,o,0,0);
+      const dec=fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"29-28",log:[]},true,o,0,0);
+      const perdeu=fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"28-29",log:[{round:1,clock:"0:00",kind:"rd",text:"Fim do round 1. "+me.name+" levou."}]},false,o,0,0);
+      const ev="A torcida ainda gritava o seu nome quando o repórter chegou com o microfone.";
+      return[
+        motivoPerguntaRuim("Você encontrou aquela abertura durante a luta ou foi uma oportunidade que apareceu de repente?",ev,ko,nomes),
+        motivoPerguntaRuim("Quando anunciaram o resultado, você já tinha uma noção de como os juízes tinham pontuado a luta?",ev,dec,nomes),
+        motivoPerguntaRuim("Você começou bem, mas o adversário conseguiu mudar o ritmo nos rounds seguintes. O que dificultou manter aquele desempenho?","O repórter esperou alguém da equipe trazer gelo para o seu rosto.",perdeu,nomes),
+        motivoPerguntaRuim("O que o seu treinador te falou no último intervalo?",ev,ko,nomes),
+        motivoPerguntaRuim("A decisão foi de 29-28. Em que momento da luta você percebeu que estava perdendo os pontos?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"28-29",log:[]},false,o,0,0),nomes),
+        motivoPerguntaRuim("Você foi nocauteado aos quatro minutos do terceiro round. O que aconteceu naquele momento?",ev,
+          fatosDaLuta({method:"Nocaute",round:3,clock:"1:00",log:[]},false,o,0,0),nomes),
+        motivoPerguntaRuim("A queda que você aplicou no primeiro round abriu o caminho para a finalização?",ev,
+          fatosDaLuta({method:"Finalização",round:2,clock:"2:00",log:[{round:1,clock:"3:00",kind:"big",text:me.name+" martelando por cima. "+o.name+" só protege."}]},true,o,1,0),nomes),
+        motivoPerguntaRuim("Você levou o primeiro round. Em que momento perdeu o controle da luta?","O repórter esperou alguém da equipe trazer gelo para o seu rosto.",perdeu,nomes),
+        motivoPerguntaRuim("A derrota foi por 29 a 28, uma decisão apertada. Em qual momento você sentiu que perdeu a vantagem nos cartões?","O locutor leu os cartões.",
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"28-29",log:[]},false,o,0,0),nomes),
+        motivoPerguntaRuim("O nocaute veio 1 minuto e 50 segundos depois do início do segundo round. O que você viu antes do golpe?",ev,
+          fatosDaLuta({method:"Nocaute",round:2,clock:"3:10",log:[]},true,o,0,0),nomes),
+        motivoPerguntaRuim("O nocaute saiu com 1min50 do segundo round. Você já vinha preparando aquele golpe?",ev,
+          fatosDaLuta({method:"Nocaute",round:2,clock:"3:10",log:[]},true,o,0,0),nomes),
+        motivoPerguntaRuim("Você foi ao chão duas vezes no segundo round e ainda venceu. Como conseguiu se recuperar?",ev,
+          fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"29-28",log:[1,2].map(()=>({round:2,clock:"2:00",kind:"kd",text:me.name+" foi ao chão!"}))},true,o,0,0),nomes)];})()`);
+    if (r.some(Boolean)) throw new Error("barrou pergunta boa: " + JSON.stringify(r));
+  });
+  await conf("coletiva intacta: o prompt da coletiva é o mesmo de antes desta mudança (impressão digital)", async () => {
+    const H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "ai.js")).href)).default;
+    const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
+    let corpo = null; const hs = [];
+    process.env.OPENROUTER_API_KEY = "falsa"; console.error = () => {};
+    globalThis.fetch = async (u, op = {}) => {
+      u = String(u);
+      if (u.includes("/rest/v1/assinaturas")) return { ok: true, status: 200, json: async () => [{ pro: true, expira_em: null }] };
+      if (u.startsWith("https://openrouter.ai/")) { corpo = op.body; return { ok: false, status: 500, text: async () => "x", json: async () => ({}) }; }
+      return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
+    };
+    const res = { status() { return this; }, json() { return this; }, setHeader() {}, end() {} };
+    try {
+      for (const d of COLETIVA_DADOS_DIGITAL) { corpo = null; await H({ method: "POST", headers: {}, body: { kind: "coletivaCena", data: d } }, res); hs.push(crypto.createHash("sha256").update(corpo || "").digest("hex").slice(0, 16)); }
+      corpo = null;
+      await H({ method: "POST", headers: {}, body: { kind: "entrevistaCena", data: resultados[1].r.pedido } }, res);
+      const ent = JSON.parse(corpo).messages;
+      if (/Twitter|digitação leves|engraçado/.test(ent[0].content)) throw new Error("a entrevista ainda usa a voz de torcedor do feed");
+      if (!/repórter esportivo brasileiro/.test(ent[0].content) || !/O que aconteceu na luta:/.test(ent[1].content) || !/Pauta do repórter/.test(ent[1].content) || /Forma da pergunta|Situação desta vez/.test(ent[1].content))
+        throw new Error("prompt da entrevista sem a estrutura nova: " + ent[1].content.slice(0, 300));
+    } finally {
+      globalThis.fetch = fetchOriginal; console.error = erroOriginal;
+      for (const k of Object.keys(process.env)) if (!(k in envOriginal)) delete process.env[k];
+      Object.assign(process.env, envOriginal);
+    }
+    if (hs.join(" ") !== COLETIVA_PROMPT_DIGITAL) throw new Error(`o prompt da coletiva mudou: ${hs.join(" ")} (era ${COLETIVA_PROMPT_DIGITAL})`);
+  });
+
+  /* reavaliação sem custo: as respostas da IA gravadas numa rodada anterior
+     (ENTREVISTA_SAIDA) passam pelo filtro atual */
+  if (process.env.ENTREVISTA_REAVALIAR) {
+    const d = JSON.parse(fs.readFileSync(process.env.ENTREVISTA_REAVALIAR, "utf8"));
+    for (const a of d.avaliacoes) {
+      const fx = ENT_FIXTURES.find(x => x.nome === a.contexto);
+      if (!fx || a.status !== 200) { console.log(`  [sem resposta da IA] ${a.contexto}\n      jogador vê o molde: ${a.molde}`); continue; }
+      const Y = nova(600); const base = J(Y, `${PREPARAR}(${JSON.stringify(fx)})`);
+      Y.sb.__j = { evento: a.evento, pergunta: a.pergunta };
+      const { m, q } = J(Y, `(function(){const {prep,op}=__ultimo;const fc=prep.falaCol;
+        const r=avaliarCenaDaIA(__j,"entrevista",{permitidas:fc?[fc.texto]:[],exige:fc?fc.texto:null,nomes:[op.opp.name],fatos:prep.f});
+        return{m:r.motivo||null,q:r.cena?r.cena.pergunta:null};})()`);
+      console.log(`  [${m ? "molde: " + m : "IA"}] ${a.contexto} (${base.pauta || "fala da coletiva"})\n      jogador vê: ${m ? base.pergunta : q}${m ? `\n      (IA barrada: ${a.pergunta})` : ""}`);
+    }
+  }
+  /* avaliação com o modelo de produção (só com ENTREVISTA_IA=real; gasta crédito) */
+  if (modo === "real") {
+    const H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "ai.js")).href)).default;
+    const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
+    const max = Number(process.env.ENTREVISTA_MAX) || 40, repetir = Number(process.env.ENTREVISTA_VEZES) || 1;
+    let chamadas = 0, entrada = 0, saida = 0;
+    const avaliacoes = [];
+    process.env.OPENROUTER_API_KEY = fs.readFileSync(path.join(os.homedir(), ".octogono-openrouter"), "utf8").trim();
+    console.error = () => {};
+    globalThis.fetch = async (u, op = {}) => {
+      u = String(u);
+      if (u.includes("/rest/v1/assinaturas")) return { ok: true, status: 200, json: async () => [{ pro: true, expira_em: null }] };
+      if (u.startsWith("https://openrouter.ai/")) return fetchOriginal(u, op);
+      return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
+    };
+    try {
+      for (let v = 0; v < repetir; v++) for (const { fx } of resultados) {
+        if (chamadas >= max) break;
+        const Y = nova(500 + v);
+        const base = J(Y, `${PREPARAR}(${JSON.stringify(fx)})`);
+        const res = { cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } };
+        chamadas++;
+        if (chamadas > 1) await new Promise(r => setTimeout(r, Number(process.env.ENTREVISTA_PAUSA) || 1500));
+        await H({ method: "POST", headers: {}, body: { kind: "entrevistaCena", data: base.pedido } }, res);
+        if (res.corpo && res.corpo.usage) { entrada += res.corpo.usage.prompt_tokens || 0; saida += res.corpo.usage.completion_tokens || 0; }
+        const j = res.cod === 200 ? res.corpo.result : null;
+        Y.sb.__j = j;
+        const av = J(Y, `(function(){const {prep,op}=__ultimo;const fc=prep.falaCol;
+          const a=avaliarCenaDaIA(limparTextoIA(__j),"entrevista",{permitidas:fc?[fc.texto]:[],exige:fc?fc.texto:null,nomes:[op.opp.name],fatos:prep.f});
+          return{motivo:a.motivo||null,evento:a.cena?a.cena.evento:(__j&&__j.evento)||"",pergunta:a.cena?a.cena.pergunta:(__j&&__j.pergunta)||""};})()`);
+        avaliacoes.push({ contexto: fx.nome, pauta: base.pauta || "fala da coletiva", reporter: base.reporter, resumo: base.resumo, ...av, molde: base.pergunta,
+          status: res.cod, erro: res.cod === 200 ? null : String((res.corpo && (res.corpo.error + " " + (res.corpo.status || ""))) || "").slice(0, 80) });
+      }
+    } finally {
+      globalThis.fetch = fetchOriginal; console.error = erroOriginal;
+      for (const k of Object.keys(process.env)) if (!(k in envOriginal)) delete process.env[k];
+      Object.assign(process.env, envOriginal);
+    }
+    for (const a of avaliacoes) console.log(`  [${a.motivo ? "molde: " + a.motivo : "IA"}] ${a.contexto} (${a.pauta})\n      evento: ${a.evento}\n      pergunta: ${a.motivo ? a.molde : a.pergunta}${a.motivo ? `\n      (a IA tinha escrito: ${a.pergunta})` : ""}`);
+    const aceitas = avaliacoes.filter(a => !a.motivo).length;
+    console.log(cinza(`  IA real: ${chamadas} chamadas, ${aceitas} aceitas, ${chamadas - aceitas} no molde; tokens ${entrada} entrada, ${saida} saída`));
+    if (process.env.ENTREVISTA_SAIDA) fs.writeFileSync(process.env.ENTREVISTA_SAIDA, JSON.stringify({ chamadas, entrada, saida, avaliacoes }, null, 1));
+  }
+  const ok = !falhas.length;
+  console.log(ok ? verde("  entrevista ok") : vermelho(`  ${falhas.length} falha(s) na entrevista`));
+  return ok;
+}
+
 /* cenas reais do modelo de produção, sem fala antiga, da medição de 2026-10-01 (carreira 0): o filtro de similaridade não pode barrar nenhuma */
 const CENAS_REAIS_IA = [{"tipo": "coletiva", "evento": "O microfone de Renata Brum falha completamente e ela tenta trocar a pilha enquanto TesteBot espera na cadeira.", "pergunta": "Renata, o equipamento da Revista Mão Pesada não está funcionando. Você vai ter que improvisar no seu boxe ou pedir ajuda pra equipe?", "nomes": ["TesteBot", "Joel Alvarez"]}, {"tipo": "coletiva", "evento": "O empresário do Will Brooks colocou uma faixa de Jiu-jitsu no pescoço e riu na cara do TesteBot.", "pergunta": "O empresário do seu adversário apareceu com uma faixa da sua academia. Isso é motivo de piada ou você vai levar a sério?", "nomes": ["TesteBot", "Will Brooks"]}, {"tipo": "coletiva", "evento": "O empresário do Desmond Green entrega o certificado de pesagem para TesteBot e dá um tapa nas costas dele antes de sair da sala.", "pergunta": "O empresário do seu adversário te deu um tapa nas costas na pesagem. Você acha que isso é sinal de respeito ou apenas provocação?", "nomes": ["TesteBot", "Desmond Green"]}, {"tipo": "entrevista", "evento": "O médico fecha a bandagem no supercílio de TesteBot e afasta o encanador que tentava limpar o suor do octógono com um pano azul.", "pergunta": "Você aplicou duas quedas e zerou Desmond Green em menos de três minutos. Isso prova que seu grappling é superior ao resto ou foi só sorte com a posição dele?", "nomes": ["TesteBot", "Desmond Green"]}, {"tipo": "entrevista", "evento": "O técnico de Natan Levy joga a toalha molhada no chão da arena, perto do pé de TesteBot.", "pergunta": "Você dominou o jogo com quatro quedas em dois minutos. A estratégia foi desmontar o grappling dele ou só tirar vantagem da confusão que ficou depois?", "nomes": ["TesteBot", "Natan Levy"]}, {"tipo": "coletiva", "evento": "O treinador do Khabilov entra na sala de imprensa com uma cadeira nas costas e a joga no chão perto dos pés do TesteBot.", "pergunta": "Seu técnico acabou de destruir o mobiliário da coletiva. Você acha que isso é intimidador ou apenas falta de respeito?", "nomes": ["TesteBot", "Rustam Khabilov"]}, {"tipo": "coletiva", "evento": "O treinador do Chris Padilla segura o microfone e diz que a pressão do adversário é 'de outro mundo'.", "pergunta": "Seu técnico disse que a pressão dele é de outro mundo. Como você vai lidar com isso no octógono?", "nomes": ["TesteBot", "Chris Padilla"]}, {"tipo": "entrevista", "evento": "O treinador de TesteBot segura a cabeça dele e grita que o volume inchado impediu o jogo de chão.", "pergunta": "Seu treinador no corner disse que o volume machucado travou seu grappling. Como você explica as duas quedas sofridas com esse problema?", "nomes": ["TesteBot", "Drakkar Klose"]}, {"tipo": "entrevista", "evento": "Um torcedor joga uma garrafa de água vazia nos pés de TesteBot enquanto ele caminha para a área de entrevista.", "pergunta": "A torcida jogou uma garrafa na sua frente mesmo você vencendo Rustam Khabilov por finalização com o volume machucado. Isso mostra que a arena não te respeita ou foi só falta de sorte?", "nomes": ["TesteBot", "Rustam Khabilov"]}, {"tipo": "coletiva", "evento": "Marta Quintela abre a pasta com o histórico de TesteBot e aponta para as três derrotas no cartel 8-3, perguntando se a mudança para wrestling foi só pra esconder a falta de condição.", "pergunta": "TesteBot, seu cartel é 8-3 e você tá levando volume machucado. A troca pro wrestling foi estratégia ou desespero pra tapar os buracos?", "nomes": ["TesteBot", "MarQuel Mederos"]}, {"tipo": "coletiva", "evento": "Um torcedor grita 'boxe de esquina' na plateia e joga um copo vazio no chão perto da mesa.", "pergunta": "Um torcedor te chamou de boxeador de esquina agora. Com seu volume machucado, como você vai lidar com a pressão dele?", "nomes": ["TesteBot", "Brad Riddell"]}, {"tipo": "coletiva", "evento": "Hugo Lessa do Portal Guarda Alta coloca a folha do novo contrato na mesa e pergunta quanto o adversário Evan Elder está pedindo.", "pergunta": "Hugo Lessa, do Portal Guarda Alta, colocou a proposta financeira do Evan Elder aqui. Com seu volume machucado, você acha que vale a pena arriscar a bolsa agora?", "nomes": ["TesteBot", "Evan Elder"]}, {"tipo": "entrevista", "evento": "Caio Serrat segura a ficha de placar 29-28 na mão esquerda e encosta o microfone no peito de TesteBot enquanto um segurança afasta um torcedor que tentava passar pela grade.", "pergunta": "O placar foi 29-28 pra ele. Você tem alguma explicação pra quem apostou em você, já que não conseguiu aplicar nem uma queda e deixou o jogo todo nas mãos dos juízes?", "nomes": ["TesteBot", "Chris Padilla"]}, {"tipo": "coletiva", "evento": "O técnico do Devonte Smith chega na frente, tira o microfone da mão de um repórter e grita que a base de boxe do TesteBot é coisa de gente fraca que não aguenta o jogo de verdade.", "pergunta": "O técnico do seu adversário acabou de dizer na sua cara que seu boxe é só para quem tem medo de levar soco. Com essa sequência de três derrotas, você acha que ele acertou no ponto fraco ou tá só tentando te desestabilizar?", "nomes": ["TesteBot", "Devonte Smith"]}, {"tipo": "entrevista", "evento": "O técnico de TesteBot joga a toalha branca na mesa da entrevista e faz sinal positivo com o polegar para a câmera.", "pergunta": "TesteBot, você aplicou duas quedas e dominou Smith no chão antes do nocaute técnico. Esse controle no ground game foi o que te deu a vantagem decisiva nesse round?", "nomes": ["TesteBot", "Devonte Smith"]}, {"tipo": "coletiva", "evento": "O técnico do Rafa Garcia puxa o microfone da mesa na frente de todo mundo e xinga a base de grappling do TesteBot, dizendo que é só enrolação.", "pergunta": "O treinador dele acabou de chamar sua base de grappling de enrolação. Isso te irrita ou você nem liga?", "nomes": ["TesteBot", "Rafa Garcia"]}, {"tipo": "coletiva", "evento": "O empresário de Nasrat Haqparast se aproxima da mesa, segura o ombro do lutador e fala baixinho que a pressão dele é diferente de tudo que TesteBot já viu.", "pergunta": "O empresário do Nasrat disse que a pressão dele é única. Como você vai aguentar esse ritmo com sua base de wrestling?", "nomes": ["TesteBot", "Nasrat Haqparast"]}];
 async function testarMemoria() {
@@ -1351,25 +1730,25 @@ async function testarMemoria() {
     if (r.depoisDoPassado) throw new Error("voltou logo depois de uma entrevista que olhou pro passado");
     if (!r.amostraNeutra) throw new Error("na amostra a fala tem que voltar sempre");
   });
-  await conf("entrevista: lesão é fato obrigatório uma vez por lesão; o fato gira (método, momento do log, quedas, luta anterior) e cinturão e zebra continuam obrigatórios", async () => {
+  await conf("entrevista: lesão é pauta uma vez por lesão; a pauta gira entre os fatos da luta e não repete na entrevista seguinte; cinturão continua na frente", async () => {
     const X = nova(325);
     const r = J(X, `(function(){
-      st.narrativa=null;st.lesao={atributo:"strDef",desdeLuta:3,duracao:4,mult:.9};
+      st.narrativa=null;st.registro=[];st.lesao={atributo:"strDef",desdeLuta:3,duracao:4,mult:.9};
       const primeira=lesaoPraEntrevista("Defesa machucada");narrativaDa().lesaoTratada="strDef:3";
       const segunda=lesaoPraEntrevista("Defesa machucada");st.lesao={atributo:"slpm",desdeLuta:6,duracao:2,mult:.9};
       const outraLesao=lesaoPraEntrevista("Volume machucado");st.lesao=null;
-      st.registro=[{adv:"Antigo",venceu:true,metodo:"Nocaute",round:1},{adv:"Atual",venceu:false,metodo:"Decisão",round:3,cartoes:"29-28"}];
-      const r0={method:"Decisão",round:3,clock:"5:00",cards:"29-28",log:[{round:2,clock:"1:10",kind:"kd",text:"Atual derruba com um cruzado"},{round:3,clock:"0:00",kind:"fin",text:"fim"}]};
-      const c=ctxEntrevista({name:"Atual"},false,r0,false,false,null,2,1);
-      const base={fatoObrigatorio:"decisão"},tipos=[];
-      for(let k=0;k<4;k++){const f=fatoDaEntrevistaVariado(base,false,r0,null,2,1,c,false);tipos.push(f.tipo);}
-      const zebra=fatoDaEntrevistaVariado({fatoObrigatorio:"zebra"},true,r0,null,2,1,c,false).tipo;
-      const cinturao=fatoDaEntrevistaVariado({fatoObrigatorio:"cinturão"},true,r0,null,2,1,c,false).tipo;
-      const semAnterior=fatoDaEntrevistaVariado(base,false,r0,null,2,1,c,true);
-      return{primeira,segunda,outraLesao,tipos,zebra,cinturao,momento:tipos.includes("momento")};})()`);
+      const o={name:"Atual"};
+      const rr={method:"Decisão",round:3,clock:"0:00",cards:"29-28",log:[{round:1,clock:"0:00",kind:"rd",text:"Fim do round 1. "+me.name+" levou."},
+        {round:2,clock:"2:10",kind:"big",text:me.name+" tenta a finalização! Atual escapa."}]};
+      const pautas=[];
+      for(let k=0;k<4;k++){fightNo=10+k;pautas.push(escolherPauta(fatosDaLuta(rr,true,o,3,0),false).id);}
+      st.narrativa=null;
+      const cinturao=[0,1].map(k=>{fightNo=20+k;return escolherPauta(fatosDaLuta(rr,true,o,3,0,{titulo:true}),false).id;});
+      return{primeira,segunda,outraLesao,pautas,cinturao};})()`);
     if (!r.primeira || r.segunda || !r.outraLesao) throw new Error("lesão: " + JSON.stringify(r));
-    if (new Set(r.tipos).size !== 4) throw new Error("o fato não girou: " + r.tipos.join(","));
-    if (r.zebra !== "zebra" || r.cinturao !== "cinturão") throw new Error("fato forte perdeu a prioridade");
+    if (r.pautas.some((p, k) => k && p === r.pautas[k - 1])) throw new Error("a mesma pauta veio em entrevistas seguidas: " + r.pautas.join(","));
+    if (new Set(r.pautas).size < 3) throw new Error("a pauta não girou entre os fatos: " + r.pautas.join(","));
+    if (r.cinturao.join() !== "cinturao,cinturao") throw new Error("cinturão perdeu a frente: " + r.cinturao.join(","));
   });
   await conf("dossiê: só fatos do registro (últimas 3 lutas e sequência), até 420 caracteres, e só vai pra IA quando a cena olha pro passado", async () => {
     const X = nova(326);
@@ -1426,14 +1805,14 @@ async function testarMemoria() {
 
   await conf("save: a narrativa (cartela, situações, estruturas, passado) vai no save, a carreira retomada escolhe a mesma próxima cena, e save antigo sem narrativa abre", async () => {
     const PROX = `(function(){fightNo=4;const o=ROSTER[0];const d=escolherCena("coletiva",ctxColetiva(o,{nome:"Boxe"},{f:o}));
-      const e=escolherCena("entrevista",ctxEntrevista(o,true,{method:"Nocaute",round:2,clock:"1:00",log:[]},false,false,null,0,0));
-      return d.sit.id+"/"+d.est+" "+e.sit.id+"/"+e.est;})()`;
+      const e=escolherPauta(fatosDaLuta({method:"Nocaute",round:2,clock:"1:00",log:[]},true,o,0,0),false);
+      return d.sit.id+"/"+d.est+" "+e.id;})()`;
     const X = nova(327);
     X.run(`st.narrativa=null;for(let n=1;n<4;n++){fightNo=n;const o=ROSTER[n];escolherCena("coletiva",ctxColetiva(o,{nome:"Boxe"},{f:o}));
-      escolherCena("entrevista",ctxEntrevista(o,n%2===0,{method:"Decisão",round:3,clock:"5:00",log:[]},false,false,null,0,0));}`);
+      escolherPauta(fatosDaLuta({method:"Decisão",round:3,clock:"0:00",cards:"29-28",log:[]},n%2===0,o,0,0),false);}`);
     const d = J(X, "montarSave()");
     const n = d.st && d.st.narrativa;
-    if (!n || !n.cartela.coletiva || !n.situacoes.coletiva.length || !n.estruturas.entrevista.length || !("coletiva" in n.passado))
+    if (!n || !n.cartela.coletiva || !n.situacoes.coletiva.length || !(n.pautas || []).length || !("coletiva" in n.passado))
       throw new Error("a narrativa não está no save: " + JSON.stringify(n));
     const Y = nova(328);
     Y.sb.__save = JSON.stringify(d);
@@ -1443,7 +1822,7 @@ async function testarMemoria() {
     const V = nova(329);
     V.run("delete st.narrativa;st.cartelaCena={coletiva:['provocação do adversário']};st.cenasRecentes={coletiva:['a','b','c','d','e','f']};");
     const v = J(V, PROX);
-    if (!/^[a-z-]+\/[a-z]+ [a-z-]+\/[a-z]+$/.test(v) || !J(V, "!!st.narrativa&&Array.isArray(st.narrativa.situacoes.coletiva)")) throw new Error("save antigo: " + v);
+    if (!/^[a-z-]+\/[a-z]+ [a-z-]+$/.test(v) || !J(V, "!!st.narrativa&&Array.isArray(st.narrativa.situacoes.coletiva)")) throw new Error("save antigo: " + v);
   });
 
   const ok = !falhas.length;
@@ -5495,27 +5874,23 @@ function testarColetivaEntrevista() {
   const passos=[];
   const passo=(nome,ok)=>passos.push({nome,ok:!!ok});
   try{
-    /* ---------- perguntaEntrevista(): prioridade FIXA, sem IA nem rng ---------- */
+    /* ---------- pauta da entrevista (2026-10-01): escolhida pelos fatos da luta, sem IA nem rng ---------- */
     const opp={name:"Rival",arquetipo:"Completo",rating:.5,destaque:null};
-    passo("prioridade: cinturão vence tudo, mesmo com lesão/zebra também true",
-      perguntaEntrevista(opp,true,"Decisão",3,"5:00",true,true,"joelho machucado",2,1,1).fatoObrigatorio==="cinturão");
-    passo("prioridade: lesão vence zebra/método quando não há cinturão",
-      perguntaEntrevista(opp,true,"Nocaute",1,"2:30",false,true,"joelho machucado",0,0,1).fatoObrigatorio==="lesão");
-    passo("prioridade: zebra vence método quando não há cinturão/lesão",
-      perguntaEntrevista(opp,true,"Finalização",2,"1:00",false,true,null,0,0,1).fatoObrigatorio==="zebra");
-    passo("prioridade: nocaute sozinho (sem cinturão/lesão/zebra)",
-      perguntaEntrevista(opp,true,"Nocaute",1,"4:10",false,false,null,0,0,1).fatoObrigatorio==="nocaute");
-    passo("prioridade: finalização sozinha",
-      perguntaEntrevista(opp,false,"Finalização",2,"3:20",false,false,null,0,0,1).fatoObrigatorio==="finalização");
-    passo("prioridade: decisão sozinha (fallback de método)",
-      perguntaEntrevista(opp,true,"Decisão",3,"5:00",false,false,null,0,0,1).fatoObrigatorio==="decisão");
-    passo("quedas: decisão COM quedas aplicadas enriquece a pergunta (cita o número)",
-      perguntaEntrevista(opp,true,"Decisão",3,"5:00",false,false,null,3,1,1).pergunta.includes("3 quedas aplicadas"));
-    passo("quedas: decisão SEM quedas nenhuma não cita quedas",
-      !perguntaEntrevista(opp,true,"Decisão",3,"5:00",false,false,null,0,0,1).pergunta.includes("quedas aplicadas"));
-    passo("paridade varia a redação (fightNo par x ímpar não repete a mesma frase)",
-      perguntaEntrevista(opp,true,"Nocaute",1,"2:00",false,false,null,0,0,2).pergunta
-        !==perguntaEntrevista(opp,true,"Nocaute",1,"2:00",false,false,null,0,0,3).pergunta);
+    const rBase=(method,round,clock,cards=null)=>({method,round,clock,cards,log:[]});
+    const pautaDe=(r,won,op={})=>{const antes=st,meAntes=me;st={wins:0,losses:0,registro:[],narrativa:null};me={name:"Jogador Teste"};
+      try{return escolherPauta(fatosDaLuta(r,won,opp,op.td0||0,op.tdt0||0,op),false).id;}finally{st=antes;me=meAntes;}};
+    passo("pauta: cinturão vence tudo, mesmo com lesão e zebra",
+      pautaDe(rBase("Decisão",5,"0:00","49-46"),true,{titulo:true,zebra:true,lesao:"x"})==="cinturao");
+    passo("pauta: zebra e lesão passam na frente do fato da luta",
+      ["zebra","lesao"].includes(pautaDe(rBase("Nocaute",1,"2:30"),true,{zebra:true,lesao:"x"})));
+    passo("pauta: nocaute vencido, sem fato forte, vira pauta do nocaute",
+      /^nocaute-/.test(pautaDe(rBase("Nocaute",2,"3:40"),true)));
+    passo("pauta: finalização sofrida vira a pauta de quem foi finalizado",
+      pautaDe(rBase("Finalização",2,"3:20"),false)==="finalizado");
+    passo("pauta: decisão 29-28 é decisão apertada (o motor tem um placar só: nada de dividida)",
+      pautaDe(rBase("Decisão",3,"0:00","29-28"),true)==="decisao-apertada");
+    passo("pauta: sem fato nenhum de destaque, cai na pauta geral",
+      pautaDe(rBase("Decisão",3,"0:00",null),true)==="geral");
 
     /* ---------- fixtures comuns pra coletiva/entrevista de verdade ---------- */
     me={name:"TesteBot",division:"lightweight",slpm:5.0,strDef:.55,durability:1.0,
@@ -5777,14 +6152,16 @@ function testarColetivaEntrevista() {
       &&cenaE.children[2].innerHTML.includes("img/entrevista-microfone.webp"));
     await tick();
     const pedidoEnt=chamadas.find(c=>c.kind==="entrevistaCena");
-    passo("entrevista: pede a cena à IA com o fato obrigatório por extenso e a dupla (situação e forma da pergunta)",
-      !!pedidoEnt&&typeof pedidoEnt.data.fato==="string"&&pedidoEnt.data.fato.length>10&&typeof pedidoEnt.data.angulo==="string"
-      &&pedidoEnt.data.angulo.length>3&&Object.values(ESTRUTURAS).includes(pedidoEnt.data.estrutura)
-      &&/\\(/.test(pedidoEnt.data.reporter));
-    passo("entrevista: lesão vence método no fato obrigatório (prioridade fixa continua valendo)",
-      /lutou com/.test(pedidoEnt.data.fato));
-    passo("entrevista: sem lesão, o fato por extenso do nocaute cita round, tempo e quedas",
-      /venceu por nocaute no round 1, aos 3:12 \\(2 quedas aplicadas, 1 sofridas\\)/.test(fatoDaEntrevista("nocaute",true,r,null,2,1)));
+    passo("entrevista: pede a cena à IA com o resumo da luta, a pauta do repórter e o fato central",
+      !!pedidoEnt&&typeof pedidoEnt.data.resumo==="string"&&pedidoEnt.data.resumo.includes(opp.name)
+      &&typeof pedidoEnt.data.pauta==="string"&&pedidoEnt.data.pauta.length>10&&typeof pedidoEnt.data.fato==="string"
+      &&pedidoEnt.data.fato.length>10&&/\\(/.test(pedidoEnt.data.reporter));
+    passo("entrevista: lesão nova (fato forte) vira a pauta",
+      /lesão/.test(pedidoEnt.data.fato));
+    passo("entrevista: o resumo da luta só traz o que o motor registrou (tempo de round, quem levou cada round, quedas)",
+      (()=>{const t=resumoDaLuta(fatosDaLuta({method:"Nocaute",round:2,clock:"3:40",
+        log:[{round:1,clock:"0:00",kind:"rd",text:"Fim do round 1. Rival levou."}]},true,opp,2,1));
+        return t.includes("por nocaute no segundo round, 1min20 depois do início do round")&&t.includes("primeiro round de Rival")&&/quedas na luta toda: .* 2, Rival 1/.test(t);})());
     passo("entrevista: a pergunta da IA aparece no balão da IA",
       document.getElementById("entpergunta").innerHTML.includes("esqueceu a dor"));
     passo("entrevista: focar o campo rola até o Responder (teclado do celular cobria o botão)",rolaAteBotao("entresp","entgo"));
@@ -5798,8 +6175,8 @@ function testarColetivaEntrevista() {
       reacaoEnt.data.metodo==="Nocaute"&&reacaoEnt.data.round===1&&reacaoEnt.data.clock==="3:12");
     passo("entrevista Pro: manda quedas aplicadas/sofridas certas (td0/tdt0)",
       reacaoEnt.data.tdApl===2&&reacaoEnt.data.tdSof===1);
-    passo("entrevista Pro: manda a lesão ativa formatada (ROTULO_ATTR)",
-      typeof reacaoEnt.data.lesao==="string"&&reacaoEnt.data.lesao.includes("machucado"));
+    passo("entrevista Pro: manda a lesão ativa em texto natural (uma lesão que afeta a defesa de golpes)",
+      typeof reacaoEnt.data.lesao==="string"&&reacaoEnt.data.lesao.includes("uma lesão que afeta a defesa de golpes"));
     passo("entrevista: fã clampado corretamente (2.5 dentro do teto 2)", st.fan===5+2);
     passo("entrevista: seguidores aplicado (0.8 dentro do teto 0.50, trava em 0.50)",
       st.followers===Math.round(8000*(1+0.50)));
@@ -5823,15 +6200,14 @@ function testarColetivaEntrevista() {
 
     /* ---------- ENTREVISTA: sair sem responder e voltar ---------- */
     fightNo=7;chamadas.length=0;cenaEnt=null;st.lesao=null;
-    /* "juizes" (decisão) acabou de sair: a cartela entrega a dedicatória */
-    st.narrativa={cartela:{entrevista:["dedicatoria"]},situacoes:{entrevista:["juizes"]},estruturas:{},reporter:{}};
-    renderBotaoEntrevista(bouts,opp,{method:"Decisão",round:3,clock:"5:00"},false,false,0,0,false);
+    st.narrativa=null;st.registro=[];
+    renderBotaoEntrevista(bouts,opp,{method:"Decisão",round:3,clock:"0:00",cards:"28-29",log:[]},false,false,0,0,false);
     const wrap7=bouts.children[bouts.children.length-1];
     wrap7.children[0].onclick();await tick();
-    passo("entrevista: na derrota a situação vira a versão da derrota (medido: 'a quem você dedica essa derrota?')",
-      chamadas.find(c=>c.kind==="entrevistaCena").data.angulo==="o que ele deve pra quem apostou nele");
-    passo("entrevista: IA sem resposta, a pergunta sai do molde local da mesma dupla (dedicatória na derrota)",
-      /apostou|explicação/i.test(document.getElementById("entpergunta").innerHTML));
+    passo("entrevista: derrota apertada nos cartões vira pauta de derrota (explicação, nunca festa)",
+      /derrota apertada/.test(chamadas.find(c=>c.kind==="entrevistaCena").data.pauta));
+    passo("entrevista: IA sem resposta, a pergunta sai do molde local da pauta (cita o placar real)",
+      /29-28/.test(document.getElementById("entpergunta").innerHTML));
     passo("entrevista: derrota tem evento coerente (sem comemoração)",
       !/levantou|gritou o seu nome/.test(document.getElementById("entevento").innerHTML));
     let fundoPedido=null;const mostrarOrig=mostrarNoite;mostrarNoite=(e,f)=>{fundoPedido=f;return mostrarOrig(e,f);};
@@ -10236,6 +10612,7 @@ try {
   else if (cmd === "admin") ok = await testarAdmin();
   else if (cmd === "amostra") ok = await testarAmostra();
   else if (cmd === "diversidade") ok = await testarDiversidade(Number(div) || 6);
+  else if (cmd === "entrevista") ok = await testarEntrevista();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -10316,6 +10693,7 @@ try {
         ["admin", () => testarAdmin()],
         ["amostra", () => testarAmostra()],
         ["diversidade", () => testarDiversidade(6)],
+        ["entrevista", () => testarEntrevista()],
         ["personagem", () => testarPersonagem()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
