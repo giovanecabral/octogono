@@ -3502,9 +3502,12 @@ chamada acontece (o cliente manda o que quiser); não importa, porque o
 teto é da conta.
 
 **SQL:** fim do `supabase_schema.sql` (tabela `uso_ia`, funções
-`consumir_uso_ia` e `devolver_uso_ia`, só criação, nada apagado). O dono
-roda no Supabase ANTES do deploy desta etapa: sem a função, toda amostra
-cai em "indisponível" e o grátis da 1ª luta vê a recusa.
+`consumir_uso_ia` e `devolver_uso_ia`, só criação). Executado pelo dono em
+2026-10-01, antes do deploy (master `98dbdc9`). Conferido de fora com a
+chave pública: tabela vazia pra anon, funções com "permission denied".
+Validado em produção pelo dono: amostra completa na 1ª luta, 2ª carreira
+com a coletiva liberada e a entrevista bloqueada, 3ª carreira bloqueada,
+Pro fora da cota, banco com `chamadas = 6` e `total = 6`.
 
 **Teste:** suíte nova `amostra` (servidor, com banco e OpenRouter falsos:
 libera e conta, 7ª recusada, carreira nova não zera, recusa não conta,

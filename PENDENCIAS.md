@@ -2261,10 +2261,10 @@ ver o resultado da anterior. Nenhum SQL roda sem aprovação explícita dele.
 
 - **Etapa 1 (memória narrativa): feita.** Ver LEIA-ME "Memória
   narrativa". SQL nenhum.
-- **Etapa 2 (amostra grátis): feita na branch `amostra-gratis`, NÃO no
-  ar.** Ver LEIA-ME "Amostra grátis do Pro". Depende do SQL do fim do
-  `supabase_schema.sql` (tabela `uso_ia`, funções `consumir_uso_ia` e
-  `devolver_uso_ia`): apresentado ao dono, NÃO executado. Ordem: o dono
-  roda o SQL, depois o deploy (sem a função, a amostra recusa como
-  "indisponível").
+- **Etapa 2 (amostra grátis): concluída e no ar (2026-10-01, master
+  `98dbdc9`).** SQL do fim do `supabase_schema.sql` executado pelo dono
+  antes do deploy; validada em produção pelo dono (ver LEIA-ME "Amostra
+  grátis do Pro"). Fica pra etapa 6: abuso com várias contas grátis.
+  Fica pra etapa 5: conferir se os eventos `ia_null` com motivo
+  `amostra_*` chegam no Vercel Analytics.
 
