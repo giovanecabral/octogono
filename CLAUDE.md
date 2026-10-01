@@ -253,15 +253,21 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   propósito) em octogono.fun. Arquivo novo que não é do jogo (bruto,
   ferramenta, doc, privado) entra no `.vercelignore` antes do próximo
   deploy; depois do deploy, conferir com `curl -I` que ele dá 404.
-- **Commit não é push, e push não é deploy — os três são passos separados,
-  nenhum substitui o outro.** `git commit` só grava local. `git push` sobe
-  pro GitHub (`octogono`, repositório público de portfólio — ver
+- **Commit não é push, e `vercel --prod` não é push. Mas push na `master`
+  é deploy.** `git commit` só grava local. `git push` sobe pro GitHub
+  (`octogono`, repositório público de portfólio — ver
   PENDENCIAS.md/README.md). `vercel --prod --scope
   giovanecpiresg-4823s-projects` publica o jogo em produção a partir dos
-  arquivos locais, sem tocar o git remoto nenhuma vez — os dois nunca
-  estiveram conectados (confirmado direto no painel da Vercel). Rodar
-  deploy não sobe commit nenhum pro GitHub, e dar push não publica nada em
-  produção. **Todo `git commit` termina em `git push` no mesmo fôlego** —
+  arquivos locais e não sobe commit nenhum pro GitHub. **O projeto da
+  Vercel está ligado ao repositório** (conferido em 2026-10-01 na API de
+  deployments, `source: git`, desde pelo menos 2026-09-28; o texto antigo
+  daqui dizia que não): push na `master` gera sozinho um deploy de
+  produção do commit, e push de branch gera um Preview. Por isso a
+  `master` só recebe push com a bateria completa verde. O `vercel --prod`
+  do fluxo continua depois do push: o último deploy é o que fica no ar, e
+  o do CLI dá pra conferir arquivo por arquivo (`/v6/deployments/<id>/files`
+  pelo `vercel api`, sha1 de cada arquivo contra o git). **Todo `git
+  commit` termina em `git push` no mesmo fôlego** —
   9 commits (Fases 6 a 9 + o ajuste de tamanho do dilema) ficaram só
   locais numa sessão inteira porque o hábito de empurrar pro GitHub não
   sobreviveu ao `git filter-repo` que reescreveu o histórico (rewrite

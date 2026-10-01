@@ -2293,7 +2293,23 @@ IA real.
 Pedido do dono: perguntas artificiais, desconexas e sem sentido na
 entrevista. Ver LEIA-ME "Entrevista pós-luta com pauta". Só a entrevista
 mudou; coletiva, motor, balanço, geradores, banco, saves e Free/Pro ficam
-como estavam, e o número de chamadas de IA é o mesmo.
+como estavam, e o número de chamadas de IA é o mesmo. No ar desde
+2026-10-01 (master `e243493`; deploy do CLI
+`dpl_FrEQ13Yo6SYFUyEVGrYJas2sWTeC`, 102 arquivos iguais ao commit; o push
+da master gerou antes `dpl_8KAd3e3rKtp8NQ3xt9359KXcyQuc`, mesmo commit).
+Rollback: `dpl_5yJNENgXyKgpeh9y5X822AQtxQ2v` (o que estava no ar, código
+do `437496c`), com `vercel rollback
+https://draft-f4el1sp5h-giovanecpiresg-4823s-projects.vercel.app --scope
+giovanecpiresg-4823s-projects`. Verificado em produção sem conta (IA
+bloqueada): Pro e Free, computador e celular, pauta e filtro no ar, a
+amostra na 1ª luta, portões da API (405, 400, 403, 401) e os arquivos
+privados em 404.
+
+- Achado no deploy: o projeto da Vercel está ligado ao GitHub (push na
+  master publica em produção, push de branch gera Preview), ao contrário
+  do que o CLAUDE.md dizia. Corrigido lá. Se o dono não quiser publicação
+  por push, é desligar a integração Git no painel da Vercel (decisão do
+  dono; o fluxo do `vercel --prod` funciona igual sem ela).
 
 - A IA ainda erra em parte das cenas: nas duas últimas rodadas, 46% das
   respostas caíram no molde da mesma pauta (nocaute chamado de
