@@ -4686,45 +4686,426 @@ function cortarFrase(s,n){
 }
 
 /* Repórteres e veículos inventados: nunca um jornalista real. A IA recebe o
-   nome pronto e o prompt proíbe inventar outro. */
+   nome pronto e o prompt proíbe inventar outro. Narrativa (2026-10-01):
+   cada repórter tem linha editorial fixa (o jeito de perguntar) e veículo
+   fixo, e é escalado pelas situações que combinam com a linha dele. */
 const REPORTERES=["Lia Monteverde","Otávio Paranhos","Débora Venturini","Caio Serrat","Bianca Tavora",
   "Hugo Lessa","Renata Brum","Tiago Arantes","Marta Quintela","Ícaro Vilhena","Sônia Barreto","Lucas Amaral Pinho"];
 const VEICULOS=["Portal Guarda Alta","Rádio Três Rounds","TV Octógono","Revista Mão Pesada",
   "Canal Chão e Pancada","Jornal do Cinturão"];
-function reporterDaCena(tipo){
-  const h=hashEstavel(`${SEED}:${fightNo}:${tipo}`);
-  return{nome:REPORTERES[h%REPORTERES.length],veiculo:VEICULOS[Math.floor(h/7)%VEICULOS.length]};
+const LINHA_EDITORIAL={
+  "Lia Monteverde":["tática: quer entender o plano e a técnica",["estilo","camp","plano","momento","numeros","finalizacao"]],
+  "Otávio Paranhos":["polêmica: cobra, provoca e não aceita resposta pronta",["provocacao","equipe","criticas","fala-adversario","atraso"]],
+  "Débora Venturini":["bastidores: equipe, família e rotina",["familia","corner","estreia","ex-parceiro","dedicatoria"]],
+  "Caio Serrat":["números: cartel, sequência e estatística",["cartel","sequencia","numeros","juizes","favorito"]],
+  "Bianca Tavora":["trajetória: liga a luta de hoje à carreira inteira",["carreira","prova","rival","cinturao","estreia"]],
+  "Hugo Lessa":["humor seco: pergunta com ironia, sem ofender",["sala","pesagem","video","elogio","atraso"]],
+  "Renata Brum":["direta: pergunta curta, sem rodeio",["encarada","provocacao","cinturao","adversario"]],
+  "Tiago Arantes":["torcida e repercussão: o que a arena e as redes estão dizendo",["torcida","video","criticas"]],
+  "Marta Quintela":["veterana: cobra coerência entre o que ele diz e o que faz",["prova","criticas","juizes","cartel","ex-campeao"]],
+  "Ícaro Vilhena":["curioso: pergunta o que ninguém pergunta, de um jeito inesperado",["ex-campeao","elogio","momento","finalizacao","ex-parceiro"]],
+  "Sônia Barreto":["negócios: bolsa, contrato e o próximo passo na organização",["bolsa","favorito","carreira"]],
+  "Lucas Amaral Pinho":["saúde: corpo, peso e recuperação",["lesao","pesagem","corpo"]],
+};
+function narrativaDa(){
+  st.narrativa=st.narrativa||{};
+  const n=st.narrativa;
+  n.cartela=n.cartela||{};n.situacoes=n.situacoes||{};n.estruturas=n.estruturas||{};n.reporter=n.reporter||{};
+  n.passado=n.passado||{};n.fatos=n.fatos||[];
+  return n;
 }
-const TEMAS_COLETIVA=["provocação do adversário","encarada que esquenta","pergunta incômoda sobre o cartel",
-  "o camp escolhido","algo dá errado na sala","equipe do adversário se mete","torcida na coletiva",
-  "bolsa e contrato","a pesagem (todo mundo dentro do limite)","o estilo do adversário"];
-/* Ângulo da entrevista: cada um tem a versão da derrota (medido: com um
-   ângulo só, o modelo perguntava "a quem você dedica essa derrota?"). */
-const ANGULOS_ENTREVISTA=["o momento que decidiu a luta","o que ouviu do adversário depois","a quem dedica",
-  "o plano de jogo","a torcida na arena","o corpo depois da luta","as críticas de antes da luta",
-  "o que o treinador disse no corner","a família","o que esta luta prova"];
-const ANGULO_NA_DERROTA={"a quem dedica":"o que deve pra quem apostou nele","o plano de jogo":"onde o plano de jogo falhou",
-  "a torcida na arena":"a torcida que foi ver ele perder","as críticas de antes da luta":"as críticas que vêm agora",
-  "o que esta luta prova":"o que esta derrota ensina"};
-/* Cartela por carreira, sem reposição: os 10 primeiros temas nunca se
-   repetem. Embaralhada por um gerador LOCAL e descartável (não é um dos 8
-   do save); a cartela em si mora em st e vai no save. */
-function proximoTemaCena(tipo){
-  const lista=tipo==="coletiva"?TEMAS_COLETIVA:ANGULOS_ENTREVISTA;
-  st.cartelaCena=st.cartelaCena||{};
-  if(!st.cartelaCena[tipo]||!st.cartelaCena[tipo].length){
-    const g=mulberry32(hashEstavel(`${SEED}:${tipo}:${fightNo}`)>>>0),c=[...lista];
-    for(let i=c.length-1;i>0;i--){const j=Math.floor(g()*(i+1));[c[i],c[j]]=[c[j],c[i]];}
-    st.cartelaCena[tipo]=c;
+/* o mesmo repórter não faz duas cenas seguidas do mesmo tipo */
+function reporterDaCena(tipo,sitId=null){
+  const n=narrativaDa(),ultimo=n.reporter[tipo];
+  let cands=REPORTERES.filter(r=>r!==ultimo&&sitId&&LINHA_EDITORIAL[r][1].includes(sitId));
+  if(!cands.length)cands=REPORTERES.filter(r=>r!==ultimo);
+  const nome=cands[hashEstavel(`${SEED}:${fightNo}:${tipo}`)%cands.length];
+  n.reporter[tipo]=nome;
+  return{nome,veiculo:VEICULOS[REPORTERES.indexOf(nome)%VEICULOS.length],linha:LINHA_EDITORIAL[nome][0]};
+}
+/* =========================================================================
+   NARRATIVA DAS CENAS (2026-10-01, pedido do dono: "coletivas e entrevistas
+   repetitivas"). Medido antes (suíte diversidade): 10 temas e 10 ângulos
+   girando, a pergunta sempre nas mesmas formas e o exemplo fixo do prompt
+   virando cópia. Agora cada cena é uma DUPLA: a situação diz o que
+   acontece, a estrutura diz a forma da pergunta, e cada situação só aceita
+   as estruturas que combinam com ela. O jogo escolhe a dupla e manda pra
+   IA; o molde local usa a mesma dupla.
+   ========================================================================= */
+const ESTRUTURAS={
+  dado:"parte de um dado concreto que veio nos dados e pede uma resposta direta",
+  comparacao:"compara com a luta anterior dele, que vem nos dados",
+  escolha:"oferece duas opções concretas e pede que ele escolha uma",
+  hipotese:"propõe uma hipótese (e se...) ligada à situação",
+  terceiro:"parte do que outra pessoa fez ou disse no evento e pede a resposta dele",
+  pessoa:"pergunta sobre uma pessoa: treinador, equipe, família ou o próprio adversário",
+  bastidor:"pergunta sobre a preparação ou a rotina fora do octógono",
+  direta:"pergunta curta e incômoda, de responder com sim ou não",
+};
+/* luta já registrada da carreira (atras=0 é a última): fato real do
+   registro, nunca inventado */
+function lutaAnterior(atras=0){
+  const reg=st.registro||[],r=reg[reg.length-1-atras];
+  if(!r)return null;
+  return{adv:r.adv,txt:descreverResultado({venceu:r.venceu,metodo:r.metodo,round:r.round,cartoes:r.cartoes},r.adv)};
+}
+/* último encontro com este adversário, do registro (null se nunca lutaram) */
+function reencontroCom(nome,atras=0){
+  const reg=(st.registro||[]).slice(0,Math.max(0,(st.registro||[]).length-atras));
+  const r=reg.filter(x=>x.adv===nome).pop();
+  return r?{txt:descreverResultado({venceu:r.venceu,metodo:r.metodo,round:r.round,cartoes:r.cartoes},r.adv)}:null;
+}
+/* Dossiê da carreira: fatos reais e curtos (últimas 3 lutas e sequência).
+   Só vai pra IA quando a cena foi escolhida pra olhar pro passado (fio
+   narrativo ou forma "comparação"): sem ele, a IA não tem do que lembrar e
+   não força referência ao passado. */
+function dossieCarreira(atras=0){
+  const reg=(st.registro||[]).slice(0,Math.max(0,(st.registro||[]).length-atras)).slice(-3).reverse();
+  if(!reg.length)return null;
+  const partes=[`últimas lutas, da mais recente: ${reg.map(r=>descreverResultado({venceu:r.venceu,metodo:r.metodo,round:r.round,cartoes:r.cartoes},r.adv)).join("; ")}`];
+  if(st.streakW>=2)partes.push(`${st.streakW} vitórias seguidas`);
+  else if(st.streakL>=2)partes.push(`${st.streakL} derrotas seguidas`);
+  return cortarFrase(partes.join(". "),420);
+}
+function ctxColetiva(opp,camp,escolhido){
+  const hist=escolhido&&escolhido.rival&&st.rival&&st.rival.historico&&st.rival.historico.length?st.rival.historico:null;
+  const d=dificuldade(opp).n;
+  return{opp:opp.name,estilo:`estilo ${(opp.arquetipo||"completo").toLowerCase()}`,rec:`${st.wins}-${st.losses}`,
+    estreia:st.wins+st.losses===0,streakW:st.streakW||0,streakL:st.streakL||0,camp:String(camp&&camp.nome||"treino").toLowerCase(),
+    titulo:!!st.tituloEstaLuta,lesao:!!st.lesao,rival:hist?hist[hist.length-1]:null,anterior:lutaAnterior(0),
+    reencontro:hist?null:reencontroCom(opp.name,0),fav:d===1?"voce":d>=3?"ele":null};
+}
+function ctxEntrevista(opp,won,r,titleFight,zebra,lesaoTxt,td0,tdt0){
+  const m=String(r.method||"");
+  const pl=String(r.cards||"").split("-").map(Number);
+  return{opp:opp.name,won,metodo:/ocaute/.test(m)?"nocaute":m==="Finalização"?"finalização":"decisão",round:r.round,clock:r.clock,
+    placar:pl.length===2&&pl.every(Number.isFinite)?`${Math.max(...pl)}-${Math.min(...pl)}`:null,
+    titulo:!!titleFight,zebra:!!zebra,lesao:lesaoTxt,td0:td0||0,tdt0:tdt0||0,rec:`${st.wins}-${st.losses}`,anterior:lutaAnterior(1),
+    reencontro:reencontroCom(opp.name,1)};
+}
+function fatoCurto(c){
+  if(c.metodo==="decisão")return c.won?"A vitória veio nos cartões":"A derrota veio nos cartões";
+  if(c.metodo==="nocaute")return c.won?`Você venceu por nocaute no round ${c.round}`:`Você foi nocauteado no round ${c.round}`;
+  return c.won?`Você finalizou no round ${c.round}`:`Você foi finalizado no round ${c.round}`;
+}
+const minuscula=s=>s.charAt(0).toLowerCase()+s.slice(1);
+const SITUACOES_COLETIVA=[
+  {id:"provocacao",tema:"o adversário provoca o lutador do jogador por causa do cartel ou da carreira",
+   ev:c=>[`${c.opp} pediu o microfone antes da hora e disse que você "ainda não pegou ninguém do top 15".`,
+     c.estreia?`${c.opp} riu alto quando o mediador anunciou que esta é a sua estreia.`:`${c.opp} riu alto quando o mediador leu o seu cartel, ${c.rec}.`],
+   est:{terceiro:c=>`Ele fez isso olhando pra você. O que você responde?`,
+     direta:c=>`${c.opp} acha que você não está no nível dele. Ele tem razão?`,
+     escolha:c=>`Você responde agora, aqui na mesa, ou guarda a resposta pro octógono?`}},
+  {id:"encarada",tema:"a encarada esquenta e alguém precisa intervir",
+   ev:c=>[`Na encarada, ${c.opp} deu um passo à frente e a segurança precisou separar os dois.`,
+     `${c.opp} ficou a dois dedos do seu rosto até o mediador pedir distância.`],
+   est:{direta:c=>`Você não desviou o olho nenhuma vez. Foi recado pra ele?`,
+     hipotese:c=>`Se ele vier com essa pressão no primeiro minuto da luta, qual é o seu plano?`,
+     terceiro:c=>`Ele chegou perto demais. O que passou pela sua cabeça naquela hora?`}},
+  {id:"cartel",tema:"um repórter abre a coletiva com uma pergunta incômoda sobre o cartel",
+   ev:c=>[c.streakL>0?`Um repórter abriu a coletiva lembrando que você vem de ${c.streakL>1?`${c.streakL} derrotas seguidas`:"uma derrota"}.`
+     :c.estreia?`Um repórter abriu a coletiva lembrando que você nunca lutou nesta organização.`
+     :`Um repórter abriu a coletiva com o seu cartel, ${c.rec}, anotado no bloco.`],
+   est:{dado:c=>c.streakL>0?`${c.streakL>1?`${c.streakL} derrotas seguidas`:"Você perdeu a última"}. O que muda contra ${c.opp}?`
+       :c.estreia?`Estreia contra ${c.opp}. Foi você que pediu esse nome?`
+       :`${c.rec}. Quem você ainda precisa vencer pra ser levado a sério nesta divisão?`,
+     comparacao:c=>`Na última luta você ${c.anterior.txt}. O que aquela noite te ensinou pra encarar ${c.opp}?`,
+     direta:c=>c.estreia?`A estreia te deixa nervoso?`:`${c.rec} é cartel de quem vai disputar cinturão?`}},
+  {id:"camp",tema:"o camp que ele escolheu pra esta luta vira assunto",
+   ev:c=>[`O telão mostrou um trecho do seu camp de ${c.camp} e ${c.opp} cochichou alguma coisa com o treinador.`,
+     `A organização passou um vídeo do seu camp de ${c.camp} antes de abrir as perguntas.`],
+   est:{bastidor:c=>`O que você treinou nesse camp de ${c.camp} que ainda não mostrou em luta?`,
+     escolha:c=>`Camp de ${c.camp} contra o ${c.estilo} dele: é pra impor o seu jogo ou pra anular o dele?`,
+     dado:c=>`Camp de ${c.camp} contra o ${c.estilo} dele. Por que esse caminho?`}},
+  {id:"sala",tema:"algo dá errado na estrutura da sala (som, luz ou telão)",
+   ev:c=>[`O microfone da sua mesa falhou duas vezes e ${c.opp} ofereceu o dele, rindo.`,
+     `A luz da sala apagou por alguns segundos e alguém da equipe de ${c.opp} gritou "já começou a luta?".`],
+   est:{terceiro:c=>`Do lado dele, riram da situação. Você leu aquilo como deboche?`,
+     direta:c=>`Esse tipo de coisa tira o seu foco?`,
+     escolha:c=>`Na luta, o que tira mais o seu foco: barulho da arena ou o adversário falando?`}},
+  {id:"equipe",tema:"a equipe do adversário se mete na coletiva",
+   ev:c=>[`O treinador de ${c.opp} tomou o microfone pra dizer que você "foge da troca".`,
+     `O empresário de ${c.opp} interrompeu a coletiva pra dizer que o lutador dele "escolheu você a dedo".`],
+   est:{terceiro:c=>`A equipe dele falou por ele. O que você responde?`,
+     pessoa:c=>`O que você pensa de uma equipe que responde no lugar do lutador?`,
+     direta:c=>`Disseram isso na sua frente. Eles têm razão?`}},
+  {id:"torcida",tema:"a torcida aparece na coletiva",
+   ev:c=>[`Um grupo com uma faixa com o seu nome entrou na sala e foi retirado pela segurança.`,
+     `Um torcedor de ${c.opp} gritou da porta que a luta "não passa do primeiro round".`],
+   est:{pessoa:c=>`Que recado você manda pra quem vai estar na arena por você?`,
+     direta:c=>`Torcida contra te motiva?`,
+     escolha:c=>`Você prefere lutar com a arena a favor ou contra?`}},
+  {id:"bolsa",tema:"bolsa, contrato e dinheiro viram assunto",
+   ev:c=>[`Circulou na sala que a sua bolsa é uma das menores do card.`,
+     `Um repórter perguntou à organização, na sua frente, quanto falta pra renovar o seu contrato.`],
+   est:{dado:c=>`Dizem que você ganha menos que quase todo mundo neste card. Isso pesa?`,
+     direta:c=>`A bolsa baixa te deixa com mais fome nesta luta?`,
+     escolha:c=>`Se pudesse escolher: bolsa maior ou um nome mais forte na próxima?`}},
+  {id:"pesagem",tema:"a pesagem do dia seguinte (todo mundo vai bater o peso)",
+   ev:c=>[`${c.opp} apareceu comendo um sanduíche na mesa e brincou que "a balança é só amanhã".`,
+     `O nutricionista de ${c.opp} passou atrás da mesa com uma garrafa de água e fez sinal de positivo pra ele.`],
+   est:{bastidor:c=>`Como está o seu corte de peso a um dia da balança?`,
+     terceiro:c=>`Ele parece tranquilo com o peso. E você, chega no limite com folga?`,
+     direta:c=>`A balança te preocupa mais que ele?`}},
+  {id:"estilo",tema:"o estilo do adversário e como enfrentá-lo",
+   ev:c=>[`A organização passou no telão os melhores momentos de ${c.opp}.`,
+     `Um repórter levantou uma folha com os números de ${c.opp} e leu em voz alta.`],
+   est:{escolha:c=>`Ele é do ${c.estilo}. Você vai aceitar o jogo dele ou levar a luta pro seu?`,
+     hipotese:c=>`Se a luta cair no terreno dele, qual é o seu plano?`,
+     dado:c=>`O ${c.estilo} dele já parou muita gente. Que parte desse jogo você mais estudou?`}},
+  {id:"ex-parceiro",tema:"alguém que já treinou com o adversário aparece na sala, sem nome",
+   ev:c=>[`Um ex-parceiro de treino de ${c.opp} sentou na primeira fila e cruzou os braços quando você começou a falar.`],
+   est:{pessoa:c=>`Tem gente que conhece o jogo dele por dentro sentada ali na frente. Você conversou com alguém assim no camp?`,
+     bastidor:c=>`Quanto do seu camp foi estudo dele e quanto foi o seu próprio jogo?`,
+     terceiro:c=>`Ele cruzou os braços quando você começou a falar. Isso te diz alguma coisa?`}},
+  {id:"ex-campeao",tema:"um ex-campeão aposentado, convidado da organização e sem nome, comenta a luta",
+   ev:c=>[`Um ex-campeão da organização, convidado pra coletiva, disse no microfone que a luta "termina no chão".`],
+   est:{terceiro:c=>`Um ex-campeão disse que esta luta termina no chão. Você concorda?`,
+     hipotese:c=>`E se ele tiver razão e a luta for pro chão?`,
+     escolha:c=>`Chão ou em pé: onde esta luta se decide?`}},
+  {id:"favorito",tema:"quem as casas de aposta colocam como favorito",
+   ev:c=>[c.fav==="voce"?`O mediador leu a cotação das casas de aposta: você é o favorito.`
+     :c.fav==="ele"?`O mediador leu a cotação das casas de aposta: ${c.opp} é o favorito.`
+     :`O mediador leu a cotação das casas de aposta, que não sabem dizer quem é o favorito.`],
+   est:{dado:c=>c.fav==="voce"?`As casas colocam você na frente. Isso pesa?`:c.fav==="ele"?`As casas colocam ${c.opp} na frente. Elas estão erradas?`
+       :`Nem as casas de aposta sabem quem leva. E você, sabe?`,
+     direta:c=>c.fav==="ele"?`Chegar como zebra te incomoda?`:`Você gosta de chegar como favorito?`,
+     escolha:c=>`Você prefere chegar como favorito ou como zebra?`}},
+  {id:"video",tema:"um vídeo de treino dele circulou e virou assunto",
+   ev:c=>[`Um vídeo seu treinando circulou na semana, e ${c.opp} disse no microfone que era "edição".`],
+   est:{terceiro:c=>`Ele disse que o seu vídeo era edição. O que ele não viu?`,
+     direta:c=>`Você soltou aquele vídeo de propósito?`,
+     bastidor:c=>`O que tinha naquele treino que não apareceu no vídeo?`}},
+  {id:"elogio",tema:"o adversário elogia, e isso soa estranho",
+   ev:c=>[`${c.opp} disse no microfone que você é "o adversário mais perigoso" que ele já enfrentou, e sorriu.`],
+   est:{terceiro:c=>`Ele te elogiou e sorriu. Você acredita nele?`,
+     escolha:c=>`Elogio de adversário: respeito ou jogo psicológico?`,
+     pessoa:c=>`O que você sabe sobre ele fora do octógono?`}},
+  {id:"atraso",tema:"o adversário chega atrasado",
+   ev:c=>[`${c.opp} chegou vinte minutos atrasado e sentou sem cumprimentar ninguém.`],
+   est:{terceiro:c=>`Ele te deixou esperando vinte minutos. Isso foi desrespeito?`,
+     direta:c=>`Isso mexeu com você?`,
+     pessoa:c=>`O que você diria pra ele agora, cara a cara?`}},
+  /* com condição: só entram quando o fato vale, com prioridade */
+  {id:"sequencia",prioridade:true,passado:true,cond:c=>c.streakW>=2||c.streakL>=2,tema:"a sequência atual dele (vitórias ou derrotas seguidas)",
+   ev:c=>[`O mediador abriu a coletiva lembrando das suas ${c.streakW>=2?`${c.streakW} vitórias`:`${c.streakL} derrotas`} seguidas.`],
+   est:{dado:c=>c.streakW>=2?`${c.streakW} vitórias seguidas. O que pode quebrar essa sequência?`:`${c.streakL} derrotas seguidas. O que muda agora?`,
+     comparacao:c=>c.streakW>=2?`Você ${c.anterior.txt} na última. Dá pra repetir contra ${c.opp}?`:`Você ${c.anterior.txt} na última. O que você corrigiu?`,
+     direta:c=>c.streakW>=2?`A sequência te deixa confiante demais?`:`Passou pela sua cabeça mudar de equipe?`}},
+  {id:"lesao",prioridade:true,cond:c=>c.lesao,tema:"a lesão que ele carrega pra esta luta",
+   ev:c=>[`Um repórter perguntou à organização, na sua frente, se você passou nos exames médicos.`],
+   est:{direta:c=>`Você chega inteiro pra esta luta?`,
+     bastidor:c=>`Como foi treinar com essa lesão?`,
+     hipotese:c=>`Se ${c.opp} for em cima da lesão logo no começo, você tem resposta?`}},
+  {id:"cinturao",prioridade:true,cond:c=>c.titulo,tema:"o cinturão em cima da mesa (esta luta vale cinturão)",
+   ev:c=>[`O cinturão ficou em cima da mesa, entre você e ${c.opp}, a coletiva inteira.`],
+   est:{hipotese:c=>`O cinturão está a um metro de você. O que muda na sua vida se ele for seu?`,
+     pessoa:c=>`Quem foi a primeira pessoa que disse que você chegaria a uma disputa de cinturão?`,
+     direta:c=>`Você está pronto pra esse cinturão?`}},
+  {id:"rival",prioridade:true,passado:true,cond:c=>!!c.rival,tema:"o histórico com o rival",
+   ev:c=>[`${c.opp} sentou e a primeira coisa que fez foi lembrar da última luta entre vocês.`],
+   est:{dado:c=>`${c.rival.ganhou?"Você venceu":"Ele venceu"} o último encontro, por ${String(c.rival.metodo).toLowerCase()}. O que ficou daquela noite?`,
+     terceiro:c=>`Ele abriu a coletiva falando de vocês dois. Isso ainda mexe com você?`,
+     direta:c=>`Esta luta encerra a rivalidade?`}},
+  {id:"estreia",prioridade:true,cond:c=>c.estreia,tema:"a estreia dele na organização",
+   ev:c=>[`O mediador anunciou a sua estreia e uma parte da sala aplaudiu.`],
+   est:{pessoa:c=>`Quem você queria que estivesse aqui hoje, na sua estreia?`,
+     bastidor:c=>`Como foi a semana da estreia, longe de casa?`,
+     escolha:c=>`Estrear contra ${c.opp} é ousadia ou pressa?`}},
+  /* fios narrativos: continuidade com fato do registro */
+  {id:"revanche",prioridade:true,passado:true,cond:c=>!!c.reencontro,tema:"o reencontro com um adversário que ele já enfrentou",
+   ev:c=>[`${c.opp} chegou com um papel na mão e disse que estudou inteira a última luta de vocês.`,
+     `O mediador lembrou que vocês dois já se enfrentaram nesta organização.`],
+   est:{dado:c=>`Da última vez, você ${c.reencontro.txt}. O que muda agora?`,
+     direta:c=>`Você pensou nesse reencontro desde aquela noite?`,
+     pessoa:c=>`O que você sabe sobre ${c.opp} hoje que não sabia da primeira vez?`}},
+  {id:"volta",prioridade:true,passado:true,cond:c=>c.streakL===1&&!!c.anterior,tema:"a primeira luta dele depois de uma derrota",
+   ev:c=>[`Um repórter abriu a coletiva com o vídeo da sua última luta, a derrota pra ${c.anterior.adv}.`],
+   est:{comparacao:c=>`A última foi dura: você ${c.anterior.txt}. O que mudou desde então?`,
+     direta:c=>`Aquela derrota ainda pesa?`,
+     bastidor:c=>`Como foram os dias depois daquela derrota?`}},
+];
+const SITUACOES_ENTREVISTA=[
+  {id:"momento",tema:c=>c.won?"o momento que decidiu a luta":"o momento em que a luta escapou",
+   ev:c=>c.won?[`A sua equipe invadiu a área da entrevista antes da primeira pergunta.`,`A torcida gritou o seu nome enquanto o repórter ajeitava o cabo do microfone.`]
+     :[`O médico pediu um minuto pra olhar o seu supercílio antes de liberar a entrevista.`],
+   est:{dado:c=>c.metodo==="decisão"?(c.won?"A luta foi pros cartões. Em que momento você sentiu que era sua?":"A luta foi pros cartões. Em que momento ela escapou?")
+       :`${fatoCurto(c)}. O que você viu um segundo antes?`,
+     hipotese:c=>c.won?"Se a luta tivesse mais um round, o que você faria?":"Se pudesse voltar um minuto, o que faria diferente?",
+     direta:c=>c.won?"Você sabia que ia terminar assim?":"Você sentiu que estava perdendo antes do fim?"}},
+  {id:"fala-adversario",tema:"o que o adversário fez ou disse depois do gongo",
+   ev:c=>c.won?[`${c.opp} passou atrás da câmera e bateu no seu ombro sem dizer nada.`]:[`${c.opp} comemorava do outro lado da grade enquanto o repórter se aproximava.`],
+   est:{terceiro:c=>c.won?`Ele passou por você agora há pouco. O que vocês falaram depois do gongo?`:`Ele ainda comemora ali do lado. O que você falaria pra ele agora?`,
+     pessoa:c=>`O que você aprendeu sobre ${c.opp} dentro do octógono hoje?`,
+     direta:c=>c.won?`Ele merece uma revanche?`:`Você quer essa revanche?`}},
+  {id:"dedicatoria",tema:c=>c.won?"a quem ele dedica a vitória":"o que ele deve pra quem apostou nele",
+   ev:c=>c.won?[`Alguém da equipe entregou um celular com uma ligação da sua família.`]:[`O seu treinador ficou parado do lado da câmera, sem falar nada.`],
+   est:{pessoa:c=>c.won?`Quem estava na sua cabeça quando o juiz levantou o seu braço?`:`O que você diz pra quem apostou em você hoje?`,
+     direta:c=>c.won?`Essa vitória tem dono?`:`Você sente que deve uma explicação pra alguém?`}},
+  {id:"plano",tema:c=>c.won?"o plano de jogo e o que funcionou":"onde o plano de jogo falhou",
+   ev:c=>[`O seu treinador ainda estava com a toalha no ombro quando o repórter chegou.`],
+   est:{escolha:c=>c.won?`Foi o plano que funcionou ou o improviso na hora?`:`Faltou plano ou faltou execução?`,
+     bastidor:c=>`O que o camp tinha preparado que apareceu na luta?`,
+     dado:c=>c.td0>=1?`Você aplicou ${c.td0} ${c.td0>1?"quedas":"queda"}. Isso estava no plano?`:`${fatoCurto(c)}. Era esse o plano?`}},
+  {id:"torcida",tema:c=>c.won?"a torcida na arena":"a torcida que foi ver ele perder",
+   ev:c=>c.won?[`A torcida gritou o seu nome enquanto o repórter ajeitava o cabo do microfone.`]:[`Parte da arena aplaudiu ${c.opp} quando o resultado apareceu no telão.`],
+   est:{pessoa:c=>`O que você diz pra quem veio te ver hoje?`,
+     direta:c=>`Você ouviu a arena durante a luta?`,
+     escolha:c=>`A arena te empurrou ou te pressionou?`}},
+  {id:"corpo",tema:"o corpo depois da luta",
+   ev:c=>[`O médico pediu um minuto pra olhar o seu supercílio antes de liberar a entrevista.`,`O repórter esperou alguém da equipe trazer gelo pro seu rosto.`],
+   est:{bastidor:c=>`Como está o corpo agora, logo depois da luta?`,
+     direta:c=>`Algum golpe doeu mais do que você mostrou?`,
+     hipotese:c=>`Se a luta tivesse mais um round, o corpo aguentava?`}},
+  {id:"criticas",tema:c=>c.won?"as críticas de antes da luta":"as críticas que vêm agora",
+   ev:c=>[`Um repórter mostrou pro colega, no celular, o que escreveram sobre você durante a semana.`],
+   est:{terceiro:c=>c.won?`Muita gente duvidou de você antes desta luta. O que você diz pra eles?`:`As críticas vão vir. Qual delas é justa?`,
+     direta:c=>`Você lê o que falam de você?`,
+     comparacao:c=>`Na luta passada você ${c.anterior.txt}. Hoje, ${minuscula(fatoCurto(c))}. O que mudou?`}},
+  {id:"corner",tema:"o que o treinador disse no corner",
+   ev:c=>[`O seu treinador ainda estava com a toalha no ombro quando o repórter chegou.`],
+   est:{pessoa:c=>`O que o seu treinador te falou no último intervalo?`,
+     terceiro:c=>`O seu corner gritou muito no último round. Você ouviu alguma coisa?`,
+     hipotese:c=>`Se você tivesse seguido o corner mais cedo, a luta mudava?`}},
+  {id:"familia",tema:"a família",
+   ev:c=>[`Alguém da equipe entregou um celular com uma ligação da sua família.`],
+   est:{pessoa:c=>`Quem da sua família estava assistindo hoje?`,
+     bastidor:c=>`Como a sua família passa a semana de luta?`}},
+  {id:"prova",tema:c=>c.won?"o que esta luta prova":"o que esta derrota ensina",
+   ev:c=>c.won?[`A sua equipe invadiu a área da entrevista antes da primeira pergunta.`]:[`O repórter esperou alguém da equipe trazer gelo pro seu rosto.`],
+   est:{comparacao:c=>`Antes desta, você ${c.anterior.txt}. ${c.won?"O que esta prova que aquela não provou?":"O que esta derrota ensina que aquela não ensinou?"}`,
+     dado:c=>`${fatoCurto(c)}. O que esse resultado diz sobre você?`,
+     escolha:c=>c.won?`Esta vitória te coloca perto do cinturão ou ainda é cedo?`:`Esta derrota foi um tropeço ou um aviso?`}},
+  {id:"numeros",tema:"um número da luta (quedas ou rounds)",
+   ev:c=>[`O telão da arena ainda mostrava as estatísticas da luta.`],
+   est:{dado:c=>c.td0+c.tdt0>0?`Foram ${c.td0} ${c.td0===1?"queda sua":"quedas suas"} contra ${c.tdt0} dele. O chão decidiu a luta?`
+       :`Nenhuma queda na luta inteira. A luta se decidiu em pé?`,
+     escolha:c=>c.won?`Você venceu a luta em pé ou no chão?`:`Você perdeu a luta em pé ou no chão?`}},
+  {id:"carreira",tema:"o momento da carreira dele",
+   ev:c=>[`O repórter abriu o bloco com o seu cartel anotado, agora ${c.rec}.`],
+   est:{dado:c=>`O seu cartel agora é ${c.rec}. Pra onde ele aponta?`,
+     comparacao:c=>`Você ${c.anterior.txt} e agora ${minuscula(fatoCurto(c))}. A carreira muda de rumo ou se confirma?`,
+     direta:c=>c.won?`Você está pronto pra um nome do topo?`:`Esta derrota muda o seu plano pro ano?`}},
+  {id:"adversario",tema:"o adversário como pessoa, depois de tudo",
+   ev:c=>[`${c.opp} cumprimentou a sua equipe antes de sair da arena.`],
+   est:{pessoa:c=>`O que você diria pra ${c.opp} agora, fora das câmeras?`,
+     direta:c=>`Existe respeito entre vocês depois de hoje?`}},
+  /* fios narrativos */
+  {id:"reencontro",prioridade:true,passado:true,cond:c=>!!c.reencontro,tema:"o reencontro com um adversário que ele já tinha enfrentado",
+   ev:c=>[`O telão mostrou lado a lado as duas lutas entre vocês.`],
+   est:{dado:c=>`Da outra vez, você ${c.reencontro.txt}. Hoje, ${minuscula(fatoCurto(c))}. A conta fechou?`,
+     direta:c=>c.won?`Essa vitória apaga a outra luta?`:`Vocês vão se encontrar uma terceira vez?`,
+     pessoa:c=>`O que mudou em ${c.opp} desde a primeira luta?`}},
+  {id:"virada",prioridade:true,passado:true,cond:c=>c.won&&!!c.anterior&&/^perdeu/.test(c.anterior.txt),tema:"a vitória logo depois de uma derrota",
+   ev:c=>[`A sua equipe invadiu a área da entrevista antes da primeira pergunta.`],
+   est:{comparacao:c=>`Você vinha de uma derrota pra ${c.anterior.adv}. O que fez a diferença hoje?`,
+     direta:c=>`Você precisava desta vitória mais do que das outras?`}},
+  {id:"tropeco",prioridade:true,passado:true,cond:c=>!c.won&&!!c.anterior&&/^venceu/.test(c.anterior.txt),tema:"a derrota logo depois de uma vitória",
+   ev:c=>[`O repórter esperou alguém da equipe trazer gelo pro seu rosto.`],
+   est:{comparacao:c=>`Você vinha de uma vitória sobre ${c.anterior.adv}. O que faltou hoje?`,
+     direta:c=>`A vitória anterior te deixou confiante demais?`}},
+  /* com condição, mas sem prioridade: entram pela cartela quando valem */
+  {id:"juizes",cond:c=>c.metodo==="decisão",tema:"os cartões dos juízes",
+   ev:c=>[`O locutor ainda lia os cartões quando o repórter puxou o microfone.`],
+   est:{dado:c=>c.placar?`Os juízes deram ${c.placar}. O placar refletiu a luta?`:`A decisão saiu nos cartões. O placar refletiu a luta?`,
+     direta:c=>c.won?`Você teve medo dos cartões?`:`Você achou que tinha vencido?`,
+     escolha:c=>`Você preferia ter decidido antes ou confiou nos juízes?`}},
+  {id:"finalizacao",cond:c=>c.metodo!=="decisão",tema:c=>c.won?"o golpe ou a posição que terminou a luta":"o golpe ou a posição que o pegou",
+   ev:c=>[`O replay do fim da luta passava no telão atrás do repórter.`],
+   est:{bastidor:c=>c.won?`Aquilo que terminou a luta foi treinado ou saiu na hora?`:`Você já tinha visto ele fazer aquilo nos vídeos?`,
+     hipotese:c=>c.won?`Se ele tivesse escapado ali, o que vinha depois?`:`Se você tivesse escapado ali, a luta virava?`,
+     dado:c=>`${fatoCurto(c)}, aos ${c.clock}. Você lembra do instante?`}},
+];
+const temaDaSituacao=(sit,c)=>typeof sit.tema==="function"?sit.tema(c):sit.tema;
+/* Escolhe a dupla situação × estrutura. Situação com condição (cinturão,
+   rival, lesão, sequência, estreia, cartões, finalização) entra com
+   prioridade quando vale e não saiu nas últimas 3 cenas do tipo; as outras
+   vêm de uma cartela sem reposição, que a memória entre carreiras
+   (localStorage, só de apoio: some com o navegador e nunca é histórico da
+   conta) reordena pra quem saiu há pouco ficar pro fim. A estrutura sai das
+   que combinam com a situação, a usada há mais tempo primeiro.
+   Gerador local e descartável: nada aqui usa os 8 geradores da carreira. */
+const MEM_SITUACOES={coletiva:"memSituacoesColetiva",entrevista:"memSituacoesEntrevista"};
+function escolherCena(tipo,c){
+  const lista=tipo==="coletiva"?SITUACOES_COLETIVA:SITUACOES_ENTREVISTA,n=narrativaDa();
+  const daCartela=lista.filter(s=>!s.prioridade),mem=Math.round(daCartela.length*.6);
+  const recentes=n.situacoes[tipo]||[],h=hashEstavel(`${SEED}:${fightNo}:${tipo}:cena`);
+  /* a cena anterior deste tipo olhou pro passado: esta não olha (sem fio
+     de passado e sem comparação). Ninguém força lembrança em toda cena. */
+  const olhou=!!n.passado[tipo];
+  const especiais=lista.filter(s=>s.prioridade&&s.cond(c)&&!recentes.slice(-3).includes(s.id)&&!(olhou&&s.passado));
+  let sit=especiais.length&&h%100<40?especiais[h%especiais.length]:null;
+  for(let volta=0;volta<2&&!sit;volta++){
+    if(!n.cartela[tipo]||!n.cartela[tipo].length)
+      n.cartela[tipo]=cartelaComMemoria(daCartela.map(s=>s.id),mulberry32(hashEstavel(`${SEED}:${tipo}:${fightNo}:cartela`)),MEM_SITUACOES[tipo],mem);
+    const adiadas=[];
+    while(n.cartela[tipo].length&&!sit){
+      const id=n.cartela[tipo].pop(),cand=daCartela.find(s=>s.id===id);
+      if(!cand)continue;
+      /* com condição que não vale agora: volta pro fundo da cartela */
+      if(cand.cond&&!cand.cond(c)){adiadas.push(id);continue;}
+      sit=cand;
+    }
+    n.cartela[tipo].unshift(...adiadas);
   }
-  return st.cartelaCena[tipo].pop();
+  if(!sit)sit=daCartela.filter(s=>!s.cond||s.cond(c))[h%daCartela.filter(s=>!s.cond||s.cond(c)).length];
+  const usadas=n.estruturas[tipo]||[];
+  const valem=Object.keys(sit.est).filter(e=>e!=="comparacao"||c.anterior);
+  const opcoes=valem.filter(e=>!(olhou&&e==="comparacao")).length?valem.filter(e=>!(olhou&&e==="comparacao")):valem;
+  opcoes.sort((a,b)=>usadas.lastIndexOf(a)-usadas.lastIndexOf(b)||hashEstavel(h+a)%7-hashEstavel(h+b)%7);
+  const est=opcoes[0];
+  n.situacoes[tipo]=[...recentes,sit.id].slice(-8);
+  n.estruturas[tipo]=[...usadas,est].slice(-8);
+  n.passado[tipo]=!!(sit.passado||est==="comparacao");
+  marcarMemoriaEntreCarreiras(MEM_SITUACOES[tipo],sit.id,mem);
+  return{sit,est};
+}
+/* a cena olha pro passado (fio, comparação, fala antiga ou fato anterior):
+   manda o dossiê pra IA; senão, nada de histórico no prompt */
+const olhaPassado=sel=>!!sel&&(!!sel.sit.passado||sel.est==="comparacao");
+/* Fato da entrevista (narrativa 2026-10-01): cinturão, lesão e zebra
+   continuam obrigatórios; fora isso, o fato gira entre o método, o momento
+   que mais pesou na luta (do log real), os números de quedas e a luta
+   anterior (só se a entrevista passada não olhou pro passado), o menos
+   usado primeiro. Medido antes: 75% das perguntas da IA ancoradas no
+   método. */
+function momentoDecisivo(r){
+  const log=(r&&r.log)||[];
+  const m=[...log].reverse().find(L=>L.kind==="kd"||L.kind==="big");
+  return m&&m.text?`no round ${m.round}, aos ${m.clock}: ${String(m.text).replace(/<[^>]*>/g,"").slice(0,200)}`:null;
+}
+function fatoDaEntrevistaVariado(base,won,r,lesaoTxt,td0,tdt0,c,olhou){
+  const fixo=fatoDaEntrevista(base.fatoObrigatorio,won,r,lesaoTxt,td0,tdt0);
+  if(["cinturão","lesão","zebra"].includes(base.fatoObrigatorio))return{tipo:base.fatoObrigatorio,txt:fixo};
+  const n=narrativaDa(),ops=[{tipo:"metodo",txt:fixo}];
+  const mom=momentoDecisivo(r);
+  if(mom)ops.push({tipo:"momento",txt:`${won?"venceu":"perdeu"}, e o momento que mais pesou na luta foi ${mom}`});
+  if((td0||0)+(tdt0||0)>=2)ops.push({tipo:"numeros",txt:`${won?"venceu":"perdeu"} com ${td0||0} quedas aplicadas e ${tdt0||0} sofridas`});
+  if(c.anterior&&!olhou)ops.push({tipo:"anterior",txt:`${won?"venceu":"perdeu"} esta luta, e na anterior ele ${c.anterior.txt}`});
+  ops.sort((a,b)=>n.fatos.lastIndexOf(a.tipo)-n.fatos.lastIndexOf(b.tipo));
+  n.fatos=[...n.fatos,ops[0].tipo].slice(-6);
+  return ops[0];
+}
+/* molde local da mesma dupla: o que o Free vê e o que entra quando a IA falha */
+function cenaLocal(sel,c){
+  const evs=sel.sit.ev(c),h=hashEstavel(`${SEED}:${fightNo}:${sel.sit.id}`);
+  return{evento:evs[h%evs.length],pergunta:sel.sit.est[sel.est](c)};
 }
 function cenasRecentes(tipo){return((st.cenasRecentes||{})[tipo]||[]).slice(-4);}
+/* O que vai pro prompt (narrativa 2026-10-01): as cenas recentes SEM a fala
+   citada (medido: a IA reaproveitava fala antiga das recentes em cena que
+   não podia citar nada, e a cena caía) e os acontecimentos das últimas 8. */
+const semFalaCitada=t=>String(t||"").replace(/'[^']{3,}'|"[^"]{3,}"|“[^”]{3,}”|‘[^’]{3,}’/g,"(fala)");
+function cenasRecentesPrompt(tipo){return cenasRecentes(tipo).map(semFalaCitada);}
+function eventosUsados(tipo){
+  return((st.cenasRecentes||{})[tipo]||[]).slice(-8)
+    .map(t=>{const k=t.lastIndexOf("Pergunta: ");return semFalaCitada(k>=0?t.slice(0,k):"").trim().slice(0,110);}).filter(Boolean);
+}
 function lembrarCena(tipo,c){
   st.cenasRecentes=st.cenasRecentes||{};
   const l=st.cenasRecentes[tipo]=st.cenasRecentes[tipo]||[];
-  l.push(cortarFrase(`${c.evento?c.evento+" ":""}Pergunta: ${c.pergunta}`,240));
-  if(l.length>6)l.splice(0,l.length-6);
+  l.push(cortarFrase(`${c.evento?c.evento+" ":""}Pergunta: ${c.pergunta}`,480));
+  if(l.length>8)l.splice(0,l.length-8);
 }
 /* O que a IA devolveu vira cena só se tiver pergunta, passar no filtro de
    conteúdo e não repetir uma pergunta recente; senão fica o molde local.
@@ -4867,7 +5248,9 @@ function fecharFalaDaLuta(won,r){
 /* Medido no modelo (2026-09-29): "mandou Pix", "mandou devolver", "falou com
    o treinador" não são fala; esses verbos só contam com "que", dois-pontos
    ou aspas logo depois. "chamou ... de" é fala (xingamento, apelido). */
-const VERBO_FALA="(?:j[aá]\\s+)?(?:disse|dizia|prometeu|afirmou|garantiu|declarou|jurou|provocou|(?:falou|falava|avisou|contou|mandou)(?=\\s*(?:que\\b|:|[\"“'])))|chamou(?:\\s+\\S+){1,3}\\s+de";
+/* "garantiu" só conta com que, dois-pontos ou aspas depois (medido
+   2026-10-01: "as 3 quedas que você garantiu" é conseguir, não falar) */
+const VERBO_FALA="(?:j[aá]\\s+)?(?:disse|dizia|prometeu|afirmou|declarou|jurou|provocou|(?:falou|falava|avisou|contou|mandou|garantiu)(?=\\s*(?:que\\b|:|[\"“'])))|chamou(?:\\s+\\S+){1,3}\\s+de";
 const ATRIBUI_FALA=new RegExp(`\\b(?:voc[eê]|vc)\\s+(?:${VERBO_FALA})\\b|\\bsuas?\\s+(?:palavras|fala|frase|declara[cç][aã]o|promessa|provoca[cç][aã]o)\\b`,"i");
 /* citação: entre aspas duplas ou simples (o modelo usa as simples dentro do
    JSON); apóstrofo no meio da palavra não conta */
@@ -4876,14 +5259,21 @@ function citacoesDe(texto){
   return [...t.matchAll(/["“”]([^"“”]{2,})["“”]/g),...t.matchAll(/(?<![A-Za-zÀ-ú])['‘’]([^'‘’]{2,}?)['‘’](?![A-Za-zÀ-ú])/g)]
     .map(m=>formaComparavel(m[1])).filter(c=>c.length>=3);
 }
+/* retomada de uma fala já citada na mesma cena ("não do jeito que você
+   disse"): não diz nada novo, então passa quando a cena já cita uma fala
+   permitida (medido 2026-10-01: derrubava cena boa) */
+const RETOMA_FALA=/\b(?:o que|como|do jeito que|aquilo que|isso que|tudo que)\s+(?:voc[eê]|vc)\s+(?:j[aá]\s+)?(?:disse|falou|prometeu|garantiu)\b|\b(?:voc[eê]|vc)\s+(?:disse|falou|prometeu|garantiu)\s+(?:isso|aquilo)\b/i;
 function falasAtribuidasOk(texto,permitidas,nome,{exigeCitacao=true}={}){
   const P=(permitidas||[]).map(formaComparavel).filter(Boolean);
+  const citaPermitida=citacoesDe(texto).some(c=>P.some(p=>p.includes(c)));
   const primeiro=String(nome||"").trim().split(/\s+/)[0];
-  const peloNome=primeiro?new RegExp(`\\b${escRe(primeiro)}\\b(?:\\s+\\S+){0,2}?\\s+(?:${VERBO_FALA})\\b`,"i"):null;
+  /* nome depois de preposição é objeto, não quem fala (medido 2026-10-01:
+     "perto da boca do Fulano e disse" é o adversário falando) */
+  const peloNome=primeiro?new RegExp(`(?<!\\b(?:do|da|de|pro|pra|para|ao|com|contra|sobre|no|na)\\s)\\b${escRe(primeiro)}\\b(?:\\s+\\S+){0,2}?\\s+(?:${VERBO_FALA})\\b`,"i"):null;
   for(const frase of String(texto||"").split(/(?<=[.!?])\s+/)){
     if(!ATRIBUI_FALA.test(frase)&&!(peloNome&&peloNome.test(frase)))continue;
     const cits=citacoesDe(frase);
-    if(!cits.length){if(exigeCitacao)return false;continue;}
+    if(!cits.length){if(citaPermitida&&RETOMA_FALA.test(frase))continue;if(exigeCitacao)return false;continue;}
     if(!cits.every(c=>P.some(p=>p.includes(c))))return false;
   }
   return true;
@@ -4901,8 +5291,12 @@ function linhaMemoria(f){
    duas vezes. Nada disso consome gerador da carreira (hash da semente). */
 function falaParaColetiva(opp){
   const m=memoriaDa(),prox=fightNo+1;
+  /* narrativa (2026-10-01): a coletiva anterior já olhou pro passado, esta
+     não cobra fala; e a revanche cita a fala do encontro anterior UMA vez
+     (medido: revanche citava toda vez, 27% das lutas) */
+  if(narrativaDa().passado.coletiva)return null;
   const antes=m.falas.filter(f=>f.luta<prox&&f.tom!=="neutro");
-  const revanche=antes.filter(f=>f.adv===opp.name).pop();
+  const revanche=antes.filter(f=>f.adv===opp.name&&!f.cobrada).pop();
   if(revanche)return{fala:revanche,motivo:"revanche"};
   if(m.ultimaCobranca&&prox-m.ultimaCobranca<3)return null;
   const recentes=antes.filter(f=>prox-f.luta<=4&&f.cobrada<2&&(f.tom==="provocacao"||(f.promessa&&f.cumprida!=null)));
@@ -4926,16 +5320,23 @@ function cenaColetivaMemoria(opp,cob){
 /* Pergunta local da entrevista quando a coletiva teve provocação ou
    promessa: cita a fala literal E o que o resultado fez com ela. */
 function perguntaSobreFala(f,sit){
-  const t=`'${f.trecho}'`,h=hashEstavel(`${SEED}:${f.id}:entrevista`)%2;
-  if(sit.tipo==="cumpriu")return h?`Na coletiva você disse ${t}. E cumpriu: ${sit.res}. Estava tudo planejado?`
-    :`Você disse ${t} antes da luta e ${sit.res}. O que você diz pra quem duvidou?`;
-  if(sit.tipo==="parcial")return`Na coletiva você disse ${t}. Venceu, mas não do jeito que prometeu. O que faltou?`;
-  if(sit.tipo==="quebrou")return h?`Na coletiva você disse ${t}. No fim, ${sit.res}. Você se arrepende do que prometeu?`
-    :`Você disse ${t} antes da luta, e ${sit.res}. O que você diz pra quem acreditou?`;
-  if(sit.tipo==="confirmou")return h?`Antes da luta você disse ${t}. Depois de ${sit.res.replace(/^venceu /,"vencer ")}, mantém o que disse?`
-    :`Você disse ${t} e ${sit.res}. Ele estava no nível que você falou?`;
-  return h?`Na coletiva você disse ${t}. O resultado: ${sit.res}. Mantém o que disse?`
-    :`Você disse ${t} antes da luta e ${sit.res}. Deve alguma coisa a ${f.adv} agora?`;
+  const t=`'${f.trecho}'`,h=hashEstavel(`${SEED}:${f.id}:entrevista`)%3;
+  const v=(...ops)=>ops[h%ops.length];
+  if(sit.tipo==="cumpriu")return v(`Na coletiva você disse ${t}. E cumpriu: ${sit.res}. Estava tudo planejado?`,
+    `Você disse ${t} antes da luta e ${sit.res}. O que você diz pra quem duvidou?`,
+    `${t}: foi o que você prometeu na coletiva, e ${sit.res}. Quando você teve certeza?`);
+  if(sit.tipo==="parcial")return v(`Na coletiva você disse ${t}. Venceu, mas não do jeito que prometeu. O que faltou?`,
+    `A promessa da coletiva foi ${t}. A vitória veio, mas de outro jeito. Isso incomoda?`,
+    `Você falou ${t} antes da luta e ${sit.res}. Vale como promessa cumprida?`);
+  if(sit.tipo==="quebrou")return v(`Na coletiva você disse ${t}. No fim, ${sit.res}. Você se arrepende do que prometeu?`,
+    `Você disse ${t} antes da luta, e ${sit.res}. O que você diz pra quem acreditou?`,
+    `${t} foi a sua promessa na coletiva. Hoje você ${sit.res}. Prometeu demais?`);
+  if(sit.tipo==="confirmou")return v(`Antes da luta você disse ${t}. Depois de ${sit.res.replace(/^venceu /,"vencer ")}, mantém o que disse?`,
+    `Você disse ${t} e ${sit.res}. Ele estava no nível que você falou?`,
+    `Antes da luta, a frase foi ${t}. Depois do resultado, ela continua de pé?`);
+  return v(`Na coletiva você disse ${t}. O resultado: ${sit.res}. Mantém o que disse?`,
+    `Você disse ${t} antes da luta e ${sit.res}. Deve alguma coisa a ${f.adv} agora?`,
+    `${t}, você disse na coletiva. Depois de hoje, você falaria de novo?`);
 }
 function mostrarMemoria(p,rotulo,f){
   const sit=situacaoDaFala(f);
@@ -4954,111 +5355,77 @@ const escRe=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 function limparPergunta(q){
   /* aspas em volta saem: a tela já põe as da fala */
   let t=String(q||"").trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g,"").trim();
-  const nomes=REPORTERES.map(escRe).join("|");
-  t=t.replace(new RegExp(`^(?:${nomes})(?:,[^:?]{0,60})?(?:\\s+pergunta)?\\s*:\\s*`,"i"),"");
+  /* nome inteiro ou só o primeiro nome do repórter (medido 2026-10-01:
+     "Ícaro pergunta: ..."); o primeiro nome do lutador do jogador não entra */
+  const proprio0=String(me&&me.name||"").split(" ")[0].toLowerCase();
+  const nomes=[...REPORTERES,...REPORTERES.map(n=>n.split(" ")[0]).filter(p=>p.toLowerCase()!==proprio0)].map(escRe).join("|");
+  t=t.replace(new RegExp(`^(?:${nomes})(?:\\s*\\([^)]{0,60}\\))?(?:,[^:?]{0,60})?(?:\\s+pergunta)?\\s*:\\s*`,"i"),"");
+  t=t.replace(/^["'“”‘’]+|["'“”‘’]+$/g,"").trim();
   if(new RegExp(`^(?:${nomes})\\b[^.?!]{0,60}\\bpergunt`,"i").test(t))return "";
+  /* medido no modelo (2026-10-01): "Renata, o equipamento..." é o repórter
+     falando com outro repórter. O nome do lutador do jogador continua valendo. */
+  const proprio=String(me&&me.name||"").split(" ")[0].toLowerCase();
+  const primeiros=REPORTERES.map(n=>n.split(" ")[0]).filter(p=>p.toLowerCase()!==proprio).map(escRe).join("|");
+  if(new RegExp(`^(?:${primeiros})\\s*,`,"i").test(t))return "";
   return t.replace(/^[a-zà-ú]/,c=>c.toUpperCase());
 }
 function eventoDosOutros(ev){
   const primeiro=String(me&&me.name||"").trim().split(/\s+/)[0];
   return primeiro&&new RegExp(`^(?:o |a )?${escRe(primeiro)}\\b`,"i").test(String(ev).trim())?"":ev;
 }
-function cenaDaIA(j,local,tipo,{permitidas=[],exige=null}={}){
-  if(!j||typeof j!=="object")return local;
+/* Filtro de similaridade (narrativa 2026-10-01): cena da IA parecida demais
+   com uma das últimas 8 do mesmo tipo cai no molde local, sem chamada nova.
+   Compara palavras de conteúdo: sem acento, sem palavra vazia, sem número,
+   sem nome de lutador ou repórter e sem a fala citada entre aspas. Medido
+   nas cenas reais do modelo (76 cenas): pergunta com metade ou mais das
+   palavras em comum só apareceu em repetição de verdade (1 de 76); evento
+   com 0,55 ou mais foi sempre o mesmo acontecimento reescrito (7 de 76,
+   alguns idênticos). */
+const PALAVRAS_VAZIAS=new Set("a o os as um uma uns umas de do da dos das e em no na nos nas que se por pra para com sem voce te ele ela eles isso isto esse essa este esta seu sua seus suas dele dela mais mas como foi ser ter tem vai ja nao sim ao lhe me meu minha nem quando onde qual quais quem porque ha so tao muito agora aqui la hoje entre sobre ate depois antes".split(" "));
+const LIMIAR_PERGUNTA=.5,LIMIAR_EVENTO=.55;
+function palavrasDaCena(s,nomes){
+  let t=semAcento(String(s||"").replace(/'[^']{3,}'|"[^"]{3,}"|“[^”]{3,}”|‘[^’]{3,}’/g," "));
+  for(const n of nomes)for(const w of semAcento(n).split(/\s+/))if(w.length>2)t=t.replace(new RegExp(`\\b${escRe(w)}\\b`,"g")," ");
+  return new Set(t.replace(/[0-9]+/g," ").split(/[^a-z]+/).filter(w=>w.length>2&&!PALAVRAS_VAZIAS.has(w)));
+}
+function jaccard(a,b){if(!a.size||!b.size)return 0;let i=0;for(const x of a)if(b.has(x))i++;return i/(a.size+b.size-i);}
+function cenaParecidaDemais(c,tipo,nomes){
+  const recentes=((st.cenasRecentes||{})[tipo]||[]).slice(-8);
+  const p=palavrasDaCena(c.pergunta,nomes),e=palavrasDaCena(c.evento,nomes);
+  return recentes.some(t=>{
+    const k=t.lastIndexOf("Pergunta: "),evA=k>=0?t.slice(0,k):"",pA=k>=0?t.slice(k+10):t;
+    return(p.size>=4&&jaccard(p,palavrasDaCena(pA,nomes))>=LIMIAR_PERGUNTA)
+      ||(e.size>=4&&jaccard(e,palavrasDaCena(evA,nomes))>=LIMIAR_EVENTO);
+  });
+}
+/* Cena da IA aceita, ou o motivo de cair no molde local (narrativa
+   2026-10-01: o motivo separado é o que permite medir o fallback por causa). */
+function avaliarCenaDaIA(j,tipo,{permitidas=[],exige=null,nomes=[]}={}){
+  if(!j||typeof j!=="object")return{motivo:"sem resposta"};
   let evento=eventoDosOutros(typeof j.evento==="string"?j.evento.trim():"");
   const pergunta=cortarFrase(limparPergunta(typeof j.pergunta==="string"?j.pergunta:""),280);
-  if(!pergunta||conteudoInseguro(evento+" "+pergunta))return local;
+  if(!pergunta)return{motivo:"pergunta descartada"};
+  if(conteudoInseguro(evento+" "+pergunta))return{motivo:"conteúdo inseguro"};
   if(tipo==="coletiva")evento=semResultadoDeLuta(evento);
   evento=cortarFrase(evento,320);
   /* memória narrativa: fala atribuída ao jogador só se estiver na memória
      que foi pro prompt; e cena que tem que cobrar uma fala cita essa fala */
-  if(!falasAtribuidasOk(`${pergunta} ${evento}`,permitidas,me&&me.name))return local;
+  if(!falasAtribuidasOk(`${pergunta} ${evento}`,permitidas,me&&me.name))return{motivo:"fala atribuída sem citação"};
   if(exige){
     const cits=citacoesDe(pergunta);
     const alvo=formaComparavel(exige);
-    if(!cits.length||!cits.every(c=>alvo.includes(c)))return local;
+    if(!cits.length||!cits.every(c=>alvo.includes(c)))return{motivo:"não citou a fala cobrada"};
   }
   const ja=cenasRecentes(tipo).join(" ").toLowerCase();
-  if(ja.includes(pergunta.toLowerCase()))return local;
-  return{evento,pergunta,ia:true};
+  if(ja.includes(pergunta.toLowerCase()))return{motivo:"pergunta idêntica a uma recente"};
+  if(cenaParecidaDemais({evento,pergunta},tipo,[me&&me.name,...REPORTERES,...nomes].filter(Boolean)))return{motivo:"parecida com uma recente"};
+  return{cena:{evento,pergunta,ia:true}};
+}
+function cenaDaIA(j,local,tipo,opcoes={}){
+  const r=avaliarCenaDaIA(j,tipo,opcoes);
+  return r.cena||local;
 }
 
-/* Moldes locais da coletiva: um ou dois por tema, cada um com fato da luta
-   (nome, cartel, sequência, camp, estilo). A variante sai do hash da luta,
-   não do adversário, então o mesmo adversário não repete a mesma frase. */
-function cenaColetivaLocal(opp,camp,tema,escolhido){
-  const h=hashEstavel(`${SEED}:${fightNo}:${opp.name}:${tema}`);
-  const rec=`${st.wins}-${st.losses}`,estreia=st.wins+st.losses===0,estilo=`estilo ${(opp.arquetipo||"completo").toLowerCase()}`;
-  const campNome=String(camp&&camp.nome||"treino").toLowerCase();
-  const hist=escolhido&&escolhido.rival&&st.rival&&st.rival.historico&&st.rival.historico.length?st.rival.historico:null;
-  if(hist&&h%2===0){
-    const u=hist[hist.length-1];
-    return{evento:`${opp.name} sentou e a primeira coisa que fez foi lembrar da última luta entre vocês.`,
-      pergunta:`${u.ganhou?"Você venceu":"Ele venceu"} o último encontro, por ${String(u.metodo).toLowerCase()}. O que ficou daquela noite?`};
-  }
-  if(st.tituloEstaLuta&&h%3===0)
-    return{evento:`O cinturão ficou em cima da mesa, entre você e ${opp.name}, a coletiva inteira.`,
-      pergunta:`O cinturão está a um metro de você. O que passa pela sua cabeça quando olha pra ele?`};
-  const M={
-    "provocação do adversário":[
-      {evento:`${opp.name} pediu o microfone antes da hora e disse que você "ainda não pegou ninguém do top 15".`,
-       pergunta:`Ele falou isso olhando pra você. Qual é a resposta?`},
-      estreia?{evento:`${opp.name} riu alto quando o mediador anunciou que esta é a sua estreia.`,
-        pergunta:`Ele achou graça da sua estreia. Isso te incomoda?`}
-      :{evento:`${opp.name} riu alto quando o mediador leu o seu cartel, ${rec}.`,
-       pergunta:`Ele achou graça do seu ${rec}. Isso te incomoda?`}],
-    "encarada que esquenta":[
-      {evento:`Na encarada, ${opp.name} deu um passo à frente e a segurança precisou separar os dois.`,
-       pergunta:`O que ele falou no seu ouvido na hora da encarada?`},
-      {evento:`${opp.name} ficou a dois dedos do seu rosto até o mediador pedir distância.`,
-       pergunta:`Você não desviou o olho nenhuma vez. Era recado pra ele?`}],
-    "pergunta incômoda sobre o cartel":[st.streakL>0
-      ?{evento:`Um repórter abriu a coletiva lembrando que você vem de ${st.streakL>1?`${st.streakL} derrotas seguidas`:"derrota"}.`,
-        pergunta:`${st.streakL>1?`${st.streakL} derrotas seguidas`:"Você perdeu a última"}. O que muda contra ${opp.name}?`}
-      :estreia?{evento:`Um repórter abriu a coletiva lembrando que você nunca lutou nesta organização.`,
-        pergunta:`Estreia contra ${opp.name}, que já tem ${opp.fights||"várias"} lutas. Foi você que pediu esse nome?`}
-      :{evento:`Um repórter abriu a coletiva com o seu cartel, ${rec}, anotado no bloco.`,
-        pergunta:`${rec}. Quem você ainda precisa vencer pra ser levado a sério nesta divisão?`}],
-    "o camp escolhido":[
-      {evento:`O telão mostrou um trecho do seu camp de ${campNome} e ${opp.name} cochichou alguma coisa com o treinador.`,
-       pergunta:`Camp de ${campNome} contra o ${estilo} dele. Por que esse caminho?`}],
-    "algo dá errado na sala":[
-      {evento:`O microfone da sua mesa falhou duas vezes e ${opp.name} ofereceu o dele, rindo.`,
-       pergunta:`Ele te emprestou o microfone rindo. Você leu aquilo como deboche?`},
-      {evento:`Um fotógrafo derrubou o tripé na frente da mesa e a coletiva parou por um minuto.`,
-       pergunta:`Retomando: ${opp.name} é do ${estilo}. Que parte do jogo dele você mais estudou?`}],
-    "equipe do adversário se mete":[
-      {evento:`O treinador de ${opp.name} tomou o microfone pra dizer que você "foge da troca".`,
-       pergunta:`O treinador dele diz que você foge da troca. Foge?`}],
-    "torcida na coletiva":[
-      {evento:`Um grupo com uma faixa com o seu nome entrou na sala e foi retirado pela segurança.`,
-       pergunta:`A sua torcida foi posta pra fora agora há pouco. Que recado você manda pra eles?`}],
-    "bolsa e contrato":[
-      {evento:`Circulou na sala que a sua bolsa é uma das menores da noite.`,
-       pergunta:`Dizem que você ganha menos que quase todo mundo neste card. Isso pesa?`}],
-    "a pesagem (todo mundo dentro do limite)":[
-      {evento:`${opp.name} apareceu comendo um sanduíche na mesa e brincou que "a balança é só amanhã".`,
-       pergunta:`Ele parece tranquilo com o peso. E você, chega no limite com folga?`}],
-    "o estilo do adversário":[
-      {evento:`A organização passou no telão os melhores momentos de ${opp.name}.`,
-       pergunta:`Ele é do ${estilo}. Você vai aceitar o jogo dele ou levar a luta pro seu?`}],
-  };
-  const op=M[tema]||M["provocação do adversário"];
-  return op[h%op.length];
-}
-/* Molde local do que acontece na entrevista, coerente com o resultado. A
-   pergunta local continua sendo perguntaEntrevista() (fato obrigatório). */
-function eventoEntrevistaLocal(won,titleFight,opp){
-  const h=hashEstavel(`${SEED}:${fightNo}:entrevista:${opp.name}`);
-  const op=titleFight&&won?[`O cinturão ainda estava no seu ombro quando o repórter chegou com o microfone.`]
-    :won?[`A sua equipe invadiu a área da entrevista e te levantou antes da primeira pergunta.`,
-          `A torcida gritou o seu nome enquanto o repórter ajeitava o cabo do microfone.`,
-          `${opp.name} passou atrás da câmera e bateu no seu ombro sem dizer nada.`]
-    :[`O médico pediu um minuto pra olhar o seu supercílio antes de liberar a entrevista.`,
-      `Você sentou no banco da área de imprensa com gelo no rosto e o repórter esperou.`,
-      `${opp.name} comemorava do outro lado da grade enquanto o repórter se aproximava.`];
-  return op[h%op.length];
-}
 /* O fato que a pergunta da IA TEM que tratar: o mesmo da prioridade fixa de
    perguntaEntrevista() (cinturão > lesão > zebra > método), escrito por
    extenso. A IA só escolhe o caminho até ele (o ângulo). */
@@ -5150,16 +5517,19 @@ function telaColetiva(escolhido,camp){
   const ct=++CENA_TOKEN;
   const seguir=()=>{CENA_TOKEN++;box.style.display="none";box.innerHTML="";lutar(escolhido,camp);};
   const chave=`${SEED}:${fightNo}:${opp.name}`;
+  const ctxC=ctxColetiva(opp,camp,escolhido);
   if(!cacheColetiva||cacheColetiva.chave!==chave){
     const cobranca=falaParaColetiva(opp);
     if(cobranca){cobranca.fala.cobrada++;memoriaDa().ultimaCobranca=fightNo+1;}
-    cacheColetiva={chave,cobranca,reporter:reporterDaCena("coletiva"),cena:null,promessa:null,
+    const sel=cobranca?null:escolherCena("coletiva",ctxC);
+    if(cobranca)narrativaDa().passado.coletiva=true;
+    cacheColetiva={chave,cobranca,sel,reporter:reporterDaCena("coletiva",sel&&sel.sit.id),cena:null,promessa:null,
       tema:cobranca?(cobranca.motivo==="revanche"?"revanche: o que o lutador disse no último encontro entre os dois"
-        :"cobrança de uma fala antiga do lutador"):proximoTemaCena("coletiva")};
+        :"cobrança de uma fala antiga do lutador"):temaDaSituacao(sel.sit,ctxC)};
   }
-  const cache=cacheColetiva,{reporter,tema,cobranca}=cache;
+  const cache=cacheColetiva,{reporter,tema,cobranca,sel}=cache;
   const amostra=amostraLiberada("coletiva");
-  const local=cobranca?cenaColetivaMemoria(opp,cobranca):cenaColetivaLocal(opp,camp,tema,escolhido);
+  const local=cobranca?cenaColetivaMemoria(opp,cobranca):cenaLocal(sel,ctxC);
   const historicoRival=escolhido.rival?historicoRivalTexto():null;
   const falaAntiga=cobranca?linhaMemoria(cobranca.fala):null;
   cenaGuardada(cache,local,token=>ai("coletivaCena",{name:me.name,record:`${st.wins}-${st.losses}`,
@@ -5167,9 +5537,11 @@ function telaColetiva(escolhido,camp){
     sequencia:st.streakW>1?`${st.streakW} vitórias seguidas`:st.streakL>1?`${st.streakL} derrotas seguidas`:null,
     opp:opp.name,estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
     camp:camp&&camp.nome,lesao:st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null,
-    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,tema,recentes:cenasRecentes("coletiva"),
-    memoria:falaAntiga?[falaAntiga]:[],token,amostra}),"coletiva",
-    {permitidas:cobranca?[cobranca.fala.texto]:[],exige:cobranca?cobranca.fala.texto:null,amostra});
+    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,linhaReporter:reporter.linha,tema,
+    estrutura:sel?ESTRUTURAS[sel.est]:null,anterior:sel&&sel.est==="comparacao"&&ctxC.anterior?ctxC.anterior.txt:null,
+    dossie:olhaPassado(sel)?dossieCarreira(0):null,eventoBase:sel?cenaLocal(sel,ctxC).evento:null,
+    eventosUsados:eventosUsados("coletiva"),recentes:cenasRecentesPrompt("coletiva"),memoria:falaAntiga?[falaAntiga]:[],token,amostra}),"coletiva",
+    {permitidas:cobranca?[cobranca.fala.texto]:[],exige:cobranca?cobranca.fala.texto:null,amostra,nomes:[opp.name]});
 
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Coletiva · ${me.name} x ${opp.name}`));
@@ -5293,8 +5665,8 @@ function perguntaEntrevista(opp,ganhou,metodo,round,clock,title,zebra,lesaoTxt,t
   const comQuedas=s=>(tdApl>=1||tdSof>=1)?`${s} (foram ${tdApl} quedas aplicadas contra ${tdSof} sofridas)`:s;
   if(title)return{pergunta:par?`O cinturão estava em jogo hoje. O que passou pela sua cabeça quando o sino tocou?`
     :`Essa era luta de cinturão. Depois de tudo isso, o que você sente agora?`,fatoObrigatorio:"cinturão"};
-  if(lesaoTxt)return{pergunta:par?`Você entrou nessa luta com ${lesaoTxt.toLowerCase()}. Valeu a pena arriscar?`
-    :`Como está ${lesaoTxt.toLowerCase()} depois do que aconteceu hoje contra ${opp.name}?`,fatoObrigatorio:"lesão"};
+  if(lesaoTxt)return{pergunta:par?`Você entrou nessa luta com uma lesão. Valeu a pena arriscar?`
+    :`Como está a lesão depois do que aconteceu hoje contra ${opp.name}?`,fatoObrigatorio:"lesão"};
   if(zebra)return{pergunta:par?`Poucos apostavam em você contra ${opp.name}. O que mudou?`
     :`Ninguém esperava esse resultado contra ${opp.name}. Você esperava?`,fatoObrigatorio:"zebra"};
   if(/ocaute/.test(metodo))return{pergunta:comQuedas(par
@@ -5357,35 +5729,52 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival,a
   box.style.display="";
   const ct=++CENA_TOKEN;
   const lesaoTxt=st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null;
-  const base=perguntaEntrevista(opp,won,r.method,r.round,r.clock,titleFight,zebra,lesaoTxt,td0,tdt0,fightNo);
+  /* lesão vira o fato obrigatório UMA vez por lesão (narrativa 2026-10-01,
+     medido: a mesma pergunta voltava em toda luta enquanto ele estava
+     machucado); depois ela segue só como contexto */
+  const chaveLesao=st.lesao?`${st.lesao.atributo}:${st.lesao.desdeLuta}`:null;
+  const lesaoNova=lesaoPraEntrevista(lesaoTxt);
+  const base=perguntaEntrevista(opp,won,r.method,r.round,r.clock,titleFight,zebra,lesaoNova,td0,tdt0,fightNo);
   const chave=`${SEED}:${fightNo}:${opp.name}`;
+  const ctxE=ctxEntrevista(opp,won,r,titleFight,zebra,lesaoTxt,td0,tdt0);
   if(!cacheEntrevista||cacheEntrevista.chave!==chave){
     /* memória narrativa: se na coletiva desta luta ele provocou ou
        prometeu, a entrevista trata DISSO, ligado ao resultado real (cada
        fala é cobrada no máximo duas vezes na carreira) */
-    const fc=memoriaDa().falas.find(f=>f.onde==="coletiva"&&f.luta===fightNo&&f.resultado);
-    /* na amostra grátis qualquer fala da coletiva volta (é a continuidade
-       que a amostra mostra); no Pro, só provocação e promessa */
-    const falaCol=fc&&(amostra||fc.tom==="provocacao"||fc.tom==="promessa")&&fc.cobrada<2?fc:null;
+    const olhou=!!narrativaDa().passado.entrevista;
+    const falaCol=falaColetivaPraEntrevista(amostra);
     if(falaCol)falaCol.cobrada++;
-    cacheEntrevista={chave,falaCol,angulo:falaCol?null:proximoTemaCena("entrevista"),
-      reporter:reporterDaCena("entrevista"),cena:null,promessa:null};
+    const sel=falaCol?null:escolherCena("entrevista",ctxE);
+    const fatoE=falaCol?null:fatoDaEntrevistaVariado(base,won,r,lesaoTxt,td0,tdt0,ctxE,olhou);
+    narrativaDa().passado.entrevista=!!(falaCol||olhaPassado(sel)||(fatoE&&fatoE.tipo==="anterior"));
+    if(base.fatoObrigatorio==="lesão")narrativaDa().lesaoTratada=chaveLesao;
+    cacheEntrevista={chave,falaCol,sel,fatoE,reporter:reporterDaCena("entrevista",sel&&sel.sit.id),cena:null,promessa:null};
   }
-  const cache=cacheEntrevista,{reporter,angulo,falaCol}=cache;
+  const cache=cacheEntrevista,{reporter,falaCol,sel,fatoE}=cache;
   const sitFala=falaCol?situacaoDaFala(falaCol):null;
-  const local={evento:eventoEntrevistaLocal(won,titleFight,opp),
-    pergunta:falaCol?perguntaSobreFala(falaCol,sitFala):base.pergunta};
+  /* fato forte (cinturão, lesão, zebra) continua com a pergunta do fato; o
+     resto vem da dupla situação × estrutura. Sem dupla (fala da coletiva),
+     o evento sai da situação "momento". */
+  const fatoForte=["cinturão","lesão","zebra"].includes(base.fatoObrigatorio);
+  const daDupla=sel?cenaLocal(sel,ctxE):null;
+  const eventosSoltos=SITUACOES_ENTREVISTA.filter(x=>!x.cond).flatMap(x=>x.ev(ctxE));
+  const local={evento:titleFight&&won?"O cinturão ainda estava no seu ombro quando o repórter chegou com o microfone."
+      :daDupla?daDupla.evento:eventosSoltos[hashEstavel(`${SEED}:${fightNo}:entrevista:evento`)%eventosSoltos.length],
+    pergunta:falaCol?perguntaSobreFala(falaCol,sitFala):fatoForte||!sel?base.pergunta:daDupla.pergunta};
   const historicoRival=ehRival?historicoRivalTexto():null;
   const falaColetiva=falaCol?{trecho:falaCol.trecho,situacao:sitFala.txt}:null;
   cenaGuardada(cache,local,token=>ai("entrevistaCena",{name:me.name,record:`${st.wins}-${st.losses}`,
     followers:fmtNum(st.followers),fan:st.fan.toFixed(1),opp:opp.name,ganhou:won,metodo:r.method,
     round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,
-    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,
+    historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,linhaReporter:reporter.linha,
+    estrutura:sel?ESTRUTURAS[sel.est]:null,anterior:sel&&sel.est==="comparacao"&&ctxE.anterior?ctxE.anterior.txt:null,
+    dossie:olhaPassado(sel)||(fatoE&&fatoE.tipo==="anterior")?dossieCarreira(1):null,
     fato:falaCol?`antes desta luta, na coletiva, ele disse: "${falaCol.trecho}". O que aconteceu: ${sitFala.txt}`
-      :fatoDaEntrevista(base.fatoObrigatorio,won,r,lesaoTxt,td0,tdt0),
-    angulo:falaCol?"o que o resultado da luta fez com a fala da coletiva":won?angulo:(ANGULO_NA_DERROTA[angulo]||angulo),
-    recentes:cenasRecentes("entrevista"),token,amostra}),"entrevista",
-    {permitidas:falaCol?[falaCol.texto]:[],exige:falaCol?falaCol.texto:null,amostra});
+      :fatoE.txt,
+    angulo:falaCol?"o que o resultado da luta fez com a fala da coletiva":temaDaSituacao(sel.sit,ctxE),
+    eventoBase:sel?cenaLocal(sel,ctxE).evento:null,eventosUsados:eventosUsados("entrevista"),
+    recentes:cenasRecentesPrompt("entrevista"),token,amostra}),"entrevista",
+    {permitidas:falaCol?[falaCol.texto]:[],exige:falaCol?falaCol.texto:null,amostra,nomes:[opp.name]});
 
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Entrevista · ${won?"depois da vitória":"depois da derrota"}`));
@@ -5436,6 +5825,24 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival,a
   };
   SOM.flashes();
   mostrarNoite("entrevista");
+}
+/* Fala da coletiva desta luta que a entrevista cobra. Na amostra grátis
+   qualquer fala volta (é a continuidade que a amostra mostra). No Pro
+   (narrativa 2026-10-01), só quando o resultado deixa a fala notável
+   (promessa cumprida, quebrada ou pela metade; provocação seguida de
+   derrota) e a entrevista anterior não olhou pro passado. Medido antes:
+   67% das entrevistas citavam a fala. */
+function falaColetivaPraEntrevista(amostra){
+  const fc=memoriaDa().falas.find(f=>f.onde==="coletiva"&&f.luta===fightNo&&f.resultado);
+  if(!fc||fc.cobrada>=2)return null;
+  if(amostra)return fc;
+  const notavel=["cumpriu","parcial","quebrou","contradisse"].includes(situacaoDaFala(fc).tipo);
+  return notavel&&!narrativaDa().passado.entrevista?fc:null;
+}
+/* lesão vira o fato obrigatório da entrevista uma vez por lesão */
+function lesaoPraEntrevista(lesaoTxt){
+  const k=st.lesao?`${st.lesao.atributo}:${st.lesao.desdeLuta}`:null;
+  return k&&narrativaDa().lesaoTratada!==k?lesaoTxt:null;
 }
 /* Botão "Continuar" depois da entrevista (2026-09-22, pedido explícito:
    "não tá dando tempo de ler"): entrevistaAberta trava a próxima luta até

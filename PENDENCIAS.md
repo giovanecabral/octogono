@@ -2268,3 +2268,18 @@ ver o resultado da anterior. Nenhum SQL roda sem aprovação explícita dele.
   Fica pra etapa 5: conferir se os eventos `ia_null` com motivo
   `amostra_*` chegam no Vercel Analytics.
 
+## 40. Narrativa das cenas: menos repetição e continuidade (2026-10-01)
+
+Pedido do dono depois da amostra grátis, aprovado com ordem fixa:
+medir, dupla situação × estrutura + prompt sem exemplo fixo + repórter
+com linha editorial, dossiê + fios + fato variado, filtro de
+similaridade. Feito na branch `narrativa`, NÃO no ar (deploy só com
+aprovação do dono). Ver LEIA-ME "Narrativa das cenas". Sem banco, sem
+chamada nova de IA, sem mexer no motor nem nos 8 geradores.
+
+- Fallback da IA medido em 20-25% (era 14%); a reavaliação com os ajustes
+  finais dá cerca de 19%. O resto é descarte por regra. Se quiser menos:
+  aceitar paráfrase fiel da fala na cobrança, o que afrouxa a regra
+  anti-invenção (decisão do dono).
+- As medições com a IA real só rodam com autorização do dono.
+

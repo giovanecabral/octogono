@@ -1050,6 +1050,8 @@ async function testarTutorial() {
  *     coletiva ao resultado; coletivas futuras cobram falas antigas; e
  *     nenhum texto da IA atribui a ele uma fala que ele não disse.
  * ================================================================== */
+/* cenas reais do modelo de produção, sem fala antiga, da medição de 2026-10-01 (carreira 0): o filtro de similaridade não pode barrar nenhuma */
+const CENAS_REAIS_IA = [{"tipo": "coletiva", "evento": "O microfone de Renata Brum falha completamente e ela tenta trocar a pilha enquanto TesteBot espera na cadeira.", "pergunta": "Renata, o equipamento da Revista Mão Pesada não está funcionando. Você vai ter que improvisar no seu boxe ou pedir ajuda pra equipe?", "nomes": ["TesteBot", "Joel Alvarez"]}, {"tipo": "coletiva", "evento": "O empresário do Will Brooks colocou uma faixa de Jiu-jitsu no pescoço e riu na cara do TesteBot.", "pergunta": "O empresário do seu adversário apareceu com uma faixa da sua academia. Isso é motivo de piada ou você vai levar a sério?", "nomes": ["TesteBot", "Will Brooks"]}, {"tipo": "coletiva", "evento": "O empresário do Desmond Green entrega o certificado de pesagem para TesteBot e dá um tapa nas costas dele antes de sair da sala.", "pergunta": "O empresário do seu adversário te deu um tapa nas costas na pesagem. Você acha que isso é sinal de respeito ou apenas provocação?", "nomes": ["TesteBot", "Desmond Green"]}, {"tipo": "entrevista", "evento": "O médico fecha a bandagem no supercílio de TesteBot e afasta o encanador que tentava limpar o suor do octógono com um pano azul.", "pergunta": "Você aplicou duas quedas e zerou Desmond Green em menos de três minutos. Isso prova que seu grappling é superior ao resto ou foi só sorte com a posição dele?", "nomes": ["TesteBot", "Desmond Green"]}, {"tipo": "entrevista", "evento": "O técnico de Natan Levy joga a toalha molhada no chão da arena, perto do pé de TesteBot.", "pergunta": "Você dominou o jogo com quatro quedas em dois minutos. A estratégia foi desmontar o grappling dele ou só tirar vantagem da confusão que ficou depois?", "nomes": ["TesteBot", "Natan Levy"]}, {"tipo": "coletiva", "evento": "O treinador do Khabilov entra na sala de imprensa com uma cadeira nas costas e a joga no chão perto dos pés do TesteBot.", "pergunta": "Seu técnico acabou de destruir o mobiliário da coletiva. Você acha que isso é intimidador ou apenas falta de respeito?", "nomes": ["TesteBot", "Rustam Khabilov"]}, {"tipo": "coletiva", "evento": "O treinador do Chris Padilla segura o microfone e diz que a pressão do adversário é 'de outro mundo'.", "pergunta": "Seu técnico disse que a pressão dele é de outro mundo. Como você vai lidar com isso no octógono?", "nomes": ["TesteBot", "Chris Padilla"]}, {"tipo": "entrevista", "evento": "O treinador de TesteBot segura a cabeça dele e grita que o volume inchado impediu o jogo de chão.", "pergunta": "Seu treinador no corner disse que o volume machucado travou seu grappling. Como você explica as duas quedas sofridas com esse problema?", "nomes": ["TesteBot", "Drakkar Klose"]}, {"tipo": "entrevista", "evento": "Um torcedor joga uma garrafa de água vazia nos pés de TesteBot enquanto ele caminha para a área de entrevista.", "pergunta": "A torcida jogou uma garrafa na sua frente mesmo você vencendo Rustam Khabilov por finalização com o volume machucado. Isso mostra que a arena não te respeita ou foi só falta de sorte?", "nomes": ["TesteBot", "Rustam Khabilov"]}, {"tipo": "coletiva", "evento": "Marta Quintela abre a pasta com o histórico de TesteBot e aponta para as três derrotas no cartel 8-3, perguntando se a mudança para wrestling foi só pra esconder a falta de condição.", "pergunta": "TesteBot, seu cartel é 8-3 e você tá levando volume machucado. A troca pro wrestling foi estratégia ou desespero pra tapar os buracos?", "nomes": ["TesteBot", "MarQuel Mederos"]}, {"tipo": "coletiva", "evento": "Um torcedor grita 'boxe de esquina' na plateia e joga um copo vazio no chão perto da mesa.", "pergunta": "Um torcedor te chamou de boxeador de esquina agora. Com seu volume machucado, como você vai lidar com a pressão dele?", "nomes": ["TesteBot", "Brad Riddell"]}, {"tipo": "coletiva", "evento": "Hugo Lessa do Portal Guarda Alta coloca a folha do novo contrato na mesa e pergunta quanto o adversário Evan Elder está pedindo.", "pergunta": "Hugo Lessa, do Portal Guarda Alta, colocou a proposta financeira do Evan Elder aqui. Com seu volume machucado, você acha que vale a pena arriscar a bolsa agora?", "nomes": ["TesteBot", "Evan Elder"]}, {"tipo": "entrevista", "evento": "Caio Serrat segura a ficha de placar 29-28 na mão esquerda e encosta o microfone no peito de TesteBot enquanto um segurança afasta um torcedor que tentava passar pela grade.", "pergunta": "O placar foi 29-28 pra ele. Você tem alguma explicação pra quem apostou em você, já que não conseguiu aplicar nem uma queda e deixou o jogo todo nas mãos dos juízes?", "nomes": ["TesteBot", "Chris Padilla"]}, {"tipo": "coletiva", "evento": "O técnico do Devonte Smith chega na frente, tira o microfone da mão de um repórter e grita que a base de boxe do TesteBot é coisa de gente fraca que não aguenta o jogo de verdade.", "pergunta": "O técnico do seu adversário acabou de dizer na sua cara que seu boxe é só para quem tem medo de levar soco. Com essa sequência de três derrotas, você acha que ele acertou no ponto fraco ou tá só tentando te desestabilizar?", "nomes": ["TesteBot", "Devonte Smith"]}, {"tipo": "entrevista", "evento": "O técnico de TesteBot joga a toalha branca na mesa da entrevista e faz sinal positivo com o polegar para a câmera.", "pergunta": "TesteBot, você aplicou duas quedas e dominou Smith no chão antes do nocaute técnico. Esse controle no ground game foi o que te deu a vantagem decisiva nesse round?", "nomes": ["TesteBot", "Devonte Smith"]}, {"tipo": "coletiva", "evento": "O técnico do Rafa Garcia puxa o microfone da mesa na frente de todo mundo e xinga a base de grappling do TesteBot, dizendo que é só enrolação.", "pergunta": "O treinador dele acabou de chamar sua base de grappling de enrolação. Isso te irrita ou você nem liga?", "nomes": ["TesteBot", "Rafa Garcia"]}, {"tipo": "coletiva", "evento": "O empresário de Nasrat Haqparast se aproxima da mesa, segura o ombro do lutador e fala baixinho que a pressão dele é diferente de tudo que TesteBot já viu.", "pergunta": "O empresário do Nasrat disse que a pressão dele é única. Como você vai aguentar esse ritmo com sua base de wrestling?", "nomes": ["TesteBot", "Nasrat Haqparast"]}];
 async function testarMemoria() {
   console.log("\n" + cinza("memória narrativa: fala literal, promessa julgada pelo jogo, entrevista ligada ao resultado, nada inventado"));
   const F = lerLutadores();
@@ -1231,21 +1233,26 @@ async function testarMemoria() {
   });
 
   /* ---------- coletivas futuras ---------- */
-  await conf("coletiva futura: revanche traz a fala do encontro anterior; luta comum sem gancho não traz nada; cobrança espaçada e com teto", async () => {
+  await conf("coletiva futura: revanche traz a fala do encontro anterior UMA vez; luta comum sem gancho não traz nada; cobrança espaçada, com teto e nunca logo depois de uma cena que olhou pro passado", async () => {
     const X = nova(310);
     const r = J(X, `(function(){
-      st.memoria={falas:[]};fightNo=6;
+      st.memoria={falas:[]};st.narrativa=null;fightNo=6;
       registrarFala({onde:"coletiva",luta:3,adv:"Velho Rival",texto:"Ele não passa do segundo round.",decl:{tom:"promessa",trecho:"Ele não passa do segundo round",promessa:{metodo:"vencer",round:2}}});
-      const f=st.memoria.falas[0];f.resultado={venceu:false,metodo:"Nocaute",round:1};f.cumprida=false;f.cobrada=2;
+      const f=st.memoria.falas[0];f.resultado={venceu:false,metodo:"Nocaute",round:1};f.cumprida=false;f.cobrada=0;
       const rev=falaParaColetiva({name:"Velho Rival"});
+      f.cobrada=1;
+      const revDeNovo=falaParaColetiva({name:"Velho Rival"});     // já cobrada: não volta
+      f.cobrada=2;
       const comum=falaParaColetiva({name:"Outro Qualquer"});      // cobrada 2: fora
       f.cobrada=0;st.memoria.ultimaCobranca=6;
       const espacada=falaParaColetiva({name:"Outro Qualquer"});   // última cobrança foi agora há pouco
-      st.memoria.ultimaCobranca=0;st.memoria.falas.forEach(x=>x.luta=1);
+      st.memoria.ultimaCobranca=0;narrativaDa().passado.coletiva=true;
+      const aposPassado=falaParaColetiva({name:"Velho Rival"});   // a coletiva anterior já olhou pro passado
+      narrativaDa().passado.coletiva=false;st.memoria.falas.forEach(x=>x.luta=1);
       const velha=falaParaColetiva({name:"Outro Qualquer"});      // fala de 6 lutas atrás: fora
-      return{rev:rev&&rev.motivo,comum,espacada,velha};})()`);
+      return{rev:rev&&rev.motivo,revDeNovo,comum,espacada,aposPassado,velha};})()`);
     if (r.rev !== "revanche") throw new Error("revanche não trouxe a fala: " + JSON.stringify(r));
-    if (r.comum || r.espacada || r.velha) throw new Error("cobrou sem gancho: " + JSON.stringify(r));
+    if (r.revDeNovo || r.comum || r.espacada || r.aposPassado || r.velha) throw new Error("cobrou sem gancho: " + JSON.stringify(r));
   });
   await conf("coletiva futura de verdade: a IA recebe a fala antiga literal com o resultado, a tela mostra, e reabrir a coletiva não conta duas vezes", async () => {
     const X = nova(311);
@@ -1270,6 +1277,143 @@ async function testarMemoria() {
   });
 
   /* ---------- persistência ---------- */
+  /* ---------- filtro de similaridade (narrativa 2026-10-01) ---------- */
+  await conf("filtro de similaridade: 17 cenas reais e diferentes do modelo (medição de 2026-10-01) passam todas, sem falso positivo", async () => {
+    const X = nova(320);
+    X.sb.__fx = CENAS_REAIS_IA;
+    const pegou = J(X, `(function(){st.cenasRecentes={};const out=[];
+      for(const c of __fx){if(cenaParecidaDemais(c,c.tipo,[me.name,...REPORTERES,...c.nomes]))out.push(c.pergunta);lembrarCena(c.tipo,c);}
+      return out;})()`);
+    if (pegou.length) throw new Error("falso positivo: " + JSON.stringify(pegou));
+  });
+  await conf("filtro de similaridade: o mesmo acontecimento reescrito com outro repórter, ou a mesma pergunta com outro adversário, cai no molde local", async () => {
+    const X = nova(321);
+    const r = J(X, `(function(){
+      const LOCAL={evento:"molde",pergunta:"Pergunta do molde?"};
+      st.cenasRecentes={coletiva:["Débora Venturini abre a pasta com os dados da luta contra Will Brooks e aponta para o vídeo do primeiro round no telão. Pergunta: Você assistiu essa luta quantas vezes no camp?",
+        "O treinador do Devonte Smith pegou o microfone. Pergunta: O treinador do Devonte Smith disse que você foge da troca. Você foge mesmo da troca?"]};
+      const evento=cenaDaIA({evento:"Sônia Barreto abre a pasta com os dados da luta contra Will Brooks e aponta para o vídeo do primeiro round no telão.",pergunta:"O camp de boxe foi pensado pra quebrar a guarda dele?"},LOCAL,"coletiva",{nomes:["Will Brooks"]});
+      const pergunta=cenaDaIA({evento:"A organização chamou o próximo bloco de perguntas.",pergunta:"O treinador do Rafa Garcia disse que você foge da troca. Você foge mesmo da troca?"},LOCAL,"coletiva",{nomes:["Rafa Garcia"]});
+      const nova=cenaDaIA({evento:"Um torcedor da primeira fila levantou uma faixa com o seu apelido.",pergunta:"A torcida já te deu um apelido. Você gosta dele?"},LOCAL,"coletiva",{nomes:["Rafa Garcia"]});
+      return{evento:evento.pergunta,pergunta:pergunta.pergunta,nova:nova.pergunta};})()`);
+    if (r.evento !== "Pergunta do molde?") throw new Error("evento repetido passou: " + r.evento);
+    if (r.pergunta !== "Pergunta do molde?") throw new Error("pergunta repetida passou: " + r.pergunta);
+    if (r.nova === "Pergunta do molde?") throw new Error("cena nova foi barrada");
+  });
+  await conf("filtro de similaridade: fala citada igual não conta, palavra comum não basta, e só as 8 últimas cenas contam", async () => {
+    const X = nova(322);
+    const r = J(X, `(function(){
+      const N=[me.name,...REPORTERES];
+      st.cenasRecentes={entrevista:["Pergunta: Você disse 'vou nocautear ele no segundo round sem dar chance nenhuma pra ele'. Como foi a semana de treino?"]};
+      const citacao=cenaParecidaDemais({evento:"",pergunta:"Você disse 'vou nocautear ele no segundo round sem dar chance nenhuma pra ele'. A torcida acreditou?"},"entrevista",N);
+      st.cenasRecentes={coletiva:["Pergunta: Você vai aceitar o jogo dele ou levar a luta pro seu?"]};
+      const comum=cenaParecidaDemais({evento:"",pergunta:"Você vai aceitar a revanche se ele pedir uma terceira luta?"},"coletiva",N);
+      const velha="O treinador dele pegou o microfone da mesa. Pergunta: O treinador dele disse que você foge da troca. Você foge mesmo da troca?";
+      st.cenasRecentes={coletiva:[velha,...Array.from({length:8},(_,k)=>"Pergunta: Pergunta diferente número "+k+" sobre assunto "+["peso","torcida","camp","bolsa","estilo","video","atraso","elogio"][k]+"?")]};
+      const antiga=cenaParecidaDemais({evento:"",pergunta:"O treinador dele disse que você foge da troca. Você foge mesmo da troca?"},"coletiva",N);
+      return{citacao,comum,antiga};})()`);
+    if (r.citacao) throw new Error("a fala citada (palavras do jogador) contou como repetição");
+    if (r.comum) throw new Error("pergunta diferente com palavras comuns foi barrada");
+    if (r.antiga) throw new Error("cena de 9 atrás ainda conta");
+  });
+  await conf("cena: prefixo 'Nome (Veículo):' sai da pergunta; vocativo pra repórter descarta; nome do jogador igual ao de um repórter continua", async () => {
+    const X = nova(323);
+    const r = J(X, `(function(){const n=me.name;
+      const a=limparPergunta("Hugo Lessa (TV Octógono): Na luta 14 você perdeu por decisão. O que muda?");
+      const b=limparPergunta("Renata, o equipamento não funciona. Você vai improvisar?");
+      const d=limparPergunta("Ícaro pergunta: você vai aceitar a revanche?");
+      const e=limparPergunta("Hugo Lessa: 'O treinador dele riu. Isso te incomoda?'");
+      me.name="Lucas Brasa";const c=limparPergunta("Lucas, você vai aceitar essa revanche?");me.name=n;
+      return{a,b,c,d,e};})()`);
+    if (r.a !== "Na luta 14 você perdeu por decisão. O que muda?") throw new Error("prefixo ficou: " + r.a);
+    if (r.b !== "") throw new Error("vocativo pra repórter passou: " + r.b);
+    if (r.c !== "Lucas, você vai aceitar essa revanche?") throw new Error("nome do jogador foi barrado: " + r.c);
+    if (r.d !== "Você vai aceitar a revanche?") throw new Error("prefixo com o primeiro nome ficou: " + r.d);
+    if (r.e !== "O treinador dele riu. Isso te incomoda?") throw new Error("aspas depois do prefixo ficaram: " + r.e);
+  });
+  /* ---------- continuidade sem forçar (narrativa 2026-10-01) ---------- */
+  await conf("entrevista Pro: a fala da coletiva só volta quando o resultado a torna notável, nunca logo depois de outra entrevista que olhou pro passado; na amostra volta sempre", async () => {
+    const X = nova(324);
+    const r = J(X, `(function(){
+      st.memoria={falas:[]};st.narrativa=null;fightNo=5;
+      const res=(tom,promessa,venceu,metodo)=>{st.memoria={falas:[]};
+        registrarFala({onde:"coletiva",luta:5,adv:"Fulano",texto:"Frase dita na coletiva antes da luta.",decl:{tom,trecho:"Frase dita na coletiva",promessa}});
+        const f=st.memoria.falas[0];f.resultado={venceu,metodo,round:2};f.cumprida=avaliarPromessa(f.promessa,venceu,metodo,2);};
+      res("provocacao",null,true,"Nocaute");const provocouVenceu=!!falaColetivaPraEntrevista(false);
+      res("provocacao",null,false,"Nocaute");const provocouPerdeu=!!falaColetivaPraEntrevista(false);
+      res("promessa",{metodo:"nocaute",round:null},true,"Nocaute");const cumpriu=!!falaColetivaPraEntrevista(false);
+      res("promessa",{metodo:"nocaute",round:null},false,"Decisão");const quebrou=!!falaColetivaPraEntrevista(false);
+      narrativaDa().passado.entrevista=true;const depoisDoPassado=!!falaColetivaPraEntrevista(false);
+      res("neutro",null,true,"Decisão");const amostraNeutra=!!falaColetivaPraEntrevista(true);
+      return{provocouVenceu,provocouPerdeu,cumpriu,quebrou,depoisDoPassado,amostraNeutra};})()`);
+    if (r.provocouVenceu) throw new Error("provocação confirmada (não notável) voltou");
+    if (!r.provocouPerdeu || !r.cumpriu || !r.quebrou) throw new Error("fala notável não voltou: " + JSON.stringify(r));
+    if (r.depoisDoPassado) throw new Error("voltou logo depois de uma entrevista que olhou pro passado");
+    if (!r.amostraNeutra) throw new Error("na amostra a fala tem que voltar sempre");
+  });
+  await conf("entrevista: lesão é fato obrigatório uma vez por lesão; o fato gira (método, momento do log, quedas, luta anterior) e cinturão e zebra continuam obrigatórios", async () => {
+    const X = nova(325);
+    const r = J(X, `(function(){
+      st.narrativa=null;st.lesao={atributo:"strDef",desdeLuta:3,duracao:4,mult:.9};
+      const primeira=lesaoPraEntrevista("Defesa machucada");narrativaDa().lesaoTratada="strDef:3";
+      const segunda=lesaoPraEntrevista("Defesa machucada");st.lesao={atributo:"slpm",desdeLuta:6,duracao:2,mult:.9};
+      const outraLesao=lesaoPraEntrevista("Volume machucado");st.lesao=null;
+      st.registro=[{adv:"Antigo",venceu:true,metodo:"Nocaute",round:1},{adv:"Atual",venceu:false,metodo:"Decisão",round:3,cartoes:"29-28"}];
+      const r0={method:"Decisão",round:3,clock:"5:00",cards:"29-28",log:[{round:2,clock:"1:10",kind:"kd",text:"Atual derruba com um cruzado"},{round:3,clock:"0:00",kind:"fin",text:"fim"}]};
+      const c=ctxEntrevista({name:"Atual"},false,r0,false,false,null,2,1);
+      const base={fatoObrigatorio:"decisão"},tipos=[];
+      for(let k=0;k<4;k++){const f=fatoDaEntrevistaVariado(base,false,r0,null,2,1,c,false);tipos.push(f.tipo);}
+      const zebra=fatoDaEntrevistaVariado({fatoObrigatorio:"zebra"},true,r0,null,2,1,c,false).tipo;
+      const cinturao=fatoDaEntrevistaVariado({fatoObrigatorio:"cinturão"},true,r0,null,2,1,c,false).tipo;
+      const semAnterior=fatoDaEntrevistaVariado(base,false,r0,null,2,1,c,true);
+      return{primeira,segunda,outraLesao,tipos,zebra,cinturao,momento:tipos.includes("momento")};})()`);
+    if (!r.primeira || r.segunda || !r.outraLesao) throw new Error("lesão: " + JSON.stringify(r));
+    if (new Set(r.tipos).size !== 4) throw new Error("o fato não girou: " + r.tipos.join(","));
+    if (r.zebra !== "zebra" || r.cinturao !== "cinturão") throw new Error("fato forte perdeu a prioridade");
+  });
+  await conf("dossiê: só fatos do registro (últimas 3 lutas e sequência), até 420 caracteres, e só vai pra IA quando a cena olha pro passado", async () => {
+    const X = nova(326);
+    const r = J(X, `(function(){
+      st.registro=[{adv:"Um",venceu:true,metodo:"Nocaute",round:1},{adv:"Dois",venceu:true,metodo:"Finalização",round:2},
+        {adv:"Tres",venceu:true,metodo:"Decisão",round:3,cartoes:"30-27"},{adv:"Quatro",venceu:true,metodo:"Nocaute",round:3}];
+      st.streakW=4;st.streakL=0;
+      const d=dossieCarreira(0);
+      const sit={sit:{passado:false},est:"dado"},fio={sit:{passado:true},est:"dado"},comp={sit:{passado:false},est:"comparacao"};
+      return{d,len:d.length,sem:olhaPassado(sit),fio:olhaPassado(fio),comp:olhaPassado(comp)};})()`);
+    if (!/Quatro por nocaute no round 3; venceu Tres por decisão \(30-27\); venceu Dois/.test(r.d) || /venceu Um/.test(r.d)) throw new Error("dossiê: " + r.d);
+    if (!/4 vitórias seguidas/.test(r.d) || r.len > 420) throw new Error("dossiê: " + r.d);
+    if (r.sem || !r.fio || !r.comp) throw new Error("dossiê vai pra IA na hora errada");
+  });
+  await conf("anti-invenção: retomar a fala já citada na mesma cena ('não do jeito que você disse') passa; paráfrase e retomada sem citação continuam reprovando", async () => {
+    const X = nova(330);
+    const r = J(X, `(function(){const P=["Ele vai pedir pra sair no chão."],n=me.name;
+      const retoma=falasAtribuidasOk("Você prometeu que 'Ele vai pedir pra sair no chão'. O resultado foi técnico, mas não do jeito que você disse. Valeu?",P,n);
+      const parafrase=falasAtribuidasOk("Você prometeu que 'Ele vai pedir pra sair no chão'. Você disse também que ia nocautear no primeiro round. Valeu?",P,n);
+      const semCitacao=falasAtribuidasOk("O resultado foi técnico, mas não do jeito que você disse. Valeu?",P,n);
+      const inventada=falasAtribuidasOk("Na coletiva você disse 'a família é meu foco'. Como ela está?",P,n);
+      return{retoma,parafrase,semCitacao,inventada};})()`);
+    if (!r.retoma) throw new Error("retomada da fala citada reprovou");
+    if (r.parafrase || r.semCitacao || r.inventada) throw new Error("passou o que não podia: " + JSON.stringify(r));
+  });
+  await conf("anti-invenção sem falso positivo: 'quedas que você garantiu' (conseguir) e 'perto do Fulano e disse' (quem fala é outro) passam; 'você garantiu que...' sem citação reprova", async () => {
+    const X = nova(332);
+    const r = J(X, `(function(){const n=me.name,nome=n.split(" ")[0];
+      const conseguir=falasAtribuidasOk("Como você explica as 3 quedas que você garantiu no segundo round?",[],n);
+      const objeto=falasAtribuidasOk("O adversário segurou o microfone perto da boca do "+nome+" e disse que ele é perigoso.",[],n);
+      const garantiuQue=falasAtribuidasOk("Você garantiu que ia vencer antes do terceiro round. E agora?",[],n);
+      const sujeito=falasAtribuidasOk(nome+" disse que ia nocautear. E agora?",[],n);
+      return{conseguir,objeto,garantiuQue,sujeito};})()`);
+    if (!r.conseguir || !r.objeto) throw new Error("falso positivo: " + JSON.stringify(r));
+    if (r.garantiuQue || r.sujeito) throw new Error("atribuição sem citação passou: " + JSON.stringify(r));
+  });
+  await conf("prompt: cenas recentes vão sem a fala citada; os 8 últimos acontecimentos vão curtos e sem aspas", async () => {
+    const X = nova(331);
+    const r = J(X, `(function(){st.cenasRecentes={coletiva:[]};
+      for(let k=0;k<10;k++)lembrarCena("coletiva",{evento:"Acontecimento número "+k+" com o treinador e a frase 'Vou nocautear ele' no telão.",pergunta:"Você disse 'Vou nocautear ele'. E agora "+k+"?"});
+      return{rec:cenasRecentesPrompt("coletiva"),ev:eventosUsados("coletiva")};})()`);
+    if (r.rec.length !== 4 || r.rec.some(t => /Vou nocautear/.test(t)) || !r.rec.every(t => /\(fala\)/.test(t))) throw new Error("recentes: " + JSON.stringify(r.rec));
+    if (r.ev.length !== 8 || r.ev.some(t => /Vou nocautear|Pergunta:/.test(t) || t.length > 110) || !/número 9/.test(r.ev[7])) throw new Error("acontecimentos: " + JSON.stringify(r.ev));
+  });
   await conf("save: a memória vai no save e volta igual; save antigo sem memória abre e cria na hora", async () => {
     const X = nova(312);
     X.run(`registrarFala({onde:"coletiva",luta:1,adv:"F",texto:"Vou vencer.",decl:{tom:"promessa",trecho:"Vou vencer",promessa:{metodo:"vencer"}}});`);
@@ -1278,6 +1422,28 @@ async function testarMemoria() {
     const Y = nova(313);
     Y.run("delete st.memoria;");
     if (J(Y, "memoriaDa().falas.length") !== 0) throw new Error("save sem memória não criou uma vazia");
+  });
+
+  await conf("save: a narrativa (cartela, situações, estruturas, passado) vai no save, a carreira retomada escolhe a mesma próxima cena, e save antigo sem narrativa abre", async () => {
+    const PROX = `(function(){fightNo=4;const o=ROSTER[0];const d=escolherCena("coletiva",ctxColetiva(o,{nome:"Boxe"},{f:o}));
+      const e=escolherCena("entrevista",ctxEntrevista(o,true,{method:"Nocaute",round:2,clock:"1:00",log:[]},false,false,null,0,0));
+      return d.sit.id+"/"+d.est+" "+e.sit.id+"/"+e.est;})()`;
+    const X = nova(327);
+    X.run(`st.narrativa=null;for(let n=1;n<4;n++){fightNo=n;const o=ROSTER[n];escolherCena("coletiva",ctxColetiva(o,{nome:"Boxe"},{f:o}));
+      escolherCena("entrevista",ctxEntrevista(o,n%2===0,{method:"Decisão",round:3,clock:"5:00",log:[]},false,false,null,0,0));}`);
+    const d = J(X, "montarSave()");
+    const n = d.st && d.st.narrativa;
+    if (!n || !n.cartela.coletiva || !n.situacoes.coletiva.length || !n.estruturas.entrevista.length || !("coletiva" in n.passado))
+      throw new Error("a narrativa não está no save: " + JSON.stringify(n));
+    const Y = nova(328);
+    Y.sb.__save = JSON.stringify(d);
+    Y.run("retomarCarreira(JSON.parse(globalThis.__save));");
+    const a = J(X, PROX), b = J(Y, PROX);
+    if (a !== b) throw new Error(`retomada escolheu outra cena: ${a} x ${b}`);
+    const V = nova(329);
+    V.run("delete st.narrativa;st.cartelaCena={coletiva:['provocação do adversário']};st.cenasRecentes={coletiva:['a','b','c','d','e','f']};");
+    const v = J(V, PROX);
+    if (!/^[a-z-]+\/[a-z]+ [a-z-]+\/[a-z]+$/.test(v) || !J(V, "!!st.narrativa&&Array.isArray(st.narrativa.situacoes.coletiva)")) throw new Error("save antigo: " + v);
   });
 
   const ok = !falhas.length;
@@ -5393,8 +5559,9 @@ function testarColetivaEntrevista() {
       /digitando/.test(document.getElementById("colpergunta").innerHTML)&&document.getElementById("colgo").disabled===true);
     await tick();
     const pedidoCena=chamadas.find(c=>c.kind==="coletivaCena");
-    passo("coletiva Pro: pede a cena à IA com tema da lista, repórter, camp e recentes",
-      !!pedidoCena&&TEMAS_COLETIVA.includes(pedidoCena.data.tema)&&/\\(/.test(pedidoCena.data.reporter)
+    passo("coletiva Pro: pede a cena à IA com a dupla (situação da lista e forma da pergunta), repórter com linha editorial, camp e recentes",
+      !!pedidoCena&&SITUACOES_COLETIVA.some(x=>x.tema===pedidoCena.data.tema)&&Object.values(ESTRUTURAS).includes(pedidoCena.data.estrutura)
+      &&/\\(/.test(pedidoCena.data.reporter)&&typeof pedidoCena.data.linhaReporter==="string"&&pedidoCena.data.linhaReporter.length>5
       &&pedidoCena.data.camp==="Boxe"&&Array.isArray(pedidoCena.data.recentes)&&pedidoCena.data.opp==="Rival");
     passo("coletiva Pro: a pergunta da IA aparece no balão da IA e o evento em cima",
       document.getElementById("colpergunta").innerHTML.includes("Você foge?")
@@ -5487,18 +5654,27 @@ function testarColetivaEntrevista() {
       (()=>{const n=me.name;me.name="Kayo Brasa";const a=eventoDosOutros("Kayo Brasa ignorou o microfone da mesa.");
         const b=eventoDosOutros("O treinador dele riu da pergunta.");me.name=n;return a===""&&b==="O treinador dele riu da pergunta.";})());
 
-    /* ---------- COLETIVA: variedade do molde local (o problema que o dono apontou) ---------- */
-    const temasVistos=[];
-    st.cartelaCena=null;
-    for(let n=20;n<30;n++){fightNo=n;temasVistos.push(proximoTemaCena("coletiva"));}
-    passo("coletiva: os 10 primeiros temas da carreira nunca se repetem (cartela sem reposição)",
-      new Set(temasVistos).size===10);
-    const perguntasLocais=new Set(TEMAS_COLETIVA.map((t,n)=>{fightNo=40+n;return cenaColetivaLocal(opp,{nome:"Boxe"},t,{f:opp}).pergunta;}));
-    passo("coletiva: molde local muda com o tema, mesmo adversário (antes eram 6 frases fixas por adversário)",
-      perguntasLocais.size>=9);
+    /* ---------- COLETIVA: variedade (narrativa 2026-10-01): dupla situação × estrutura ---------- */
+    st.narrativa=null;
+    const ctxV=ctxColetiva(opp,{nome:"Boxe"},{f:opp});
+    const duplas=[];
+    for(let n=20;n<36;n++){fightNo=n;duplas.push(escolherCena("coletiva",ctxV));}
+    const semCond=SITUACOES_COLETIVA.filter(x=>!x.cond).length;
+    passo("coletiva: as "+semCond+" primeiras situações sem condição nunca se repetem (cartela sem reposição)",
+      new Set(duplas.slice(0,semCond).filter(d=>!d.sit.cond).map(d=>d.sit.id)).size===duplas.slice(0,semCond).filter(d=>!d.sit.cond).length);
+    passo("coletiva: a estrutura sempre é uma das que combinam com a situação",
+      duplas.every(d=>typeof d.sit.est[d.est]==="function"));
+    passo("coletiva: a mesma estrutura nunca vem duas vezes seguidas",
+      duplas.every((d,k)=>!k||d.est!==duplas[k-1].est));
+    const perguntasLocais=new Set(duplas.map(d=>cenaLocal(d,ctxV).pergunta));
+    passo("coletiva: molde local muda com a dupla (16 cenas, 15 perguntas diferentes ou mais)", perguntasLocais.size>=15);
     passo("coletiva: molde local cita fato da luta (cartel, camp ou estilo)",
-      TEMAS_COLETIVA.some(t=>/5-1/.test(cenaColetivaLocal(opp,{nome:"Boxe"},t,{f:opp}).pergunta))
-      &&/boxe/.test(cenaColetivaLocal(opp,{nome:"Boxe"},"o camp escolhido",{f:opp}).pergunta));
+      SITUACOES_COLETIVA.some(x=>Object.values(x.est).some(f=>{try{return /5-1/.test(f(ctxV));}catch(e){return false;}}))
+      &&/boxe/.test(SITUACOES_COLETIVA.find(x=>x.id==="camp").est.bastidor(ctxV)));
+    passo("coletiva: comparação com a luta anterior só entra quando a carreira tem luta registrada",
+      (()=>{const reg=st.registro;st.registro=[];st.narrativa=null;let ok=true;
+        for(let n=50;n<80;n++){fightNo=n;const d=escolherCena("coletiva",ctxColetiva(opp,{nome:"Boxe"},{f:opp}));if(d.est==="comparacao")ok=false;}
+        st.registro=reg;return ok;})());
 
     /* ---------- COLETIVA: atributoPressao inválido não vira pressão ---------- */
     fightNo=12;respostaCena=null;
@@ -5601,8 +5777,9 @@ function testarColetivaEntrevista() {
       &&cenaE.children[2].innerHTML.includes("img/entrevista-microfone.webp"));
     await tick();
     const pedidoEnt=chamadas.find(c=>c.kind==="entrevistaCena");
-    passo("entrevista: pede a cena à IA com o fato obrigatório por extenso e um ângulo da lista",
-      !!pedidoEnt&&typeof pedidoEnt.data.fato==="string"&&pedidoEnt.data.fato.length>10&&ANGULOS_ENTREVISTA.includes(pedidoEnt.data.angulo)
+    passo("entrevista: pede a cena à IA com o fato obrigatório por extenso e a dupla (situação e forma da pergunta)",
+      !!pedidoEnt&&typeof pedidoEnt.data.fato==="string"&&pedidoEnt.data.fato.length>10&&typeof pedidoEnt.data.angulo==="string"
+      &&pedidoEnt.data.angulo.length>3&&Object.values(ESTRUTURAS).includes(pedidoEnt.data.estrutura)
       &&/\\(/.test(pedidoEnt.data.reporter));
     passo("entrevista: lesão vence método no fato obrigatório (prioridade fixa continua valendo)",
       /lutou com/.test(pedidoEnt.data.fato));
@@ -5646,14 +5823,15 @@ function testarColetivaEntrevista() {
 
     /* ---------- ENTREVISTA: sair sem responder e voltar ---------- */
     fightNo=7;chamadas.length=0;cenaEnt=null;st.lesao=null;
-    st.cartelaCena={...(st.cartelaCena||{}),entrevista:["a quem dedica"]};
+    /* "juizes" (decisão) acabou de sair: a cartela entrega a dedicatória */
+    st.narrativa={cartela:{entrevista:["dedicatoria"]},situacoes:{entrevista:["juizes"]},estruturas:{},reporter:{}};
     renderBotaoEntrevista(bouts,opp,{method:"Decisão",round:3,clock:"5:00"},false,false,0,0,false);
     const wrap7=bouts.children[bouts.children.length-1];
     wrap7.children[0].onclick();await tick();
-    passo("entrevista: na derrota o ângulo vira a versão da derrota (medido: 'a quem você dedica essa derrota?')",
-      chamadas.find(c=>c.kind==="entrevistaCena").data.angulo==="o que deve pra quem apostou nele");
-    passo("entrevista: IA sem resposta, a pergunta sai do molde local do fato (decisão)",
-      /decis|cartões/i.test(document.getElementById("entpergunta").innerHTML));
+    passo("entrevista: na derrota a situação vira a versão da derrota (medido: 'a quem você dedica essa derrota?')",
+      chamadas.find(c=>c.kind==="entrevistaCena").data.angulo==="o que ele deve pra quem apostou nele");
+    passo("entrevista: IA sem resposta, a pergunta sai do molde local da mesma dupla (dedicatória na derrota)",
+      /apostou|explicação/i.test(document.getElementById("entpergunta").innerHTML));
     passo("entrevista: derrota tem evento coerente (sem comemoração)",
       !/levantou|gritou o seu nome/.test(document.getElementById("entevento").innerHTML));
     let fundoPedido=null;const mostrarOrig=mostrarNoite;mostrarNoite=(e,f)=>{fundoPedido=f;return mostrarOrig(e,f);};
@@ -7989,6 +8167,253 @@ async function testarPagamento() {
  *     servidor; banido não loga nem entra no ranking.
  * ================================================================== */
 /* ================================================================== *
+ * DIVERSIDADE NARRATIVA (2026-10-01): mede a repetição das cenas da
+ * coletiva e da entrevista em carreiras completas de 22 lutas, jogadas
+ * pelo caminho real (oferta, camp, coletiva respondida, luta, entrevista
+ * respondida, dilema). Mede ESTRUTURA, não só texto igual: categoria do
+ * evento, forma da pergunta, abertura, quase-repetição de conteúdo,
+ * âncora no método da luta, referência ao passado, fallback e chamadas
+ * de IA por tipo (o consumo tem que ficar igual).
+ * Modos (DIVERSIDADE_IA): vazio = moldes locais (o que o Free vê e o que
+ * entra quando a IA falha), sem rede; "seco" = passa pelo api/ai.js com o
+ * OpenRouter falso, só pra medir o tamanho do prompt; "real" = cenas do
+ * modelo de produção pela api/ai.js local, chave de ~/.octogono-openrouter
+ * (nunca impressa) e teto DIVERSIDADE_MAX chamadas (padrão 100). As
+ * reações ficam locais em todos os modos. DIVERSIDADE_SAIDA grava o JSON.
+ * ================================================================== */
+const DIV_RESPOSTAS_COL = [
+  { t: "Vou nocautear ele no segundo round.", d: { tom: "promessa", trecho: "nocautear ele no segundo round", promessa: { metodo: "nocaute", round: 2 } } },
+  { t: "Ele fala demais pra quem nunca enfrentou ninguém do meu nível.", d: { tom: "provocacao", trecho: "Ele fala demais", promessa: null } },
+  { t: "Respeito muito o que ele construiu, mas sábado a noite é minha.", d: { tom: "respeito", trecho: "Respeito muito o que ele construiu", promessa: null } },
+  { t: "Fiz um camp bom e estou pronto pro que vier.", d: { tom: "neutro", trecho: "estou pronto pro que vier", promessa: null } },
+  { t: "Ele vai pedir pra sair no chão.", d: { tom: "promessa", trecho: "Ele vai pedir pra sair no chão", promessa: { metodo: "finalizacao", round: null } } },
+  { t: "Essa luta não passa do primeiro round, ele sabe disso.", d: { tom: "provocacao", trecho: "não passa do primeiro round", promessa: null } },
+];
+const DIV_RESPOSTAS_ENT = ["Fiz o que tinha que fazer e já penso no próximo passo.", "Senti a pressão no começo, depois encontrei a distância.",
+  "O mérito é da minha equipe, eles viram isso antes de mim.", "Errei no plano e paguei por isso.", "Não foi bonito, mas foi do jeito que treinamos."];
+const DIV_STOP = new Set("a o os as um uma uns umas de do da dos das e em no na nos nas que se por pra para com sem voce te ele ela eles isso isto esse essa este esta seu sua seus suas dele dela mais mas como foi ser ter tem vai ja nao sim ao lhe me meu minha nem quando onde qual quais quem porque o que ha so tao muito agora aqui la hoje entre sobre ate depois antes".split(" "));
+const divNorm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const divPalavras = (s, nomes) => {
+  let t = divNorm(s);
+  for (const n of nomes) for (const w of divNorm(n).split(/\s+/)) if (w.length > 2) t = t.replace(new RegExp(`\\b${w}\\b`, "g"), " ");
+  return new Set(t.replace(/[0-9]+/g, " ").split(/[^a-z]+/).filter(w => w.length > 2 && !DIV_STOP.has(w)));
+};
+const divJaccard = (a, b) => { if (!a.size || !b.size) return 0; let i = 0; for (const x of a) if (b.has(x)) i++; return i / (a.size + b.size - i); };
+/* categoria do evento por palavra-chave (ordem importa); serve igual pras
+   cenas de antes e de depois, reanalisadas do JSON gravado */
+const DIV_CATEGORIAS = [["microfone", /microfone|cabo|audio/], ["luz-som", /\bluz\b|apagou/], ["encarada", /encarad|seguranca|separ|empurr|dois dedos|passo a frente/],
+  ["familia", /familia|ligacao|\bmae\b|\bpai\b|filh|esposa/], ["treinador", /treinador|corner|toalha/], ["bastidor-adversario", /empresari|assessor|nutricionista/],
+  ["torcida", /torcid|torcedor|faixa|grit|vaia|aplaud/], ["telao", /telao|video|replay|melhores momentos|estatistic/],
+  ["medico", /medic|gelo|supercilio|sangue|curativo|exame/], ["peso", /balanca|peso|sanduiche|comend|dieta|garrafa/],
+  ["dinheiro", /bolsa|contrato|dinheiro|patrocin|premio|cotacao|aposta/], ["cinturao", /cinturao/], ["atraso", /atras/],
+  ["convidado", /ex-campeao|ex campeao|ex-parceiro|convidad/], ["mediador", /mediador|locutor|organizacao/],
+  ["imprensa", /fotograf|camera|flash|tripe|reporter|jornalist|bloco|celular/], ["fala-do-adversario", /disse|falou|chamou|riu|debochou|provoc|brincou/]];
+const divCategoria = ev => { const t = divNorm(ev); for (const [k, re] of DIV_CATEGORIAS) if (re.test(t)) return k; return t.trim() ? "outros" : "sem-evento"; };
+/* a fala do jogador citada entre aspas é dele, não do repórter: sai antes
+   de medir forma, abertura, conteúdo e âncora; a citação é métrica própria */
+const divSemCitacao = p => String(p || "").replace(/'[^']{3,}'|"[^"]{3,}"|“[^”]{3,}”|‘[^’]{3,}’/g, " ");
+const divCita = p => /'[^']{3,}'|"[^"]{3,}"|“[^”]{3,}”|‘[^’]{3,}’/.test(String(p || "")) && /\b(disse|falou|prometeu|garantiu)\b/.test(divNorm(p));
+const divFrasePergunta = p => { const f = divNorm(p).replace(/["'“”‘’]/g, "").split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean); return [...f].reverse().find(x => x.endsWith("?")) || f[f.length - 1] || ""; };
+const divForma = p => {
+  const q = divFrasePergunta(divSemCitacao(p)).replace(/^e\s+/, "");
+  for (const [k, re] of [["o-que", /^(o )?que\b/], ["como", /^como\b/], ["por-que", /^por ?que\b/], ["qual", /^(qual|quais)\b/], ["quem", /^quem\b/], ["quanto", /^quant/], ["onde", /^onde\b/], ["quando", /^quando\b/]])
+    if (re.test(q)) return k;
+  if (/\bou\b/.test(q)) return "escolha";
+  return "sim-nao";
+};
+const divAbertura = p => divFrasePergunta(divSemCitacao(p)).replace(/^e\s+/, "").split(/\s+/).slice(0, 2).join(" ");
+const DIV_PASSADO = /luta passada|ultima luta|luta anterior|na luta \d|ha \d+ lutas|da ultima vez|outra vez|antes desta luta|na coletiva|voce disse|derrota passada|vitoria passada/;
+function divMetricas(cenas, tipo) {
+  const porCarreira = {};
+  for (const c of cenas.filter(x => x.tipo === tipo)) (porCarreira[c.carreira] = porCarreira[c.carreira] || []).push(c);
+  const acc = { cenas: 0, catDistintas: [], catEmJanela: 0, formaMax: 0, formaIgualAnterior: 0, aberturas: [], quaseRep: 0, evRep: 0, simMedia: 0, metodo: 0, passado: 0, cita: 0, fallback: 0, formas: {} };
+  for (const lista of Object.values(porCarreira)) {
+    const cats = lista.map(c => divCategoria(c.evento)), formas = lista.map(c => divForma(c.pergunta));
+    const conj = lista.map(c => divPalavras(divSemCitacao(c.pergunta), c.nomes)), conjEv = lista.map(c => divPalavras(c.evento, c.nomes));
+    acc.catDistintas.push(new Set(cats).size);
+    acc.aberturas.push(new Set(lista.map(c => divAbertura(c.pergunta))).size / lista.length);
+    lista.forEach((c, i) => {
+      acc.cenas++;
+      if (cats.slice(Math.max(0, i - 3), i).includes(cats[i])) acc.catEmJanela++;
+      if (i && formas[i] === formas[i - 1]) acc.formaIgualAnterior++;
+      acc.formas[formas[i]] = (acc.formas[formas[i]] || 0) + 1;
+      let m = 0; for (let j = 0; j < i; j++) m = Math.max(m, divJaccard(conj[i], conj[j]));
+      acc.simMedia += m; if (m >= 0.4) acc.quaseRep++;
+      let me = 0; for (let j = 0; j < i; j++) me = Math.max(me, divJaccard(conjEv[i], conjEv[j]));
+      if (me >= 0.4) acc.evRep++;
+      const t = divNorm(divSemCitacao(c.pergunta)), cita = divCita(c.pergunta);
+      if (/nocaute|finaliz|decis|juiz|cartoes|round/.test(t)) acc.metodo++;
+      if (cita) acc.cita++;
+      if (cita || DIV_PASSADO.test(t + " " + divNorm(c.evento)) || c.anteriores.some(a => a.length > 3 && t.includes(divNorm(a)))) acc.passado++;
+      if (!c.ia) acc.fallback++;
+    });
+  }
+  const n = acc.cenas || 1, pct = x => Math.round(100 * x / n);
+  const formaTop = Object.entries(acc.formas).sort((a, b) => b[1] - a[1])[0] || ["-", 0];
+  return { cenas: acc.cenas, categoriasDistintasPorCarreira: +(acc.catDistintas.reduce((a, b) => a + b, 0) / (acc.catDistintas.length || 1)).toFixed(1),
+    categoriaRepetidaEm3: pct(acc.catEmJanela), formaMaisUsada: `${formaTop[0]} ${pct(formaTop[1])}%`, formaIgualAnterior: pct(acc.formaIgualAnterior),
+    aberturasDistintas: Math.round(100 * acc.aberturas.reduce((a, b) => a + b, 0) / (acc.aberturas.length || 1)), quaseRepetidas: pct(acc.quaseRep), eventosQuaseRepetidos: pct(acc.evRep),
+    similaridadeMedia: +(acc.simMedia / n).toFixed(2), ancoraNoMetodo: pct(acc.metodo), citaFalaDoJogador: pct(acc.cita), referenciaAoPassado: pct(acc.passado), fallbackLocal: pct(acc.fallback),
+    formas: Object.fromEntries(Object.entries(acc.formas).map(([k, v]) => [k, pct(v)])) };
+}
+async function testarDiversidade(nCarreiras = 6) {
+  /* reanálise: recalcula as métricas das cenas gravadas (DIVERSIDADE_SAIDA
+     de uma medição anterior), com o classificador atual; "sem fala" tira as
+     cenas que citam fala antiga, pra ver a dupla sozinha */
+  if (process.env.DIVERSIDADE_REANALISAR) {
+    for (const arq of process.env.DIVERSIDADE_REANALISAR.split(",")) {
+      const d = JSON.parse(fs.readFileSync(arq, "utf8"));
+      console.log("\n" + cinza(`${path.basename(arq)} (${d.modo || "local"})`));
+      for (const [rot, cenas] of [["todas", d.cenas], ["sem fala", d.cenas.filter(c => !c.memoria)]])
+        for (const tipo of ["coletiva", "entrevista"]) {
+          const m = divMetricas(cenas, tipo);
+          console.log(`  ${rot.padEnd(8)} ${tipo.padEnd(10)} cenas ${m.cenas} · categorias/carreira ${m.categoriasDistintasPorCarreira} · categoria repetida em 3 ${m.categoriaRepetidaEm3}% · forma igual à anterior ${m.formaIgualAnterior}% · forma mais usada ${m.formaMaisUsada} · aberturas distintas ${m.aberturasDistintas}% · perguntas quase repetidas ${m.quaseRepetidas}% · eventos quase repetidos ${m.eventosQuaseRepetidos}% · método ${m.ancoraNoMetodo}% · cita fala ${m.citaFalaDoJogador}% · passado ${m.referenciaAoPassado}% · fallback ${m.fallbackLocal}%`);
+        }
+    }
+    return true;
+  }
+  const modo = process.env.DIVERSIDADE_IA || "";
+  console.log("\n" + cinza(`diversidade: ${nCarreiras} carreiras de 22 lutas, cenas ${modo === "real" ? "da IA real" : modo === "seco" ? "pelo api/ai.js com OpenRouter falso (tamanho do prompt)" : "dos moldes locais"}`));
+  const url = require("url"), os = require("os");
+  const F = lerLutadores();
+  const R0 = sandboxCarreira(); R0.sb.__F = F;
+  const rosterJSON = R0.run("JSON.stringify(rateAll(globalThis.__F))");
+  const tem = (n, c) => (n.className || "").split(" ").includes(c);
+  const nosDe = (raiz, acc = []) => { if (!raiz) return acc; acc.push(raiz); (raiz.children || []).forEach(c => nosDe(c, acc)); return acc; };
+  const respirar = async (X, n = 3) => { for (let k = 0; k < n; k++) { X.drenar(); await respirarCarreira(); } };
+  /* IA: o handler de verdade (prompt, modelo e parse de produção), com o
+     Supabase falso dizendo Pro (não gasta cota) */
+  let host = async () => null, fetchOriginal = globalThis.fetch, envOriginal = { ...process.env };
+  const uso = { chamadas: 0, entrada: 0, saida: 0, caracteresPrompt: 0, max: Number(process.env.DIVERSIDADE_MAX) || 100 };
+  if (modo === "real" || modo === "seco") {
+    const H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "ai.js")).href)).default;
+    process.env.OPENROUTER_API_KEY = modo === "real" ? fs.readFileSync(path.join(os.homedir(), ".octogono-openrouter"), "utf8").trim() : "chave-falsa";
+    globalThis.fetch = async (u, op = {}) => {
+      u = String(u);
+      if (u.includes("/rest/v1/assinaturas")) return { ok: true, status: 200, json: async () => [{ pro: true, expira_em: null }] };
+      if (u.startsWith("https://openrouter.ai/")) {
+        const b = JSON.parse(op.body); uso.caracteresPrompt += b.messages.reduce((a, m) => a + m.content.length, 0);
+        if (modo === "seco") return { ok: false, status: 500, text: async () => "seco", json: async () => ({}) };
+        return fetchOriginal(u, op);
+      }
+      return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
+    };
+    host = async (kind, data) => {
+      if (uso.chamadas >= uso.max) return null;
+      uso.chamadas++;
+      const res = { cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } };
+      await H({ method: "POST", headers: {}, body: { kind, data: { ...data, token: "tok-medicao" } } }, res);
+      if (res.corpo && res.corpo.usage) { uso.entrada += res.corpo.usage.prompt_tokens || 0; uso.saida += res.corpo.usage.completion_tokens || 0; }
+      return res.cod === 200 ? res.corpo.result : null;
+    };
+  }
+  const cenas = [], chamadas = [], avaliacoes = [];
+  try {
+    for (let k = 0; k < nCarreiras; k++) {
+      const X = sandboxCarreira();
+      iniciarCarreiraTeste(X, F, 991000 + k * 7919, "normal", rosterJSON);
+      X.sb.__aiHost = host;
+      X.sb.__cenaDados = []; X.sb.__chamadas = {};
+      X.sb.__reacaoCol = d => { const r = DIV_RESPOSTAS_COL.find(x => x.t === d.resposta); return { reacao: "A sala anotou a resposta.", hype: 1.05, pressao: 1, atributoPressao: null, declaracao: r ? r.d : null }; };
+      X.sb.__reacaoEnt = () => ({ reacao: "A resposta circulou nas redes.", fa: 0.1, seguidores: 0.02, declaracao: { tom: "neutro", trecho: "", promessa: null } });
+      X.sb.__avaliacoes = [];
+      X.run(`(function(){const orig=cenaDaIA;cenaDaIA=function(j,local,tipo,op){
+        if(j)globalThis.__avaliacoes.push({tipo,motivo:avaliarCenaDaIA(j,tipo,op||{}).motivo||null,evento:j.evento||"",pergunta:j.pergunta||"",fala:!!(op&&op.exige)});
+        return orig(j,local,tipo,op);};})();`);
+      X.run(`auto=false;meuPro=true;ai=async(kind,data)=>{
+        globalThis.__chamadas[kind]=(globalThis.__chamadas[kind]||0)+1;
+        if(kind==="coletivaCena"||kind==="entrevistaCena"){globalThis.__cenaDados.push({kind,data:JSON.parse(JSON.stringify(data))});
+          const r=await globalThis.__aiHost(kind,data);return r==null?null:limparTextoIA(r);}
+        if(kind==="coletiva")return globalThis.__reacaoCol(data);
+        if(kind==="entrevista")return globalThis.__reacaoEnt(data);
+        return null;};`);
+      const anteriores = () => JSON.parse(X.run("JSON.stringify((st.registro||[]).map(r=>r.adv))"));
+      for (let guarda = 0; guarda < 200 && X.run("fightNo") < 22; guarda++) {
+        await respirar(X);
+        if (await resolverDilemaTeste(X, "aceito, sem problema")) { X.run("auto=false;"); continue; }
+        if (X.run("playing")) continue;
+        if (X.run("noiteEtapa") !== "oferta") X.run("auto=false;nextFight();");
+        await respirar(X);
+        const opps = (X.registro.opps ? X.registro.opps.children : []).filter(n => tem(n, "opp") && n.onclick);
+        if (!opps.length) continue;
+        const f0 = X.run("fightNo");
+        opps[(f0 + k) % opps.length].onclick();
+        const camps = (X.registro.camps ? X.registro.camps.children : []).filter(n => tem(n, "camp") && n.onclick);
+        camps[(f0 * 3 + k) % camps.length].onclick();
+        await X.run("cacheColetiva&&cacheColetiva.promessa");
+        await respirar(X);
+        const cc = JSON.parse(X.run("JSON.stringify({cena:cacheColetiva.cena,tema:cacheColetiva.tema,rep:cacheColetiva.reporter,cob:!!cacheColetiva.cobranca,opp:(ofertaAtual||[]).length?null:null})"));
+        const oppNome = X.run("cacheColetiva.chave.split(':').slice(2).join(':')");
+        cenas.push({ carreira: k, luta: f0 + 1, tipo: "coletiva", evento: cc.cena.evento, pergunta: cc.cena.pergunta, ia: !!cc.cena.ia, tema: cc.tema,
+          reporter: cc.rep.nome, memoria: cc.cob, nomes: ["TesteBot", oppNome], anteriores: anteriores() });
+        const resp = DIV_RESPOSTAS_COL[(f0 * 5 + k) % DIV_RESPOSTAS_COL.length];
+        if (X.registro.colresp && !X.registro.colgo.disabled) { X.registro.colresp.value = resp.t; await X.registro.colgo.onclick(); await respirar(X); }
+        if (X.registro.colseguir && X.registro.colseguir.onclick) X.registro.colseguir.onclick(); else X.registro.colpular.onclick();
+        for (let g = 0; g < 30 && X.run("playing"); g++) {
+          X.drenar(); await respirarCarreira();
+          const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+          if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+        }
+        await respirar(X);
+        const conv = nosDe(X.registro.posluta).filter(c => tem(c, "entrevista-convite")).pop();
+        const btn = conv && conv.children.find(c => c.onclick);
+        if (!btn) continue;
+        btn.onclick();
+        await X.run("cacheEntrevista&&cacheEntrevista.promessa");
+        await respirar(X);
+        const ce = JSON.parse(X.run("JSON.stringify({cena:cacheEntrevista.cena,ang:cacheEntrevista.angulo,rep:cacheEntrevista.reporter,fala:!!cacheEntrevista.falaCol})"));
+        const dados = X.sb.__cenaDados.filter(x => x.kind === "entrevistaCena").pop();
+        cenas.push({ carreira: k, luta: f0 + 1, tipo: "entrevista", evento: ce.cena.evento, pergunta: ce.cena.pergunta, ia: !!ce.cena.ia, tema: ce.ang,
+          fato: dados ? dados.data.fato : null, reporter: ce.rep.nome, memoria: ce.fala, nomes: ["TesteBot", oppNome], anteriores: anteriores().slice(0, -1) });
+        if (X.registro.entresp && !X.registro.entgo.disabled) {
+          X.registro.entresp.value = DIV_RESPOSTAS_ENT[(f0 + 2 * k) % DIV_RESPOSTAS_ENT.length];
+          await X.registro.entgo.onclick(); await respirar(X);
+        }
+        delete X.registro.colseguir; delete X.registro.colresp; delete X.registro.colgo; delete X.registro.entresp; delete X.registro.entgo;
+        const cont = X.registro.entcontinuar; delete X.registro.entcontinuar;
+        if (cont && cont.onclick) cont.onclick();
+        X.run("auto=false;");
+      }
+      chamadas.push({ ...X.sb.__chamadas, lutas: X.run("fightNo") });
+      avaliacoes.push(...X.sb.__avaliacoes.map(a => ({ ...a, carreira: k })));
+    }
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    for (const k of Object.keys(process.env)) if (!(k in envOriginal)) delete process.env[k];
+    Object.assign(process.env, envOriginal);
+  }
+  const col = divMetricas(cenas, "coletiva"), ent = divMetricas(cenas, "entrevista");
+  const linha = (nome, m) => console.log(`  ${nome.padEnd(10)} cenas ${m.cenas} · categorias distintas/carreira ${m.categoriasDistintasPorCarreira} · categoria repetida em 3 ${m.categoriaRepetidaEm3}% · forma mais usada ${m.formaMaisUsada} · forma igual à anterior ${m.formaIgualAnterior}% · aberturas distintas ${m.aberturasDistintas}% · quase repetidas ${m.quaseRepetidas}% · eventos quase repetidos ${m.eventosQuaseRepetidos}% · similaridade ${m.similaridadeMedia} · âncora no método ${m.ancoraNoMetodo}% · cita fala ${m.citaFalaDoJogador}% · passado ${m.referenciaAoPassado}% · fallback ${m.fallbackLocal}%`);
+  linha("coletiva", col); linha("entrevista", ent);
+  const somaCham = {}; for (const c of chamadas) for (const [k2, v] of Object.entries(c)) somaCham[k2] = (somaCham[k2] || 0) + v;
+  console.log("  chamadas de IA (todas as carreiras): " + Object.entries(somaCham).map(([k2, v]) => `${k2} ${v}`).join(" · "));
+  if (modo) console.log(`  api/ai.js: ${uso.chamadas} chamadas de cena · prompt ${Math.round(uso.caracteresPrompt / Math.max(uso.chamadas, 1))} caracteres por chamada${modo === "real" ? ` · tokens ${uso.entrada} entrada, ${uso.saida} saída` : ""}`);
+  if (avaliacoes.length) {
+    const mot = {}; for (const a of avaliacoes) { const k = `${a.tipo}${a.fala ? " com fala" : ""}: ${a.motivo || "aceita"}`; mot[k] = (mot[k] || 0) + 1; }
+    console.log("  cenas da IA por desfecho: " + Object.entries(mot).sort().map(([k2, v]) => `${k2} ${v}`).join(" · "));
+  }
+  if (process.env.DIVERSIDADE_SAIDA) fs.writeFileSync(process.env.DIVERSIDADE_SAIDA, JSON.stringify({ modo, coletiva: col, entrevista: ent, chamadas: somaCham, uso, cenas, avaliacoes }, null, 1));
+  const lutas = chamadas.map(c => c.lutas);
+  let ok = lutas.every(l => l === 22) && cenas.filter(c => c.tipo === "coletiva").length === 22 * nCarreiras;
+  console.log(ok ? verde("  diversidade medida (22 lutas em toda carreira)") : vermelho(`  carreira incompleta: ${lutas.join(",")} lutas, ${cenas.length} cenas`));
+  /* Guarda de regressão, só nos moldes locais (narrativa 2026-10-01). Antes
+     da mudança: coletiva 46% de perguntas quase repetidas e 8,3 categorias
+     de evento por carreira; entrevista 61% quase repetidas, 67% citando fala
+     antiga, 72% olhando pro passado. Consumo: uma chamada de cena e uma de
+     reação por coletiva e por entrevista, em toda luta. */
+  if (!modo) {
+    const limites = [
+      ["coletiva: perguntas quase repetidas ≤ 30%", col.quaseRepetidas <= 30], ["coletiva: categorias de evento por carreira ≥ 10", col.categoriasDistintasPorCarreira >= 10],
+      ["entrevista: perguntas quase repetidas ≤ 25%", ent.quaseRepetidas <= 25], ["entrevista: cita fala antiga ≤ 40%", ent.citaFalaDoJogador <= 40],
+      ["entrevista: olha pro passado ≤ 50%", ent.referenciaAoPassado <= 50],
+      ["consumo: 1 chamada de cena e 1 de reação por coletiva e por entrevista, em toda luta", chamadas.every(c => ["coletivaCena", "coletiva", "entrevistaCena", "entrevista"].every(k => c[k] === 22))],
+    ];
+    for (const [nome, passou] of limites) { console.log((passou ? verde("  ok    ") : vermelho("  falha ")) + nome); ok = ok && passou; }
+  }
+  return ok;
+}
+
+/* ================================================================== *
  * AMOSTRA GRÁTIS DO PRO (plano de evolução, etapa 2, 2026-10-01): cota
  * da CONTA no servidor (api/ai.js + api/_pro.js). O banco falso faz o
  * mesmo que consumir_uso_ia/devolver_uso_ia (supabase_schema.sql): conta
@@ -9810,6 +10235,7 @@ try {
   else if (cmd === "pagamento") ok = await testarPagamento();
   else if (cmd === "admin") ok = await testarAdmin();
   else if (cmd === "amostra") ok = await testarAmostra();
+  else if (cmd === "diversidade") ok = await testarDiversidade(Number(div) || 6);
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -9889,6 +10315,7 @@ try {
         ["pagamento", () => testarPagamento()],
         ["admin", () => testarAdmin()],
         ["amostra", () => testarAmostra()],
+        ["diversidade", () => testarDiversidade(6)],
         ["personagem", () => testarPersonagem()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],

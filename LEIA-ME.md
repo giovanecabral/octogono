@@ -3418,6 +3418,103 @@ provado: sem fechar a fala no fim da luta, sem a trava anti-invenção, com
 o trecho da IA sem conferir, sem o cache da cena, sem aspas simples e com
 "mandou" solto, reprova.
 
+## Narrativa das cenas: menos repetição, mais continuidade (2026-10-01)
+
+**Pedido do dono:** coletivas e entrevistas repetitivas. Reduzir a
+repetição, criar continuidade e diversidade real, sem chamada nova de IA,
+sem banco, sem mexer no motor nem nos 8 geradores, com save antigo abrindo.
+
+**Medido antes** (suíte `diversidade`: carreiras de 22 lutas pelo caminho
+real, respondendo coletiva e entrevista; mede estrutura, não só texto
+igual): 10 temas e 10 ângulos girando; a pergunta da entrevista ancorada
+no método da luta em 75% das cenas da IA; a fala da coletiva citada em
+67% das entrevistas; revanche citando fala antiga toda vez; exemplo fixo
+do prompt virando cópia; repórteres sem personalidade; moldes locais com
+46% (coletiva) e 61% (entrevista) de perguntas quase repetidas.
+
+**O que mudou** (`index.html`, `api/ai.js`):
+- **Dupla situação × estrutura** (`escolherCena`): 23 situações de
+  coletiva e 18 de entrevista, 8 formas de pergunta (dado, comparação,
+  escolha, hipótese, terceiro, pessoa, bastidor, direta); cada situação
+  só aceita as formas que combinam com ela. Situação sai de cartela sem
+  reposição; a forma usada há mais tempo vem primeiro. Situação com fato
+  importante (cinturão, rival, lesão, sequência, estreia, revanche, volta
+  depois de derrota, reencontro, virada, tropeço) tem prioridade quando
+  vale. Gerador local e descartável: nenhum dos 8 do save. A memória
+  entre carreiras (localStorage, `memSituacoes*`) só reordena, nunca é
+  histórico da conta. O molde local usa a mesma dupla (`cenaLocal`).
+- **Prompt sem exemplo fixo**: saíram o JSON de exemplo, as listas de
+  eventos e o "assim: 'as palavras dele, copiadas'" (medido: a IA copiava
+  o texto). Entram a situação, a forma, o evento de base da situação, os
+  8 últimos acontecimentos (curtos) e as recentes **sem a fala citada**
+  (medido: a IA reaproveitava fala antiga em cena que não podia citar).
+  O repórter não é assunto do evento; gente de fora do card não tem nome.
+- **Repórter com linha editorial e veículo fixo** (`LINHA_EDITORIAL`),
+  escalado pelas situações que combinam com ele, nunca o mesmo duas cenas
+  seguidas do mesmo tipo.
+- **Passado só quando escolhido, e alternado**: o dossiê (`dossieCarreira`:
+  últimas 3 lutas e sequência, só do registro) vai pra IA só quando a cena
+  olha pro passado (fio, forma comparação, fato "luta anterior"); depois
+  de uma cena que olhou pro passado, a seguinte do mesmo tipo não olha. A
+  revanche cita a fala do encontro anterior uma vez só. Na entrevista do
+  Pro, a fala da coletiva volta só quando o resultado a torna notável
+  (promessa cumprida, quebrada ou pela metade; provocação seguida de
+  derrota); na amostra grátis volta sempre. Lesão é fato obrigatório uma
+  vez por lesão. O fato da entrevista gira entre método, momento que mais
+  pesou (do log da luta), quedas e luta anterior; cinturão e zebra
+  continuam obrigatórios.
+- **Filtro de similaridade** (`cenaParecidaDemais`): cena da IA com
+  metade das palavras de conteúdo da pergunta (ou 0,55 do evento) em comum
+  com uma das 8 últimas cai no molde local. Sem nomes, números nem a fala
+  citada. Medido nas 76 cenas reais de antes: nenhum falso positivo em
+  cena diferente; tudo que passou do limiar era o mesmo acontecimento
+  reescrito. O descarte tem motivo (`avaliarCenaDaIA`).
+- **Anti-invenção sem falso positivo**: retomar a fala já citada na mesma
+  cena ("não do jeito que você disse") passa; "garantiu" só conta como fala
+  com "que", dois-pontos ou aspas; nome do lutador depois de preposição é
+  objeto. Prefixo "Nome (Veículo):", só o primeiro nome do repórter e
+  vocativo pra repórter saem da pergunta.
+
+**Resultados** (mesmas carreiras e respostas, antes e depois):
+
+| | moldes locais antes | depois | IA real antes | depois |
+|---|---|---|---|---|
+| coletiva: perguntas quase repetidas | 46% | 24% | 9% | 11% |
+| coletiva: eventos quase repetidos | 45% | 29% | 14% | 7% |
+| coletiva: categorias de evento por carreira | 8,3 | 11,3 | 8 | 13 |
+| entrevista: perguntas quase repetidas | 61% | 16% | 5% | 0% |
+| entrevista: âncora no método | 69% | 36% | 75% | 73% |
+| entrevista: cita fala antiga | 67% | 27% | 68% | 32% |
+| entrevista: olha pro passado | 72% | 40% | 77% | 45% |
+| entrevista: categoria repetida em 3 cenas | 47% | 33% | 55% | 36% |
+
+**Consumo**: as mesmas chamadas (uma de cena e uma de reação por coletiva
+e por entrevista, a suíte confere). O prompt de cena cresceu de 6.426
+para 7.435 caracteres (cerca de 250 tokens, menos de US$ 0,00001 por
+chamada). As medições com a IA real foram autorizadas pelo dono: 4
+rodadas, cerca de US$ 0,02.
+
+**Fallback da IA** (cena descartada que vira molde local): 14% antes; 20%
+(coletiva) e 25% (entrevista) na confirmação; com os três ajustes finais
+de falso positivo, a reavaliação das respostas gravadas dá cerca de 19%.
+O que sobra é descarte por regra: paráfrase de fala em cena de cobrança
+(a regra anti-invenção não aceita fala sem citação), invenção e
+repetição real do modelo.
+
+**Banco**: nada. Save: `st.narrativa` é campo novo e opcional (cartela,
+situações, formas, passado, fatos); save antigo abre e cria na hora, e a
+`cartelaCena` antiga é ignorada.
+
+**Teste**: suíte `diversidade` (em `tudo`, só moldes locais, com limites:
+coletiva ≤ 30% de perguntas quase repetidas e ≥ 10 categorias por
+carreira; entrevista ≤ 25%, ≤ 40% citando fala, ≤ 50% olhando pro
+passado; consumo igual). Modos: `DIVERSIDADE_IA=seco` (tamanho do prompt,
+sem rede), `DIVERSIDADE_IA=real` (só com autorização do dono, teto
+`DIVERSIDADE_MAX`), `DIVERSIDADE_REANALISAR` (recalcula das cenas
+gravadas). Na `falas` e na `pro`: dupla, filtro (com 17 cenas reais sem
+falso positivo), continuidade sem forçar, rodízio do fato, dossiê, save
+novo e antigo, anti-invenção. Dente provado com 19 quebras.
+
 ## Amostra grátis do Pro (etapa 2 do plano de evolução, 2026-10-01)
 
 **Pedido do dono:** quem não tem o Pro precisa experimentar a coletiva e a

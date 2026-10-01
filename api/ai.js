@@ -601,15 +601,24 @@ Proibidas as perguntas genéricas: "como você está?", "como se sente?", "qual
 é a sua estratégia?", "o que achou da luta?", "algum recado pros fãs?".
 Fale como a imprensa fala, nunca com número de seguidor nem rótulo de nível
 do jogo. Lutador de MMA luta no octógono, nunca "ringue".
-O repórter já vem dado nos dados (nome e veículo): é ele quem pergunta.
-Não invente outro jornalista com nome.
-Formato de exemplo (não copie o conteúdo, Fulano é só o lugar do nome):
-{"evento":"O treinador de Fulano puxou o microfone da mesa e disse que o boxe do seu lutador é \"de academia de bairro\".","pergunta":"O treinador dele chamou o seu boxe de coisa de academia de bairro. Isso te ofende ou te diverte?"}
+O repórter já vem dado nos dados (nome, veículo e linha editorial): é ele
+quem pergunta, do jeito da linha editorial dele, sem dizer qual é. Não
+invente outro jornalista com nome. Gente de fora do card (torcedor,
+ex-campeão, empresário, convidado) aparece sem nome; nenhum nome de pessoa
+real além dos que vierem nos dados. A pergunta nunca começa chamando
+alguém pelo nome, a não ser o próprio lutador do jogador.
+Siga a situação e a forma da pergunta que vierem nos dados: a situação diz
+o que acontece; a forma diz como o repórter pergunta. Luta anterior, só a
+que vier nos dados.
+Se vier "Evento de base", conte esse acontecimento do seu jeito: pode
+mudar detalhes e palavras, não o tipo de acontecimento. O repórter não é
+o assunto do evento (ele só pergunta). Nada parecido com os "Acontecimentos
+já usados", se vierem.
 Se vier "Cenas recentes desta carreira", não repita a situação nem a
 pergunta de nenhuma delas.
 Pra mencionar o que o lutador disse, use SÓ a fala que vier nos dados,
-copiada palavra por palavra entre aspas simples, assim: Na coletiva você
-disse 'as palavras dele, copiadas'. Nunca descreva a fala com outras
+copiada palavra por palavra entre aspas simples (só o trecho que vier, sem
+mudar nenhuma palavra). Nunca descreva a fala com outras
 palavras ("você prometeu que ia...", "você disse que ele era..."), nunca
 invente uma fala dele e nunca invente número que não veio nos dados
 (placar, tempo, estatística).`;
@@ -621,11 +630,6 @@ PROMPTS.coletivaCena = d => ({
   system: `${VOZ}
 Você monta a cena de uma coletiva de imprensa de MMA, ANTES da luta: o que acontece na sala e a pergunta que um repórter faz para o lutador do jogador.
 ${CENA_FORMATO}
-Exemplos de evento (não copie, é só o tamanho): o adversário chega vinte
-minutos atrasado e senta sem cumprimentar ninguém; o treinador dele pega o
-microfone pra responder uma pergunta que era pro lutador; na encarada, a
-segurança precisa separar os dois; um torcedor grita da porta; o microfone
-da mesa falha e alguém ri.
 A LUTA AINDA NÃO ACONTECEU: você nunca afirma nem sugere quem vai ganhar,
 como termina ou em que round.
 Se vier "Fala antiga do lutador", a pergunta TEM que cobrar essa fala:
@@ -638,26 +642,27 @@ Camp que ${d.name} escolheu pra esta luta: ${d.camp}.` : ""}${d.lesao ? `
 Está machucado: ${d.lesao}.` : ""}${d.historicoRival ? `
 Histórico com este rival: ${d.historicoRival}` : ""}${Array.isArray(d.memoria) && d.memoria.length ? `
 Fala antiga do lutador (real, cite exatamente): ${d.memoria.slice(0, 2).map(m => String(m).slice(0, 320)).join(" | ")}` : ""}
-Repórter: ${d.reporter}.
-Tema desta vez: ${d.tema}.${cenaRecentes(d)}`,
+Repórter: ${d.reporter}.${d.linhaReporter ? ` Linha editorial: ${d.linhaReporter}.` : ""}
+Situação desta vez: ${d.tema}.${d.estrutura ? `
+Forma da pergunta: ${d.estrutura}.` : ""}${d.anterior ? `
+Luta anterior dele: ${d.anterior}.` : ""}${d.eventoBase ? `
+Evento de base: ${String(d.eventoBase).slice(0, 220)}` : ""}${Array.isArray(d.eventosUsados) && d.eventosUsados.length ? `
+Acontecimentos já usados nesta carreira: ${d.eventosUsados.slice(0, 8).map(e => String(e).slice(0, 110)).join(" | ")}` : ""}${d.dossie ? `
+Histórico real da carreira (use só o que servir à pergunta; nunca invente outro fato): ${String(d.dossie).slice(0, 420)}.` : ""}${cenaRecentes(d)}`,
 });
 
 PROMPTS.entrevistaCena = d => ({
   system: `${VOZ}
 Você monta a cena da entrevista logo DEPOIS de uma luta de MMA: o que acontece na hora e a pergunta que o repórter faz para o lutador do jogador.
 ${CENA_FORMATO}
-A pergunta TEM que tratar deste fato da luta: ${d.fato}. Chegue nele pelo
-ângulo pedido, por um caminho diferente do óbvio.
+A pergunta TEM que tratar deste fato da luta: ${d.fato}. Chegue nele pela
+situação e pela forma pedidas, por um caminho diferente do óbvio.
 Se o fato trouxer uma fala do lutador entre aspas, a pergunta cita essa fala
 exatamente, entre aspas, e a confronta com o resultado da luta (cumpriu,
 não cumpriu, venceu mas não do jeito que disse, perdeu depois de provocar):
 nunca só repete a fala. Sem fala no fato, não mencione nada que ele tenha
 dito antes.
-Exemplos de evento (não copie, é só o tamanho): o adversário passa atrás e
-fala alguma coisa; o médico interrompe pra olhar o supercílio; a equipe
-invade a área e levanta o lutador; o cabo do microfone enrosca na grade;
-alguém entrega um celular com uma ligação da família. Coerente com o
-resultado: quem perdeu não comemora e ninguém dedica derrota; na derrota o
+Coerente com o resultado: quem perdeu não comemora e ninguém dedica derrota; na derrota o
 ângulo vira cobrança ou explicação. O lugar é a área de entrevista logo
 depois da luta, ainda na arena.
 Você NUNCA menciona, sugere ou prediz nada sobre a PRÓXIMA luta dele
@@ -667,9 +672,14 @@ Resultado: ${d.ganhou ? "venceu" : "perdeu"} ${d.opp} por ${d.metodo}, round ${d
 Está machucado: ${d.lesao}.` : ""}${d.historicoRival ? `
 Histórico com este rival: ${d.historicoRival}` : ""}
 Quedas aplicadas: ${d.tdApl} | quedas sofridas: ${d.tdSof}.
-Repórter: ${d.reporter}.
+Repórter: ${d.reporter}.${d.linhaReporter ? ` Linha editorial: ${d.linhaReporter}.` : ""}
 Fato que a pergunta tem que tratar: ${d.fato}.
-Ângulo desta vez: ${d.angulo}.${cenaRecentes(d)}`,
+Situação desta vez: ${d.angulo}.${d.estrutura ? `
+Forma da pergunta: ${d.estrutura}.` : ""}${d.anterior ? `
+Luta anterior dele: ${d.anterior}.` : ""}${d.eventoBase ? `
+Evento de base: ${String(d.eventoBase).slice(0, 220)}` : ""}${Array.isArray(d.eventosUsados) && d.eventosUsados.length ? `
+Acontecimentos já usados nesta carreira: ${d.eventosUsados.slice(0, 8).map(e => String(e).slice(0, 110)).join(" | ")}` : ""}${d.dossie ? `
+Histórico real da carreira (use só o que servir à pergunta; nunca invente outro fato): ${String(d.dossie).slice(0, 420)}.` : ""}${cenaRecentes(d)}`,
 });
 
 /* Plano Pro (2026-09-21) — kinds que exigem assinatura Pro ativa. Ver

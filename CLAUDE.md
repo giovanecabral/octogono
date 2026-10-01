@@ -191,6 +191,14 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   `LIMITE_AMOSTRA_IA`, padrão 6). Banco fora = recusa; IA falhou depois
   de contar = `devolver_uso_ia`. `AMOSTRA_NEGADA` no cliente é só
   interface. Nada da carreira entra na cota. Suítes `amostra` e `hub`.
+- **Narrativa das cenas (2026-10-01).** A cena é uma dupla situação ×
+  forma de pergunta escolhida no cliente (`escolherCena`, sem os 8
+  geradores; memória entre carreiras só reordena). O prompt não leva
+  exemplo fixo (a IA copia). Passado só quando a cena foi escolhida pra
+  olhar pro passado, com alternância; o filtro de similaridade
+  (`cenaParecidaDemais`) e a anti-invenção (`falasAtribuidasOk`) ficam.
+  Suíte `diversidade` tem limites; medir com a IA real só com
+  autorização do dono (gasta crédito).
 - **Coletiva e entrevista: a imprensa é fictícia e escolhida no cliente.**
   Card da direita é foto do lugar + repórter de `REPORTERES` (nunca o
   adversário, nunca jornalista real). A IA só escreve a cena
