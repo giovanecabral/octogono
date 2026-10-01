@@ -2273,13 +2273,18 @@ ver o resultado da anterior. Nenhum SQL roda sem aprovação explícita dele.
 Pedido do dono depois da amostra grátis, aprovado com ordem fixa:
 medir, dupla situação × estrutura + prompt sem exemplo fixo + repórter
 com linha editorial, dossiê + fios + fato variado, filtro de
-similaridade. Feito na branch `narrativa`, NÃO no ar (deploy só com
-aprovação do dono). Ver LEIA-ME "Narrativa das cenas". Sem banco, sem
-chamada nova de IA, sem mexer no motor nem nos 8 geradores.
+similaridade. No ar desde 2026-10-01 (master `437496c`, deploy
+`dpl_6T41fkcTrudXYZ3p6agMSFCZjuX6`; rollback: o deploy anterior
+`dpl_9eXSLcxkq9paEarpWrsm44RnXcqk`). Ver LEIA-ME "Narrativa das cenas". Sem
+banco, sem chamada nova de IA, sem mexer no motor nem nos 8 geradores.
+Verificado em produção sem conta (carreira montada na página, IA
+bloqueada): falta o dono conferir com conta Pro e Free de verdade, com a
+IA real.
 
 - Fallback da IA medido em 20-25% (era 14%); a reavaliação com os ajustes
   finais dá cerca de 19%. O resto é descarte por regra. Se quiser menos:
   aceitar paráfrase fiel da fala na cobrança, o que afrouxa a regra
   anti-invenção (decisão do dono).
 - As medições com a IA real só rodam com autorização do dono.
+- Não há /favicon.ico (404 no navegador, já era assim antes).
 
