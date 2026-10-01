@@ -765,7 +765,7 @@ export default async function handler(req, res) {
   const devolver = async () => {
     if (!cota || devolvida) return;
     devolvida = true;
-    await devolverUsoIA(cota.uid, cota.grupo);
+    await devolverUsoIA(cota.uid, cota.grupo, cota.janela);
   };
   if (PRO_KINDS.has(kind)) {
     const pro = await verificarPro(data && data.token);
@@ -775,10 +775,10 @@ export default async function handler(req, res) {
       if (!uid) return res.status(401).json({ error: "sem sessão", cota: "sem-sessao", transitorio: false });
       /* limite 0 desliga a amostra sem nem consultar o banco */
       const limite = limiteAmostra();
-      const v = limite < 1 ? "esgotada" : await consumirUsoIA(uid, "amostra", limite);
-      if (v === "esgotada") return res.status(403).json({ error: "amostra esgotada", cota: "esgotada", transitorio: false });
-      if (v !== "ok") return res.status(503).json({ error: "cota indisponível", cota: "indisponivel", transitorio: false });
-      cota = { uid, grupo: "amostra" };
+      const v = limite < 1 ? { estado: "esgotada" } : await consumirUsoIA(uid, "amostra", limite);
+      if (v.estado === "esgotada") return res.status(403).json({ error: "amostra esgotada", cota: "esgotada", transitorio: false });
+      if (v.estado !== "ok") return res.status(503).json({ error: "cota indisponível", cota: "indisponivel", transitorio: false });
+      cota = { uid, grupo: "amostra", janela: v.janela };
     }
   }
 

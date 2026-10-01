@@ -307,7 +307,9 @@ grant execute on function public.admin_listar_usuarios(text, int, int) to servic
 -- por carreira. 'geral' fica reservado pro teto do Pro (etapa 6).
 -- Só o servidor (service_role) chama as funções; o jogador não lê nem
 -- grava a tabela (RLS ligada e nenhuma policy). Nada aqui apaga ou muda
--- tabela que já existe.
+-- tabela que já existe. `chamadas` é a conta da janela atual (a devolução
+-- desconta); `total` é histórico: toda chamada que já foi contada, nunca
+-- diminui.
 create table if not exists uso_ia (
   user_id uuid not null references auth.users(id) on delete cascade,
   grupo text not null check (grupo in ('amostra', 'geral')),
@@ -322,12 +324,14 @@ alter table uso_ia enable row level security;
 -- mesmo tempo disputam a mesma linha, o Postgres trava a linha e a
 -- segunda confere o limite já com a primeira contada. Janela de 24 h a
 -- partir da 1ª chamada; vencida, recomeça do 1. Recusa não conta nada.
--- Limite 0 (ou vazio) recusa sempre.
+-- Limite 0 (ou vazio) recusa sempre. Devolve o início da janela em que a
+-- chamada foi contada (o servidor guarda pra uma eventual devolução), ou
+-- null quando recusa.
 create or replace function public.consumir_uso_ia(uid uuid, grupo_ text, limite integer)
-returns boolean language plpgsql security definer set search_path = public as $$
-declare ok boolean;
+returns timestamptz language plpgsql security definer set search_path = public as $$
+declare janela timestamptz;
 begin
-  if limite is null or limite < 1 then return false; end if;
+  if limite is null or limite < 1 then return null; end if;
   insert into uso_ia as u (user_id, grupo, janela_inicio, chamadas, total)
   values (uid, grupo_, now(), 1, 1)
   on conflict (user_id, grupo) do update set
@@ -335,25 +339,30 @@ begin
     chamadas = case when u.janela_inicio < now() - interval '24 hours' then 1 else u.chamadas + 1 end,
     total = u.total + 1
   where u.janela_inicio < now() - interval '24 hours' or u.chamadas < limite
-  returning true into ok;
-  return coalesce(ok, false);
+  returning janela_inicio into janela;
+  return janela;
 end $$;
 revoke execute on function public.consumir_uso_ia(uuid, text, integer) from public, anon, authenticated;
 grant execute on function public.consumir_uso_ia(uuid, text, integer) to service_role;
 
 -- A IA falhou depois de contar (OpenRouter fora, timeout, resposta
--- vazia): devolve a unidade.
-create or replace function public.devolver_uso_ia(uid uuid, grupo_ text)
+-- vazia): devolve a unidade SÓ se a janela em que ela foi contada
+-- (`janela`, o que consumir_uso_ia devolveu) ainda é a janela atual e não
+-- venceu. Janela anterior ou vencida: não mexe em nada. O total não
+-- diminui.
+create or replace function public.devolver_uso_ia(uid uuid, grupo_ text, janela timestamptz)
 returns void language sql security definer set search_path = public as $$
-  update uso_ia set chamadas = greatest(chamadas - 1, 0), total = greatest(total - 1, 0)
+  update uso_ia set chamadas = greatest(chamadas - 1, 0)
   where user_id = uid and grupo = grupo_
+    and janela_inicio = janela
+    and janela_inicio >= now() - interval '24 hours'
 $$;
-revoke execute on function public.devolver_uso_ia(uuid, text) from public, anon, authenticated;
-grant execute on function public.devolver_uso_ia(uuid, text) to service_role;
+revoke execute on function public.devolver_uso_ia(uuid, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.devolver_uso_ia(uuid, text, timestamptz) to service_role;
 
 -- Monitorar (só leitura, no SQL Editor; o LEIA-ME "Amostra grátis" explica):
 --   contas que usaram a amostra nas últimas 24 h, e quantas bateram o limite:
 --     select count(*) as contas, count(*) filter (where chamadas >= 6) as no_limite
 --     from uso_ia where grupo = 'amostra' and janela_inicio > now() - interval '24 hours';
---   chamadas da amostra desde sempre:
+--   chamadas da amostra contadas desde sempre (inclui as devolvidas porque a IA falhou):
 --     select sum(total) from uso_ia where grupo = 'amostra';

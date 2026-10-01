@@ -3451,9 +3451,19 @@ o jogo manda (semente, carreira, luta) entra nela.
 | sem login válido | 401, `cota: "sem-sessao"` | cena travada, "Não deu pra conferir a amostra" |
 | cota da conta usada | 403, `cota: "esgotada"` | cena travada, "já foi usada nas últimas 24 horas" |
 | banco fora, função ainda não criada, resposta estranha | 503, `cota: "indisponivel"` | igual ao sem login |
-| IA falhou depois de contar (OpenRouter 500/429, timeout, rede, vazio, não JSON, dado inválido) | 5xx | a unidade volta (`devolver_uso_ia`), uma vez só |
+| IA falhou depois de contar (OpenRouter 500/429, timeout, rede, vazio, não JSON, dado inválido) | 5xx | a unidade volta (`devolver_uso_ia`), uma vez só, e só se a janela em que foi contada ainda for a atual |
 
-Recusa não conta nada. Sem a confirmação do banco, nunca libera. Erro de
+Recusa não conta nada. Sem a confirmação do banco, nunca libera.
+`consumir_uso_ia` devolve o início da janela em que contou a chamada; o
+servidor guarda e manda de volta na devolução, e o banco só desconta se
+essa ainda for a janela atual (se outra chamada abriu janela nova no
+meio, a devolução não mexe nela). A conta da conta é só a do token,
+conferida no Supabase (`/auth/v1/user`): id mandado pelo navegador é
+ignorado. Cada pedido conta no máximo uma vez e devolve no máximo uma vez
+(a trava `devolvida` no `api/ai.js` vale até quando o erro cai no
+`catch`, que tenta devolver de novo). `chamadas` é a conta da janela
+atual, já com as devoluções; `total` é histórico, toda chamada que já foi
+contada, e nunca diminui. Erro de
 chamada da amostra não devolve texto da IA no eco de diagnóstico (senão o
 erro, que devolve a unidade, virava IA de graça). No cliente, a recusa
 fica em `AMOSTRA_NEGADA` pelo resto da sessão (o logout limpa), só pra
@@ -3476,7 +3486,7 @@ inválida vale 6. Variável nova ou mudada só vale depois de um deploy novo
 -- contas que usaram a amostra nas últimas 24 h, e quantas bateram o limite
 select count(*) as contas, count(*) filter (where chamadas >= 6) as no_limite
 from uso_ia where grupo = 'amostra' and janela_inicio > now() - interval '24 hours';
--- chamadas da amostra desde sempre
+-- chamadas contadas desde sempre (inclui as devolvidas porque a IA falhou)
 select sum(total) from uso_ia where grupo = 'amostra';
 ```
 
@@ -3498,14 +3508,19 @@ cai em "indisponível" e o grátis da 1ª luta vê a recusa.
 
 **Teste:** suíte nova `amostra` (servidor, com banco e OpenRouter falsos:
 libera e conta, 7ª recusada, carreira nova não zera, recusa não conta,
-sem sessão, Pro não gasta, banco fora em 4 formas, IA falha em 6 formas e
-devolve uma vez, retentativa, 10 simultâneas com limite 6 em 20 rodadas,
+sem sessão, Pro não gasta, banco fora em 4 formas (inclusive a resposta
+da versão antiga da função), IA falha em 6 formas e devolve uma vez na
+janela certa com o total intacto, devolução dupla barrada, janela virada
+no meio, id do navegador ignorado, retentativa, 10 simultâneas com limite
+6 em 20 rodadas,
 simultâneas com falha no meio, `LIMITE_AMOSTRA_IA`, evento e feed fora da
 cota) e 5 testes novos na `hub` (coletiva e entrevista da amostra abertas
 com `amostra:true`, continuidade com o resultado, recusa esgotada e
 indisponível travando com o motivo, luta 2 travada sem chamar a IA). Dente
 provado nos dois lados: sem devolver a unidade, banco fora liberando,
-amostra pulando o Pro, sem conferir a sessão, erro com texto da IA, sem
+amostra pulando o Pro, sem conferir a sessão, erro com texto da IA,
+devolução sem a janela, id da conta vindo do navegador, resposta antiga
+aceita, sem a trava de devolução dupla, sem
 `amostra:true` na cena, amostra em qualquer luta, cliente ignorando a
 recusa, entrevista só com provocação e promessa, cena só do molde local:
 reprova. O teste achou um bug na hora: `LIMITE_AMOSTRA_IA` vazia virava 0

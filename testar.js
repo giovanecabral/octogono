@@ -7992,7 +7992,9 @@ async function testarPagamento() {
  * AMOSTRA GRÁTIS DO PRO (plano de evolução, etapa 2, 2026-10-01): cota
  * da CONTA no servidor (api/ai.js + api/_pro.js). O banco falso faz o
  * mesmo que consumir_uso_ia/devolver_uso_ia (supabase_schema.sql): conta
- * e confere o limite num passo só, com espera aleatória antes e depois
+ * e confere o limite num passo só e devolve o início da janela; a
+ * devolução só desconta na mesma janela e o total nunca diminui. Espera
+ * aleatória antes e depois
  * pra embaralhar chamadas simultâneas. Prova a lógica do servidor; a
  * atomicidade de verdade é do Postgres (um INSERT ... ON CONFLICT DO
  * UPDATE ... WHERE trava a linha).
@@ -8010,16 +8012,20 @@ async function testarAmostra() {
   catch (e) { console.log(vermelho("  não carregou api/ai.js: " + e.message)); return false; }
   const U1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", U2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", UP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
   const tokens = { "tok-u1": U1, "tok-u2": U2, "tok-pro": UP };
-  let banco, rpcModo, iaFila, iaCorpos, rpc;
-  const zerar = () => { banco = new Map(); rpcModo = "ok"; iaFila = []; iaCorpos = []; rpc = []; };
+  let banco, rpcModo, iaFila, iaCorpos, rpc, nJanela;
+  const zerar = () => { banco = new Map(); rpcModo = "ok"; iaFila = []; iaCorpos = []; rpc = []; nJanela = 0; };
   const linha = (uid) => banco.get(uid + "|amostra") || { chamadas: 0, total: 0 };
+  /* início de janela no formato que o PostgREST devolve um timestamptz,
+     com microssegundos: reformatar (new Date().toISOString()) perde os
+     três últimos dígitos e a devolução não acharia a janela */
+  const novaJanela = () => `2026-10-01T12:${String(++nJanela).padStart(2, "0")}:00.123456+00:00`;
   const consumir = (uid, grupo, limite) => {
-    if (!(limite >= 1)) return false;
+    if (!(limite >= 1)) return null;
     const k = uid + "|" + grupo, r = banco.get(k);
-    if (!r) { banco.set(k, { chamadas: 1, total: 1 }); return true; }
-    if (r.chamadas >= limite) return false;
+    if (!r) { const j = novaJanela(); banco.set(k, { chamadas: 1, total: 1, janela: j }); return j; }
+    if (r.chamadas >= limite) return null;
     r.chamadas++; r.total++;
-    return true;
+    return r.janela;
   };
   const espera = () => new Promise(r => setTimeout(r, Math.random() * 6));
   const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
@@ -8035,7 +8041,7 @@ async function testarAmostra() {
       if (rpcModo === "rede") throw new Error("ECONNRESET");
       if (rpcModo === "500") return ok({ message: "erro interno" }, 500);
       if (rpcModo === "404") return ok({ message: "Could not find the function public.consumir_uso_ia" }, 404);
-      if (rpcModo === "estranho") return ok(null);
+      if (rpcModo === "estranho") return ok(true);   // formato da versão antiga da função: sem janela não libera
       const v = consumir(b.uid, b.grupo_, b.limite);
       await espera();
       return ok(v);
@@ -8044,13 +8050,16 @@ async function testarAmostra() {
       const b = JSON.parse(op.body); rpc.push(["devolver", b]);
       await espera();
       const r = banco.get(b.uid + "|" + b.grupo_);
-      if (r) { r.chamadas = Math.max(r.chamadas - 1, 0); r.total = Math.max(r.total - 1, 0); }
+      if (r && r.janela === b.janela) r.chamadas = Math.max(r.chamadas - 1, 0);
       return ok(null, 204);
     }
     if (u.startsWith("https://openrouter.ai/")) {
       iaCorpos.push(op.body);
       await espera();
       const modo = iaFila.length ? iaFila.shift() : "ok";
+      /* outra chamada abriu janela nova enquanto esta esperava a IA, e
+         esta falha depois */
+      if (modo === "virada") { const r = banco.get(U1 + "|amostra"); r.janela = novaJanela(); r.chamadas = 1; r.total++; return { ok: false, status: 500, text: async () => "erro", json: async () => ({}) }; }
       if (modo === "timeout") { const e = new Error("abortou"); e.name = "AbortError"; throw e; }
       if (modo === "rede") throw new Error("ECONNRESET");
       if (modo === "500" || modo === "429") return { ok: false, status: +modo, text: async () => "erro do upstream", json: async () => ({}) };
@@ -8128,19 +8137,48 @@ async function testarAmostra() {
         if (iaCorpos.length) throw new Error("chamou a IA sem confirmação do banco");
       });
     for (const modo of ["500", "429", "vazio", "naojson", "timeout", "rede"])
-      await conf(`IA falha depois de contar (${modo}): a unidade volta uma vez só, e o erro não leva texto da IA`, async () => {
+      await conf(`IA falha depois de contar (${modo}): a unidade volta uma vez só, na janela em que foi contada, o total histórico fica, e o erro não leva texto da IA`, async () => {
         zerar(); iaFila = [modo];
         const r = await chamar("tok-u1");
         if (r.cod < 500) throw new Error("status " + r.cod);
         if (devolucoes() !== 1) throw new Error(devolucoes() + " devoluções");
-        if (linha(U1).chamadas !== 0 || linha(U1).total !== 0) throw new Error("ficou contada: " + JSON.stringify(linha(U1)));
+        const dev = rpc.find(x => x[0] === "devolver")[1];
+        if (dev.uid !== U1 || dev.grupo_ !== "amostra" || dev.janela !== linha(U1).janela) throw new Error("devolução sem a janela certa: " + JSON.stringify(dev));
+        if (linha(U1).chamadas !== 0 || linha(U1).total !== 1) throw new Error("conta errada: " + JSON.stringify(linha(U1)));
         if (r.corpo.amostra) throw new Error("o erro devolveu texto da IA de graça: " + r.corpo.amostra);
       });
-    await conf("retentativa do jogo (429 e de novo): conta só a que deu certo", async () => {
+    await conf("uma devolução por chamada, mesmo quando a resposta de erro falha no meio e o erro cai no catch (que devolve de novo)", async () => {
+      zerar(); iaFila = ["500"];
+      const res = resposta();
+      let jsons = 0;
+      res.json = function (b) { if (++jsons === 1) throw new Error("resposta caiu"); this.corpo = b; return this; };
+      try { await H({ method: "POST", headers: {}, body: { kind: "coletivaCena", data: { name: "Teste", opp: "Rival", token: "tok-u1", amostra: true } } }, res); } catch {}
+      if (devolucoes() !== 1) throw new Error(devolucoes() + " devoluções");
+      if (linha(U1).chamadas !== 0) throw new Error(JSON.stringify(linha(U1)));
+    });
+    await conf("devolução de janela que já virou não mexe na janela nova", async () => {
+      zerar(); iaFila = ["virada"];
+      await chamar("tok-u1");
+      const r = linha(U1), dev = rpc.find(x => x[0] === "devolver");
+      if (!dev || dev[1].janela === r.janela) throw new Error("a devolução não levou a janela antiga: " + JSON.stringify(dev && dev[1]));
+      if (r.chamadas !== 1 || r.total !== 2) throw new Error("mexeu na janela nova: " + JSON.stringify(r));
+    });
+    await conf("retentativa do jogo (429 e de novo): na janela conta só a que deu certo; o total histórico conta as duas", async () => {
       zerar(); iaFila = ["429", "ok"];
       const a = await chamar("tok-u1"), b = await chamar("tok-u1");
       if (a.cod !== 502 || a.corpo.status !== 429 || b.cod !== 200) throw new Error(`${a.cod}/${b.cod}`);
-      if (linha(U1).chamadas !== 1 || linha(U1).total !== 1) throw new Error(JSON.stringify(linha(U1)));
+      if (linha(U1).chamadas !== 1 || linha(U1).total !== 2) throw new Error(JSON.stringify(linha(U1)));
+    });
+    await conf("a conta é a do token, conferida no Supabase: id mandado pelo navegador é ignorado", async () => {
+      zerar();
+      const r = await chamar("tok-u1", { extra: { uid: U2, user_id: U2, userId: U2, conta: U2 } });
+      if (r.cod !== 200) throw new Error("status " + r.cod);
+      const c = rpc.find(x => x[0] === "consumir");
+      if (!c || c[1].uid !== U1 || banco.has(U2 + "|amostra")) throw new Error("usou o id do navegador: " + JSON.stringify(c && c[1]));
+      iaFila = ["500"];
+      await chamar("tok-u1", { extra: { uid: U2 } });
+      const dev = rpc.find(x => x[0] === "devolver");
+      if (!dev || dev[1].uid !== U1) throw new Error("devolveu pra outra conta: " + JSON.stringify(dev && dev[1]));
     });
     await conf("chamadas simultâneas: 10 ao mesmo tempo com limite 6 = 6 liberadas, 4 recusadas, 6 chamadas à IA", async () => {
       for (let rodada = 0; rodada < 20; rodada++) {
@@ -8155,9 +8193,9 @@ async function testarAmostra() {
       for (let rodada = 0; rodada < 20; rodada++) {
         zerar(); iaFila = ["500", "ok", "timeout", "ok", "ok", "vazio", "ok", "ok", "ok", "ok", "ok", "ok"];
         const rs = await Promise.all(Array.from({ length: 12 }, () => chamar("tok-u1")));
-        const certas = rs.filter(r => r.cod === 200).length;
-        if (certas > 6 || linha(U1).chamadas !== certas || linha(U1).total !== certas)
-          throw new Error(`rodada ${rodada}: ${certas} certas, contadas ${JSON.stringify(linha(U1))}`);
+        const certas = rs.filter(r => r.cod === 200).length, contadas = rs.filter(r => r.cod !== 403).length;
+        if (certas > 6 || linha(U1).chamadas !== certas || linha(U1).total !== contadas)
+          throw new Error(`rodada ${rodada}: ${certas} certas, ${contadas} contadas, banco ${JSON.stringify(linha(U1))}`);
       }
     });
     await conf("LIMITE_AMOSTRA_IA ajusta sem mexer no código: 2 (a 3ª recusa); inválido volta pra 6; 0 desliga sem consultar o banco", async () => {

@@ -140,9 +140,11 @@ export async function desativarPro(userId) {
    (supabase_schema.sql). Só a chave de serviço chama; o jogador não lê nem
    grava. consumir_uso_ia é atômica (conta e confere o limite no mesmo
    comando), então chamadas simultâneas não passam do limite.
-   Devolve "ok", "esgotada" ou "erro". "erro" (rede, função ainda não
-   criada, resposta estranha) também nega: sem a confirmação do banco, a
-   cota nunca libera. */
+   Devolve {estado:"ok", janela}, {estado:"esgotada"} ou {estado:"erro"}.
+   janela é o início da janela de 24 h em que a chamada foi contada: a
+   devolução manda de volta, e o banco só devolve se ainda for a janela
+   atual. "erro" (rede, função ainda não criada, resposta estranha) também
+   nega: sem a confirmação do banco, a cota nunca libera. */
 export async function consumirUsoIA(userId, grupo, limite) {
   try {
     const r = await supabaseServiceRole("rpc/consumir_uso_ia", {
@@ -150,22 +152,26 @@ export async function consumirUsoIA(userId, grupo, limite) {
     });
     if (!r.ok) {
       console.error("consumir_uso_ia", r.status, (await r.text()).slice(0, 200));
-      return "erro";
+      return { estado: "erro" };
     }
     const v = await r.json();
-    return v === true ? "ok" : v === false ? "esgotada" : "erro";
+    if (v === null) return { estado: "esgotada" };
+    if (typeof v === "string" && !Number.isNaN(Date.parse(v))) return { estado: "ok", janela: v };
+    return { estado: "erro" };
   } catch (e) {
     console.error("consumir_uso_ia", e.message);
-    return "erro";
+    return { estado: "erro" };
   }
 }
 /* A chamada da IA falhou depois de contar: devolve a unidade, pra falha do
-   OpenRouter (ou da rede) não gastar a cota de quem não recebeu nada. Se a
-   devolução falhar, a chamada fica contada (erra pro lado seguro). */
-export async function devolverUsoIA(userId, grupo) {
+   OpenRouter (ou da rede) não gastar a cota de quem não recebeu nada. Vai
+   junto a janela em que ela foi contada: se a janela já virou, o banco não
+   mexe em nada. Se a devolução falhar, a chamada fica contada (erra pro
+   lado seguro). */
+export async function devolverUsoIA(userId, grupo, janela) {
   try {
     const r = await supabaseServiceRole("rpc/devolver_uso_ia", {
-      method: "POST", body: JSON.stringify({ uid: userId, grupo_: grupo }),
+      method: "POST", body: JSON.stringify({ uid: userId, grupo_: grupo, janela }),
     });
     if (!r.ok) console.error("devolver_uso_ia", r.status);
   } catch (e) {
