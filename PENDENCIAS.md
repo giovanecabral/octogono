@@ -2261,7 +2261,10 @@ ver o resultado da anterior. Nenhum SQL roda sem aprovação explícita dele.
 
 - **Etapa 1 (memória narrativa): feita.** Ver LEIA-ME "Memória
   narrativa". SQL nenhum.
-- **SQL da etapa 2 (tabela `uso_ia` e função `consumir_uso_ia`):
-  apresentado ao dono, NÃO executado.** Ele roda no Supabase quando
-  aprovar.
+- **Etapa 2 (amostra grátis): feita na branch `amostra-gratis`, NÃO no
+  ar.** Ver LEIA-ME "Amostra grátis do Pro". Depende do SQL do fim do
+  `supabase_schema.sql` (tabela `uso_ia`, funções `consumir_uso_ia` e
+  `devolver_uso_ia`): apresentado ao dono, NÃO executado. Ordem: o dono
+  roda o SQL, depois o deploy (sem a função, a amostra recusa como
+  "indisponível").
 

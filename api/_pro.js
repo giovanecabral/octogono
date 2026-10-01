@@ -134,3 +134,41 @@ export async function desativarPro(userId) {
   });
   if (!r.ok) throw new Error("desativação do Pro falhou (" + r.status + ")");
 }
+
+/* Cota de uso da IA por conta (plano de evolução, etapa 2, 2026-10-01):
+   tabela uso_ia e funções consumir_uso_ia/devolver_uso_ia
+   (supabase_schema.sql). Só a chave de serviço chama; o jogador não lê nem
+   grava. consumir_uso_ia é atômica (conta e confere o limite no mesmo
+   comando), então chamadas simultâneas não passam do limite.
+   Devolve "ok", "esgotada" ou "erro". "erro" (rede, função ainda não
+   criada, resposta estranha) também nega: sem a confirmação do banco, a
+   cota nunca libera. */
+export async function consumirUsoIA(userId, grupo, limite) {
+  try {
+    const r = await supabaseServiceRole("rpc/consumir_uso_ia", {
+      method: "POST", body: JSON.stringify({ uid: userId, grupo_: grupo, limite }),
+    });
+    if (!r.ok) {
+      console.error("consumir_uso_ia", r.status, (await r.text()).slice(0, 200));
+      return "erro";
+    }
+    const v = await r.json();
+    return v === true ? "ok" : v === false ? "esgotada" : "erro";
+  } catch (e) {
+    console.error("consumir_uso_ia", e.message);
+    return "erro";
+  }
+}
+/* A chamada da IA falhou depois de contar: devolve a unidade, pra falha do
+   OpenRouter (ou da rede) não gastar a cota de quem não recebeu nada. Se a
+   devolução falhar, a chamada fica contada (erra pro lado seguro). */
+export async function devolverUsoIA(userId, grupo) {
+  try {
+    const r = await supabaseServiceRole("rpc/devolver_uso_ia", {
+      method: "POST", body: JSON.stringify({ uid: userId, grupo_: grupo }),
+    });
+    if (!r.ok) console.error("devolver_uso_ia", r.status);
+  } catch (e) {
+    console.error("devolver_uso_ia", e.message);
+  }
+}

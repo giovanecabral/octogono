@@ -182,8 +182,15 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   recortado do texto dele (`trechoLiteral`), nunca o que a IA reescreveu;
   promessa é julgada pelo resultado real (`avaliarPromessa`). Todo texto
   de IA novo que possa falar do jogador passa por `falasAtribuidasOk`
-  (suíte `memoria`). A memória vem na MESMA chamada da reação: não criar
+  (suíte `falas`). A memória vem na MESMA chamada da reação: não criar
   chamada nova de IA pra isso.
+- **Amostra grátis do Pro: a cota é do servidor e da conta.** Sem Pro, a
+  coletiva e a entrevista da 1ª luta chamam a IA com `amostra:true`;
+  `api/ai.js` só libera com login válido e `consumir_uso_ia` (tabela
+  `uso_ia`, conta e limite num comando só, janela de 24 h,
+  `LIMITE_AMOSTRA_IA`, padrão 6). Banco fora = recusa; IA falhou depois
+  de contar = `devolver_uso_ia`. `AMOSTRA_NEGADA` no cliente é só
+  interface. Nada da carreira entra na cota. Suítes `amostra` e `hub`.
 - **Coletiva e entrevista: a imprensa é fictícia e escolhida no cliente.**
   Card da direita é foto do lugar + repórter de `REPORTERES` (nunca o
   adversário, nunca jornalista real). A IA só escreve a cena

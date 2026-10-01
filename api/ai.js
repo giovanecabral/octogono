@@ -17,7 +17,19 @@
  * é o que impede a conta de sangrar. Vale mais que qualquer código aqui.
  */
 
+import { consumirUsoIA, devolverUsoIA } from "./_pro.js";
+
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+/* Amostra grátis do Pro (plano de evolução, etapa 2): quantas chamadas das
+   funções do Pro uma conta sem Pro pode fazer a cada 24 h. Uma coletiva e
+   uma entrevista completas gastam 4; sobram 2 de folga. Ajustável sem
+   mexer no código: variável LIMITE_AMOSTRA_IA na Vercel. */
+const limiteAmostra = () => {
+  /* vazia conta como não definida: Number("") é 0, e 0 desliga a amostra */
+  const bruto = String(process.env.LIMITE_AMOSTRA_IA ?? "").trim();
+  const n = Number(bruto);
+  return bruto && Number.isInteger(n) && n >= 0 ? n : 6;
+};
 /* Qwen3.7 Flash: $0.03/M entrada, $0.13/M saída. Cinco vezes mais barato que o
    3.8 Flash e mais que suficiente para comentário curto e julgamento de dilema.
    Troque por QWEN_MODEL sem mexer no código. */
@@ -677,6 +689,19 @@ const PRO_KINDS = new Set(["coletiva", "entrevista", "coletivaCena", "entrevista
 const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
 
+/* Id da conta dono do token, conferido no Supabase (mesmo jeito do
+   api/placar.js). Sem conta válida, null. */
+async function usuarioDoToken(token) {
+  if (!token || typeof token !== "string") return null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    return (await r.json()).id || null;
+  } catch {
+    return null;
+  }
+}
+
 async function verificarPro(token) {
   if (!token || typeof token !== "string") return false;
   try {
@@ -732,14 +757,34 @@ export default async function handler(req, res) {
      pra sempre — se o usuário assinar no meio da carreira, a próxima
      tentativa já reflete isso sozinha). data.token nunca entra no prompt
      (nenhum PROMPTS[kind] acima referencia d.token). */
+  /* Amostra grátis (etapa 2): sem Pro, só com a marca de amostra, login
+     válido e cota da CONTA (não da carreira: carreira nova não zera nada),
+     contada no banco antes de gastar um token. A unidade volta se a IA
+     falhar (devolver, abaixo). */
+  let cota = null, devolvida = false;
+  const devolver = async () => {
+    if (!cota || devolvida) return;
+    devolvida = true;
+    await devolverUsoIA(cota.uid, cota.grupo);
+  };
   if (PRO_KINDS.has(kind)) {
     const pro = await verificarPro(data && data.token);
-    if (!pro) return res.status(403).json({ error: "plano Pro necessário", transitorio: false });
+    if (!pro) {
+      if (!(data && data.amostra === true)) return res.status(403).json({ error: "plano Pro necessário", transitorio: false });
+      const uid = await usuarioDoToken(data.token);
+      if (!uid) return res.status(401).json({ error: "sem sessão", cota: "sem-sessao", transitorio: false });
+      /* limite 0 desliga a amostra sem nem consultar o banco */
+      const limite = limiteAmostra();
+      const v = limite < 1 ? "esgotada" : await consumirUsoIA(uid, "amostra", limite);
+      if (v === "esgotada") return res.status(403).json({ error: "amostra esgotada", cota: "esgotada", transitorio: false });
+      if (v !== "ok") return res.status(503).json({ error: "cota indisponível", cota: "indisponivel", transitorio: false });
+      cota = { uid, grupo: "amostra" };
+    }
   }
 
   let p;
   try { p = build(data || {}); }
-  catch { return res.status(400).json({ error: "data inválida", transitorio: false }); }
+  catch { await devolver(); return res.status(400).json({ error: "data inválida", transitorio: false }); }
 
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), 9000);
@@ -781,6 +826,7 @@ export default async function handler(req, res) {
          deles) sim — true. O client trata 429 à parte mesmo assim (pausa
          com espera, não desligamento), usando "status" abaixo. */
       const transitorio = [429, 500, 502, 503, 504].includes(r.status);
+      await devolver();
       return res.status(502).json({ error: "upstream", status: r.status, transitorio });
     }
 
@@ -796,12 +842,16 @@ export default async function handler(req, res) {
       finish: j.choices?.[0]?.finish_reason ?? null,
       reasoning_tokens: j.usage?.completion_tokens_details?.reasoning_tokens ?? null,
       tinha_reasoning: !!msg?.reasoning,
-      amostra: String(txt).slice(0, 220),
+      /* chamada da amostra grátis devolve a unidade quando dá erro: aí o
+         eco não leva o texto, senão o erro virava IA de graça */
+      amostra: cota ? null : String(txt).slice(0, 220),
       erro_upstream: j.error ? String(j.error.message || j.error).slice(0, 200) : null,
     });
 
-    if (!txt || !String(txt).trim())
+    if (!txt || !String(txt).trim()) {
+      await devolver();
       return res.status(502).json({ error: "modelo devolveu conteúdo vazio", transitorio: true, ...eco() });
+    }
 
     txt = String(txt).replace(/```json|```/g, "").trim();
 
@@ -816,8 +866,10 @@ export default async function handler(req, res) {
     if (parsed === undefined) {
       try { parsed = JSON.parse("[" + txt.replace(/,\s*$/, "") + "]"); } catch {}
     }
-    if (parsed === undefined)
+    if (parsed === undefined) {
+      await devolver();
       return res.status(502).json({ error: "resposta não era JSON", transitorio: true, ...eco() });
+    }
 
     /* o feed vem embrulhado em {"comentarios":[...]}; devolvemos o array puro
        para o cliente não precisar saber disso */
@@ -839,6 +891,7 @@ export default async function handler(req, res) {
     clearTimeout(timeout);
     const abortou = e.name === "AbortError";
     console.error("falha", e.message);
+    await devolver();
     /* Timeout ou falha de rede DAQUI (a função serverless) até o OpenRouter —
        instabilidade do caminho, não da conta. Transitório. */
     return res.status(abortou ? 504 : 500).json({ error: abortou ? "timeout" : "falha", transitorio: true });

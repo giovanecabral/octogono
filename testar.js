@@ -7988,6 +7988,212 @@ async function testarPagamento() {
  *     (ADMIN_DONO_EMAIL) e quem ele adicionar; toda ação decidida no
  *     servidor; banido não loga nem entra no ranking.
  * ================================================================== */
+/* ================================================================== *
+ * AMOSTRA GRÁTIS DO PRO (plano de evolução, etapa 2, 2026-10-01): cota
+ * da CONTA no servidor (api/ai.js + api/_pro.js). O banco falso faz o
+ * mesmo que consumir_uso_ia/devolver_uso_ia (supabase_schema.sql): conta
+ * e confere o limite num passo só, com espera aleatória antes e depois
+ * pra embaralhar chamadas simultâneas. Prova a lógica do servidor; a
+ * atomicidade de verdade é do Postgres (um INSERT ... ON CONFLICT DO
+ * UPDATE ... WHERE trava a linha).
+ * ================================================================== */
+async function testarAmostra() {
+  console.log("\n" + cinza("amostra: cota grátis do Pro por conta, no servidor"));
+  const url = require("url");
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  let H = null;
+  try { H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "ai.js")).href)).default; }
+  catch (e) { console.log(vermelho("  não carregou api/ai.js: " + e.message)); return false; }
+  const U1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", U2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", UP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const tokens = { "tok-u1": U1, "tok-u2": U2, "tok-pro": UP };
+  let banco, rpcModo, iaFila, iaCorpos, rpc;
+  const zerar = () => { banco = new Map(); rpcModo = "ok"; iaFila = []; iaCorpos = []; rpc = []; };
+  const linha = (uid) => banco.get(uid + "|amostra") || { chamadas: 0, total: 0 };
+  const consumir = (uid, grupo, limite) => {
+    if (!(limite >= 1)) return false;
+    const k = uid + "|" + grupo, r = banco.get(k);
+    if (!r) { banco.set(k, { chamadas: 1, total: 1 }); return true; }
+    if (r.chamadas >= limite) return false;
+    r.chamadas++; r.total++;
+    return true;
+  };
+  const espera = () => new Promise(r => setTimeout(r, Math.random() * 6));
+  const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
+  globalThis.fetch = async (u, op = {}) => {
+    u = String(u);
+    const ok = (corpo, status = 200) => ({ ok: status < 300, status, json: async () => corpo, text: async () => JSON.stringify(corpo) });
+    const tok = String((op.headers || {}).Authorization || "").replace("Bearer ", "");
+    if (u.endsWith("/auth/v1/user")) { await espera(); return tokens[tok] ? ok({ id: tokens[tok] }) : ok({ msg: "token inválido" }, 401); }
+    if (u.includes("/rest/v1/assinaturas")) { await espera(); return tokens[tok] ? ok(tok === "tok-pro" ? [{ pro: true, expira_em: null }] : []) : ok({}, 401); }
+    if (u.endsWith("/rest/v1/rpc/consumir_uso_ia")) {
+      const b = JSON.parse(op.body); rpc.push(["consumir", b]);
+      await espera();
+      if (rpcModo === "rede") throw new Error("ECONNRESET");
+      if (rpcModo === "500") return ok({ message: "erro interno" }, 500);
+      if (rpcModo === "404") return ok({ message: "Could not find the function public.consumir_uso_ia" }, 404);
+      if (rpcModo === "estranho") return ok(null);
+      const v = consumir(b.uid, b.grupo_, b.limite);
+      await espera();
+      return ok(v);
+    }
+    if (u.endsWith("/rest/v1/rpc/devolver_uso_ia")) {
+      const b = JSON.parse(op.body); rpc.push(["devolver", b]);
+      await espera();
+      const r = banco.get(b.uid + "|" + b.grupo_);
+      if (r) { r.chamadas = Math.max(r.chamadas - 1, 0); r.total = Math.max(r.total - 1, 0); }
+      return ok(null, 204);
+    }
+    if (u.startsWith("https://openrouter.ai/")) {
+      iaCorpos.push(op.body);
+      await espera();
+      const modo = iaFila.length ? iaFila.shift() : "ok";
+      if (modo === "timeout") { const e = new Error("abortou"); e.name = "AbortError"; throw e; }
+      if (modo === "rede") throw new Error("ECONNRESET");
+      if (modo === "500" || modo === "429") return { ok: false, status: +modo, text: async () => "erro do upstream", json: async () => ({}) };
+      const content = modo === "vazio" ? "" : modo === "naojson" ? "texto solto que o modelo devolveu sem formato nenhum"
+        : JSON.stringify({ evento: "A sala encheu.", pergunta: "Como você chega pra essa luta?" });
+      return ok({ choices: [{ message: { content }, finish_reason: "stop" }], usage: {} });
+    }
+    return ok({}, 404);
+  };
+  Object.assign(process.env, { OPENROUTER_API_KEY: "chave-falsa", SUPABASE_SERVICE_ROLE_KEY: "service-falsa" });
+  delete process.env.LIMITE_AMOSTRA_IA;
+  console.error = () => {};
+  const resposta = () => ({ cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } });
+  const chamar = async (token, { kind = "coletivaCena", amostra = true, extra = {} } = {}) => {
+    const res = resposta();
+    await H({ method: "POST", headers: {}, body: { kind, data: { name: "Teste", opp: "Rival Teste", record: "0-0", token, amostra, ...extra } } }, res);
+    return res;
+  };
+  const consumos = () => rpc.filter(c => c[0] === "consumir").length;
+  const devolucoes = () => rpc.filter(c => c[0] === "devolver").length;
+  try {
+    await conf("sem Pro e sem a marca de amostra: 403 'plano Pro necessário', sem contar e sem chamar a IA", async () => {
+      zerar();
+      const r = await chamar("tok-u1", { amostra: false });
+      if (r.cod !== 403 || r.corpo.error !== "plano Pro necessário") throw new Error(r.cod + " " + JSON.stringify(r.corpo));
+      if (consumos() || iaCorpos.length) throw new Error("contou ou chamou a IA");
+    });
+    await conf("amostra com conta válida: libera, conta 1 no grupo 'amostra' com limite 6, chama a IA uma vez e o token não vai pro prompt", async () => {
+      zerar();
+      const r = await chamar("tok-u1");
+      if (r.cod !== 200 || !r.corpo.ok) throw new Error(r.cod + " " + JSON.stringify(r.corpo));
+      const c = rpc.find(x => x[0] === "consumir");
+      if (!c || c[1].uid !== U1 || c[1].grupo_ !== "amostra" || c[1].limite !== 6) throw new Error("consumo: " + JSON.stringify(c));
+      if (linha(U1).chamadas !== 1 || iaCorpos.length !== 1 || devolucoes()) throw new Error(`chamadas ${linha(U1).chamadas}, IA ${iaCorpos.length}, devoluções ${devolucoes()}`);
+      if (iaCorpos[0].includes("tok-u1")) throw new Error("o token foi pro prompt");
+    });
+    await conf("a cota é da conta: 6 liberam, a 7ª é recusada (403, cota esgotada) sem chamar a IA, e outra conta segue livre", async () => {
+      zerar();
+      for (let i = 0; i < 6; i++) { const r = await chamar("tok-u1", { kind: i % 2 ? "coletiva" : "coletivaCena" }); if (r.cod !== 200) throw new Error(`chamada ${i + 1}: ${r.cod}`); }
+      const r7 = await chamar("tok-u1", { kind: "entrevistaCena" });
+      if (r7.cod !== 403 || r7.corpo.cota !== "esgotada" || r7.corpo.transitorio !== false) throw new Error("7ª: " + r7.cod + " " + JSON.stringify(r7.corpo));
+      if (iaCorpos.length !== 6) throw new Error("IA chamada " + iaCorpos.length + " vezes");
+      const o = await chamar("tok-u2");
+      if (o.cod !== 200 || linha(U2).chamadas !== 1) throw new Error("outra conta: " + o.cod);
+    });
+    await conf("carreira nova não zera: nada que o jogo manda (semente, carreira, luta) entra na conta; recusa repetida não conta", async () => {
+      zerar();
+      for (let i = 0; i < 6; i++) await chamar("tok-u1", { extra: { seed: 1000 + i, carreira: i, luta: 1 } });
+      for (let i = 0; i < 4; i++) {
+        const r = await chamar("tok-u1", { extra: { seed: 9000 + i, carreira: 99 + i, luta: 1, slot: 3 } });
+        if (r.cod !== 403 || r.corpo.cota !== "esgotada") throw new Error("carreira nova liberou: " + r.cod);
+      }
+      if (linha(U1).chamadas !== 6 || linha(U1).total !== 6) throw new Error(`recusa contou: ${JSON.stringify(linha(U1))}`);
+      for (const c of rpc.filter(x => x[0] === "consumir"))
+        if (Object.keys(c[1]).sort().join() !== "grupo_,limite,uid") throw new Error("o banco recebeu dado do jogo: " + JSON.stringify(c[1]));
+    });
+    await conf("sem sessão (sem token ou token inválido): 401, sem contar e sem chamar a IA", async () => {
+      zerar();
+      for (const t of [null, "", "tok-falso"]) {
+        const r = await chamar(t);
+        if (r.cod !== 401 || r.corpo.cota !== "sem-sessao") throw new Error(`token ${JSON.stringify(t)}: ${r.cod}`);
+      }
+      if (consumos() || iaCorpos.length) throw new Error("contou ou chamou a IA");
+    });
+    await conf("Pro com a marca de amostra não gasta cota nenhuma (o Pro passa antes)", async () => {
+      zerar();
+      for (let i = 0; i < 8; i++) { const r = await chamar("tok-pro"); if (r.cod !== 200) throw new Error("Pro recusado: " + r.cod); }
+      if (consumos() || banco.size) throw new Error("o Pro gastou cota");
+    });
+    for (const modo of ["500", "404", "rede", "estranho"])
+      await conf(`banco fora (${modo}): recusa com 503 'cota indisponível', sem chamar a IA`, async () => {
+        zerar(); rpcModo = modo;
+        const r = await chamar("tok-u1");
+        if (r.cod !== 503 || r.corpo.cota !== "indisponivel" || r.corpo.transitorio !== false) throw new Error(r.cod + " " + JSON.stringify(r.corpo));
+        if (iaCorpos.length) throw new Error("chamou a IA sem confirmação do banco");
+      });
+    for (const modo of ["500", "429", "vazio", "naojson", "timeout", "rede"])
+      await conf(`IA falha depois de contar (${modo}): a unidade volta uma vez só, e o erro não leva texto da IA`, async () => {
+        zerar(); iaFila = [modo];
+        const r = await chamar("tok-u1");
+        if (r.cod < 500) throw new Error("status " + r.cod);
+        if (devolucoes() !== 1) throw new Error(devolucoes() + " devoluções");
+        if (linha(U1).chamadas !== 0 || linha(U1).total !== 0) throw new Error("ficou contada: " + JSON.stringify(linha(U1)));
+        if (r.corpo.amostra) throw new Error("o erro devolveu texto da IA de graça: " + r.corpo.amostra);
+      });
+    await conf("retentativa do jogo (429 e de novo): conta só a que deu certo", async () => {
+      zerar(); iaFila = ["429", "ok"];
+      const a = await chamar("tok-u1"), b = await chamar("tok-u1");
+      if (a.cod !== 502 || a.corpo.status !== 429 || b.cod !== 200) throw new Error(`${a.cod}/${b.cod}`);
+      if (linha(U1).chamadas !== 1 || linha(U1).total !== 1) throw new Error(JSON.stringify(linha(U1)));
+    });
+    await conf("chamadas simultâneas: 10 ao mesmo tempo com limite 6 = 6 liberadas, 4 recusadas, 6 chamadas à IA", async () => {
+      for (let rodada = 0; rodada < 20; rodada++) {
+        zerar();
+        const rs = await Promise.all(Array.from({ length: 10 }, () => chamar("tok-u1")));
+        const liberadas = rs.filter(r => r.cod === 200).length, recusadas = rs.filter(r => r.cod === 403 && r.corpo.cota === "esgotada").length;
+        if (liberadas !== 6 || recusadas !== 4 || iaCorpos.length !== 6 || linha(U1).chamadas !== 6)
+          throw new Error(`rodada ${rodada}: ${liberadas} liberadas, ${recusadas} recusadas, IA ${iaCorpos.length}, contadas ${linha(U1).chamadas}`);
+      }
+    });
+    await conf("simultâneas com falha da IA no meio: o que falhou volta, e a conta fecha igual ao que deu certo (nunca passa de 6)", async () => {
+      for (let rodada = 0; rodada < 20; rodada++) {
+        zerar(); iaFila = ["500", "ok", "timeout", "ok", "ok", "vazio", "ok", "ok", "ok", "ok", "ok", "ok"];
+        const rs = await Promise.all(Array.from({ length: 12 }, () => chamar("tok-u1")));
+        const certas = rs.filter(r => r.cod === 200).length;
+        if (certas > 6 || linha(U1).chamadas !== certas || linha(U1).total !== certas)
+          throw new Error(`rodada ${rodada}: ${certas} certas, contadas ${JSON.stringify(linha(U1))}`);
+      }
+    });
+    await conf("LIMITE_AMOSTRA_IA ajusta sem mexer no código: 2 (a 3ª recusa); inválido volta pra 6; 0 desliga sem consultar o banco", async () => {
+      zerar(); process.env.LIMITE_AMOSTRA_IA = "2";
+      const cods = [];
+      for (let i = 0; i < 3; i++) cods.push((await chamar("tok-u1")).cod);
+      if (cods.join() !== "200,200,403") throw new Error("limite 2: " + cods.join());
+      for (const v of ["abc", "-1", "2.5", ""]) {
+        zerar(); process.env.LIMITE_AMOSTRA_IA = v;
+        await chamar("tok-u1");
+        const c = rpc.find(x => x[0] === "consumir");
+        if (!c || c[1].limite !== 6) throw new Error(`"${v}" virou ${c && c[1].limite}`);
+      }
+      zerar(); process.env.LIMITE_AMOSTRA_IA = "0";
+      const r = await chamar("tok-u1");
+      if (r.cod !== 403 || r.corpo.cota !== "esgotada" || consumos() || iaCorpos.length) throw new Error("limite 0: " + r.cod + ", consumos " + consumos());
+      delete process.env.LIMITE_AMOSTRA_IA;
+    });
+    await conf("evento e feed não passam pela cota da amostra (o resto da IA é a etapa 6)", async () => {
+      zerar();
+      for (const kind of ["evento", "feed"]) {
+        const r = await chamar(null, { kind, amostra: true });
+        if (r.cod !== 200) throw new Error(kind + ": " + r.cod);
+      }
+      if (consumos()) throw new Error("contou");
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    console.error = erroOriginal;
+    for (const k of Object.keys(process.env)) if (!(k in envOriginal)) delete process.env[k];
+    Object.assign(process.env, envOriginal);
+  }
+  console.log("\n" + (falhas.length ? vermelho(falhas.length + " falha(s) na amostra") : verde("amostra ok")));
+  return falhas.length === 0;
+}
+
 async function testarAdmin() {
   console.log("\n" + cinza("admin: acesso só de admin, ações no servidor, banimento, registro"));
   const url = require("url");
@@ -8524,27 +8730,6 @@ async function testarHub() {
     if (X.run("JSON.stringify(ofertaAtual.map(o=>o.f.name))") !== nomes) throw new Error("oferta mudou ao reabrir");
   });
 
-  await conf("noite: coletiva sem Pro trava Provocar (bloqueioPro, inert) e Pular segue pra luta", async () => {
-    const X = novo(778503);
-    X.run("meuPro=false;");
-    abrirOferta(X);
-    ultimasCartas(X, "opps", "opp")[0].onclick();
-    ultimasCartas(X, "camps", "camp")[0].onclick();
-    if (X.run("noiteEtapa") !== "coletiva") throw new Error("etapa " + X.run("noiteEtapa"));
-    const nos = nosDe(X.registro.escolha);
-    const trava = nos.find(n => tem(n, "bloqueio-pro"));
-    if (!trava) throw new Error("Provocar sem bloqueioPro");
-    const travado = trava.children.find(n => tem(n, "bloqueado"));
-    if (!travado || !travado.inert) throw new Error("área travada sem inert");
-    if (!trava.children.some(n => tem(n, "selo-assine"))) throw new Error("sem selo Assine o Pro");
-    const pular = X.registro.colpular;
-    if (!pular || !pular.onclick || nosDe(trava).includes(pular)) throw new Error("Pular dentro do bloqueio ou sem clique");
-    const f0 = X.run("fightNo");
-    pular.onclick();
-    if (X.run("fightNo") !== f0 + 1 || !X.run("playing")) throw new Error("Pular não começou a luta");
-    if (X.run("noiteEtapa") === "oferta" || X.registro.noiteVoltar.hidden === false) throw new Error("Voltar visível durante a luta");
-  });
-
   await conf("noite: coletiva com Pro não trava, e a cena (tema, repórter, molde) não consome gerador nenhum da carreira", async () => {
     const X = novo(778504);
     X.run("meuPro=true;");
@@ -8783,9 +8968,157 @@ async function testarHub() {
     if (X.registro.noiteProxima.hidden) throw new Error("Próxima luta não voltou depois do dilema");
   });
 
-  await conf("pós-luta: sem Pro, Dar entrevista vem travado pelo bloqueioPro", async () => {
-    const X = novo(778705);
+  /* Amostra grátis do Pro (plano de evolução, etapa 2): sem Pro, a
+     coletiva e a entrevista da 1ª luta chamam a IA com amostra:true e
+     ficam abertas; o servidor decide pela cota da conta. Servidor falso:
+     responde a cena e a reação, ou recusa como a api/ai.js recusa. */
+  const servidorAmostra = (X, { recusa = null } = {}) => {
+    const chamadas = [];
+    const PRO = ["coletiva", "entrevista", "coletivaCena", "entrevistaCena"];
+    X.sb.fetch = async (url, op) => {
+      const b = JSON.parse(op.body);
+      chamadas.push(b);
+      if (recusa && PRO.includes(b.kind))
+        return { ok: false, status: recusa === "esgotada" ? 403 : 503, json: async () => ({ error: "recusada", cota: recusa, transitorio: false }) };
+      const result = b.kind === "coletivaCena" ? { evento: "Os fotógrafos disputaram a primeira fila.", pergunta: "É a sua estreia no evento. Como você chega pra essa luta?" }
+        : b.kind === "coletiva" ? { reacao: "A sala anotou a resposta e o adversário só olhou pro lado.", hype: 1.1, pressao: 1,
+            declaracao: { tom: "neutro", trecho: "vou fazer o meu trabalho", promessa: null } }
+        : b.kind === "entrevistaCena" ? { evento: "A imprensa esperou na saída do octógono.", pergunta: "Como foi a sua primeira luta aqui?" }
+        : b.kind === "entrevista" ? { reacao: "A resposta rodou nas redes durante a madrugada.", fa: 0.4, seguidores: 0.1 }
+        : null;
+      return { ok: true, status: 200, json: async () => ({ ok: true, result }) };
+    };
+    return chamadas;
+  };
+  const lutarAteOFim = async X => {
+    for (let k = 0; k < 20 && X.run("playing"); k++) {
+      X.drenar(); await respirarCarreira();
+      const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+      if (op.length) { op[0].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+    }
+    for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
+  };
+  const convite = X => nosDe(X.registro.posluta).filter(c => tem(c, "entrevista-convite")).pop();
+
+  await conf("amostra: sem Pro, a coletiva da 1ª luta abre com a faixa da amostra e chama a IA com amostra:true", async () => {
+    const X = novo(778503);
     X.run("meuPro=false;");
+    const chamadas = servidorAmostra(X);
+    abrirOferta(X);
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    if (X.run("noiteEtapa") !== "coletiva") throw new Error("etapa " + X.run("noiteEtapa"));
+    await respirarN(X);
+    const nos = nosDe(X.registro.escolha);
+    if (nos.some(n => tem(n, "bloqueio-pro"))) throw new Error("a amostra nasceu travada");
+    const faixa = nos.find(n => tem(n, "amostra-pro"));
+    if (!faixa || !/Amostra do Pro/.test(faixa.innerHTML)) throw new Error("sem a faixa da amostra");
+    const cena = chamadas.find(b => b.kind === "coletivaCena");
+    if (!cena || cena.data.amostra !== true) throw new Error("a cena não foi pedida com amostra:true");
+    if (!/primeira luta aqui|estreia no evento/.test(X.registro.colpergunta.innerHTML)) throw new Error("a pergunta da IA não apareceu");
+    if (X.registro.colgo.disabled) throw new Error("Responder continua desligado");
+    X.registro.colresp.value = "Eu vou fazer o meu trabalho e voltar pra casa.";
+    await X.registro.colgo.onclick();
+    await respirarN(X);
+    const reacao = chamadas.find(b => b.kind === "coletiva");
+    if (!reacao || reacao.data.amostra !== true) throw new Error("a reação não foi pedida com amostra:true");
+    if (!/A sala anotou/.test(X.registro.coldesfecho.innerHTML)) throw new Error("a reação da IA não apareceu");
+    if (!X.registro.colseguir) throw new Error("sem Ir pra luta");
+    const fala = JSON.parse(X.run("JSON.stringify(st.memoria.falas[0])"));
+    if (!fala || fala.texto !== "Eu vou fazer o meu trabalho e voltar pra casa." || fala.luta !== 1) throw new Error("a resposta literal não virou fala: " + JSON.stringify(fala));
+  });
+
+  await conf("amostra: a entrevista da 1ª luta abre sem Pro e volta ao que o jogador disse na coletiva, com o resultado", async () => {
+    const X = novo(778505);
+    X.run("meuPro=false;");
+    const chamadas = servidorAmostra(X);
+    abrirOferta(X);
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    await respirarN(X);
+    X.registro.colresp.value = "Eu vou fazer o meu trabalho e voltar pra casa.";
+    await X.registro.colgo.onclick();
+    await respirarN(X);
+    X.registro.colseguir.onclick();
+    await lutarAteOFim(X);
+    if (X.run("fightNo") !== 1) throw new Error("fightNo " + X.run("fightNo"));
+    const conv = convite(X);
+    if (!conv) throw new Error("sem convite da entrevista");
+    if (conv.children.some(c => tem(c, "bloqueio-pro"))) throw new Error("convite da amostra travado");
+    if (!conv.children.some(c => tem(c, "amostra-selo"))) throw new Error("convite sem o selo da amostra");
+    const btn = conv.children.find(c => c.onclick);
+    btn.onclick();
+    if (!X.run("entrevistaAberta")) throw new Error("a entrevista não abriu");
+    await respirarN(X);
+    const cena = chamadas.find(b => b.kind === "entrevistaCena");
+    if (!cena || cena.data.amostra !== true) throw new Error("a cena da entrevista não foi pedida com amostra:true");
+    if (!cena.data.fato.includes("vou fazer o meu trabalho") || !/O que aconteceu: /.test(cena.data.fato))
+      throw new Error("a pergunta não volta à fala da coletiva com o resultado: " + cena.data.fato);
+    if (X.registro.entmemoria.hidden || !/Na coletiva você disse/.test(X.registro.entmemoria.innerHTML)) throw new Error("sem o quadro da fala da coletiva");
+    if (!nosDe(X.registro.escolha).some(n => tem(n, "amostra-pro"))) throw new Error("entrevista sem a faixa da amostra");
+    X.registro.entresp.value = "Fiz o que falei e agora quero outro nome forte.";
+    await X.registro.entgo.onclick();
+    await respirarN(X);
+    const reacao = chamadas.find(b => b.kind === "entrevista");
+    if (!reacao || reacao.data.amostra !== true) throw new Error("a reação da entrevista não foi pedida com amostra:true");
+    if (!/rodou nas redes/.test(X.registro.entdesfecho.innerHTML)) throw new Error("a reação da IA não apareceu");
+  });
+
+  for (const [recusa, motivo] of [["esgotada", /últimas 24 horas/], ["indisponivel", /Não deu pra conferir/]])
+    await conf(`amostra: servidor recusa (${recusa}) e a coletiva volta travada com o motivo; Pular segue e a entrevista nem é pedida`, async () => {
+      const X = novo(778506);
+      X.run("meuPro=false;");
+      const chamadas = servidorAmostra(X, { recusa });
+      abrirOferta(X);
+      ultimasCartas(X, "opps", "opp")[0].onclick();
+      ultimasCartas(X, "camps", "camp")[0].onclick();
+      await respirarN(X);
+      if (X.run("AMOSTRA_NEGADA") !== recusa) throw new Error("AMOSTRA_NEGADA = " + X.run("AMOSTRA_NEGADA"));
+      const nos = nosDe(X.registro.escolha);
+      const trava = nos.find(n => tem(n, "bloqueio-pro"));
+      if (!trava) throw new Error("a resposta não voltou pro bloqueioPro");
+      const travado = trava.children.find(n => tem(n, "bloqueado"));
+      if (!travado || !travado.inert) throw new Error("área travada sem inert");
+      if (!trava.children.some(n => tem(n, "selo-assine"))) throw new Error("sem selo Assine o Pro");
+      const faixa = nos.find(n => tem(n, "amostra-pro"));
+      if (!faixa || !motivo.test(faixa.innerHTML)) throw new Error("a faixa não diz o motivo: " + (faixa && faixa.innerHTML));
+      const pular = X.registro.colpular;
+      if (!pular || !pular.onclick || nosDe(trava).includes(pular)) throw new Error("Pular dentro do bloqueio ou sem clique");
+      const f0 = X.run("fightNo");
+      pular.onclick();
+      if (X.run("fightNo") !== f0 + 1 || !X.run("playing")) throw new Error("Pular não começou a luta");
+      await lutarAteOFim(X);
+      const conv = convite(X);
+      if (!conv || !conv.children.some(c => tem(c, "bloqueio-pro"))) throw new Error("depois da recusa, a entrevista não veio travada");
+      if (chamadas.some(b => b.kind === "entrevistaCena" || b.kind === "entrevista")) throw new Error("pediu a entrevista depois da recusa");
+    });
+
+  await conf("noite: fora da 1ª luta, coletiva e entrevista sem Pro continuam travadas e não chamam a IA", async () => {
+    const X = novo(778507);
+    X.run("meuPro=false;");
+    await lutarManual(X);
+    const chamadas = servidorAmostra(X);
+    abrirOferta(X);
+    ultimasCartas(X, "opps", "opp")[0].onclick();
+    ultimasCartas(X, "camps", "camp")[0].onclick();
+    await respirarN(X);
+    if (X.run("noiteEtapa") !== "coletiva") throw new Error("etapa " + X.run("noiteEtapa"));
+    const nos = nosDe(X.registro.escolha);
+    const trava = nos.find(n => tem(n, "bloqueio-pro"));
+    if (!trava || !trava.children.some(n => tem(n, "bloqueado") && n.inert)) throw new Error("coletiva da luta 2 sem bloqueioPro");
+    if (nos.some(n => tem(n, "amostra-pro"))) throw new Error("faixa da amostra na luta 2");
+    X.registro.colpular.onclick();
+    await lutarAteOFim(X);
+    const conv = convite(X);
+    if (!conv || !conv.children.some(c => tem(c, "bloqueio-pro"))) throw new Error("entrevista da luta 2 sem bloqueioPro");
+    if (conv.children.some(c => tem(c, "amostra-selo"))) throw new Error("selo da amostra na luta 2");
+    const pro = chamadas.filter(b => ["coletiva", "entrevista", "coletivaCena", "entrevistaCena"].includes(b.kind));
+    if (pro.length) throw new Error("chamou a IA do Pro fora da amostra: " + pro.map(b => b.kind).join(","));
+  });
+
+  await conf("pós-luta: sem Pro, Dar entrevista vem travado pelo bloqueioPro (fora da amostra da 1ª luta)", async () => {
+    const X = novo(778705);
+    X.run("meuPro=false;AMOSTRA_NEGADA='esgotada';");
     await lutarManual(X);
     const conv = nosDe(X.registro.posluta).find(c => tem(c, "entrevista-convite"));
     if (!conv || !conv.children.some(c => tem(c, "bloqueio-pro"))) throw new Error("convite sem bloqueioPro");
@@ -9401,7 +9734,7 @@ try {
   else if (cmd === "draft") ok = testarDraft(div || "lightweight");
   else if (cmd === "orcamento") ok = await testarOrcamento();
   else if (cmd === "tutorial") ok = await testarTutorial();
-  else if (cmd === "memoria") ok = await testarMemoria();
+  else if (cmd === "falas") ok = await testarMemoria();
   else if (cmd === "pesos") ok = medirPesos(div || "lightweight");
   else if (cmd === "cinturao") ok = testarCinturao(div || "heavyweight");
   else if (cmd === "lesao") ok = testarLesao();
@@ -9438,6 +9771,7 @@ try {
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "pagamento") ok = await testarPagamento();
   else if (cmd === "admin") ok = await testarAdmin();
+  else if (cmd === "amostra") ok = await testarAmostra();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -9482,7 +9816,7 @@ try {
         ["draft", () => testarDraft(div || "lightweight")],
         ["orcamento", () => testarOrcamento()],
         ["tutorial", () => testarTutorial()],
-        ["memoria", () => testarMemoria()],
+        ["falas", () => testarMemoria()],
         ["escolhas", () => testarEscolhas(div || "lightweight")],
         ["treino", () => testarTreino(div || "lightweight")],
         ["desafio", () => testarDesafio(div || "lightweight")],
@@ -9516,6 +9850,7 @@ try {
         ["placar", () => testarPlacar()],
         ["pagamento", () => testarPagamento()],
         ["admin", () => testarAdmin()],
+        ["amostra", () => testarAmostra()],
         ["personagem", () => testarPersonagem()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],

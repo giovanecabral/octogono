@@ -946,7 +946,7 @@ function getSupabase(){
         if((event==="INITIAL_SESSION"||event==="SIGNED_IN")&&session)
           setTimeout(()=>{ if(pagamentoPendente())conferirPagamento().then(()=>atualizarStatusPro()); else atualizarStatusPro(); },0);
         if(event==="SIGNED_IN"&&session)avisarContaNovaGoogle(session.user);
-        if(event==="SIGNED_OUT")meuPro=false;
+        if(event==="SIGNED_OUT"){meuPro=false;AMOSTRA_NEGADA=null;}
       });
     }catch(e){}
   }
@@ -960,6 +960,25 @@ function getSupabase(){
    este cache esteja desatualizado/forjado via DevTools, o pior caso é a
    UI mostrar "ativo" e o servidor recusar com 403 — nunca o contrário. */
 let meuPro=false;
+/* Amostra grátis do Pro (plano de evolução, etapa 2, 2026-10-01): sem o
+   Pro, a coletiva e a entrevista da 1ª luta de cada carreira chamam a IA
+   marcadas com amostra:true. Quem libera é o servidor (api/ai.js), pela
+   cota da CONTA na tabela uso_ia (6 chamadas a cada 24 h): carreira nova
+   não zera nada. AMOSTRA_NEGADA guarda a recusa do servidor ("esgotada",
+   "indisponivel", "sem-sessao") pra não oferecer de novo nesta sessão; é
+   só interface, a trava é lá. */
+let AMOSTRA_NEGADA=null;
+function amostraLiberada(momento){
+  if(meuPro||AMOSTRA_NEGADA)return false;
+  /* fightNo conta as lutas já feitas: a coletiva da 1ª luta vem antes
+     dela (0) e a entrevista, depois (1) */
+  return momento==="coletiva"?fightNo===0:momento==="entrevista"?fightNo===1:false;
+}
+function textoAmostraNegada(){
+  return AMOSTRA_NEGADA==="esgotada"
+    ?"A amostra grátis desta conta já foi usada nas últimas 24 horas. Com o Pro, a coletiva e a entrevista ficam abertas em toda luta."
+    :"Não deu pra conferir a amostra grátis agora. Com o Pro, a coletiva e a entrevista ficam abertas em toda luta.";
+}
 /* R$9,99 libera 30 dias (2026-09-22), sem cobrança automática — então
    "pro=true" no banco não basta sozinho, ninguém desliga esse campo
    ativamente quando o período acaba (não existe assinatura recorrente
@@ -2645,6 +2664,9 @@ async function tentarChamadaIA(kind,data,ms,podeRetentar){
         c.pausadoAte=Date.now()+AI_PAUSA_MS;
         evento("ia_null",{motivo:"429",kind});
       }else if(corpo&&corpo.transitorio===false){
+        /* recusa da amostra grátis (cota da conta): a coletiva e a
+           entrevista voltam a aparecer travadas nesta sessão */
+        if(typeof corpo.cota==="string")AMOSTRA_NEGADA=corpo.cota;
         /* erro_permanente (chave, crédito, permissão) NUNCA desliga pra
            sempre em nenhum kind agora, feed incluso (2026-09-11) — só
            pausa. Continuar tentando de qualquer jeito, mesmo sabendo que
@@ -2657,7 +2679,7 @@ async function tentarChamadaIA(kind,data,ms,podeRetentar){
            inteira PRA SEMPRE: se o status mudar (usuário assinou), a
            próxima chamada, depois da pausa, já reflete isso sozinha. */
         c.pausadoAte=Date.now()+AI_PAUSA_MS;
-        evento("ia_null",{motivo:"erro_permanente",kind});
+        evento("ia_null",{motivo:typeof corpo.cota==="string"?"amostra_"+corpo.cota:"erro_permanente",kind});
       }else evento("ia_null",{motivo:"erro_transitorio",kind});
       return null;
     }
@@ -5096,13 +5118,26 @@ function mostrarDesfecho(p,texto,fx){
 let cacheColetiva=null,cacheEntrevista=null;
 function cenaGuardada(cache,local,pedir,tipo,opcoes={}){
   if(cache.cena||cache.promessa)return;
-  if(!meuPro){cache.cena=local;lembrarCena(tipo,local);return;}
+  if(!meuPro&&!opcoes.amostra){cache.cena=local;lembrarCena(tipo,local);return;}
   const tk=CARREIRA_TOKEN;
   cache.promessa=(async()=>{
     try{return cenaDaIA(await pedir(await meuAccessToken()),local,tipo,opcoes);}catch(e){return local;}
   })();
   /* resposta que chega depois de trocar de carreira não escreve no st novo */
   cache.promessa.then(c=>{if(tk!==CARREIRA_TOKEN)return;cache.cena=c;lembrarCena(tipo,c);});
+}
+
+/* Faixa da amostra grátis dentro da cena (etapa 2 do plano de evolução). */
+function faixaAmostra(texto){
+  return el("div","amostra-pro",`${ICONE("estrela")}<span><b>Amostra do Pro</b>${texto}</span>`);
+}
+/* O servidor recusou a amostra (cota da conta usada, ou sem como conferir):
+   a cena fica como a do grátis, com a resposta travada, e a faixa diz por
+   quê. */
+function travarAmostra(p,area,faixa){
+  p.resp.innerHTML="";
+  p.resp.appendChild(bloqueioPro(area));
+  if(faixa)faixa.innerHTML=`${ICONE("cadeado")}<span><b>Amostra do Pro</b>${textoAmostraNegada()}</span>`;
 }
 
 /* Vitrine ligada (2026-09-22): grátis PRECISA ver que a coletiva existe.
@@ -5123,6 +5158,7 @@ function telaColetiva(escolhido,camp){
         :"cobrança de uma fala antiga do lutador"):proximoTemaCena("coletiva")};
   }
   const cache=cacheColetiva,{reporter,tema,cobranca}=cache;
+  const amostra=amostraLiberada("coletiva");
   const local=cobranca?cenaColetivaMemoria(opp,cobranca):cenaColetivaLocal(opp,camp,tema,escolhido);
   const historicoRival=escolhido.rival?historicoRivalTexto():null;
   const falaAntiga=cobranca?linhaMemoria(cobranca.fala):null;
@@ -5132,8 +5168,8 @@ function telaColetiva(escolhido,camp){
     opp:opp.name,estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
     camp:camp&&camp.nome,lesao:st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null,
     historicoRival,reporter:`${reporter.nome} (${reporter.veiculo})`,tema,recentes:cenasRecentes("coletiva"),
-    memoria:falaAntiga?[falaAntiga]:[],token}),"coletiva",
-    {permitidas:cobranca?[cobranca.fala.texto]:[],exige:cobranca?cobranca.fala.texto:null});
+    memoria:falaAntiga?[falaAntiga]:[],token,amostra}),"coletiva",
+    {permitidas:cobranca?[cobranca.fala.texto]:[],exige:cobranca?cobranca.fala.texto:null,amostra});
 
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Coletiva · ${me.name} x ${opp.name}`));
@@ -5141,9 +5177,11 @@ function telaColetiva(escolhido,camp){
   const p=pecasDaConversa("col",reporter);
   const area=el("div","cena-responder",`<textarea id="colresp" maxlength="200" rows="3" placeholder="Sua resposta"></textarea>
       <button class="botao" id="colgo" type="button">Responder</button>`);
-  p.resp.appendChild(bloqueioPro(area));
+  p.resp.appendChild(amostra?area:bloqueioPro(area));
   const pular=el("button","botao botao-sec coletiva-pular","Pular a coletiva");pular.id="colpular";pular.type="button";
   p.acoes.appendChild(pular);
+  const faixa=amostra?faixaAmostra("Nesta primeira luta você responde à imprensa sem o Pro. A resposta muda o hype da luta, e na entrevista depois dela o repórter volta ao que você disse."):null;
+  if(faixa)meio.appendChild(faixa);
   meio.append(p.memoria,p.evento,p.fala,p.resp,p.desfecho,p.acoes);
   if(cobranca)mostrarMemoria(p,cobranca.fala.onde==="coletiva"?`Na coletiva da luta ${cobranca.fala.luta} você disse`
     :`Depois da luta ${cobranca.fala.luta} você disse`,cobranca.fala);
@@ -5160,6 +5198,7 @@ function telaColetiva(escolhido,camp){
     cache.promessa.then(c=>{
       if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
       cena=c;mostrarPergunta(p,reporter,c);
+      if(amostra&&AMOSTRA_NEGADA)return travarAmostra(p,area,faixa);
       inp.disabled=false;go.disabled=false;if(!semHover())inp.focus();
     });
   }
@@ -5167,8 +5206,9 @@ function telaColetiva(escolhido,camp){
     const txt=inp.value.trim();
     if(!txt)return inp.focus();
     /* Grátis é vitrine: o clique nunca chama a IA (api/ai.js recusaria com
-       403 de qualquer jeito, isto só evita a viagem de rede). */
-    if(!meuPro)return;
+       403 de qualquer jeito, isto só evita a viagem de rede). A exceção é
+       a amostra da 1ª luta, enquanto o servidor não recusou. */
+    if(!meuPro&&!(amostra&&!AMOSTRA_NEGADA))return;
     go.disabled=true;inp.disabled=true;go.textContent="…";pular.hidden=true;
     const volta=document.getElementById("noiteVoltar");if(volta)volta.hidden=true;   // resposta a caminho: sem voltar
     const tk=CARREIRA_TOKEN;
@@ -5178,12 +5218,12 @@ function telaColetiva(escolhido,camp){
     const j=conteudoInseguro(txt)?null:await ai("coletiva",{name:me.name,opp:opp.name,
       estilo:opp.arquetipo||"completo",dificuldade:dif.rot,title:!!st.tituloEstaLuta,
       evento:cena.evento,pergunta:cena.pergunta,resposta:txt,record:`${st.wins}-${st.losses}`,
-      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,falaAntiga,token});
+      followers:fmtNum(st.followers),fan:st.fan.toFixed(1),historicoRival,falaAntiga,token,amostra});
     if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
     aplicarColetiva(p,opp,txt,j,seguir,{cena,cobranca});
   };
   /* foco só com mouse: no toque ele abre o teclado por cima da pergunta */
-  if(cache.cena&&meuPro&&!semHover())inp.focus();
+  if(cache.cena&&(meuPro||amostra)&&!semHover())inp.focus();
   SOM.flashes();
   mostrarNoite("coletiva");
 }
@@ -5287,19 +5327,30 @@ function renderBotaoEntrevista(bouts,opp,r,titleFight,won,td0,tdt0,zebra,ehRival
   btn.type="button";
   bouts.appendChild(wrap);
   const luta=fightNo;
+  /* a amostra foi recusada depois de o convite nascer aberto: volta a ser
+     o convite travado do grátis */
+  const travarConvite=()=>{
+    if(entrevistaWrapAtual!==wrap||entrevistaWrapRespondida)return;
+    wrap.innerHTML="";wrap.appendChild(bloqueioPro(btn));
+  };
   btn.onclick=()=>{
     SOM.toque();
-    if(!meuPro||luta!==fightNo||entrevistaWrapAtual!==wrap||entrevistaWrapRespondida)return;
-    abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival});
+    const amostra=!meuPro&&amostraLiberada("entrevista");
+    if(!meuPro&&!amostra)return travarConvite();
+    if(luta!==fightNo||entrevistaWrapAtual!==wrap||entrevistaWrapRespondida)return;
+    abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival,amostra,aoNegar:travarConvite});
   };
   /* Revamp fase 5: sem Pro o convite aparece travado pelo componente
-     único bloqueioPro() (a vitrine continua, o clique não). */
-  wrap.appendChild(bloqueioPro(btn));
+     único bloqueioPro() (a vitrine continua, o clique não). Na 1ª luta
+     da carreira ele vem aberto, com o selo da amostra grátis. */
+  if(!meuPro&&amostraLiberada("entrevista"))
+    wrap.append(btn,el("span","amostra-selo",`${ICONE("estrela")}<span>Amostra do Pro</span>`));
+  else wrap.appendChild(bloqueioPro(btn));
 }
 /* A entrevista abre como etapa própria da noite (fundo do lugar), no mesmo
    #escolha da oferta/camp/coletiva. entrevistaAberta trava "Próxima luta"
    até o jogador sair dela (Continuar ou Voltar ao resultado). */
-function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival}){
+function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival,amostra=false,aoNegar=null}){
   const box=document.getElementById("escolha");
   if(!box)return;
   entrevistaAberta=true;
@@ -5313,7 +5364,9 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
        prometeu, a entrevista trata DISSO, ligado ao resultado real (cada
        fala é cobrada no máximo duas vezes na carreira) */
     const fc=memoriaDa().falas.find(f=>f.onde==="coletiva"&&f.luta===fightNo&&f.resultado);
-    const falaCol=fc&&(fc.tom==="provocacao"||fc.tom==="promessa")&&fc.cobrada<2?fc:null;
+    /* na amostra grátis qualquer fala da coletiva volta (é a continuidade
+       que a amostra mostra); no Pro, só provocação e promessa */
+    const falaCol=fc&&(amostra||fc.tom==="provocacao"||fc.tom==="promessa")&&fc.cobrada<2?fc:null;
     if(falaCol)falaCol.cobrada++;
     cacheEntrevista={chave,falaCol,angulo:falaCol?null:proximoTemaCena("entrevista"),
       reporter:reporterDaCena("entrevista"),cena:null,promessa:null};
@@ -5331,8 +5384,8 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
     fato:falaCol?`antes desta luta, na coletiva, ele disse: "${falaCol.trecho}". O que aconteceu: ${sitFala.txt}`
       :fatoDaEntrevista(base.fatoObrigatorio,won,r,lesaoTxt,td0,tdt0),
     angulo:falaCol?"o que o resultado da luta fez com a fala da coletiva":won?angulo:(ANGULO_NA_DERROTA[angulo]||angulo),
-    recentes:cenasRecentes("entrevista"),token}),"entrevista",
-    {permitidas:falaCol?[falaCol.texto]:[],exige:falaCol?falaCol.texto:null});
+    recentes:cenasRecentes("entrevista"),token,amostra}),"entrevista",
+    {permitidas:falaCol?[falaCol.texto]:[],exige:falaCol?falaCol.texto:null,amostra});
 
   box.innerHTML="";
   box.appendChild(el("div","esc-hd",`Entrevista · ${won?"depois da vitória":"depois da derrota"}`));
@@ -5343,6 +5396,8 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
   p.resp.appendChild(area);
   const voltar=el("button","botao botao-sec","Voltar ao resultado");voltar.id="entvoltar";voltar.type="button";
   p.acoes.appendChild(voltar);
+  const faixa=amostra?faixaAmostra("A entrevista da primeira luta também vem sem o Pro. A reação da imprensa mexe nos seus seguidores e no seu fã."):null;
+  if(faixa)meio.appendChild(faixa);
   meio.append(p.memoria,p.evento,p.fala,p.resp,p.desfecho,p.acoes);
   if(falaCol)mostrarMemoria(p,"Na coletiva você disse",falaCol);
   const inp=document.getElementById("entresp"),go=document.getElementById("entgo");
@@ -5360,12 +5415,14 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
     cache.promessa.then(c=>{
       if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
       cena=c;mostrarPergunta(p,reporter,c);
+      if(amostra&&AMOSTRA_NEGADA){travarAmostra(p,area,faixa);if(aoNegar)aoNegar();return;}
       inp.disabled=false;go.disabled=false;if(!semHover())inp.focus();
     });
   }
   go.onclick=async()=>{
     const txt=inp.value.trim();
     if(!txt)return inp.focus();
+    if(!meuPro&&!(amostra&&!AMOSTRA_NEGADA))return;
     go.disabled=true;inp.disabled=true;go.textContent="…";voltar.hidden=true;
     const tk=CARREIRA_TOKEN;
     const token=await meuAccessToken();
@@ -5373,7 +5430,7 @@ function abrirCenaEntrevista({wrap,opp,r,titleFight,won,td0,tdt0,zebra,ehRival})
       ganhou:won,metodo:r.method,round:r.round,clock:r.clock,tdApl:td0,tdSof:tdt0,
       zebra:!!zebra,title:!!titleFight,lesao:lesaoTxt,evento:cena.evento,pergunta:cena.pergunta,resposta:txt,
       record:`${st.wins}-${st.losses}`,followers:fmtNum(st.followers),fan:st.fan.toFixed(1),
-      rendaBase:RENDA_BASE,historicoRival,falaColetiva,token});
+      rendaBase:RENDA_BASE,historicoRival,falaColetiva,token,amostra});
     if(tk!==CARREIRA_TOKEN||ct!==CENA_TOKEN)return;
     aplicarEntrevista({p,wrap,cena,txt,j,sair,fundoResultado,opp,falaCol});
   };
@@ -6767,6 +6824,10 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-10-01",titulo:"Amostra do Pro",itens:[
+    "Sem o Pro, a coletiva e a entrevista da primeira luta de cada carreira ficam abertas: a imprensa reage ao que você responder, e a entrevista volta ao que você disse na coletiva.",
+    "A amostra é da conta, não da carreira: são algumas respostas a cada 24 horas, e começar outra carreira no mesmo dia não renova a amostra.",
+    "Da segunda luta em diante, a coletiva e a entrevista continuam no Pro."]},
   {data:"2026-09-29",titulo:"A imprensa lembra",itens:[
     "O que você responde na coletiva fica guardado na carreira, com as suas palavras.",
     "Na entrevista depois da luta, o repórter cobra o que você disse antes, de acordo com o resultado: promessa cumprida, promessa quebrada, provocação confirmada ou desmentida.",

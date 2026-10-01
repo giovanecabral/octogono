@@ -298,3 +298,62 @@ language sql stable security definer set search_path = public, auth as $$
 $$;
 revoke execute on function public.admin_listar_usuarios(text, int, int) from public, anon, authenticated;
 grant execute on function public.admin_listar_usuarios(text, int, int) to service_role;
+
+-- ---------------------------------------------------------------------
+-- Cota de IA por conta (plano de evolução, etapa 2, 2026-10-01) —
+-- api/ai.js + api/_pro.js. A amostra grátis do Pro (coletiva e entrevista
+-- da 1ª luta sem o Pro) gasta do grupo 'amostra': LIMITE_AMOSTRA_IA
+-- chamadas (variável da Vercel; 6 se vazia) a cada 24 h por CONTA, não
+-- por carreira. 'geral' fica reservado pro teto do Pro (etapa 6).
+-- Só o servidor (service_role) chama as funções; o jogador não lê nem
+-- grava a tabela (RLS ligada e nenhuma policy). Nada aqui apaga ou muda
+-- tabela que já existe.
+create table if not exists uso_ia (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  grupo text not null check (grupo in ('amostra', 'geral')),
+  janela_inicio timestamptz not null default now(),
+  chamadas integer not null default 0,
+  total integer not null default 0,
+  primary key (user_id, grupo)
+);
+alter table uso_ia enable row level security;
+
+-- Conta uma chamada e confere o limite NUM comando só: duas chamadas ao
+-- mesmo tempo disputam a mesma linha, o Postgres trava a linha e a
+-- segunda confere o limite já com a primeira contada. Janela de 24 h a
+-- partir da 1ª chamada; vencida, recomeça do 1. Recusa não conta nada.
+-- Limite 0 (ou vazio) recusa sempre.
+create or replace function public.consumir_uso_ia(uid uuid, grupo_ text, limite integer)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare ok boolean;
+begin
+  if limite is null or limite < 1 then return false; end if;
+  insert into uso_ia as u (user_id, grupo, janela_inicio, chamadas, total)
+  values (uid, grupo_, now(), 1, 1)
+  on conflict (user_id, grupo) do update set
+    janela_inicio = case when u.janela_inicio < now() - interval '24 hours' then now() else u.janela_inicio end,
+    chamadas = case when u.janela_inicio < now() - interval '24 hours' then 1 else u.chamadas + 1 end,
+    total = u.total + 1
+  where u.janela_inicio < now() - interval '24 hours' or u.chamadas < limite
+  returning true into ok;
+  return coalesce(ok, false);
+end $$;
+revoke execute on function public.consumir_uso_ia(uuid, text, integer) from public, anon, authenticated;
+grant execute on function public.consumir_uso_ia(uuid, text, integer) to service_role;
+
+-- A IA falhou depois de contar (OpenRouter fora, timeout, resposta
+-- vazia): devolve a unidade.
+create or replace function public.devolver_uso_ia(uid uuid, grupo_ text)
+returns void language sql security definer set search_path = public as $$
+  update uso_ia set chamadas = greatest(chamadas - 1, 0), total = greatest(total - 1, 0)
+  where user_id = uid and grupo = grupo_
+$$;
+revoke execute on function public.devolver_uso_ia(uuid, text) from public, anon, authenticated;
+grant execute on function public.devolver_uso_ia(uuid, text) to service_role;
+
+-- Monitorar (só leitura, no SQL Editor; o LEIA-ME "Amostra grátis" explica):
+--   contas que usaram a amostra nas últimas 24 h, e quantas bateram o limite:
+--     select count(*) as contas, count(*) filter (where chamadas >= 6) as no_limite
+--     from uso_ia where grupo = 'amostra' and janela_inicio > now() - interval '24 hours';
+--   chamadas da amostra desde sempre:
+--     select sum(total) from uso_ia where grupo = 'amostra';

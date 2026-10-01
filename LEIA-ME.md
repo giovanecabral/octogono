@@ -3408,7 +3408,7 @@ conferida. Limite conhecido: forma indireta rara ("mandou avisar que...")
 não é pega pela regra; o prompt proíbe. Medido: 24 de 24 eventos passam
 (a primeira versão derrubava "mandou Pix" por engano).
 
-**Teste:** suíte nova `memoria` (fala literal, trecho inventado, tom e
+**Teste:** suíte nova `falas` (fala literal, trecho inventado, tom e
 promessa inválidos, texto inseguro, teto de falas, promessa julgada pelo
 resultado, uma pergunta por desfecho citando a fala, fluxo real coletiva,
 luta e entrevista com a fala e o resultado indo pra IA e pra tela, zero
@@ -3417,6 +3417,99 @@ cobrança espaçada, reabrir a coletiva sem contar duas vezes, save). Dente
 provado: sem fechar a fala no fim da luta, sem a trava anti-invenção, com
 o trecho da IA sem conferir, sem o cache da cena, sem aspas simples e com
 "mandou" solto, reprova.
+
+## Amostra grátis do Pro (etapa 2 do plano de evolução, 2026-10-01)
+
+**Pedido do dono:** quem não tem o Pro precisa experimentar a coletiva e a
+entrevista completas, com IA, e ver a continuidade entre as duas. A cota
+fica no servidor, presa à conta autenticada, e criar carreira nova não
+renova nada. Os eventos com IA e a progressão do grátis continuam como
+estavam.
+
+**No jogo** (`amostraLiberada`): sem o Pro, a coletiva da 1ª luta
+(`fightNo` 0) e a entrevista da 1ª luta (`fightNo` 1) chamam a IA com
+`amostra:true`, a resposta fica aberta e uma faixa "Amostra do Pro" diz o
+que está acontecendo. O convite da entrevista vem aberto, com o selo da
+amostra. Os efeitos são os mesmos do Pro (hype e pressão da coletiva; fã,
+seguidores e dinheiro da entrevista). Na entrevista da amostra, qualquer
+fala da coletiva volta, ligada ao resultado (no Pro, só provocação e
+promessa voltam): é a continuidade que a amostra mostra. Da 2ª luta em
+diante, tudo como antes (vitrine travada pelo `bloqueioPro`, sem chamar a
+IA).
+
+**No servidor** (`api/ai.js`, `api/_pro.js`): o Pro é conferido primeiro
+e nunca gasta cota. Sem o Pro, só passa com `amostra:true`, login válido
+(`/auth/v1/user`) e `consumir_uso_ia(conta, 'amostra', limite)` dizendo
+sim. A função conta e confere o limite num comando só (`INSERT ... ON
+CONFLICT DO UPDATE ... WHERE`): chamadas simultâneas disputam a mesma
+linha, o Postgres trava a linha e a segunda já vê a primeira contada. A
+janela é de 24 h a partir da 1ª chamada. A conta é a única chave: nada que
+o jogo manda (semente, carreira, luta) entra nela.
+
+| situação | resposta | o jogo mostra |
+|---|---|---|
+| sem login válido | 401, `cota: "sem-sessao"` | cena travada, "Não deu pra conferir a amostra" |
+| cota da conta usada | 403, `cota: "esgotada"` | cena travada, "já foi usada nas últimas 24 horas" |
+| banco fora, função ainda não criada, resposta estranha | 503, `cota: "indisponivel"` | igual ao sem login |
+| IA falhou depois de contar (OpenRouter 500/429, timeout, rede, vazio, não JSON, dado inválido) | 5xx | a unidade volta (`devolver_uso_ia`), uma vez só |
+
+Recusa não conta nada. Sem a confirmação do banco, nunca libera. Erro de
+chamada da amostra não devolve texto da IA no eco de diagnóstico (senão o
+erro, que devolve a unidade, virava IA de graça). No cliente, a recusa
+fica em `AMOSTRA_NEGADA` pelo resto da sessão (o logout limpa), só pra
+não oferecer de novo; quem trava é o servidor.
+
+**Custo da amostra:** 4 chamadas (cena e reação da coletiva, cena e
+reação da entrevista). O limite começa em 6 por conta a cada 24 h: sobra
+folga pra recarregar a página no meio e pra retentativa. Uma segunda
+carreira no mesmo dia pega o que sobrou (em geral, a coletiva) e recebe a
+recusa no resto.
+
+**Ajustar o limite:** variável `LIMITE_AMOSTRA_IA` na Vercel (Production),
+número inteiro. `0` desliga a amostra sem consultar o banco; vazia ou
+inválida vale 6. Variável nova ou mudada só vale depois de um deploy novo
+(a Vercel congela as variáveis em cada deploy).
+
+**Monitorar o consumo** (SQL Editor do Supabase, só leitura):
+
+```sql
+-- contas que usaram a amostra nas últimas 24 h, e quantas bateram o limite
+select count(*) as contas, count(*) filter (where chamadas >= 6) as no_limite
+from uso_ia where grupo = 'amostra' and janela_inicio > now() - interval '24 hours';
+-- chamadas da amostra desde sempre
+select sum(total) from uso_ia where grupo = 'amostra';
+```
+
+Erro do banco aparece nos logs da função na Vercel (`consumir_uso_ia` ou
+`devolver_uso_ia` seguido do status). No jogo, cada recusa dispara o
+evento `ia_null` com motivo `amostra_esgotada`, `amostra_indisponivel` ou
+`amostra_sem-sessao` (Vercel Analytics, se ligado; a etapa 5 confere).
+
+**Limites conhecidos:** conta nova é de graça, então quem criar várias
+contas ganha 6 chamadas por conta a cada 24 h; o controle de abuso por
+conta e por origem é da etapa 6. O servidor não sabe em que luta a
+chamada acontece (o cliente manda o que quiser); não importa, porque o
+teto é da conta.
+
+**SQL:** fim do `supabase_schema.sql` (tabela `uso_ia`, funções
+`consumir_uso_ia` e `devolver_uso_ia`, só criação, nada apagado). O dono
+roda no Supabase ANTES do deploy desta etapa: sem a função, toda amostra
+cai em "indisponível" e o grátis da 1ª luta vê a recusa.
+
+**Teste:** suíte nova `amostra` (servidor, com banco e OpenRouter falsos:
+libera e conta, 7ª recusada, carreira nova não zera, recusa não conta,
+sem sessão, Pro não gasta, banco fora em 4 formas, IA falha em 6 formas e
+devolve uma vez, retentativa, 10 simultâneas com limite 6 em 20 rodadas,
+simultâneas com falha no meio, `LIMITE_AMOSTRA_IA`, evento e feed fora da
+cota) e 5 testes novos na `hub` (coletiva e entrevista da amostra abertas
+com `amostra:true`, continuidade com o resultado, recusa esgotada e
+indisponível travando com o motivo, luta 2 travada sem chamar a IA). Dente
+provado nos dois lados: sem devolver a unidade, banco fora liberando,
+amostra pulando o Pro, sem conferir a sessão, erro com texto da IA, sem
+`amostra:true` na cena, amostra em qualquer luta, cliente ignorando a
+recusa, entrevista só com provocação e promessa, cena só do molde local:
+reprova. O teste achou um bug na hora: `LIMITE_AMOSTRA_IA` vazia virava 0
+(`Number("")`) e desligava a amostra.
 
 ## Como jogar: tutorial com prints anotados (2026-09-28)
 
