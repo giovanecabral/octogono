@@ -10,6 +10,9 @@ PLANO-LANCAMENTO.md
 .claude
 
 # Material bruto e ferramentas
+ferramentas
+supabase_jxj.sql
+supabase_jxj_rollback.sql
 audio/bruto
 img/bruto
 *.py

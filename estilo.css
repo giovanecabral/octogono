@@ -1186,3 +1186,301 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 @media (max-width:760px){.tutorial{padding:10px}.tutorial-caixa{padding:16px 14px}.tutorial-itens li{font-size:15px}}
 @media (prefers-reduced-motion:reduce){.tutorial{animation:none}}
 
+
+/* ---------- JxJ (2026-10-01) ----------
+   Mesma identidade: painel escuro com desfoque, vermelho de destaque, ouro
+   pra título, canto cortado nos elementos que mandam na tela. */
+.menu-card-faixa{grid-column:span 6;min-height:220px}
+.menu-card-faixa .cartao-conteudo{max-width:720px}
+.menu-card-faixa .cartao-rotulo{color:var(--ouro)}
+@media (max-width:720px){.menu-card-faixa{min-height:200px}}
+
+.tela-jxj .jxj-nav{margin-top:-8px}
+.jxj-area{display:flex;flex-direction:column;gap:22px}
+.jxj-rotulo{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--sangue)}
+.jxj-nota{color:var(--cinza);font-size:14px;margin:6px 0 0}
+.jxj-erro{color:var(--sangue-vivo);font-weight:600;margin:4px 0 0}
+.jxj-aviso{color:var(--ouro);font-family:var(--f-ui);letter-spacing:.08em;margin:0}
+.jxj-subtitulo{display:flex;align-items:center;gap:10px;font-family:var(--f-titulo);font-weight:400;font-size:clamp(24px,2.6vw,34px);text-transform:uppercase;line-height:1;margin:6px 0 12px}
+.jxj-nome{font-family:var(--f-titulo);font-weight:400;font-size:clamp(34px,4.6vw,60px);line-height:.95;text-transform:uppercase;margin:0;overflow-wrap:anywhere}
+.jxj-meta{color:var(--osso-2);font-family:var(--f-ui);font-size:17px;letter-spacing:.06em;margin:6px 0 0}
+.jxj-acoes{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:16px}
+.jxj-lista-simples{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;color:var(--osso-2)}
+.jxj-lista-simples li{position:relative;padding-left:18px}
+.jxj-lista-simples li::before{content:"";position:absolute;left:0;top:.6em;width:7px;height:7px;background:var(--sangue)}
+.jxj-lista-simples a{color:var(--osso)}
+.txt-ganho{color:var(--ganho)}
+.txt-perda{color:var(--sangue-vivo)}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2);word-break:break-all}
+
+/* retrato e molduras (cosmético) */
+.jxj-retrato{display:inline-block;line-height:0;padding:3px;background:var(--linha-forte);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+.jxj-retrato svg{display:block;max-width:100%;height:auto;background:var(--sup)}
+.jxj-retrato.moldura-ouro{background:linear-gradient(135deg,#F4D27A,var(--ouro) 45%,#8A6A0C)}
+.jxj-retrato.moldura-sangue{background:linear-gradient(135deg,var(--sangue-vivo),var(--sangue-escuro))}
+.jxj-retrato.moldura-noite{background:linear-gradient(135deg,#3A4256,#11131A)}
+.jxj-retrato.moldura-campeao{background:repeating-linear-gradient(45deg,var(--ouro) 0 6px,#8A6A0C 6px 12px)}
+
+/* barras */
+.jxj-barra{display:block;height:8px;background:rgba(255,255,255,.08);overflow:hidden;min-width:60px}
+.jxj-barra i{display:block;height:100%;background:var(--osso-2);transition:width .5s var(--ease-soco)}
+.jxj-barra-xp i{background:var(--ouro)}
+.jxj-barra-energia i{background:var(--ganho)}
+.jxj-barra-dano i{background:var(--sangue)}
+
+/* entrada */
+.jxj-hero{position:relative;background:rgba(17,19,26,.84);border:1px solid var(--linha);padding:clamp(22px,3vw,40px);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.jxj-hero-titulo{font-family:var(--f-titulo);font-weight:400;font-size:clamp(34px,5vw,64px);line-height:.95;text-transform:uppercase;margin:0 0 14px;max-width:18ch}
+.jxj-hero-txt{color:var(--osso-2);font-size:18px;max-width:64ch;margin:0 0 20px}
+.jxj-passos{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.jxj-passo{display:flex;flex-direction:column;gap:6px;padding:16px;border-top:3px solid var(--sangue);background:rgba(7,8,11,.5)}
+.jxj-passo .ico{width:28px;height:28px;color:var(--sangue)}
+.jxj-passo b{font-family:var(--f-ui);font-size:20px;letter-spacing:.12em;text-transform:uppercase}
+.jxj-passo span{color:var(--osso-2);font-size:15px}
+.jxj-planos{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.jxj-plano{padding:18px 20px;background:rgba(17,19,26,.8);border:1px solid var(--linha)}
+.jxj-plano b{font-family:var(--f-ui);font-size:18px;letter-spacing:.14em;text-transform:uppercase}
+.jxj-plano ul{margin:10px 0 0;padding-left:18px;color:var(--osso-2)}
+.jxj-plano-pro{border-color:rgba(212,160,23,.45)}
+.jxj-plano-pro b{color:var(--ouro)}
+.jxj-faixa-luta{display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border:0;cursor:pointer;text-align:left;
+  background:var(--sangue);color:#fff;font:inherit;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+.jxj-faixa-luta .ico{width:28px;height:28px}
+.jxj-faixa-luta span{flex:1;display:flex;flex-direction:column}
+.jxj-faixa-luta b{font-family:var(--f-ui);font-size:20px;letter-spacing:.12em;text-transform:uppercase}
+
+/* painel do principal */
+.jxj-principal{display:grid;grid-template-columns:auto minmax(0,1fr);gap:28px;align-items:center;
+  background:rgba(17,19,26,.84);border:1px solid var(--linha);padding:clamp(18px,2.6vw,30px);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.jxj-numeros{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0 10px}
+.jxj-numeros div{min-width:0}
+.jxj-numeros dt{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.jxj-numeros dd{margin:2px 0 0;font-family:var(--f-titulo);font-size:clamp(26px,2.8vw,38px);line-height:1;font-variant-numeric:tabular-nums}
+.jxj-numeros dd small{display:block;font-family:var(--f-texto);font-size:13px;color:var(--cinza);margin-top:4px;line-height:1.3}
+.jxj-buscar{min-height:58px;font-size:19px}
+.jxj-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.jxj-card{display:flex;flex-direction:column;gap:6px}
+.jxj-card .botao{align-self:flex-start;margin-top:auto}
+.jxj-card-num{font-family:var(--f-titulo);font-size:clamp(28px,3vw,40px);line-height:1;margin:0}
+.jxj-card-num small{display:block;font-family:var(--f-ui);font-size:14px;letter-spacing:.08em;color:var(--cinza);margin-top:6px}
+.jxj-spark{color:var(--osso);display:block}
+
+/* criação */
+.jxj-campo{display:flex;flex-direction:column;gap:6px;max-width:520px}
+.jxj-campo label,.jxj-campo>span{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:var(--osso-2)}
+.jxj-campo input,.jxj-busca-campo{height:50px;padding:0 14px;background:var(--sup);color:var(--osso);border:1px solid var(--linha-forte);
+  border-radius:0;font-family:var(--f-ui);font-size:20px;letter-spacing:.04em}
+.jxj-campo input:focus-visible,.jxj-busca-campo:focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
+.jxj-campo small{color:var(--cinza)}
+.jxj-criador{margin-top:10px}
+.jxj-opcoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.jxj-opcao,.jxj-estilo{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:18px;cursor:pointer;text-align:left;font:inherit;color:var(--osso);
+  background:rgba(17,19,26,.86);border:1px solid var(--linha-forte);transition:border-color .2s,background .2s}
+.jxj-opcao b,.jxj-estilo-nome{font-family:var(--f-titulo);font-weight:400;font-size:28px;text-transform:uppercase;line-height:1}
+.jxj-opcao small{color:var(--cinza)}
+.jxj-opcao.on,.jxj-estilo.on{border-color:var(--sangue);background:rgba(215,38,30,.12)}
+.jxj-opcao .jxj-retrato{width:64px}
+.jxj-estilos{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.jxj-estilo-resumo{color:var(--osso-2);font-size:15px}
+.jxj-estilo small{color:var(--cinza)}
+.jxj-atr{list-style:none;margin:6px 0 0;padding:0;width:100%;display:flex;flex-direction:column;gap:6px}
+.jxj-atr li{display:grid;grid-template-columns:118px minmax(0,1fr) 48px;align-items:center;gap:10px;font-size:14px;color:var(--osso-2)}
+.jxj-atr li b{font-family:var(--f-ui);font-size:16px;text-align:right;color:var(--osso);font-variant-numeric:tabular-nums}
+.jxj-atr li b small{color:var(--ganho);font-size:12px}
+.jxj-confirma{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;align-items:center;background:rgba(17,19,26,.84);border:1px solid var(--linha);padding:24px}
+@media (hover:hover) and (pointer:fine){.jxj-opcao:hover,.jxj-estilo:hover{border-color:var(--sangue)}}
+
+/* lutador e árvore */
+.jxj-cab-lutador{display:flex;align-items:center;gap:18px}
+.jxj-cab-lutador .jxj-retrato{width:96px}
+.jxj-arvore-topo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;
+  background:rgba(17,19,26,.86);border:1px solid var(--linha);padding:16px 20px}
+.jxj-arvore-topo .jxj-acoes{margin-top:0}
+.jxj-pontos{display:flex;align-items:center;gap:14px}
+.jxj-pontos b{font-family:var(--f-titulo);font-size:54px;line-height:1;color:var(--ouro)}
+.jxj-pontos span{font-family:var(--f-ui);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:15px}
+.jxj-pontos small{font-family:var(--f-texto);font-weight:400;text-transform:none;letter-spacing:0;color:var(--cinza)}
+.jxj-arvore{display:flex;flex-direction:column;gap:14px}
+.jxj-ramos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.jxj-ramo{position:relative;display:flex;flex-direction:column;gap:10px}
+.jxj-ramo::before{content:"";position:absolute;left:24px;top:60px;bottom:20px;width:2px;background:linear-gradient(var(--sangue),rgba(215,38,30,.15))}
+.jxj-ramo-cab{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;border-bottom:1px solid var(--linha-forte)}
+.jxj-ramo-cab b{font-family:var(--f-ui);font-size:20px;letter-spacing:.14em;text-transform:uppercase}
+.jxj-ramo-cab span{color:var(--cinza);font-family:var(--f-ui);font-variant-numeric:tabular-nums}
+.jxj-no{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nome pips" "info info";gap:4px 10px;
+  margin-left:12px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:var(--osso);background:rgba(17,19,26,.9);border:1px solid var(--linha-forte)}
+.jxj-no b{grid-area:nome;font-family:var(--f-ui);font-size:17px;letter-spacing:.04em}
+.jxj-no .jxj-pips{grid-area:pips}
+.jxj-no small{grid-area:info;color:var(--cinza);font-size:13px}
+.jxj-no>.ico{position:absolute;right:10px;bottom:10px;color:var(--cinza)}
+.jxj-no.ativo{border-color:rgba(212,160,23,.6)}
+.jxj-no.travado{opacity:.55}
+.jxj-no.on{outline:2px solid var(--sangue);outline-offset:1px}
+.jxj-pips{display:inline-flex;gap:4px}
+.jxj-pips i{width:12px;height:12px;background:rgba(255,255,255,.12);clip-path:polygon(3px 0,100% 0,100% calc(100% - 3px),calc(100% - 3px) 100%,0 100%,0 3px)}
+.jxj-pips i.on{background:var(--ouro)}
+.jxj-hibrido{background:rgba(17,19,26,.6);border:1px dashed var(--linha-forte);padding:14px 16px}
+.jxj-hibrido summary{cursor:pointer;font-family:var(--f-ui);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--osso-2)}
+.jxj-no-detalhe .botao{align-self:flex-start}
+.jxj-confirmar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 18px;background:rgba(215,38,30,.12);border:1px solid var(--sangue)}
+.jxj-confirmar p{flex-basis:100%;margin:0}
+.jxj-perigo{border-color:rgba(215,38,30,.4)}
+@media (hover:hover) and (pointer:fine){.jxj-no:hover{border-color:var(--sangue)}}
+
+/* histórico */
+.jxj-historico{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.jxj-hist-linha{display:grid;grid-template-columns:96px minmax(0,1fr) 90px auto;align-items:center;gap:12px;padding:10px 12px;
+  background:rgba(17,19,26,.84);border-left:3px solid var(--linha-forte)}
+.jxj-hist-linha.vit{border-left-color:var(--ganho)}
+.jxj-hist-linha.der{border-left-color:var(--sangue)}
+.jxj-hist-res{font-family:var(--f-ui);font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.jxj-hist-linha.vit .jxj-hist-res{color:var(--ganho)}
+.jxj-hist-linha.der .jxj-hist-res{color:var(--sangue-vivo)}
+.jxj-hist-adv b{font-family:var(--f-ui);font-size:17px;text-transform:uppercase;letter-spacing:.03em}
+.jxj-hist-adv small{display:block;color:var(--cinza)}
+.jxj-hist-delta{font-family:var(--f-ui);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.jxj-hist-ver{height:38px}
+
+/* aparência e slots */
+.jxj-molduras,.jxj-slots,.jxj-hall-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.jxj-moldura,.jxj-slot{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:18px;
+  background:rgba(17,19,26,.86);border:1px solid var(--linha-forte)}
+.jxj-moldura.on{border-color:var(--ouro)}
+.jxj-moldura small{color:var(--cinza)}
+.jxj-slot{align-items:stretch;text-align:left}
+.jxj-slot .jxj-retrato{width:140px;align-self:center}
+.jxj-slot-vazio{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:160px;
+  border:1px dashed var(--linha-forte);color:var(--cinza);font-family:var(--f-ui);letter-spacing:.14em;text-transform:uppercase}
+.jxj-slot-vazio .ico{width:34px;height:34px}
+
+/* fila */
+.jxj-busca{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:40px 24px}
+.jxj-busca-pulso{width:96px;height:96px;display:grid;place-items:center;border:2px solid var(--sangue);color:var(--sangue);
+  clip-path:polygon(18px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%,0 18px);animation:jxjPulso 1.6s ease-in-out infinite}
+.jxj-busca-pulso .ico{width:42px;height:42px}
+@keyframes jxjPulso{50%{background:rgba(215,38,30,.18)}}
+.jxj-busca-tempo{font-family:var(--f-ui);font-size:20px;letter-spacing:.06em;margin:0}
+.jxj-escolha-lutador .jxj-opcao{flex-direction:row;align-items:center;gap:14px;flex-wrap:wrap}
+.jxj-escolha-lutador .jxj-opcao b{font-size:24px}
+
+/* confronto e luta */
+.jxj-versus,.jxj-placar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:stretch;gap:14px}
+.jxj-vs{display:grid;place-items:center;padding:0 6px}
+.jxj-vs b{font-family:var(--f-titulo);font-size:clamp(40px,6vw,80px);color:var(--sangue);line-height:1}
+.jxj-lado{display:flex;gap:14px;align-items:center;padding:14px;background:rgba(17,19,26,.88);border:1px solid var(--linha-forte);min-width:0}
+.jxj-lado.eu{border-color:rgba(215,38,30,.6)}
+.jxj-lado .jxj-retrato{width:84px;flex:none}
+.jxj-lado-info{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.jxj-lado-info>b{font-family:var(--f-ui);font-size:20px;text-transform:uppercase;letter-spacing:.04em;overflow-wrap:anywhere}
+.jxj-lado-info>b small{font-size:12px;color:var(--sangue);letter-spacing:.14em;margin-left:6px}
+.jxj-lado-info>span{color:var(--osso-2);font-size:14px}
+.jxj-medidor{display:flex;flex-direction:column;gap:3px}
+.jxj-medidor i{font-style:normal;font-family:var(--f-ui);font-size:13px;letter-spacing:.08em;color:var(--cinza);display:flex;align-items:center;gap:6px}
+.jxj-ausente{color:var(--ouro)!important;font-family:var(--f-ui);letter-spacing:.06em}
+.jxj-placar-meio{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-width:180px;text-align:center;padding:10px}
+.jxj-round{font-family:var(--f-ui);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--osso-2);margin:0;font-size:14px}
+.jxj-relogio{font-family:var(--f-titulo);font-size:56px;line-height:1;margin:0;font-variant-numeric:tabular-nums}
+.jxj-relogio.urgente{color:var(--sangue-vivo)}
+.jxj-posicao{font-family:var(--f-ui);font-size:17px;letter-spacing:.06em;margin:0;color:var(--ouro)}
+.jxj-momento{width:100%;max-width:220px}
+.jxj-momento span{font-family:var(--f-ui);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.jxj-momento-trilho{position:relative;height:10px;margin-top:4px;background:linear-gradient(90deg,rgba(215,38,30,.35),rgba(255,255,255,.08) 50%,rgba(47,191,113,.35))}
+.jxj-momento-trilho i{position:absolute;top:-3px;width:6px;height:16px;margin-left:-3px;background:var(--osso);transition:left .4s var(--ease-soco)}
+.jxj-cartoes{color:var(--cinza);font-size:13px;margin:0}
+.jxj-zona-acao{display:flex;flex-direction:column;gap:8px}
+.jxj-acoes-luta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.jxj-acao{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:150px;padding:16px;cursor:pointer;text-align:left;font:inherit;color:var(--osso);
+  background:rgba(17,19,26,.92);border:1px solid var(--linha-forte);transition:border-color .15s,background .15s,transform .15s var(--ease-soco);
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+.jxj-acao .ico{width:30px;height:30px;color:var(--sangue)}
+.jxj-acao b{font-family:var(--f-ui);font-size:19px;letter-spacing:.06em;text-transform:uppercase}
+.jxj-acao small{font-family:var(--f-ui);color:var(--ouro);letter-spacing:.06em}
+.jxj-acao span{color:var(--osso-2);font-size:14px;line-height:1.35}
+.jxj-acao:active{transform:translateY(1px)}
+.jxj-acao:disabled{opacity:.45;cursor:not-allowed}
+.jxj-acao:focus-visible{outline:2px solid var(--osso);outline-offset:2px;background:rgba(215,38,30,.18)}
+.jxj-espera{display:flex;align-items:center;gap:12px;padding:18px;background:rgba(17,19,26,.9);border:1px solid var(--linha-forte);margin:0;font-size:17px}
+.jxj-espera .ico{width:26px;height:26px;color:var(--ganho);flex:none}
+.jxj-log-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.jxj-log-lista li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;color:var(--osso-2);font-size:15px}
+.jxj-log-lista b{font-family:var(--f-ui);letter-spacing:.08em;color:var(--sangue)}
+@media (hover:hover) and (pointer:fine){.jxj-acao:hover:not(:disabled){border-color:var(--sangue);background:rgba(215,38,30,.12)}}
+
+/* resultado */
+.jxj-resultado{padding:clamp(20px,3vw,34px);background:rgba(17,19,26,.86);border-left:6px solid var(--linha-forte)}
+.jxj-resultado.vit{border-left-color:var(--ganho)}
+.jxj-resultado.der{border-left-color:var(--sangue)}
+.jxj-resultado-titulo{font-family:var(--f-titulo);font-weight:400;font-size:clamp(48px,8vw,104px);line-height:.9;text-transform:uppercase;margin:0}
+.jxj-resultado.vit .jxj-resultado-titulo{color:var(--ganho)}
+.jxj-resultado.der .jxj-resultado-titulo{color:var(--sangue-vivo)}
+.jxj-narracao p{color:var(--osso);line-height:1.6;margin:0}
+
+/* ranking JxJ */
+.jxj-busca-campo{font-size:17px;min-width:220px}
+.jxj-rank-linha{grid-template-columns:44px 52px minmax(0,1fr) 80px 70px 90px;cursor:pointer}
+.jxj-rank-linha.meu,.degrau.meu{border-left-color:var(--sangue)}
+.jxj-rank-linha .jxj-retrato{width:44px;padding:2px}
+.jxj-variacao{font-family:var(--f-ui);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.jxj-variacao small{display:block;font-weight:400;font-size:11px;color:var(--cinza);letter-spacing:.1em}
+.jxj-variacao.sobe{color:var(--ganho)}
+.jxj-variacao.desce{color:var(--sangue-vivo)}
+.degrau .jxj-retrato{width:96px}
+.degrau-1 .jxj-retrato{width:120px}
+@media (hover:hover) and (pointer:fine){.jxj-rank-linha:hover,.degrau:hover{border-left-color:var(--sangue)}}
+
+/* temporada, torneios, Hall */
+.jxj-temporada p{margin:8px 0 0}
+.jxj-torneios{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.jxj-torneio-card.andamento{border-color:rgba(215,38,30,.5)}
+.jxj-torneio-card.encerrado{opacity:.85}
+.jxj-chave{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.jxj-fase{display:flex;flex-direction:column;gap:12px}
+.jxj-confronto{display:flex;flex-direction:column;gap:2px;padding:12px 14px;background:rgba(17,19,26,.88);border:1px solid var(--linha-forte)}
+.jxj-confronto p{margin:0;font-family:var(--f-ui);font-size:17px;text-transform:uppercase;letter-spacing:.03em;color:var(--osso-2)}
+.jxj-confronto p small{margin-left:8px;font-size:12px;color:var(--cinza);text-transform:none}
+.jxj-confronto p.venc{color:var(--osso);font-weight:700}
+.jxj-confronto p.venc::after{content:"";display:inline-block;width:8px;height:8px;margin-left:8px;background:var(--ganho)}
+.jxj-confronto>small{color:var(--cinza)}
+.jxj-confronto.meu{border-color:var(--sangue)}
+.jxj-confronto .botao{margin-top:8px;align-self:flex-start}
+.jxj-campeao{display:flex;align-items:center;gap:12px;padding:16px 20px;background:rgba(212,160,23,.12);border:1px solid rgba(212,160,23,.5);margin:0;font-size:18px}
+.jxj-campeao .ico{width:30px;height:30px;color:var(--ouro)}
+.jxj-hall-bloco{display:flex;flex-direction:column}
+.jxj-hall-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px;text-align:center;cursor:pointer;font:inherit;color:var(--osso);
+  background:rgba(17,19,26,.86);border:1px solid rgba(212,160,23,.35)}
+.jxj-hall-card b{font-family:var(--f-ui);font-size:18px;text-transform:uppercase;letter-spacing:.04em}
+.jxj-hall-card small{color:var(--cinza)}
+.jxj-hall-card .jxj-retrato{width:96px}
+@media (hover:hover) and (pointer:fine){.jxj-hall-card:hover{border-color:var(--ouro)}}
+
+/* celular: o que manda vem primeiro, ação no alcance do polegar */
+@media (max-width:900px){
+  .jxj-ramos{grid-template-columns:1fr}
+  .jxj-chave{grid-template-columns:1fr}
+  .jxj-numeros{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:720px){
+  .jxj-principal,.jxj-confirma{grid-template-columns:1fr;justify-items:start}
+  .jxj-principal-retrato .jxj-retrato{width:150px}
+  .jxj-passos,.jxj-planos{grid-template-columns:1fr}
+  .jxj-versus,.jxj-placar{grid-template-columns:1fr 1fr}
+  .jxj-placar-meio{grid-column:1 / -1;order:-1;min-width:0}
+  .jxj-vs{display:none}
+  .jxj-lado{flex-direction:column;align-items:flex-start;padding:10px}
+  .jxj-lado .jxj-retrato{width:64px}
+  .jxj-relogio{font-size:44px}
+  .jxj-acoes-luta{grid-template-columns:1fr 1fr;gap:8px}
+  .jxj-acao{min-height:120px;padding:12px}
+  .jxj-acao span{font-size:13px}
+  .jxj-hist-linha{grid-template-columns:80px minmax(0,1fr) auto;grid-template-areas:"res adv delta" "ver ver ver"}
+  .jxj-hist-ver{grid-column:1 / -1;justify-self:start}
+  .jxj-rank-linha{grid-template-columns:34px 44px minmax(0,1fr) 70px}
+  .jxj-rank-linha .rank-meta,.jxj-rank-linha .jxj-variacao{display:none}
+  .jxj-atr li{grid-template-columns:100px minmax(0,1fr) 40px}
+}
+@media (prefers-reduced-motion:reduce){
+  .jxj-busca-pulso{animation:none}
+  .jxj-barra i,.jxj-momento-trilho i{transition:none}
+}

@@ -7193,6 +7193,7 @@ function irPara(nome,param=null,{substituir=false}={}){
 }
 function mostrarRota(nome,param){
   if(document.documentElement.dataset.tela==="hub"&&nome!=="carreira")pararCarreira();
+  jxjParar();   // consulta periódica do JxJ não segue em outra tela
   const r=ROTAS[nome]?nome:"404";
   rotaAtual=r;
   transicao(()=>ROTAS[r].tela(param));
@@ -7442,6 +7443,1196 @@ function screen404(){
   c.appendChild(b);
 }
 
+/* =========================================================================
+   JxJ (2026-10-01): telas do Jogador contra Jogador. A tela só mostra e
+   escolhe; resultado, rating, XP, fichas, fila e prazo são do servidor
+   (api/jxj.js) e do banco (supabase_jxj.sql). Spec:
+   docs/superpowers/specs/2026-10-01-jxj-design.md.
+   Rota #/jxj/<sub>/<id>. Polling com token de tela: sair da tela troca o
+   token e a continuação velha desiste (mesma regra do CARREIRA_TOKEN).
+   ========================================================================= */
+const JXJ_URL="/api/jxj";
+let JXJ_DEF=null,JXJ_TIMER=null,JXJ_TOKEN=0;
+function jxjParar(){ if(JXJ_TIMER){clearTimeout(JXJ_TIMER);JXJ_TIMER=null;} JXJ_TOKEN++; }
+async function jxj(acao,dados={}){
+  const token=await meuAccessToken();
+  let r,j=null;
+  try{
+    r=await fetch(JXJ_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({...(token?{token}:{}),acao,...dados})});
+    try{ j=await r.json(); }catch(e){}
+  }catch(e){ throw{status:0,erro:"Sem conexão com o servidor do JxJ. Confira a internet e tente de novo."}; }
+  if(!r.ok)throw{status:r.status,erro:(j&&j.erro)||"O servidor do JxJ não respondeu. Tente de novo.",desligado:!!(j&&j.desligado)};
+  return j;
+}
+async function jxjDef(){ if(!JXJ_DEF)JXJ_DEF=await jxj("definicoes"); return JXJ_DEF; }
+const jxjEsc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const jxjEstilo=id=>(JXJ_DEF&&JXJ_DEF.estilos[id]&&JXJ_DEF.estilos[id].nome)||id;
+const jxjCategoria=id=>(JXJ_DEF&&JXJ_DEF.categorias[id]&&JXJ_DEF.categorias[id].nome)||nomeDivisao(id)||id;
+const jxjMetodo=m=>({KO:"Nocaute",TKO:"Nocaute técnico",FIN:"Finalização",DEC:"Decisão",EMPATE:"Empate",WO:"W.O.",ANULADA:"Anulada"}[m]||m);
+function jxjCartel(l){
+  const c=Array.isArray(l.cartel)?l.cartel:[l.vitorias||0,l.derrotas||0,l.empates||0];
+  return{v:c[0],d:c[1],e:c[2],txt:`${c[0]}-${c[1]}${c[2]?`-${c[2]}`:""}`,total:c[0]+c[1]+c[2]};
+}
+/* taxa de vitórias: vitórias sobre o total de lutas (empate conta no total) */
+function jxjTaxa(l){ const c=jxjCartel(l); return c.total?Math.round(100*c.v/c.total)+"%":"Sem lutas"; }
+const jxjProvisorio=l=>(l.lutasRating!=null?l.lutasRating:l.lutas_rating||0)<((JXJ_DEF&&JXJ_DEF.regras.lutasPraClassificar)||5);
+function jxjRetrato(l,w=120,cls=""){
+  const m=l&&l.moldura&&l.moldura!=="padrao"?` moldura-${jxjEsc(l.moldura)}`:"";
+  return `<span class="jxj-retrato${m}${cls?" "+cls:""}">${bonecoSVG(l&&l.rosto,{w})}</span>`;
+}
+function jxjCarregando(c,txt="Carregando"){ c.innerHTML=""; c.appendChild(el("p","carregando",txt)); }
+function jxjErro(c,e,tentar){
+  c.innerHTML="";
+  if(e&&e.desligado){ c.appendChild(jxjEmBreve()); return; }
+  const v=vazio("alerta","Não deu certo",jxjEsc((e&&e.erro)||"Falha inesperada."));
+  if(tentar){ const b=el("button","botao botao-sec",`${ICONE("reenviar")}<span>Tentar de novo</span>`); b.type="button"; b.onclick=()=>{SOM.toque();tentar();}; v.appendChild(b); }
+  c.appendChild(v);
+}
+function jxjEmBreve(){
+  return vazio("relogio","O JxJ abre em breve",
+    "O modo competitivo está pronto e entra no ar assim que o banco de dados dele for liberado. A carreira continua igual.");
+}
+/* navegação interna do JxJ (troca de rota, não de aba) */
+function jxjNav(atual){
+  const nav=el("nav","guias jxj-nav");
+  [["","Painel","painel"],["ranking","Ranking","trofeu"],["temporada","Temporada","calendario"],
+   ["torneios","Torneios","coroa"],["hall","Hall da Fama","hall"]].forEach(([sub,rot,ico])=>{
+    const b=el("button","guia"+(sub===atual?" on":""),`${ICONE(ico)}<span>${rot}</span>`);
+    b.type="button"; b.onclick=()=>{ SOM.toque(); irPara("jxj",sub||null); };
+    nav.appendChild(b);
+  });
+  return nav;
+}
+function jxjTela({titulo,fundo="octogono-luz",nav=null,voltar="menu",classe=""}){
+  const c=montarTela({fundo,titulo,voltar,classe:"tela-jxj"+(classe?" "+classe:"")});
+  if(nav!==null)c.appendChild(jxjNav(nav));
+  return c;
+}
+/* contagem regressiva pelo relógio do SERVIDOR: restaMs na chegada da
+   resposta, descontado o tempo local que passou desde então */
+function jxjRelogio(restaMs){
+  const chegou=Date.now();
+  return()=>Math.max(0,restaMs-(Date.now()-chegou));
+}
+const jxjSeg=ms=>Math.ceil(ms/1000);
+function jxjFmtDuracao(ms){
+  const s=Math.max(0,Math.floor(ms/1000)),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+  return d?`${d}d ${h}h`:h?`${h}h ${m}min`:m?`${m}min`:`${s%60}s`;
+}
+function jxjBarra(valor,max,cls=""){
+  const p=Math.max(0,Math.min(100,Math.round(100*valor/Math.max(1,max))));
+  return `<span class="jxj-barra${cls?" "+cls:""}" role="progressbar" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${Math.round(valor)}"><i style="width:${p}%"></i></span>`;
+}
+/* linha do rating em SVG (sem biblioteca) */
+function jxjSparkline(pontos,{w=280,h=64}={}){
+  if(!pontos||pontos.length<2)return `<p class="jxj-nota">O gráfico aparece depois da segunda luta com rating.</p>`;
+  const vs=pontos.map(p=>p.r),mn=Math.min(...vs),mx=Math.max(...vs),amp=Math.max(20,mx-mn);
+  const xy=vs.map((v,i)=>[Math.round(i*(w-8)/(vs.length-1))+4,Math.round(h-6-(v-mn)*(h-12)/amp)]);
+  const d=xy.map((p,i)=>(i?"L":"M")+p[0]+" "+p[1]).join(" ");
+  const ult=xy[xy.length-1];
+  return `<svg class="jxj-spark" viewBox="0 0 ${w} ${h}" width="100%" height="${h}" role="img" aria-label="Rating de ${vs[0]} a ${vs[vs.length-1]}">
+    <path d="${d}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect x="${ult[0]-4}" y="${ult[1]-4}" width="8" height="8" fill="var(--sangue)"/></svg>`;
+}
+
+/* ---------- entrada e painel (#/jxj) ---------- */
+async function jxjTelaEntrada(){
+  const c=jxjTela({titulo:"JxJ",fundo:"arena",nav:""});
+  const area=el("div","jxj-area"); c.appendChild(area);
+  jxjCarregando(area);
+  let def;
+  try{ def=await jxjDef(); }catch(e){ return jxjErro(area,e,jxjTelaEntrada); }
+  if(!def.ativo){ area.innerHTML=""; area.appendChild(jxjEmBreve()); jxjApresentacao(area,def,{semBotao:true}); return; }
+  const s=await sessaoAtual();
+  if(!s){ area.innerHTML=""; jxjApresentacao(area,def,{entrar:true}); return; }
+  await Promise.race([atualizarStatusPro(),new Promise(r=>setTimeout(r,2500))]);
+  let est;
+  try{ est=await jxj("estado"); }catch(e){ return jxjErro(area,e,jxjTelaEntrada); }
+  area.innerHTML="";
+  if(est.luta&&["confirmacao","andamento"].includes(est.luta.status)){
+    const b=el("button","jxj-faixa-luta",`${ICONE("espadas")}<span><b>Luta em andamento</b><small>Ela continua mesmo fora da tela. Volte pra escolher a próxima ação.</small></span>${ICONE("seta-dir")}`);
+    b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj","luta/"+est.luta.id);};
+    area.appendChild(b);
+  }
+  if(!est.lutadores.length){ jxjApresentacao(area,def,{criar:true,est}); return; }
+  jxjPainel(area,def,est);
+}
+function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=null}={}){
+  const hero=el("section","jxj-hero entra");
+  hero.innerHTML=`<p class="jxj-rotulo">Jogador contra Jogador</p>
+    <h2 class="jxj-hero-titulo">Seu lutador contra os lutadores dos outros jogadores</h2>
+    <p class="jxj-hero-txt">Você cria um lutador, escolhe estilo e categoria e monta a árvore de habilidades.
+      Cada luta é decidida por troca: os dois escolhem a ação ao mesmo tempo, sem ver a do outro, e o servidor resolve.</p>`;
+  const passos=el("ol","jxj-passos");
+  [["espadas","Lute","Vitória e derrota mexem no rating. Perder nunca tira nível nem ponto de habilidade."],
+   ["arvore","Evolua","Cada nível dá um ponto pra árvore do seu estilo. O nível vai até 30, com teto em cada atributo."],
+   ["trofeu","Suba","O ranking mostra o principal de cada conta. Temporadas de 8 semanas e torneios de 8 com cinturão."]]
+    .forEach(([ico,t,d])=>{ const li=el("li","jxj-passo",`${ICONE(ico)}<b>${t}</b><span>${d}</span>`); passos.appendChild(li); });
+  hero.appendChild(passos);
+  if(!semBotao){
+    const acoes=el("div","jxj-acoes");
+    const b=el("button","botao",entrar?`${ICONE("usuario")}<span>Entrar pra jogar</span>`:`${ICONE("mais")}<span>Criar meu lutador</span>`);
+    b.type="button";
+    b.onclick=()=>{ SOM.toque(); if(entrar)comConta({tipo:"jxj"},()=>irPara("jxj",null,{substituir:true})); else irPara("jxj","criar"); };
+    const r=el("button","botao botao-sec",`${ICONE("trofeu")}<span>Ver o ranking</span>`); r.type="button";
+    r.onclick=()=>{SOM.toque();irPara("jxj","ranking");};
+    acoes.append(b,r); hero.appendChild(acoes);
+  }
+  area.appendChild(hero);
+  const planos=el("section","jxj-planos entra");
+  const R=def.regras;
+  planos.innerHTML=`<div class="jxj-plano"><b>Plano grátis</b><ul>
+      <li>${R.slotsFree} lutador</li><li>1 luta competitiva grátis</li><li>Ranking, perfis, torneios e Hall abertos pra ver</li></ul></div>
+    <div class="jxj-plano jxj-plano-pro"><b>Pro</b><ul>
+      <li>${R.slotsPro} lutadores, cada um com rating e cartel próprios</li><li>Fila, revanche e torneios sem limite de acesso</li>
+      <li>Nenhuma vantagem de atributo: o Pro libera acesso, não vitória</li></ul></div>`;
+  area.appendChild(planos);
+  if(est&&!est.pro&&est.lutaGratisUsada)area.appendChild(el("p","jxj-nota","A luta grátis desta conta já foi usada."));
+}
+function jxjPainel(area,def,est){
+  const principal=est.lutadores.find(l=>l.id===est.principalEfetivo)||est.lutadores[0];
+  const c=jxjCartel(principal);
+  const nv=principal.nivelInfo||{nivel:principal.nivel,noNivel:0,proximo:0};
+  const hero=el("section","jxj-principal entra");
+  hero.innerHTML=`<div class="jxj-principal-retrato">${jxjRetrato(principal,220)}</div>
+    <div class="jxj-principal-info">
+      <p class="jxj-rotulo">Lutador principal${principal.utilizavel?"":" · inativo sem o Pro"}</p>
+      <h2 class="jxj-nome">${jxjEsc(principal.nome)}</h2>
+      <p class="jxj-meta">${jxjCategoria(principal.categoria)} · ${jxjEstilo(principal.estilo)}</p>
+      <dl class="jxj-numeros">
+        <div><dt>Rating</dt><dd>${Math.round(principal.rating)}${jxjProvisorio(principal)?`<small>em classificação</small>`:""}</dd></div>
+        <div><dt>Posição global</dt><dd id="jxj-pos">${jxjProvisorio(principal)?"<small>depois de 5 lutas</small>":"..."}</dd></div>
+        <div><dt>Cartel</dt><dd>${c.txt}<small>${jxjTaxa(principal)} de vitórias</small></dd></div>
+        <div><dt>Nível</dt><dd>${nv.nivel}<small>${nv.nivel>=30?"máximo":`${nv.noNivel} de ${nv.proximo} XP`}</small></dd></div>
+      </dl>
+      ${nv.nivel<30?jxjBarra(nv.noNivel,nv.proximo,"jxj-barra-xp"):""}
+    </div>`;
+  const acoes=el("div","jxj-acoes");
+  const buscar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Buscar adversário</span>`); buscar.type="button";
+  const podeFila=principal.utilizavel&&(est.pro||!est.lutaGratisUsada);
+  if(!podeFila){ buscar.disabled=true; }
+  buscar.onclick=()=>{SOM.toque();irPara("jxj","fila");};
+  const arv=el("button","botao botao-sec",`${ICONE("arvore")}<span>Árvore${principal.pontosLivres?` (${principal.pontosLivres} pontos)`:""}</span>`); arv.type="button";
+  arv.onclick=()=>{SOM.toque();irPara("jxj","lutador/"+principal.id+"/arvore");};
+  const slots=el("button","botao botao-sec",`${ICONE("grupo")}<span>Lutadores</span>`); slots.type="button";
+  slots.onclick=()=>{SOM.toque();irPara("jxj","lutadores");};
+  acoes.append(buscar,arv,slots);
+  hero.querySelector(".jxj-principal-info").appendChild(acoes);
+  if(!podeFila)hero.querySelector(".jxj-principal-info").appendChild(el("p","jxj-nota",
+    !principal.utilizavel?"Este lutador está num slot extra e o Pro venceu. Escolha o lutador do slot 1 como principal ou renove o Pro."
+    :"A luta grátis já foi usada. O Pro libera a fila, a revanche e os torneios."));
+  if(!podeFila&&!est.pro)hero.querySelector(".jxj-principal-info").appendChild(bloqueioPro(el("button","botao botao-sec","Fila do Pro")));
+  area.appendChild(hero);
+
+  const grade=el("div","jxj-grade");
+  area.appendChild(grade);
+  /* temporada */
+  const temp=el("section","painel-n jxj-card entra");
+  const fimT=new Date(est.temporada.fim).getTime(),iniT=new Date(est.temporada.inicio).getTime(),agora=new Date(est.agora).getTime();
+  temp.innerHTML=`<p class="jxj-rotulo">${ICONE("calendario")} Temporada ${est.temporada.numero}</p>
+    <p class="jxj-card-num">${jxjFmtDuracao(fimT-agora)}<small>pra acabar</small></p>${jxjBarra(agora-iniT,fimT-iniT)}
+    <p class="jxj-nota">Na virada o rating vai pra metade do caminho até 1500. Nível, árvore, cartel e títulos ficam.</p>`;
+  const vt=el("button","botao botao-sec","Ver a temporada"); vt.type="button"; vt.onclick=()=>{SOM.toque();irPara("jxj","temporada");};
+  temp.appendChild(vt); grade.appendChild(temp);
+  /* objetivos competitivos: só fato do estado, nada inventado */
+  const obj=el("section","painel-n jxj-card entra");
+  const metas=[];
+  if(jxjProvisorio(principal))metas.push(`Fazer ${def.regras.lutasPraClassificar-(principal.lutasRating||0)} luta(s) com rating pra entrar no ranking.`);
+  if((principal.lutasRating||0)<def.regras.torneioLutasMin)metas.push(`Chegar a ${def.regras.torneioLutasMin} lutas com rating pra entrar em torneio.`);
+  if(principal.pontosLivres)metas.push(`Gastar ${principal.pontosLivres} ponto(s) de habilidade na árvore.`);
+  if(nv.nivel<30)metas.push(`Faltam ${nv.proximo-nv.noNivel} XP pro nível ${nv.nivel+1}.`);
+  obj.innerHTML=`<p class="jxj-rotulo">${ICONE("alvo")} Próximos objetivos</p><ul class="jxj-lista-simples">${metas.slice(0,4).map(m=>`<li>${m}</li>`).join("")||"<li>Tudo em dia. Hora de lutar.</li>"}</ul>`;
+  grade.appendChild(obj);
+  /* último resultado, evolução e rivais: do histórico e do perfil */
+  const ult=el("section","painel-n jxj-card entra"); ult.innerHTML=`<p class="jxj-rotulo">${ICONE("historico")} Último resultado</p><p class="carregando">Carregando</p>`;
+  const evo=el("section","painel-n jxj-card entra"); evo.innerHTML=`<p class="jxj-rotulo">${ICONE("grafico")} Evolução do rating</p><p class="carregando">Carregando</p>`;
+  const riv=el("section","painel-n jxj-card entra"); riv.innerHTML=`<p class="jxj-rotulo">${ICONE("espadas")} Rivais</p><p class="carregando">Carregando</p>`;
+  const tor=el("section","painel-n jxj-card entra"); tor.innerHTML=`<p class="jxj-rotulo">${ICONE("coroa")} Próximo torneio</p><p class="carregando">Carregando</p>`;
+  grade.append(ult,evo,riv,tor);
+  if(est.lutadores.length>1){
+    const outros=el("section","painel-n jxj-card entra");
+    outros.innerHTML=`<p class="jxj-rotulo">${ICONE("grupo")} Seus outros lutadores</p>`+
+      `<ul class="jxj-lista-simples">${est.lutadores.filter(l=>l.id!==principal.id).map(l=>
+        `<li><b>${jxjEsc(l.nome)}</b> · ${jxjEstilo(l.estilo)} · nível ${l.nivel} · rating ${Math.round(l.rating)}${l.utilizavel?"":" · inativo"}</li>`).join("")}</ul>`;
+    grade.appendChild(outros);
+  }
+  const tk=JXJ_TOKEN;
+  jxj("perfil",{lutadorId:principal.id}).then(p=>{
+    if(tk!==JXJ_TOKEN)return;
+    const h=p.historico||[];
+    if(!h.length){ ult.innerHTML=`<p class="jxj-rotulo">${ICONE("historico")} Último resultado</p><p class="jxj-nota">Nenhuma luta ainda.</p>`; }
+    else{
+      const x=h[0],r=x.resultado||{},meu=r.vencedor===x.lado,emp=!r.vencedor;
+      ult.innerHTML=`<p class="jxj-rotulo">${ICONE("historico")} Último resultado</p>
+        <p class="jxj-card-num ${emp?"":meu?"txt-ganho":"txt-perda"}">${emp?"Empate":meu?"Vitória":"Derrota"}<small>${jxjMetodo(r.metodo)}${r.round?` no round ${r.round}`:""}</small></p>
+        <p class="jxj-nota">Contra ${jxjEsc(x.adversario&&x.adversario.nome)}${x.comRating?` · rating ${x.ratingDelta>=0?"+":""}${x.ratingDelta}`:" · sem rating"}</p>`;
+      const vr=el("button","botao botao-sec","Ver a luta"); vr.type="button"; vr.onclick=()=>{SOM.toque();irPara("jxj","replay/"+x.luta);}; ult.appendChild(vr);
+    }
+    evo.innerHTML=`<p class="jxj-rotulo">${ICONE("grafico")} Evolução do rating</p>${jxjSparkline(p.perfil.ratingHist)}`;
+    const por={};
+    for(const x of h){ const k=x.adversarioId; if(!k)continue; const o=por[k]||(por[k]={nome:x.adversario&&x.adversario.nome,id:k,v:0,d:0,n:0}); o.n++;
+      if(x.resultado&&x.resultado.vencedor===x.lado)o.v++; else if(x.resultado&&x.resultado.vencedor)o.d++; }
+    const rivais=Object.values(por).filter(o=>o.n>=2).sort((a,b)=>b.n-a.n).slice(0,3);
+    riv.innerHTML=`<p class="jxj-rotulo">${ICONE("espadas")} Rivais</p>`+(rivais.length
+      ?`<ul class="jxj-lista-simples">${rivais.map(o=>`<li><a href="#/jxj/perfil/${o.id}">${jxjEsc(o.nome)}</a>: ${o.n} lutas, ${o.v} vitórias e ${o.d} derrotas</li>`).join("")}</ul>`
+      :`<p class="jxj-nota">Rival aparece quando você enfrenta o mesmo lutador duas vezes ou mais.</p>`);
+  }).catch(()=>{ if(tk===JXJ_TOKEN){ ult.innerHTML=evo.innerHTML=riv.innerHTML=`<p class="jxj-nota">Não carregou agora.</p>`; } });
+  jxj("torneios",{categoria:principal.categoria}).then(ts=>{
+    if(tk!==JXJ_TOKEN)return;
+    const ab=(ts||[]).find(t=>t.status==="inscricoes"),meu=(ts||[]).find(t=>t.inscrito&&t.status!=="encerrado");
+    const t=meu||ab;
+    tor.innerHTML=`<p class="jxj-rotulo">${ICONE("coroa")} Próximo torneio</p>`+(t
+      ?`<p class="jxj-card-num">${t.inscritos} de ${t.vagas}<small>${t.status==="andamento"?"em andamento":"inscritos"} · ${jxjCategoria(t.categoria)}</small></p>${jxjBarra(t.inscritos,t.vagas)}
+        <p class="jxj-nota">${meu?"Você está inscrito.":"Pede Pro, lutador principal e 3 lutas com rating."}</p>`
+      :`<p class="jxj-nota">Nenhum torneio aberto nesta categoria agora.</p>`);
+    const b=el("button","botao botao-sec","Ver os torneios"); b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj",t?"torneio/"+t.id:"torneios");}; tor.appendChild(b);
+  }).catch(()=>{ if(tk===JXJ_TOKEN)tor.innerHTML=`<p class="jxj-nota">Não carregou agora.</p>`; });
+  if(!jxjProvisorio(principal))jxj("ranking",{}).then(r=>{
+    if(tk!==JXJ_TOKEN)return;
+    const alvo=document.getElementById("jxj-pos");
+    if(alvo)alvo.innerHTML=r.minhaPosicao?`${r.minhaPosicao.posicao}º<small>global</small>`:`<small>sem luta nos últimos 30 dias</small>`;
+  }).catch(()=>{});
+}
+/* ---------- criação do lutador (#/jxj/criar): 4 passos ---------- */
+/* editor de aparência: mesmas peças e abas do criador da carreira
+   (CATEGORIAS do rosto), num estado local; nada de rosto sorteado sem
+   controle do jogador */
+function jxjEditorRosto(alvo,rostoIni,aoMudar){
+  let rosto=normalizarRosto(rostoIni||cfgPadrao()),aba=0;
+  const wrap=el("div","criador jxj-criador");
+  const palco=el("div","palco"),pain=el("div","painelC");
+  const abas=el("div","abas"),corpo=el("div","corpoC");
+  pain.append(abas,corpo); wrap.append(palco,pain); alvo.appendChild(wrap);
+  const desenha=()=>{ palco.innerHTML=`<div class="col-t">Seu lutador</div>`+bonecoSVG(rosto,{w:240}); aoMudar(rosto); };
+  const preencher=()=>{
+    corpo.innerHTML="";
+    const cat=CATEGORIAS[aba];
+    if(cat.arquetipos){
+      const g=el("div","arquetipos");
+      ARQUETIPOS.forEach(a=>{
+        const on=rosto.arquetipo===a.id;
+        const b=el("button","chip arquetipo"+(on?" on":""),`${bonecoSVG({v:2,...a.cfg},{w:84})}<span>${a.nome}</span>`);
+        b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(on));
+        b.onclick=()=>{ SOM.toque(); rosto={v:2,...a.cfg,arquetipo:a.id}; preencher(); desenha(); };
+        g.appendChild(b);
+      });
+      corpo.append(el("p","hint","O arquétipo monta o visual inteiro. Depois, cada aba troca uma peça."),g);
+      return;
+    }
+    cat.itens.forEach(([tipo,rot,fonte,campo])=>{
+      const lista=fonte(),bloco=el("div","linhaC");
+      bloco.innerHTML=`<div class="linhaC-hd"><span>${rot}</span><b>${tipo==="lista"?lista[rosto[campo]%lista.length]:""}</b></div>`;
+      const g=el("div",tipo==="cor"?"swatches":"chips");
+      lista.forEach((item,i)=>{
+        const b=tipo==="cor"?el("button","sw"+(rosto[campo]===i?" on":""),""):el("button","chip"+(rosto[campo]===i?" on":""),item);
+        b.type="button";
+        if(tipo==="cor"){ b.style.background=item; if(b.setAttribute)b.setAttribute("aria-label",`${rot} ${i+1}`); }
+        if(b.setAttribute)b.setAttribute("aria-pressed",String(rosto[campo]===i));
+        b.onclick=()=>{ SOM.toque(); rosto={...rosto,[campo]:i}; preencher(); desenha(); };
+        g.appendChild(b);
+      });
+      bloco.appendChild(g); corpo.appendChild(bloco);
+    });
+  };
+  CATEGORIAS.forEach((cat,i)=>{
+    const b=el("button","aba"+(i===aba?" on":""),cat.rot); b.type="button";
+    b.onclick=()=>{ SOM.toque(); aba=i; abas.querySelectorAll(".aba").forEach((x,j)=>x.classList.toggle("on",j===i)); preencher(); };
+    abas.appendChild(b);
+  });
+  preencher(); desenha();
+}
+const JXJ_NOVO={nome:"",rosto:null,categoria:null,estilo:null};
+async function jxjTelaCriar(passo){
+  let def;
+  try{ def=await jxjDef(); }catch(e){ const c=jxjTela({titulo:"Criar lutador",voltar:()=>irPara("jxj")}); return jxjErro(c,e,()=>jxjTelaCriar(passo)); }
+  if(!def.ativo){ const c=jxjTela({titulo:"Criar lutador",voltar:()=>irPara("jxj")}); c.appendChild(jxjEmBreve()); return; }
+  const n=Math.max(1,Math.min(4,Number(passo)||1));
+  const ir=k=>irPara("jxj","criar/"+k);
+  const voltar=n===1?()=>irPara("jxj"):()=>ir(n-1);
+  if(n===1){
+    const c=montarPasso(1,4,{titulo:"Nome e aparência",fundo:"vestiario",voltar});
+    c.classList&&c.classList.add("tela-jxj");
+    const nomeBox=el("div","jxj-campo");
+    nomeBox.innerHTML=`<label for="jxj-nome">Nome do lutador</label>
+      <input id="jxj-nome" type="text" maxlength="24" autocomplete="off" value="${jxjEsc(JXJ_NOVO.nome)}" placeholder="De 2 a 24 letras">
+      <small>O nome aparece no ranking pra todo mundo. Só letras, números, espaço, hífen e apóstrofo.</small>`;
+    c.appendChild(nomeBox);
+    const inp=nomeBox.querySelector("input"); inp.oninput=()=>{JXJ_NOVO.nome=inp.value;};
+    jxjEditorRosto(c,JXJ_NOVO.rosto,r=>{JXJ_NOVO.rosto=r;});
+    const av=el("button","botao",`<span>Próximo: categoria</span>${ICONE("seta-dir")}`); av.type="button";
+    av.onclick=()=>{ const nm=String(JXJ_NOVO.nome||"").trim(); if(nm.length<2){ inp.focus(); return; } SOM.toque(); ir(2); };
+    c.appendChild(el("div","jxj-acoes")).appendChild(av);
+    return;
+  }
+  if(n===2){
+    const c=montarPasso(2,4,{titulo:"Categoria de peso",fundo:"lona",voltar});
+    c.appendChild(el("p","tela-sub","A fila só junta lutadores da mesma categoria. A categoria mexe pouco nos atributos e não muda depois."));
+    const g=el("div","jxj-opcoes");
+    (def.categoriasLancamento||[]).forEach(id=>{
+      const cat=def.categorias[id]; if(!cat)return;
+      const aj=Object.entries(cat.ajuste||{}).map(([k,v])=>`${def.atributos[k]} ${v>0?"+":""}${v}`).join(", ")||"sem ajuste";
+      const b=el("button","jxj-opcao"+(JXJ_NOVO.categoria===id?" on":""),`<b>${cat.nome}</b><small>${aj}</small>`);
+      b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(JXJ_NOVO.categoria===id));
+      b.onclick=()=>{ SOM.toque(); JXJ_NOVO.categoria=id; ir(3); };
+      g.appendChild(b);
+    });
+    c.appendChild(g);
+    return;
+  }
+  if(n===3){
+    if(!JXJ_NOVO.categoria)return ir(2);
+    const c=montarPasso(3,4,{titulo:"Estilo principal",fundo:"academia",voltar});
+    c.appendChild(el("p","tela-sub","O estilo define o ponto de partida e a árvore principal. Os quatro somam os mesmos pontos de atributo: nenhum é melhor em tudo."));
+    const g=el("div","jxj-estilos");
+    for(const [id,e] of Object.entries(def.estilos)){
+      const barras=Object.entries(e.base).map(([k,v])=>`<li><span>${def.atributos[k]}</span>${jxjBarra(v,92)}<b>${v}</b></li>`).join("");
+      const ramos=e.ramos.map(r=>def.ramos[r].nome).join(", ");
+      const b=el("button","jxj-estilo"+(JXJ_NOVO.estilo===id?" on":""),
+        `<b class="jxj-estilo-nome">${e.nome}</b><span class="jxj-estilo-resumo">${e.resumo}</span><ul class="jxj-atr">${barras}</ul><small>Ramos: ${ramos}</small>`);
+      b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(JXJ_NOVO.estilo===id));
+      b.onclick=()=>{ SOM.toque(); JXJ_NOVO.estilo=id; ir(4); };
+      g.appendChild(b);
+    }
+    c.appendChild(g);
+    return;
+  }
+  if(!JXJ_NOVO.estilo)return ir(3);
+  const c=montarPasso(4,4,{titulo:"Confirmar",fundo:"tunel",voltar});
+  const r=el("div","jxj-confirma");
+  r.innerHTML=`<div class="jxj-confirma-retrato">${bonecoSVG(JXJ_NOVO.rosto||cfgPadrao(),{w:220})}</div>
+    <div><h2 class="jxj-nome">${jxjEsc(String(JXJ_NOVO.nome).trim())}</h2>
+    <p class="jxj-meta">${jxjCategoria(JXJ_NOVO.categoria)} · ${jxjEstilo(JXJ_NOVO.estilo)}</p>
+    <ul class="jxj-lista-simples"><li>Começa no nível 1 com 3 pontos de habilidade.</li>
+      <li>Rating inicial 1500, que se firma depois de 5 lutas.</li>
+      <li>Categoria e estilo não mudam depois. A árvore pode ser refeita com fichas.</li></ul></div>`;
+  c.appendChild(r);
+  const msg=el("p","jxj-erro"); msg.hidden=true; c.appendChild(msg);
+  const ok=el("button","botao",`${ICONE("check")}<span>Criar lutador</span>`); ok.type="button";
+  ok.onclick=async()=>{
+    SOM.toque(); ok.disabled=true; msg.hidden=true;
+    try{
+      const res=await jxj("criar",{nome:String(JXJ_NOVO.nome).trim(),rosto:JXJ_NOVO.rosto||cfgPadrao(),categoria:JXJ_NOVO.categoria,estilo:JXJ_NOVO.estilo});
+      JXJ_NOVO.nome="";JXJ_NOVO.rosto=null;JXJ_NOVO.categoria=null;JXJ_NOVO.estilo=null;
+      irPara("jxj","lutador/"+res.id+"/arvore",{substituir:true});
+    }catch(e){ msg.textContent=e.erro||"Não deu pra criar agora."; msg.hidden=false; ok.disabled=false; }
+  };
+  c.appendChild(el("div","jxj-acoes")).appendChild(ok);
+}
+/* ---------- regras da árvore no cliente: só pra prévia; quem decide é o servidor ---------- */
+const jxjPontosDoNivel=n=>3+Math.max(0,Math.min(30,n)-1);
+function jxjNos(def){
+  const m={};
+  for(const [ramo,r] of Object.entries(def.ramos))r.nos.forEach(no=>{m[no.id]={...no,ramo,estilo:r.estilo};});
+  return m;
+}
+function jxjValidar(def,estilo,build,nivel){
+  const A=def.arvore,NOS=jxjNos(def),porRamo={};let gasto=0;
+  const custo=(no,nv)=>(no.estilo===estilo?A.custoProprio:A.custoHibrido)*nv;
+  for(const [id,nv] of Object.entries(build)){
+    if(!nv)continue; const no=NOS[id]; if(!no)return{ok:false,erro:"habilidade desconhecida"};
+    if(no.estilo!==estilo&&no.tier>A.tiersHibridos)return{ok:false,erro:`${no.nome} só abre pro estilo dele`};
+    gasto+=custo(no,nv); porRamo[no.ramo]=(porRamo[no.ramo]||0)+custo(no,nv);
+  }
+  for(const [id,nv] of Object.entries(build)){
+    if(!nv)continue; const no=NOS[id];
+    const antes=def.ramos[no.ramo].nos.slice(0,no.tier-1).reduce((s,x)=>s+custo({estilo:no.estilo},build[x.id]||0),0);
+    if(antes<A.pedidoPorTier[no.tier-1])return{ok:false,erro:`${no.nome} pede ${A.pedidoPorTier[no.tier-1]} pontos antes no ramo`};
+  }
+  for(const [ramo,p] of Object.entries(porRamo))if(p>A.pontosPorRamoMax)return{ok:false,erro:`o ramo ${def.ramos[ramo].nome} aceita até ${A.pontosPorRamoMax} pontos`};
+  const disp=jxjPontosDoNivel(nivel);
+  if(gasto>disp)return{ok:false,erro:`faltam pontos (${gasto} de ${disp})`};
+  return{ok:true,gasto,porRamo,sobra:disp-gasto};
+}
+function jxjPerfilPrevia(def,estilo,categoria,build){
+  const A=def.arvore,NOS=jxjNos(def),est=def.estilos[estilo],aj=(def.categorias[categoria]||{ajuste:{}}).ajuste||{};
+  const bonA={},bonM={...(est.mec||{})};
+  for(const [id,nv] of Object.entries(build||{})){ const no=NOS[id]; if(!no||!nv)continue;
+    for(const e of no.efeitos){ if(e.a)bonA[e.a]=(bonA[e.a]||0)+e.v*nv; else bonM[e.m]=(bonM[e.m]||0)+e.v*nv; } }
+  const suave=(b,t)=>t*(1-Math.exp(-b/t));
+  const atr={},mec={};
+  for(const k of Object.keys(est.base))atr[k]=Math.min(A.atributoMax,Math.round((est.base[k]+(aj[k]||0)+suave(bonA[k]||0,A.tetoBonus))*10)/10);
+  for(const [k,m] of Object.entries(def.mecanicas))mec[k]=bonM[k]?suave(bonM[k],m.teto):0;
+  return{atr,mec};
+}
+const JXJ_ENERGIA=new Set(["eficienciaGolpe","eficienciaQueda","eficienciaOfensiva","chuteCorpo","retornoDistancia","recuperacao"]);
+/* Efeito de um nó como o motor usa: atributo soma por nível; efeito de
+   mecânica mostra o valor real em cada nível, já com o teto suave (o
+   mesmo de jxjPerfilPrevia e do servidor), pra ninguém ler 32% por nível
+   e achar que o nível 3 dá 96%. */
+function jxjTxtEfeito(def,e){
+  const f=(x,d)=>String(Math.round(x*10**d)/10**d).replace(".",",");
+  if(e.a)return `${def.atributos[e.a]} +${f(e.v,1)} por nível`;
+  const m=def.mecanicas[e.m]; if(!m)return e.m;
+  const suave=(b,t)=>t*(1-Math.exp(-b/t));
+  const fmt=JXJ_ENERGIA.has(e.m)?(x=>`${f(x,2)} de energia`):m.teto>2?(x=>`${f(x,1)} pontos`):(x=>`${f(x*100,0)}%`);
+  const n=def.arvore.nivelMaxNo,niveis=Array.from({length:n},(_,i)=>fmt(suave(e.v*(i+1),m.teto)));
+  return `${m.desc}: ${niveis.join(" / ")} nos níveis ${Array.from({length:n},(_,i)=>i+1).join(", ").replace(/, (\d+)$/," e $1")} (teto ${fmt(m.teto)})`;
+}
+function jxjPips(nv,max=3){
+  let s=""; for(let i=0;i<max;i++)s+=`<i class="${i<nv?"on":""}"></i>`;
+  return `<span class="jxj-pips" aria-label="nível ${nv} de ${max}">${s}</span>`;
+}
+
+/* ---------- lutador (#/jxj/lutador/<id>/<aba>) ---------- */
+async function jxjTelaLutador(param){
+  const [idTxt,abaIni]=String(param||"").split("/");
+  const c=jxjTela({titulo:"Lutador",fundo:"academia",voltar:()=>irPara("jxj"),nav:null});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,est;
+  try{ def=await jxjDef(); est=await jxj("estado"); }catch(e){ return jxjErro(area,e,()=>jxjTelaLutador(param)); }
+  const l=est.lutadores.find(x=>String(x.id)===String(idTxt));
+  if(!l){ area.innerHTML=""; area.appendChild(vazio("usuario","Lutador não encontrado","Ele não é desta conta ou foi aposentado.")); return; }
+  area.innerHTML="";
+  const cab=el("section","jxj-cab-lutador entra");
+  cab.innerHTML=`${jxjRetrato(l,120)}<div><h2 class="jxj-nome">${jxjEsc(l.nome)}</h2>
+    <p class="jxj-meta">${jxjCategoria(l.categoria)} · ${jxjEstilo(l.estilo)} · nível ${l.nivel} · rating ${Math.round(l.rating)}${l.id===est.principalEfetivo?" · principal":""}${l.utilizavel?"":" · inativo sem o Pro"}</p></div>`;
+  area.appendChild(cab);
+  const corpo=el("div","jxj-aba");
+  const abas=[["perfil","Atributos","grafico"],["arvore","Árvore","arvore"],["historico","Histórico","historico"],["aparencia","Aparência","camera"],["gerenciar","Gerenciar","engrenagem"]];
+  const abrir=id=>{ try{ history.replaceState(null,"","#/jxj/lutador/"+l.id+"/"+id); }catch(e){}
+    corpo.innerHTML=""; ({perfil:jxjAbaPerfil,arvore:jxjAbaArvore,historico:jxjAbaHistorico,aparencia:jxjAbaAparencia,gerenciar:jxjAbaGerenciar})[id](corpo,def,est,l); };
+  const atual=abas.some(a=>a[0]===abaIni)?abaIni:"perfil";
+  area.append(montarGuias(abas,atual,abrir),corpo);
+  abrir(atual);
+}
+function jxjAbaPerfil(c,def,est,l){
+  const p=l.perfil||jxjPerfilPrevia(def,l.estilo,l.categoria,l.build);
+  const base=def.estilos[l.estilo].base,nv=l.nivelInfo||{nivel:l.nivel,noNivel:0,proximo:0},cart=jxjCartel(l);
+  const atr=Object.keys(base).map(k=>{
+    const v=p.atr[k],b=base[k]+((def.categorias[l.categoria]||{ajuste:{}}).ajuste[k]||0);
+    return `<li><span>${def.atributos[k]}</span>${jxjBarra(v,def.arvore.atributoMax)}<b>${Math.round(v)}${v-b>=0.5?` <small>+${Math.round(v-b)}</small>`:""}</b></li>`;
+  }).join("");
+  const mecs=Object.entries(p.mec||{}).filter(([,v])=>v>0).map(([k,v])=>`<li>${def.mecanicas[k].desc}: ${JXJ_ENERGIA.has(k)?String(Math.round(v*100)/100).replace(".",",")+" de energia":def.mecanicas[k].teto>2?String(Math.round(v*10)/10).replace(".",",")+" pontos":Math.round(v*100)+"%"}</li>`).join("");
+  const g=el("div","jxj-grade");
+  g.innerHTML=`<section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("grafico")} Atributos</p><ul class="jxj-atr">${atr}</ul>
+      <p class="jxj-nota">O número pequeno é o que a árvore somou. Cada atributo tem teto de ${def.arvore.atributoMax}.</p></section>
+    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("raio")} Habilidades em uso</p>${mecs?`<ul class="jxj-lista-simples">${mecs}</ul>`:`<p class="jxj-nota">Nenhuma ainda. Os pontos da árvore ligam habilidades.</p>`}</section>
+    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("medalha")} Carreira no JxJ</p>
+      <dl class="jxj-numeros"><div><dt>Cartel</dt><dd>${cart.txt}<small>${jxjTaxa(l)} de vitórias</small></dd></div>
+      <div><dt>Nocautes</dt><dd>${l.kos||0}</dd></div><div><dt>Finalizações</dt><dd>${l.finalizacoes||0}</dd></div>
+      <div><dt>Rating</dt><dd>${Math.round(l.rating)}<small>${jxjProvisorio(l)?"em classificação":`incerteza ${Math.round(l.rd)}`}</small></dd></div></dl>
+      <p class="jxj-nota">Nível ${nv.nivel}${nv.nivel<30?`: ${nv.noNivel} de ${nv.proximo} XP pro próximo`:" (máximo)"}.</p>${nv.nivel<30?jxjBarra(nv.noNivel,nv.proximo,"jxj-barra-xp"):""}</section>`;
+  c.appendChild(g);
+}
+function jxjAbaArvore(c,def,est,l){
+  let build={...(l.build||{})},rev=l.buildRev;
+  const salvo=JSON.stringify(build);
+  const NOS=jxjNos(def),A=def.arvore;
+  const topo=el("div","jxj-arvore-topo"),msg=el("p","jxj-erro"),corpo=el("div","jxj-arvore");
+  msg.hidden=true;
+  const salvar=el("button","botao",`${ICONE("check")}<span>Salvar árvore</span>`); salvar.type="button";
+  const desfazer=el("button","botao botao-sec","Desfazer"); desfazer.type="button";
+  const respec=el("button","botao botao-sec",`${ICONE("reenviar")}<span>Refazer do zero</span>`); respec.type="button";
+  const detalhe=el("section","painel-n jxj-no-detalhe"); detalhe.hidden=true;
+  c.append(topo,msg,corpo,detalhe);
+  let escolhido=null;
+  const desenhar=()=>{
+    const v=jxjValidar(def,l.estilo,build,l.nivel),mudou=JSON.stringify(build)!==salvo;
+    const disp=jxjPontosDoNivel(l.nivel),gasto=v.ok?v.gasto:Object.entries(build).reduce((s,[id,n])=>s+(NOS[id]&&NOS[id].estilo===l.estilo?1:2)*n,0);
+    topo.innerHTML=`<div class="jxj-pontos"><b>${disp-gasto}</b><span>pontos livres<br><small>${gasto} de ${disp} usados no nível ${l.nivel}</small></span></div>`;
+    const bts=el("div","jxj-acoes"); salvar.disabled=!mudou||!v.ok; desfazer.disabled=!mudou;
+    bts.append(salvar,desfazer,respec); topo.appendChild(bts);
+    respec.innerHTML=`${ICONE("reenviar")}<span>${l.respecGratis?"Refazer do zero (grátis nesta versão)":`Refazer do zero (${def.regras.custoRespec} fichas)`}</span>`;
+    /* nada salvo na árvore: não há o que refazer */
+    respec.disabled=!Object.values(l.build||{}).some(n=>n>0);
+    corpo.innerHTML="";
+    const blocoRamos=(estilo,soHibrido)=>{
+      const lin=el("div","jxj-ramos");
+      for(const ramoId of def.estilos[estilo].ramos){
+        const r=def.ramos[ramoId],noRamo=(v.porRamo||{})[ramoId]||0;
+        const col=el("section","jxj-ramo");
+        col.appendChild(el("header","jxj-ramo-cab",`<b>${r.nome}</b><span>${noRamo} de ${A.pontosPorRamoMax}</span>`));
+        r.nos.forEach((no,i)=>{
+          if(soHibrido&&no.tier>A.tiersHibridos)return;
+          const nv=build[no.id]||0,custo=estilo===l.estilo?A.custoProprio:A.custoHibrido;
+          const antes=r.nos.slice(0,i).reduce((s,x)=>s+(build[x.id]||0)*custo,0);
+          const aberto=antes>=A.pedidoPorTier[i];
+          const teste={...build,[no.id]:nv+1},pode=nv<A.nivelMaxNo&&jxjValidar(def,l.estilo,teste,l.nivel).ok;
+          const b=el("button","jxj-no"+(nv?" ativo":"")+(aberto?"":" travado")+(escolhido===no.id?" on":""),
+            `${aberto?"":ICONE("cadeado")}<b>${no.nome}</b>${jxjPips(nv,A.nivelMaxNo)}<small>${custo} ${custo>1?"pontos":"ponto"} por nível${aberto?"":` · pede ${A.pedidoPorTier[i]} no ramo`}</small>`);
+          b.type="button"; if(b.setAttribute)b.setAttribute("aria-label",`${no.nome}, nível ${nv} de ${A.nivelMaxNo}`);
+          b.onclick=()=>{ SOM.toque(); escolhido=no.id; mostrar(NOS[no.id],pode,nv); desenhar();
+            /* o detalhe fica depois da árvore: no celular, fora da tela sem isto */
+            if(detalhe.scrollIntoView)detalhe.scrollIntoView({behavior:reduceMotion()?"auto":"smooth",block:"nearest"}); };
+          col.appendChild(b);
+        });
+        lin.appendChild(col);
+      }
+      return lin;
+    };
+    corpo.appendChild(el("h3","jxj-subtitulo",`Árvore de ${jxjEstilo(l.estilo)}`));
+    corpo.appendChild(blocoRamos(l.estilo,false));
+    const hib=el("details","jxj-hibrido");
+    hib.appendChild(el("summary","",`Habilidades de outros estilos (custam ${A.custoHibrido} pontos por nível, só os ${A.tiersHibridos} primeiros nós de cada ramo)`));
+    for(const outro of Object.keys(def.estilos).filter(x=>x!==l.estilo)){
+      hib.appendChild(el("h4","jxj-subtitulo",def.estilos[outro].nome));
+      hib.appendChild(blocoRamos(outro,true));
+    }
+    corpo.appendChild(hib);
+    msg.hidden=v.ok; if(!v.ok)msg.textContent=v.erro;
+  };
+  const mostrar=(no,pode,nv)=>{
+    detalhe.hidden=false;
+    detalhe.innerHTML=`<p class="jxj-rotulo">${jxjEsc(def.ramos[no.ramo].nome)} · nó ${no.tier}</p><h3 class="jxj-subtitulo">${no.nome}</h3>
+      <p>${no.desc}</p><ul class="jxj-lista-simples">${no.efeitos.map(e=>`<li>${jxjTxtEfeito(def,e)}</li>`).join("")}</ul>
+      <p class="jxj-nota">Somar habilidades no mesmo atributo ou efeito rende cada vez menos: atributo tem teto suave de ${A.tetoBonus} pontos e cada efeito tem o teto dele.</p>`;
+    const linha=el("div","jxj-acoes");
+    const mais=el("button","botao",`${ICONE("mais")}<span>Somar 1 nível</span>`); mais.type="button"; mais.disabled=!pode;
+    mais.onclick=()=>{ SOM.toque(); build={...build,[no.id]:(build[no.id]||0)+1}; desenhar(); mostrar(no,jxjValidar(def,l.estilo,{...build,[no.id]:build[no.id]+1},l.nivel).ok&&build[no.id]<A.nivelMaxNo,build[no.id]); };
+    /* tirar só o que ainda não foi salvo; ponto salvo só sai com Refazer do zero */
+    const salvoNv=(l.build||{})[no.id]||0;
+    const menos=el("button","botao botao-sec","Tirar 1 nível"); menos.type="button"; menos.disabled=(build[no.id]||0)<=salvoNv;
+    menos.onclick=()=>{ SOM.toque(); const n2=(build[no.id]||0)-1; build={...build}; if(n2>0)build[no.id]=n2; else delete build[no.id]; desenhar(); mostrar(no,true,n2); };
+    linha.append(mais,menos); detalhe.appendChild(linha);
+  };
+  salvar.onclick=async()=>{
+    SOM.toque(); salvar.disabled=true;
+    try{ const r=await jxj("build",{lutadorId:l.id,rev,build}); rev=r.buildRev; l.build={...build}; l.buildRev=rev; irPara("jxj","lutador/"+l.id+"/arvore",{substituir:true}); }
+    catch(e){ msg.textContent=e.erro; msg.hidden=false; salvar.disabled=false; }
+  };
+  desfazer.onclick=()=>{ SOM.toque(); build=JSON.parse(salvo); desenhar(); detalhe.hidden=true; };
+  respec.onclick=()=>{
+    SOM.toque();
+    const conf=el("div","jxj-confirmar");
+    conf.innerHTML=`<p>${l.respecGratis?"Esta versão do balanço deixa refazer a árvore de graça uma vez.":`Refazer custa ${def.regras.custoRespec} fichas. Você tem ${est.fichas}.`} Todos os pontos voltam; nível, XP e histórico ficam.</p>`;
+    const sim=el("button","botao","Refazer agora"),nao=el("button","botao botao-sec","Cancelar"); sim.type=nao.type="button";
+    nao.onclick=()=>{SOM.toque();conf.remove();};
+    sim.onclick=async()=>{ SOM.toque(); sim.disabled=true;
+      try{ await jxj("respec",{lutadorId:l.id,rev}); irPara("jxj","lutador/"+l.id+"/arvore",{substituir:true}); }
+      catch(e){ conf.querySelector("p").textContent=e.erro; sim.disabled=false; } };
+    conf.append(sim,nao); topo.after(conf);
+  };
+  desenhar();
+}
+async function jxjAbaHistorico(c,def,est,l){
+  const lista=el("ol","jxj-historico"); c.appendChild(lista);
+  let pagina=0;
+  const mais=el("button","botao botao-sec","Carregar mais"); mais.type="button";
+  const carregar=async()=>{
+    mais.disabled=true;
+    try{
+      const h=await jxj("historico",{lutadorId:l.id,pagina});
+      if(!h.length&&!pagina){ c.replaceChildren?c.replaceChildren(vazio("historico","Nenhuma luta ainda","As lutas aparecem aqui com resultado, método e mudança de rating.")):(c.innerHTML="",c.appendChild(vazio("historico","Nenhuma luta ainda",""))); return; }
+      for(const x of h)lista.appendChild(jxjLinhaHistorico(x));
+      pagina++; mais.disabled=false; mais.hidden=h.length<20;
+    }catch(e){ mais.disabled=false; }
+  };
+  mais.onclick=()=>{SOM.toque();carregar();};
+  c.appendChild(mais); carregar();
+}
+function jxjLinhaHistorico(x){
+  const r=x.resultado||{},emp=!r.vencedor,meu=r.vencedor===x.lado;
+  const li=el("li","jxj-hist-linha "+(emp?"emp":meu?"vit":"der"));
+  li.innerHTML=`<span class="jxj-hist-res">${emp?(r.metodo==="ANULADA"?"Anulada":"Empate"):meu?"Vitória":"Derrota"}</span>
+    <span class="jxj-hist-adv"><b>${jxjEsc(x.adversario&&x.adversario.nome)}</b><small>${jxjMetodo(r.metodo)}${r.round?` · round ${r.round}`:""} · ${fmtData(x.em)}${x.tipo!=="fila"?` · ${x.tipo}`:""}</small></span>
+    <span class="jxj-hist-delta">${x.comRating?`${x.ratingDelta>=0?"+":""}${x.ratingDelta}`:"sem rating"}</span>`;
+  const b=el("button","btn-voltar jxj-hist-ver",`<span>Ver</span>${ICONE("chevron-dir")}`); b.type="button";
+  b.onclick=()=>{SOM.toque();irPara("jxj","replay/"+x.luta);};
+  li.appendChild(b);
+  return li;
+}
+function jxjAbaAparencia(c,def,est,l){
+  const g=el("div","jxj-molduras");
+  c.appendChild(el("p","tela-sub",`Moldura do retrato no ranking e no perfil. Só aparência, nunca atributo. Você tem ${est.fichas} fichas.`));
+  for(const [id,m] of Object.entries(def.molduras)){
+    const tem=(l.molduras||[]).includes(id),uso=l.moldura===id;
+    const card=el("div","jxj-moldura"+(uso?" on":""),`${jxjRetrato({...l,moldura:id},96)}<b>${m.nome}</b><small>${m.req==="titulo"?"de quem tem título":m.preco?`${m.preco} fichas`:"grátis"}</small>`);
+    const b=el("button","botao botao-sec",uso?"Em uso":tem||m.req==="titulo"||!m.preco?"Usar":"Comprar e usar"); b.type="button"; b.disabled=uso;
+    b.onclick=async()=>{ SOM.toque(); b.disabled=true;
+      try{ await jxj("moldura",{lutadorId:l.id,moldura:id,comprar:!tem&&!!m.preco}); irPara("jxj","lutador/"+l.id+"/aparencia",{substituir:true}); }
+      catch(e){ b.disabled=false; card.appendChild(el("p","jxj-erro",jxjEsc(e.erro))); } };
+    card.appendChild(b); g.appendChild(card);
+  }
+  c.appendChild(g);
+}
+function jxjAbaGerenciar(c,def,est,l){
+  const g=el("div","jxj-grade");
+  /* principal */
+  const pr=el("section","painel-n jxj-card");
+  const ehPrincipal=l.id===est.principalId,proxima=est.trocaPrincipalEm&&new Date(est.trocaPrincipalEm)>new Date(est.agora);
+  pr.innerHTML=`<p class="jxj-rotulo">${ICONE("coroa")} Lutador principal</p><p>${ehPrincipal?"Este é o seu principal: ele é quem aparece no ranking global e entra em torneio.":
+    `Só o principal aparece no ranking global. A troca não leva rating, XP, cartel nem título, e só pode acontecer a cada ${def.regras.trocaPrincipalHoras} horas.`}</p>
+    ${proxima&&!ehPrincipal?`<p class="jxj-nota">A próxima troca libera em ${new Date(est.trocaPrincipalEm).toLocaleString("pt-BR")}.</p>`:""}`;
+  if(!ehPrincipal){
+    const b=el("button","botao","Tornar principal"); b.type="button"; b.disabled=!!proxima||!l.utilizavel;
+    b.onclick=async()=>{ SOM.toque(); b.disabled=true; try{ await jxj("principal",{lutadorId:l.id}); irPara("jxj","lutador/"+l.id+"/gerenciar",{substituir:true}); }catch(e){ pr.appendChild(el("p","jxj-erro",jxjEsc(e.erro))); b.disabled=false; } };
+    pr.appendChild(b);
+  }
+  g.appendChild(pr);
+  /* build pública */
+  const bp=el("section","painel-n jxj-card");
+  bp.innerHTML=`<p class="jxj-rotulo">${ICONE("arvore")} Árvore pública</p><p>${l.buildPublica?"Qualquer pessoa vê a sua árvore no seu perfil.":"Só você vê a sua árvore. Os outros jogadores veem estilo, nível e cartel."}</p>`;
+  const tb=el("button","botao botao-sec",l.buildPublica?"Esconder a árvore":"Mostrar a árvore no perfil"); tb.type="button";
+  tb.onclick=async()=>{ SOM.toque(); tb.disabled=true; try{ await jxj("buildPublica",{lutadorId:l.id,publica:!l.buildPublica}); irPara("jxj","lutador/"+l.id+"/gerenciar",{substituir:true}); }catch(e){ tb.disabled=false; } };
+  bp.appendChild(tb); g.appendChild(bp);
+  /* aposentar */
+  const ap=el("section","painel-n jxj-card jxj-perigo");
+  ap.innerHTML=`<p class="jxj-rotulo">${ICONE("bandeira")} Aposentar</p><p>O lutador sai da ativa e libera o slot. Cartel, títulos e histórico ficam guardados, e quem tem título entra no Hall da Fama.</p>
+    <label class="jxj-campo"><span>Digite o nome do lutador pra confirmar</span><input type="text" maxlength="24" autocomplete="off"></label>`;
+  const inp=ap.querySelector("input");
+  const b=el("button","botao botao-sec","Aposentar este lutador"); b.type="button";
+  b.onclick=async()=>{ SOM.toque(); b.disabled=true;
+    try{ await jxj("aposentar",{lutadorId:l.id,confirmacao:inp.value}); irPara("jxj","lutadores",{substituir:true}); }
+    catch(e){ ap.appendChild(el("p","jxj-erro",jxjEsc(e.erro))); b.disabled=false; } };
+  ap.appendChild(b); g.appendChild(ap);
+  c.appendChild(g);
+}
+
+/* ---------- gestão de slots (#/jxj/lutadores) ---------- */
+async function jxjTelaLutadores(){
+  const c=jxjTela({titulo:"Seus lutadores",fundo:"vestiario",voltar:()=>irPara("jxj"),nav:null});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,est;
+  try{ def=await jxjDef(); est=await jxj("estado"); }catch(e){ return jxjErro(area,e,jxjTelaLutadores); }
+  area.innerHTML="";
+  area.appendChild(el("p","tela-sub",`O plano grátis tem ${def.regras.slotsFree} slot e o Pro tem ${def.regras.slotsPro}. Cada lutador tem rating, cartel e histórico próprios: a luta de um nunca mexe no outro.${est.pro?"":" Se o Pro vencer, os extras ficam guardados e inativos, sem perder nada."}`));
+  const g=el("div","jxj-slots");
+  for(let s=1;s<=def.regras.slotsPro;s++){
+    const l=est.lutadores.find(x=>x.slot===s);
+    const card=el("section","jxj-slot entra"+(l?"":" vazio-slot"));
+    if(l){
+      card.innerHTML=`<p class="jxj-rotulo">Slot ${s}${l.id===est.principalId?" · principal":""}${l.utilizavel?"":" · inativo"}</p>${jxjRetrato(l,140)}
+        <h3 class="jxj-nome">${jxjEsc(l.nome)}</h3><p class="jxj-meta">${jxjEstilo(l.estilo)} · nível ${l.nivel} · rating ${Math.round(l.rating)}</p><p class="jxj-meta">${jxjCartel(l).txt}</p>`;
+      const b=el("button","botao botao-sec",`<span>Abrir</span>${ICONE("seta-dir")}`); b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj","lutador/"+l.id);};
+      card.appendChild(b);
+    }else{
+      const livre=s===1||est.pro;
+      card.innerHTML=`<p class="jxj-rotulo">Slot ${s}</p><div class="jxj-slot-vazio">${ICONE(livre?"mais":"cadeado")}<span>${livre?"Vazio":"Pro"}</span></div>`;
+      const b=el("button","botao",`${ICONE("mais")}<span>Criar lutador</span>`); b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj","criar");};
+      card.appendChild(livre?b:bloqueioPro(b));
+    }
+    g.appendChild(card);
+  }
+  area.appendChild(g);
+  if(est.aposentados)area.appendChild(el("p","jxj-nota",`${est.aposentados} lutador(es) aposentado(s). Quem tem título aparece no Hall da Fama.`));
+}
+/* ---------- fila (#/jxj/fila) ---------- */
+async function jxjTelaFila(){
+  const c=jxjTela({titulo:"Buscar adversário",fundo:"tunel",voltar:()=>{ irPara("jxj"); },nav:null});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,est;
+  try{ def=await jxjDef(); est=await jxj("estado"); }catch(e){ return jxjErro(area,e,jxjTelaFila); }
+  if(est.luta&&["confirmacao","andamento"].includes(est.luta.status))return irPara("jxj","luta/"+est.luta.id,{substituir:true});
+  const usaveis=est.lutadores.filter(l=>l.utilizavel);
+  area.innerHTML="";
+  if(!usaveis.length){ area.appendChild(vazio("usuario","Nenhum lutador ativo","Crie um lutador ou escolha o do slot 1 como principal.")); return; }
+  if(!est.pro&&est.lutaGratisUsada){
+    area.appendChild(vazio("cadeado","A luta grátis já foi usada","No plano grátis o JxJ competitivo tem uma luta. O Pro libera a fila, a revanche e os torneios."));
+    area.appendChild(bloqueioPro(el("button","botao","Entrar na fila")));
+    return;
+  }
+  let escolhido=(usaveis.find(l=>l.id===est.principalEfetivo)||usaveis[0]).id;
+  const buscar=async()=>{
+    area.innerHTML="";
+    const tk=JXJ_TOKEN;
+    const box=el("section","painel-n jxj-busca entra");
+    box.innerHTML=`<div class="jxj-busca-pulso">${ICONE("busca")}</div><h2 class="jxj-subtitulo">Procurando adversário</h2>
+      <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. A faixa de rating aceita cresce com a espera. Ninguém é inventado: se não houver adversário agora, a busca continua.</p>`;
+    const sair=el("button","botao botao-sec",`${ICONE("fechar")}<span>Sair da fila</span>`); sair.type="button";
+    sair.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("filaSair"); }catch(e){} irPara("jxj"); };
+    box.appendChild(sair); area.appendChild(box);
+    const t0=Date.now(),tempo=box.querySelector(".jxj-busca-tempo");
+    const ciclo=async()=>{
+      if(tk!==JXJ_TOKEN)return;
+      try{
+        const r=await jxj("fila");
+        if(tk!==JXJ_TOKEN)return;
+        if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
+        if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
+        tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita até ${Math.round(r.tolerancia||100)} pontos de rating de diferença`;
+      }catch(e){ tempo.textContent=e.erro||"Sem conexão; tentando de novo."; }
+      JXJ_TIMER=setTimeout(ciclo,3000);
+    };
+    ciclo();
+  };
+  if(est.fila)return buscar();
+  const esc=el("section","jxj-escolha-lutador");
+  esc.appendChild(el("p","jxj-rotulo","Quem vai lutar"));
+  const g=el("div","jxj-opcoes");
+  usaveis.forEach(l=>{
+    const b=el("button","jxj-opcao"+(l.id===escolhido?" on":""),`${jxjRetrato(l,64)}<b>${jxjEsc(l.nome)}</b><small>${jxjEstilo(l.estilo)} · nível ${l.nivel} · rating ${Math.round(l.rating)}${l.id===est.principalEfetivo?" · principal":""}</small>`);
+    b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(l.id===escolhido));
+    b.onclick=()=>{ SOM.toque(); escolhido=l.id; g.querySelectorAll(".jxj-opcao").forEach(x=>{ const on=x===b; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); }); };
+    g.appendChild(b);
+  });
+  esc.appendChild(g); area.appendChild(esc);
+  const regras=el("section","painel-n jxj-card");
+  regras.innerHTML=`<p class="jxj-rotulo">${ICONE("info")} Antes de entrar</p><ul class="jxj-lista-simples">${def.regras.ausencia.map(t=>`<li>${t}</li>`).join("")}
+    <li>O par encontrado tem ${Math.round(20)} segundos pra confirmar. Quem recusa espera um minuto pra voltar.</li>
+    <li>O mesmo par vale rating no máximo ${def.regras.parRating24h} vezes em 24 horas.</li>${!est.pro?"<li>Esta é a sua luta grátis do plano grátis.</li>":""}</ul>`;
+  area.appendChild(regras);
+  const msg=el("p","jxj-erro"); msg.hidden=true; area.appendChild(msg);
+  const entrar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Entrar na fila</span>`); entrar.type="button";
+  entrar.onclick=async()=>{ SOM.toque(); entrar.disabled=true;
+    try{ await jxj("filaEntrar",{lutadorId:escolhido}); buscar(); }
+    catch(e){ msg.textContent=e.erro; msg.hidden=false; entrar.disabled=false; } };
+  area.appendChild(el("div","jxj-acoes")).appendChild(entrar);
+}
+
+/* ---------- luta (#/jxj/luta/<id>) ---------- */
+const JXJ_ICONE_ACAO={golpes:"punho",queda:"queda",defesa:"escudo",pressao:"avancar"};
+function jxjChance(ra,rb){ return 1/(1+Math.pow(10,(rb-ra)/400)); }
+async function jxjTelaLuta(id){
+  const c=jxjTela({titulo:"Luta",fundo:"octogono-luz",voltar:()=>irPara("jxj"),nav:null,classe:"tela-jxj-luta"});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  try{ await jxjDef(); }catch(e){ return jxjErro(area,e,()=>jxjTelaLuta(id)); }
+  const tk=JXJ_TOKEN;
+  let assinatura="",relogio=null,vista=null,enviando=false;
+  const tick=setInterval(()=>{
+    if(tk!==JXJ_TOKEN){ clearInterval(tick); return; }
+    const alvo=document.getElementById("jxj-relogio");
+    if(alvo&&relogio){ const s=jxjSeg(relogio()); alvo.textContent=s+"s"; alvo.classList.toggle("urgente",s<=5); }
+  },250);
+  const ciclo=async(acao=null,extra={})=>{
+    if(tk!==JXJ_TOKEN)return;
+    try{
+      vista=await jxj(acao||"luta",{lutaId:id,...extra});
+      if(tk!==JXJ_TOKEN)return;
+      const ass=[vista.status,vista.round,vista.troca,vista.minhaAcao,vista.adversarioEscolheu,(vista.trocas||[]).length,vista.confirmado&&vista.confirmado.a,vista.confirmado&&vista.confirmado.b,!!vista.narracao,JSON.stringify(vista.revanche||null)].join("|");
+      if(ass!==assinatura){ assinatura=ass; desenhar(); }
+      relogio=vista.status==="confirmacao"?jxjRelogio(Date.parse(vista.confirmacaoAte)-Date.parse(vista.agora))
+        :vista.status==="andamento"?jxjRelogio(Date.parse(vista.prazo)-Date.parse(vista.agora)):null;
+    }catch(e){
+      if(tk!==JXJ_TOKEN)return;
+      if(!vista)return jxjErro(area,e,()=>ciclo());
+      const av=document.getElementById("jxj-aviso"); if(av){ av.textContent=e.erro||"Reconectando"; av.hidden=false; }
+    }
+    if(tk!==JXJ_TOKEN)return;
+    const espera=!vista?3000:vista.status==="andamento"?1200:vista.status==="confirmacao"?1500:(vista.status==="encerrada"&&vista.revanche&&!vista.revanche.luta&&Date.parse(vista.revanche.ate)>Date.parse(vista.agora))?2000:null;
+    if(vista&&vista.status==="encerrada"&&vista.revanche&&vista.revanche.luta)return irPara("jxj","luta/"+vista.revanche.luta,{substituir:true});
+    if(espera)JXJ_TIMER=setTimeout(()=>ciclo(),espera);
+  };
+  const lados=()=>{ const eu=vista.lado,ele=eu==="a"?"b":"a"; return{eu,ele}; };
+  const desenhar=()=>{
+    area.innerHTML="";
+    const aviso=el("p","jxj-aviso"); aviso.id="jxj-aviso"; aviso.hidden=true; area.appendChild(aviso);
+    if(vista.status==="cancelada"){
+      area.appendChild(vazio("fechar","Luta cancelada","Um dos dois não confirmou a tempo. Quem confirmou voltou pra fila."));
+      const b=el("button","botao",`${ICONE("espadas")}<span>Voltar pra fila</span>`); b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj","fila");};
+      area.appendChild(el("div","jxj-acoes")).appendChild(b); return;
+    }
+    if(vista.status==="confirmacao")return jxjDesenharConfirmacao(area,vista,lados(),ciclo);
+    if(vista.status==="andamento")return jxjDesenharCombate(area,vista,lados(),async fam=>{
+      if(enviando)return; enviando=true;
+      try{ await ciclo("acao",{round:vista.round,troca:vista.troca,familia:fam}); }finally{ enviando=false; }
+    });
+    return jxjDesenharResultado(area,vista,lados(),ciclo);
+  };
+  ciclo();
+}
+function jxjLadoCard(n,info,lado,{eu=false}={}){
+  const est=info&&info.estado?info.estado[lado]:null;
+  const nome=info.nomes[lado];
+  const card=el("div","jxj-lado"+(eu?" eu":""));
+  card.innerHTML=`${jxjRetrato(nome,96)}<div class="jxj-lado-info"><b>${jxjEsc(nome.nome)}${eu?" <small>você</small>":""}</b>
+    <span>${jxjEstilo(nome.estilo)} · nível ${nome.nivel} · rating ${Math.round(nome.rating)}</span>
+    ${est?`<span class="jxj-medidor"><i>${ICONE("energia")} Energia ${String(est.energia).replace(".",",")}</i>${jxjBarra(est.energia,est.energiaMax,"jxj-barra-energia")}</span>
+    <span class="jxj-medidor"><i>${ICONE("lesao")} Dano ${est.dano}</i>${jxjBarra(est.dano,100,"jxj-barra-dano")}</span>
+    ${est.ausentes?`<span class="jxj-ausente">${est.ausentes} prazo(s) perdido(s) seguido(s)</span>`:""}`:""}</div>`;
+  return card;
+}
+function jxjDesenharConfirmacao(area,v,{eu,ele},ciclo){
+  const vs=el("section","jxj-versus entra");
+  const ch=jxjChance(v.nomes[eu].rating,v.nomes[ele].rating);
+  vs.append(jxjLadoCard(null,v,eu,{eu:true}),el("div","jxj-vs","<b>VS</b>"),jxjLadoCard(null,v,ele));
+  area.appendChild(vs);
+  const info=el("section","painel-n jxj-card");
+  const confirmei=v.confirmado[eu];
+  info.innerHTML=`<p class="jxj-rotulo">${ICONE("relogio")} Adversário encontrado</p>
+    <p class="jxj-card-num"><span id="jxj-relogio">20s</span><small>pra confirmar</small></p>
+    <p>Chance pelo rating: ${Math.round(ch*100)}% pra você. ${v.comRating?"A luta vale rating.":"Esta luta não vale rating (limite do par em 24 horas)."}</p>
+    <p class="jxj-nota">Compromisso da semente: <code>${v.compromisso.slice(0,16)}...</code> A semente sai no fim da luta, pra qualquer um conferir o resultado.</p>`;
+  const sim=el("button","botao",`${ICONE("check")}<span>${confirmei?"Confirmado, esperando o outro":"Confirmar a luta"}</span>`); sim.type="button"; sim.disabled=confirmei;
+  sim.onclick=()=>{ SOM.toque(); sim.disabled=true; ciclo("confirmar"); };
+  const nao=el("button","botao botao-sec","Recusar"); nao.type="button";
+  nao.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("recusar",{lutaId:v.id}); }catch(e){} irPara("jxj"); };
+  const a=el("div","jxj-acoes"); a.append(sim,nao); info.appendChild(a);
+  area.appendChild(info);
+}
+function jxjPosicaoTxt(v){
+  const e=v.estado; if(!e)return"";
+  if(e.pos==="pe")return"Em pé";
+  const cima=e.pos==="cima_a"?"a":"b",nivel=["na guarda","na meia-guarda","montado"][e.nivelPos||0];
+  return `${jxjEsc(v.nomes[cima].nome)} por cima, ${nivel}`;
+}
+function jxjDesenharCombate(area,v,{eu,ele},enviar){
+  const F=v.formato;
+  const topo=el("section","jxj-placar entra");
+  topo.append(jxjLadoCard(null,v,eu,{eu:true}));
+  const meio=el("div","jxj-placar-meio");
+  const mom=v.estado.momento*(eu==="a"?1:-1);
+  meio.innerHTML=`<p class="jxj-round">Round ${v.round} de ${F.rounds} · troca ${v.troca} de ${F.trocasPorRound}</p>
+    <p class="jxj-relogio" id="jxj-relogio">${jxjSeg(F.prazoMs)}s</p>
+    <p class="jxj-posicao">${jxjPosicaoTxt(v)}</p>
+    <div class="jxj-momento" role="img" aria-label="Momento ${mom>0?"a seu favor":mom<0?"a favor do adversário":"neutro"}">
+      <span>Momento</span><div class="jxj-momento-trilho"><i style="left:${50+mom*12}%"></i></div></div>
+    <p class="jxj-cartoes">${(v.estado.cartoes||[]).map((c,i)=>`R${i+1} ${c[eu]}-${c[ele]}`).join(" · ")||"Sem round fechado ainda"}</p>`;
+  topo.append(meio,jxjLadoCard(null,v,ele));
+  area.appendChild(topo);
+  const zona=el("section","jxj-zona-acao");
+  if(v.minhaAcao){
+    const rot=(v.acoes.find(a=>a.familia===v.minhaAcao)||{}).rotulo||v.minhaAcao;
+    zona.appendChild(el("p","jxj-espera",`${ICONE("check")}<span>Ação enviada: <b>${rot}</b>. ${v.adversarioEscolheu?"O adversário também escolheu. Resolvendo.":"Esperando o adversário."}</span>`));
+  }else{
+    zona.appendChild(el("p","jxj-rotulo",`Escolha a ação${v.adversarioEscolheu?" · o adversário já escolheu":""}`));
+    const g=el("div","jxj-acoes-luta");
+    for(const a of v.acoes){
+      const b=el("button","jxj-acao",`${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}<b>${a.rotulo}</b><small>${a.custo<0?`recupera ${String(-a.custo).replace(".",",")} de energia`:a.custo===0?"não gasta energia":`gasta ${String(a.custo).replace(".",",")} de energia`}</small><span>${a.descricao}</span>`);
+      b.type="button";
+      b.onclick=()=>{ SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(x=>{x.disabled=true;}); enviar(a.familia); };
+      g.appendChild(b);
+    }
+    zona.appendChild(g);
+  }
+  area.appendChild(zona);
+  const log=el("section","painel-n jxj-log");
+  log.appendChild(el("p","jxj-rotulo",`${ICONE("lista")} O que aconteceu`));
+  const ultimas=[...(v.trocas||[])].reverse().slice(0,6);
+  if(!ultimas.length)log.appendChild(el("p","jxj-nota","A primeira troca ainda não foi resolvida."));
+  const ol=el("ol","jxj-log-lista");
+  for(const t of ultimas)ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(jxjEsc).join(" ")||"Nada mudou."}</span>`));
+  log.appendChild(ol);
+  area.appendChild(log);
+}
+async function jxjConferirSemente(semente,compromisso){
+  try{
+    const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(semente));
+    return Array.from(new Uint8Array(d)).map(b=>b.toString(16).padStart(2,"0")).join("")===compromisso;
+  }catch(e){ return null; }
+}
+function jxjDesenharResultado(area,v,{eu,ele},ciclo){
+  const r=v.resultado||{},ef=(v.efeitos||{})[eu]||{};
+  const espectador=!v.lado;
+  const ganhei=r.vencedor===eu,empate=!r.vencedor;
+  const cab=el("section","jxj-resultado entra "+(empate?"emp":espectador?"vit":ganhei?"vit":"der"));
+  const titulo=r.metodo==="ANULADA"?"Luta anulada":empate?"Empate":espectador?`${jxjEsc(v.nomes[r.vencedor].nome)} venceu`:ganhei?"Vitória":"Derrota";
+  cab.innerHTML=`<p class="jxj-rotulo">${jxjMetodo(r.metodo)}${r.round?` · round ${r.round}`:""}</p>
+    <h2 class="jxj-resultado-titulo">${titulo}</h2>
+    <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
+  area.appendChild(cab);
+  const g=el("div","jxj-grade");
+  const ganhos=el("section","painel-n jxj-card");
+  const delta=ef.rating&&ef.ratingAntes?Math.round(ef.rating.r-ef.ratingAntes.r):null;
+  const conq=(ef.conquistas||[]).map(id=>(JXJ_DEF.conquistas[id]||{nome:id}).nome);
+  ganhos.innerHTML=`<p class="jxj-rotulo">${ICONE("sobe")} O que mudou</p><dl class="jxj-numeros">
+    <div><dt>Rating</dt><dd>${delta==null?"<small>sem rating</small>":`${delta>=0?"+":""}${delta}<small>${Math.round(ef.ratingAntes.r)} para ${Math.round(ef.rating.r)}</small>`}</dd></div>
+    <div><dt>XP</dt><dd>+${ef.xp||0}<small>nível ${ef.nivel||"?"}</small></dd></div>
+    <div><dt>Fichas</dt><dd>+${ef.fichas||0}<small>teto de ${JXJ_DEF.regras.tetoFichasDia} por dia</small></dd></div></dl>
+    ${conq.length?`<p class="jxj-nota">Conquista nova: ${conq.map(jxjEsc).join(", ")}.</p>`:""}`;
+  if(!espectador)g.appendChild(ganhos);
+  const cart=el("section","painel-n jxj-card");
+  cart.innerHTML=`<p class="jxj-rotulo">${ICONE("lista")} Cartões</p>${(v.estado&&v.estado.cartoes||[]).map((c,i)=>`<p>Round ${i+1}: ${c[eu]} a ${c[ele]}</p>`).join("")||"<p class=\"jxj-nota\">A luta terminou antes do fim do primeiro round.</p>"}`;
+  g.appendChild(cart);
+  const nar=el("section","painel-n jxj-card jxj-narracao");
+  nar.innerHTML=`<p class="jxj-rotulo">${ICONE("microfone")} Narração</p>`;
+  if(v.narracao)nar.appendChild(el("p","",jxjEsc(v.narracao)));
+  else{ const b=el("button","botao botao-sec","Contar como foi"); b.type="button";
+    b.onclick=async()=>{ SOM.toque(); b.disabled=true; try{ const n=await jxj("narracao",{lutaId:v.id}); b.replaceWith(el("p","",jxjEsc(n.narracao))); }catch(e){ b.disabled=false; } };
+    nar.appendChild(b); }
+  g.appendChild(nar);
+  const aud=el("section","painel-n jxj-card");
+  aud.innerHTML=`<p class="jxj-rotulo">${ICONE("chave")} Auditoria</p><p class="jxj-nota">Semente: <code>${jxjEsc(v.semente||"")}</code></p><p class="jxj-nota" id="jxj-auditoria">Conferindo com o compromisso do início.</p>`;
+  g.appendChild(aud);
+  jxjConferirSemente(v.semente||"",v.compromisso).then(ok=>{ const a=document.getElementById("jxj-auditoria");
+    if(a)a.innerHTML=ok?`${ICONE("check")} O sha256 da semente bate com o compromisso mostrado antes da luta.`:ok===false?"A semente não bate com o compromisso.":"Este navegador não confere sha256."; });
+  area.appendChild(g);
+  const acoes=el("div","jxj-acoes");
+  if(!espectador&&v.tipo!=="torneio"&&v.revanche&&Date.parse(v.revanche.ate)>Date.parse(v.agora)&&r.metodo!=="ANULADA"){
+    const pedi=v.revanche[eu],ele2=v.revanche[ele];
+    const rb=el("button","botao",`${ICONE("reenviar")}<span>${pedi?"Revanche pedida, esperando":ele2?"Aceitar a revanche":"Pedir revanche"}</span>`); rb.type="button"; rb.disabled=pedi;
+    const erroR=el("p","jxj-erro"); erroR.hidden=true;
+    /* a revanche devolve {luta} ou {esperando}; a tela segue consultando a luta velha até a nova existir */
+    rb.onclick=async()=>{ SOM.toque(); rb.disabled=true;
+      try{ const x=await jxj("revanche",{lutaId:v.id}); if(x.luta)return irPara("jxj","luta/"+x.luta,{substituir:true}); rb.querySelector("span").textContent="Revanche pedida, esperando"; }
+      catch(e){ erroR.textContent=e.erro; erroR.hidden=false; } };
+    acoes.append(rb,erroR);
+  }
+  if(!espectador){
+    const fila=el("button","botao botao-sec",`${ICONE("espadas")}<span>Buscar outra luta</span>`); fila.type="button"; fila.onclick=()=>{SOM.toque();irPara("jxj","fila");};
+    const pain=el("button","botao botao-sec","Voltar ao painel"); pain.type="button"; pain.onclick=()=>{SOM.toque();irPara("jxj");};
+    acoes.append(fila,pain);
+  }
+  area.appendChild(acoes);
+  const log=el("section","painel-n jxj-log");
+  log.appendChild(el("p","jxj-rotulo",`${ICONE("lista")} Troca a troca`));
+  const ol=el("ol","jxj-log-lista");
+  for(const t of v.trocas||[])ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(jxjEsc).join(" ")||"Nada mudou."}</span>`));
+  log.appendChild(ol); area.appendChild(log);
+}
+/* replay público de luta encerrada (#/jxj/replay/<id>) */
+async function jxjTelaReplay(id){
+  const c=jxjTela({titulo:"Luta",fundo:"fotos",voltar:()=>history.length>1?history.back():irPara("jxj"),nav:null});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let v;
+  try{ await jxjDef(); v=await jxj("replay",{lutaId:id}); }catch(e){ return jxjErro(area,e,()=>jxjTelaReplay(id)); }
+  area.innerHTML="";
+  const eu=v.lado||"a",ele=eu==="a"?"b":"a";
+  jxjDesenharResultado(area,v,{eu,ele},()=>irPara("jxj","luta/"+id));
+}
+/* ---------- ranking (#/jxj/ranking) ---------- */
+const JXJ_FILTRO={categoria:"",busca:"",pagina:0};
+async function jxjTelaRanking(){
+  const c=jxjTela({titulo:"Ranking JxJ",fundo:"cinturao",nav:"ranking"});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def; try{ def=await jxjDef(); }catch(e){ return jxjErro(area,e,jxjTelaRanking); }
+  if(!def.ativo){ area.innerHTML=""; area.appendChild(jxjEmBreve()); return; }
+  area.innerHTML="";
+  area.appendChild(el("p","tela-sub",`Só o lutador principal de cada conta, com ${def.regras.lutasPraClassificar} lutas com rating ou mais e luta nos últimos 30 dias. A ordem é o rating (Glicko-2): vencer alguém acima de você vale mais.`));
+  const filtros=el("div","filtros");
+  const sel=el("select","campo-select",`<option value="">Todas as categorias</option>`+(def.categoriasLancamento||[]).map(id=>`<option value="${id}">${jxjCategoria(id)}</option>`).join(""));
+  sel.value=JXJ_FILTRO.categoria; if(sel.setAttribute)sel.setAttribute("aria-label","Categoria");
+  const busca=el("input","jxj-busca-campo"); busca.type="search"; busca.placeholder="Buscar lutador"; busca.value=JXJ_FILTRO.busca; busca.maxLength=30;
+  if(busca.setAttribute)busca.setAttribute("aria-label","Buscar lutador");
+  filtros.append(sel,busca); area.appendChild(filtros);
+  const lista=el("div","jxj-ranking"); area.appendChild(lista);
+  const carregar=async()=>{
+    jxjCarregando(lista);
+    try{
+      const r=await jxj("ranking",{categoria:JXJ_FILTRO.categoria,busca:JXJ_FILTRO.busca,pagina:JXJ_FILTRO.pagina});
+      lista.innerHTML="";
+      if(r.minhaPosicao)lista.appendChild(el("p","rank-minha",`${ICONE("usuario")}<span>Seu principal: <b>${jxjEsc(r.minhaPosicao.nome)}</b> em ${r.minhaPosicao.posicao}º, rating ${r.minhaPosicao.rating}</span>`));
+      if(!r.linhas.length){ lista.appendChild(vazio("trofeu","Ninguém no ranking ainda",JXJ_FILTRO.busca?"Nenhum lutador com esse nome.":"O ranking aparece quando os principais chegam a 5 lutas com rating.")); return; }
+      if(!JXJ_FILTRO.pagina&&!JXJ_FILTRO.busca&&r.linhas.length>=3){
+        const podio=el("div","podio");
+        [r.linhas[1],r.linhas[0],r.linhas[2]].forEach((l,i)=>{
+          const d=el("div","degrau degrau-"+[2,1,3][i]+(l.meu?" meu":""));
+          d.innerHTML=`<span class="degrau-pos">${l.posicao}</span><span class="degrau-retrato">${jxjRetrato(l,[96,120,96][i])}</span>
+            <span class="degrau-nome">${jxjEsc(l.nome)}</span><span class="degrau-meta">${jxjEstilo(l.estilo)} · ${jxjCategoria(l.categoria)}</span>
+            <span class="degrau-pontos">${l.rating}<small>rating</small></span>`;
+          d.onclick=()=>{SOM.toque();irPara("jxj","perfil/"+l.id);}; d.tabIndex=0; d.style&&(d.style.cursor="pointer");
+          podio.appendChild(d);
+        });
+        lista.appendChild(podio);
+      }
+      const ol=el("ol","ranking-lista jxj-lista-rank");
+      for(const l of (!JXJ_FILTRO.pagina&&!JXJ_FILTRO.busca&&r.linhas.length>=3?r.linhas.slice(3):r.linhas)){
+        const c2=jxjCartel(l);
+        const li=el("li","rank-linha jxj-rank-linha"+(l.meu?" meu":""),
+          `<span class="rank-pos">${l.posicao}</span><span class="rank-retrato">${jxjRetrato(l,44)}</span>
+           <span class="rank-nome">${jxjEsc(l.nome)}<small>${jxjEstilo(l.estilo)} · ${jxjCategoria(l.categoria)} · nível ${l.nivel}${l.selo?` · selo ${l.selo==="campeao"?"de campeão":l.selo==="top10"?"top 10":l.selo==="top50"?"top 50%":"da temporada"}`:""}</small></span>
+           <span class="rank-meta">${c2.txt}</span><span class="jxj-variacao ${l.variacao7d>0?"sobe":l.variacao7d<0?"desce":""}">${l.variacao7d>0?"+":""}${l.variacao7d}<small>7 dias</small></span>
+           <span class="rank-pontos">${l.rating}<small>rating</small></span>`);
+        li.onclick=()=>{SOM.toque();irPara("jxj","perfil/"+l.id);}; li.tabIndex=0;
+        ol.appendChild(li);
+      }
+      lista.appendChild(ol);
+      const pag=el("div","jxj-acoes");
+      if(JXJ_FILTRO.pagina>0){ const b=el("button","botao botao-sec",`${ICONE("chevron-esq")}<span>Anteriores</span>`); b.type="button"; b.onclick=()=>{SOM.toque();JXJ_FILTRO.pagina--;carregar();}; pag.appendChild(b); }
+      if(r.total>(JXJ_FILTRO.pagina+1)*50){ const b=el("button","botao botao-sec",`<span>Próximos 50</span>${ICONE("chevron-dir")}`); b.type="button"; b.onclick=()=>{SOM.toque();JXJ_FILTRO.pagina++;carregar();}; pag.appendChild(b); }
+      lista.appendChild(pag);
+    }catch(e){ jxjErro(lista,e,carregar); }
+  };
+  sel.onchange=()=>{ JXJ_FILTRO.categoria=sel.value; JXJ_FILTRO.pagina=0; carregar(); };
+  let t=null; busca.oninput=()=>{ clearTimeout(t); t=setTimeout(()=>{ JXJ_FILTRO.busca=busca.value.trim(); JXJ_FILTRO.pagina=0; carregar(); },350); };
+  carregar();
+}
+
+/* ---------- perfil público (#/jxj/perfil/<id>) ---------- */
+async function jxjTelaPerfil(id){
+  const c=jxjTela({titulo:"Perfil",fundo:"fotos",voltar:()=>history.length>1?history.back():irPara("jxj","ranking"),nav:null});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,p,meu=null;
+  try{
+    def=await jxjDef();
+    const s=await sessaoAtual();
+    if(s){ try{ const est=await jxj("estado"); meu=est.principalEfetivo; }catch(e){} }
+    p=await jxj("perfil",{lutadorId:id,...(meu&&String(meu)!==String(id)?{contraId:meu}:{})});
+  }catch(e){ return jxjErro(area,e,()=>jxjTelaPerfil(id)); }
+  const l=p.perfil; area.innerHTML="";
+  const cab=el("section","jxj-principal entra");
+  cab.innerHTML=`<div class="jxj-principal-retrato">${jxjRetrato(l,200)}</div><div class="jxj-principal-info">
+    <p class="jxj-rotulo">${l.status==="aposentado"?"Aposentado":"Na ativa"}</p><h2 class="jxj-nome">${jxjEsc(l.nome)}</h2>
+    <p class="jxj-meta">${jxjCategoria(l.categoria)} · ${jxjEstilo(l.estilo)} · nível ${l.nivel}</p>
+    <dl class="jxj-numeros"><div><dt>Rating</dt><dd>${l.rating}${l.classificado?"":"<small>em classificação</small>"}</dd></div>
+      <div><dt>Cartel</dt><dd>${jxjCartel(l).txt}<small>${jxjTaxa(l)} de vitórias</small></dd></div>
+      <div><dt>Nocautes</dt><dd>${l.kos}</dd></div><div><dt>Finalizações</dt><dd>${l.finalizacoes}</dd></div></dl></div>`;
+  area.appendChild(cab);
+  const g=el("div","jxj-grade");
+  if(p.direto&&p.direto.lutas){
+    const d=el("section","painel-n jxj-card");
+    d.innerHTML=`<p class="jxj-rotulo">${ICONE("espadas")} Contra o seu principal</p><p class="jxj-card-num">${p.direto.vitoriasX} a ${p.direto.vitoriasY}<small>${p.direto.lutas} luta(s), contando pelo lado dele</small></p>`;
+    g.appendChild(d);
+  }
+  const ev=el("section","painel-n jxj-card"); ev.innerHTML=`<p class="jxj-rotulo">${ICONE("grafico")} Rating</p>${jxjSparkline(l.ratingHist)}`; g.appendChild(ev);
+  const tit=el("section","painel-n jxj-card");
+  tit.innerHTML=`<p class="jxj-rotulo">${ICONE("coroa")} Títulos</p>`+((l.titulos||[]).length?`<ul class="jxj-lista-simples">${l.titulos.map(t=>`<li>${t.tipo==="cinturao"?"Cinturão":"Campeão da temporada"} · ${jxjCategoria(t.categoria)}${t.temporada?` · temporada ${t.temporada}`:""}</li>`).join("")}</ul>`:`<p class="jxj-nota">Nenhum título ainda.</p>`);
+  g.appendChild(tit);
+  const cq=el("section","painel-n jxj-card");
+  cq.innerHTML=`<p class="jxj-rotulo">${ICONE("medalha")} Conquistas</p>`+((l.conquistas||[]).length?`<ul class="jxj-lista-simples">${l.conquistas.map(x=>`<li>${jxjEsc((def.conquistas[x.id]||{nome:x.id}).nome)}</li>`).join("")}</ul>`:`<p class="jxj-nota">Nenhuma ainda.</p>`);
+  g.appendChild(cq);
+  const tp=el("section","painel-n jxj-card");
+  tp.innerHTML=`<p class="jxj-rotulo">${ICONE("calendario")} Temporadas</p>`+((l.temporadas||[]).length?`<ul class="jxj-lista-simples">${l.temporadas.map(t=>`<li>Temporada ${t.temporada}: ${t.posicao}º, rating ${t.rating}</li>`).join("")}</ul>`:`<p class="jxj-nota">Nenhuma temporada terminada ainda.</p>`);
+  g.appendChild(tp);
+  if(l.build){
+    const b=el("section","painel-n jxj-card");
+    const nos=jxjNos(def);
+    b.innerHTML=`<p class="jxj-rotulo">${ICONE("arvore")} Árvore (pública)</p><ul class="jxj-lista-simples">${Object.entries(l.build).filter(([,n])=>n).map(([k,n])=>`<li>${jxjEsc((nos[k]||{nome:k}).nome)} ${jxjPips(n)}</li>`).join("")||"<li>Nenhum ponto gasto.</li>"}</ul>`;
+    g.appendChild(b);
+  }
+  area.appendChild(g);
+  if((p.historico||[]).length){
+    area.appendChild(el("h3","jxj-subtitulo","Últimas lutas"));
+    const ol=el("ol","jxj-historico"); for(const x of p.historico)ol.appendChild(jxjLinhaHistorico(x)); area.appendChild(ol);
+  }
+}
+
+/* ---------- temporada (#/jxj/temporada) ---------- */
+async function jxjTelaTemporada(){
+  const c=jxjTela({titulo:"Temporada",fundo:"cartazes",nav:"temporada"});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,t; try{ def=await jxjDef(); if(!def.ativo){ area.innerHTML=""; area.appendChild(jxjEmBreve()); return; } t=await jxj("temporada"); }catch(e){ return jxjErro(area,e,jxjTelaTemporada); }
+  area.innerHTML="";
+  const ini=Date.parse(t.inicio),fim=Date.parse(t.fim),agora=Date.parse(t.agora);
+  const hero=el("section","painel-n jxj-temporada entra");
+  hero.innerHTML=`<p class="jxj-rotulo">${ICONE("calendario")} Temporada ${t.numero}</p>
+    <p class="jxj-card-num">${jxjFmtDuracao(fim-agora)}<small>até ${new Date(fim).toLocaleDateString("pt-BR")}</small></p>${jxjBarra(agora-ini,fim-ini)}
+    ${t.meu?`<p>Seu principal, <b>${jxjEsc(t.meu.nome)}</b>: rating ${t.meu.rating}, ${t.meu.lutasTemporada} luta(s) com rating nesta temporada.</p>`:""}`;
+  area.appendChild(hero);
+  const R=t.reset||def.regras.reset;
+  const g=el("div","jxj-grade");
+  const regra=el("section","painel-n jxj-card");
+  regra.innerHTML=`<p class="jxj-rotulo">${ICONE("info")} Na virada</p><ul class="jxj-lista-simples">
+    <li>A classificação final de cada categoria fica gravada pra sempre.</li>
+    <li>O rating vai pra ${Math.round((R.fator||0.5)*100)}% da distância até 1500: quem tinha 1700 começa a próxima com ${Math.round(1500+200*(R.fator||0.5))}.</li>
+    <li>A incerteza do rating sobe ${R.rdSoma||80} pontos, então as primeiras lutas da temporada mexem mais.</li>
+    <li>Nível, XP, árvore, cartel, conquistas e títulos ficam.</li></ul>`;
+  const rec=el("section","painel-n jxj-card");
+  rec.innerHTML=`<p class="jxj-rotulo">${ICONE("trofeu")} Recompensas por categoria</p><ul class="jxj-lista-simples">
+    <li>1º lugar: 500 fichas, selo de campeão e título de campeão da temporada.</li><li>Do 2º ao 10º: 250 fichas e selo top 10.</li>
+    <li>Até a metade de cima: 100 fichas e selo top 50%.</li><li>Quem terminou classificado: 40 fichas.</li></ul>
+    <p class="jxj-nota">Classificado = principal ativo com ${def.regras.lutasPraClassificar} lutas com rating. Recompensa é ficha e cosmético, nunca atributo.</p>`;
+  g.append(regra,rec); area.appendChild(g);
+  if((t.anteriores||[]).length)area.appendChild(el("p","jxj-nota",`Temporadas encerradas: ${t.anteriores.map(x=>x.numero).join(", ")}.`));
+}
+
+/* ---------- torneios (#/jxj/torneios e #/jxj/torneio/<id>) ---------- */
+async function jxjTelaTorneios(){
+  const c=jxjTela({titulo:"Torneios",fundo:"trofeus",nav:"torneios"});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,ts,est=null;
+  try{ def=await jxjDef(); if(!def.ativo){ area.innerHTML=""; area.appendChild(jxjEmBreve()); return; } ts=await jxj("torneios");
+    if(await sessaoAtual()){ try{ est=await jxj("estado"); }catch(e){} } }
+  catch(e){ return jxjErro(area,e,jxjTelaTorneios); }
+  area.innerHTML="";
+  area.appendChild(el("p","tela-sub",`Chave de ${def.regras.torneioVagas}: quartas, semifinal e final. Fecha quando chega a ${def.regras.torneioVagas} inscritos e as sementes saem do rating. Cada confronto tem ${def.regras.torneioJanelaH} horas pra acontecer: os dois entram na sala e lutam. Quem não aparece perde por W.O. O campeão leva o cinturão da categoria.`));
+  const reqs=el("p","jxj-nota",`Pra entrar: Pro, lutador principal da categoria e ${def.regras.torneioLutasMin} lutas com rating. Uma inscrição por conta.`);
+  area.appendChild(reqs);
+  const principal=est&&est.lutadores.find(l=>l.id===est.principalEfetivo);
+  const g=el("div","jxj-torneios");
+  for(const t of ts){
+    const card=el("section","painel-n jxj-torneio-card "+t.status);
+    card.innerHTML=`<p class="jxj-rotulo">${ICONE("coroa")} ${jxjCategoria(t.categoria)} · temporada ${t.temporada}</p>
+      <h3 class="jxj-subtitulo">${t.status==="inscricoes"?"Inscrições abertas":t.status==="andamento"?["","Quartas de final","Semifinal","Final"][t.fase]||"Em andamento":"Encerrado"}</h3>
+      ${t.status==="encerrado"&&t.campeao?`<p>Campeão: <b>${jxjEsc(t.campeao.nome)}</b></p>`:`<p class="jxj-card-num">${t.inscritos} de ${t.vagas}<small>inscritos</small></p>${jxjBarra(t.inscritos,t.vagas)}`}`;
+    const acoes=el("div","jxj-acoes");
+    const ver=el("button","botao botao-sec",`<span>Ver a chave</span>${ICONE("chevron-dir")}`); ver.type="button"; ver.onclick=()=>{SOM.toque();irPara("jxj","torneio/"+t.id);};
+    acoes.appendChild(ver);
+    if(t.status==="inscricoes"&&est){
+      if(t.inscrito){
+        const sair=el("button","botao botao-sec","Sair do torneio"); sair.type="button";
+        sair.onclick=async()=>{ SOM.toque(); sair.disabled=true; try{ await jxj("torneioSair"); jxjTelaTorneios(); }catch(e){ sair.disabled=false; } };
+        acoes.appendChild(sair);
+      }else if(principal&&principal.categoria===t.categoria){
+        const ins=el("button","botao",`${ICONE("check")}<span>Inscrever ${jxjEsc(principal.nome)}</span>`); ins.type="button";
+        const msg=el("p","jxj-erro"); msg.hidden=true;
+        ins.onclick=async()=>{ SOM.toque(); ins.disabled=true; try{ await jxj("torneioInscrever",{lutadorId:principal.id}); jxjTelaTorneios(); }catch(e){ msg.textContent=e.erro; msg.hidden=false; ins.disabled=false; } };
+        acoes.appendChild(est.pro?ins:bloqueioPro(ins)); card.appendChild(msg);
+      }
+    }
+    card.appendChild(acoes); g.appendChild(card);
+  }
+  if(!ts.length)g.appendChild(vazio("coroa","Nenhum torneio agora",""));
+  area.appendChild(g);
+}
+async function jxjTelaTorneio(id){
+  const c=jxjTela({titulo:"Torneio",fundo:"trofeus",voltar:()=>irPara("jxj","torneios"),nav:null});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  const tk=JXJ_TOKEN;
+  const carregar=async()=>{
+    let def,t,est=null;
+    try{ def=await jxjDef(); t=await jxj("torneio",{torneioId:id}); if(await sessaoAtual()){ try{ est=await jxj("estado"); }catch(e){} } }
+    catch(e){ return jxjErro(area,e,carregar); }
+    if(tk!==JXJ_TOKEN)return;
+    area.innerHTML="";
+    const T=t.torneio,porId=Object.fromEntries(t.inscritos.map(i=>[i.lutador,i]));
+    const meusIds=new Set((est&&est.lutadores||[]).map(l=>l.id));
+    area.appendChild(el("p","tela-sub",`${jxjCategoria(T.categoria)} · temporada ${T.temporada} · ${T.status==="inscricoes"?`inscrições abertas (${t.inscritos.length} de ${T.vagas})`:T.status==="andamento"?"em andamento":"encerrado"}`));
+    if(T.status==="inscricoes"){
+      const ol=el("ol","jxj-lista-simples jxj-inscritos");
+      for(const i of t.inscritos)ol.appendChild(el("li","",`${jxjEsc(i.nome)} · ${jxjEstilo(i.estilo)} · rating ${i.rating}${i.meu?" · você":""}`));
+      area.appendChild(t.inscritos.length?ol:vazio("coroa","Ninguém inscrito ainda","A chave sai quando chegar a 8."));
+      return;
+    }
+    const chave=el("div","jxj-chave");
+    const nomeDe=lid=>lid&&porId[lid]?`${jxjEsc(porId[lid].nome)}<small>semente ${porId[lid].semente||"?"}</small>`:"<small>a definir</small>";
+    [1,2,3].forEach(fase=>{
+      const col=el("section","jxj-fase");
+      col.appendChild(el("h3","jxj-subtitulo",["","Quartas","Semifinal","Final"][fase]));
+      for(const cf of t.confrontos.filter(x=>x.fase===fase)){
+        const meu=meusIds.has(cf.a)||meusIds.has(cf.b);
+        const box=el("div","jxj-confronto"+(meu?" meu":"")+(cf.vencedor?" decidido":""));
+        box.innerHTML=`<p class="${cf.vencedor===cf.a?"venc":""}">${nomeDe(cf.a)}</p><p class="${cf.vencedor===cf.b?"venc":""}">${nomeDe(cf.b)}</p>
+          <small>${cf.vencedor?(cf.motivo==="wo"?"W.O.":cf.motivo==="wo_duplo"?"ninguém apareceu: passou o de rating maior":cf.motivo==="empate_rating"?"empate: passou o de rating maior":"decidido na luta"):`janela até ${new Date(cf.janelaAte).toLocaleString("pt-BR")}`}</small>`;
+        if(cf.luta&&cf.vencedor){ const b=el("button","btn-voltar jxj-hist-ver",`<span>Ver a luta</span>${ICONE("chevron-dir")}`); b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj","replay/"+cf.luta);}; box.appendChild(b); }
+        if(meu&&!cf.vencedor){
+          const b=el("button","botao",`${ICONE("espadas")}<span>${cf.luta?"Ir pra luta":"Entrar na sala"}</span>`); b.type="button";
+          const st=el("p","jxj-nota",cf.presenteA||cf.presenteB?"O adversário passou pela sala.":"");
+          b.onclick=async()=>{ SOM.toque(); b.disabled=true;
+            const sala=async()=>{
+              if(tk!==JXJ_TOKEN)return;
+              try{ const r=await jxj("torneioSala",{confrontoId:cf.id});
+                if(r.luta)return irPara("jxj","luta/"+r.luta);
+                if(r.decidido)return carregar();
+                st.textContent="Você está na sala. A luta começa quando o adversário entrar."; JXJ_TIMER=setTimeout(sala,3000);
+              }catch(e){ st.textContent=e.erro; b.disabled=false; } };
+            sala(); };
+          box.append(b,st);
+        }
+        col.appendChild(box);
+      }
+      chave.appendChild(col);
+    });
+    area.appendChild(chave);
+    if(T.status==="encerrado"&&T.campeao_id&&porId[T.campeao_id])
+      area.appendChild(el("p","jxj-campeao",`${ICONE("coroa")}<span>Campeão: <b>${jxjEsc(porId[T.campeao_id].nome)}</b>, com o cinturão de ${jxjCategoria(T.categoria)}</span>`));
+  };
+  carregar();
+}
+
+/* ---------- Hall da Fama (#/jxj/hall) ---------- */
+async function jxjTelaHall(){
+  const c=jxjTela({titulo:"Hall da Fama",fundo:"trofeus",nav:"hall"});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,h; try{ def=await jxjDef(); if(!def.ativo){ area.innerHTML=""; area.appendChild(jxjEmBreve()); return; } h=await jxj("hall"); }catch(e){ return jxjErro(area,e,jxjTelaHall); }
+  area.innerHTML="";
+  const bloco=(titulo,ico,itens,linha)=>{
+    const s=el("section","jxj-hall-bloco entra"); s.appendChild(el("h3","jxj-subtitulo",`${ICONE(ico)} ${titulo}`));
+    if(!itens.length){ s.appendChild(el("p","jxj-nota","Ninguém ainda.")); return s; }
+    const g=el("div","jxj-hall-grade");
+    for(const x of itens){ const card=el("button","jxj-hall-card",`${jxjRetrato(x,96)}<b>${jxjEsc(x.nome)}</b><small>${linha(x)}</small>`); card.type="button";
+      card.onclick=()=>{SOM.toque();irPara("jxj","perfil/"+x.lutador);}; g.appendChild(card); }
+    s.appendChild(g); return s;
+  };
+  area.append(
+    bloco("Cinturões","coroa",h.cinturoes,x=>`${jxjCategoria(x.categoria)} · temporada ${x.temporada} · ${fmtData(x.em)}`),
+    bloco("Campeões de temporada","calendario",h.temporadas,x=>`${jxjCategoria(x.categoria)} · temporada ${x.temporada}`),
+    bloco("Lendas aposentadas","bandeira",h.aposentados,x=>`${jxjCartel(x).txt} · ${x.titulos} título(s)`));
+}
+
+/* ---------- roteador do JxJ ---------- */
+function screenJxJ(param){
+  jxjParar();
+  const [sub,...resto]=String(param||"").split("/").filter(Boolean);
+  const id=resto.join("/")||null;
+  const publicas={ranking:jxjTelaRanking,perfil:jxjTelaPerfil,hall:jxjTelaHall,torneios:jxjTelaTorneios,torneio:jxjTelaTorneio,temporada:jxjTelaTemporada,replay:jxjTelaReplay};
+  if(!sub)return jxjTelaEntrada();
+  if(publicas[sub])return publicas[sub](id);
+  const conta={criar:jxjTelaCriar,lutador:jxjTelaLutador,lutadores:jxjTelaLutadores,fila:jxjTelaFila,luta:jxjTelaLuta};
+  if(!conta[sub])return screen404();
+  return comConta({tipo:"jxj",param:String(param)},()=>conta[sub](id));
+}
+
 registrarRota("menu",screenMenu);
 registrarRota("nova",()=>comConta({tipo:"nova"},()=>iniciarNovaCarreira()));   // a fase 4 troca o fluxo de criação pelo assistente
 registrarRota("continuar",()=>comConta({tipo:"continuar"},screenContinuar));
@@ -7453,6 +8644,7 @@ registrarRota("conta",p=>screenConta(p));
 registrarRota("admin",p=>screenAdmin(p));
 registrarRota("atualizacoes",screenAtualizacoes);
 registrarRota("ranking",screenRanking);
+registrarRota("jxj",p=>screenJxJ(p));
 registrarRota("termos",screenTermos);
 registrarRota("privacidade",screenPrivacidade);
 registrarRota("404",screen404);
@@ -7611,16 +8803,19 @@ function screenMenu(){
       acao:"Começar",i:0}),
     Object.assign(cartaoMenu({rota:"continuar",tamanho:"grande",foto:"vestiario",rotulo:"Carreira salva",titulo:"Continuar",
       texto:`<span id="continuar-txt">Entre para ver suas carreiras.</span>`,acao:"Ver carreiras",i:1,apagado:true}),{id:"card-continuar"}),
+    cartaoMenu({rota:"jxj",tamanho:"faixa",foto:"arena-alto",rotulo:"Competitivo",titulo:"JxJ",
+      texto:"Seu lutador contra os lutadores dos outros jogadores. Ranking, temporadas de 8 semanas e torneios com cinturão.",
+      acao:"Entrar no JxJ",i:2}),
     cartaoMenu({rota:"ranking",tamanho:"medio",foto:"cinturao",rotulo:"Placar",titulo:"Ranking",
       extra:`<span class="previa" id="previa-ranking"><span class="carregando">Carregando</span></span>`,
-      acao:"Ver ranking",i:2}),
+      acao:"Ver ranking",i:3}),
     cartaoMenu({rota:"atualizacoes",tamanho:"medio",foto:"imprensa",rotulo:"Novidades",titulo:"Atualizações",
       extra:`<span class="previa">${ultimasAtualizacoes(2).map(a=>
         `<span class="previa-linha"><span class="previa-data">${fmtData(a.data)}</span><span class="previa-txt">${a.titulo}</span></span>`).join("")}</span>`,
-      acao:"Ver tudo",i:3}),
+      acao:"Ver tudo",i:4}),
     cartaoMenu({rota:"conta",tamanho:"medio",foto:"contrato",rotulo:"Perfil",titulo:"Conta",
       extra:`<span class="previa" id="previa-conta"><span class="previa-linha"><span class="previa-txt">Entre ou crie sua conta.</span></span></span>`,
-      acao:"Abrir conta",i:4}),
+      acao:"Abrir conta",i:5}),
   );
   c.appendChild(grade);
 
@@ -8012,6 +9207,7 @@ function screenPortao(intencao){
 function seguirIntencao(v){
   if(!v)return false;
   if(v.tipo==="desafio"&&v.busca){ location.href=location.pathname+v.busca; return true; }
+  if(v.tipo==="jxj"){ irPara("jxj",v.param||null,{substituir:true}); return true; }
   irPara(v.tipo==="continuar"?"continuar":"nova",null,{substituir:true});
   return true;
 }

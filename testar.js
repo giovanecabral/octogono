@@ -189,10 +189,10 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
   };
 
   await passo("carregar e avaliar lutadores", () => UI.ready(lerLutadores()));
-  await passo("menu: 5 cards (nova, continuar, ranking, atualizações, conta), clica Nova carreira", () => {
+  await passo("menu: 6 cards (nova, continuar, jxj, ranking, atualizações, conta), clica Nova carreira", () => {
     const cards = env.todos.filter(n => (n.className || "").split(" ").includes("menu-card"));
     const rotas = cards.map(c => c.dataset && c.dataset.rota);
-    const esperadas = ["nova", "continuar", "ranking", "atualizacoes", "conta"];
+    const esperadas = ["nova", "continuar", "jxj", "ranking", "atualizacoes", "conta"];   // JxJ entrou como faixa (2026-10-01)
     if (JSON.stringify(rotas) !== JSON.stringify(esperadas)) throw new Error("cards do menu: " + rotas.join(","));
     cards[0].onclick(); // Nova carreira -> screenName() (a fase 4 troca pelo assistente)
   });
@@ -7374,20 +7374,22 @@ async function testarRotas() {
   };
   const EMOJI = /\p{Extended_Pictographic}/u;
 
-  await conf("abre no menu com os 5 cards na ordem certa", async () => {
+  await conf("abre no menu com os 6 cards na ordem certa (o JxJ entra como faixa, 2026-10-01)", async () => {
     UI.ready(lerLutadores());
     env.drenar(); await respirar(); env.drenar();
     const rotas = env.todos.filter(n => tem(n, "menu-card")).map(n => n.dataset && n.dataset.rota);
-    const esperado = ["nova", "continuar", "ranking", "atualizacoes", "conta"];
+    const esperado = ["nova", "continuar", "jxj", "ranking", "atualizacoes", "conta"];
     if (JSON.stringify(rotas) !== JSON.stringify(esperado)) throw new Error("cards: " + rotas.join(","));
     if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
   });
 
   await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade e contato em texto (sem Créditos)", () => {
     UI.irPara("menu"); env.drenar();
-    const cards = env.todos.filter(n => tem(n, "menu-card")).slice(-5);
+    const cards = env.todos.filter(n => tem(n, "menu-card")).slice(-6);
     const grandes = cards.filter(n => tem(n, "menu-card-grande")).map(n => n.dataset.rota);
     if (JSON.stringify(grandes) !== '["nova","continuar"]') throw new Error("cards grandes: " + grandes);
+    const faixa = cards.filter(n => tem(n, "menu-card-faixa")).map(n => n.dataset.rota);
+    if (JSON.stringify(faixa) !== '["jxj"]') throw new Error("faixa do JxJ: " + faixa);
     if (!env.todos.some(n => tem(n, "marca") && /Octógono/i.test(n.innerHTML))) throw new Error("sem marca");
     const rod = env.todos.filter(n => tem(n, "menu-rodape")).pop();
     if (!rod) throw new Error("sem rodapé");
@@ -7453,11 +7455,11 @@ async function testarRotas() {
 
   await conf("todas as rotas do spec estão registradas", () => {
     const faltam = ["menu", "nova", "continuar", "conta", "atualizacoes", "ranking",
-      "termos", "privacidade", "404"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);
+      "termos", "privacidade", "404", "jxj"].filter(r => !UI.ROTAS || !UI.ROTAS[r]);
     if (faltam.length) throw new Error("faltam: " + faltam.join(","));
   });
 
-  for (const r of ["continuar", "ranking", "atualizacoes", "conta", "termos", "privacidade"]) {
+  for (const r of ["continuar", "ranking", "atualizacoes", "conta", "termos", "privacidade", "jxj"]) {
     await conf(`#/${r}: abre, tem Voltar, Voltar leva ao menu`, async () => {
       const m = env.todos.length;
       UI.irPara(r);
@@ -7469,7 +7471,7 @@ async function testarRotas() {
       voltar.onclick();
       env.drenar();
       if (UI.rotaAtual() !== "menu") throw new Error("Voltar foi pra " + UI.rotaAtual());
-      if (desde(m2).filter(n => tem(n, "menu-card")).length !== 5) throw new Error("menu não foi redesenhado");
+      if (desde(m2).filter(n => tem(n, "menu-card")).length !== 6) throw new Error("menu não foi redesenhado");
     });
   }
 
@@ -10562,6 +10564,1204 @@ async function testarPlacar() {
   return ok;
 }
 
+/* ================================================================== *
+ * JxJ (2026-10-01): servidor (api/jxj.js) contra um Postgres de
+ * verdade (PGlite, ferramentas/banco-teste.mjs) com supabase_schema.sql
+ * + supabase_jxj.sql. Fluxo inteiro com várias contas e os ataques da
+ * spec (seção 10): nenhum depende da tela.
+ * ================================================================== */
+async function testarJxJ() {
+  console.log("\n" + cinza("jxj: servidor + banco de verdade (PGlite): fluxo, Free/Pro, fila, luta, temporada, torneio, ataques"));
+  const url = require("url"), crypto = require("crypto");
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  let B;
+  try { B = await import(url.pathToFileURL(path.join(RAIZ, "ferramentas", "banco-teste.mjs")).href); }
+  catch (e) {
+    console.log(vermelho("  falha ") + "o teste do JxJ precisa do PGlite: rode `npm install --prefix ferramentas` uma vez (" + String(e.message).slice(0, 90) + ")");
+    return false;
+  }
+  const db = await B.novoBanco();
+  const { SUPABASE_URL } = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
+  const MOTOR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
+  const ARV = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
+  const REG = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-regras.js")).href);
+  const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
+  const chamadas = [];
+  globalThis.fetch = B.fetchFalso(db, { SUPABASE_URL, chamadas });
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "falsa"; process.env.JXJ_ATIVO = "true";
+  delete process.env.OPENROUTER_API_KEY;
+  console.error = () => {};
+  const H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "jxj.js")).href)).default;
+  let nUser = 0;
+  const novoUsuario = async (opcoes = {}) => {
+    const id = `00000000-0000-4000-8000-${String(++nUser).padStart(12, "0")}`;
+    await B.criarUsuario(db, id, opcoes);
+    return id;
+  };
+  const api = async (u, acao, extra = {}) => (await B.chamar(H, { ...(u ? { token: "tok:" + u } : {}), acao, ...extra }));
+  const ok = async (u, acao, extra = {}) => {
+    const r = await api(u, acao, extra);
+    if (r.status !== 200) throw new Error(`${acao} deu ${r.status}: ${JSON.stringify(r.json).slice(0, 160)}`);
+    return r.json;
+  };
+  const erro = async (u, acao, extra, padrao, status = 400) => {
+    const r = await api(u, acao, extra);
+    if (r.status !== status || !padrao.test(String(r.json && r.json.erro))) throw new Error(`${acao}: esperava ${status} /${padrao.source}/, veio ${r.status} ${JSON.stringify(r.json).slice(0, 160)}`);
+  };
+  const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+  const ROSTO = { pele: 2, porte: 1, cabelo: 1, corCabelo: 0, barba: 1, orelha: 0, nariz: 0, cicatriz: 0, tatuagem: 0, entrada: 0, prajiad: 0, corEntrada: 0 };
+  let nNome = 0;
+  const criar = async (u, extra = {}) => ok(u, "criar", { nome: `Lutador ${String.fromCharCode(65 + (nNome % 26))}${Math.floor(nNome++ / 26) || ""} ${nUser}`, rosto: ROSTO, categoria: "lightweight", estilo: "striker", ...extra });
+  const zerarLimites = () => q("delete from jxj_limites");
+  /* par entre duas contas já com lutador: fila, par e confirmação */
+  const parear = async (u1, l1, u2, l2, { confirmar = true } = {}) => {
+    await ok(u1, "filaEntrar", { lutadorId: l1 }); await ok(u2, "filaEntrar", { lutadorId: l2 });
+    const f = await ok(u1, "fila");
+    if (!f.luta) throw new Error("não pareou: " + JSON.stringify(f));
+    if (confirmar) { await ok(u1, "confirmar", { lutaId: f.luta.id }); await ok(u2, "confirmar", { lutaId: f.luta.id }); }
+    return f.luta.id;
+  };
+  const F = MOTOR.FAMILIAS;
+  /* joga até o fim com duas escolhas; devolve a vista final */
+  const lutar = async (lid, u1, u2, e1 = (n) => F[n % 4], e2 = (n) => F[(n * 3 + 1) % 4]) => {
+    for (let n = 0; n < 40; n++) {
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.status !== "andamento") return v;
+      await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: e1(n) });
+      await ok(u2, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: e2(n) });
+    }
+    return ok(u1, "luta", { lutaId: lid });
+  };
+  const vencerPrazo = (lid) => q("update jxj_lutas set prazo = now() - interval '10 seconds' where id = $1", [lid]);
+
+  try {
+    await conf("desligado (JXJ_ATIVO diferente de true): definições dizem ativo:false e toda ação responde 503", async () => {
+      process.env.JXJ_ATIVO = "false";
+      const d = await api(null, "definicoes");
+      const e = await api("x", "estado");
+      process.env.JXJ_ATIVO = "true";
+      if (d.status !== 200 || d.json.ativo !== false) throw new Error("definições: " + JSON.stringify(d).slice(0, 120));
+      if (e.status !== 503 || !e.json.desligado) throw new Error("estado: " + JSON.stringify(e));
+    });
+    await conf("definições: 4 estilos, 12 ramos de 4 nós, ações, formato e regras públicas de ausência", async () => {
+      const d = await ok(null, "definicoes");
+      if (Object.keys(d.estilos).length !== 4 || Object.keys(d.ramos).length !== 12) throw new Error("estrutura");
+      if (Object.values(d.ramos).some((r) => r.nos.length !== 4)) throw new Error("ramo sem 4 nós");
+      if (!Array.isArray(d.regras.ausencia) || d.regras.ausencia.length < 3) throw new Error("regra de ausência");
+    });
+    await conf("sem sessão ou com token falso: 401 nas ações de conta; método e corpo errados recusados", async () => {
+      if ((await api(null, "estado")).status !== 401) throw new Error("sem token");
+      if ((await B.chamar(H, { token: "falso", acao: "estado" })).status !== 401) throw new Error("token falso");
+      if ((await api(null, "inventada")).status !== 400) throw new Error("ação desconhecida");
+      let st = 0; await H({ method: "GET", headers: {} }, { setHeader() {}, status(s) { st = s; return this; }, json() { return this; }, end() { return this; } });
+      if (st !== 405) throw new Error("GET deu " + st);
+      if ((await B.chamar(H, { acao: "ranking", lixo: "x".repeat(30000) })).status !== 413) throw new Error("corpo grande");
+    });
+    const free1 = await novoUsuario(), pro1 = await novoUsuario({ pro: true });
+    await zerarLimites();
+    await conf("criar: nome, estilo, categoria, categoria fechada e aparência são conferidos no servidor", async () => {
+      await erro(free1, "criar", { nome: "A", rosto: ROSTO, categoria: "lightweight", estilo: "striker" }, /2 a 24/);
+      await erro(free1, "criar", { nome: "Fulano Merda", rosto: ROSTO, categoria: "lightweight", estilo: "striker" }, /não pode/);
+      await erro(free1, "criar", { nome: "Fulano", rosto: ROSTO, categoria: "lightweight", estilo: "ninja" }, /estilo/);
+      await erro(free1, "criar", { nome: "Fulano", rosto: ROSTO, categoria: "inexistente", estilo: "striker" }, /categoria/);
+      await erro(free1, "criar", { nome: "Fulano", rosto: ROSTO, categoria: "flyweight", estilo: "striker" }, /categoria fechada/);
+      await erro(free1, "criar", { nome: "Fulano", rosto: { pele: 99 }, categoria: "lightweight", estilo: "striker" }, /aparência/);
+    });
+    let lf1, lp1, lp2, lp3;
+    await conf("slots: grátis cria 1; Pro cria 3 e o 4º é recusado; o primeiro vira principal sem prazo", async () => {
+      await zerarLimites();
+      lf1 = (await criar(free1)).id;
+      await erro(free1, "criar", { nome: "Segundo Free", rosto: ROSTO, categoria: "lightweight", estilo: "wrestler" }, /grátis tem 1 slot/);
+      lp1 = (await criar(pro1)).id; lp2 = (await criar(pro1, { estilo: "grappler" })).id; lp3 = (await criar(pro1, { estilo: "counter" })).id;
+      await erro(pro1, "criar", { nome: "Quarto Pro", rosto: ROSTO, categoria: "lightweight", estilo: "striker" }, /3 slots/);
+      const est = await ok(pro1, "estado");
+      if (est.principalId !== lp1 || est.lutadores.length !== 3 || est.principalTrocadoEm) throw new Error(JSON.stringify(est).slice(0, 200));
+    });
+    await conf("nome repetido (sem acento e caixa) é recusado; campo de rating, nível e fichas mandado pelo cliente é ignorado", async () => {
+      const u = await novoUsuario();
+      await ok(u, "criar", { nome: "Kayo Brasa", rosto: ROSTO, categoria: "lightweight", estilo: "striker", rating: 9999, nivel: 30, fichas: 5000, xp: 99999 });
+      const u2 = await novoUsuario();
+      await erro(u2, "criar", { nome: "káyo BRASA", rosto: ROSTO, categoria: "lightweight", estilo: "striker" }, /já existe/);
+      const l = (await q("select rating, nivel, xp from jxj_lutadores where nome = 'Kayo Brasa'"))[0];
+      const c = (await q("select fichas from jxj_contas where user_id = $1", [u]))[0];
+      if (l.rating !== 1500 || l.nivel !== 1 || l.xp !== 0 || c.fichas !== 0) throw new Error(JSON.stringify({ l, c }));
+    });
+    await conf("principal: troca livre na primeira vez; a segunda antes de 72 h é recusada no relógio do banco; depois de 72 h passa", async () => {
+      await ok(pro1, "principal", { lutadorId: lp2 });
+      await erro(pro1, "principal", { lutadorId: lp3 }, /libera em/);
+      await q("update jxj_contas set principal_trocado_em = now() - interval '73 hours' where user_id = $1", [pro1]);
+      await ok(pro1, "principal", { lutadorId: lp3 });
+      const est = await ok(pro1, "estado");
+      if (est.principalId !== lp3) throw new Error("principal " + est.principalId);
+    });
+    await conf("Pro vencido: extras ficam inativos (fila e principal recusados), o principal efetivo vira o slot 1, nada é apagado; Pro de volta reativa", async () => {
+      await q("update assinaturas set expira_em = now() - interval '1 day' where user_id = $1", [pro1]);
+      const est = await ok(pro1, "estado");
+      const ext = est.lutadores.filter((l) => l.slot > 1);
+      if (ext.length !== 2 || ext.some((l) => l.utilizavel)) throw new Error("extras: " + JSON.stringify(ext.map((l) => [l.slot, l.utilizavel])));
+      if (est.principalEfetivo !== lp1 || est.principalId !== lp3) throw new Error(`efetivo ${est.principalEfetivo} principal ${est.principalId}`);
+      await erro(pro1, "filaEntrar", { lutadorId: lp2 }, /inativo/);
+      await q("update jxj_contas set principal_trocado_em = null where user_id = $1", [pro1]);
+      await erro(pro1, "principal", { lutadorId: lp2 }, /inativo/);
+      await q("update assinaturas set expira_em = null where user_id = $1", [pro1]);
+      const est2 = await ok(pro1, "estado");
+      if (est2.lutadores.some((l) => !l.utilizavel) || est2.principalEfetivo !== lp3) throw new Error("não reativou");
+    });
+    await conf("árvore: habilidade inexistente, pontos a mais, pré-requisito, teto do ramo, tirar ponto sem respec e aba velha são recusados", async () => {
+      const est = await ok(pro1, "estado");
+      const l = est.lutadores.find((x) => x.id === lp1);
+      await erro(pro1, "build", { lutadorId: lp1, rev: l.buildRev, build: { inexistente: 1 } }, /desconhecida/);
+      await erro(pro1, "build", { lutadorId: lp1, rev: l.buildRev, build: { precisao_maos: 3, chute_baixo: 1 } }, /pontos/);
+      await erro(pro1, "build", { lutadorId: lp1, rev: l.buildRev, build: { combinacoes: 1 } }, /pede 2 pontos/);
+      await erro(pro1, "build", { lutadorId: lp1, rev: l.buildRev, build: { entradas: 2 } }, /pontos/);
+      const r = await ok(pro1, "build", { lutadorId: lp1, rev: l.buildRev, build: { precisao_maos: 2 } });
+      if (r.buildRev !== l.buildRev + 1) throw new Error("rev");
+      await erro(pro1, "build", { lutadorId: lp1, rev: r.buildRev, build: { precisao_maos: 1 } }, /reconfiguração/);
+      await erro(pro1, "build", { lutadorId: lp1, rev: l.buildRev, build: { precisao_maos: 3 } }, /outra aba/);
+      await q("update jxj_lutadores set nivel = 30, xp = $2 where id = $1", [lp1, REG.xpTotalAte(30)]);
+      const nos = {}; ["precisao_maos", "combinacoes", "contra_maos", "eficiencia_golpes"].forEach((k) => { nos[k] = 3; });
+      await erro(pro1, "build", { lutadorId: lp1, rev: r.buildRev, build: nos }, /aceita até 10/);
+    });
+    await conf("respec: sem fichas é recusado; com fichas custa 400 e zera a árvore; grátis uma vez quando a versão de balanceamento muda; árvore vazia não refaz nem cobra", async () => {
+      const l = (await ok(pro1, "estado")).lutadores.find((x) => x.id === lp1);
+      await erro(pro1, "respec", { lutadorId: lp1, rev: l.buildRev }, /fichas insuficientes/);
+      await q("update jxj_contas set fichas = 1000 where user_id = $1", [pro1]);
+      const r = await ok(pro1, "respec", { lutadorId: lp1, rev: l.buildRev });
+      const c = (await q("select fichas from jxj_contas where user_id = $1", [pro1]))[0];
+      const b = (await q("select build from jxj_lutadores where id = $1", [lp1]))[0];
+      if (r.gratis || c.fichas !== 600 || Object.keys(b.build).length) throw new Error(JSON.stringify({ r, c, b }));
+      const led = await q("select delta from jxj_fichas where user_id = $1 and motivo = 'respec'", [pro1]);
+      if (led.length !== 1 || led[0].delta !== -400) throw new Error("livro-razão " + JSON.stringify(led));
+      await erro(pro1, "respec", { lutadorId: lp1, rev: r.buildRev }, /já está vazia/);
+      const b1 = await ok(pro1, "build", { lutadorId: lp1, rev: r.buildRev, build: { precisao_maos: 1 } });
+      await q("update jxj_lutadores set build_versao = 0 where id = $1", [lp1]);
+      const r2 = await ok(pro1, "respec", { lutadorId: lp1, rev: b1.buildRev });
+      const c2 = (await q("select fichas from jxj_contas where user_id = $1", [pro1]))[0];
+      if (!r2.gratis || c2.fichas !== 600) throw new Error("grátis: " + JSON.stringify({ r2, c2 }));
+      const led2 = await q("select delta from jxj_fichas where user_id = $1 and motivo = 'respec'", [pro1]);
+      if (led2.length !== 1) throw new Error("árvore vazia ou grátis cobrou: " + JSON.stringify(led2));
+    });
+
+    /* ---------------- luta completa entre duas contas Pro ---------------- */
+    const pa = await novoUsuario({ pro: true }), pb = await novoUsuario({ pro: true });
+    const la = (await criar(pa)).id, lb = (await criar(pb, { estilo: "wrestler" })).id;
+    let lid1;
+    await conf("fila: os dois entram, o par sai na mesma categoria, com compromisso da semente e sem a semente", async () => {
+      await ok(pa, "filaEntrar", { lutadorId: la }); await ok(pb, "filaEntrar", { lutadorId: lb });
+      const f = await ok(pa, "fila");
+      if (!f.luta || f.luta.status !== "confirmacao" || !/^[0-9a-f]{64}$/.test(f.luta.compromisso) || f.luta.semente) throw new Error(JSON.stringify(f).slice(0, 200));
+      lid1 = f.luta.id;
+      const fb = await ok(pb, "fila");
+      if (!fb.luta || fb.luta.id !== lid1 || fb.luta.lado !== "b") throw new Error("o outro lado não viu a luta");
+      if ((await q("select count(*)::int n from jxj_fila"))[0].n !== 0) throw new Error("fila não esvaziou");
+    });
+    await conf("confirmação dos dois inicia a luta; a vista nunca traz o perfil (build) do adversário", async () => {
+      await ok(pa, "confirmar", { lutaId: lid1 });
+      const v = await ok(pb, "confirmar", { lutaId: lid1 });
+      if (v.status !== "andamento" || v.round !== 1 || v.troca !== 1 || !v.acoes || v.acoes.length !== 4) throw new Error(JSON.stringify(v).slice(0, 200));
+      if ("perfis" in v || JSON.stringify(v).includes('"mec"')) throw new Error("vazou perfil");
+    });
+    await conf("ação oculta: quem não enviou só sabe que o outro escolheu; reenviar a mesma é idempotente; trocar depois de enviar é recusado", async () => {
+      await ok(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "pressao" });
+      const vb = await ok(pb, "luta", { lutaId: lid1 });
+      if (vb.adversarioEscolheu !== true || vb.minhaAcao !== null) throw new Error("vista de B: " + JSON.stringify({ e: vb.adversarioEscolheu, m: vb.minhaAcao }));
+      /* fora a lista das PRÓPRIAS opções de B, nada na vista dele pode dizer "pressao" */
+      const { acoes: _opcoesDeB, ...resto } = vb;
+      if (/pressao/.test(JSON.stringify(resto))) throw new Error("a ação de A vazou pra B");
+      await ok(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "pressao" });
+      await erro(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "golpes" }, /já foi enviada/);
+      await erro(pa, "acao", { lutaId: lid1, round: 1, troca: 2, familia: "golpes" }, /já foi resolvida/);
+      await erro(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "voar" }, /ação inválida/);
+    });
+    await conf("a segunda ação resolve a troca uma vez só, mesmo com duas consultas ao mesmo tempo", async () => {
+      await ok(pb, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "golpes" });
+      await Promise.all([ok(pa, "luta", { lutaId: lid1 }), ok(pb, "luta", { lutaId: lid1 }), ok(pa, "luta", { lutaId: lid1 })]);
+      const t = await q("select count(*)::int n from jxj_trocas where luta_id = $1", [lid1]);
+      const l = (await q("select round, troca, versao from jxj_lutas where id = $1", [lid1]))[0];
+      if (t[0].n !== 1 || l.troca !== 2) throw new Error(JSON.stringify({ t, l }));
+    });
+    await conf("resolução concorrente: gravar a mesma troca duas vezes com a mesma versão grava uma vez só", async () => {
+      const d = (await q("select public.jxj_luta($1::bigint) as d", [lid1]))[0].d;
+      const L = d.luta, acoes = { a: "defesa", b: "defesa" };
+      const { estado, eventos } = MOTOR.resolverTroca(L.estado, L.perfis, acoes, L.semente);
+      const args = [lid1, L.versao, L.round, L.troca, "defesa", "defesa", JSON.stringify(eventos), JSON.stringify(estado), 20000];
+      const sql = "select public.jxj_gravar_troca($1::bigint, $2::int, $3::smallint, $4::smallint, $5, $6, $7::jsonb, $8::jsonb, $9::int, null, null) as r";
+      const r1 = (await q(sql, args))[0].r, r2 = (await q(sql, args))[0].r;
+      if (!r1.gravou || r2.gravou) throw new Error(JSON.stringify({ r1, r2 }));
+    });
+    let vfim;
+    await conf("luta até o fim: resultado, semente revelada bate com o compromisso, efeitos gravados e a conta liberada", async () => {
+      vfim = await lutar(lid1, pa, pb);
+      if (vfim.status !== "encerrada" || !vfim.resultado || !vfim.semente) throw new Error(JSON.stringify(vfim).slice(0, 200));
+      if (crypto.createHash("sha256").update(vfim.semente).digest("hex") !== vfim.compromisso) throw new Error("compromisso não bate");
+      const c = await q("select luta_aberta_id from jxj_contas where user_id in ($1, $2)", [pa, pb]);
+      if (c.some((x) => x.luta_aberta_id !== null)) throw new Error("conta presa");
+      const h = await q("select count(*)::int n from jxj_rating_hist where luta_id = $1", [lid1]);
+      if (vfim.comRating && h[0].n !== 2) throw new Error("histórico de rating " + h[0].n);
+    });
+    await conf("auditoria: com a semente revelada e as ações gravadas, o motor refaz a luta igual", async () => {
+      const d = (await q("select public.jxj_luta($1::bigint) as d", [lid1]))[0].d;
+      let e = MOTOR.novaLuta(d.luta.perfis.a, d.luta.perfis.b);
+      for (const t of d.trocas) e = MOTOR.resolverTroca(e, d.luta.perfis, { a: t.acao_a, b: t.acao_b }, d.luta.semente).estado;
+      const igual = ["vencedor", "metodo", "round", "troca"].every((k) => e.fim[k] === d.luta.resultado[k])
+        && JSON.stringify(e.fim.placar || null) === JSON.stringify(d.luta.resultado.placar ? { a: d.luta.resultado.placar.a, b: d.luta.resultado.placar.b } : null);
+      if (!igual || JSON.stringify(e.cartoes) !== JSON.stringify(d.luta.estado.cartoes)) throw new Error(`refeita ${JSON.stringify(e.fim)} ${JSON.stringify(e.cartoes)} gravada ${JSON.stringify(d.luta.resultado)} ${JSON.stringify(d.luta.estado.cartoes)}`);
+    });
+    await conf("efeitos do fim conferem com as regras: XP pelo resultado, nível pela curva, fichas no livro-razão, cartel", async () => {
+      const ef = vfim.efeitos;
+      for (const [lado, uid, lid] of [["a", pa, la], ["b", pb, lb]]) {
+        const l = (await q("select xp, nivel, vitorias, derrotas, empates from jxj_lutadores where id = $1", [lid]))[0];
+        if (l.xp !== ef[lado].xp || l.nivel !== REG.nivelDoXp(l.xp).nivel) throw new Error(`${lado}: xp ${l.xp} nível ${l.nivel} efeito ${JSON.stringify(ef[lado])}`);
+        const esperadoXp = REG.xpDaLuta({ resultado: ef[lado].resultado, metodo: vfim.resultado.metodo, lutasHoje: 0, comRating: vfim.comRating });
+        if (ef[lado].xp !== esperadoXp) throw new Error(`xp ${ef[lado].xp} esperado ${esperadoXp}`);
+        const fichas = (await q("select coalesce(sum(delta),0)::int s from jxj_fichas where user_id = $1 and motivo = 'luta'", [uid]))[0].s;
+        if (fichas !== ef[lado].fichas) throw new Error(`fichas ${fichas} esperado ${ef[lado].fichas}`);
+        const tot = l.vitorias + l.derrotas + l.empates;
+        if (tot !== 1) throw new Error("cartel " + tot);
+      }
+    });
+    await conf("narração sem IA: molde local só com fatos do motor, sem travessão, com o resultado", async () => {
+      const n = await ok(pb, "narracao", { lutaId: lid1 });
+      if (!n.narracao || /[—–]/.test(n.narracao) || !/venceu|empatada/.test(n.narracao)) throw new Error(n.narracao);
+      const n2 = await ok(pa, "narracao", { lutaId: lid1 });
+      if (n2.narracao !== n.narracao) throw new Error("os dois viram textos diferentes");
+    });
+    await conf("revanche: os dois aceitam em 60 s e a luta nova começa com os lados trocados", async () => {
+      const r1 = await ok(pa, "revanche", { lutaId: lid1 });
+      if (!r1.esperando) throw new Error(JSON.stringify(r1));
+      const r2 = await ok(pb, "revanche", { lutaId: lid1 });
+      if (!r2.luta) throw new Error(JSON.stringify(r2));
+      const L = (await q("select a_id, b_id, status, tipo from jxj_lutas where id = $1", [r2.luta]))[0];
+      if (L.a_id !== lb || L.b_id !== la || L.status !== "andamento" || L.tipo !== "revanche") throw new Error(JSON.stringify(L));
+      await lutar(r2.luta, pb, pa);
+    });
+
+    await conf("ausência: prazo vencido vira Defender; três seguidos dão W.O. com rating e XP 40/0", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2);
+      for (let k = 0; k < 3; k++) {
+        const v = await ok(u1, "luta", { lutaId: lid });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await vencerPrazo(lid);
+      }
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.status !== "encerrada" || v.resultado.metodo !== "WO" || v.resultado.vencedor !== v.lado) throw new Error(JSON.stringify(v.resultado));
+      if (!v.trocas.some((t) => t.eventos.some((x) => /não escolheu a tempo/.test(x)))) throw new Error("sem o registro da ausência");
+      const l = await q("select id, xp, wos from jxj_lutadores where id in ($1, $2) order by id", [l1, l2]);
+      if (l[0].xp !== 40 || l[1].xp !== 0 || l[1].wos !== 1) throw new Error(JSON.stringify(l));
+    });
+    await conf("os dois ausentes três vezes: luta anulada, sem rating e sem XP", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2);
+      for (let k = 0; k < 3; k++) { await vencerPrazo(lid); await ok(u1, "luta", { lutaId: lid }); }
+      const v = await ok(u2, "luta", { lutaId: lid });
+      const l = await q("select rating, xp, lutas_rating from jxj_lutadores where id in ($1, $2)", [l1, l2]);
+      if (v.resultado.metodo !== "ANULADA" || l.some((x) => x.rating !== 1500 || x.xp !== 0 || x.lutas_rating !== 0)) throw new Error(JSON.stringify({ r: v.resultado, l }));
+    });
+    await conf("grátis: a primeira luta competitiva entra; depois dela a fila é do Pro; torneio e revanche também", async () => {
+      const f1 = await novoUsuario(), f2 = await novoUsuario();
+      const l1 = (await criar(f1)).id, l2 = (await criar(f2)).id;
+      const lid = await parear(f1, l1, f2, l2);
+      const g = (await q("select luta_gratis_usada from jxj_contas where user_id in ($1, $2)", [f1, f2]));
+      if (g.some((x) => !x.luta_gratis_usada)) throw new Error("não marcou a luta grátis");
+      await lutar(lid, f1, f2);
+      await erro(f1, "filaEntrar", { lutadorId: l1 }, /luta grátis já foi usada/);
+      await erro(f1, "torneioInscrever", { lutadorId: l1 }, /Pro/);
+      await ok(f1, "revanche", { lutaId: lid }); const r = await api(f2, "revanche", { lutaId: lid });
+      if (r.status !== 400 || !/Pro/.test(r.json.erro)) throw new Error("revanche grátis: " + JSON.stringify(r));
+    });
+    await conf("recusa antes de confirmar: luta cancelada, a luta grátis não é gasta, quem recusou espera 60 s e quem confirmou volta pra fila", async () => {
+      const f1 = await novoUsuario(), f2 = await novoUsuario();
+      const l1 = (await criar(f1)).id, l2 = (await criar(f2)).id;
+      const lid = await parear(f1, l1, f2, l2, { confirmar: false });
+      await ok(f1, "confirmar", { lutaId: lid });
+      await ok(f2, "recusar", { lutaId: lid });
+      const L = (await q("select status from jxj_lutas where id = $1", [lid]))[0];
+      const g = await q("select user_id, luta_gratis_usada, luta_aberta_id from jxj_contas where user_id in ($1, $2)", [f1, f2]);
+      if (L.status !== "cancelada" || g.some((x) => x.luta_gratis_usada || x.luta_aberta_id)) throw new Error(JSON.stringify({ L, g }));
+      await erro(f2, "filaEntrar", { lutadorId: l2 }, /aguarde/);
+      if (!(await q("select 1 from jxj_fila where user_id = $1", [f1])).length) throw new Error("quem confirmou não voltou pra fila");
+      await ok(f1, "filaSair");
+    });
+    await conf("confirmação vencida sem resposta: cancela sozinha na próxima consulta", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2, { confirmar: false });
+      await q("update jxj_lutas set confirmacao_ate = now() - interval '1 second' where id = $1", [lid]);
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.status !== "cancelada") throw new Error(v.status);
+    });
+    await conf("anti-combinação: depois de 3 lutas com rating do mesmo par em 24 h, a 4ª acontece sem rating", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      for (let k = 0; k < 3; k++) await q(`insert into jxj_lutas (tipo, a_id, b_id, a_user, b_user, status, semente, compromisso, nomes, com_rating, encerrada_em)
+        values ('fila', $1, $2, $3, $4, 'encerrada', 'x', 'y', '{}'::jsonb, true, now())`, [l1, l2, u1, u2]);
+      const lid = await parear(u1, l1, u2, l2);
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.comRating !== false) throw new Error("com rating");
+    });
+    await conf("uma luta por conta: quem está em luta não entra na fila e não é pareado de novo", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id, l3 = (await criar(u3)).id;
+      const l1b = (await criar(u1, { estilo: "counter" })).id;
+      const lid = await parear(u1, l1, u2, l2);
+      await erro(u1, "filaEntrar", { lutadorId: l1b }, /já tem uma luta aberta/);
+      await ok(u3, "filaEntrar", { lutadorId: l3 });
+      const f = await ok(u3, "fila");
+      if (f.luta) throw new Error("pareou com quem já está em luta");
+      await ok(u3, "filaSair");
+      await lutar(lid, u1, u2);
+    });
+    await conf("propriedade: mexer em lutador ou luta de outra conta é recusado", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      await erro(u3, "build", { lutadorId: l1, rev: 0, build: {} }, /não encontrado/, 404);
+      await erro(u3, "principal", { lutadorId: l1 }, /não encontrado/);
+      await erro(u3, "aposentar", { lutadorId: l1, confirmacao: "x" }, /não encontrado/, 404);
+      await erro(u3, "filaEntrar", { lutadorId: l1 }, /não encontrado/);
+      const lid = await parear(u1, l1, u2, l2);
+      await erro(u3, "acao", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /não encontrada/);
+      await erro(u3, "luta", { lutaId: lid }, /não encontrada/, 404);
+      await erro(u3, "recusar", { lutaId: lid }, /não encontrada/, 404);
+      await lutar(lid, u1, u2);
+    });
+    await conf("acesso direto às tabelas (papel authenticated e anon): RLS sem policy não deixa ler nem gravar; as funções não executam", async () => {
+      await db.exec(`set role authenticated; set request.jwt.claim.sub = '${pa}';`);
+      const lidos = (await db.query("select count(*)::int n from jxj_lutadores")).rows[0].n;
+      let gravou = true; try { await db.query("insert into jxj_lutadores (user_id, slot, nome, nome_chave, rosto, categoria, estilo) values ($1, 2, 'Hack', 'hack', '{}', 'lightweight', 'striker')", [pa]); } catch { gravou = false; }
+      const mudou = (await db.query("update jxj_contas set fichas = 99999 returning 1")).rows.length;
+      let executou = true; try { await db.query("select public.jxj_estado($1::uuid)", [pa]); } catch { executou = false; }
+      await db.exec("reset role; reset request.jwt.claim.sub;");
+      await db.exec("set role anon;");
+      const lidosAnon = (await db.query("select count(*)::int n from jxj_lutas")).rows[0].n;
+      await db.exec("reset role;");
+      if (lidos !== 0 || gravou || mudou !== 0 || executou || lidosAnon !== 0) throw new Error(JSON.stringify({ lidos, gravou, mudou, executou, lidosAnon }));
+    });
+    await conf("perfil público: sem conta nem e-mail; build só quando o dono deixa pública", async () => {
+      const p = await ok(null, "perfil", { lutadorId: la });
+      const t = JSON.stringify(p);
+      if (t.includes(pa) || /@teste|user_id|email/.test(t) || p.perfil.build !== null) throw new Error(t.slice(0, 200));
+      await ok(pa, "buildPublica", { lutadorId: la, publica: true });
+      const p2 = await ok(null, "perfil", { lutadorId: la });
+      if (!p2.perfil.build) throw new Error("build pública não apareceu");
+    });
+    await conf("ranking: só o principal efetivo com 5 lutas com rating e luta recente; extra, banido e inativo ficam fora", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
+      const a1 = (await criar(u1, { categoria: "heavyweight" })).id, a2 = (await criar(u1, { categoria: "heavyweight", estilo: "counter" })).id;
+      const b1 = (await criar(u2, { categoria: "heavyweight" })).id, c1 = (await criar(u3, { categoria: "heavyweight" })).id;
+      await q("update jxj_lutadores set lutas_rating = 6, ultima_luta_rating = now(), rating = 1600 + id where id in ($1, $2, $3, $4)", [a1, a2, b1, c1]);
+      await q("update jxj_lutadores set ultima_luta_rating = now() - interval '40 days' where id = $1", [c1]);
+      await q("insert into banidos (user_id, motivo) values ($1, 'teste')", [u2]);
+      const r = await ok(u1, "ranking", { categoria: "heavyweight" });
+      const ids = r.linhas.map((x) => x.id);
+      if (!ids.includes(a1) || ids.includes(a2) || ids.includes(b1) || ids.includes(c1)) throw new Error("ids " + JSON.stringify(ids));
+      if (!r.linhas.find((x) => x.id === a1).meu) throw new Error("linha do jogador sem destaque");
+      await q("delete from banidos where user_id = $1", [u2]);
+    });
+    await conf("conta banida: não cria, não entra na fila", async () => {
+      const u = await novoUsuario({ pro: true }); const l = (await criar(u)).id;
+      await q("insert into banidos (user_id) values ($1)", [u]);
+      await erro(u, "filaEntrar", { lutadorId: l }, /suspensa/);
+      await erro(u, "criar", { nome: "Banido Novo", rosto: ROSTO, categoria: "lightweight", estilo: "striker" }, /suspensa/);
+    });
+    await conf("aposentar: pede o nome exato; libera o slot, o histórico fica e o principal passa pro próximo", async () => {
+      const u = await novoUsuario(); const l = (await criar(u)).id;
+      await erro(u, "aposentar", { lutadorId: l, confirmacao: "outro nome" }, /digite o nome/);
+      const nome = (await q("select nome from jxj_lutadores where id = $1", [l]))[0].nome;
+      await ok(u, "aposentar", { lutadorId: l, confirmacao: nome });
+      const novo = await criar(u);
+      if (novo.slot !== 1) throw new Error("slot " + novo.slot);
+      const est = await ok(u, "estado");
+      if (est.aposentados !== 1 || est.principalId !== novo.id) throw new Error(JSON.stringify({ a: est.aposentados, p: est.principalId }));
+    });
+    await conf("moldura: sem fichas recusa; comprada sai do saldo e fica equipada; a do cinturão é só de quem tem título", async () => {
+      const u = await novoUsuario(); const l = (await criar(u)).id;
+      await erro(u, "moldura", { lutadorId: l, moldura: "ouro", comprar: true }, /fichas insuficientes/);
+      await q("update jxj_contas set fichas = 500 where user_id = $1", [u]);
+      await ok(u, "moldura", { lutadorId: l, moldura: "ouro", comprar: true });
+      const r = (await q("select moldura, molduras from jxj_lutadores where id = $1", [l]))[0], c = (await q("select fichas from jxj_contas where user_id = $1", [u]))[0];
+      if (r.moldura !== "ouro" || c.fichas !== 100) throw new Error(JSON.stringify({ r, c }));
+      await erro(u, "moldura", { lutadorId: l, moldura: "campeao" }, /título/);
+    });
+    await conf("limite por conta: a 21ª tentativa de criação na mesma hora recebe 429", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true });
+      for (let k = 0; k < 20; k++) await api(u, "criar", { nome: "", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+      const r = await api(u, "criar", { nome: "Vinte e Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+      if (r.status !== 429) throw new Error("status " + r.status);
+    });
+    await conf("nível: a curva do banco (jxj_nivel_do_xp) é a mesma do servidor (nivelDoXp)", async () => {
+      const valores = []; for (let xp = 0; xp <= 12500; xp += 41) valores.push(xp);
+      const r = await q("select x, public.jxj_nivel_do_xp(x) n from unnest($1::int[]) x", [valores]);
+      const dif = r.filter((x) => x.n !== REG.nivelDoXp(x.x).nivel);
+      if (dif.length) throw new Error("diferem em " + JSON.stringify(dif.slice(0, 3)));
+    });
+    await conf("temporada: na virada grava a classificação, dá fichas e título ao 1º, aplica o reset parcial e preserva nível, XP e árvore", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const a = (await criar(u1, { categoria: "welterweight" })).id, b = (await criar(u2, { categoria: "welterweight" })).id;
+      await q("update jxj_lutadores set lutas_rating = 8, ultima_luta_rating = now(), rating = 1800, rd = 80, nivel = 7, xp = 900, build = '{\"precisao_maos\":3}' where id = $1", [a]);
+      await q("update jxj_lutadores set lutas_rating = 8, ultima_luta_rating = now(), rating = 1300, rd = 90 where id = $1", [b]);
+      const antes = (await q("select numero from jxj_temporadas where status = 'ativa'"))[0].numero;
+      await q("update jxj_temporadas set fim = now() - interval '1 minute' where status = 'ativa'");
+      const t = await ok(u1, "temporada");
+      if (t.numero !== antes + 1) throw new Error("temporada " + t.numero);
+      const cl = await q("select lutador_id, posicao, recompensa from jxj_classificacao where temporada = $1 and categoria = 'welterweight' order by posicao", [antes]);
+      if (cl[0].lutador_id !== a || cl[0].recompensa.selo !== "campeao") throw new Error(JSON.stringify(cl));
+      const la2 = (await q("select rating, rd, nivel, xp, build from jxj_lutadores where id = $1", [a]))[0];
+      if (Math.abs(la2.rating - 1650) > 0.001 || Math.abs(la2.rd - 160) > 0.001 || la2.nivel !== 7 || la2.xp !== 900 || la2.build.precisao_maos !== 3) throw new Error(JSON.stringify(la2));
+      const tit = await q("select 1 from jxj_titulos where lutador_id = $1 and tipo = 'temporada'", [a]);
+      const fichas = (await q("select fichas from jxj_contas where user_id = $1", [u1]))[0].fichas;
+      if (!tit.length || fichas < 500) throw new Error(JSON.stringify({ tit, fichas }));
+      await ok(u1, "temporada");
+      if ((await q("select count(*)::int n from jxj_temporadas"))[0].n !== antes + 1) throw new Error("virou duas vezes");
+    });
+    await conf("torneio de 8: inscrição só do Pro, principal e com 3 lutas; uma por conta; fecha nas 8 com a chave pelo rating; sala, W.O. e campeão com cinturão", async () => {
+      const us = [], ls = [];
+      for (let k = 0; k < 8; k++) { const u = await novoUsuario({ pro: true }); us.push(u); ls.push((await criar(u, { categoria: "middleweight" })).id); }
+      await q("update jxj_lutadores set lutas_rating = 4, rating = 1500 + id where id = any($1::bigint[])", [ls]);
+      const extra = (await criar(us[0], { categoria: "middleweight", estilo: "counter" })).id;
+      await q("update jxj_lutadores set lutas_rating = 4 where id = $1", [extra]);
+      await erro(us[0], "torneioInscrever", { lutadorId: extra }, /principal/);
+      const semLutas = await novoUsuario({ pro: true }); const ls9 = (await criar(semLutas, { categoria: "middleweight" })).id;
+      await erro(semLutas, "torneioInscrever", { lutadorId: ls9 }, /3 lutas/);
+      for (let k = 0; k < 8; k++) await ok(us[k], "torneioInscrever", { lutadorId: ls[k] });
+      const lista = await ok(us[0], "torneios", { categoria: "middleweight" });
+      const tor = lista.find((t) => t.status === "andamento");
+      if (!tor) throw new Error(JSON.stringify(lista).slice(0, 200));
+      await erro(us[0], "torneioInscrever", { lutadorId: ls[0] }, /já está num torneio/);
+      let det = await ok(us[0], "torneio", { torneioId: tor.id });
+      if (det.confrontos.length !== 4) throw new Error("quartas " + det.confrontos.length);
+      const sem = Object.fromEntries(det.inscritos.map((i) => [i.lutador, i.semente]));
+      if (sem[det.confrontos[0].a] !== 1 || sem[det.confrontos[0].b] !== 8) throw new Error("chave 1x8");
+      const dono = (lid) => us[ls.indexOf(lid)];
+      /* quartas: o 1º confronto é luta de verdade; os outros vencem a janela (W.O.) */
+      const c1 = det.confrontos[0];
+      await ok(dono(c1.a), "torneioSala", { confrontoId: c1.id });
+      const r = await ok(dono(c1.b), "torneioSala", { confrontoId: c1.id });
+      if (!r.luta) throw new Error("sala: " + JSON.stringify(r));
+      await lutar(r.luta, dono(c1.a), dono(c1.b));
+      for (const c of det.confrontos.slice(1)) {
+        await ok(dono(c.a), "torneioSala", { confrontoId: c.id });
+        await q("update jxj_confrontos set janela_ate = now() - interval '1 minute' where id = $1", [c.id]);
+      }
+      det = await ok(us[0], "torneio", { torneioId: tor.id });
+      const quartas = det.confrontos.filter((c) => c.fase === 1);
+      if (quartas.some((c) => !c.vencedor) || quartas.slice(1).some((c) => c.vencedor !== c.a || c.motivo !== "wo")) throw new Error(JSON.stringify(quartas));
+      /* semis e final por W.O. duplo (ninguém apareceu: passa o rating maior) */
+      for (let fase = 2; fase <= 3; fase++) {
+        await q("update jxj_confrontos set janela_ate = now() - interval '1 minute' where torneio_id = $1 and fase = $2", [tor.id, fase]);
+        det = await ok(us[0], "torneio", { torneioId: tor.id });
+      }
+      if (det.torneio.status !== "encerrado" || !det.torneio.campeao_id) throw new Error("não encerrou: " + JSON.stringify(det.torneio));
+      const camp = det.torneio.campeao_id;
+      const tit = await q("select 1 from jxj_titulos where lutador_id = $1 and tipo = 'cinturao' and torneio_id = $2", [camp, tor.id]);
+      const col = await q("select colocacao, count(*)::int n from jxj_inscricoes where torneio_id = $1 group by colocacao", [tor.id]);
+      const fichas = (await q("select coalesce(sum(delta),0)::int s from jxj_fichas where ref = $1 and motivo = 'torneio'", [String(tor.id)]))[0].s;
+      const cl = (await q("select nivel, xp from jxj_lutadores where id = $1", [camp]))[0];
+      const cont = Object.fromEntries(col.map((x) => [x.colocacao, x.n]));
+      if (!tit.length || cont.campeao !== 1 || cont.vice !== 1 || cont.semifinal !== 2 || cont.quartas !== 4) throw new Error(JSON.stringify({ tit, cont }));
+      if (fichas !== 300 + 150 + 75 * 2 + 30 * 4) throw new Error("fichas " + fichas);
+      if (cl.nivel !== REG.nivelDoXp(cl.xp).nivel) throw new Error("nível do campeão fora da curva");
+      const hall = await ok(null, "hall");
+      if (!hall.cinturoes.some((h) => h.lutador === camp)) throw new Error("hall sem o campeão");
+      const outro = await ok(us[1], "torneios", { categoria: "middleweight" });
+      if (!outro.some((t) => t.status === "inscricoes")) throw new Error("não abriu o próximo torneio");
+    });
+    await conf("rollback (supabase_jxj_rollback.sql): apaga só o que é do JxJ, as tabelas e os dados do jogo ficam; roda duas vezes; o JxJ instala de novo depois", async () => {
+      const rb = fs.readFileSync(path.join(RAIZ, "supabase_jxj_rollback.sql"), "utf8");
+      const d2 = await B.novoBanco();
+      const u = "00000000-0000-4000-8000-00000000abcd";
+      await B.criarUsuario(d2, u, { pro: true });
+      await d2.query("insert into jxj_contas (user_id) values ($1)", [u]);
+      const tabelas = async () => (await d2.query("select tablename from pg_tables where schemaname = 'public' order by 1")).rows.map((r) => r.tablename);
+      const antes = (await tabelas()).filter((t) => !t.startsWith("jxj_"));
+      await d2.exec(rb);
+      await d2.exec(rb);
+      const restoJxJ = (await d2.query("select relname from pg_class where relname like 'jxj\\_%' union all select proname from pg_proc where proname like 'jxj\\_%'")).rows;
+      if (restoJxJ.length) throw new Error("sobrou: " + restoJxJ.map((r) => r.relname || r.proname).join(", "));
+      if ((await tabelas()).join() !== antes.join()) throw new Error("mexeu em tabela do jogo: " + (await tabelas()).join());
+      const ass = (await d2.query("select pro from assinaturas where user_id = $1", [u])).rows;
+      if (ass.length !== 1 || ass[0].pro !== true) throw new Error("apagou dado do jogo");
+      await d2.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj.sql"), "utf8"));
+      if (!(await d2.query("select 1 from pg_proc where proname = 'jxj_estado'")).rows.length) throw new Error("não reinstalou");
+      /* tabela fora do JxJ apontando pro JxJ: o rollback para sem apagar nada */
+      const d3 = await B.novoBanco();
+      await d3.exec("create table externa (x bigint references jxj_lutadores(id))");
+      let parou = false;
+      try { await d3.exec(rb); } catch (e) { parou = /depende do JxJ/.test(e.message); }
+      if (!parou) throw new Error("rollback não parou com dependência de fora");
+      if (!(await d3.query("select 1 from pg_proc where proname = 'jxj_estado'")).rows.length) throw new Error("parou mas apagou função");
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    for (const k of Object.keys(process.env)) if (!(k in envOriginal)) delete process.env[k];
+    Object.assign(process.env, envOriginal);
+    console.error = erroOriginal;
+  }
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxj ok") : vermelho(`  ${falhas.length} falha(s) no jxj`)));
+  return okTudo;
+}
+
+/* ================================================================== *
+ * JXJ MOTOR (2026-10-01): o motor do JxJ sozinho, sem banco. Determinismo,
+ *     sorteio pela semente, invariantes em lutas ao acaso, ausência, ciclo
+ *     em pé e balanço medido com jogo racional (ferramentas/jxj-balanco.mjs).
+ *     Mexeu em api/_jxj-motor.js ou nas bases de estilo: rode esta suíte e a
+ *     jxjarvore; as faixas estão aqui e os números medidos no LEIA-ME.
+ * ================================================================== */
+async function carregarBalancoJxJ() {
+  const url = require("url");
+  return import(url.pathToFileURL(path.join(RAIZ, "ferramentas", "jxj-balanco.mjs")).href);
+}
+function confJxJ(falhas) {
+  return async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+}
+async function testarJxJMotor() {
+  console.log("\n" + cinza("jxjmotor: motor do JxJ (determinismo, semente, invariantes, ausência, ciclo, balanço racional, métodos, evolução)"));
+  const crypto = require("crypto");
+  const falhas = [], conf = confJxJ(falhas);
+  const BAL = await carregarBalancoJxJ();
+  const M = BAL.MOTOR, A = BAL.ARVORES, F = M.FAMILIAS, ESTS = A.ESTILOS_IDS;
+  const cacheP = new Map();
+  const perfil = (s, nv = 1) => { const k = s + nv; if (!cacheP.has(k)) cacheP.set(k, BAL.perfilTipico(s, nv)); return cacheP.get(k); };
+  const f1 = (x) => x.toFixed(1);
+  /* lutador "neutro": tudo 50, sem mecânica (pra medir só o ciclo) */
+  const neutro = { estilo: "striker", categoria: "middleweight", atr: Object.fromEntries(A.ATRIBUTOS.map((k) => [k, 50])), mec: {} };
+
+  await conf("determinismo: mesma semente e mesmas escolhas dão a mesma luta; semente diferente dá outra; o estado recebido não muda", () => {
+    const pA = perfil("striker"), pB = perfil("grappler");
+    const luta = (s) => JSON.stringify(M.simularLuta(pA, pB, BAL.heuristica("striker"), BAL.heuristica("grappler"), s));
+    if (luta("det1") !== luta("det1")) throw new Error("mesma semente, lutas diferentes");
+    if (luta("det1") === luta("det2")) throw new Error("semente diferente, luta igual");
+    const ini = M.novaLuta(pA, pB), antes = JSON.stringify(ini);
+    M.resolverTroca(ini, { a: pA, b: pB }, { a: "golpes", b: "queda" }, "x");
+    if (JSON.stringify(ini) !== antes) throw new Error("resolverTroca mexeu no estado recebido");
+  });
+  await conf("semente: o compromisso é sha256 da semente; o sorteio de cada troca sai de (semente, round, troca)", () => {
+    const s = "a1b2c3";
+    if (M.compromissoDaSemente(s) !== crypto.createHash("sha256").update(s).digest("hex")) throw new Error("compromisso");
+    const seq = (g) => [g(), g(), g()].join(",");
+    if (seq(M.geradorDaTroca(s, 1, 1)) !== seq(M.geradorDaTroca(s, 1, 1))) throw new Error("mesma troca, sorteio diferente");
+    if (seq(M.geradorDaTroca(s, 1, 1)) === seq(M.geradorDaTroca(s, 1, 2))) throw new Error("trocas diferentes, sorteio igual");
+    if (seq(M.geradorDaTroca(s, 1, 1)) === seq(M.geradorDaTroca(s + "x", 1, 1))) throw new Error("sementes diferentes, sorteio igual");
+  });
+  await conf("ação inválida e luta encerrada são recusadas pelo motor", () => {
+    const pA = perfil("striker"), P = { a: pA, b: pA };
+    let deu = false;
+    try { M.resolverTroca(M.novaLuta(pA, pA), P, { a: "voar", b: "golpes" }, "s"); } catch { deu = true; }
+    if (!deu) throw new Error("aceitou ação inventada");
+    const fim = { ...M.novaLuta(pA, pA), fim: { vencedor: "a", metodo: "KO" } };
+    deu = false;
+    try { M.resolverTroca(fim, P, { a: "golpes", b: "golpes" }, "s"); } catch { deu = true; }
+    if (!deu) throw new Error("resolveu troca de luta encerrada");
+  });
+  await conf("invariantes em 3000 lutas com escolhas ao acaso e prazo perdido às vezes: energia, dano, momento, posição, cartões, fim e texto", () => {
+    const METODOS = new Set(["KO", "TKO", "FIN", "DEC", "EMPATE", "WO", "ANULADA"]);
+    const tipos = new Set();
+    for (let i = 0; i < 3000; i++) {
+      const sa = ESTS[i % 4], sb = ESTS[(i >> 2) % 4], pA = perfil(sa, 1 + (i % 30)), pB = perfil(sb, 1 + ((i * 7) % 30));
+      const P = { a: pA, b: pB };
+      let s = (i * 2654435761) >>> 0;
+      const r = () => ((s = (s * 1103515245 + 12345) >>> 0) / 4294967296);
+      let e = M.novaLuta(pA, pB), n = 0;
+      while (!e.fim) {
+        if (++n > M.FORMATO.rounds * M.FORMATO.trocasPorRound) throw new Error(`luta ${i} passou de ${n - 1} trocas`);
+        const esc = () => (r() < 0.06 ? null : F[Math.floor(r() * 4)]);
+        const res = M.resolverTroca(e, P, { a: esc(), b: esc() }, "inv" + i);
+        e = res.estado;
+        for (const ev of res.eventos) {
+          tipos.add(ev.tipo);
+          const t = M.textoEvento(ev, { a: "Ana", b: "Bia" });
+          if (!t) throw new Error(`evento ${ev.tipo} sem texto`);
+          const p = problemasDeTexto(t); if (p.length) throw new Error(`texto do evento ${ev.tipo}: ${p.join(", ")} (${t})`);
+        }
+        for (const l of ["a", "b"]) {
+          if (!(e[l].energia >= 0 && e[l].energia <= M.energiaMax(P[l]) + 1e-9)) throw new Error(`energia ${e[l].energia} fora de 0..${M.energiaMax(P[l])}`);
+          if (!(e[l].dano >= 0 && e[l].dano <= 100)) throw new Error(`dano ${e[l].dano}`);
+        }
+        if (Math.abs(e.momento) > M.K.momentoMax) throw new Error(`momento ${e.momento}`);
+        if (!["pe", "cima_a", "cima_b"].includes(e.pos) || e.nivelPos < 0 || e.nivelPos > 2 || (e.pos === "pe" && e.nivelPos)) throw new Error(`posição ${e.pos}/${e.nivelPos}`);
+        if (e.round < 1 || e.round > M.FORMATO.rounds || e.troca < 1 || e.troca > M.FORMATO.trocasPorRound) throw new Error(`round/troca ${e.round}/${e.troca}`);
+      }
+      const f = e.fim;
+      if (!METODOS.has(f.metodo)) throw new Error("método " + f.metodo);
+      if ((f.vencedor == null) !== (f.metodo === "EMPATE" || f.metodo === "ANULADA")) throw new Error(`vencedor ${f.vencedor} com ${f.metodo}`);
+      for (const c of e.cartoes) {
+        const hi = Math.max(c.a, c.b), lo = Math.min(c.a, c.b);
+        if (hi !== 10 || lo < 8 || Object.keys(c).join() !== "a,b") throw new Error("cartão " + JSON.stringify(c));
+      }
+      if (f.metodo === "DEC" || f.metodo === "EMPATE") {
+        const ta = e.cartoes.reduce((x, c) => x + c.a, 0), tb = e.cartoes.reduce((x, c) => x + c.b, 0);
+        if (e.cartoes.length !== M.FORMATO.rounds) throw new Error("decisão sem os 3 cartões");
+        if (f.metodo === "EMPATE" ? ta !== tb : (ta > tb ? "a" : "b") !== f.vencedor) throw new Error(`cartões ${ta}x${tb} e ${f.metodo} ${f.vencedor}`);
+      }
+    }
+    for (const t of ["golpe", "queda", "knockdown", "fim", "ausente", "raspou", "avancou", "subFalhou", "levantou"])
+      if (!tipos.has(t)) throw new Error(`3000 lutas sem nenhum evento "${t}"`);
+  });
+  await conf("ausência: prazo perdido vira Defender; 2 seguidos dão a troca pro adversário; 3 dão W.O.; os dois 3 vezes anulam; escolher zera a conta", () => {
+    const p = perfil("striker"), P = { a: p, b: p };
+    let r = M.resolverTroca(M.novaLuta(p, p), P, { a: null, b: "defesa" }, "aus");
+    if (r.estado.a.ausentesSeguidas !== 1 || !r.eventos.some((e) => e.tipo === "ausente" && e.quem === "a") || r.estado.a.ultima !== "defesa") throw new Error("1ª ausência");
+    const antes = r.estado.pontos[0].b;
+    r = M.resolverTroca(r.estado, P, { a: null, b: "defesa" }, "aus");
+    if (r.estado.a.ausentesSeguidas !== 2 || Math.abs(r.estado.pontos[0].b - antes - M.K.bonusAusencia) > 1e-9) throw new Error("2ª ausência não deu a troca pro adversário: " + JSON.stringify(r.estado.pontos));
+    r = M.resolverTroca(r.estado, P, { a: null, b: "golpes" }, "aus");
+    if (!r.estado.fim || r.estado.fim.metodo !== "WO" || r.estado.fim.vencedor !== "b") throw new Error("3ª ausência: " + JSON.stringify(r.estado.fim));
+    let e = M.novaLuta(p, p);
+    for (let k = 0; k < 3; k++) e = M.resolverTroca(e, P, { a: null, b: null }, "aus2").estado;
+    if (!e.fim || e.fim.metodo !== "ANULADA" || e.fim.vencedor !== null) throw new Error("os dois ausentes: " + JSON.stringify(e.fim));
+    e = M.novaLuta(p, p);
+    for (const ac of [null, null, "golpes", null]) e = M.resolverTroca(e, P, { a: ac, b: "defesa" }, "aus3").estado;
+    if (e.a.ausentesSeguidas !== 1 || e.fim) throw new Error("escolher não zerou a conta de ausências");
+  });
+  await conf("ciclo em pé (lutadores iguais): Golpes > Pressão > Defesa > Queda > Golpes, e os 16 pares têm regra", () => {
+    const m = BAL.matriz(neutro, neutro, M.novaLuta(neutro, neutro), 3000);
+    const I = (f) => F.indexOf(f);
+    for (const [x, y] of [["golpes", "pressao"], ["pressao", "defesa"], ["defesa", "queda"], ["queda", "golpes"]]) {
+      if (!(m[I(x)][I(y)] > 0.5)) throw new Error(`${x} contra ${y}: ${m[I(x)][I(y)].toFixed(2)} (esperava ganho)`);
+      if (!(m[I(y)][I(x)] < -0.5)) throw new Error(`${y} contra ${x}: ${m[I(y)][I(x)].toFixed(2)} (esperava perda)`);
+    }
+    for (const fa of F) for (const fb of F) {
+      const r = M.resolverTroca(M.novaLuta(neutro, neutro), { a: neutro, b: neutro }, { a: fa, b: fb }, "par");
+      if (!r.eventos.length) throw new Error(`par ${fa} x ${fb} sem nenhum evento`);
+    }
+  });
+  const R = BAL.medirMatriz(600);
+  await conf("balanço de estilos no nível 1, jogo racional (600 lutas por dupla): toda dupla entre 42% e 58%", () => {
+    const fora = Object.entries(R.mat).filter(([, v]) => v < 42 || v > 58);
+    console.log(cinza("         " + ESTS.map((s) => `${s.slice(0, 3)}: ` + ESTS.map((o) => f1(R.mat[s + ":" + o])).join(" ")).join(" | ")));
+    if (fora.length) throw new Error("fora da faixa: " + fora.map(([k, v]) => `${k} ${f1(v)}%`).join(", "));
+  });
+  await conf("métodos (jogo racional, todas as duplas): nocaute 20 a 34%, finalização 5 a 16%, decisão 50 a 72%, empate até 5%", () => {
+    const m = R.metodos;
+    console.log(cinza(`         KO/TKO ${f1(m.ko)}%  FIN ${f1(m.fin)}%  DEC ${f1(m.dec)}%  empate ${f1(m.empate)}%`));
+    if (m.ko < 20 || m.ko > 34 || m.fin < 5 || m.fin > 16 || m.dec < 50 || m.dec > 72 || m.empate > 5) throw new Error("fora da faixa");
+  });
+  await conf("sem ação dominante: em toda dupla, a mistura de equilíbrio em pé usa 2+ ações com 10%+ e nenhuma passa de 80%", () => {
+    const ruins = [];
+    for (const [k, mx] of Object.entries(R.mixes)) {
+      const d = mx.pe.a;
+      if (Math.max(...d) > 0.8 || d.filter((x) => x >= 0.1).length < 2) ruins.push(`${k} [${d.map((x) => Math.round(100 * x)).join(" ")}]`);
+    }
+    if (ruins.length) throw new Error(ruins.join("; "));
+  });
+  await conf("repetir sempre a mesma ação não vence quem se adapta ao padrão (mesmo estilo, nível 1): nenhuma passa de 50%", () => {
+    /* o adversário aqui é BAL.adaptativa: joga o equilíbrio e responde ao
+       que o outro já repetiu na luta, como um humano atento. Contra a
+       mistura fixa (racional), repetir pode render (ela não reage), e
+       isso não é exploração de verdade. */
+    const ruins = [], linhas = [];
+    for (const s of ESTS) for (const f of F) {
+      const p = perfil(s);
+      const t = BAL.confronto(p, p, BAL.spam(f), BAL.adaptativa(p, p), 400, `spam${s}${f}`);
+      linhas.push(`${s.slice(0, 3)}/${f.slice(0, 3)} ${f1(t.pct)}`);
+      if (t.pct > 50) ruins.push(`${s} só ${f}: ${f1(t.pct)}%`);
+    }
+    console.log(cinza("         " + linhas.join(" ")));
+    if (ruins.length) throw new Error(ruins.join(", "));
+  });
+  await conf("heurística de estilo (jogador que só segue o estilo, sem conta): nenhuma dupla passa de 65%", () => {
+    const ruins = [];
+    for (const s of ESTS) for (const o of ESTS) {
+      if (s >= o) continue;
+      const t = BAL.confronto(perfil(s), perfil(o), BAL.heuristica(s), BAL.heuristica(o), 600, `heu${s}${o}`);
+      if (t.pct < 35 || t.pct > 65) ruins.push(`${s} x ${o}: ${f1(t.pct)}%`);
+    }
+    if (ruins.length) throw new Error(ruins.join(", "));
+  });
+  await conf("evolução: nível 30 contra nível 1 do mesmo estilo entre 62% e 85%; nível 30 contra 20 acima de 50%", () => {
+    const linhas = [], ruins = [];
+    for (const s of ESTS) {
+      const a = BAL.nivelContraNivel(s, 30, 1, 600), b = BAL.nivelContraNivel(s, 30, 20, 600);
+      linhas.push(`${s.slice(0, 3)} 30x1 ${f1(a)}% 30x20 ${f1(b)}%`);
+      if (a < 62 || a > 85) ruins.push(`${s} 30x1 ${f1(a)}%`);
+      if (b <= 50) ruins.push(`${s} 30x20 ${f1(b)}%`);
+    }
+    console.log(cinza("         " + linhas.join(" | ")));
+    if (ruins.length) throw new Error(ruins.join(", "));
+  });
+  await conf("no nível 30 (build típica), nenhuma dupla de estilos sai de 40% a 60%", () => {
+    const ruins = [];
+    for (const s of ESTS) for (const o of ESTS) {
+      if (s >= o) continue;
+      const pA = perfil(s, 30), pB = perfil(o, 30);
+      const t = BAL.confronto(pA, pB, BAL.racional(pA, pB), BAL.racional(pB, pA), 600, `n30${s}${o}`);
+      if (t.pct < 40 || t.pct > 60) ruins.push(`${s} x ${o}: ${f1(t.pct)}%`);
+    }
+    if (ruins.length) throw new Error(ruins.join(", "));
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjmotor ok") : vermelho(`  ${falhas.length} falha(s) no jxjmotor`)));
+  return okTudo;
+}
+
+/* ================================================================== *
+ * JXJ ÁRVORE (2026-10-01): estrutura, regras de compra, teto suave, texto
+ *     e o valor medido de cada nó (nenhum nó morto, nenhum obrigatório).
+ * ================================================================== */
+async function testarJxJArvore() {
+  console.log("\n" + cinza("jxjarvore: árvore do JxJ (estrutura, regras, teto, textos, valor medido de cada nó)"));
+  const url = require("url");
+  const falhas = [], conf = confJxJ(falhas);
+  const BAL = await carregarBalancoJxJ();
+  const A = BAL.ARVORES, M = BAL.MOTOR, ESTS = A.ESTILOS_IDS;
+  const REG = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-regras.js")).href);
+
+  await conf("estrutura: 4 estilos com 3 ramos cada, 12 ramos de 4 nós, ids únicos, efeito sempre em atributo ou mecânica que existe", () => {
+    if (ESTS.length !== 4) throw new Error("estilos " + ESTS.length);
+    const ramosUsados = ESTS.flatMap((s) => A.ESTILOS[s].ramos);
+    if (ramosUsados.length !== 12 || new Set(ramosUsados).size !== 12 || Object.keys(A.RAMOS).length !== 12) throw new Error("ramos");
+    for (const s of ESTS) for (const r of A.ESTILOS[s].ramos) if (A.RAMOS[r].estilo !== s) throw new Error(`ramo ${r} não é de ${s}`);
+    const ids = Object.values(A.RAMOS).flatMap((r) => r.nos.map((n) => n.id));
+    if (ids.length !== 48 || new Set(ids).size !== 48) throw new Error("nós " + ids.length);
+    for (const id of ids) {
+      const no = A.NOS[id];
+      if (!no.efeitos.length) throw new Error(`${id} sem efeito`);
+      for (const e of no.efeitos) {
+        if (e.a ? !A.ATRIBUTOS.includes(e.a) : !A.MECANICAS[e.m]) throw new Error(`${id}: efeito desconhecido ${JSON.stringify(e)}`);
+        if (!(e.v > 0)) throw new Error(`${id}: valor ${e.v}`);
+      }
+    }
+    for (const m of Object.keys(A.MECANICAS)) {
+      const usada = m === "puxarGuarda" || ids.some((id) => A.NOS[id].efeitos.some((e) => e.m === m));
+      if (!usada) throw new Error(`mecânica ${m} sem nó`);
+    }
+  });
+  await conf("estilos somam 450 e categorias somam zero: estilo e peso orientam, nunca dão vantagem de soma", () => {
+    for (const s of ESTS) { const t = A.ATRIBUTOS.reduce((x, k) => x + A.ESTILOS[s].base[k], 0); if (t !== 450) throw new Error(`${s} soma ${t}`); }
+    for (const [c, d] of Object.entries(A.CATEGORIAS)) { const t = Object.values(d.ajuste).reduce((x, v) => x + v, 0); if (t !== 0) throw new Error(`${c} soma ${t}`); }
+  });
+  await conf("textos de estilo, árvore, ações, regras e conquistas sem travessão, frase de efeito nem emoji", () => {
+    const textos = [
+      ...ESTS.flatMap((s) => [A.ESTILOS[s].nome, A.ESTILOS[s].resumo]),
+      ...Object.values(A.RAMOS).flatMap((r) => [r.nome, ...r.nos.flatMap((n) => [n.nome, n.desc])]),
+      ...Object.values(A.MECANICAS).map((m) => m.desc), ...Object.values(A.CATEGORIAS).map((c) => c.nome),
+      ...Object.values(M.ROTULOS).flatMap(Object.values), ...Object.values(M.DESCRICOES).flatMap(Object.values),
+      ...REG.REGRA_AUSENCIA, ...Object.values(REG.CONQUISTAS).flatMap((c) => [c.nome, c.desc]), ...Object.values(REG.MOLDURAS).map((m) => m.nome),
+    ];
+    const ruins = textos.map((t) => [t, problemasDeTexto(t)]).filter(([, p]) => p.length);
+    if (ruins.length) throw new Error(ruins.map(([t, p]) => `[${p.join(", ")}] ${t}`).join("; "));
+  });
+  await conf("validarBuild aceita build válida e recusa: nó inexistente, nível fora de 0 a 3, pré-requisito, teto do ramo, híbrido fora dos 2 primeiros nós, pontos acima do nível, formato errado", () => {
+    const v = (b, nv = 30, est = "striker") => A.validarBuild(est, b, nv);
+    if (!v({ precisao_maos: 3, combinacoes: 3, contra_maos: 3, eficiencia_golpes: 1 }).ok) throw new Error("build válida recusada");
+    const casos = [
+      [{ inventado: 1 }, /desconhecida/], [{ precisao_maos: 4 }, /nível inválido/], [{ precisao_maos: 1.5 }, /nível inválido/],
+      [{ combinacoes: 1 }, /pede 2/], [{ precisao_maos: 3, combinacoes: 3, contra_maos: 3, eficiencia_golpes: 3 }, /até 10/],
+      [{ entradas: 2, correntes: 1, timing_queda: 1 }, /só abre/], [{ precisao_maos: 3, chute_baixo: 1 }, /nível 1 dá 3/, 1],
+    ];
+    for (const [b, re, nv] of casos) { const r = v(b, nv || 30); if (r.ok || !re.test(r.erro)) throw new Error(`${JSON.stringify(b)}: ${JSON.stringify(r)}`); }
+    for (const b of [null, [], "x"]) if (v(b).ok) throw new Error("formato " + JSON.stringify(b));
+    if (v({ precisao_maos: 1 }, 30, "ninja").ok) throw new Error("estilo inventado");
+    const hib = v({ entradas: 2 }, 30);
+    if (!hib.ok || hib.gasto !== 4) throw new Error("híbrido custa 2 por nível: " + JSON.stringify(hib));
+  });
+  await conf("pontos: nível 1 dá 3 e nível 30 dá 32; a build típica é válida em todo nível e todo estilo e só cresce", () => {
+    if (A.pontosDoNivel(1) !== 3 || A.pontosDoNivel(30) !== 32 || A.pontosDoNivel(99) !== 32) throw new Error("pontosDoNivel");
+    for (const s of ESTS) {
+      let antes = {};
+      for (let nv = 1; nv <= REG.NIVEL_MAX; nv++) {
+        const b = A.buildTipica(s, nv), r = A.validarBuild(s, b, nv);
+        if (!r.ok) throw new Error(`${s} nível ${nv}: ${r.erro}`);
+        for (const [k, x] of Object.entries(antes)) if ((b[k] || 0) < x) throw new Error(`${s} nível ${nv}: ${k} caiu`);
+        antes = b;
+      }
+    }
+  });
+  await conf("teto suave: bônus de atributo nunca passa de 18 nem o atributo de 92; mecânica nunca passa do teto; mais nível nunca piora atributo", () => {
+    for (const s of ESTS) {
+      const base = A.perfilDeCombate({ estilo: s, categoria: "middleweight", build: {} });
+      let ant = base;
+      for (let nv = 2; nv <= 30; nv++) {
+        const p = A.perfilDeCombate({ estilo: s, categoria: "middleweight", build: A.buildTipica(s, nv) });
+        for (const k of A.ATRIBUTOS) {
+          if (p.atr[k] - base.atr[k] > A.TETO_BONUS + 0.05 || p.atr[k] > A.ATRIBUTO_MAX) throw new Error(`${s} nível ${nv} ${k} ${p.atr[k]}`);
+          if (p.atr[k] < ant.atr[k] - 1e-9) throw new Error(`${s} nível ${nv}: ${k} caiu`);
+        }
+        for (const [k, v] of Object.entries(p.mec)) if (v > A.MECANICAS[k].teto + 1e-9) throw new Error(`${s}: ${k} ${v} > teto`);
+        ant = p;
+      }
+    }
+    /* tudo no máximo, ignorando as regras de compra: o teto segura */
+    const tudo = Object.fromEntries(Object.keys(A.NOS).map((id) => [id, 3]));
+    const p = A.perfilDeCombate({ estilo: "grappler", categoria: "heavyweight", build: tudo }), b = A.perfilDeCombate({ estilo: "grappler", categoria: "heavyweight", build: {} });
+    for (const k of A.ATRIBUTOS) if (p.atr[k] - b.atr[k] > A.TETO_BONUS + 0.05 || p.atr[k] > A.ATRIBUTO_MAX) throw new Error(`tudo no máximo: ${k} ${p.atr[k]}`);
+    for (const [k, v] of Object.entries(p.mec)) if (v > A.MECANICAS[k].teto + 1e-9) throw new Error(`tudo no máximo: ${k} ${v}`);
+  });
+  await conf("cada nó vale alguma coisa (medido): no nível 3, contra os 4 estilos, entre 0,5 e 6,5 pontos de vitória", () => {
+    const linhas = [], ruins = [];
+    for (const id of Object.keys(A.NOS)) {
+      const v = BAL.valorDoNo(id, 400);
+      linhas.push(`${id} ${v.toFixed(1)}`);
+      if (v < 0.5 || v > 6.5) ruins.push(`${id} ${v.toFixed(2)}`);
+    }
+    console.log(cinza("         " + linhas.join(", ")));
+    if (ruins.length) throw new Error("fora da faixa: " + ruins.join(", "));
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjarvore ok") : vermelho(`  ${falhas.length} falha(s) no jxjarvore`)));
+  return okTudo;
+}
+
+/* ================================================================== *
+ * JXJ RATING (2026-10-01): Glicko-2 contra o exemplo do artigo do
+ *     Glickman, simetria, incerteza, chance e reset de temporada.
+ * ================================================================== */
+async function testarJxJRating() {
+  console.log("\n" + cinza("jxjrating: Glicko-2 do JxJ (exemplo do artigo, simetria, incerteza, chance, reset, fila)"));
+  const url = require("url");
+  const falhas = [], conf = confJxJ(falhas);
+  const R = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-rating.js")).href);
+  const REG = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-regras.js")).href);
+  const perto = (x, y, tol) => Math.abs(x - y) <= tol;
+
+  await conf("exemplo do artigo (1500/200/0,06 contra 1400/30 vitória, 1550/100 derrota, 1700/300 derrota): 1464,06 / 151,52 / 0,05999", () => {
+    const r = R.atualizar({ r: 1500, rd: 200, vol: 0.06 }, [{ r: 1400, rd: 30, s: 1 }, { r: 1550, rd: 100, s: 0 }, { r: 1700, rd: 300, s: 0 }]);
+    if (!perto(r.r, 1464.06, 0.05) || !perto(r.rd, 151.52, 0.05) || !perto(r.vol, 0.05999, 0.00001)) throw new Error(JSON.stringify(r));
+  });
+  await conf("entre iguais: quem vence sobe o que o outro desce; empate não mexe no rating e firma os dois", () => {
+    const x = { r: 1600, rd: 120, vol: 0.06 };
+    const v = R.luta(x, x, 1);
+    if (!(v.a.r > x.r) || !perto(v.a.r - x.r, x.r - v.b.r, 1e-6)) throw new Error(JSON.stringify(v));
+    const e = R.luta(x, x, 0.5);
+    if (!perto(e.a.r, x.r, 1e-6) || !perto(e.b.r, x.r, 1e-6) || !(e.a.rd < x.rd)) throw new Error(JSON.stringify(e));
+  });
+  await conf("vencer alguém acima vale mais que vencer alguém abaixo; perder pra alguém abaixo custa mais", () => {
+    const eu = { r: 1500, rd: 80, vol: 0.06 }, acima = { r: 1700, rd: 80, vol: 0.06 }, abaixo = { r: 1300, rd: 80, vol: 0.06 };
+    const ga = R.luta(eu, acima, 1).a.r - eu.r, gb = R.luta(eu, abaixo, 1).a.r - eu.r;
+    const pa = eu.r - R.luta(eu, acima, 0).a.r, pb = eu.r - R.luta(eu, abaixo, 0).a.r;
+    if (!(ga > gb && pb > pa && gb > 0 && pa > 0)) throw new Error(JSON.stringify({ ga, gb, pa, pb }));
+  });
+  await conf("incerteza: cai luta a luta sem furar o piso de 50; parado, sobe até o teto de 350; lutador novo anda mais rápido", () => {
+    let x = { ...R.INICIAL };
+    const passos = [];
+    for (let k = 0; k < 200; k++) { x = R.luta(x, { r: 1500, rd: 60, vol: 0.06 }, k % 2).a; passos.push(x.rd); }
+    if (!passos.every((v, i) => i === 0 || v <= passos[i - 1] + 1e-6) || x.rd < R.RD_MIN || x.rd > 80) throw new Error("rd " + passos.slice(-3).join(","));
+    if (R.atualizar({ r: 1500, rd: 30, vol: 0.06 }, [{ r: 1500, rd: 30, s: 1 }]).rd < R.RD_MIN) throw new Error("rd abaixo do piso");
+    const parado = R.comInatividade({ r: 1500, rd: 60, vol: 0.06 }, 365 * 30);
+    if (parado.rd !== R.RD_MAX && !perto(parado.rd, R.RD_MAX, 1e-9)) throw new Error("parado: " + parado.rd);
+    if (!(R.comInatividade({ r: 1500, rd: 60, vol: 0.06 }, 70).rd > 60)) throw new Error("inatividade não subiu o rd");
+    const novo = R.luta(R.INICIAL, { r: 1500, rd: 60, vol: 0.06 }, 1).a.r - 1500, firme = R.luta({ r: 1500, rd: 60, vol: 0.06 }, { r: 1500, rd: 60, vol: 0.06 }, 1).a.r - 1500;
+    if (!(novo > 3 * firme)) throw new Error(`novo +${novo.toFixed(1)}, firme +${firme.toFixed(1)}`);
+  });
+  await conf("chance de vencer: 50% entre iguais, cresce com a diferença, os dois lados somam 100%", () => {
+    const a = { r: 1500, rd: 80 }, b = { r: 1650, rd: 80 };
+    if (!perto(R.chanceDeVencer(a, a), 0.5, 1e-12)) throw new Error("iguais");
+    if (!(R.chanceDeVencer(b, a) > 0.6) || !perto(R.chanceDeVencer(a, b) + R.chanceDeVencer(b, a), 1, 1e-12)) throw new Error("diferença");
+  });
+  await conf("reset de temporada: puxa pra 1500 pela metade, devolve 80 de incerteza (teto 250) e não muda a ordem", () => {
+    const lista = [1900, 1720, 1500, 1380, 1100].map((r, i) => ({ r, rd: 60 + 50 * i, vol: 0.06 }));
+    const novo = lista.map(R.resetTemporada);
+    novo.forEach((x, i) => {
+      if (!perto(x.r, 1500 + (lista[i].r - 1500) * 0.5, 1e-9) || x.rd !== Math.min(250, lista[i].rd + 80)) throw new Error(JSON.stringify([lista[i], x]));
+      if (i && !(x.r < novo[i - 1].r)) throw new Error("ordem mudou");
+    });
+  });
+  await conf("fila: tolerância começa em 100 pontos, cresce 25 a cada 10 s de espera e para em 400", () => {
+    const t = REG.toleranciaFila;
+    if (t(0) !== 100 || t(9999) !== 100 || t(10000) !== 125 || t(60000) !== 250 || t(600000) !== 400 || t(-5) !== 100) throw new Error([0, 10000, 60000, 600000].map(t).join(","));
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjrating ok") : vermelho(`  ${falhas.length} falha(s) no jxjrating`)));
+  return okTudo;
+}
+
+/* ================================================================== *
+ * JXJ TEMPORADA (2026-10-01): população simulada jogando 8 semanas pela
+ *     fila de verdade (tolerância por espera) com o rating de verdade;
+ *     reset; progressão e economia. Habilidade escondida = a verdade que
+ *     o rating tem que achar.
+ * ================================================================== */
+async function testarJxJTemporada() {
+  console.log("\n" + cinza("jxjtemporada: temporada simulada (fila, rating, reset), progressão e economia do JxJ"));
+  const url = require("url");
+  const falhas = [], conf = confJxJ(falhas);
+  const R = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-rating.js")).href);
+  const REG = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-regras.js")).href);
+  let s = 20261001;
+  const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0) / 4294967296);
+  const normal = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  /* habilidade escondida: 1 desvio = 70% de vitória; 3% de empate */
+  const K_HAB = Math.log(0.7 / 0.3);
+  const resultado = (ha, hb) => { const x = rnd(); if (x < 0.03) return 0.5; return rnd() < 1 / (1 + Math.exp(-K_HAB * (ha - hb))) ? 1 : 0; };
+  const spearman = (xs, ys) => {
+    const posto = (v) => { const o = v.map((x, i) => [x, i]).sort((a, b) => a[0] - b[0]); const r = new Array(v.length); o.forEach(([, i], k) => { r[i] = k; }); return r; };
+    const a = posto(xs), b = posto(ys), n = xs.length, ma = (n - 1) / 2;
+    let num = 0, da = 0, db = 0;
+    for (let i = 0; i < n; i++) { num += (a[i] - ma) * (b[i] - ma); da += (a[i] - ma) ** 2; db += (b[i] - ma) ** 2; }
+    return num / Math.sqrt(da * db);
+  };
+  const novoJogador = (dia) => ({ hab: normal(), ativ: 0.3 + rnd() * 2.7, ...R.INICIAL, lutas: 0, ultima: dia });
+  /* um dia: quem joga hoje entra na fila em ordem aleatória; a cada passo
+     de 10 s, o mais antigo pega o rating mais perto dentro da tolerância
+     dele; quem espera 5 min sai. Devolve as diferenças de rating dos pares
+     e as esperas (em passos). */
+  function dia(pop, d, pares, esperas) {
+    const hoje = [];
+    for (const j of pop) { let n = Math.floor(j.ativ) + (rnd() < j.ativ % 1 ? 1 : 0); while (n-- > 0) hoje.push(j); }
+    for (let i = hoje.length - 1; i > 0; i--) { const k = Math.floor(rnd() * (i + 1)); [hoje[i], hoje[k]] = [hoje[k], hoje[i]]; }
+    const fila = [];
+    for (let passo = 0; hoje.length || fila.length; passo++) {
+      for (let k = 0; k < 8 && hoje.length; k++) { const j = hoje.pop(); if (!fila.some((f) => f.j === j)) fila.push({ j, desde: passo }); }
+      fila.sort((a, b) => a.desde - b.desde);
+      for (let i = 0; i < fila.length; i++) {
+        /* como jxj_fila_parear: a tolerância é a da espera mais longa do par */
+        const a = fila[i], tol = (k) => REG.toleranciaFila((passo - Math.min(a.desde, fila[k].desde)) * 10000);
+        let melhor = -1;
+        for (let k = 0; k < fila.length; k++) if (k !== i && Math.abs(fila[k].j.r - a.j.r) <= tol(k) && (melhor < 0 || Math.abs(fila[k].j.r - a.j.r) < Math.abs(fila[melhor].j.r - a.j.r))) melhor = k;
+        if (melhor < 0) continue;
+        const b = fila[melhor];
+        pares.push(Math.abs(a.j.r - b.j.r)); esperas.push(passo - a.desde, passo - b.desde);
+        const sc = resultado(a.j.hab, b.j.hab), up = R.luta(a.j, b.j, sc, { diasA: d - a.j.ultima, diasB: d - b.j.ultima });
+        Object.assign(a.j, up.a, { lutas: a.j.lutas + 1, ultima: d }); Object.assign(b.j, up.b, { lutas: b.j.lutas + 1, ultima: d });
+        fila.splice(Math.max(i, melhor), 1); fila.splice(Math.min(i, melhor), 1); i = -1;
+      }
+      for (let i = fila.length - 1; i >= 0; i--) if (passo - fila[i].desde >= 30) fila.splice(i, 1);
+      if (passo > 5000) throw new Error("dia sem fim");
+    }
+  }
+  const pop = Array.from({ length: 300 }, () => novoJogador(0));
+  const pares = [], esperas = [];
+  for (let d = 0; d < REG.TEMPORADA_DIAS; d++) dia(pop, d, pares, esperas);
+  await conf("temporada simulada (300 jogadores, 8 semanas, fila com tolerância): o rating ordena pela habilidade real (correlação de postos 0,85+)", () => {
+    const firmes = pop.filter((j) => j.lutas >= R.LUTAS_PRA_CLASSIFICAR);
+    const rho = spearman(firmes.map((j) => j.r), firmes.map((j) => j.hab));
+    console.log(cinza(`         ${firmes.length} classificados, ${pares.length} lutas, correlação ${rho.toFixed(3)}`));
+    if (firmes.length < 250 || rho < 0.85) throw new Error(`correlação ${rho.toFixed(3)}, ${firmes.length} classificados`);
+  });
+  await conf("fila: 95% dos pares com até 250 pontos de diferença, nenhum acima de 400; espera mediana de até 30 s", () => {
+    const ord = [...pares].sort((a, b) => a - b), p95 = ord[Math.floor(ord.length * 0.95)];
+    const esp = [...esperas].sort((a, b) => a - b), med = esp[Math.floor(esp.length / 2)] * 10;
+    console.log(cinza(`         diferença p95 ${p95.toFixed(0)}, máxima ${ord[ord.length - 1].toFixed(0)}, espera mediana ${med} s`));
+    if (p95 > 250 || ord[ord.length - 1] > 400 || med > 30) throw new Error(`p95 ${p95}, máx ${ord[ord.length - 1]}, espera ${med} s`);
+  });
+  await conf("reset parcial: a ordem não muda, a distância cai pela metade, e 4 semanas depois o rating volta a ordenar (0,85+)", () => {
+    const antes = pop.map((j) => j.r);
+    for (const j of pop) Object.assign(j, R.resetTemporada(j));
+    const depois = pop.map((j) => j.r);
+    if (spearman(antes, depois) < 0.9999) throw new Error("o reset mudou a ordem");
+    const dp = (v) => { const m = v.reduce((a, b) => a + b, 0) / v.length; return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length); };
+    if (!perto(dp(depois) / dp(antes), 0.5)) throw new Error(`desvio ${dp(antes).toFixed(1)} virou ${dp(depois).toFixed(1)}`);
+    for (let d = REG.TEMPORADA_DIAS; d < REG.TEMPORADA_DIAS + 28; d++) dia(pop, d, [], []);
+    const rho = spearman(pop.map((j) => j.r), pop.map((j) => j.hab));
+    console.log(cinza(`         correlação 4 semanas depois do reset ${rho.toFixed(3)}`));
+    if (rho < 0.85) throw new Error("correlação " + rho.toFixed(3));
+  });
+  function perto(x, y) { return Math.abs(x - y) < 0.01; }
+  await conf("lutador novo (incerteza 350) acha o lugar dele: depois de 10 lutas, erro mediano de posto abaixo de 18% da população", () => {
+    const d0 = REG.TEMPORADA_DIAS + 28, novos = Array.from({ length: 40 }, () => ({ ...novoJogador(d0), ativ: 2 }));
+    pop.push(...novos);
+    for (let d = d0; novos.some((j) => j.lutas < 10) && d < d0 + 30; d++) dia(pop, d, [], []);
+    const porR = [...pop].sort((a, b) => b.r - a.r), porH = [...pop].sort((a, b) => b.hab - a.hab);
+    const erros = novos.map((j) => Math.abs(porR.indexOf(j) - porH.indexOf(j)) / pop.length).sort((a, b) => a - b);
+    const med = erros[Math.floor(erros.length / 2)];
+    console.log(cinza(`         erro mediano de posto ${(100 * med).toFixed(1)}%`));
+    if (med > 0.18) throw new Error(`erro mediano ${(100 * med).toFixed(1)}%`);
+  });
+  await conf("progressão: XP 120/90/70 (+30 se finalizar), W.O. 40/0, metade sem rating e depois de 10 lutas no dia; nível 30 em 90 a 160 lutas", () => {
+    const x = REG.xpDaLuta;
+    const casos = [[{ resultado: "vitoria", metodo: "DEC" }, 120], [{ resultado: "vitoria", metodo: "KO" }, 150], [{ resultado: "empate", metodo: "EMPATE" }, 90],
+      [{ resultado: "derrota", metodo: "FIN" }, 70], [{ resultado: "vitoria", metodo: "WO" }, 40], [{ resultado: "derrota", metodo: "WO" }, 0],
+      [{ resultado: "vitoria", metodo: "DEC", comRating: false }, 60], [{ resultado: "vitoria", metodo: "DEC", lutasHoje: 10 }, 60], [{ resultado: "derrota", metodo: "ANULADA" }, 0]];
+    for (const [c, v] of casos) if (x(c) !== v) throw new Error(`${JSON.stringify(c)}: ${x(c)} (esperava ${v})`);
+    const total = REG.xpTotalAte(REG.NIVEL_MAX), lutas = total / 100;
+    if (lutas < 90 || lutas > 160) throw new Error(`nível 30 pede ${total} XP (${lutas.toFixed(0)} lutas a 100 de média)`);
+    if (REG.nivelDoXp(total).nivel !== 30 || REG.nivelDoXp(total * 10).nivel !== 30 || REG.nivelDoXp(total - 1).nivel !== 29) throw new Error("curva");
+  });
+  await conf("economia: fichas por luta (10, 20 na vitória, nada sem rating ou anulada); só cosmético e respec gastam ficha; nenhum atributo à venda", () => {
+    const f = REG.fichasDaLuta;
+    if (f({ resultado: "vitoria", metodo: "DEC" }) !== 20 || f({ resultado: "derrota", metodo: "KO" }) !== 10 || f({ resultado: "vitoria", metodo: "DEC", comRating: false }) !== 0
+      || f({ resultado: "derrota", metodo: "WO" }) !== 0 || f({ resultado: "empate", metodo: "ANULADA" }) !== 0) throw new Error("fichas por luta");
+    for (const [k, m] of Object.entries(REG.MOLDURAS)) if (Object.keys(m).some((c) => !["nome", "preco", "req"].includes(c))) throw new Error(`moldura ${k} com campo que não é cosmético`);
+    const sql = fs.readFileSync(path.join(RAIZ, "supabase_jxj.sql"), "utf8");
+    const motivos = [...sql.matchAll(/insert into jxj_fichas \(user_id, delta, motivo, ref\)\s*values \([^,]+,\s*(-?)[^,]+,\s*'(\w+)'/g)].map((m) => (m[1] ? "-" : "+") + m[2]);
+    const gastos = new Set(motivos.filter((m) => m.startsWith("-")).map((m) => m.slice(1)));
+    if ([...gastos].sort().join() !== "moldura,respec") throw new Error("gasto de fichas fora de cosmético/respec: " + [...gastos].join(","));
+    if (REG.CUSTO_RESPEC / 20 < 15) throw new Error("respec barato demais: " + REG.CUSTO_RESPEC);
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjtemporada ok") : vermelho(`  ${falhas.length} falha(s) no jxjtemporada`)));
+  return okTudo;
+}
+
+/* ================================================================== *
+ * JXJ TELAS (2026-10-01): as telas do JxJ no DOM falso, ligadas ao
+ *     servidor de verdade (api/jxj.js + PGlite). Clica como o jogador:
+ *     árvore (nó, detalhe, somar, salvar), luta (ações da posição, envio)
+ *     e todas as rotas sem "undefined", emoji nem travessão. Nasceu de um
+ *     bug achado no navegador: clicar num nó da árvore quebrava (o nó da
+ *     tela não tinha o ramo) e ninguém conseguia gastar ponto.
+ * ================================================================== */
+async function testarJxJTelas() {
+  console.log("\n" + cinza("jxjtelas: telas do JxJ no DOM falso com o servidor de verdade (árvore, luta, todas as rotas, desligado)"));
+  const url = require("url");
+  const falhas = [];
+  let B;
+  try { B = await import(url.pathToFileURL(path.join(RAIZ, "ferramentas", "banco-teste.mjs")).href); }
+  catch (e) {
+    console.log(vermelho("  falha ") + "precisa do PGlite: rode `npm install --prefix ferramentas` uma vez (" + String(e.message).slice(0, 90) + ")");
+    return false;
+  }
+  const db = await B.novoBanco();
+  const { SUPABASE_URL } = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
+  const MOTOR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
+  const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
+  globalThis.fetch = B.fetchFalso(db, { SUPABASE_URL });
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "falsa"; process.env.JXJ_ATIVO = "true";
+  delete process.env.OPENROUTER_API_KEY;
+  console.error = () => {};
+  try {
+    const H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "jxj.js")).href)).default;
+    const api = async (u, acao, extra = {}) => {
+      const r = await B.chamar(H, { token: "tok:" + u, acao, ...extra });
+      if (r.status !== 200) throw new Error(`${acao} deu ${r.status}: ${JSON.stringify(r.json).slice(0, 140)}`);
+      return r.json;
+    };
+    const u1 = "00000000-0000-4000-8000-0000000000a1", u2 = "00000000-0000-4000-8000-0000000000a2";
+    await B.criarUsuario(db, u1, { pro: true }); await B.criarUsuario(db, u2, { pro: true });
+    const ROSTO = { pele: 2, porte: 1, cabelo: 1, corCabelo: 0, barba: 1, orelha: 0, nariz: 0, cicatriz: 0, tatuagem: 0, entrada: 0, prajiad: 0, corEntrada: 0 };
+
+    const env = criarAmbiente({ contarNos: true });
+    env.sandbox.window.supabase = supabaseFalsoComSessao({
+      sessao: { user: { id: u1, email: "a1@teste" }, access_token: "tok:" + u1 }, assinatura: { pro: true, expira_em: null } });
+    const dadosLS = {};
+    env.sandbox.localStorage = { getItem: (k) => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: (k) => { delete dadosLS[k]; } };
+    let pendentes = 0;
+    env.sandbox.fetch = async (u, op) => {
+      if (!String(u).endsWith("/api/jxj")) throw new Error("offline");
+      pendentes++;
+      try { const r = await B.chamar(H, JSON.parse(op.body)); return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.json }; }
+      finally { pendentes--; }
+    };
+    vm.createContext(env.sandbox);
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara"]) + "\ntry{globalThis.__x.setMeuPro=(v)=>{meuPro=v;};}catch(e){}"
+      + "\ntry{globalThis.__x.zerarDef=()=>{JXJ_DEF=null;};}catch(e){}", env.sandbox, { filename: "index.html" });
+    const UI = env.sandbox.__x;
+    UI.ready(lerLutadores());
+    UI.setMeuPro(true);
+    const tem = (n, c) => (n.className || "").split(" ").includes(c);
+    const desde = (m) => env.todos.slice(m);
+    /* deixa a tela assentar: timers do sandbox, promessas e o banco */
+    const assentar = async (voltas = 40) => {
+      for (let i = 0; i < voltas; i++) {
+        env.drenar();
+        await new Promise((r) => setTimeout(r, 2));
+        if (!pendentes && i > 6) { env.drenar(); await new Promise((r) => setTimeout(r, 2)); if (!pendentes) break; }
+      }
+    };
+    const abrir = async (param) => { const m = env.todos.length; UI.irPara("jxj", param); await assentar(); return m; };
+    const htmlDe = (nos) => nos.map((n) => String(n.innerHTML || "") + " " + String(n.textContent || "")).join("\n");
+    const conf = async (nome, fn) => {
+      try { await fn(); console.log(verde("  ok    ") + nome); }
+      catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+    };
+    const botao = (nos, txt) => nos.filter((n) => n.tagName === "button" && String(n.innerHTML).includes(txt)).pop();
+
+    await conf("entrada sem lutador: apresentação e o botão Criar meu lutador", async () => {
+      const m = await abrir("");
+      if (!botao(desde(m), "Criar meu lutador")) throw new Error("sem Criar meu lutador: " + htmlDe(desde(m)).replace(/\s+/g, " ").slice(0, 200));
+    });
+    const l1 = (await api(u1, "criar", { nome: "Tela Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" })).id;
+    await conf("árvore: clicar num nó mostra o detalhe (nome, ramo, efeito por nível), Somar 1 nível e Salvar gravam no servidor", async () => {
+      const m = await abrir(`lutador/${l1}/arvore`);
+      const nos = desde(m).filter((n) => tem(n, "jxj-no"));
+      if (nos.length < 12) throw new Error("só " + nos.length + " nós na tela");
+      const m2 = env.todos.length;
+      await nos[0].onclick(); await assentar(10);
+      const det = env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop();
+      const h = String(det && det.innerHTML);
+      if (!det || det.hidden || !h.includes("Precisão") || !h.includes("Boxe") || !h.includes("por nível") || /undefined|NaN/.test(h)) throw new Error("detalhe: " + h.replace(/\s+/g, " ").slice(0, 220));
+      const mais = botao(desde(m2), "Somar 1 nível");
+      if (!mais || mais.disabled) throw new Error("Somar 1 nível ausente ou desligado");
+      await mais.onclick(); await assentar(10);
+      const salvar = botao(desde(m), "Salvar árvore");
+      if (!salvar || salvar.disabled) throw new Error("Salvar árvore desligado depois de somar");
+      await salvar.onclick(); await assentar();
+      const est = await api(u1, "estado");
+      const b = est.lutadores.find((x) => x.id === l1).build;
+      if (b.precisao_maos !== 1) throw new Error("build no servidor: " + JSON.stringify(b));
+    });
+    await conf("efeito de mecânica mostra o valor real de cada nível, com o teto (nunca o bruto vezes 3)", async () => {
+      const m = await abrir(`lutador/${l1}/arvore`);
+      const no = desde(m).filter((n) => tem(n, "jxj-no")).find((n) => String(n.innerHTML).includes("Combinações<"));
+      if (!no) throw new Error("nó Combinações não achado");
+      await no.onclick(); await assentar(10);
+      const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
+      if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
+    });
+    const l2 = (await api(u2, "criar", { nome: "Tela Dois", rosto: ROSTO, categoria: "lightweight", estilo: "wrestler" })).id;
+    await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
+    const par = await api(u1, "fila");
+    await api(u1, "confirmar", { lutaId: par.luta.id }); await api(u2, "confirmar", { lutaId: par.luta.id });
+    const lid = par.luta.id;
+    await conf("luta: as 4 ações com o rótulo da posição e o custo; escolher manda a ação pro servidor, que guarda escondida", async () => {
+      const m = await abrir(`luta/${lid}`);
+      const acoes = desde(m).filter((n) => tem(n, "jxj-acao"));
+      const rot = Object.values(MOTOR.ROTULOS.pe);
+      if (acoes.length < 4 || !rot.every((r) => acoes.some((a) => String(a.innerHTML).includes(r)))) throw new Error("ações: " + acoes.map((a) => String(a.innerHTML).replace(/<[^>]+>/g, " ").trim().slice(0, 30)).join(" | "));
+      const golpes = acoes.find((a) => String(a.innerHTML).includes("Trocar golpes"));
+      await golpes.onclick(); await assentar(15);
+      const linhas = (await db.query("select a.familia from jxj_acoes a join jxj_lutas l on l.id = a.luta_id where a.luta_id = $1 and a.lado = case when l.a_id = $2 then 'a' else 'b' end", [lid, l1])).rows;
+      if (linhas.length !== 1 || linhas[0].familia !== "golpes") throw new Error("ação no banco: " + JSON.stringify(linhas));
+      const v2 = await api(u2, "luta", { lutaId: lid });
+      if (JSON.stringify(v2).includes('"golpes"') && /acaoAdversario|acaoDele/.test(JSON.stringify(v2))) throw new Error("a vista do adversário mostra a ação");
+    });
+    await conf("desconexão: sair da luta e voltar pela entrada mostra a mesma luta, com a ação já enviada valendo", async () => {
+      const m = await abrir("");
+      const faixa = desde(m).filter((n) => tem(n, "jxj-faixa-luta")).pop();
+      if (!faixa || !String(faixa.innerHTML).includes("Luta em andamento")) throw new Error("a entrada não mostra a luta em andamento");
+      const m2 = env.todos.length;
+      faixa.onclick(); await assentar();
+      const h = htmlDe(desde(m2));
+      if (!/Ação enviada: <b>Trocar golpes<\/b>/.test(h)) throw new Error("a luta retomada não mostra a ação enviada: " + h.replace(/\s+/g, " ").slice(0, 200));
+      if (desde(m2).some((n) => tem(n, "jxj-acao"))) throw new Error("a luta retomada deixa escolher de novo");
+    });
+    await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
+      const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,
+        `lutador/${l1}/arvore`, `lutador/${l1}/historico`, `lutador/${l1}/aparencia`, `lutador/${l1}/gerenciar`, `luta/${lid}`];
+      const ruins = [];
+      for (const r of rotas) {
+        const m = await abrir(r);
+        const h = htmlDe(desde(m));
+        if (h.trim().length < 40) ruins.push(`#/jxj/${r}: tela vazia`);
+        const lixo = h.match(/undefined|NaN|\[object Object\]/);
+        if (lixo) ruins.push(`#/jxj/${r}: "${lixo[0]}" em ${h.slice(Math.max(0, lixo.index - 60), lixo.index + 30).replace(/\s+/g, " ")}`);
+        const p = problemasDeTexto(h.replace(/<[^>]*>/g, " "));
+        if (p.length) ruins.push(`#/jxj/${r}: ${p.join(", ")}`);
+      }
+      if (ruins.length) throw new Error(ruins.join("\n         "));
+    });
+    await conf("JxJ desligado (JXJ_ATIVO diferente de true): a entrada mostra 'abre em breve' e nenhum botão de criar", async () => {
+      process.env.JXJ_ATIVO = "false";
+      UI.zerarDef();
+      const m = await abrir("");
+      const h = htmlDe(desde(m));
+      process.env.JXJ_ATIVO = "true";
+      UI.zerarDef();
+      if (!/abre em breve/.test(h) || botao(desde(m), "Criar meu lutador")) throw new Error(h.replace(/\s+/g, " ").slice(0, 200));
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    for (const k of Object.keys(process.env)) if (!(k in envOriginal)) delete process.env[k];
+    Object.assign(process.env, envOriginal);
+    console.error = erroOriginal;
+  }
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjtelas ok") : vermelho(`  ${falhas.length} falha(s) no jxjtelas`)));
+  return okTudo;
+}
+
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
 let ok = true;
@@ -10613,6 +11813,12 @@ try {
   else if (cmd === "amostra") ok = await testarAmostra();
   else if (cmd === "diversidade") ok = await testarDiversidade(Number(div) || 6);
   else if (cmd === "entrevista") ok = await testarEntrevista();
+  else if (cmd === "jxj") ok = await testarJxJ();
+  else if (cmd === "jxjmotor") ok = await testarJxJMotor();
+  else if (cmd === "jxjarvore") ok = await testarJxJArvore();
+  else if (cmd === "jxjrating") ok = await testarJxJRating();
+  else if (cmd === "jxjtemporada") ok = await testarJxJTemporada();
+  else if (cmd === "jxjtelas") ok = await testarJxJTelas();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -10695,6 +11901,12 @@ try {
         ["diversidade", () => testarDiversidade(6)],
         ["entrevista", () => testarEntrevista()],
         ["personagem", () => testarPersonagem()],
+        ["jxj", () => testarJxJ()],
+        ["jxjmotor", () => testarJxJMotor()],
+        ["jxjarvore", () => testarJxJArvore()],
+        ["jxjrating", () => testarJxJRating()],
+        ["jxjtemporada", () => testarJxJTemporada()],
+        ["jxjtelas", () => testarJxJTelas()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],

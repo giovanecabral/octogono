@@ -47,6 +47,7 @@ node testar.js divisoes    # quais divisões têm gente suficiente?
 node testar.js escolhas    # escolher adversário forte muda a carreira?
 node testar.js desafio     # a mesma semente dá a mesma carreira?
 node testar.js pesos       # quanto cada atributo vale (gera o WEIGHTS)
+node testar.js jxj         # JxJ: servidor + banco de verdade (ver a seção "JxJ")
 
 # uma divisão específica
 node testar.js draft heavyweight
@@ -68,6 +69,10 @@ fighters.json       1.527 lutadores com stats calculadas do ufcstats.
 testar.js           A única ferramenta.
 atualizar-dados.py  Regenera o fighters.json com dados novos.
 api/ai.js           Proxy do OpenRouter. Só é usado depois do deploy.
+api/jxj.js          JxJ (jogador contra jogador). Ver a seção "JxJ".
+api/_jxj-*.js       Motor, árvores, rating e regras do JxJ.
+supabase_jxj.sql    Migração do JxJ (só aditiva); _rollback desfaz.
+ferramentas/        Teste do banco (PGlite), servidor local, balanço e E2E do JxJ.
 ```
 
 Para jogar localmente: `python3 -m http.server 8000` na pasta e abrir
@@ -3754,6 +3759,179 @@ aceita, sem a trava de devolução dupla, sem
 recusa, entrevista só com provocação e promessa, cena só do molde local:
 reprova. O teste achou um bug na hora: `LIMITE_AMOSTRA_IA` vazia virava 0
 (`Number("")`) e desligava a amostra.
+
+## JxJ: jogador contra jogador (2026-10-01)
+
+**Pedido do dono:** um modo competitivo completo. Cada conta cria o
+próprio lutador (estilo, categoria, aparência), evolui por uma árvore de
+habilidades e luta contra os lutadores das outras contas. Cada troca é
+uma escolha simultânea e escondida, resolvida no servidor. Fila com
+tolerância, rating Glicko-2, ranking, temporadas de 8 semanas, torneios
+de 8 com cinturão, rivalidade pelos fatos, fichas que nunca compram
+vantagem. Free com 1 lutador e 1 luta grátis; Pro com 3 lutadores. Sem
+tocar na carreira. Spec completa:
+`docs/superpowers/specs/2026-10-01-jxj-design.md`.
+
+### Estado e como ligar
+
+O código está pronto e publicado **desligado**. Sem `JXJ_ATIVO=true` na
+Vercel, toda ação responde 503 e a entrada do JxJ mostra "O JxJ abre em
+breve" (o card do menu leva até ela). O banco de produção ainda não tem
+as tabelas: rodar a migração é do dono, depois do backup.
+
+1. Backup do banco (Supabase > Database > Backups).
+2. SQL Editor: colar e rodar `supabase_jxj.sql`. Só cria tabelas e
+   funções `jxj_*` (18 tabelas, 46 funções); não altera nenhuma tabela
+   que já existe e pode rodar de novo sem erro. Conferir com
+   `select count(*) from pg_proc where proname like 'jxj\_%'` (46).
+3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
+   Production, e Redeploy do deploy atual (variável nova só vale em
+   deploy novo; não precisa mudar código).
+4. Jogar uma luta com duas contas de verdade antes de anunciar, e só
+   então escrever a entrada em Atualizações.
+
+Desligar: `JXJ_ATIVO` diferente de `true` + Redeploy (o banco fica como
+está). Apagar tudo do JxJ: `supabase_jxj_rollback.sql`, depois de
+desligar e do backup; ele confere antes que nada fora do JxJ depende das
+tabelas e, se depender, para sem apagar nada.
+
+### Arquitetura
+
+```
+api/jxj.js             rota única (POST {token, acao, ...}): sessão, Pro, limite por ação, payload
+api/_jxj-motor.js      combate: puro e determinístico pela semente
+api/_jxj-arvores.js    estilos, categorias, árvores, perfil de combate com teto
+api/_jxj-rating.js     Glicko-2 (uma luta = um período) e reset de temporada
+api/_jxj-regras.js     XP, nível, fichas, conquistas, nome, tolerância da fila
+supabase_jxj.sql       tabelas e funções jxj_* (RLS sem policy; só a service_role executa)
+index.html             telas em #/jxj/... (o navegador só escolhe)
+ferramentas/           PGlite, servidor local, balanço (jxj-balanco.mjs) e E2E (jxj-e2e.mjs)
+```
+
+- **O navegador só escolhe.** Manda a ação e os ids. Dano, energia,
+  vencedor, rating, XP, nível, fichas e Pro saem do servidor e do banco;
+  número mandado pelo cliente é ignorado.
+- **Regra de dado no banco, conta no motor.** Slot, principal (72 h no
+  relógio do banco), fila, par, ação única por troca, gravação da troca
+  uma vez só (versão), fim da luta, temporada e torneio são funções
+  `jxj_*` com trava de linha ou de transação. O combate e o Glicko-2 são
+  JS, testados em massa; o banco grava o resultado uma vez.
+- **Semente com compromisso.** 32 bytes do `crypto` do Node no começo da
+  luta; `sha256(semente)` aparece pros dois desde o início; a semente é
+  revelada no fim, e a tela de resultado refaz a luta e confere.
+- **Sem cron, sem Realtime.** Prazo vencido, temporada e torneio andam na
+  próxima chamada de qualquer jogador. A tela consulta o servidor (1,2 s
+  na luta, 1,5 s na confirmação, 3 s na fila) e mostra o relógio pelo
+  `agora` do servidor.
+- **A IA só narra**, uma vez por luta, com os fatos do motor, o filtro de
+  texto e a trava anti-invenção; sem IA, molde local.
+
+### Combate
+
+3 rounds de 4 trocas, 20 s por troca (mais 3 s de tolerância de rede).
+Quatro famílias de ação, com rótulo pela posição (em pé, por cima, por
+baixo). Em pé: Golpes ganha de Pressão, Pressão de Defesa, Defesa de
+Queda e Queda de Golpes; Golpes contra Defesa e Queda contra Pressão são
+parelhos. "Ganhar" é vantagem na disputa (15 pontos), nunca resultado
+garantido: atributo e árvore continuam pesando.
+
+Golpes contra Defesa bate na guarda: 13,5 pontos a menos pra acertar,
+60% do dano, metade do risco de nocaute, e o golpe que não entra conta 2
+pontos pra quem defendeu. Sem isso, achado pela suíte `jxjmotor`: no
+espelho striker, "só golpes" vencia "só defesa" em 73% e a mistura
+racional virava 100% golpes.
+
+No chão, a guarda fechada segura a finalização sem anular (tira 47% da
+vantagem), e os dois parados dão meio ponto de controle a quem está por
+cima; na segunda vez seguida o juiz levanta a luta. Ausência: prazo
+perdido vira Defender; dois seguidos dão a troca pro adversário; três,
+W.O.; os dois três vezes, luta anulada.
+
+### Balanço medido
+
+Como mede: `ferramentas/jxj-balanco.mjs`. "Jogo racional" = cada lado
+sorteia a ação pela mistura de equilíbrio da troca (matriz 4x4 do ganho
+de chance de vencer, valor aprendido por regressão logística em lutas
+simuladas). "Quem se adapta" = joga o equilíbrio e responde ao que o
+outro já repetiu na luta. Os números abaixo são os da suíte (sementes
+fixas); as faixas estão nos testes.
+
+| medida | resultado | faixa no teste |
+|---|---|---|
+| estilos no nível 1 (600 lutas por dupla) | 44% a 53% | 42 a 58 |
+| nocaute / finalização / decisão / empate | 29,7 / 12,4 / 56,2 / 1,7% | 20-34 / 5-16 / 50-72 / até 5 |
+| nível 30 contra nível 1 (mesmo estilo) | striker 74, wrestler 69, grappler 69, counter 81% | 62 a 85 |
+| nível 30 contra nível 20 | 55% a 61% | acima de 50 |
+| estilos no nível 30 (build típica) | 40% a 57% | 40 a 60 |
+| repetir uma ação contra quem se adapta | no máximo 48% (striker só golpes); o resto 39% ou menos | até 50 |
+| mistura em pé | nenhuma ação passa de 67% | até 80, 2+ ações com 10%+ |
+| valor de cada nó no nível 3 | 0,8 (Pressão no solo) a 5,1 (Defesa de finalização) | 0,5 a 6,5 |
+
+Rating (`jxjrating`, `jxjtemporada`): o Glicko-2 bate o exemplo do artigo
+do Glickman (1464,06 / 151,52 / 0,05999). Temporada simulada com 300
+jogadores e a fila de verdade, 8 semanas (13.199 lutas): correlação de
+postos entre rating e habilidade escondida 0,92; 95% dos pares com até
+115 pontos de diferença (máximo 383); espera mediana 0 s. Depois do
+reset, 4 semanas e a correlação volta a 0,95. Lutador novo: erro mediano
+de posto de 13% depois de 10 lutas.
+
+**Como a árvore foi calibrada:** cada nó medido no nível 3 contra os 4
+estilos. Na primeira versão, 22 dos 48 nós não mudavam nada (menos de 1
+ponto): as mecânicas de ponto no chão (transição, passagem, levantar,
+saída) mexem numa disputa que já está decidida pela escolha certa no
+ciclo. Esses nós ganharam um atributo acompanhante com valor medido
+(tabela abaixo). Depois, a build de nível 30 do wrestler ganhava 62 a 65%
+dos outros: tirando um nó por vez, o culpado era Entradas (queda), seguido
+de Equilíbrio e Controle posicional; eles foram cortados e um fator por
+estilo acertou o resto (níveis 20 e 30, pior dupla a 2,3 pontos de 50%).
+O nó vale mais ou menos dependendo do estilo porque o mesmo atributo vale
+diferente pra cada estilo:
+
+| pontos de vitória por ponto de atributo | golpe | poder | defesa | queda | def. queda | chão | def. chão | cardio | queixo |
+|---|---|---|---|---|---|---|---|---|---|
+| striker | 0,88 | 0,66 | 0,58 | 0,04 | 0,71 | 0,09 | 0,23 | 0,01 | 0,13 |
+| wrestler | 0,11 | 0,08 | 0,22 | 1,30 | 0,40 | 0,30 | 0,11 | 0,80 | 0,07 |
+| grappler | 0,15 | 0,11 | 0,15 | 1,33 | 0,34 | 0,74 | 0,06 | 0,42 | 0,09 |
+| counter | 0,84 | 0,67 | 0,80 | 0,02 | 0,73 | 0,02 | 0,12 | 0,20 | 0,04 |
+
+(`node ferramentas/jxj-balanco.mjs atributos`: 3 pontos a mais no
+atributo, build de nível 1, contra os 4 estilos, 1.000 lutas cada.)
+Defesa no chão, queixo e, fora do wrestler e do grappler, cardio valem
+pouco; por isso nenhum nó vive só deles.
+
+Limites conhecidos:
+- Finalização em 12% das lutas, contra 19% no UFC (era 4% antes do
+  ajuste do chão).
+- O "jogo racional" é a mistura de uma troca no começo da luta. No chão
+  ele subestima avançar a posição, então as misturas do chão tendem a
+  segurar e fechar a guarda. As faixas valem pra esse modelo; jogador de
+  verdade vai achar coisa que ele não acha.
+- No espelho striker, trocar golpes sempre é a jogada mais segura (48%
+  contra quem se adapta): não vence, mas não perde muito.
+- Custo: uma luta de 12 trocas custa da ordem de 100 a 200 chamadas da
+  função por jogador (consulta a cada 1,2 s).
+
+### Testes
+
+```bash
+node testar.js jxj           # servidor + banco de verdade (PGlite): fluxo, Free/Pro, fila, luta, temporada, torneio, ataques, rollback
+node testar.js jxjmotor      # determinismo, invariantes, ausência, ciclo, balanço, métodos, evolução
+node testar.js jxjarvore     # estrutura, regras de compra, teto, textos, valor de cada nó
+node testar.js jxjrating     # Glicko-2 contra o artigo, incerteza, reset, tolerância da fila
+node testar.js jxjtemporada  # temporada simulada, reset, lutador novo, progressão, economia
+node testar.js jxjtelas      # telas no DOM falso ligadas ao servidor de verdade
+```
+
+PGlite (Postgres em WebAssembly) uma vez: `npm install --prefix
+ferramentas`. Navegador de verdade: `node ferramentas/jxj-e2e.mjs`
+rodado de uma pasta com `puppeteer-core` (sobe o servidor local sozinho,
+duas contas, a luta inteira clicando, prints de computador e celular; a
+API de produção fica bloqueada). O E2E achou o bug que nenhuma suíte
+pegava: clicar num nó da árvore quebrava (o nó da tela não tinha o
+ramo), então ninguém conseguia gastar ponto; a `jxjtelas` nasceu dele e
+reprova com o mesmo erro se a correção sair.
+
+---
 
 ## Como jogar: tutorial com prints anotados (2026-09-28)
 

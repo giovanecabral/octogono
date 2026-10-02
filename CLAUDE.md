@@ -21,8 +21,13 @@ fighters.json       1.527 lutadores reais com stats do ufcstats.
 testar.js           A única ferramenta de teste. Lê o motor de dentro do HTML.
 atualizar-dados.py  Regenera o fighters.json.
 api/ai.js           Proxy do OpenRouter. Roda na Vercel.
+api/jxj.js          JxJ (jogador contra jogador): rota única, servidor decide tudo.
+api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usam nada da carreira.
+supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
+supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
+ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
-docs/superpowers/   Spec e planos do revamp da interface.
+docs/superpowers/   Spec e planos do revamp da interface e do JxJ.
 ```
 
 ## Revamp da interface (2026-09-26 a 27): concluído e no ar
@@ -86,6 +91,36 @@ metade). Regras do revamp que valem daqui pra frente:
   `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
   rota); a suíte `placar` compara as faixas com o `grade()` do jogo.
 
+## JxJ (2026-10-01): pronto no código, desligado até o dono migrar o banco
+
+Spec: `docs/superpowers/specs/2026-10-01-jxj-design.md`; números medidos e
+passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
+
+- **Isolado da carreira.** `api/_jxj-*.js` não lê o `index.html`, o `TUNING`
+  nem os 8 geradores; a carreira não lê nada do JxJ. Mexer num nunca pode
+  mudar o outro.
+- **`JXJ_ATIVO` liga o modo.** Diferente de `"true"` na Vercel: toda ação
+  responde 503 e a tela mostra "O JxJ abre em breve". Variável nova só vale
+  em deploy novo: depois de mudar, Redeploy (sem mudar código).
+- **O banco é do dono.** `supabase_jxj.sql` só roda depois do backup e da
+  aprovação explícita dele (regra de sempre: nenhuma migração sem
+  aprovação). Validação local: PGlite (`npm install --prefix ferramentas`
+  uma vez), nas suítes `jxj` e `jxjtelas`. Desfazer:
+  `supabase_jxj_rollback.sql` (para sozinho se algo fora do JxJ depender
+  das tabelas).
+- **O navegador só escolhe.** Ação, ids e texto. Resultado, rating, XP,
+  fichas, nível e Pro saem do servidor/banco; número mandado pelo cliente é
+  ignorado (teste no `jxj`). A IA só narra o resultado pronto, com filtro.
+- **Uma rota só** (`api/jxj.js` com `acao`): o plano Hobby aceita 12 funções.
+- **Mexeu no motor ou na árvore do JxJ:** `node testar.js jxjmotor` e
+  `node testar.js jxjarvore` (faixas nos testes) e, pra ver os números,
+  `node ferramentas/jxj-balanco.mjs matriz|niveis|nos|atributos`. Depois do
+  lançamento, número de combate novo sobe `VERSAO_BALANCEAMENTO` (respec
+  grátis e a fila só junta lutadores da mesma versão).
+- **`NOS` é cópia rasa de `RAMOS`**: os arrays de efeito são os mesmos.
+  Ferramenta que troca o array (em vez do valor) num lado e mede pelo outro
+  mede o valor antigo (custou uma calibração inteira).
+
 ## Como testar — SEMPRE
 
 ```bash
@@ -101,7 +136,9 @@ o resultado final se QUALQUER suíte reprovar — nenhuma fica de fora,
 nenhuma passa despercebida. **~25 minutos**, não ~40s — a maioria das
 suítes é rápida, mas `freqconquistas` (150 carreiras de ponta a ponta),
 `frequencia` (30), `gapescolha` (3000 pares) e `drivermotor`/`motor`
-(6000 lutas cada) são pesadas de verdade. Rodar em background
+(6000 lutas cada) são pesadas de verdade. As suítes do JxJ somam cerca
+de 1,5 minuto (`jxjarvore` mede os 48 nós) e precisam do PGlite
+(`npm install --prefix ferramentas`, uma vez). Rodar em background
 (`run_in_background`/`&`) e aguardar a notificação, não ficar no
 terminal esperando.
 

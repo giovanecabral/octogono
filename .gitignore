@@ -13,3 +13,5 @@ audio/bruto/
 # Rascunho de layout do dono (coletiva/entrevista, 2026-09-28): fica só local
 Mapa.png
 mapa.png
+# ferramentas de teste (PGlite): só o package.json vai pro git
+node_modules/

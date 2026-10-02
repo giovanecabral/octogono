@@ -1,0 +1,8 @@
+{
+  "name": "octogono-ferramentas",
+  "private": true,
+  "description": "Ferramentas de teste fora do site (não vai pro deploy): PGlite valida a migração do JxJ (supabase_jxj.sql) num Postgres de verdade, local.",
+  "dependencies": {
+    "@electric-sql/pglite": "0.3.11"
+  }
+}

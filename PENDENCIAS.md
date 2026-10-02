@@ -2323,3 +2323,43 @@ privados em 404.
   autorização do dono (cerca de US$ 0,0013 por rodada de 26).
 - O dono confere em produção com conta Pro e Free de verdade e a IA real.
 
+
+## 42. JxJ: jogador contra jogador (2026-10-01)
+
+Pedido do dono: o sistema competitivo completo (lutador próprio, árvore,
+combate simultâneo no servidor, fila, Glicko-2, ranking, temporadas,
+torneios com cinturão, rivalidade, economia sem pagar por vantagem, 15
+telas). Spec em `docs/superpowers/specs/2026-10-01-jxj-design.md`; regras,
+números medidos e o passo a passo de ligar no LEIA-ME, seção "JxJ".
+
+Estado: código pronto e testado (suítes `jxj`, `jxjmotor`, `jxjarvore`,
+`jxjrating`, `jxjtemporada`, `jxjtelas` e o teste de navegador
+`ferramentas/jxj-e2e.mjs`), publicado DESLIGADO: sem `JXJ_ATIVO=true` na
+Vercel toda ação do JxJ responde 503 e a entrada mostra "O JxJ abre em
+breve". Nada da carreira mudou.
+
+Falta, e é do dono (o assistente não tem e não deve ter acesso ao banco de
+produção):
+1. Backup do banco (Supabase > Database > Backups).
+2. Rodar `supabase_jxj.sql` no SQL Editor (só cria tabelas e funções
+   `jxj_*`; não altera nenhuma tabela existente). Conferir: `select
+   count(*) from pg_proc where proname like 'jxj\_%'` dá 46 (e 18 tabelas
+   `jxj_*` em `pg_tables`).
+3. Na Vercel, `JXJ_ATIVO=true` (Production) e Redeploy do deploy atual.
+4. Jogar uma luta com duas contas de verdade (uma Pro) antes de anunciar.
+Desfazer: `JXJ_ATIVO` fora (com Redeploy) e, se preciso, apagar tudo do
+JxJ com `supabase_jxj_rollback.sql` (para sozinho se algo fora do JxJ
+depender das tabelas).
+
+Limites conhecidos (medidos, ver LEIA-ME):
+- Finalização em 12% das lutas no jogo racional, contra 19% no UFC.
+- O modelo de "jogo racional" é a mistura de equilíbrio de uma troca, no
+  começo da luta; no chão ele subestima avançar a posição, então as
+  misturas do chão tendem a segurar e fechar a guarda (o juiz levanta
+  depois de dois parados). As faixas dos testes valem pra esse modelo.
+- Sem Realtime: a luta consulta o servidor a cada 1,2 s (confirmação a
+  cada 1,5 s, fila a cada 3 s). Uma luta de 12 trocas custa da ordem de
+  100 a 200 chamadas da função por jogador; se pesar na cota da Vercel,
+  o intervalo é o primeiro ajuste.
+- Sem cron: prazo, temporada e torneio andam na próxima chamada de
+  qualquer jogador.
