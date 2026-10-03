@@ -71,7 +71,7 @@ atualizar-dados.py  Regenera o fighters.json com dados novos.
 api/ai.js           Proxy do OpenRouter. Só é usado depois do deploy.
 api/jxj.js          JxJ (jogador contra jogador). Ver a seção "JxJ".
 api/_jxj-*.js       Motor, árvores, rating e regras do JxJ.
-supabase_jxj.sql    Migração do JxJ (só aditiva); _rollback desfaz.
+supabase_jxj.sql    Migração do JxJ (só aditiva); depois dela, supabase_jxj_narracao.sql; _rollback desfaz as duas.
 ferramentas/        Teste do banco (PGlite), servidor local, balanço e E2E do JxJ.
 ```
 
@@ -3780,10 +3780,12 @@ breve" (o card do menu leva até ela). O banco de produção ainda não tem
 as tabelas: rodar a migração é do dono, depois do backup.
 
 1. Backup do banco (Supabase > Database > Backups).
-2. SQL Editor: colar e rodar `supabase_jxj.sql`. Só cria tabelas e
-   funções `jxj_*` (18 tabelas, 48 funções); não altera nenhuma tabela
-   que já existe e pode rodar de novo sem erro. Conferir com
-   `select count(*) from pg_proc where proname like 'jxj\_%'` (48).
+2. SQL Editor: colar e rodar `supabase_jxj.sql` e, depois dele,
+   `supabase_jxj_narracao.sql` (reserva e teto da narração por IA,
+   auditoria de 2026-10-03). Os dois só criam tabelas, colunas e funções
+   `jxj_*` (19 tabelas, 51 funções no total); não alteram nenhuma tabela
+   que já existe e podem rodar de novo sem erro. Conferir com
+   `select count(*) from pg_proc where proname like 'jxj\_%'` (51).
 3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
    Production, e Redeploy do deploy atual (variável nova só vale em
    deploy novo; não precisa mudar código).
@@ -3927,7 +3929,13 @@ título). Todo movimento fica no livro-razão `jxj_fichas`, com motivo.
 ### Custo e escala
 
 - **Combate sem IA.** A narração é um botão depois da luta, uma chamada
-  por luta, guardada e igual pros dois; sem a chave, molde local.
+  por luta, guardada e igual pros dois; sem a chave, molde local. Desde a
+  auditoria de 2026-10-03 (`supabase_jxj_narracao.sql`): só quem lutou
+  pede; uma geração paga por vez (reserva atômica na linha da luta, vence
+  em 30 s, então uma chamada que caiu não trava nada); teto diário global
+  em `jxj_config` `narracao_ia_dia` (padrão 300, 0 desliga a IA; no teto,
+  molde local). Mudar sem deploy: `update jxj_config set valor = '500'::jsonb
+  where chave = 'narracao_ia_dia'`.
 - **Consulta periódica:** 1,2 s na luta, 1,5 s na confirmação, 3 s na
   fila e na sala do torneio, e para ao sair da tela (token de tela). Cada
   consulta da luta é uma chamada da função e cerca de 3 chamadas ao

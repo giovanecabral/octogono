@@ -13,6 +13,7 @@ PLANO-LANCAMENTO.md
 ferramentas
 supabase_jxj.sql
 supabase_jxj_rollback.sql
+supabase_jxj_narracao.sql
 audio/bruto
 img/bruto
 *.py

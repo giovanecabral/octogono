@@ -10926,7 +10926,7 @@ async function testarJxJ() {
       await erro(u3, "aposentar", { lutadorId: l1, confirmacao: "x" }, /não encontrado/, 404);
       await erro(u3, "filaEntrar", { lutadorId: l1 }, /não encontrado/);
       const lid = await parear(u1, l1, u2, l2);
-      await erro(u3, "acao", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /não encontrada/);
+      await erro(u3, "acao", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /não encontrada/, 404);   // recusada antes de processar (auditoria 2026-10-03)
       await erro(u3, "luta", { lutaId: lid }, /não encontrada/, 404);
       await erro(u3, "recusar", { lutaId: lid }, /não encontrada/, 404);
       await lutar(lid, u1, u2);
@@ -11110,6 +11110,192 @@ async function testarJxJ() {
       if (!hall.cinturoes.some((h) => h.lutador === camp)) throw new Error("hall sem o campeão");
       const outro = await ok(us[1], "torneios", { categoria: "middleweight" });
       if (!outro.some((t) => t.status === "inscricoes")) throw new Error("não abriu o próximo torneio");
+    });
+    /* ---------------- segurança (auditoria de 2026-10-03) ----------------
+       Três bloqueadores corrigidos: narração só de quem lutou, com reserva
+       atômica e teto do dia (supabase_jxj_narracao.sql); processamento da
+       luta só depois de conferir o participante; tabelas do servidor só por
+       chave própria (Object.hasOwn). Cada teste reprova se a correção sair. */
+    const lutaPorWO = async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2);
+      for (let k = 0; k < 3; k++) {
+        const v = await ok(u1, "luta", { lutaId: lid });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await vencerPrazo(lid);
+      }
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.status !== "encerrada") throw new Error("a luta de apoio não acabou");
+      const nomes = (await q("select nomes from jxj_lutas where id = $1", [lid]))[0].nomes;
+      return { u1, u2, lid, venc: nomes[v.lado].nome, perd: nomes[v.lado === "a" ? "b" : "a"].nome };
+    };
+    /* IA falsa: intercepta só o OpenRouter; o resto segue pro banco falso */
+    const comIA = async (responder, fn) => {
+      const base = globalThis.fetch, reg = { chamadas: 0 };
+      process.env.OPENROUTER_API_KEY = "chave-de-teste";
+      globalThis.fetch = async (u, op) => {
+        if (String(u).startsWith("https://openrouter.ai/")) { reg.chamadas++; return responder(reg, op); }
+        return base(u, op);
+      };
+      try { return await fn(reg); } finally { globalThis.fetch = base; delete process.env.OPENROUTER_API_KEY; }
+    };
+    const respostaIA = (texto) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: texto } }] }) });
+    /* devolve um texto que passa no filtro da narração: o próprio resultado do pedido */
+    const ecoaResultado = async (reg, op) => {
+      const res = /Resultado: (.*)\.$/.exec(JSON.parse(op.body).messages[1].content)[1];
+      return respostaIA(`${res}. Depois de três prazos perdidos a luta acabou ali.`);
+    };
+    const usoHoje = async () => (await q("select coalesce((select chamadas from jxj_narracao_uso where dia = (now() at time zone 'America/Sao_Paulo')::date), 0)::int n"))[0].n;
+    const esperarAte = async (cond, ms = 3000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 10)); } return true; };
+
+    await conf("segurança: narração de luta alheia é recusada antes de consultar ou gerar (sem reserva, sem cota, sem IA); quem lutou recebe", async () => {
+      const { u1, lid } = await lutaPorWO();
+      const u3 = await novoUsuario({ pro: true });
+      const usoAntes = await usoHoje();
+      await comIA(ecoaResultado, async (reg) => {
+        await erro(u3, "narracao", { lutaId: lid }, /não encontrada/);
+        const l = (await q("select narracao, narracao_reserva from jxj_lutas where id = $1", [lid]))[0];
+        if (reg.chamadas !== 0 || l.narracao !== null || l.narracao_reserva !== null || (await usoHoje()) !== usoAntes)
+          throw new Error("luta alheia mexeu em algo: " + JSON.stringify({ chamadas: reg.chamadas, l, uso: await usoHoje(), usoAntes }));
+        const n = await ok(u1, "narracao", { lutaId: lid });
+        if (!/prazos perdidos/.test(n.narracao || "") || reg.chamadas !== 1) throw new Error("quem lutou não recebeu a narração da IA: " + JSON.stringify(n));
+      });
+    });
+    await conf("segurança: duas narrações ao mesmo tempo na mesma luta fazem uma chamada paga só; a outra recebe 'gerando' e depois a mesma narração", async () => {
+      const { u1, u2, lid, venc, perd } = await lutaPorWO();
+      const textoIA = `${venc} venceu por W.O. depois que ${perd} deixou passar o prazo três vezes seguidas.`;
+      let liberar; const portao = new Promise((r) => { liberar = r; });
+      const usoAntes = await usoHoje();
+      await comIA(async () => { await portao; return respostaIA(textoIA); }, async (reg) => {
+        const p1 = api(u1, "narracao", { lutaId: lid }), p2 = api(u2, "narracao", { lutaId: lid });
+        /* sem reserva, as duas param na IA e nenhuma responde: o limite de
+           tempo reprova (sem ele o Node sai calado com a promessa pendente) */
+        let relogio;
+        const limite = new Promise((_, rej) => { relogio = setTimeout(() => rej(new Error("nenhuma das duas respondeu em 5 s: as duas estão chamando a IA (sem reserva)")), 5000); });
+        const [quem, primeira] = await Promise.race([p1.then((r) => ["p1", r]), p2.then((r) => ["p2", r]), limite])
+          .finally(() => clearTimeout(relogio)).catch((e) => { liberar(); throw e; });
+        if (primeira.status !== 200 || !primeira.json.gerando) throw new Error("a segunda devia esperar: " + JSON.stringify(primeira));
+        if (!(await esperarAte(() => reg.chamadas >= 1)) || reg.chamadas !== 1) throw new Error("chamadas à IA com as duas em curso: " + reg.chamadas);
+        liberar();
+        const outra = await (quem === "p1" ? p2 : p1);
+        if (outra.status !== 200 || outra.json.narracao !== textoIA) throw new Error("quem reservou: " + JSON.stringify(outra));
+        const depois = await ok(quem === "p1" ? u1 : u2, "narracao", { lutaId: lid });
+        if (depois.narracao !== textoIA) throw new Error("quem esperou não recebeu a mesma: " + JSON.stringify(depois));
+        if (reg.chamadas !== 1 || (await usoHoje()) !== usoAntes + 1) throw new Error(`IA ${reg.chamadas}x, cota ${(await usoHoje()) - usoAntes}`);
+      });
+    });
+    await conf("segurança: reserva vencida (geração que caiu no meio) não trava; IA que falha vira molde local gravado, sem nova cobrança; reserva em curso faz esperar", async () => {
+      const { u1, lid } = await lutaPorWO();
+      await q("update jxj_lutas set narracao_reserva = gen_random_uuid(), narracao_reservada_em = now() - interval '5 minutes' where id = $1", [lid]);
+      await comIA(async () => ({ ok: false, status: 500, json: async () => ({}) }), async (reg) => {
+        const n = await ok(u1, "narracao", { lutaId: lid });
+        if (!/venceu/.test(n.narracao || "") || reg.chamadas !== 1) throw new Error("reserva vencida travou ou a falha não caiu no molde: " + JSON.stringify({ n, c: reg.chamadas }));
+        const n2 = await ok(u1, "narracao", { lutaId: lid });
+        const l = (await q("select narracao_reserva from jxj_lutas where id = $1", [lid]))[0];
+        if (n2.narracao !== n.narracao || reg.chamadas !== 1 || l.narracao_reserva !== null) throw new Error("cobrou de novo ou não soltou a reserva");
+      });
+      const x = await lutaPorWO();
+      await q("update jxj_lutas set narracao_reserva = gen_random_uuid(), narracao_reservada_em = now() where id = $1", [x.lid]);
+      const r = await ok(x.u1, "narracao", { lutaId: x.lid });
+      if (!r.gerando) throw new Error("reserva em curso não fez esperar: " + JSON.stringify(r));
+    });
+    await conf("segurança: teto diário da IA (jxj_config narracao_ia_dia): no teto a narração sai do molde local, 0 desliga a IA, nunca passa do teto", async () => {
+      const a = await lutaPorWO(), b = await lutaPorWO(), c = await lutaPorWO();
+      const usados = await usoHoje();
+      await q("update jxj_config set valor = $1::jsonb where chave = 'narracao_ia_dia'", [JSON.stringify(usados + 1)]);
+      try {
+        await comIA(ecoaResultado, async (reg) => {
+          const na = await ok(a.u1, "narracao", { lutaId: a.lid });
+          const nb = await ok(b.u1, "narracao", { lutaId: b.lid });
+          if (reg.chamadas !== 1 || !/prazos perdidos/.test(na.narracao) || /prazos perdidos/.test(nb.narracao) || !/venceu/.test(nb.narracao))
+            throw new Error("teto: " + JSON.stringify({ chamadas: reg.chamadas, na: na.narracao, nb: nb.narracao }));
+          if ((await usoHoje()) !== usados + 1) throw new Error("passou do teto: " + (await usoHoje()));
+          await q("update jxj_config set valor = '0'::jsonb where chave = 'narracao_ia_dia'");
+          const nc = await ok(c.u1, "narracao", { lutaId: c.lid });
+          if (reg.chamadas !== 1 || !/venceu/.test(nc.narracao)) throw new Error("0 não desligou a IA");
+        });
+      } finally {
+        await q("update jxj_config set valor = '300'::jsonb where chave = 'narracao_ia_dia'");
+      }
+    });
+    await conf("segurança: conta que não lutou não provoca preparo, cancelamento por prazo nem gravação de troca (luta, confirmar, acao); quem lutou processa normalmente", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2);
+      await vencerPrazo(lid);
+      const foto = async () => JSON.stringify((await q("select versao, round, troca, status, (select count(*)::int from jxj_trocas where luta_id = $1) n from jxj_lutas where id = $1", [lid]))[0]);
+      const antes = await foto();
+      await erro(u3, "luta", { lutaId: lid }, /não encontrada/, 404);
+      await erro(u3, "acao", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /não encontrada/, 404);
+      await erro(u3, "confirmar", { lutaId: lid }, /não encontrada/, 404);
+      if ((await foto()) !== antes) throw new Error("luta alheia foi processada: " + antes + " virou " + (await foto()));
+      await ok(u1, "luta", { lutaId: lid });
+      if (JSON.parse(await foto()).n !== JSON.parse(antes).n + 1) throw new Error("quem lutou não resolveu a troca vencida");
+      const u4 = await novoUsuario({ pro: true }), u5 = await novoUsuario({ pro: true });
+      const l4 = (await criar(u4)).id, l5 = (await criar(u5)).id;
+      const lid2 = await parear(u4, l4, u5, l5, { confirmar: false });
+      await q("update jxj_lutas set perfis = null, confirmacao_ate = now() - interval '10 seconds' where id = $1", [lid2]);
+      await erro(u3, "luta", { lutaId: lid2 }, /não encontrada/, 404);
+      await erro(u3, "confirmar", { lutaId: lid2 }, /não encontrada/, 404);
+      const s2 = (await q("select status, perfis is null sem from jxj_lutas where id = $1", [lid2]))[0];
+      if (s2.status !== "confirmacao" || !s2.sem) throw new Error("luta alheia foi preparada ou cancelada: " + JSON.stringify(s2));
+      const v = await ok(u4, "luta", { lutaId: lid2 });
+      if (v.status !== "cancelada") throw new Error("quem lutou não cancelou a confirmação vencida: " + v.status);
+    });
+    await conf("segurança: moldura com nome herdado (constructor, toString, __proto__, hasOwnProperty) é recusada sem gastar nem gravar; a compra legítima cobra o preço do servidor", async () => {
+      const u = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = (await criar(u)).id;
+      await q("update jxj_contas set fichas = 1000 where user_id = $1", [u]);
+      for (const nome of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf", "inexistente"])
+        await erro(u, "moldura", { lutadorId: lid, moldura: nome, comprar: true }, /moldura inválida/);
+      await erro(u, "moldura", { lutadorId: lid, moldura: ["ouro"], comprar: true }, /moldura inválida/);
+      const l = (await q("select molduras, moldura from jxj_lutadores where id = $1", [lid]))[0];
+      const fichas = (await q("select fichas from jxj_contas where user_id = $1", [u]))[0].fichas;
+      const led = await q("select delta from jxj_fichas where user_id = $1 and motivo = 'moldura'", [u]);
+      if (JSON.stringify(l.molduras) !== '["padrao"]' || l.moldura !== "padrao" || fichas !== 1000 || led.length)
+        throw new Error("nome herdado mexeu em algo: " + JSON.stringify({ l, fichas, led }));
+      await ok(u, "moldura", { lutadorId: lid, moldura: "noite", comprar: true, preco: -500 });
+      const f2 = (await q("select fichas from jxj_contas where user_id = $1", [u]))[0].fichas;
+      const led2 = await q("select delta from jxj_fichas where user_id = $1 and motivo = 'moldura'", [u]);
+      if (f2 !== 1000 - REG.MOLDURAS.noite.preco || led2.length !== 1 || led2[0].delta !== -REG.MOLDURAS.noite.preco)
+        throw new Error("preço não veio do servidor: " + JSON.stringify({ f2, led2 }));
+    });
+    await conf("segurança: estilo e categoria inválidos (inclusive nomes herdados) dão erro controlado em criar, ranking e torneios; build com chave herdada dá 400, não 500", async () => {
+      const u = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const base = { nome: "Teste Seguro", rosto: ROSTO };
+      for (const estilo of ["constructor", "__proto__", "toString", "ninja", 7, null])
+        await erro(u, "criar", { ...base, categoria: "lightweight", estilo }, /estilo inválido/);
+      for (const categoria of ["constructor", "__proto__", "hasOwnProperty", "inexistente", ["lightweight"]])
+        await erro(u, "criar", { ...base, categoria, estilo: "striker" }, /categoria inválida/);
+      for (const categoria of ["constructor", "toString", "__proto__"]) {
+        await erro(null, "ranking", { categoria }, /categoria inválida/);
+        await erro(null, "torneios", { categoria }, /categoria inválida/);
+      }
+      if ((await q("select count(*)::int n from jxj_lutadores where user_id = $1", [u]))[0].n !== 0) throw new Error("criou lutador com valor inválido");
+      const lid = (await criar(u)).id;
+      const rev = (await ok(u, "estado")).lutadores.find((x) => x.id === lid).buildRev;
+      for (const b of ['{"constructor":1}', '{"__proto__":1}', '{"toString":1}'])
+        await erro(u, "build", { lutadorId: lid, rev, build: JSON.parse(b) }, /habilidade desconhecida/);
+      await ok(u, "build", { lutadorId: lid, rev, build: { precisao_maos: 1 } });
+      if ((await ok(null, "ranking", { categoria: "lightweight" })) == null) throw new Error("ranking legítimo falhou");
+    });
+    await conf("segurança: a tabela e as funções novas da narração ficam fechadas pra anon e authenticated (RLS sem policy, execução revogada)", async () => {
+      const lidos = [], gravou = [], executou = [];
+      for (const papel of ["authenticated", "anon"]) {
+        await db.exec(`set role ${papel};`);
+        lidos.push((await db.query("select count(*)::int n from jxj_narracao_uso")).rows[0].n);
+        let g = true; try { await db.query("insert into jxj_narracao_uso (dia, chamadas) values ('2000-01-01', 1)"); } catch { g = false; } gravou.push(g);
+        for (const f of ["select public.jxj_narracao_cota_ia()", "select public.jxj_narracao_reservar(gen_random_uuid(), 1, true)", "select public.jxj_narracao_concluir(1, gen_random_uuid(), 'x')"]) {
+          let e = true; try { await db.query(f); } catch { e = false; } executou.push(e);
+        }
+        await db.exec("reset role;");
+      }
+      if (lidos.some((n) => n !== 0) || gravou.some(Boolean) || executou.some(Boolean)) throw new Error(JSON.stringify({ lidos, gravou, executou }));
     });
     await conf("rollback (supabase_jxj_rollback.sql): apaga só o que é do JxJ, as tabelas e os dados do jogo ficam; roda duas vezes; o JxJ instala de novo depois", async () => {
       const rb = fs.readFileSync(path.join(RAIZ, "supabase_jxj_rollback.sql"), "utf8");

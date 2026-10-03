@@ -24,6 +24,7 @@ api/ai.js           Proxy do OpenRouter. Roda na Vercel.
 api/jxj.js          JxJ (jogador contra jogador): rota única, servidor decide tudo.
 api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usam nada da carreira.
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
+supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
@@ -102,7 +103,8 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
 - **`JXJ_ATIVO` liga o modo.** Diferente de `"true"` na Vercel: toda ação
   responde 503 e a tela mostra "O JxJ abre em breve". Variável nova só vale
   em deploy novo: depois de mudar, Redeploy (sem mudar código).
-- **O banco é do dono.** `supabase_jxj.sql` só roda depois do backup e da
+- **O banco é do dono.** `supabase_jxj.sql` (e, depois dele,
+  `supabase_jxj_narracao.sql`) só roda depois do backup e da
   aprovação explícita dele (regra de sempre: nenhuma migração sem
   aprovação). Validação local: PGlite (`npm install --prefix ferramentas`
   uma vez), nas suítes `jxj` e `jxjtelas`. Desfazer:

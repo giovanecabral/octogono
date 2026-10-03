@@ -129,12 +129,16 @@ function efeitosDoFim(d, estado, fim) {
 
 /* Resolve o que estiver pronto: troca com as duas ações, troca com prazo
    vencido (ausência), confirmação vencida. Várias chamadas ao mesmo tempo
-   são seguras: o banco grava cada troca uma vez só (versão). */
-async function processarLuta(lid) {
+   são seguras: o banco grava cada troca uma vez só (versão).
+   uid é obrigatório: conta que não lutou não provoca preparo, cancelamento
+   por prazo nem gravação de troca (a conferência vem antes de qualquer
+   escrita; sem uid, nada é processado). */
+async function processarLuta(lid, uid) {
   let d = null;
   for (let passo = 0; passo < 6; passo++) {
     d = await rpc("jxj_luta", { lid });
     if (!d || !d.luta) throw new ErroJxJ("luta não encontrada", 404);
+    if (!uid || (d.luta.a_user !== uid && d.luta.b_user !== uid)) throw new ErroJxJ("luta não encontrada", 404);
     const L = d.luta, agora = Date.parse(d.agora);
     if (L.status === "confirmacao") {
       if (!L.perfis) { await prepararSeFaltar(d); continue; }
@@ -288,7 +292,7 @@ async function executar(acao, c, uid) {
     /* públicas */
     case "ranking": {
       const cat = c.categoria == null || c.categoria === "" ? null : String(c.categoria);
-      if (cat && !ARV.CATEGORIAS[cat]) throw new ErroJxJ("categoria inválida");
+      if (cat && !Object.hasOwn(ARV.CATEGORIAS, cat)) throw new ErroJxJ("categoria inválida");
       const busca = String(c.busca || "").trim().slice(0, 30).replace(/[%_\\]/g, "");
       const pagina = Math.max(0, Math.min(200, Math.floor(Number(c.pagina) || 0)));
       return rpc("jxj_ranking", { categoria_: cat, busca, pagina, uid });
@@ -307,7 +311,7 @@ async function executar(acao, c, uid) {
     case "temporada": return rpc("jxj_temporada_info", { uid });
     case "torneios": {
       const cat = c.categoria ? String(c.categoria) : null;
-      if (cat && !ARV.CATEGORIAS[cat]) throw new ErroJxJ("categoria inválida");
+      if (cat && !Object.hasOwn(ARV.CATEGORIAS, cat)) throw new ErroJxJ("categoria inválida");
       return rpc("jxj_torneios", { categoria_: cat, uid });
     }
     case "torneio": return rpc("jxj_torneio", { tid: idDe(c.torneioId, "torneio"), uid });
@@ -321,7 +325,7 @@ async function executar(acao, c, uid) {
     case "estado": {
       const est = await rpc("jxj_estado", { uid });
       if (est.luta && est.luta.id) {
-        const d = await processarLuta(est.luta.id);
+        const d = await processarLuta(est.luta.id, uid);
         est.luta = { id: d.luta.id, status: d.luta.status, tipo: d.luta.tipo };
       }
       for (const l of est.lutadores || []) {
@@ -337,8 +341,8 @@ async function executar(acao, c, uid) {
     case "criar": {
       const v = REG.nomeLutadorValido(c.nome);
       if (!v.ok) throw new ErroJxJ(v.erro);
-      if (!ARV.ESTILOS[c.estilo]) throw new ErroJxJ("estilo inválido");
-      if (!ARV.CATEGORIAS[c.categoria]) throw new ErroJxJ("categoria inválida");
+      if (typeof c.estilo !== "string" || !Object.hasOwn(ARV.ESTILOS, c.estilo)) throw new ErroJxJ("estilo inválido");
+      if (typeof c.categoria !== "string" || !Object.hasOwn(ARV.CATEGORIAS, c.categoria)) throw new ErroJxJ("categoria inválida");
       return rpc("jxj_criar_lutador", { uid, nome_: v.nome, chave_: chaveNome(v.nome), rosto_: rostoValido(c.rosto), categoria_: c.categoria, estilo_: c.estilo });
     }
     case "build": {
@@ -348,7 +352,8 @@ async function executar(acao, c, uid) {
       if (!l) throw new ErroJxJ("lutador não encontrado", 404);
       const nova = c.build && typeof c.build === "object" && !Array.isArray(c.build) ? c.build : null;
       if (!nova) throw new ErroJxJ("árvore inválida");
-      const limpa = {};
+      /* sem protótipo: "__proto__" vira chave comum e cai na validação (num {} ele sumia em silêncio) */
+      const limpa = Object.create(null);
       for (const [k, v] of Object.entries(nova)) if (v) limpa[k] = v;
       const val = ARV.validarBuild(l.estilo, limpa, l.nivel);
       if (!val.ok) throw new ErroJxJ(val.erro);
@@ -367,37 +372,39 @@ async function executar(acao, c, uid) {
       return rpc("jxj_aposentar", { uid, lid });
     }
     case "moldura": {
-      const m = REG.MOLDURAS[c.moldura];
-      if (!m) throw new ErroJxJ("moldura inválida");
+      /* nome tem que ser chave própria da tabela (constructor, toString,
+         __proto__... não são molduras); o preço sai só da tabela do servidor */
+      const nome = typeof c.moldura === "string" ? c.moldura : "";
+      if (!Object.hasOwn(REG.MOLDURAS, nome)) throw new ErroJxJ("moldura inválida");
+      const m = REG.MOLDURAS[nome];
       const lid = idDe(c.lutadorId, "lutador");
       if (m.req === "titulo") {
         const p = await rpc("jxj_perfil", { lid });
         if (!p || !(p.titulos || []).length) throw new ErroJxJ("essa moldura é de quem tem título");
-        return rpc("jxj_moldura", { uid, lid, moldura_: c.moldura, preco: 0, comprar: false }).catch(async (e) => {
-          if (/compre/.test(e.message)) return rpc("jxj_moldura", { uid, lid, moldura_: c.moldura, preco: 0, comprar: true });
+        return rpc("jxj_moldura", { uid, lid, moldura_: nome, preco: 0, comprar: false }).catch(async (e) => {
+          if (/compre/.test(e.message)) return rpc("jxj_moldura", { uid, lid, moldura_: nome, preco: 0, comprar: true });
           throw e;
         });
       }
-      return rpc("jxj_moldura", { uid, lid, moldura_: c.moldura, preco: m.preco || 0, comprar: !!c.comprar });
+      return rpc("jxj_moldura", { uid, lid, moldura_: nome, preco: m.preco || 0, comprar: !!c.comprar });
     }
     case "buildPublica": return rpc("jxj_build_publica", { uid, lid: idDe(c.lutadorId, "lutador"), publica: !!c.publica });
     case "filaEntrar": return rpc("jxj_fila_entrar", { uid, lid: idDe(c.lutadorId, "lutador") });
     case "filaSair": return rpc("jxj_fila_sair", { uid });
     case "fila": {
       const r = await rpc("jxj_fila_parear", { uid, semente_: novaSemente(), tol_base: REG.TOLERANCIA.base, tol_seg: REG.TOLERANCIA.porDezSeg, tol_max: REG.TOLERANCIA.max });
-      if (r && r.luta) { const d = await processarLuta(r.luta); return { luta: vistaDaLuta(d, uid) }; }
+      if (r && r.luta) { const d = await processarLuta(r.luta, uid); return { luta: vistaDaLuta(d, uid) }; }
       return r;
     }
     case "luta": {
-      const d = await processarLuta(idDe(c.lutaId, "luta"));
-      if (d.luta.a_user !== uid && d.luta.b_user !== uid) throw new ErroJxJ("luta não encontrada", 404);
+      const d = await processarLuta(idDe(c.lutaId, "luta"), uid);
       return vistaDaLuta(d, uid);
     }
     case "confirmar": {
       const lid = idDe(c.lutaId, "luta");
-      await processarLuta(lid);
+      await processarLuta(lid, uid);
       await rpc("jxj_luta_confirmar", { uid, lid, prazo_ms: MOTOR.FORMATO.prazoMs });
-      return vistaDaLuta(await processarLuta(lid), uid);
+      return vistaDaLuta(await processarLuta(lid, uid), uid);
     }
     case "recusar": {
       const lid = idDe(c.lutaId, "luta");
@@ -410,9 +417,9 @@ async function executar(acao, c, uid) {
       if (!MOTOR.FAMILIAS.includes(c.familia)) throw new ErroJxJ("ação inválida");
       const round = Math.floor(Number(c.round)), troca = Math.floor(Number(c.troca));
       if (!(round >= 1 && round <= 9 && troca >= 1 && troca <= 9)) throw new ErroJxJ("troca inválida");
-      await processarLuta(lid);
+      await processarLuta(lid, uid);
       await rpc("jxj_enviar_acao", { uid, lid, round_: round, troca_: troca, familia_: c.familia });
-      return vistaDaLuta(await processarLuta(lid), uid);
+      return vistaDaLuta(await processarLuta(lid, uid), uid);
     }
     case "revanche": {
       const lid = idDe(c.lutaId, "luta");
@@ -425,15 +432,21 @@ async function executar(acao, c, uid) {
       return rpc("jxj_revanche_criar", { lid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b), prazo_ms: MOTOR.FORMATO.prazoMs });
     }
     case "narracao": {
+      /* Só quem lutou (o banco confere o uid antes de devolver ou gerar).
+         Uma geração por vez: a reserva é atômica no banco e vence em 30 s;
+         quem chega com outra em curso recebe "gerando" e tenta de novo.
+         A IA só é chamada se o teto do dia contou esta chamada
+         (supabase_jxj_narracao.sql); senão, ou se ela falhar, vale o molde
+         local. Assim nada trava a narração pra sempre. */
       const lid = idDe(c.lutaId, "luta");
-      const d = await rpc("jxj_luta", { lid });
-      if (!d || !d.luta || d.luta.status !== "encerrada") throw new ErroJxJ("a luta ainda não acabou");
-      if (d.luta.narracao) return { narracao: d.luta.narracao };
-      const vista = vistaDaLuta(d, uid);
-      const texto = (await narracaoIA(vista)) || narracaoLocal(vista);
-      await rpc("jxj_narracao_gravar", { lid, texto });
-      const d2 = await rpc("jxj_luta", { lid });
-      return { narracao: d2.luta.narracao || texto };
+      const iaLigada = !!process.env.OPENROUTER_API_KEY && process.env.JXJ_NARRACAO_IA !== "false";
+      const r = await rpc("jxj_narracao_reservar", { uid, lid, quer_ia: iaLigada });
+      if (r.narracao) return { narracao: r.narracao };
+      if (r.gerando || !r.reserva) return { gerando: true };
+      const vista = vistaDaLuta(await rpc("jxj_luta", { lid }), uid);
+      const texto = (r.ia ? await narracaoIA(vista) : null) || narracaoLocal(vista);
+      const g = await rpc("jxj_narracao_concluir", { lid, reserva_: r.reserva, texto });
+      return g && g.narracao ? { narracao: g.narracao } : { gerando: true };
     }
     case "torneioInscrever": return rpc("jxj_torneio_inscrever", { uid, lid: idDe(c.lutadorId, "lutador") });
     case "torneioSair": return rpc("jxj_torneio_sair", { uid });

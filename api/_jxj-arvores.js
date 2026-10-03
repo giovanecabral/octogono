@@ -210,14 +210,16 @@ export const pontosDoNivel = (nivel) => 3 + Math.max(0, Math.min(30, nivel) - 1)
    regra de "pontos já no ramo" vale contra os nós de tier menor do mesmo
    ramo, que é o que a árvore mostra. */
 export function validarBuild(estilo, build, nivel) {
-  if (!ESTILOS[estilo]) return { ok: false, erro: "estilo inválido" };
+  /* só chave própria das tabelas: nome herdado de Object (constructor,
+     __proto__...) não é estilo nem habilidade (auditoria de 2026-10-03) */
+  if (!Object.hasOwn(ESTILOS, estilo)) return { ok: false, erro: "estilo inválido" };
   if (!build || typeof build !== "object" || Array.isArray(build)) return { ok: false, erro: "build inválida" };
   const porRamo = {};
   let gasto = 0;
   const entradas = Object.entries(build);
   if (entradas.length > 60) return { ok: false, erro: "build inválida" };
   for (const [id, nivelNo] of entradas) {
-    const no = NOS[id];
+    const no = Object.hasOwn(NOS, id) ? NOS[id] : null;
     if (!no) return { ok: false, erro: `habilidade desconhecida: ${String(id).slice(0, 40)}` };
     if (!Number.isInteger(nivelNo) || nivelNo < 0 || nivelNo > NIVEL_MAX_NO) return { ok: false, erro: `nível inválido em ${no.nome}` };
     if (nivelNo === 0) continue;

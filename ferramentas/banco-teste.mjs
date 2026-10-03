@@ -1,7 +1,8 @@
 /* Banco de teste do JxJ: Postgres de verdade (PGlite, WebAssembly) com o
    mínimo do Supabase que as migrações usam (esquema auth, auth.uid(),
    papéis anon/authenticated/service_role). Roda supabase_schema.sql (o
-   banco de hoje) e depois supabase_jxj.sql, na mesma ordem da produção.
+   banco de hoje), depois supabase_jxj.sql e supabase_jxj_narracao.sql, na
+   mesma ordem da produção.
 
    fetchFalso() imita a REST do Supabase pro servidor (api/jxj.js) rodar
    inteiro contra esse banco: POST /rest/v1/rpc/<função> e GET
@@ -37,7 +38,11 @@ export async function novoBanco({ jxj = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB_SUPABASE);
   await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_schema.sql"), "utf8"));
-  if (jxj) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj.sql"), "utf8"));
+  if (jxj) {
+    await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj.sql"), "utf8"));
+    /* migração separada da narração (reserva e teto), na ordem da produção */
+    await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_narracao.sql"), "utf8"));
+  }
   await db.exec(GRANTS_SUPABASE);
   return db;
 }

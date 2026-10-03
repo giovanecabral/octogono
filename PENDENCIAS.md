@@ -2341,10 +2341,11 @@ breve". Nada da carreira mudou.
 Falta, e é do dono (o assistente não tem e não deve ter acesso ao banco de
 produção):
 1. Backup do banco (Supabase > Database > Backups).
-2. Rodar `supabase_jxj.sql` no SQL Editor (só cria tabelas e funções
-   `jxj_*`; não altera nenhuma tabela existente). Conferir: `select
-   count(*) from pg_proc where proname like 'jxj\_%'` dá 48 (e 18 tabelas
-   `jxj_*` em `pg_tables`).
+2. Rodar `supabase_jxj.sql` e depois `supabase_jxj_narracao.sql` no SQL
+   Editor (só criam tabelas, colunas e funções `jxj_*`; não alteram
+   nenhuma tabela existente). Conferir: `select count(*) from pg_proc
+   where proname like 'jxj\_%'` dá 51 (e 19 tabelas `jxj_*` em
+   `pg_tables`).
 3. Na Vercel, `JXJ_ATIVO=true` (Production) e Redeploy do deploy atual.
 4. Jogar uma luta com duas contas de verdade (uma Pro) antes de anunciar.
 Desfazer: `JXJ_ATIVO` fora (com Redeploy) e, se preciso, apagar tudo do

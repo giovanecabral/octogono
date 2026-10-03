@@ -1,4 +1,4 @@
--- supabase_jxj_rollback.sql — desfaz supabase_jxj.sql (JxJ, 2026-10-01).
+-- supabase_jxj_rollback.sql — desfaz supabase_jxj.sql e supabase_jxj_narracao.sql (JxJ).
 --
 -- APAGA TODOS OS DADOS DO JXJ: lutadores, lutas, ações, rating, temporadas,
 -- torneios, títulos, conquistas, fichas, limites e log do JxJ. Não toca em
@@ -52,7 +52,7 @@ end $$;
 -- tabelas jxj_* (o cascade só derruba as chaves estrangeiras entre elas,
 -- conferido acima)
 drop table if exists
-  jxj_log, jxj_limites, jxj_fichas, jxj_conquistas, jxj_titulos, jxj_confrontos,
+  jxj_narracao_uso, jxj_log, jxj_limites, jxj_fichas, jxj_conquistas, jxj_titulos, jxj_confrontos,
   jxj_inscricoes, jxj_torneios, jxj_classificacao, jxj_temporadas, jxj_rating_hist,
   jxj_trocas, jxj_acoes, jxj_lutas, jxj_fila, jxj_lutadores, jxj_contas, jxj_config
 cascade;

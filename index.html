@@ -8329,8 +8329,15 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   const nar=el("section","painel-n jxj-card jxj-narracao");
   nar.innerHTML=`<p class="jxj-rotulo">${ICONE("microfone")} Narração</p>`;
   if(v.narracao)nar.appendChild(el("p","",jxjEsc(v.narracao)));
+  else if(espectador)nar.appendChild(el("p","jxj-nota","Quem lutou ainda não pediu a narração."));   // o servidor só gera pra quem lutou
   else{ const b=el("button","botao botao-sec","Contar como foi"); b.type="button";
-    b.onclick=async()=>{ SOM.toque(); b.disabled=true; try{ const n=await jxj("narracao",{lutaId:v.id}); b.replaceWith(el("p","",jxjEsc(n.narracao))); }catch(e){ b.disabled=false; } };
+    /* "gerando" = a outra conta já pediu e a narração está saindo: espera e pergunta de novo */
+    b.onclick=async()=>{ SOM.toque(); b.disabled=true;
+      try{ for(let k=0;k<6;k++){ const n=await jxj("narracao",{lutaId:v.id});
+          if(n.narracao){ b.replaceWith(el("p","",jxjEsc(n.narracao))); return; }
+          b.textContent="Preparando a narração"; await new Promise(ok=>setTimeout(ok,2500)); }
+        b.textContent="Tentar de novo"; b.disabled=false; }
+      catch(e){ b.textContent="Tentar de novo"; b.disabled=false; } };
     nar.appendChild(b); }
   g.appendChild(nar);
   const aud=el("section","painel-n jxj-card");
