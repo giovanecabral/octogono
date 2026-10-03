@@ -11002,6 +11002,44 @@ async function testarJxJ() {
       const dif = r.filter((x) => x.n !== REG.nivelDoXp(x.x).nivel);
       if (dif.length) throw new Error("diferem em " + JSON.stringify(dif.slice(0, 3)));
     });
+    await conf("conquista: as fichas do banco (jxj_fichas_conquista) são as do servidor (CONQUISTAS); conquista desconhecida vale 0", async () => {
+      const ids = Object.keys(REG.CONQUISTAS);
+      const r = await q("select x, public.jxj_fichas_conquista(x) f from unnest($1::text[]) x", [[...ids, "inventada"]]);
+      const dif = r.filter((x) => x.f !== (x.x === "inventada" ? 0 : REG.CONQUISTAS[x.x].fichas));
+      if (dif.length) throw new Error("diferem: " + JSON.stringify(dif));
+      if (ids.some((id) => !(REG.CONQUISTAS[id].fichas > 0))) throw new Error("conquista sem fichas na tabela do servidor");
+    });
+    await conf("conquista paga uma vez: credita no livro-razão (motivo conquista) mesmo com o teto diário de luta cheio; repetir não credita", async () => {
+      const u = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = (await criar(u)).id;
+      await q("update jxj_contas set fichas = 0 where user_id = $1", [u]);
+      await q("insert into jxj_fichas (user_id, delta, motivo, ref) values ($1, 120, 'luta', 'teto')", [u]);
+      const r1 = (await q("select public.jxj_dar_conquista($1, $2, 'primeira_vitoria') nova", [lid, u]))[0].nova;
+      const r2 = (await q("select public.jxj_dar_conquista($1, $2, 'primeira_vitoria') nova", [lid, u]))[0].nova;
+      const c = (await q("select fichas from jxj_contas where user_id = $1", [u]))[0].fichas;
+      const led = await q("select delta, ref from jxj_fichas where user_id = $1 and motivo = 'conquista'", [u]);
+      if (r1 !== true || r2 !== false || c !== 25 || led.length !== 1 || led[0].delta !== 25 || led[0].ref !== `primeira_vitoria:${lid}`)
+        throw new Error(JSON.stringify({ r1, r2, c, led }));
+    });
+    await conf("conquista no caminho real: quem vence a primeira luta (aqui por W.O.) ganha as fichas da Primeira vitória, uma vez", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const a = (await criar(u1, { categoria: "heavyweight" })).id, b = (await criar(u2, { categoria: "heavyweight" })).id;
+      const lid = await parear(u1, a, u2, b);
+      for (let k = 0; k < 3; k++) {
+        const v = await ok(u1, "luta", { lutaId: lid });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await vencerPrazo(lid);
+      }
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.status !== "encerrada" || v.resultado.vencedor !== v.lado) throw new Error("não terminou com vitória do u1: " + JSON.stringify(v.resultado));
+      await ok(u1, "luta", { lutaId: lid });   // consultar de novo não paga de novo
+      const led = await q("select delta, ref from jxj_fichas where user_id = $1 and motivo = 'conquista'", [u1]);
+      if (led.length !== 1 || led[0].delta !== REG.CONQUISTAS.primeira_vitoria.fichas || !led[0].ref.startsWith("primeira_vitoria:")) throw new Error(JSON.stringify(led));
+      const perdedor = await q("select count(*)::int n from jxj_fichas where user_id = $1 and motivo = 'conquista'", [u2]);
+      if (perdedor[0].n !== 0) throw new Error("quem perdeu ganhou conquista");
+    });
     await conf("temporada: na virada grava a classificação, dá fichas e título ao 1º, aplica o reset parcial e preserva nível, XP e árvore", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       const a = (await criar(u1, { categoria: "welterweight" })).id, b = (await criar(u2, { categoria: "welterweight" })).id;
@@ -11243,10 +11281,10 @@ async function testarJxJMotor() {
     console.log(cinza("         " + ESTS.map((s) => `${s.slice(0, 3)}: ` + ESTS.map((o) => f1(R.mat[s + ":" + o])).join(" ")).join(" | ")));
     if (fora.length) throw new Error("fora da faixa: " + fora.map(([k, v]) => `${k} ${f1(v)}%`).join(", "));
   });
-  await conf("métodos (jogo racional, todas as duplas): nocaute 20 a 34%, finalização 5 a 16%, decisão 50 a 72%, empate até 5%", () => {
+  await conf("métodos (jogo racional, todas as duplas): nocaute 20 a 34%, finalização 5 a 16%, decisão 50 a 72%, empate até 5%, luta média de 7 a 11,5 trocas", () => {
     const m = R.metodos;
-    console.log(cinza(`         KO/TKO ${f1(m.ko)}%  FIN ${f1(m.fin)}%  DEC ${f1(m.dec)}%  empate ${f1(m.empate)}%`));
-    if (m.ko < 20 || m.ko > 34 || m.fin < 5 || m.fin > 16 || m.dec < 50 || m.dec > 72 || m.empate > 5) throw new Error("fora da faixa");
+    console.log(cinza(`         KO/TKO ${f1(m.ko)}%  FIN ${f1(m.fin)}%  DEC ${f1(m.dec)}%  empate ${f1(m.empate)}%  duração média ${f1(m.trocasMedia)} trocas`));
+    if (m.ko < 20 || m.ko > 34 || m.fin < 5 || m.fin > 16 || m.dec < 50 || m.dec > 72 || m.empate > 5 || m.trocasMedia < 7 || m.trocasMedia > 11.5) throw new Error("fora da faixa");
   });
   await conf("sem ação dominante: em toda dupla, a mistura de equilíbrio em pé usa 2+ ações com 10%+ e nenhuma passa de 80%", () => {
     const ruins = [];
@@ -11398,6 +11436,17 @@ async function testarJxJArvore() {
     const p = A.perfilDeCombate({ estilo: "grappler", categoria: "heavyweight", build: tudo }), b = A.perfilDeCombate({ estilo: "grappler", categoria: "heavyweight", build: {} });
     for (const k of A.ATRIBUTOS) if (p.atr[k] - b.atr[k] > A.TETO_BONUS + 0.05 || p.atr[k] > A.ATRIBUTO_MAX) throw new Error(`tudo no máximo: ${k} ${p.atr[k]}`);
     for (const [k, v] of Object.entries(p.mec)) if (v > A.MECANICAS[k].teto + 1e-9) throw new Error(`tudo no máximo: ${k} ${v}`);
+  });
+  await conf("builds diferentes do nível 30: outra ordem de ramos fica entre 42% e 58% contra a típica; a híbrida (paga 2 por nível) entre 35% e 58%", () => {
+    const ruins = [], linhas = [];
+    for (const est of ESTS) {
+      const r = BAL.compararBuilds(est, 600);
+      linhas.push(`${est.slice(0, 3)} invertida ${r.invertida.toFixed(1)} híbrida ${r.hibrida.toFixed(1)}`);
+      if (r.invertida < 42 || r.invertida > 58) ruins.push(`${est} invertida ${r.invertida.toFixed(1)}%`);
+      if (r.hibrida < 35 || r.hibrida > 58) ruins.push(`${est} híbrida ${r.hibrida.toFixed(1)}%`);
+    }
+    console.log(cinza("         " + linhas.join(" | ")));
+    if (ruins.length) throw new Error(ruins.join(", "));
   });
   await conf("cada nó vale alguma coisa (medido): no nível 3, contra os 4 estilos, entre 0,5 e 6,5 pontos de vitória", () => {
     const linhas = [], ruins = [];

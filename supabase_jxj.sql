@@ -382,6 +382,38 @@ language sql security definer set search_path = public as $$
   insert into jxj_log (user_id, acao, detalhe) values (uid, acao_, detalhe_)
 $$;
 
+/* Fichas de cada conquista (a mesma tabela de CONQUISTAS em
+   api/_jxj-regras.js; a suíte jxj confere as duas). Conquista paga uma vez
+   por lutador e fica fora do teto diário de fichas de luta. */
+create or replace function public.jxj_fichas_conquista(conquista_ text) returns integer
+language sql immutable as $$
+  select case conquista_
+    when 'primeira_vitoria' then 25 when 'primeiro_nocaute' then 25 when 'primeira_finalizacao' then 25
+    when 'revanche' then 25 when 'virada' then 25 when 'vitorias_10' then 50 when 'vitorias_50' then 150
+    when 'nivel_30' then 150 when 'campeao_torneio' then 100 when 'top10_temporada' then 100
+    else 0 end
+$$;
+
+/* Grava a conquista e, só se ela for nova, credita as fichas no
+   livro-razão. Devolve true quando a conquista é nova. */
+create or replace function public.jxj_dar_conquista(lid bigint, uid uuid, conquista_ text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare nova boolean; f integer;
+begin
+  insert into jxj_conquistas (lutador_id, conquista) values (lid, conquista_) on conflict do nothing;
+  get diagnostics f = row_count;
+  nova := f > 0;
+  if nova then
+    f := public.jxj_fichas_conquista(conquista_);
+    if f > 0 then
+      perform public.jxj_conta(uid);
+      update jxj_contas set fichas = fichas + f where user_id = uid;
+      insert into jxj_fichas (user_id, delta, motivo, ref) values (uid, f, 'conquista', conquista_ || ':' || lid);
+    end if;
+  end if;
+  return nova;
+end $$;
+
 create or replace function public.jxj_conta(uid uuid) returns jxj_contas
 language plpgsql security definer set search_path = public as $$
 declare c jxj_contas;
@@ -433,7 +465,7 @@ begin
           insert into jxj_titulos (lutador_id, tipo, categoria, temporada) values (rec.id, 'temporada', cat, t.numero) on conflict do nothing;
         end if;
         if pos <= 10 then
-          insert into jxj_conquistas (lutador_id, conquista) values (rec.id, 'top10_temporada') on conflict do nothing;
+          perform public.jxj_dar_conquista(rec.id, rec.user_id, 'top10_temporada');
         end if;
       end loop;
     end loop;
@@ -891,8 +923,7 @@ begin
         insert into jxj_fichas (user_id, delta, motivo, ref) values (uid_, dar, 'luta', lid::text);
       end if;
     end if;
-    insert into jxj_conquistas (lutador_id, conquista)
-      select lid_lut, x from jsonb_array_elements_text(coalesce(e->'conquistas', '[]'::jsonb)) x on conflict do nothing;
+    perform public.jxj_dar_conquista(lid_lut, uid_, x) from jsonb_array_elements_text(coalesce(e->'conquistas', '[]'::jsonb)) x;
   end loop;
   if l.confronto_id is not null then
     select * into conf from jxj_confrontos where id = l.confronto_id for update;
@@ -1155,7 +1186,7 @@ begin
       update jxj_inscricoes set colocacao = 'campeao' where torneio_id = t.id and lutador_id = vid;
       update jxj_torneios set status = 'encerrado', campeao_id = vid, encerrado_em = now() where id = t.id;
       insert into jxj_titulos (lutador_id, tipo, categoria, temporada, torneio_id) values (vid, 'cinturao', t.categoria, t.temporada, t.id) on conflict do nothing;
-      insert into jxj_conquistas (lutador_id, conquista) values (vid, 'campeao_torneio') on conflict do nothing;
+      perform public.jxj_dar_conquista(vid, (select user_id from jxj_lutadores where id = vid), 'campeao_torneio');
       update jxj_contas ct set fichas = ct.fichas + case i.colocacao when 'campeao' then 300 when 'vice' then 150 when 'semifinal' then 75 else 30 end
         from jxj_inscricoes i where i.torneio_id = t.id and i.user_id = ct.user_id;
       insert into jxj_fichas (user_id, delta, motivo, ref)

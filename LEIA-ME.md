@@ -3781,9 +3781,9 @@ as tabelas: rodar a migração é do dono, depois do backup.
 
 1. Backup do banco (Supabase > Database > Backups).
 2. SQL Editor: colar e rodar `supabase_jxj.sql`. Só cria tabelas e
-   funções `jxj_*` (18 tabelas, 46 funções); não altera nenhuma tabela
+   funções `jxj_*` (18 tabelas, 48 funções); não altera nenhuma tabela
    que já existe e pode rodar de novo sem erro. Conferir com
-   `select count(*) from pg_proc where proname like 'jxj\_%'` (46).
+   `select count(*) from pg_proc where proname like 'jxj\_%'` (48).
 3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
    Production, e Redeploy do deploy atual (variável nova só vale em
    deploy novo; não precisa mudar código).
@@ -3866,6 +3866,9 @@ fixas); as faixas estão nos testes.
 | repetir uma ação contra quem se adapta | no máximo 48% (striker só golpes); o resto 39% ou menos | até 50 |
 | mistura em pé | nenhuma ação passa de 67% | até 80, 2+ ações com 10%+ |
 | valor de cada nó no nível 3 | 0,8 (Pressão no solo) a 5,1 (Defesa de finalização) | 0,5 a 6,5 |
+| duração média da luta | 9,4 trocas de 12 | 7 a 11,5 |
+| outra ordem de ramos no nível 30, contra a típica | 49% a 51% | 42 a 58 |
+| build híbrida no nível 30 (8 pontos em nós de outro estilo) | 42% a 52% | 35 a 58 |
 
 Rating (`jxjrating`, `jxjtemporada`): o Glicko-2 bate o exemplo do artigo
 do Glickman (1464,06 / 151,52 / 0,05999). Temporada simulada com 300
@@ -3910,6 +3913,42 @@ Limites conhecidos:
   contra quem se adapta): não vence, mas não perde muito.
 - Custo: uma luta de 12 trocas custa da ordem de 100 a 200 chamadas da
   função por jogador (consulta a cada 1,2 s).
+
+### Economia
+
+Fichas nunca são vendidas e nunca compram atributo. Entram por luta com
+rating (10, ou 20 na vitória, até 120 por dia por conta), torneio (30 a
+300 pela colocação), fim de temporada (40 a 500 pela posição) e conquista
+(25 a 150, uma vez por lutador, fora do teto diário; quem credita é o
+banco, em `jxj_dar_conquista`, só quando a conquista é nova). Saem em
+respec (400) e molduras (250 a 400; a do cinturão é só de quem tem
+título). Todo movimento fica no livro-razão `jxj_fichas`, com motivo.
+
+### Custo e escala
+
+- **Combate sem IA.** A narração é um botão depois da luta, uma chamada
+  por luta, guardada e igual pros dois; sem a chave, molde local.
+- **Consulta periódica:** 1,2 s na luta, 1,5 s na confirmação, 3 s na
+  fila e na sala do torneio, e para ao sair da tela (token de tela). Cada
+  consulta da luta é uma chamada da função e cerca de 3 chamadas ao
+  Supabase (sessão, limite, `jxj_luta`). A luta média tem 9,4 trocas; com
+  os dois escolhendo rápido ela dura uns 2 minutos e custa da ordem de 100
+  consultas por jogador; esperando o prazo inteiro, perto de 200.
+- **Limites por conta e por ação** em `jxj_limites` (ex.: 600 consultas
+  da luta a cada 10 min, 40 entradas na fila a cada 10 min, 20 criações
+  por hora); corpo do pedido até 20 KB; ranking e histórico paginados (50
+  por página); índices em ranking por categoria, lutas por lutador, fila
+  por categoria e versão, livro-razão por conta.
+- **Onde aperta primeiro:** o número de chamadas da função na Vercel
+  (a consulta periódica) e, bem depois, a CPU do banco. Primeiro ajuste:
+  subir o intervalo da luta quando o jogador já escolheu (só falta o
+  outro). Segundo: Realtime do Supabase no lugar da consulta, sem mudar
+  regra nenhuma (o servidor continua sendo a fonte da verdade).
+- **Monitorar:** erro do servidor sai no log da Vercel como `jxj <ação>
+  <mensagem>`; ações de conta (criar, respec, principal, aposentar...)
+  ficam em `jxj_log`; o volume sai do próprio banco, por exemplo
+  `select date_trunc('day', criada_em) dia, count(*) from jxj_lutas group
+  by 1 order by 1 desc`.
 
 ### Testes
 

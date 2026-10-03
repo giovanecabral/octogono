@@ -2343,7 +2343,7 @@ produção):
 1. Backup do banco (Supabase > Database > Backups).
 2. Rodar `supabase_jxj.sql` no SQL Editor (só cria tabelas e funções
    `jxj_*`; não altera nenhuma tabela existente). Conferir: `select
-   count(*) from pg_proc where proname like 'jxj\_%'` dá 46 (e 18 tabelas
+   count(*) from pg_proc where proname like 'jxj\_%'` dá 48 (e 18 tabelas
    `jxj_*` em `pg_tables`).
 3. Na Vercel, `JXJ_ATIVO=true` (Production) e Redeploy do deploy atual.
 4. Jogar uma luta com duas contas de verdade (uma Pro) antes de anunciar.

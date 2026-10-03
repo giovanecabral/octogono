@@ -133,7 +133,8 @@ depois de achado jogando: a versão antiga de "tudo" só rodava
 interface+motor+draft, e duas suítes (`conteudo`, `narracao`) reprovavam
 em silêncio há tempo sem que "TUDO CERTO" nunca acusasse. Agora reprova
 o resultado final se QUALQUER suíte reprovar — nenhuma fica de fora,
-nenhuma passa despercebida. **~25 minutos**, não ~40s — a maioria das
+nenhuma passa despercebida. **~20 minutos** (18,5 medidos em 2026-10-02,
+com as suítes do JxJ), não ~40s — a maioria das
 suítes é rápida, mas `freqconquistas` (150 carreiras de ponta a ponta),
 `frequencia` (30), `gapescolha` (3000 pares) e `drivermotor`/`motor`
 (6000 lutas cada) são pesadas de verdade. As suítes do JxJ somam cerca

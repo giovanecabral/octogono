@@ -66,19 +66,21 @@ export const MOLDURAS = {
   campeao: { nome: "Cinturão", preco: null, req: "titulo" },   // só pra quem tem título
 };
 
-/* Conquistas JxJ: id -> {nome, desc}. Quem confere é o servidor, com os
-   números do banco. */
+/* Conquistas JxJ: id -> {nome, desc, fichas}. Quem confere é o servidor,
+   com os números do banco. As fichas pagam uma vez por lutador, fora do
+   teto diário, e quem credita é o banco (jxj_dar_conquista, mesma tabela
+   em jxj_fichas_conquista; a suíte jxj confere que as duas batem). */
 export const CONQUISTAS = {
-  primeira_vitoria: { nome: "Primeira vitória", desc: "Venceu a primeira luta no JxJ." },
-  primeiro_nocaute: { nome: "Primeiro nocaute", desc: "Venceu por nocaute ou nocaute técnico." },
-  primeira_finalizacao: { nome: "Primeira finalização", desc: "Venceu por finalização." },
-  vitorias_10: { nome: "10 vitórias", desc: "Chegou a 10 vitórias com este lutador." },
-  vitorias_50: { nome: "50 vitórias", desc: "Chegou a 50 vitórias com este lutador." },
-  nivel_30: { nome: "Nível 30", desc: "Chegou ao nível máximo." },
-  revanche: { nome: "Revanche vencida", desc: "Venceu quem tinha vencido ele na luta anterior entre os dois." },
-  virada: { nome: "Virada", desc: "Venceu depois de perder os dois primeiros rounds nos cartões." },
-  campeao_torneio: { nome: "Campeão de torneio", desc: "Venceu um torneio de 8." },
-  top10_temporada: { nome: "Top 10 da temporada", desc: "Terminou uma temporada entre os 10 primeiros da categoria." },
+  primeira_vitoria: { nome: "Primeira vitória", desc: "Venceu a primeira luta no JxJ.", fichas: 25 },
+  primeiro_nocaute: { nome: "Primeiro nocaute", desc: "Venceu por nocaute ou nocaute técnico.", fichas: 25 },
+  primeira_finalizacao: { nome: "Primeira finalização", desc: "Venceu por finalização.", fichas: 25 },
+  vitorias_10: { nome: "10 vitórias", desc: "Chegou a 10 vitórias com este lutador.", fichas: 50 },
+  vitorias_50: { nome: "50 vitórias", desc: "Chegou a 50 vitórias com este lutador.", fichas: 150 },
+  nivel_30: { nome: "Nível 30", desc: "Chegou ao nível máximo.", fichas: 150 },
+  revanche: { nome: "Revanche vencida", desc: "Venceu quem tinha vencido ele na luta anterior entre os dois.", fichas: 25 },
+  virada: { nome: "Virada", desc: "Venceu depois de perder os dois primeiros rounds nos cartões.", fichas: 25 },
+  campeao_torneio: { nome: "Campeão de torneio", desc: "Venceu um torneio de 8.", fichas: 100 },
+  top10_temporada: { nome: "Top 10 da temporada", desc: "Terminou uma temporada entre os 10 primeiros da categoria.", fichas: 100 },
 };
 /* Conquistas novas depois de uma luta. ctx: {vitorias, nivel, venceu, metodo,
    perdeuUltimaParaEle, cartoes (lista {meu, dele}), ja: Set de ids} */

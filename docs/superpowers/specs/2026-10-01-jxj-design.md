@@ -260,8 +260,8 @@ Princípios:
   rating por par em 24 h vale igual).
 - **Fichas:** moeda interna, nunca vendida. Fontes (inicial): luta
   completa 10, vitória +10 (teto de 120 por dia por conta), torneio 30 a
-  300 pela colocação, temporada por faixa (conquista não dá ficha nesta
-  versão: é só registro). Usos: respec e
+  300 pela colocação, temporada por faixa, conquista (25 a 150, uma vez
+  por lutador, fora do teto diário). Usos: respec e
   cosmético (molduras do retrato). Nada que aumente atributo.
 - **Conquistas JxJ:** primeira vitória, primeiro nocaute, primeira
   finalização, 10 e 50 vitórias, campeão de torneio, top 10 da temporada,

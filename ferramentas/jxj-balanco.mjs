@@ -5,6 +5,7 @@
      node ferramentas/jxj-balanco.mjs matriz     # estilos x estilos, métodos, misturas
      node ferramentas/jxj-balanco.mjs niveis     # nível alto x nível 1, matriz no nível 30
      node ferramentas/jxj-balanco.mjs nos        # valor de cada nó da árvore no nível 3
+     node ferramentas/jxj-balanco.mjs builds     # builds diferentes do nível 30 contra a típica
      node ferramentas/jxj-balanco.mjs atributos  # valor de 1 ponto de cada atributo
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
@@ -161,11 +162,12 @@ export function adaptativa(pEu, pEle, { prior = 2, segue = 0.7, temp = 1 } = {})
 /* n lutas com lados alternados (sementes pareadas por tag). Devolve vitórias
    de X em % das lutas com vencedor, e a contagem de métodos. */
 export function confronto(pX, pO, eX, eO, n, tag) {
-  const t = { vX: 0, vO: 0, KO: 0, TKO: 0, FIN: 0, DEC: 0, EMPATE: 0, WO: 0, ANULADA: 0, n };
+  const t = { vX: 0, vO: 0, KO: 0, TKO: 0, FIN: 0, DEC: 0, EMPATE: 0, WO: 0, ANULADA: 0, n, trocas: 0 };
   for (let i = 0; i < n; i++) {
     const inv = i % 2 === 1;
     const f = (inv ? M.simularLuta(pO, pX, eO, eX, `${tag}:${i}`) : M.simularLuta(pX, pO, eX, eO, `${tag}:${i}`)).fim;
     t[f.metodo]++;
+    t.trocas += (f.round - 1) * M.FORMATO.trocasPorRound + f.troca;
     if (f.vencedor) { if ((f.vencedor === "a") !== inv) t.vX++; else t.vO++; }
   }
   t.pct = 100 * t.vX / Math.max(1, t.vX + t.vO);
@@ -177,7 +179,7 @@ export const perfilTipico = (estilo, nivel = 1, categoria = "middleweight") =>
 /* Matriz de estilos (nível 1), métodos e misturas em pé */
 export function medirMatriz(n = 600) {
   const perfis = Object.fromEntries(ESTS.map((s) => [s, perfilTipico(s, 1)]));
-  const mat = {}, met = { KO: 0, TKO: 0, FIN: 0, DEC: 0, EMPATE: 0, WO: 0, ANULADA: 0, n: 0 };
+  const mat = {}, met = { KO: 0, TKO: 0, FIN: 0, DEC: 0, EMPATE: 0, WO: 0, ANULADA: 0, n: 0, trocas: 0 };
   for (const s of ESTS) for (const o of ESTS) {
     const t = confronto(perfis[s], perfis[o], racional(perfis[s], perfis[o]), racional(perfis[o], perfis[s]), n, `mz${s}${o}`);
     mat[s + ":" + o] = t.pct;
@@ -187,7 +189,7 @@ export function medirMatriz(n = 600) {
   const pc = (k) => 100 * met[k] / met.n;
   const mixes = {};
   for (const s of ESTS) for (const o of ESTS) mixes[s + ":" + o] = misturas(perfis[s], perfis[o]);
-  return { mat, metodos: { ko: pc("KO") + pc("TKO"), fin: pc("FIN"), dec: pc("DEC"), empate: pc("EMPATE") }, mixes };
+  return { mat, metodos: { ko: pc("KO") + pc("TKO"), fin: pc("FIN"), dec: pc("DEC"), empate: pc("EMPATE"), trocasMedia: met.trocas / met.n }, mixes };
 }
 /* Valor de um nó no nível 3: (vitória com o nó) - (vitória sem), média
    contra os 4 estilos no nível 1. Cada comparação usa as MESMAS
@@ -210,6 +212,41 @@ export function valorDoNo(noId, n = 1000) {
   }
   return soma / ESTS.length / 2;
 }
+/* Builds alternativas do nível 30 pra comparar com a típica: a mesma
+   prioridade invertida (outros ramos primeiro) e uma híbrida (2 níveis em
+   2 nós de outro estilo, 8 pontos, e o resto pela prioridade típica). */
+const HIBRIDOS = { striker: ["entradas", "equilibrio"], wrestler: ["controle_chao", "eficiencia_sub"], grappler: ["equilibrio", "entradas"], counter: ["entradas", "equilibrio"] };
+export function buildsDoNivel30(estilo) {
+  const pri = A.PRIORIDADE_TIPICA[estilo];
+  const completar = (inicial) => {
+    const b = { ...inicial };
+    for (let mudou = true; mudou;) {
+      mudou = false;
+      for (const id of pri) {
+        if ((b[id] || 0) >= A.NIVEL_MAX_NO) continue;
+        const t = { ...b, [id]: (b[id] || 0) + 1 };
+        if (A.validarBuild(estilo, t, 30).ok) { b[id] = t[id]; mudou = true; break; }
+      }
+    }
+    return b;
+  };
+  const [h1, h2] = HIBRIDOS[estilo];
+  return {
+    tipica: A.buildTipica(estilo, 30),
+    invertida: A.buildTipica(estilo, 30, [...pri].reverse()),
+    hibrida: completar({ [h1]: 2, [h2]: 2 }),
+  };
+}
+export function compararBuilds(estilo, n = 600) {
+  const B = buildsDoNivel30(estilo), P = Object.fromEntries(Object.entries(B).map(([k, b]) => [k, A.perfilDeCombate({ estilo, categoria: "middleweight", build: b })]));
+  const r = {};
+  for (const alt of ["invertida", "hibrida"]) {
+    const pA = P[alt], pB = P.tipica;
+    r[alt] = confronto(pA, pB, racional(pA, pB), racional(pB, pA), n, `bd${estilo}${alt}`).pct;
+  }
+  return r;
+}
+
 /* Nível alto x nível baixo, mesmo estilo, build típica, jogo racional */
 export function nivelContraNivel(estilo, alto, baixo, n = 600) {
   const pA = perfilTipico(estilo, alto), pB = perfilTipico(estilo, baixo);
@@ -235,7 +272,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log("vitórias da linha (jogo racional, nível 1):");
     console.log("          " + ESTS.map((o) => o.padStart(9)).join(""));
     for (const s of ESTS) console.log(s.padEnd(10) + ESTS.map((o) => f1(r.mat[s + ":" + o]).padStart(9)).join(""));
-    console.log("métodos:", `KO/TKO ${f1(r.metodos.ko)}%  FIN ${f1(r.metodos.fin)}%  DEC ${f1(r.metodos.dec)}%  empate ${f1(r.metodos.empate)}%`);
+    console.log("métodos:", `KO/TKO ${f1(r.metodos.ko)}%  FIN ${f1(r.metodos.fin)}%  DEC ${f1(r.metodos.dec)}%  empate ${f1(r.metodos.empate)}%  | duração média ${f1(r.metodos.trocasMedia)} trocas de 12`);
     console.log("misturas em pé (golpes queda defesa pressão):");
     for (const s of ESTS) for (const o of ESTS) console.log(" ", (s + " x " + o).padEnd(22), r.mixes[s + ":" + o].pe.a.map((x) => (100 * x).toFixed(0).padStart(4)).join(""));
   } else if (cmd === "niveis") {
@@ -247,10 +284,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }).join(""));
   } else if (cmd === "nos") {
     for (const id of Object.keys(A.NOS)) console.log(A.NOS[id].estilo.padEnd(9), id.padEnd(24), f1(valorDoNo(id, N || 1000)).padStart(6), JSON.stringify(A.NOS[id].efeitos));
+  } else if (cmd === "builds") {
+    console.log("nível 30, build alternativa contra a típica do mesmo estilo (vitórias da alternativa):");
+    for (const s of ESTS) { const r = compararBuilds(s, N || 600); console.log(" ", s.padEnd(9), `invertida ${f1(r.invertida)}%  híbrida ${f1(r.hibrida)}%`, JSON.stringify(buildsDoNivel30(s).hibrida)); }
   } else if (cmd === "atributos") {
     console.log("estilo    " + A.ATRIBUTOS.map((a) => a.padStart(9)).join(""));
     for (const s of ESTS) console.log(s.padEnd(10) + A.ATRIBUTOS.map((a) => valorDoAtributo(s, a, 3, N || 1000).toFixed(2).padStart(9)).join(""));
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|atributos] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos] [n]");
   }
 }

@@ -8035,6 +8035,7 @@ function jxjLinhaHistorico(x){
 function jxjAbaAparencia(c,def,est,l){
   const g=el("div","jxj-molduras");
   c.appendChild(el("p","tela-sub",`Moldura do retrato no ranking e no perfil. Só aparência, nunca atributo. Você tem ${est.fichas} fichas.`));
+  c.appendChild(el("p","jxj-nota",`Fichas vêm de luta com rating (10, ou 20 na vitória, até ${def.regras.tetoFichasDia} por dia), torneio, fim de temporada e conquista (uma vez por lutador). Nunca são vendidas.`));
   for(const [id,m] of Object.entries(def.molduras)){
     const tem=(l.molduras||[]).includes(id),uso=l.moldura===id;
     const card=el("div","jxj-moldura"+(uso?" on":""),`${jxjRetrato({...l,moldura:id},96)}<b>${m.nome}</b><small>${m.req==="titulo"?"de quem tem título":m.preco?`${m.preco} fichas`:"grátis"}</small>`);
@@ -8314,7 +8315,8 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   const g=el("div","jxj-grade");
   const ganhos=el("section","painel-n jxj-card");
   const delta=ef.rating&&ef.ratingAntes?Math.round(ef.rating.r-ef.ratingAntes.r):null;
-  const conq=(ef.conquistas||[]).map(id=>(JXJ_DEF.conquistas[id]||{nome:id}).nome);
+  /* conquista nova: o banco credita as fichas dela uma vez, fora do teto diário */
+  const conq=(ef.conquistas||[]).map(id=>{ const c=JXJ_DEF.conquistas[id]||{nome:id}; return c.fichas?`${c.nome} (+${c.fichas} fichas)`:c.nome; });
   ganhos.innerHTML=`<p class="jxj-rotulo">${ICONE("sobe")} O que mudou</p><dl class="jxj-numeros">
     <div><dt>Rating</dt><dd>${delta==null?"<small>sem rating</small>":`${delta>=0?"+":""}${delta}<small>${Math.round(ef.ratingAntes.r)} para ${Math.round(ef.rating.r)}</small>`}</dd></div>
     <div><dt>XP</dt><dd>+${ef.xp||0}<small>nível ${ef.nivel||"?"}</small></dd></div>
