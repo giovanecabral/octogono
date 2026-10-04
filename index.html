@@ -434,7 +434,7 @@ function criarMomento(tipo,frase,opp,r){
   return{tipo,frase,cartel:`${st.wins}-${st.losses}`,luta:fightNo,
     adversario:opp?opp.name:null,
     resultado:r?`${r.method} · round ${r.round} ${r.clock}`:null,
-    posicao:pos?`#${pos.n} de ${pos.de}`:null};
+    posicao:rotuloPosicao(pos)};
 }
 const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o adversário.`;
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
@@ -448,6 +448,8 @@ const FRASE_UPSET=(n,opp)=>`Quem apostou em ${n} contra ${opp} multiplicou o din
    (campeão+15, ver "Campeão nomeado" no LEIA-ME) — de propósito, pra não
    inventar um número novo: reusa o que já existe e já é medido. */
 const FRASE_TOPO_DIVISAO=(n,total)=>`${n} é o nº 1 da tabela agora: o melhor entre ${total} lutadores da categoria.`;
+/* v2 (ranking do UFC): o nº1 é o primeiro da fila pelo cinturão */
+const FRASE_TOPO_RANKING=n=>`${n} chegou ao nº 1 do ranking da divisão. O próximo da fila pelo cinturão é ele.`;
 const FRASE_BONUS_NOITE=(n,opp)=>`A luta contra ${opp} foi a melhor atuação de ${n} até aqui.`;
 /* Duas frases, não uma — achado jogando em produção: o gatilho disparava
    pra QUALQUER st.lesao ativo, nocaute incluso, e "entrou mancando" narra
@@ -2866,7 +2868,7 @@ async function dispararEventoIA(bouts,opp,r){
     ganhou:st.lastWon,metodo:st.lastMethod,round:st.lastRound,nocaute:st.lastKO,
     streakW:st.streakW,streakL:st.streakL,title:!!st.title,
     fightNo,totalFights:TOTAL_FIGHTS,tema,recentes:(st.eventosRecentes||[]).slice(-3),
-    posicao:pos?`#${pos.n} de ${pos.de}`:null,
+    posicao:rotuloPosicao(pos),
     lesao:st.lesao?`${ROTULO_ATTR[st.lesao.atributo]||st.lesao.atributo} machucado(a)`:null,
     perdeuCinturaoAgora:st.perdeuCinturaoNaLuta===fightNo,
     dinheiro:fmtNum(st.dinheiro||0)};
@@ -3977,6 +3979,15 @@ function passoCinturao(){
      e "ranking dos 15" numa hora em que a posição literal podia ser #95 de
      236 (a contradição anotada no CLAUDE.md). O alvo é a posição que o
      limiar da faixa dá na tabela desta divisão; limiares intocados. */
+  /* v2 (ranking do UFC): fala na mesma régua do Painel (sem ranking,
+     #15 a #1); o resto (sequência e disputa) é igual à v1 */
+  if(REGRAS>=2&&s<=LIMIAR_DESAFIANTE){
+    const pk=posicaoDivisao(s),k=pk?pk.n:16;
+    if(k>15)return "Vencer até entrar no top 15 da divisão";
+    if(k>5)return `Você é o #${k}. Subir no top 15 vencendo quem está acima`;
+    if(k>1)return `Você é o #${k}. Chegar ao nº 1 vencendo quem está no top 5`;
+    return "Você é o nº 1. Mais uma vitória te põe na fila do cinturão";
+  }
   const alvo=v=>{const p=posicaoDivisao(v);return p?`#${p.n}`:"o topo";};
   if(s<0.35)return `Vencer no card preliminar até chegar ao ${alvo(0.35)} da divisão`;
   if(s<0.60)return `Subir até o ${alvo(0.60)} vencendo quem está acima`;
@@ -4012,10 +4023,21 @@ function passoCinturao(){
    lugares de uma vez e a barra de progresso viraria escada de degrau alto. */
 function posicaoDivisao(s){
   if(!LADDER||!LADDER.length||!st)return null;
+  if(REGRAS>=2){
+    /* v2, modelo do UFC: campeão, nº1 a nº15 ou sem ranking. n numérico
+       (0 campeão, 1-15, 16 sem ranking) pra seta de subiu/caiu e pro pico. */
+    if(s==null&&st.title)return{n:0,de:15,ufc:true,texto:st.cinturaoInterino?"Campeão interino":"Campeão"};
+    const v=clamp(s==null?st.standing:s,0,1);
+    if(v<LIMIAR_TOP15)return{n:16,de:15,ufc:true,texto:"Sem ranking"};
+    const k=Math.max(1,Math.min(15,15-Math.floor((v-LIMIAR_TOP15)/(LIMIAR_DESAFIANTE-LIMIAR_TOP15)*15)));
+    return{n:k,de:15,ufc:true,texto:`#${k}`};
+  }
   const N=LADDER.length;
   const v=clamp(s==null?st.standing:s,0,1);
   return {n:N-Math.round(v*(N-1)),de:N};
 }
+/* Texto curto da posição: v1 "#48 de 89"; v2 "#7", "Sem ranking", "Campeão". */
+const rotuloPosicao=p=>!p?null:p.ufc?p.texto:`#${p.n} de ${p.de}`;
 
 function textoDuracaoLesao(){
   if(st.lesao.permanente)return "Lesão permanente, não cura";
@@ -4093,13 +4115,13 @@ function renderFicha(){
         ${st.cinturaoInterino?`<div class="rank-pico">Interino: <b>${me.name}</b></div>`:""}
       </div>`:""}
       ${rk?`<div class="ficha-sec">
-        <h4>Posição na divisão</h4>
+        <h4>${rk.ufc?"Ranking da divisão":"Posição na divisão"}</h4>
         <div class="rank">
-          <span class="pos">#${rk.n}</span>
-          <span class="de">de ${rk.de}</span>
+          <span class="pos">${rk.ufc?rk.texto:`#${rk.n}`}</span>
+          ${rk.ufc?(rk.n>=1&&rk.n<=15?`<span class="de">no top 15</span>`:rk.n>15?`<span class="de">fora do top 15</span>`:""):`<span class="de">de ${rk.de}</span>`}
           ${mov?`<span class="mov ${mov>0?"sobe":"cai"}">${ICONE(mov>0?"sobe":"desce")}${Math.abs(mov)}</span>`:""}
         </div>
-        ${pico&&pico.n<rk.n?`<div class="rank-pico">Melhor da carreira: #${pico.n}</div>`:""}
+        ${pico&&pico.n<rk.n&&(!rk.ufc||(pico.n>=1&&pico.n<=15))?`<div class="rank-pico">Melhor da carreira: #${pico.n}</div>`:""}
       </div>`:""}
       <div class="ficha-sec ficha-sair">
         <button id="btnAposentar" class="botao botao-sec botao-perigo" type="button">Aposentar-se</button>
@@ -4448,6 +4470,7 @@ function candidatos(){
     }
     if(alvo)return[{f:alvo,ganho:st.title?.10:.15}];
   }
+  if(REGRAS>=2)return acrescentarRival(faixasV2());
   const N=LADDER.length;
   /* Os 16 do RANKING.lista inteiro ficam de fora das 3 bandas comuns, não só
      campeão+desafiante — com rotação, qualquer um deles pode vir a ser o
@@ -4498,16 +4521,78 @@ function candidatos(){
     if(!esc)esc=LADDER[Math.max(0,Math.min(N-1,a))];
     out.push({f:esc,ganho});
   }
-  /* Modo Rival: 4ª carta, só Pro, só quando elegível (rivalDeveAparecer()).
-     Nunca troca uma das 3 bandas comuns — soma, não substitui. Guard contra
-     colisão de nome com uma das 3 já escolhidas (raro, mas o rival empresta
-     stats de alguém do mesmo LADDER que as bandas comuns também sorteiam). */
+  return acrescentarRival(out);
+}
+/* Modo Rival: 4ª carta, só Pro, só quando elegível (rivalDeveAparecer()).
+   Nunca troca uma das 3 bandas comuns — soma, não substitui. Guard contra
+   colisão de nome com uma das 3 já escolhidas (raro, mas o rival empresta
+   stats de alguém do mesmo LADDER que as bandas comuns também sorteiam). */
+function acrescentarRival(out){
   if(rivalDeveAparecer()){
     if(!st.rival)gerarRival();
     if(st.rival&&!out.some(o=>o.f.name===st.rival.f.name))
       out.push({f:st.rival.f,ganho:.09,rival:true});
   }
   return out;
+}
+/* Escada v2 (2026-10-04, pedido do dono): o adversário cresce junto com o
+   jogador. Fila única por força: os sem ranking (do mais fraco ao mais
+   forte) e depois do nº15 ao nº1; o campeão fica de fora (só vem pela
+   disputa, em candidatos()). Sem ranking, o centro anda pelos sem ranking
+   conforme o jogador sobe: a estreia é contra o terço de baixo da tabela,
+   nunca contra campeão. Ranqueado como nº k, as três cartas são
+   ranqueados perto dele: abaixo (k+1 a k+4), parelho (k-1 a k+1) e acima
+   (k-2 a k-5). Mesmo sorteio da v1 (uma chamada de rng por tentativa) e a
+   mesma busca pra fora quando a faixa já foi toda enfrentada. */
+function faixasV2(){
+  const lista=RANKING&&RANKING.lista||[];
+  const nomesTop=new Set(lista.map(f=>f&&f.name));
+  const semRank=LADDER.filter(f=>!nomesTop.has(f.name));
+  const fila=[...semRank,...lista.slice(1).reverse()];
+  const U=semRank.length,N=fila.length;
+  const pos=posicaoDivisao(st.standing);
+  let c,faixas;
+  if(!pos||pos.n>15){
+    c=Math.round((.15+.85*clamp(st.standing/LIMIAR_TOP15,0,1))*Math.max(0,U-1));
+    faixas=[[-.07*U,-.01*U,.045],[0,.08*U,.075],[.10*U,.24*U,.125]];
+  }else{
+    c=U+(15-pos.n);
+    faixas=[[-2,0,.05],[0,2,.08],[2,5,.13]];
+  }
+  const out=[];
+  const livre=f=>f&&!fought.has(f.name)&&!out.some(o=>o.f.name===f.name);
+  /* sem ranking não pega o top 12: perto do limiar, o máximo é o #13 */
+  const teto=(!pos||pos.n>15)?Math.min(N-1,U+2):N-1;
+  for(const [lo,hi,ganho] of faixas){
+    const a=Math.max(0,Math.min(teto,c+Math.round(lo)));
+    const b=Math.max(a,Math.min(teto,c+Math.round(hi)));
+    let esc=null;
+    for(let t=0;t<60;t++){const cand=fila[a+Math.floor(rng()*(b-a+1))];if(livre(cand)){esc=cand;break;}}
+    if(!esc)for(let i=a;i<=b;i++)if(livre(fila[i])){esc=fila[i];break;}
+    /* faixa toda enfrentada: busca pra fora começando pelo lado da intenção
+       da carta (parelha e acima procuram primeiro pra cima), senão o
+       ranqueado que já lutou com todo mundo perto dele caía em adversário
+       fraco no fim da carreira (medido: 56 a 61% de vitórias depois da 10ª) */
+    if(!esc)for(let r=1;r<N&&!esc;r++)for(const i of (lo>=0?[b+r,a-r]:[a-r,b+r]))if(i<=teto&&livre(fila[i])){esc=fila[i];break;}
+    if(!esc)esc=fila[Math.max(0,Math.min(N-1,a))];
+    out.push({f:esc,ganho});
+  }
+  return out;
+}
+/* Rótulo do adversário no ranking v2 (carta da oferta) */
+function rotuloRankAdversario(f){
+  const l=RANKING&&RANKING.lista||[];
+  const i=l.findIndex(x=>x&&x.name===f.name);
+  return i===0?"Campeão":i>0?`#${i} do ranking`:"Sem ranking";
+}
+/* O que a vitória rende: v1 em pontos de ranking; v2 na régua do UFC */
+function textoAposta(o){
+  if(REGRAS<2)return `+${Math.round(o.ganho*100)} ranking`;
+  const agora=posicaoDivisao(st.standing),depois=posicaoDivisao(Math.min(1,st.standing+o.ganho));
+  if(!agora||!depois)return `+${Math.round(o.ganho*100)} ranking`;
+  if(depois.n>15)return `+${Math.round(o.ganho*100)} rumo ao top 15`;
+  if(agora.n>15)return `entra no top 15 (#${depois.n})`;
+  return depois.n<agora.n?`sobe pro #${depois.n}`:`segue #${depois.n}`;
 }
 
 /* Chance de o jogador vencer ESTE adversário, com os atributos de agora
@@ -4590,10 +4675,11 @@ function telaAdversario(guardadas){
       <span class="dbanda"><b>${d.rot}</b><span class="pips">${[1,2,3,4].map(i=>`<i class="${i<=d.pips?"on":""}"></i>`).join("")}</span></span>
       <span class="vs"><span class="quem">${me.name}</span><span class="vslabel">vs</span></span>
       <span class="nm">${o.f.name}</span>
+      ${REGRAS>=2&&!o.rival?`<span class="rank-adv">${rotuloRankAdversario(o.f)}</span>`:""}
       ${o.f.arquetipo?`<span class="arq">${o.f.arquetipo}</span>`:""}
       <span class="bio">${bioOuHistorico}</span>
       ${compararOferta(o.f)}
-      <span class="stake"><span>se vencer</span><b>+${Math.round(o.ganho*100)} ranking</b></span>`);
+      <span class="stake"><span>se vencer</span><b>${textoAposta(o)}</b></span>`);
     b.onclick=()=>{SOM.toque();telaCamp(o);};
     g.appendChild(b);
   });
@@ -6980,7 +7066,7 @@ function urlDesafio(){
   /* O modo entra no link porque ele troca o pool: a mesma semente em modos
      diferentes dá cartas e adversários diferentes. Link antigo, sem m=, cai em
      "normal" — que é o que ele sempre foi. */
-  return `${base}?d=${DIVISION}&s=${SEED.toString(36)}${MODO==="lenda"?"&m=lenda":""}`;
+  return `${base}?d=${DIVISION}&s=${SEED.toString(36)}${MODO==="lenda"?"&m=lenda":""}${REGRAS>=2?`&r=${REGRAS}`:""}`;
 }
 
 /* Desenha o canvas e devolve o PNG já em blob — usado por salvarImagem() e
@@ -7083,6 +7169,26 @@ const MIN_LUTADORES=40;
 const RATING_LENDA=13/18;
 const ehLenda=f=>(f.titulos&&f.titulos.disputas>=1)||f.rating>=RATING_LENDA-1e-9;
 let MODO="normal";
+/* ---------- regras da carreira (2026-10-04, pedido do dono) ----------
+   v2: no modo normal só entra quem lutou de ANO_ATIVO em diante (o
+   aposentado fica só no modo lenda); ranking igual ao do UFC (campeão +
+   nº1 a nº15, o resto sem ranking); e o adversário cresce junto com o
+   jogador (começa entre os sem ranking de baixo da tabela e sobe com as
+   vitórias), em vez de campeão logo na estreia.
+   v1: como era antes. Save e link de desafio antigos continuam nela, sem
+   mudar uma carta (st.regras ausente = 1; link sem r= = 1). */
+const REGRAS_ATUAIS=2;
+let REGRAS=REGRAS_ATUAIS;
+const ANO_ATIVO=2023;
+/* v2 aceita divisão menor: os adversários saem da tabela inteira (menos o
+   campeão), não só de fora do top 16 como na v1; 22 lutas sem repetir pedem
+   23 nomes e a margem cobre as faixas */
+const MIN_LUTADORES_V2=30;
+const minimoLutadores=modo=>(REGRAS>=2&&(modo||MODO)!=="lenda")?MIN_LUTADORES_V2:MIN_LUTADORES;
+/* Posição no ranking v2: abaixo de LIMIAR_TOP15 o jogador está sem
+   ranking; entre ele e LIMIAR_DESAFIANTE (o mesmo .88 da disputa, ver
+   tituloLiberado) sobe do nº15 ao nº1. */
+const LIMIAR_TOP15=.45,LIMIAR_DESAFIANTE=.88;
 /* Modo Rival — ativação explícita (item 4, 2026-09-22). Escolha feita em
    screenAtivarRival(), entre a divisão e o draft; sobrevive até
    startCareer() copiar pra dentro de st (mesmo padrão de MODO/DIVISION/
@@ -7091,9 +7197,11 @@ let MODO="normal";
    que existia se reparasse num selo pequeno na 4ª carta, sem escolha,
    sem nome próprio, sem aviso — achado jogando (pedido explícito). */
 let RIVAL_ATIVADO=false,RIVAL_NOME_ESCOLHIDO=null;
-function poolDivisao(id,modo){
+function poolDivisao(id,modo,regras){
   const p=ROSTER?ROSTER.filter(f=>f.division===id):[];
-  return (modo||MODO)==="lenda"?p.filter(ehLenda):p;
+  if((modo||MODO)==="lenda")return p.filter(ehLenda);
+  /* v2: aposentado (sem luta desde antes de ANO_ATIVO) fica fora do modo normal */
+  return (regras||REGRAS)>=2?p.filter(f=>f.era&&f.era[1]>=ANO_ATIVO):p;
 }
 
 /* Campeão nomeado. Critério é conquista (titulos.vitorias/disputas), não
@@ -7117,7 +7225,15 @@ function buildRanking(pool){
   const ativos=pool.filter(f=>f.era&&f.era[1]>=CUTOFF_RANKING).sort(comparar);
   const inativos=pool.filter(f=>!f.era||f.era[1]<CUTOFF_RANKING).sort(comparar);
   const lista=[...ativos,...inativos].slice(0,16);
-  return{campeao:lista[0]||null,desafiante:lista[1]||null,lista};
+  if(REGRAS<2)return{campeao:lista[0]||null,desafiante:lista[1]||null,lista};
+  /* v2 (modelo do UFC): o campeão sai do mesmo critério de conquista; do
+     nº1 ao nº15 são os 15 mais fortes do resto pela nota (empate: títulos,
+     disputas, lutas), então quem está ranqueado é de fato quem mais vence */
+  const campeao=lista[0]||null;
+  const resto=pool.filter(f=>f!==campeao).sort((a,b)=>(b.rating-a.rating)||
+    (b.titulos.vitorias-a.titulos.vitorias)||(b.titulos.disputas-a.titulos.disputas)||(b.fights-a.fights));
+  const top=[campeao,...resto.slice(0,15)].filter(Boolean);
+  return{campeao,desafiante:top[1]||null,lista:top};
 }
 const DIVISOES=[
  {id:"flyweight",        nome:"Peso-mosca",      lbs:125},
@@ -9096,6 +9212,7 @@ function montarSave(){
    modo (determinístico), não vão no save. */
 function aplicarSave(s){
   SEED=s.seed;DIVISION=s.divisao;MODO=s.modo;ROSTO=s.rosto||null;
+  REGRAS=(s.st&&s.st.regras)||1;   // save de antes das regras v2 continua na v1
   RIVAL_ATIVADO=!!(s.rival&&s.rival.ativado);RIVAL_NOME_ESCOLHIDO=s.rival?s.rival.nome:null;
   POOL=poolDivisao(DIVISION);PCT=makePercentiler(POOL);
   LADDER=[...POOL].sort((a,b)=>a.rating-b.rating);RANKING=buildRanking(POOL);
@@ -9363,7 +9480,8 @@ function lerDesafio(){
     if(!DIVISOES.some(x=>x.id===d))return null;
     const n=parseInt(s,36);
     if(!Number.isFinite(n)||n<=0)return null;
-    return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal"};
+    /* r= é a versão das regras (v2 em diante); link antigo, sem r=, segue na v1 */
+    return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal",regras:Number(p.get("r"))>=2?2:1};
   }catch(e){return null;}
 }
 function screenName(nomeInicial=""){
@@ -9388,8 +9506,8 @@ function screenName(nomeInicial=""){
     SOM.toque();
     const dz=lerDesafio();
     try{const r=localStorage.getItem("rosto");if(r)ROSTO=JSON.parse(r);}catch(e){}
-    if(dz){DIVISION=dz.div;SEED=dz.seed;MODO=dz.modo;screenCriador(n);}
-    else{SEED=0;MODO="normal";screenCriador(n);}
+    if(dz){DIVISION=dz.div;SEED=dz.seed;MODO=dz.modo;REGRAS=dz.regras;screenCriador(n);}
+    else{SEED=0;MODO="normal";REGRAS=REGRAS_ATUAIS;screenCriador(n);}
   };
   inp.onkeydown=e=>{if(e.key==="Enter")go.click();};
   form.append(inp,go);
@@ -9599,7 +9717,7 @@ function screenDivisao(name){
       /* divisão pequena demais no dataset inteiro nunca foi jogável */
       if(ROSTER.filter(f=>f.division===d.id).length<MIN_LUTADORES)return;
       const pool=poolDivisao(d.id);
-      if(pool.length<MIN_LUTADORES){
+      if(pool.length<minimoLutadores()){
         fora.push(`${d.nome}${d.f?" fem.":""} (${pool.length})`);
         return;
       }
@@ -9619,7 +9737,7 @@ function screenDivisao(name){
 
     nota.innerHTML=fora.length
       ? `Uma carreira são 22 lutas sem repetir adversário, então divisão com menos
-         de ${MIN_LUTADORES} lendas não fecha. Fora daqui: ${fora.join(" · ")}.`
+         de ${minimoLutadores()} ${MODO==="lenda"?"lendas":"lutadores na ativa"} não fecha. Fora daqui: ${fora.join(" · ")}.`
       : "";
   };
   desenha();
@@ -10024,7 +10142,7 @@ function iniciarEstadoCarreira(){
   /* a base do draft nunca muda; treino e eventos são camadas por cima */
   me.__base={};
   ATTR_TREINAVEIS.forEach(k=>{if(me[k]!=null)me.__base[k]=me[k];});
-  st={treino:{},eventoMod:{},campHist:{},
+  st={regras:REGRAS,treino:{},eventoMod:{},campHist:{},
       wins:0,losses:0,finishes:0,streakW:0,streakL:0,bestBeaten:0,bestWin:null,title:false,
       standing:.18,peak:.18,events:0,koLosses:0,kdTaken:0,kdGiven:0,fightNo:0,
       fan:5.0,followers:SEGUIDORES_INICIAIS,peakFollowers:SEGUIDORES_INICIAIS,
@@ -10224,7 +10342,7 @@ function mostrarResultado(reg,extra){
   const nums=extra?`<div class="res-nums">
       ${num("dinheiro","Bolsa","carteira",reg.renda,`+R$ ${fmtNum(reg.renda)}`)}
       ${num("seg","Seguidores","seguidores",extra.delta,`${extra.delta>=0?"+":"-"}${fmtNum(Math.abs(extra.delta))}`,subColetiva)}
-      ${extra.rk?`<div class="res-num"><span class="res-rot">${ICONE("grafico")}Posição</span><b>#${extra.rk.n}</b>${
+      ${extra.rk?`<div class="res-num"><span class="res-rot">${ICONE("grafico")}${extra.rk.ufc?"Ranking":"Posição"}</span><b>${extra.rk.ufc?extra.rk.texto:`#${extra.rk.n}`}</b>${
         extra.mov?`<span class="pos-mov ${extra.mov>0?"sobe":"cai"}">${ICONE(extra.mov>0?"sobe":"desce")}${Math.abs(extra.mov)}</span>`:""}</div>`:""}
     </div>`:"";
   box.innerHTML=`<div class="res-carimbo${reg.venceu?"":" d"}">${reg.venceu?"Vitória":"Derrota"}</div>
@@ -10427,7 +10545,7 @@ function renderPainel(){
     ci.innerHTML=`<div class="painel-cab">${ICONE("coroa")}Caminho até o cinturão</div>
       ${st.title?`<div class="cint-status">${st.cinturaoInterino?"Campeão interino":"Campeão"}</div>`:""}
       <div class="cint-barra${st.title?" ouro":""}"><i style="width:${pct}%"></i>${
-        [35,60,80,88].map(m=>`<span class="cint-marca" style="left:${m}%"></span>`).join("")}</div>
+        (REGRAS>=2?[LIMIAR_TOP15*100,LIMIAR_DESAFIANTE*100]:[35,60,80,88]).map(m=>`<span class="cint-marca" style="left:${m}%"></span>`).join("")}</div>
       ${passo?`<p class="cint-passo">${passo}</p>`:""}`;
   }
   const po=document.getElementById("painelPosicao");
@@ -10435,10 +10553,11 @@ function renderPainel(){
   if(po&&rk){
     const mov=st.rankAnt!=null?st.rankAnt-rk.n:0;
     const pico=posicaoDivisao(st.peak);
-    po.innerHTML=`<div class="painel-cab">${ICONE("grafico")}Posição na divisão</div>
-      <div class="pos-linha"><span class="pos-num">#${rk.n}</span><span class="pos-de">de ${rk.de}</span>${
+    po.innerHTML=`<div class="painel-cab">${ICONE("grafico")}${rk.ufc?"Ranking da divisão":"Posição na divisão"}</div>
+      <div class="pos-linha"><span class="pos-num">${rk.ufc?rk.texto:`#${rk.n}`}</span>${
+        rk.ufc?(rk.n>=1&&rk.n<=15?`<span class="pos-de">no top 15</span>`:rk.n>15?`<span class="pos-de">fora do top 15</span>`:""):`<span class="pos-de">de ${rk.de}</span>`}${
         mov?`<span class="pos-mov ${mov>0?"sobe":"cai"}">${ICONE(mov>0?"sobe":"desce")}${Math.abs(mov)}</span>`:""}</div>
-      ${pico&&pico.n<rk.n?`<div class="pos-pico">Melhor da carreira: #${pico.n}</div>`:""}`;
+      ${pico&&pico.n<rk.n&&(!rk.ufc||(pico.n>=1&&pico.n<=15))?`<div class="pos-pico">Melhor da carreira: #${pico.n}</div>`:""}`;
   }
   const le=document.getElementById("painelLesao");
   if(le){
@@ -11189,7 +11308,10 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     }
     /* perder para quem estava abaixo custa mais caro que perder para um perigoso */
     const punicao=st.ganhoEscolhido<=.05?.13:st.ganhoEscolhido>=.12?.06:.09;
-    st.standing=Math.max(.05,st.standing-punicao);
+    /* regras v2: ranqueado que perde cai algumas posições, não sai do top 15
+       de uma vez (como no UFC); fora do top 15 a régua é a de sempre */
+    const fator=(REGRAS>=2&&st.standing>=LIMIAR_TOP15)?.6:1;
+    st.standing=Math.max(.05,st.standing-punicao*fator);
   }
   st.lastMethod=r.method;st.lastWon=won;st.lastRound=r.round;st.lastKO=isKO;
 
@@ -11266,7 +11388,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
     const posAtual=posicaoDivisao();
     if(posAtual&&posAtual.n===1){
       st.topoDivisaoAlcancado=true;
-      st.momentos.push(criarMomento("topoDivisao",FRASE_TOPO_DIVISAO(me.name,posAtual.de),opp,r));
+      st.momentos.push(criarMomento("topoDivisao",posAtual.ufc?FRASE_TOPO_RANKING(me.name):FRASE_TOPO_DIVISAO(me.name,posAtual.de),opp,r));
     }
   }
   /* upset compara com quem o jogador ERA antes de vencer — standingPre, não

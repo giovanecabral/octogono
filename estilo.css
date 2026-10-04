@@ -845,6 +845,8 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .noite .opp .vs .quem{color:var(--osso-2)}
 .noite .opp .nm{font-family:var(--f-titulo);font-weight:400;font-size:36px;line-height:.95;text-transform:uppercase;color:var(--osso)}
 .noite .opp .arq{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:var(--sangue)}
+/* regras v2 (2026-10-04): posição do adversário no ranking do UFC (#7, Sem ranking) */
+.noite .opp .rank-adv{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ouro,#d6a740)}
 .noite .opp .bio{font-size:14px;line-height:1.5;color:var(--osso-2)}
 .noite .opp .bio b{color:var(--osso)}
 .opp-comp{display:grid;gap:5px;margin-top:6px;padding:10px 0;border-top:1px solid var(--linha);border-bottom:1px solid var(--linha)}

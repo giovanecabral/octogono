@@ -140,7 +140,7 @@ const API_MOTOR = ["simulateFight", "simularRound", "mkState", "mulberry32", "ra
   "rollTable", "cartasDaMesa", "cartaMinima", "PAIRS", "WEIGHTS", "TOTAL_WEIGHT", "BUDGET_PCT", "TUNING",
   "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
   "TETO_TREINO", "RITMO_TREINO", "ATTR_TREINAVEIS",
-  "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES",
+  "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES", "MIN_LUTADORES_V2", "ANO_ATIVO",
   "ACOES_LUTA", "COUNTER_ATTR", "sinalDoRound", "contest", "K_ESCOLHA_LUTA"];
 
 function carregarMotor() {
@@ -480,16 +480,14 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     if (dilemasVistos < 3) throw new Error(`só ${dilemasVistos} dilemas em 22 lutas, esperava 4`);
   });
 
-  await passo("posição na divisão", () => {
-    const f = env.registro.ficha;
-    const m = /#(\d+)<\/span>\s*<span class="de">de (\d+)/.exec((f && f.innerHTML) || "");
-    if (!m) throw new Error("a ficha não mostra a posição na divisão");
-    const pos = +m[1], total = +m[2];
-    /* invariantes de verdade: a posição cabe na divisão e a divisão tem gente.
-       Não comparo com a posição inicial porque uma carreira pode voltar ao
-       mesmo standing por acaso, e teste que pisca é pior que teste nenhum. */
-    if (total < 40) throw new Error(`a divisão saiu com ${total} lutadores`);
-    if (!(pos >= 1 && pos <= total)) throw new Error(`posição fora da divisão: #${pos} de ${total}`);
+  await passo("posição na divisão (ranking do UFC, regras v2)", () => {
+    /* regras v2 (2026-10-04): a ficha fala como o UFC, campeão, #1 a #15 ou
+       sem ranking; nunca mais "#48 de 236" */
+    const f = env.registro.ficha, h = (f && f.innerHTML) || "";
+    const m = /<span class="pos">(#(\d+)|Sem ranking|Campeão[^<]*)<\/span>/.exec(h);
+    if (!m) throw new Error("a ficha não mostra a posição no ranking");
+    if (m[2] && !(+m[2] >= 1 && +m[2] <= 15)) throw new Error(`posição fora do top 15: ${m[1]}`);
+    if (/de \d{2,}</.test(h)) throw new Error("a ficha voltou a mostrar a posição na tabela inteira");
   });
 
   await passo("relatório final", () => UI.screenReport());
@@ -2515,10 +2513,11 @@ function testarCinturao(div = "heavyweight") {
     passo("rotação: perder uma defesa TAMBÉM avança o índice (terminou em 5)",
       st.desafianteIdx===5);
 
-    passo("rotação: os 16 do RANKING.lista inteiro (não só campeão+desafiante) ficam banidos das 3 bandas comuns — reservados",
+    passo("rotação: o campeão nunca vem nas 3 cartas comuns (regras v2: os ranqueados são adversários comuns; na v1, os 16 do RANKING.lista ficavam de fora)",
       (()=>{
         st.tituloEstaLuta=false;
         const normais=candidatos();
+        if(REGRAS>=2)return normais.every(o=>o.f.name!==RANKING.campeao.name);
         const nomesLista=new Set(RANKING.lista.map(f=>f.name));
         return normais.every(o=>!nomesLista.has(o.f.name));
       })());
@@ -7289,18 +7288,19 @@ function testarAiVivo() {
    chamável também de dentro de "tudo", sem duplicar a lógica. */
 function testarDivisoes() {
   const M = carregarMotor(), F = M.rateAll(lerLutadores());
-  const MIN = M.MIN_LUTADORES || 40;
+  const MIN = M.MIN_LUTADORES || 40, MINV2 = M.MIN_LUTADORES_V2 || 30, ANO = M.ANO_ATIVO;
   console.log("\n" + cinza("uma carreira são 22 lutas sem repetir adversário"));
-  console.log(cinza(`divisão com menos de ${MIN} lutadores no pool não fecha`));
+  console.log(cinza(`modo normal (regras v2): só quem lutou de ${ANO} em diante; mínimo ${MINV2} lutadores`));
+  console.log(cinza(`modo lenda: mínimo ${MIN} lendas (inclui aposentados)`));
   console.log(cinza(`lenda = disputou cinturão OU rating >= ${(M.RATING_LENDA).toFixed(3)} (13/18)\n`));
   console.log(cinza("                          normal        lenda"));
   let jog = 0, jogL = 0;
   const linhas = M.DIVISOES.map(d => {
     const pool = F.filter(f => f.division === d.id);
-    return { id: d.id, n: pool.length, l: pool.filter(M.ehLenda).length };
+    return { id: d.id, n: pool.filter(f => f.era && f.era[1] >= ANO).length, total: pool.length, l: pool.filter(M.ehLenda).length };
   }).sort((a, b) => b.n - a.n);
   for (const r of linhas) {
-    const a = r.n >= MIN, b = a && r.l >= MIN;      // sem divisão não há modo lenda
+    const a = r.n >= MINV2 && r.total >= MIN, b = r.total >= MIN && r.l >= MIN;   // divisão que nunca fechou no dataset segue fora
     if (a) jog++; if (b) jogL++;
     console.log(`  ${r.id.padEnd(20)} ` +
       `${(a ? verde(String(r.n).padStart(4)) : vermelho(String(r.n).padStart(4)))} ` +
@@ -7985,7 +7985,7 @@ async function testarSave() {
   });
   await conf("escolha feita no round 1 fica gravada e é reaplicada ao retomar (não abre de novo)", async () => {
     const A = sandboxCarreira();
-    iniciarCarreiraTeste(A, F, 777004);
+    iniciarCarreiraTeste(A, F, 777005);
     await jogarCarreiraAte(A, 3);
     // luta 4 no manual só na hora da escolha: troca abrirEscolhaLuta por uma que escolhe
     // SEMPRE a 2ª ação com modificador 1.08 no 1º atributo (escolha de verdade, não a neutra)
@@ -7997,7 +7997,7 @@ async function testarSave() {
     if (A.run("globalThis.__abertas") === 0) throw new Error("semente de teste terminou a luta 4 no 1º round; trocar a semente");
     void pend;
     const B0 = sandboxCarreira();
-    iniciarCarreiraTeste(B0, F, 777004);
+    iniciarCarreiraTeste(B0, F, 777005);
     await jogarCarreiraAte(B0, 3);
     B0.run(`abrirEscolhaLuta=function(sc,ref,opp,cb){cb(1.08,"slpm");};`);
     // para logo depois da escolha: intercepta o callback pra salvar e sair
@@ -9417,8 +9417,9 @@ async function testarHub() {
     await jogarCarreiraAte(X, 3); X.run("auto=false;renderPainel();");
     const passo = X.run("passoCinturao()");
     if (passo && !X.registro.painelCinturao.innerHTML.includes(passo)) throw new Error("passo ausente: " + X.registro.painelCinturao.innerHTML);
-    const n = X.run("posicaoDivisao().n");
-    if (!X.registro.painelPosicao.innerHTML.includes("#" + n)) throw new Error("posição: " + X.registro.painelPosicao.innerHTML);
+    /* regras v2: a posição sai na régua do UFC (#7, Sem ranking, Campeão), igual à da ficha */
+    const rot = X.run("rotuloPosicao(posicaoDivisao())");
+    if (!rot || !X.registro.painelPosicao.innerHTML.includes(rot)) throw new Error("posição: " + X.registro.painelPosicao.innerHTML);
   });
 
   await conf("painel: lesão aparece com st.lesao e some sem ela", async () => {
@@ -9439,13 +9440,18 @@ async function testarHub() {
       throw new Error("posts: " + h);
   });
 
-  await conf("caminho até o cinturão fala na régua da posição (#N), nunca em 'top 5' ou 'ranking dos 15'", async () => {
+  await conf("caminho até o cinturão fala na régua do UFC: sem ranking mira o top 15; ranqueado fala do próprio #N (regras v2)", async () => {
+    /* pedido do dono (2026-10-04): ranking igual ao do UFC (campeão, #1 a
+       #15, o resto sem ranking). A régua antiga, "#48 de 236", não volta. */
     const X = novo(778106);
-    for (const [st0, lim] of [[0.20, 0.35], [0.50, 0.60], [0.70, 0.80]]) {
+    const txt0 = X.run(`st.title=false;st.standing=0.20;passoCinturao()`);
+    if (!/top 15/.test(txt0) || /#\d/.test(txt0)) throw new Error(`sem ranking: "${txt0}"`);
+    for (const st0 of [0.50, 0.70, 0.86]) {
       const txt = X.run(`st.title=false;st.standing=${st0};passoCinturao()`);
-      const alvo = "#" + X.run(`posicaoDivisao(${lim}).n`);
-      if (!txt.includes(alvo)) throw new Error(`standing ${st0}: "${txt}" sem ${alvo}`);
-      if (/top 5|ranking dos 15/i.test(txt)) throw new Error(`standing ${st0}: "${txt}"`);
+      const k = X.run(`posicaoDivisao(${st0}).n`);
+      if (!(k >= 1 && k <= 15)) throw new Error(`standing ${st0}: posição ${k} fora do top 15`);
+      if (!txt.includes(k === 1 ? "nº 1" : `#${k}`)) throw new Error(`standing ${st0}: "${txt}" sem a posição ${k}`);
+      if (/ de \d{2,}/.test(txt) || /ranking dos 15/i.test(txt)) throw new Error(`standing ${st0}: "${txt}"`);
     }
   });
 
@@ -9694,7 +9700,7 @@ async function testarHub() {
     if (X.run("noiteEtapa") !== "resultado") throw new Error("etapa " + X.run("noiteEtapa"));
     const reg = JSON.parse(X.run("JSON.stringify(st.registro[st.registro.length-1])"));
     const h = X.registro.resultado.innerHTML;
-    for (const t of [reg.venceu ? "Vitória" : "Derrota", reg.metodo, reg.adv, X.run(`fmtNum(${reg.renda})`), "#" + X.run("posicaoDivisao().n")])
+    for (const t of [reg.venceu ? "Vitória" : "Derrota", reg.metodo, reg.adv, X.run(`fmtNum(${reg.renda})`), X.run("rotuloPosicao(posicaoDivisao())")])
       if (!h.includes(t)) throw new Error(`resultado sem "${t}"`);
     const fundo = String(X.registro.noiteFundo.style.cssText);
     if (!fundo.includes(reg.venceu ? "img/confete.webp" : "img/apagado.webp")) throw new Error("fundo " + fundo);
@@ -11997,6 +12003,104 @@ async function testarJxJTelas() {
   return okTudo;
 }
 
+/* ================================================================== *
+ * REGRAS DA CARREIRA v2 (2026-10-04, pedido do dono): sem aposentado no
+ *     modo normal (lenda continua com eles), ranking igual ao do UFC
+ *     (campeão, #1 a #15, sem ranking) e adversário que cresce junto com
+ *     o jogador (estreia sem campeão nem ranqueado). A v1 continua igual
+ *     pra save e link de desafio antigos. Balanço da v2 na suíte balanco.
+ * ================================================================== */
+async function testarRegrasCarreira() {
+  console.log("\n" + cinza("regras da carreira v2: aposentado só no modo lenda, ranking do UFC, adversário que cresce com o jogador; v1 intacta pra save e link antigos"));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const F = lerLutadores();
+  const X = sandboxCarreira();
+  iniciarCarreiraTeste(X, F, 991001);
+  const RJ = X.run("JSON.stringify(ROSTER)");
+
+  await conf("modo normal sem aposentado (última luta antes de ANO_ATIVO) em nenhuma divisão; lenda e v1 continuam com eles", () => {
+    const r = JSON.parse(X.run(`JSON.stringify((()=>{
+      const out={div:{}};
+      for(const d of DIVISOES){
+        const n=poolDivisao(d.id,"normal",2), v1=poolDivisao(d.id,"normal",1);
+        out.div[d.id]={velhosV2:n.filter(f=>!f.era||f.era[1]<ANO_ATIVO).length, velhosV1:v1.filter(f=>f.era&&f.era[1]<ANO_ATIVO).length};
+      }
+      const kh=ROSTER.find(f=>f.name==="Khabib Nurmagomedov");
+      out.khabib={normal:poolDivisao("lightweight","normal",2).includes(kh),lenda:poolDivisao("lightweight","lenda",2).includes(kh),v1:poolDivisao("lightweight","normal",1).includes(kh)};
+      return out;
+    })())`));
+    const comVelho = Object.entries(r.div).filter(([, v]) => v.velhosV2 > 0);
+    if (comVelho.length) throw new Error("aposentado no modo normal: " + JSON.stringify(comVelho));
+    if (!Object.values(r.div).some((v) => v.velhosV1 > 0)) throw new Error("a v1 perdeu os aposentados (save antigo mudaria)");
+    if (r.khabib.normal || !r.khabib.lenda || !r.khabib.v1) throw new Error("Khabib: " + JSON.stringify(r.khabib));
+  });
+  await conf("ranking do UFC: campeão e #1 a #15 (os 15 mais fortes); o jogador começa sem ranking, entra no top 15 no limiar e chega ao nº1 antes da disputa", () => {
+    const r = JSON.parse(X.run(`JSON.stringify((()=>{
+      const l=RANKING.lista, notas=l.slice(1).map(f=>f.rating);
+      const grade=[0,.18,.30,LIMIAR_TOP15-1e-9,LIMIAR_TOP15,.6,.7,.8,.87,LIMIAR_DESAFIANTE].map(s=>posicaoDivisao(s));
+      st.title=true;const camp=posicaoDivisao();st.title=false;
+      return {n:l.length,campeao:l[0]===RANKING.campeao,ordenado:notas.every((x,i)=>i===0||x<=notas[i-1]),grade,camp};
+    })())`));
+    if (r.n !== 16 || !r.campeao || !r.ordenado) throw new Error("lista: " + JSON.stringify({ n: r.n, campeao: r.campeao, ordenado: r.ordenado }));
+    const ns = r.grade.map((p) => p.n), txt = r.grade.map((p) => p.texto);
+    if (txt[0] !== "Sem ranking" || txt[1] !== "Sem ranking" || ns[3] !== 16 || ns[4] !== 15 || ns[8] !== 1)
+      throw new Error("régua: " + JSON.stringify(txt));
+    if (!ns.every((n, i) => i === 0 || n <= ns[i - 1])) throw new Error("posição não melhora com o standing: " + JSON.stringify(ns));
+    if (r.camp.texto !== "Campeão" || r.camp.n !== 0) throw new Error("campeão: " + JSON.stringify(r.camp));
+  });
+  await conf("estreia sem campeão nem ranqueado (40 carreiras novas); o nível do adversário cresce com o jogador", async () => {
+    const ruins = [];
+    for (let k = 0; k < 40; k++) {
+      const Y = sandboxCarreira();
+      iniciarCarreiraTeste(Y, F, 992000 + k, "normal", RJ);
+      const v = JSON.parse(Y.run(`JSON.stringify((()=>{const top=new Set(RANKING.lista.map(f=>f.name));st.tituloEstaLuta=false;
+        return candidatos().filter(o=>!o.rival&&top.has(o.f.name)).map(o=>o.f.name);})())`));
+      if (v.length) ruins.push(`semente ${992000 + k}: ${v.join(", ")}`);
+    }
+    if (ruins.length) throw new Error("estreia com ranqueado: " + ruins.slice(0, 3).join(" | "));
+    const r = JSON.parse(X.run(`JSON.stringify((()=>{
+      const l=RANKING.lista, salva=st.standing, saidas=[...fought];
+      const medir=s=>{let nota=0,rank=0,melhor=99;for(let k=0;k<20;k++){st.standing=s;fought.clear();const o=faixasV2();nota+=o.reduce((a,x)=>a+x.f.rating,0)/o.length;
+        for(const x of o){const i=l.indexOf(x.f);if(i>=0){rank+=1/o.length;melhor=Math.min(melhor,i);}}}return {nota:nota/20,rank:rank/20,melhor};};
+      const r=[.18,.25,.35,LIMIAR_TOP15-.001,.50,.70,.86].map(medir);st.standing=salva;fought.clear();saidas.forEach(n=>fought.add(n));return r;
+    })())`));
+    const notas = r.map((x) => x.nota);
+    if (!notas.every((x, i) => i === 0 || x > notas[i - 1])) throw new Error("nível não cresce com o standing: " + notas.map((x) => x.toFixed(3)).join(" "));
+    if (r[0].rank !== 0 || r[1].rank !== 0) throw new Error("começo de carreira enfrentou ranqueado: " + JSON.stringify(r.slice(0, 2)));
+    const semRank = r.slice(0, 4).map((x) => x.melhor);
+    if (semRank.some((m) => m < 13)) throw new Error("sem ranking enfrentou alguém acima do #13 (melhor posição por standing): " + JSON.stringify(semRank));
+    if (r[5].rank < 0.6 || r[6].rank < 0.6) throw new Error("ranqueado enfrenta pouco ranqueado: " + JSON.stringify(r.slice(5)));
+  });
+  await conf("v1 intacta: carreira nova grava regras 2 e o link leva r=2; save sem st.regras e link sem r= ficam na v1 (pool com aposentados)", () => {
+    if (X.run("st.regras") !== 2 || !/&r=2/.test(X.run("urlDesafio()"))) throw new Error("carreira nova: " + X.run("st.regras") + " " + X.run("urlDesafio()"));
+    const save = JSON.parse(X.run("JSON.stringify(montarSave())"));
+    delete save.st.regras;
+    const Y = sandboxCarreira();
+    Y.sb.__S = JSON.stringify(save); Y.sb.__RJ = RJ;
+    Y.run("ROSTER=JSON.parse(globalThis.__RJ);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;aplicarSave(JSON.parse(globalThis.__S));");
+    if (Y.run("REGRAS") !== 1) throw new Error("save antigo abriu nas regras " + Y.run("REGRAS"));
+    if (!Y.run("POOL.some(f=>f.era&&f.era[1]<ANO_ATIVO)")) throw new Error("save antigo perdeu os aposentados do pool");
+    Y.sb.URLSearchParams = URLSearchParams; // o vm não tem; sem ele lerDesafio() devolve null
+    const ler = (q) => { Y.sb.location.search = q; return JSON.parse(Y.run("JSON.stringify(lerDesafio())")); };
+    if (ler("?d=lightweight&s=abc").regras !== 1 || ler("?d=lightweight&s=abc&r=2").regras !== 2) throw new Error("link: regras erradas");
+  });
+  await conf("v1 intacta: a escada antiga continua igual pra quem está nela (centro nunca abaixo de 45% da divisão)", () => {
+    const Y = sandboxCarreira();
+    Y.run("REGRAS=1;");
+    iniciarCarreiraTeste(Y, F, 993001, "normal", RJ);
+    const r = JSON.parse(Y.run(`JSON.stringify((()=>{st.tituloEstaLuta=false;const N=LADDER.length;
+      return {regras:st.regras,min:Math.min(...candidatos().map(o=>LADDER.indexOf(o.f))),piso:Math.floor((0.45)*(N-1))+Math.round(0.10*N)};})())`));
+    if (r.regras !== 1 || r.min < r.piso) throw new Error("escada v1 mudou: " + JSON.stringify(r));
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  regras ok") : vermelho(`  ${falhas.length} falha(s) nas regras`)));
+  return okTudo;
+}
+
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
 let ok = true;
@@ -12048,6 +12152,7 @@ try {
   else if (cmd === "amostra") ok = await testarAmostra();
   else if (cmd === "diversidade") ok = await testarDiversidade(Number(div) || 6);
   else if (cmd === "entrevista") ok = await testarEntrevista();
+  else if (cmd === "regras") ok = await testarRegrasCarreira();
   else if (cmd === "jxj") ok = await testarJxJ();
   else if (cmd === "jxjmotor") ok = await testarJxJMotor();
   else if (cmd === "jxjarvore") ok = await testarJxJArvore();
@@ -12136,6 +12241,7 @@ try {
         ["diversidade", () => testarDiversidade(6)],
         ["entrevista", () => testarEntrevista()],
         ["personagem", () => testarPersonagem()],
+        ["regras", () => testarRegrasCarreira()],
         ["jxj", () => testarJxJ()],
         ["jxjmotor", () => testarJxJMotor()],
         ["jxjarvore", () => testarJxJArvore()],
