@@ -11,6 +11,8 @@ PLANO-LANCAMENTO.md
 
 # Material bruto e ferramentas
 ferramentas
+# worktrees locais do git (branch de teste no localhost, nunca vai pro ar)
+.worktrees
 supabase_jxj.sql
 supabase_jxj_rollback.sql
 supabase_jxj_narracao.sql
