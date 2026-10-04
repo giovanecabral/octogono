@@ -1,4 +1,4 @@
--- supabase_jxj_rollback.sql — desfaz supabase_jxj.sql e supabase_jxj_narracao.sql (JxJ).
+-- supabase_jxj_rollback.sql — desfaz supabase_jxj.sql, supabase_jxj_narracao.sql e supabase_jxj_raio.sql (JxJ).
 --
 -- APAGA TODOS OS DADOS DO JXJ: lutadores, lutas, ações, rating, temporadas,
 -- torneios, títulos, conquistas, fichas, limites e log do JxJ. Não toca em

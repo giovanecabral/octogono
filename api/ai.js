@@ -778,7 +778,7 @@ async function verificarPro(token) {
     // RLS já restringe a leitura à própria linha do usuário do token — não
     // precisa (nem pode, com a anon key) filtrar por user_id aqui
     if (!Array.isArray(linhas) || linhas.length === 0 || linhas[0].pro !== true) return false;
-    // expira_em (2026-09-22, "mensal" = R$9,99 libera 30 dias, sem
+    // expira_em (2026-09-22, "mensal" = R$11,99, antes R$9,99, libera 30 dias, sem
     // cobrança automática): pro=true no banco não é suficiente sozinho —
     // se o período já passou, ninguém desliga o campo ativamente (não
     // existe cobrança recorrente que dispare webhook nenhum), então a

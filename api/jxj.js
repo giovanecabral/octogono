@@ -47,9 +47,15 @@ async function rpc(nome, args) {
   try { j = txt ? JSON.parse(txt) : null; } catch { j = null; }
   if (!r.ok) {
     const msg = j && typeof j.message === "string" ? j.message : "";
-    if (msg.startsWith("jxj: ")) throw new ErroJxJ(msg.slice(5), 400);
-    console.error("jxj rpc", nome, r.status, txt.slice(0, 300));
-    throw new ErroJxJ("o servidor do JxJ não respondeu, tente de novo", 502);
+    /* o modo se chama Online na tela desde 2026-10-04; as mensagens do banco ainda dizem JxJ */
+    if (msg.startsWith("jxj: ")) throw new ErroJxJ(msg.slice(5).replace(/o JxJ competitivo/g, "o modo Online").replace(/\bJxJ\b/g, "Online"), 400);
+    /* PGRST202 = a função não existe no banco (migração ainda não rodou):
+       quem chama decide se tem caminho de antes */
+    const codigo = j && typeof j.code === "string" ? j.code : null;
+    if (codigo !== "PGRST202") console.error("jxj rpc", nome, r.status, txt.slice(0, 300));
+    const e = new ErroJxJ("o servidor do modo Online não respondeu, tente de novo", 502);
+    e.codigo = codigo;
+    throw e;
   }
   return j;
 }
@@ -287,7 +293,8 @@ function definicoes(ativo) {
     regras: { nivelMax: REG.NIVEL_MAX, slotsFree: REG.SLOTS_FREE, slotsPro: REG.SLOTS_PRO, trocaPrincipalHoras: REG.TROCA_PRINCIPAL_HORAS,
       custoRespec: REG.CUSTO_RESPEC, tetoFichasDia: REG.TETO_FICHAS_DIA, parRating24h: REG.PAR_RATING_24H, ausencia: REG.REGRA_AUSENCIA,
       temporadaDias: REG.TEMPORADA_DIAS, torneioVagas: REG.TORNEIO_VAGAS, torneioJanelaH: REG.TORNEIO_JANELA_H, torneioLutasMin: REG.TORNEIO_LUTAS_MIN,
-      lutasPraClassificar: RAT.LUTAS_PRA_CLASSIFICAR, reset: RAT.RESET, fichasTorneio: REG.FICHAS_TORNEIO, xpTorneio: REG.XP_TORNEIO },
+      lutasPraClassificar: RAT.LUTAS_PRA_CLASSIFICAR, reset: RAT.RESET, fichasTorneio: REG.FICHAS_TORNEIO, xpTorneio: REG.XP_TORNEIO,
+      raios: REG.RAIOS, raioPadrao: REG.RAIO_PADRAO, tolerancia: REG.TOLERANCIA },
     xpPorNivel: Array.from({ length: REG.NIVEL_MAX }, (_, i) => REG.xpProximo(i + 1)),
     molduras: REG.MOLDURAS,
     conquistas: REG.CONQUISTAS,
@@ -397,7 +404,19 @@ async function executar(acao, c, uid) {
       return rpc("jxj_moldura", { uid, lid, moldura_: nome, preco: m.preco || 0, comprar: !!c.comprar });
     }
     case "buildPublica": return rpc("jxj_build_publica", { uid, lid: idDe(c.lutadorId, "lutador"), publica: !!c.publica });
-    case "filaEntrar": return rpc("jxj_fila_entrar", { uid, lid: idDe(c.lutadorId, "lutador") });
+    case "filaEntrar": {
+      /* raio (2026-10-04): a diferença máxima de rating que o jogador aceita.
+         Sem a migração supabase_jxj_raio.sql no banco, a fila de antes
+         (até 400, crescendo com a espera) e a tela avisa. */
+      const lid = idDe(c.lutadorId, "lutador");
+      const raio = c.raio == null ? REG.RAIO_PADRAO : Number(c.raio);
+      if (!REG.RAIOS.includes(raio)) throw new ErroJxJ("diferença de rating inválida");
+      try { return await rpc("jxj_fila_entrar_raio", { uid, lid, raio_: raio }); }
+      catch (e) {
+        if (e.codigo !== "PGRST202") throw e;
+        return { ...(await rpc("jxj_fila_entrar", { uid, lid })), raio: null, raioIndisponivel: true };
+      }
+    }
     case "filaSair": return rpc("jxj_fila_sair", { uid });
     case "fila": {
       const r = await rpc("jxj_fila_parear", { uid, semente_: novaSemente(), tol_base: REG.TOLERANCIA.base, tol_seg: REG.TOLERANCIA.porDezSeg, tol_max: REG.TOLERANCIA.max });

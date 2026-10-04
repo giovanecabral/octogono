@@ -2388,3 +2388,18 @@ Pedido do dono, com cinco pontos. Detalhe e números no LEIA-ME
 
 Os itens 1 a 3 valem só pra carreira nova: save e link de desafio antigos
 seguem na v1 (`st.regras`, `r=`), pela regra da semente.
+
+## 44. Passos finais do lançamento (2026-10-04)
+
+Pedido do dono: Pro a R$ 11,99, logo com rosto, suporte no Discord, JxJ
+vira "Online" com descrição, e o jogador escolhe a diferença de rating dos
+adversários na fila. Tudo FEITO no código (LEIA-ME "Passos finais do
+lançamento").
+
+Falta, e é do dono:
+1. Aprovar o logo.
+2. Rodar `supabase_jxj_raio.sql` no SQL Editor, depois do backup. É só
+   aditiva: coluna `raio` na fila, `jxj_fila_entrar_raio` nova e
+   `jxj_fila_parear` com a mesma assinatura. Sem ela, a fila funciona
+   como antes e a tela avisa que o filtro não está ligado.
+

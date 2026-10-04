@@ -16,6 +16,11 @@ export const REVANCHE_MS = 60000;
 export const SINAL_FILA_MS = 12000;       // fila só pareia quem deu sinal de vida há pouco
 export const BLOQUEIO_RECUSA_MS = 60000;  // quem não confirmou o par fica 60 s fora da fila
 export const TOLERANCIA = { base: 100, porDezSeg: 25, max: 400 };
+/* Diferença máxima de rating que o jogador aceita na fila (2026-10-04, pedido
+   do dono). 2000 = qualquer diferença. O padrão (400) é o teto de antes. O
+   banco confere os mesmos valores (supabase_jxj_raio.sql). */
+export const RAIOS = [100, 200, 400, 2000];
+export const RAIO_PADRAO = 400;
 export const TEMPORADA_DIAS = 56;
 export const TORNEIO_VAGAS = 8;
 export const TORNEIO_JANELA_H = 24;
@@ -71,7 +76,7 @@ export const MOLDURAS = {
    teto diário, e quem credita é o banco (jxj_dar_conquista, mesma tabela
    em jxj_fichas_conquista; a suíte jxj confere que as duas batem). */
 export const CONQUISTAS = {
-  primeira_vitoria: { nome: "Primeira vitória", desc: "Venceu a primeira luta no JxJ.", fichas: 25 },
+  primeira_vitoria: { nome: "Primeira vitória", desc: "Venceu a primeira luta no modo Online.", fichas: 25 },
   primeiro_nocaute: { nome: "Primeiro nocaute", desc: "Venceu por nocaute ou nocaute técnico.", fichas: 25 },
   primeira_finalizacao: { nome: "Primeira finalização", desc: "Venceu por finalização.", fichas: 25 },
   vitorias_10: { nome: "10 vitórias", desc: "Chegou a 10 vitórias com este lutador.", fichas: 50 },

@@ -25,6 +25,8 @@ api/jxj.js          JxJ (jogador contra jogador): rota única, servidor decide t
 api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usam nada da carreira.
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
 supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
+supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas.
+img/logo/           Logo (o rosto do octógono): gerar.py faz os SVG, rasterizar.mjs os PNG.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
@@ -102,7 +104,7 @@ metade). Regras do revamp que valem daqui pra frente:
   `api/ai.js`. Regra do placar em `api/_placar-regras.js` (o `_` não vira
   rota); a suíte `placar` compara as faixas com o `grade()` do jogo.
 
-## JxJ (2026-10-01): pronto no código, desligado até o dono migrar o banco
+## JxJ (2026-10-01): ligado em produção desde 2026-10-04; na tela se chama Online
 
 Spec: `docs/superpowers/specs/2026-10-01-jxj-design.md`; números medidos e
 passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
@@ -124,6 +126,13 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
   fichas, nível e Pro saem do servidor/banco; número mandado pelo cliente é
   ignorado (teste no `jxj`). A IA só narra o resultado pronto, com filtro.
 - **Uma rota só** (`api/jxj.js` com `acao`): o plano Hobby aceita 12 funções.
+- **Na tela o modo se chama Online** (2026-10-04); rotas, código e banco
+  continuam `jxj`. Texto novo visível diz "Online"/"modo Online"; mensagem
+  do banco com "JxJ" é traduzida no `rpc()`.
+- **Diferença de rating na fila** (`supabase_jxj_raio.sql`): o servidor
+  tem que funcionar sem a migração (código `PGRST202` = função não existe,
+  cai na fila de antes). Função nova do banco que o servidor chama segue o
+  mesmo padrão até o dono rodar a migração.
 - **Mexeu no motor ou na árvore do JxJ:** `node testar.js jxjmotor` e
   `node testar.js jxjarvore` (faixas nos testes) e, pra ver os números,
   `node ferramentas/jxj-balanco.mjs matriz|niveis|nos|atributos`. Depois do
@@ -293,6 +302,14 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   narração do plano é linha de tipo `plano` no log: leitor novo do log
   filtra pelo tipo, nunca pelo texto. Plano gravado com `v: 2`; entrada
   sem `v` é save antigo e aplica só o mod no eixo.
+- **Preço do Pro: R$ 11,99 (2026-10-04).** `PRECO_PRO_MINIMO` continua
+  9,9 de propósito: Pix de R$ 9,99 gerado antes da mudança e pago depois
+  tem que ativar. Mexeu em preço: `node testar.js pagamento`.
+- **Logo (2026-10-04).** O rosto do octógono: `img/logo/gerar.py` (SVG) e
+  `img/logo/rasterizar.mjs` (PNG). Mudou o desenho, rode os dois. A suíte
+  `rotas` confere que o que o `<head>` cita existe e não cai no
+  `.vercelignore`. Suporte é o Discord (`URL_DISCORD`); o e-mail fica nos
+  Termos e na Privacidade (LGPD).
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`
   (permanente, com teto) × `st.eventoMod` (eventos). Evento escrevendo direto no
   atributo apagaria a base.

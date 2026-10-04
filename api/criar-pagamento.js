@@ -21,7 +21,7 @@ const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
 const ASAAS_URL = "https://api.asaas.com/v3";
-const PRECO_PRO = 9.99;
+const PRECO_PRO = 11.99;   // R$ 11,99 desde 2026-10-04 (era 9,99)
 
 /* Troca o JWT do usuário pelo próprio usuário — não usa service_role
    aqui, de propósito: este endpoint só cria uma cobrança em nome de

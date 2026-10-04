@@ -26,6 +26,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=Oswald:wght@500;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="legado.css">
 <link rel="stylesheet" href="estilo.css">
+<!-- logo (2026-10-04): o rosto do octógono. Favicon em SVG com PNG de reserva,
+     ícone do iPhone e o card que aparece quando alguém manda o link. -->
+<link rel="icon" type="image/svg+xml" href="/img/logo/icone.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/logo/icone-32.png">
+<link rel="apple-touch-icon" href="/img/logo/apple-touch-icon.png">
+<meta name="theme-color" content="#0B0C10">
+<meta name="description" content="Monte seu lutador com os atributos de lutadores reais e jogue uma carreira de MMA, ou enfrente outros jogadores no modo Online.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://octogono.fun/">
+<meta property="og:title" content="Octógono">
+<meta property="og:description" content="Carreira de MMA e modo Online. Monte seu lutador com os atributos de lutadores reais e suba até o cinturão.">
+<meta property="og:image" content="https://octogono.fun/img/logo/compartilhar.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
 <div class="wrap">
@@ -988,7 +1003,7 @@ function textoAmostraNegada(){
     ?"A amostra grátis desta conta já foi usada nas últimas 24 horas. Com o Pro, a coletiva e a entrevista ficam abertas em toda luta."
     :"Não deu pra conferir a amostra grátis agora. Com o Pro, a coletiva e a entrevista ficam abertas em toda luta.";
 }
-/* R$9,99 libera 30 dias (2026-09-22), sem cobrança automática — então
+/* R$11,99 libera 30 dias (R$9,99 de 2026-09-22 a 2026-10-04), sem cobrança automática — então
    "pro=true" no banco não basta sozinho, ninguém desliga esse campo
    ativamente quando o período acaba (não existe assinatura recorrente
    disparando webhook nenhum). A checagem de validade é preguiçosa, toda
@@ -1705,7 +1720,7 @@ function montarPerfil(corpo,email,session){
    assinar exige conta. Mesmo conteúdo da antiga screenPlanoPro(). */
 function montarVitrinePro(container,session){
   container.appendChild(el("h2","painel-titulo","Octógono Pro"));
-  container.appendChild(el("p","dil-c","R$ 9,99 liberam 30 dias. Sem cobrança automática."));
+  container.appendChild(el("p","dil-c","R$ 11,99 liberam 30 dias. Sem cobrança automática."));
   montarBeneficiosPro(container);
   montarCarrosselPro(container);
   const formArea=el("div","");
@@ -1948,7 +1963,7 @@ async function renderPlanoPro(container,session,{conferido=false}={}){
   const aceiteBox=document.getElementById("aceiteProCheck");
   document.getElementById("aceiteProLinkT").onclick=e=>{e.preventDefault();screenTermos();};
   document.getElementById("aceiteProLinkP").onclick=e=>{e.preventDefault();screenPrivacidade();};
-  const btn=el("button","btn btn-sm",pro?"Renovar por R$9,99 (mais 30 dias)":"Confirmar pagamento de R$9,99 (30 dias)");
+  const btn=el("button","btn btn-sm",pro?"Renovar por R$11,99 (mais 30 dias)":"Confirmar pagamento de R$11,99 (30 dias)");
   btn.disabled=true;
   box.appendChild(btn);
   const msg=el("p","hint","");
@@ -2117,7 +2132,7 @@ function screenTermos(){
 
     <h3>6. Plano Pro: pagamento avulso, 30 dias por vez</h3>
     <p>O Octógono oferece um upgrade opcional e pago, o "Plano Pro", ao
-    valor de R$ 9,99 (nove reais e noventa e nove centavos) por
+    valor de R$ 11,99 (onze reais e noventa e nove centavos) por
     pagamento. Cada pagamento confirmado libera o Plano Pro por 30
     (trinta) dias corridos a partir da confirmação ou, se a conta
     ainda tiver dias ativos de um pagamento anterior, a partir do fim
@@ -2244,6 +2259,9 @@ function screenTermos(){
     contato abaixo.</p>
 
     <h3>14. Contato</h3>
+    <p>Dúvidas sobre o jogo e suporte: servidor do Discord do Octógono
+    (<a href="https://discord.gg/evuz4qjRa" target="_blank" rel="noopener">discord.gg/evuz4qjRa</a>).
+    Pedidos formais, inclusive sobre dados pessoais, pelo e-mail abaixo.</p>
     <p>Dúvidas, denúncias de conteúdo, pedido de estorno ou solicitações
     relacionadas a estes Termos:
     <a href="mailto:contato@octogono.fun">contato@octogono.fun</a>.</p>
@@ -2295,7 +2313,7 @@ function screenPrivacidade(){
       funcionalidade (art. 7º, I).</li>
       <li><b>CPF, nome e dado de cobrança informados ao contratar o
       Plano Pro</b>. Finalidade: processar e comprovar o pagamento
-      único de R$ 9,99. O Octógono não recebe nem armazena número de
+      único de R$ 11,99. O Octógono não recebe nem armazena número de
       cartão de crédito ou dado sensível de pagamento, apenas o
       identificador do cliente e do pagamento gerado pelo processador
       (Asaas), necessários para vincular a cobrança à conta do usuário.
@@ -7289,6 +7307,7 @@ const pctBar=p=>`<span class="pctwrap ${pctClass(p)}">
    ícones, transição. Visual em estilo.css. Spec em
    docs/superpowers/specs/2026-09-26-revamp-ui-design.md.
    ========================================================================= */
+const URL_DISCORD="https://discord.gg/evuz4qjRa";   // servidor de suporte do Octógono
 const ICONE=(nome,cls="")=>
   `<svg class="ico${cls?" "+cls:""}" aria-hidden="true" focusable="false"><use href="img/icones.svg#${nome}"></use></svg>`;
 
@@ -7588,8 +7607,8 @@ async function jxj(acao,dados={}){
     r=await fetch(JXJ_URL,{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({...(token?{token}:{}),acao,...dados})});
     try{ j=await r.json(); }catch(e){}
-  }catch(e){ throw{status:0,erro:"Sem conexão com o servidor do JxJ. Confira a internet e tente de novo."}; }
-  if(!r.ok)throw{status:r.status,erro:(j&&j.erro)||"O servidor do JxJ não respondeu. Tente de novo.",desligado:!!(j&&j.desligado)};
+  }catch(e){ throw{status:0,erro:"Sem conexão com o servidor do modo Online. Confira a internet e tente de novo."}; }
+  if(!r.ok)throw{status:r.status,erro:(j&&j.erro)||"O servidor do modo Online não respondeu. Tente de novo.",desligado:!!(j&&j.desligado)};
   return j;
 }
 async function jxjDef(){ if(!JXJ_DEF)JXJ_DEF=await jxj("definicoes"); return JXJ_DEF; }
@@ -7617,7 +7636,7 @@ function jxjErro(c,e,tentar){
   c.appendChild(v);
 }
 function jxjEmBreve(){
-  return vazio("relogio","O JxJ abre em breve",
+  return vazio("relogio","O modo Online abre em breve",
     "O modo competitivo está pronto e entra no ar assim que o banco de dados dele for liberado. A carreira continua igual.");
 }
 /* navegação interna do JxJ (troca de rota, não de aba) */
@@ -7665,7 +7684,8 @@ function jxjSparkline(pontos,{w=280,h=64}={}){
 
 /* ---------- entrada e painel (#/jxj) ---------- */
 async function jxjTelaEntrada(){
-  const c=jxjTela({titulo:"JxJ",fundo:"arena",nav:""});
+  const c=jxjTela({titulo:"Online",fundo:"arena",nav:""});
+  c.appendChild(el("p","tela-sub","Seu lutador contra os lutadores de outros jogadores, em tempo real. A cada troca, os dois escolhem a ação ao mesmo tempo, sem ver a do outro."));
   const area=el("div","jxj-area"); c.appendChild(area);
   jxjCarregando(area);
   let def;
@@ -8035,7 +8055,7 @@ function jxjAbaPerfil(c,def,est,l){
   g.innerHTML=`<section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("grafico")} Atributos</p><ul class="jxj-atr">${atr}</ul>
       <p class="jxj-nota">O número pequeno é o que a árvore somou. Cada atributo tem teto de ${def.arvore.atributoMax}.</p></section>
     <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("raio")} Habilidades em uso</p>${mecs?`<ul class="jxj-lista-simples">${mecs}</ul>`:`<p class="jxj-nota">Nenhuma ainda. Os pontos da árvore ligam habilidades.</p>`}</section>
-    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("medalha")} Carreira no JxJ</p>
+    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("medalha")} Carreira no Online</p>
       <dl class="jxj-numeros"><div><dt>Cartel</dt><dd>${cart.txt}<small>${jxjTaxa(l)} de vitórias</small></dd></div>
       <div><dt>Nocautes</dt><dd>${l.kos||0}</dd></div><div><dt>Finalizações</dt><dd>${l.finalizacoes||0}</dd></div>
       <div><dt>Rating</dt><dd>${Math.round(l.rating)}<small>${jxjProvisorio(l)?"em classificação":`incerteza ${Math.round(l.rd)}`}</small></dd></div></dl>
@@ -8246,17 +8266,27 @@ async function jxjTelaFila(){
   area.innerHTML="";
   if(!usaveis.length){ area.appendChild(vazio("usuario","Nenhum lutador ativo","Crie um lutador ou escolha o do slot 1 como principal.")); return; }
   if(!est.pro&&est.lutaGratisUsada){
-    area.appendChild(vazio("cadeado","A luta grátis já foi usada","No plano grátis o JxJ competitivo tem uma luta. O Pro libera a fila, a revanche e os torneios."));
+    area.appendChild(vazio("cadeado","A luta grátis já foi usada","No plano grátis o modo Online tem uma luta. O Pro libera a fila, a revanche e os torneios."));
     area.appendChild(bloqueioPro(el("button","botao","Entrar na fila")));
     return;
   }
   let escolhido=(usaveis.find(l=>l.id===est.principalEfetivo)||usaveis[0]).id;
-  const buscar=async()=>{
+  /* diferença de rating (2026-10-04, pedido do dono): até quanto o jogador
+     aceita no adversário. O par só sai se couber na escolha dos dois; a
+     faixa cresce com a espera até esse limite. Lembrada neste aparelho. */
+  const RAIOS=(def.regras&&def.regras.raios)||[100,200,400,2000],RAIO_PADRAO=(def.regras&&def.regras.raioPadrao)||400;
+  let raio=RAIO_PADRAO;
+  try{ const r=Number(localStorage.getItem("jxj:raio")); if(RAIOS.includes(r))raio=r; }catch(e){}
+  const nomeRaio=r=>r>=2000?"Qualquer diferença":`Até ${r} pontos`;
+  const dicaRaio=r=>r>=2000?"Acha adversário mais rápido, até bem mais forte ou mais fraco":r<=100?"Lutas mais parelhas, espera maior":r<=200?"Parelho, espera média":"O padrão: a faixa cresce com a espera até aqui";
+  const textoRaio=r=>r==null?"":r>=2000?"Você aceita qualquer diferença de rating.":`Você aceita até ${r} pontos de rating de diferença.`;
+  const buscar=async(info={})=>{
     area.innerHTML="";
     const tk=JXJ_TOKEN;
     const box=el("section","painel-n jxj-busca entra");
+    const aviso=info.raioIndisponivel?"O filtro de diferença ainda não está ligado no servidor: a busca usa o padrão, até 400 pontos, crescendo com a espera.":textoRaio(info.raio);
     box.innerHTML=`<div class="jxj-busca-pulso">${ICONE("busca")}</div><h2 class="jxj-subtitulo">Procurando adversário</h2>
-      <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. A faixa de rating aceita cresce com a espera. Ninguém é inventado: se não houver adversário agora, a busca continua.</p>`;
+      <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. ${aviso?aviso+" ":""}A faixa aceita cresce com a espera. Ninguém é inventado: se não houver adversário agora, a busca continua.</p>`;
     const sair=el("button","botao botao-sec",`${ICONE("fechar")}<span>Sair da fila</span>`); sair.type="button";
     sair.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("filaSair"); }catch(e){} irPara("jxj"); };
     box.appendChild(sair); area.appendChild(box);
@@ -8268,7 +8298,7 @@ async function jxjTelaFila(){
         if(tk!==JXJ_TOKEN)return;
         if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
         if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
-        tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita até ${Math.round(r.tolerancia||100)} pontos de rating de diferença`;
+        tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos de diferença`;
       }catch(e){ tempo.textContent=e.erro||"Sem conexão; tentando de novo."; }
       JXJ_TIMER=setTimeout(ciclo,3000);
     };
@@ -8281,10 +8311,27 @@ async function jxjTelaFila(){
   usaveis.forEach(l=>{
     const b=el("button","jxj-opcao"+(l.id===escolhido?" on":""),`${jxjRetrato(l,64)}<b>${jxjEsc(l.nome)}</b><small>${jxjEstilo(l.estilo)} · nível ${l.nivel} · rating ${Math.round(l.rating)}${l.id===est.principalEfetivo?" · principal":""}</small>`);
     b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(l.id===escolhido));
-    b.onclick=()=>{ SOM.toque(); escolhido=l.id; g.querySelectorAll(".jxj-opcao").forEach(x=>{ const on=x===b; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); }); };
+    b.onclick=()=>{ SOM.toque(); escolhido=l.id; g.querySelectorAll(".jxj-opcao").forEach(x=>{ const on=x===b; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); }); atualizarFaixa(); };
     g.appendChild(b);
   });
   esc.appendChild(g); area.appendChild(esc);
+  const secRaio=el("section","jxj-escolha-raio");
+  secRaio.appendChild(el("p","jxj-rotulo",`${ICONE("alvo")} Diferença de rating dos adversários`));
+  const gr=el("div","jxj-opcoes jxj-raios");
+  const faixa=el("p","jxj-nota jxj-raio-faixa","");
+  function atualizarFaixa(){
+    const l=usaveis.find(x=>x.id===escolhido),r=Math.round(l?l.rating:1500);
+    faixa.textContent=raio>=2000?`Rating de ${l?l.nome:"seu lutador"}: ${r}. Qualquer adversário da categoria serve.`
+      :`Rating de ${l?l.nome:"seu lutador"}: ${r}. Adversários de ${r-raio} a ${r+raio}, se o raio dele também aceitar você.`;
+  }
+  RAIOS.forEach(r=>{
+    const b=el("button","jxj-opcao jxj-raio"+(r===raio?" on":""),`<b>${nomeRaio(r)}</b><small>${dicaRaio(r)}</small>`);
+    b.type="button"; b.dataset.raio=String(r); if(b.setAttribute)b.setAttribute("aria-pressed",String(r===raio));
+    b.onclick=()=>{ SOM.toque(); raio=r; try{ localStorage.setItem("jxj:raio",String(r)); }catch(e){}
+      gr.querySelectorAll(".jxj-raio").forEach(x=>{ const on=x===b; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); }); atualizarFaixa(); };
+    gr.appendChild(b);
+  });
+  secRaio.append(gr,faixa); area.appendChild(secRaio); atualizarFaixa();
   const regras=el("section","painel-n jxj-card");
   regras.innerHTML=`<p class="jxj-rotulo">${ICONE("info")} Antes de entrar</p><ul class="jxj-lista-simples">${def.regras.ausencia.map(t=>`<li>${t}</li>`).join("")}
     <li>O par encontrado tem ${Math.round(20)} segundos pra confirmar. Quem recusa espera um minuto pra voltar.</li>
@@ -8293,7 +8340,7 @@ async function jxjTelaFila(){
   const msg=el("p","jxj-erro"); msg.hidden=true; area.appendChild(msg);
   const entrar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Entrar na fila</span>`); entrar.type="button";
   entrar.onclick=async()=>{ SOM.toque(); entrar.disabled=true;
-    try{ await jxj("filaEntrar",{lutadorId:escolhido}); buscar(); }
+    try{ const r=await jxj("filaEntrar",{lutadorId:escolhido,raio}); buscar({raio:r&&r.raio!=null?r.raio:null,raioIndisponivel:!!(r&&r.raioIndisponivel)}); }
     catch(e){ msg.textContent=e.erro; msg.hidden=false; entrar.disabled=false; } };
   area.appendChild(el("div","jxj-acoes")).appendChild(entrar);
 }
@@ -8571,7 +8618,7 @@ async function jxjTelaReplay(id){
 /* ---------- ranking (#/jxj/ranking) ---------- */
 const JXJ_FILTRO={categoria:"",busca:"",pagina:0};
 async function jxjTelaRanking(){
-  const c=jxjTela({titulo:"Ranking JxJ",fundo:"cinturao",nav:"ranking"});
+  const c=jxjTela({titulo:"Ranking Online",fundo:"cinturao",nav:"ranking"});
   const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
   let def; try{ def=await jxjDef(); }catch(e){ return jxjErro(area,e,jxjTelaRanking); }
   if(!def.ativo){ area.innerHTML=""; area.appendChild(jxjEmBreve()); return; }
@@ -8853,6 +8900,12 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-10-04",titulo:"O Octógono ganhou rosto",itens:[
+    "Logo novo: o próprio octógono virou o rosto do jogo. Aparece no menu, no ícone da aba e no card quando alguém manda o link.",
+    "O modo competitivo agora se chama Online.",
+    "No Online, antes de buscar adversário, você escolhe até quanto de diferença de rating aceita: 100, 200 ou 400 pontos, ou qualquer diferença. O par só sai se couber na escolha dos dois.",
+    "O Pro passa a custar R$ 11,99 por 30 dias, sem cobrança automática.",
+    "Suporte agora no Discord do Octógono: o link fica no rodapé do menu."]},
   {data:"2026-10-04",titulo:"Plano de luta",itens:[
     "Antes de cada round você escolhe o plano entre 4 opções, que mudam conforme o que aconteceu no round anterior.",
     "Cada plano melhora uma coisa e cobra outra, e rende menos se o adversário for forte justamente nisso. Escolher bem ganha luta; escolher mal perde.",
@@ -8998,8 +9051,9 @@ function screenMenu(){
   const c=montarTela({fundo:"arena",vivo:true,voltar:null,classe:"tela-menu"});
 
   const topo=el("div","menu-topo");
+  /* logo (2026-10-04): o rosto do octógono ao lado do nome */
   topo.appendChild(el("div","marca",
-    `<span class="marca-nome">Octógono</span><span class="marca-sub">Carreira de MMA</span>`));
+    `<img class="marca-rosto" src="img/logo/rosto.svg" alt="" width="104" height="104"><span class="marca-texto"><span class="marca-nome">Octógono</span><span class="marca-sub">Carreira de MMA e modo Online</span></span>`));
   const chip=el("button","chip-conta",`${ICONE("usuario")}<span class="chip-rot">Entrar</span>`);
   chip.type="button"; chip.onclick=()=>{ SOM.toque(); irPara("conta"); };
   topo.appendChild(chip);
@@ -9012,9 +9066,9 @@ function screenMenu(){
       acao:"Começar",i:0}),
     Object.assign(cartaoMenu({rota:"continuar",tamanho:"grande",foto:"vestiario",rotulo:"Carreira salva",titulo:"Continuar",
       texto:`<span id="continuar-txt">Entre para ver suas carreiras.</span>`,acao:"Ver carreiras",i:1,apagado:true}),{id:"card-continuar"}),
-    cartaoMenu({rota:"jxj",tamanho:"faixa",foto:"arena-alto",rotulo:"Competitivo",titulo:"JxJ",
-      texto:"Seu lutador contra os lutadores dos outros jogadores. Ranking, temporadas de 8 semanas e torneios com cinturão.",
-      acao:"Entrar no JxJ",i:2}),
+    cartaoMenu({rota:"jxj",tamanho:"faixa",foto:"arena-alto",rotulo:"Competitivo",titulo:"Online",
+      texto:"Crie seu lutador e enfrente outros jogadores em tempo real: a cada troca, os dois escolhem a ação ao mesmo tempo. Ranking, temporadas e torneios com cinturão.",
+      acao:"Jogar online",i:2}),
     cartaoMenu({rota:"ranking",tamanho:"medio",foto:"cinturao",rotulo:"Placar",titulo:"Ranking",
       extra:`<span class="previa" id="previa-ranking"><span class="carregando">Carregando</span></span>`,
       acao:"Ver ranking",i:3}),
@@ -9031,8 +9085,12 @@ function screenMenu(){
   const rod=el("footer","menu-rodape");
   const lk=(txt,rota)=>{ const a=el("a","",txt); a.href="#/"+rota;
     a.onclick=e=>{ e.preventDefault(); irPara(rota); }; return a; };
-  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),
-    el("span","menu-contato","Contato: contato@octogono.fun"));
+  /* suporte (2026-10-04, pedido do dono): o servidor do Discord do
+     Octógono. O e-mail continua nos Termos e na Privacidade (canal formal
+     de pedido de dados, LGPD). */
+  const discord=el("a","menu-contato",`${ICONE("discord")}<span>Suporte no Discord</span>`);
+  discord.href=URL_DISCORD; discord.target="_blank"; discord.rel="noopener";
+  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),discord);
   c.appendChild(rod);
 
   preencherPreviaRanking();

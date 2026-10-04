@@ -3976,6 +3976,12 @@ tocar na carreira. Spec completa:
 
 ### Estado e como ligar
 
+**Desde 2026-10-04 o modo está ligado em produção** (a API responde
+`ativo: true`) e se chama **Online** na tela: menu, títulos e mensagens.
+Rotas (`#/jxj`), código e banco continuam `jxj`. As mensagens do banco que
+ainda dizem "JxJ" são traduzidas no `rpc()` de `api/jxj.js`. O texto
+abaixo é o passo a passo de quando ele foi publicado desligado.
+
 O código está pronto e publicado **desligado**. Sem `JXJ_ATIVO=true` na
 Vercel, toda ação responde 503 e a entrada do JxJ mostra "O JxJ abre em
 breve" (o card do menu leva até ela). O banco de produção ainda não tem
@@ -3988,6 +3994,8 @@ as tabelas: rodar a migração é do dono, depois do backup.
    `jxj_*` (19 tabelas, 51 funções no total); não alteram nenhuma tabela
    que já existe e podem rodar de novo sem erro. Conferir com
    `select count(*) from pg_proc where proname like 'jxj\_%'` (51).
+   Depois, `supabase_jxj_raio.sql` (2026-10-04, diferença de rating na
+   fila; seção "Passos finais do lançamento"): 52 funções.
 3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
    Production, e Redeploy do deploy atual (variável nova só vale em
    deploy novo; não precisa mudar código).
@@ -4254,6 +4262,117 @@ ramo), então ninguém conseguia gastar ponto; a `jxjtelas` nasceu dele e
 reprova com o mesmo erro se a correção sair.
 
 ---
+
+## Passos finais do lançamento (2026-10-04)
+
+Pedido do dono: cinco itens antes do lançamento.
+
+### Logo: o rosto do octógono
+
+"O octógono precisa ter um rosto e esse rosto vai ser a logo."
+
+**O desenho.** O próprio octógono é a cabeça:
+- o aro vermelho é o acolchoado da grade, com luz em cima e sombra
+  embaixo;
+- os 8 postes de metal ficam nos cantos;
+- dentro, a grade da jaula aparece como textura;
+- o rosto é de um lutador concentrado:
+  - sobrancelhas descendo pro centro, a direita cortada por uma cicatriz
+    com pontos dourados;
+  - olhos estreitos;
+  - nariz de boxeador torto;
+  - protetor bucal vermelho num meio sorriso (o canto direito mais alto).
+
+As cores são as da marca: noite, sangue, osso e ouro.
+
+**As peças:**
+- `img/logo/gerar.py` gera `rosto.svg` (completo) e `icone.svg` (sem grade
+  nem cicatriz, com traço mais grosso, legível a 32 px);
+- `img/logo/rasterizar.mjs` (precisa de puppeteer-core e do Chrome) gera os
+  PNG:
+  - `icone-32.png`, favicon pra navegador sem SVG;
+  - `apple-touch-icon.png`, 180×180 com fundo da noite;
+  - `compartilhar.png`, o card de 1200×630 que aparece quando alguém
+    manda o link (rosto, nome em Anton, "Carreira de MMA e modo Online" e
+    o endereço).
+
+**Onde aparece:**
+- o rosto entra ao lado do nome no menu (`.marca-rosto`) e na página 404;
+- o `<head>` ganhou favicon, ícone do iPhone, `theme-color`, descrição e
+  as tags de compartilhamento (`og:*`, `twitter:card`).
+
+**Teste:** a suíte `rotas` confere três coisas:
+- os arquivos citados no `<head>` existem e nenhum deles cai no
+  `.vercelignore`;
+- os SVG não dependem de nada externo;
+- o rosto aparece no menu e no 404.
+
+Os scripts do logo ficam fora do deploy.
+
+### Pro a R$ 11,99
+
+`api/criar-pagamento.js` pede R$ 11,99 à Asaas (era R$ 9,99); a tela do
+Pro, o botão, os Termos e a Privacidade mudaram junto.
+
+A trava `PRECO_PRO_MINIMO` (`api/_pro.js`) **continua 9,9 de propósito**.
+Um Pix de R$ 9,99 gerado antes do deploy e pago depois é pagamento de
+verdade e tem que ativar o Pro de quem pagou. Ela continua barrando
+cobrança de teste e de valor errado.
+
+Testes na suíte `pagamento`:
+- a cobrança nova pede 11,99;
+- 11,99 e 9,99 ativam.
+
+### Suporte no Discord
+
+O rodapé do menu troca o e-mail pelo link do servidor do Discord do
+Octógono (`URL_DISCORD`, aba nova, ícone da marca do Simple Icons, CC0, no
+sprite). Os Termos (seção 14) citam o Discord pra suporte. O e-mail
+continua nos Termos e na Privacidade como canal formal, inclusive pra
+pedido de dados (LGPD).
+
+### JxJ vira Online
+
+Nome visível em todo lugar: cartão do menu ("Online", com uma descrição
+curta e "Jogar online"), título e subtítulo da entrada, ranking, avisos e
+erros. O resto (rotas, código, banco) continua `jxj`, pra não quebrar link
+salvo nem save.
+
+### Diferença de rating na fila
+
+**Antes de buscar adversário, o jogador escolhe até quanto de diferença
+aceita:** 100, 200 ou 400 pontos, ou qualquer diferença. O padrão é 400,
+o teto de antes, e a escolha é lembrada no aparelho.
+
+**O par só sai se:**
+- a diferença couber no raio dos **dois**;
+- e couber na faixa da espera (100 pontos, mais 25 a cada 10 s).
+
+Com "qualquer diferença" dos dois lados, a faixa continua crescendo além de
+400. A tela mostra a faixa ("Adversários de 1100 a 1900, se o raio dele
+também aceitar você") e, na busca, o limite escolhido e a faixa da hora.
+
+**Banco:** `supabase_jxj_raio.sql` é só aditiva:
+- coluna `raio` em `jxj_fila`, com trava dos valores aceitos;
+- função nova `jxj_fila_entrar_raio`, que entra na fila pela de sempre e
+  grava o raio, numa transação;
+- `jxj_fila_parear` refeita com a mesma assinatura. Sem raio, ela se
+  comporta igual a antes.
+
+**Rodar no SQL Editor, depois do backup:** o servidor funciona sem a
+migração. O `rpc()` reconhece o código `PGRST202`, de "função não existe",
+e cai na fila de antes, e a tela avisa que o filtro ainda não está ligado.
+
+**Testes:**
+- `jxj` (Postgres local):
+  - o raio de um dos dois segura o par, buscando dos dois lados;
+  - a faixa cresce com a espera;
+  - "qualquer" passa de 400;
+  - o padrão para em 400;
+  - raio fora da lista é recusado no servidor e no banco;
+  - o banco sem a migração funciona como antes e avisa;
+  - dente provado: a função que só olha o raio de quem busca reprova.
+- `jxjtelas`: as quatro opções, a faixa e a escolha chegando ao banco.
 
 ## Como jogar: tutorial com prints anotados (2026-09-28)
 

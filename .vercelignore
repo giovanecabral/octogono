@@ -11,11 +11,14 @@ PLANO-LANCAMENTO.md
 
 # Material bruto e ferramentas
 ferramentas
+# scripts do logo (o deploy só leva os SVG e PNG)
+img/logo/*.mjs
 # worktrees locais do git (branch de teste no localhost, nunca vai pro ar)
 .worktrees
 supabase_jxj.sql
 supabase_jxj_rollback.sql
 supabase_jxj_narracao.sql
+supabase_jxj_raio.sql
 audio/bruto
 img/bruto
 *.py

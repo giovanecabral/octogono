@@ -10,8 +10,10 @@
 
 export const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 export const ASAAS_URL = "https://api.asaas.com/v3";
-/* trava contra cobrança de teste/valor errado (o plano custa R$9,99 fixo;
-   um pouco abaixo pra não brigar com arredondamento) */
+/* trava contra cobrança de teste/valor errado. O plano custa R$ 11,99
+   desde 2026-10-04 (era R$ 9,99). O mínimo continua 9,9 de propósito: um
+   Pix de R$ 9,99 gerado antes da mudança e pago depois ainda é pagamento
+   de verdade e tem que ativar o Pro de quem pagou. */
 export const PRECO_PRO_MINIMO = 9.9;
 export const DIAS_POR_PAGAMENTO = 30;
 export const STATUS_PAGO = new Set(["CONFIRMED", "RECEIVED"]);

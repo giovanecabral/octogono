@@ -34,7 +34,7 @@ grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
 `;
 
-export async function novoBanco({ jxj = true } = {}) {
+export async function novoBanco({ jxj = true, raio = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB_SUPABASE);
   await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_schema.sql"), "utf8"));
@@ -42,6 +42,8 @@ export async function novoBanco({ jxj = true } = {}) {
     await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj.sql"), "utf8"));
     /* migração separada da narração (reserva e teto), na ordem da produção */
     await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_narracao.sql"), "utf8"));
+    /* raio de rating na fila (2026-10-04); raio:false = banco de antes da migração */
+    if (raio) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_raio.sql"), "utf8"));
   }
   await db.exec(GRANTS_SUPABASE);
   return db;
@@ -81,7 +83,8 @@ export function fetchFalso(db, { SUPABASE_URL, chamadas = [] } = {}) {
     if (m) {
       sigs = sigs || await assinaturas(db);
       const fn = m[1], sig = sigs[fn];
-      if (!sig) return responder(404, { message: `função ${fn} não existe` });
+      /* mesmo corpo do PostgREST pra função que não existe (code PGRST202) */
+      if (!sig) return responder(404, { code: "PGRST202", message: `Could not find the function public.${fn} in the schema cache` });
       const args = op.body ? JSON.parse(op.body) : {};
       const partes = [], valores = [];
       sig.nomes.forEach((nome, i) => {

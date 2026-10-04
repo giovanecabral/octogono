@@ -4941,7 +4941,7 @@ function testarTelaInicial() {
     await passo("Plano Pro logado, não-Pro: CPF + aceite + 'Confirmar pagamento' aparecem", () => {
       if (marcado("aceite-pro").length !== aceitesAntesDeLogar + 1)
         throw new Error("formulário de aceite não apareceu com sessão ativa");
-      if (!env.todos.some(n => n.tagName === "button" && /Confirmar pagamento de R\$9,99/.test(n.innerHTML || "")))
+      if (!env.todos.some(n => n.tagName === "button" && /Confirmar pagamento de R\$11,99/.test(n.innerHTML || "")))
         throw new Error("botão 'Confirmar pagamento' não apareceu");
     });
     await passo("Conta, não-Pro: dispara o resumo", () => { UI.screenConta(); });
@@ -7391,7 +7391,29 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
   });
 
-  await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade e contato em texto (sem Créditos)", () => {
+  await conf("logo (2026-10-04): favicon, ícone do iPhone e card de compartilhamento existem e vão pro ar; o rosto no menu e no 404", () => {
+    const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8"), erro404 = fs.readFileSync(path.join(RAIZ, "404.html"), "utf8");
+    const cabeca = html.slice(0, html.indexOf("</head>"));
+    const refs = [...cabeca.matchAll(/<link rel="(?:icon|apple-touch-icon)"[^>]*href="\/([^"]+)"/g)].map(m => m[1]);
+    if (refs.length !== 3) throw new Error("ícones no head: " + refs);
+    const og = /<meta property="og:image" content="https:\/\/octogono\.fun\/([^"]+)"/.exec(cabeca);
+    if (!og) throw new Error("sem og:image");
+    const ignorar = fs.readFileSync(path.join(RAIZ, ".vercelignore"), "utf8").split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    for (const arq of [...refs, og[1], "img/logo/rosto.svg"]) {
+      if (!fs.existsSync(path.join(RAIZ, arq))) throw new Error("arquivo do logo não existe: " + arq);
+      if (ignorar.some(l => arq === l || arq.startsWith(l.replace(/\/$/, "") + "/") || (l.includes("*") && new RegExp("^" + l.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "$").test(arq))))
+        throw new Error("o .vercelignore tira do ar: " + arq);
+    }
+    for (const svg of ["rosto.svg", "icone.svg"]) {
+      const t = fs.readFileSync(path.join(RAIZ, "img", "logo", svg), "utf8");
+      if (/href="http|xlink:href|<image|@import/.test(t) || !/aria-label="Octógono"/.test(t)) throw new Error(svg + " depende de algo de fora ou não tem rótulo");
+    }
+    if (!/rel="icon"/.test(erro404) || !/img\/logo\/rosto\.svg/.test(erro404)) throw new Error("404 sem o logo");
+    UI.irPara("menu"); env.drenar();
+    const marca = env.todos.filter(n => tem(n, "marca")).pop();
+    if (!marca || !/class="marca-rosto" src="img\/logo\/rosto\.svg"/.test(marca.innerHTML)) throw new Error("menu sem o rosto: " + (marca && marca.innerHTML.slice(0, 160)));
+  });
+  await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade e suporte no Discord (sem Créditos)", () => {
     UI.irPara("menu"); env.drenar();
     const cards = env.todos.filter(n => tem(n, "menu-card")).slice(-6);
     const grandes = cards.filter(n => tem(n, "menu-card-grande")).map(n => n.dataset.rota);
@@ -7402,8 +7424,12 @@ async function testarRotas() {
     const rod = env.todos.filter(n => tem(n, "menu-rodape")).pop();
     if (!rod) throw new Error("sem rodapé");
     const txt = rod.children.map(c => String(c.innerHTML)).join(" | ");
-    for (const t of ["Termos", "Privacidade", "contato@octogono.fun"])
+    for (const t of ["Termos", "Privacidade", "Suporte no Discord"])
       if (!txt.includes(t)) throw new Error("rodapé sem " + t + ": " + txt);
+    /* suporte (2026-10-04): o servidor do Discord, em aba nova, com o ícone do sprite */
+    const dc = rod.children.find(c => tem(c, "menu-contato"));
+    if (!dc || dc.href !== "https://discord.gg/evuz4qjRa" || dc.target !== "_blank" || !/noopener/.test(dc.rel || "") || !/#discord"/.test(String(dc.innerHTML)))
+      throw new Error("link do Discord: " + JSON.stringify(dc && { href: dc.href, target: dc.target, rel: dc.rel }));
     /* reta final (2026-09-28): o dono tirou a página Créditos */
     if (txt.includes("Créditos")) throw new Error("rodapé voltou a ter Créditos: " + txt);
   });
@@ -8485,6 +8511,34 @@ async function testarPagamento() {
       const r = await confirmar("tok-u1");
       if (r.corpo.ativados !== 0 || r.corpo.pro || banco.upsertsPro) throw new Error(JSON.stringify(r.corpo));
       if (r.corpo.pendentes !== 1) throw new Error("pendentes " + r.corpo.pendentes);
+    });
+    await conf("preço (2026-10-04): a cobrança nova pede R$ 11,99 à Asaas", async () => {
+      const CP = (await import(url.pathToFileURL(path.join(RAIZ, "api", "criar-pagamento.js")).href)).default;
+      const fetchSuite = globalThis.fetch, envAntes = { ...process.env };
+      let corpoCobranca = null;
+      globalThis.fetch = async (u, op = {}) => {
+        u = String(u);
+        const ok = (b) => ({ ok: true, status: 200, json: async () => b });
+        if (u.endsWith("/auth/v1/user")) return ok({ id: "u1", email: "u1@teste.com" });
+        if (u.endsWith("/customers")) return ok({ id: "cus_9" });
+        if (u.endsWith("/payments")) { corpoCobranca = JSON.parse(op.body); return ok({ invoiceUrl: "https://www.asaas.com/i/teste" }); }
+        return { ok: false, status: 404, json: async () => ({}) };
+      };
+      Object.assign(process.env, { TERMOS_PUBLICADOS: "true", ASAAS_API_KEY: "asaas-falsa" });
+      try {
+        const res = resposta();
+        await CP({ method: "POST", headers: {}, body: { token: "tok-u1", cpf: "529.982.247-25" } }, res);
+        if (res.cod !== 200 || !corpoCobranca) throw new Error(`status ${res.cod}: ${JSON.stringify(res.corpo)}`);
+        if (corpoCobranca.value !== 11.99) throw new Error("valor pedido à Asaas: " + corpoCobranca.value);
+      } finally { globalThis.fetch = fetchSuite; for (const k of Object.keys(process.env)) if (!(k in envAntes)) delete process.env[k]; Object.assign(process.env, envAntes); }
+    });
+    await conf("preço novo de R$ 11,99 ativa, e o Pix antigo de R$ 9,99 pago depois do aumento também (trava mínima 9,9)", async () => {
+      zerar(); cobranca("pay_novo", { value: 11.99 });
+      let r = await confirmar("tok-u1");
+      if (r.corpo.ativados !== 1) throw new Error("11,99: " + JSON.stringify(r.corpo));
+      zerar(); cobranca("pay_antigo", { value: 9.99 });
+      r = await confirmar("tok-u1");
+      if (r.corpo.ativados !== 1) throw new Error("9,99: " + JSON.stringify(r.corpo));
     });
     await conf("webhook: falha ao gravar = 500 (a Asaas reenvia) e nada fica marcado como processado", async () => {
       zerar(); cobranca("pay_6"); falharEscrita = true;
@@ -10915,6 +10969,72 @@ async function testarJxJ() {
       const l = await q("select rating, xp, lutas_rating from jxj_lutadores where id in ($1, $2)", [l1, l2]);
       if (v.resultado.metodo !== "ANULADA" || l.some((x) => x.rating !== 1500 || x.xp !== 0 || x.lutas_rating !== 0)) throw new Error(JSON.stringify({ r: v.resultado, l }));
     });
+    /* raio de rating na fila (2026-10-04, supabase_jxj_raio.sql) */
+    const doisNaFila = async (rA, rB, raioA, raioB) => {
+      await zerarLimites();
+      const ua = await novoUsuario({ pro: true }), ub = await novoUsuario({ pro: true });
+      const la = (await criar(ua)).id, lb = (await criar(ub)).id;
+      await q("update jxj_lutadores set rating = $2 where id = $1", [la, rA]);
+      await q("update jxj_lutadores set rating = $2 where id = $1", [lb, rB]);
+      const ea = await ok(ua, "filaEntrar", { lutadorId: la, ...(raioA === undefined ? {} : { raio: raioA }) });
+      const eb = await ok(ub, "filaEntrar", { lutadorId: lb, ...(raioB === undefined ? {} : { raio: raioB }) });
+      const esperar = (seg) => q("update jxj_fila set entrou_em = now() - make_interval(secs => $1), sinal_em = now() where user_id in ($2, $3)", [seg, ua, ub]);
+      const sair = async () => { await api(ua, "filaSair"); await api(ub, "filaSair"); };
+      return { ua, ub, la, lb, ea, eb, esperar, sair };
+    };
+    await conf("fila com raio: o par só sai se a diferença couber no raio dos DOIS e na faixa da espera; 'qualquer' deixa a faixa crescer além de 400", async () => {
+      let x = await doisNaFila(1500, 1800, 200, 2000);
+      if (x.ea.raio !== 200 || x.eb.raio !== 2000) throw new Error("raio não gravado: " + JSON.stringify([x.ea, x.eb]));
+      await x.esperar(600);
+      /* do lado de quem aceita qualquer diferença: o raio 200 do OUTRO tem que segurar */
+      let f = await ok(x.ub, "fila");
+      if (f.luta) throw new Error("300 de diferença pareou: o raio 200 do outro lado não valeu");
+      f = await ok(x.ua, "fila");
+      if (f.luta) throw new Error("300 de diferença pareou com raio 200");
+      if (f.tolerancia !== 200 || f.raio !== 200) throw new Error("tolerância mostrada: " + JSON.stringify(f));
+      await x.sair();
+      x = await doisNaFila(1500, 1800, 400, 400);
+      await x.esperar(30);
+      f = await ok(x.ua, "fila");
+      if (f.luta) throw new Error("pareou antes da faixa da espera chegar a 300 (175 com 30 s)");
+      await x.esperar(90);
+      f = await ok(x.ua, "fila");
+      if (!f.luta) throw new Error("300 de diferença, raio 400 dos dois e 90 s de espera (faixa 300) não pareou: " + JSON.stringify(f));
+      x = await doisNaFila(1500, 2100, 2000, 2000);
+      await x.esperar(600);
+      f = await ok(x.ub, "fila");
+      if (!f.luta) throw new Error("'qualquer diferença' dos dois com 600 de diferença e 10 min de espera não pareou: " + JSON.stringify(f));
+      x = await doisNaFila(1500, 2100, undefined, undefined);
+      if (x.ea.raio !== REG.RAIO_PADRAO) throw new Error("sem escolha, o raio devia ser o padrão: " + JSON.stringify(x.ea));
+      await x.esperar(600);
+      f = await ok(x.ua, "fila");
+      if (f.luta || f.tolerancia !== 400) throw new Error("padrão passou de 400: " + JSON.stringify(f));
+      await x.sair();
+    });
+    await conf("fila com raio: raio fora da lista é recusado (servidor e banco)", async () => {
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      await erro(u, "filaEntrar", { lutadorId: l, raio: 150 }, /diferença de rating inválida/);
+      await erro(u, "filaEntrar", { lutadorId: l, raio: "muito" }, /diferença de rating inválida/);
+      let deu = false;
+      try { await q("select public.jxj_fila_entrar_raio($1, $2, 150)", [u, l]); } catch { deu = true; }
+      if (!deu) throw new Error("o banco aceitou raio 150");
+    });
+    await conf("banco sem a migração do raio: a fila funciona como antes (até 400) e o servidor avisa que o filtro não está ligado", async () => {
+      const db2 = await B.novoBanco({ raio: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const u1 = "00000000-0000-4000-8000-0000000009a1", u2 = "00000000-0000-4000-8000-0000000009a2";
+        await B.criarUsuario(db2, u1, { pro: true }); await B.criarUsuario(db2, u2, { pro: true });
+        const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Raio Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const c2 = await B.chamar(H, { token: "tok:" + u2, acao: "criar", nome: "Sem Raio Dois", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const e1 = await B.chamar(H, { token: "tok:" + u1, acao: "filaEntrar", lutadorId: c1.json.id, raio: 100 });
+        if (e1.status !== 200 || !e1.json.raioIndisponivel || e1.json.naFila !== true) throw new Error("entrada sem a migração: " + JSON.stringify(e1));
+        await B.chamar(H, { token: "tok:" + u2, acao: "filaEntrar", lutadorId: c2.json.id, raio: 100 });
+        const f = await B.chamar(H, { token: "tok:" + u1, acao: "fila" });
+        if (f.status !== 200 || !f.json.luta) throw new Error("sem a migração, a fila de antes não pareou: " + JSON.stringify(f).slice(0, 200));
+      } finally { globalThis.fetch = fetchAntes; }
+    });
     await conf("grátis: a primeira luta competitiva entra; depois dela a fila é do Pro; torneio e revanche também", async () => {
       const f1 = await novoUsuario(), f2 = await novoUsuario();
       const l1 = (await criar(f1)).id, l2 = (await criar(f2)).id;
@@ -12104,6 +12224,24 @@ async function testarJxJTelas() {
       const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
       if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
     });
+    await conf("fila: o jogador escolhe a diferença de rating (4 opções, padrão 400), vê a faixa, e a escolha chega ao banco", async () => {
+      const m = await abrir("fila");
+      const ops = desde(m).filter((n) => tem(n, "jxj-raio"));
+      const rot = ops.map((n) => String(n.innerHTML).replace(/<[^>]+>/g, "|").split("|").filter(Boolean)[0]);
+      if (JSON.stringify(rot) !== JSON.stringify(["Até 100 pontos", "Até 200 pontos", "Até 400 pontos", "Qualquer diferença"])) throw new Error("opções: " + JSON.stringify(rot));
+      if (!tem(ops[2], "on")) throw new Error("o padrão não é 400");
+      ops[1].onclick();
+      const faixa = desde(m).filter((n) => tem(n, "jxj-raio-faixa")).pop();
+      if (!/Adversários de 1300 a 1700/.test(faixa.textContent || "")) throw new Error("faixa: " + faixa.textContent);
+      const m2 = env.todos.length;
+      const entrar = botao(desde(m), "Entrar na fila");
+      await entrar.onclick(); await assentar(15);
+      const linha = (await db.query("select raio from jxj_fila where user_id = $1", [u1])).rows[0];
+      if (!linha || linha.raio !== 200) throw new Error("raio no banco: " + JSON.stringify(linha));
+      if (!/até 200 pontos de rating de diferença/.test(htmlDe(desde(m2)))) throw new Error("a busca não mostra o limite escolhido");
+      UI.irPara("jxj"); await assentar();
+      await api(u1, "filaSair");
+    });
     const l2 = (await api(u2, "criar", { nome: "Tela Dois", rosto: ROSTO, categoria: "lightweight", estilo: "wrestler" })).id;
     await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
     const par = await api(u1, "fila");
@@ -12144,7 +12282,9 @@ async function testarJxJTelas() {
       const m = env.todos.length;
       const v2 = await api(u2, "luta", { lutaId: lid });
       await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: "defesa" });
-      await assentar(60);
+      /* espera a tela consultar e redesenhar (o banco local às vezes demora
+         mais que um número fixo de voltas: falhou 1 vez em 2 em 2026-10-04) */
+      for (let k = 0; k < 12 && !desde(m).some((n) => tem(n, "jxj-ultima")); k++) await assentar(60);
       const vs = await api(u1, "luta", { lutaId: lid });
       const t0 = vs.trocas[0];
       if (!t0 || !t0.varA || !t0.varB || !t0.ev || !t0.ev.length) throw new Error("vista sem variantes ou eventos da troca: " + JSON.stringify(t0));
