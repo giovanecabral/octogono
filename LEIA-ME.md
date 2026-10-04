@@ -373,21 +373,27 @@ caminho do título (`st.tituloEstaLuta`, igual à v1).
   ranking pega no máximo o #13 (achado da suíte `regras`: perto do limiar,
   a faixa de cima alcançava o #1).
 - Ranqueado no #k: até 2 posições abaixo, até 2 acima, e de 2 a 5 acima.
-- Ganho no standing: .045, .075 e .125 sem ranking; .05, .08 e .13 no top
+- Ganho no standing: .045, .075 e .125 sem ranking; .05, .08 e .11 no top
   15. Derrota no top 15 tira 60% da punição: no UFC uma derrota não joga
   um ranqueado pra fora.
+- A carta mais difícil no top 15 rendia .13: quem sempre pegava a mais
+  difícil ganhava o cinturão em 18% a 23% das carreiras (teto 20%), porque
+  o campeão dos leves na v2 (Islam Makhachev, pelos títulos) tem a nota de
+  estatística no 32º percentil do elenco na ativa (51% na v1, com Khabib
+  na tabela). Com .11, 12%, sem mudar as vitórias de ninguém.
 
 **Balanço medido** (50 carreiras por perfil, `node testar.js balanco`):
 
 | perfil | vitórias em 22 | cinturão |
 |---|---|---|
 | automático | 12,8 | 12% |
-| comum | 12,5 | 8% |
+| comum | 12,6 | 8% |
 | esperto | 12,6 | 2% |
-| ousado | 11,9 | 18% |
-| estrategista | 12,7 | 6% |
+| ousado | 11,9 | 12% |
+| estrategista | 12,8 | 8% |
 
-Lutas 1 a 5: 55% a 71% de vitória. Dentro das faixas do teste (9 a 14
+Com 30 carreiras (a bateria completa): 11,9 a 12,6 vitórias, cinturão 3% a
+13%. Lutas 1 a 5: 55% a 71% de vitória. Dentro das faixas do teste (9 a 14
 vitórias, cinturão até 20%); um pouco acima do 11 a 12,5 aprovado em
 2026-09-28, porque a estreia agora é contra gente do mesmo nível.
 

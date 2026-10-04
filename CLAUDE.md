@@ -270,7 +270,7 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   bem, cinturão raro.** `BUDGET_PCT` .70 (ver o item acima), faixas de
   adversário +16% acima do ranking com piso de 45% da divisão (escada da
   v1; carreira nova usa a escada v2, item abaixo, medida em 11,9 a 12,8
-  vitórias), teto de treino 1.05, rótulo de dificuldade e zebra pela
+  vitórias e cinturão 2% a 13%), teto de treino 1.05, rótulo de dificuldade e zebra pela
   chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
   motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
   teste). Números no LEIA-ME "Balanço".

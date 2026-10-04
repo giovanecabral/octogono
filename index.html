@@ -4557,7 +4557,10 @@ function faixasV2(){
     faixas=[[-.07*U,-.01*U,.045],[0,.08*U,.075],[.10*U,.24*U,.125]];
   }else{
     c=U+(15-pos.n);
-    faixas=[[-2,0,.05],[0,2,.08],[2,5,.13]];
+    /* carta mais difícil no top 15 rende .11 (era .13): com .13, quem
+       sempre pega a mais difícil ganhava o cinturão em 18 a 23% das
+       carreiras (teto 20%); com .11, 12%, sem mudar as vitórias de ninguém */
+    faixas=[[-2,0,.05],[0,2,.08],[2,5,.11]];
   }
   const out=[];
   const livre=f=>f&&!fought.has(f.name)&&!out.some(o=>o.f.name===f.name);
