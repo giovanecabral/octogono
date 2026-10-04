@@ -1036,6 +1036,39 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .noite .el-attr{font-family:var(--f-ui);font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
 .noite .el-attr b{font-size:16px;color:var(--ganho)}
 @media (hover:hover) and (pointer:fine){.noite .el-opts button:hover{background:rgba(215,38,30,.14);box-shadow:inset 0 0 0 2px var(--sangue)}}
+/* luta interativa (2026-10-04, local): 4 cartas por round que viram,
+   o plano no placar, o lado de quem apanhou treme, resumo do round */
+.noite .el-opts{grid-template-columns:repeat(4,minmax(0,1fr))}
+.noite .el-opts .el-ico{width:28px;height:28px;color:var(--sangue)}
+.noite .el-dica{font-size:14px;line-height:1.35;color:var(--osso-2)}
+.noite .escolha-luta.mao-nova .el-opts button{animation:viraCarta .5s var(--ease-soco) both}
+.noite .escolha-luta.mao-nova .el-opts button:nth-child(2){animation-delay:.07s}
+.noite .escolha-luta.mao-nova .el-opts button:nth-child(3){animation-delay:.14s}
+.noite .escolha-luta.mao-nova .el-opts button:nth-child(4){animation-delay:.21s}
+@keyframes viraCarta{from{opacity:0;transform:perspective(600px) rotateY(-70deg)}to{opacity:1;transform:none}}
+.placar-plano{display:inline-flex;align-items:center;gap:6px;margin-top:4px;font-family:var(--f-ui);font-size:13px;letter-spacing:.06em;color:var(--ouro)}
+.placar-plano .ico{width:16px;height:16px}
+.placar-plano b{text-transform:uppercase}
+.placar-lado.treme{animation:ladoTreme .38s ease}
+.placar-lado.cai{animation:ladoCai .7s ease}
+.placar .rd.pulsa{animation:rdPulsa .6s ease}
+@keyframes ladoTreme{0%,100%{transform:none}20%{transform:translateX(-7px)}45%{transform:translateX(6px)}70%{transform:translateX(-3px)}}
+@keyframes ladoCai{0%,100%{transform:none;filter:none}15%{transform:translate(-10px,5px) rotate(-2deg);filter:drop-shadow(0 0 10px var(--sangue-vivo))}
+  40%{transform:translate(8px,-3px) rotate(1deg)}65%{transform:translate(-4px,2px)}}
+@keyframes rdPulsa{0%{transform:scale(1.25);color:var(--sangue-vivo)}100%{transform:none}}
+/* linha do plano na narração (pedido do dono: em negrito, pra ele saber
+   que foi a escolha dele): faixa dourada, ícone de alvo no lugar do relógio */
+.pbp.plano{margin:4px 0;padding:8px 10px;background:rgba(212,160,23,.10);border-left:3px solid var(--ouro)}
+.pbp.plano span:last-child{font-weight:700;color:var(--osso)}
+.pbp.plano .clk .ico{width:16px;height:16px;color:var(--ouro)}
+.bout-narracao .pbp.plano{font-weight:700}
+.noite .el-ajuda{margin:-6px 0 14px;font-size:14px;line-height:1.4;color:var(--osso-2)}
+.noite .el-custo{font-size:14px;line-height:1.35;color:var(--cinza)}
+.noite .el-dica b,.noite .el-custo b{font-family:var(--f-ui);font-weight:700;letter-spacing:.04em;color:var(--osso)}
+.noite .pbp.resumo-round{margin:6px 0 2px;padding:8px 10px;background:rgba(212,160,23,.08);border-left:3px solid var(--ouro);color:var(--osso)}
+.noite .pbp.resumo-round .clk .ico{width:16px;height:16px;color:var(--ouro)}
+@media (max-width:720px){.noite .el-opts{grid-template-columns:1fr 1fr}.noite .el-nome{font-size:20px}}
+@media (prefers-reduced-motion:reduce){.noite .escolha-luta.mao-nova .el-opts button,.placar-lado.treme,.placar-lado.cai,.placar .rd.pulsa{animation:none}}
 @media (max-width:900px){.luta-grade{grid-template-columns:minmax(0,1fr)}.luta-numeros{position:static;order:-1}}
 @media (max-width:560px){
   .placar{gap:10px;padding:12px 14px}

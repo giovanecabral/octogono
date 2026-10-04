@@ -2380,8 +2380,11 @@ Pedido do dono, com cinco pontos. Detalhe e números no LEIA-ME
 4. **Lutas do JxJ mais divertidas.** 30 variantes de ação, 4 por vez,
    trocando a cada round; painel da troca anterior, animação e som.
    FEITO (o JxJ continua desligado até a migração do item 42).
-5. **Luta interativa na carreira** (como o JxJ): pedido só no localhost
-   pro dono testar, sem deploy. Em branch própria.
+5. **Luta interativa na carreira** (como o JxJ): primeiro só no
+   localhost; depois de testar, o dono pediu o plano em negrito na
+   narração, efeito de verdade pra melhor ou pra pior e mais didático, e o
+   deploy. Plano de 4 opções antes de cada round. FEITO (LEIA-ME "Plano de
+   luta a cada round").
 
 Os itens 1 a 3 valem só pra carreira nova: save e link de desafio antigos
 seguem na v1 (`st.regras`, `r=`), pela regra da semente.

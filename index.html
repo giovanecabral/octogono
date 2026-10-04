@@ -98,7 +98,10 @@ function clockSeconds(s){const[m,ss]=s.split(":").map(Number);return m*60+ss;}
    escolha. */
 function mkState(f,form){return{ref:f,form,damage:0,sigStrikes:0,takedowns:0,knockdowns:0,
   subAttempts:0,controlTicks:0,
-  mAttr:{slpm:1,strDef:1,tdAvg:1,tdDef:1,subAvg:1,kdAvg:1,durability:1}};}
+  /* tdAcc, subAcc e levantar (2026-10-04, plano por round): eficácia da
+     queda, da finalização e de levantar do chão. Neutros (1) fora do plano:
+     multiplicar por 1 não muda nada, a luta sem plano é a mesma bit a bit */
+  mAttr:{slpm:1,strDef:1,tdAvg:1,tdDef:1,subAvg:1,kdAvg:1,durability:1,tdAcc:1,subAcc:1,levantar:1}};}
 
 function exchange(att,def,rng,opts={}){
   const A=att.ref,D=def.ref,minutes=TUNING.tickSeconds/60;
@@ -147,7 +150,9 @@ function simularRound(A,B,round,rng,push,fin,scores){
   const snap={a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,
               b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks};
   let pos="STANDING",burst={a:0,b:0},since=0;
-  push(round,"5:00","rd",`Round ${round}`);
+  /* ev (6º argumento do push): o que aconteceu, em dado, pra narração do
+     plano (rodarLuta). Ninguém mais lê; não consome rng nenhum. */
+  push(round,"5:00","rd",`Round ${round}`,{tipo:"inicio"});
 
   for(let t=0;t<tpr;t++){
     const clock=fmtClock(TUNING.roundSeconds-t*TUNING.tickSeconds);
@@ -155,10 +160,10 @@ function simularRound(A,B,round,rng,push,fin,scores){
       for(const[att,def,tag]of[[A,B,"A"],[B,A,"B"]]){
         const rate=(att.ref.tdAvg/clamp(att.ref.tdAcc,.1,1))/(900/TUNING.tickSeconds)*att.mAttr.tdAvg;
         if(rng()<rate){
-          if(rng()<contest(att.ref.tdAcc*att.form,def.ref.tdDef*def.form*def.mAttr.tdDef)){
+          if(rng()<contest(att.ref.tdAcc*att.form*att.mAttr.tdAcc,def.ref.tdDef*def.form*def.mAttr.tdDef)){
             att.takedowns++;pos=tag==="A"?"GROUND_A":"GROUND_B";
-            push(round,clock,"big",`Queda de ${att.ref.name}. Levou pro chão.`);
-          }else push(round,clock,"",`${def.ref.name} defendeu a queda e voltou pra distância.`);
+            push(round,clock,"big",`Queda de ${att.ref.name}. Levou pro chão.`,{tipo:"queda",quem:tag});
+          }else push(round,clock,"",`${def.ref.name} defendeu a queda e voltou pra distância.`,{tipo:"quedaDefendida",quem:tag});
           break;
         }
       }
@@ -168,44 +173,46 @@ function simularRound(A,B,round,rng,push,fin,scores){
       burst.a+=la;burst.b+=lb;since++;
       const ia=impact(A,B,la,rng);
       if(ia==="ko")return fin(A,B,round,clock,"Nocaute");
-      if(ia==="kd")push(round,clock,"kd",`${B.ref.name} foi ao chão! Levantou cambaleando.`);
+      if(ia==="kd")push(round,clock,"kd",`${B.ref.name} foi ao chão! Levantou cambaleando.`,{tipo:"kd",quem:"A"});
       const ib=impact(B,A,lb,rng);
       if(ib==="ko")return fin(B,A,round,clock,"Nocaute");
-      if(ib==="kd")push(round,clock,"kd",`${A.ref.name} foi ao chão! Levantou cambaleando.`);
+      if(ib==="kd")push(round,clock,"kd",`${A.ref.name} foi ao chão! Levantou cambaleando.`,{tipo:"kd",quem:"B"});
       if(since>=4){
-        if(burst.a+burst.b===0)push(round,clock,"",`Round estudado. Ninguém quer se abrir.`);
-        else if(burst.a>burst.b)push(round,clock,"",`${A.ref.name} acerta mais na troca, ${burst.a} a ${burst.b}.`);
-        else if(burst.b>burst.a)push(round,clock,"",`${B.ref.name} acerta mais na troca, ${burst.b} a ${burst.a}.`);
-        else push(round,clock,"",`Troca parelha, ${burst.a} a ${burst.b}.`);
+        const ev={tipo:"janela",a:burst.a,b:burst.b};
+        if(burst.a+burst.b===0)push(round,clock,"",`Round estudado. Ninguém quer se abrir.`,ev);
+        else if(burst.a>burst.b)push(round,clock,"",`${A.ref.name} acerta mais na troca, ${burst.a} a ${burst.b}.`,ev);
+        else if(burst.b>burst.a)push(round,clock,"",`${B.ref.name} acerta mais na troca, ${burst.b} a ${burst.a}.`,ev);
+        else push(round,clock,"",`Troca parelha, ${burst.a} a ${burst.b}.`,ev);
         burst={a:0,b:0};since=0;
       }
     }else{
-      const top=pos==="GROUND_A"?A:B,bot=pos==="GROUND_A"?B:A;
+      const top=pos==="GROUND_A"?A:B,bot=pos==="GROUND_A"?B:A,tagTop=top===A?"A":"B",tagBot=top===A?"B":"A";
       top.controlTicks++;
       const landed=exchange(top,bot,rng,{ground:true});
       const im=impact(top,bot,landed,rng);
       if(im==="ko")return fin(top,bot,round,clock,"Nocaute técnico no chão");
-      if(landed>=3)push(round,clock,"big",`${top.ref.name} martelando por cima. ${bot.ref.name} só protege.`);
-      else if(top.controlTicks%3===0)push(round,clock,"",`${top.ref.name} controla a posição.`);
+      if(landed>=3)push(round,clock,"big",`${top.ref.name} martelando por cima. ${bot.ref.name} só protege.`,{tipo:"gnp",quem:tagTop});
+      else if(top.controlTicks%3===0)push(round,clock,"",`${top.ref.name} controla a posição.`,{tipo:"controle",quem:tagTop});
       for(const[g,opp,mult]of[[top,bot,1.4],[bot,top,1.0]]){
         const rate=(g.ref.subAvg/(900/TUNING.tickSeconds))*mult*g.mAttr.subAvg;
         if(rng()<rate){
           g.subAttempts++;
-          const p=contest(TUNING.subBase*clamp(g.ref.subAvg/2.5,.15,.9),opp.ref.tdDef);
+          const p=contest(TUNING.subBase*clamp(g.ref.subAvg/2.5,.15,.9)*g.mAttr.subAcc,opp.ref.tdDef);
           if(rng()<p*3.6)return fin(g,opp,round,clock,"Finalização");
-          push(round,clock,"big",`${g.ref.name} tenta a finalização! ${opp.ref.name} escapa.`);
+          push(round,clock,"big",`${g.ref.name} tenta a finalização! ${opp.ref.name} escapa.`,{tipo:"sub",quem:g===A?"A":"B"});
         }
       }
-      if(rng()<TUNING.standUpBase*(.5+bot.ref.tdDef)){
-        pos="STANDING";push(round,clock,"",`${bot.ref.name} conseguiu levantar.`);
+      if(rng()<TUNING.standUpBase*(.5+bot.ref.tdDef)*bot.mAttr.levantar){
+        pos="STANDING";push(round,clock,"",`${bot.ref.name} conseguiu levantar.`,{tipo:"levantou",quem:tagBot});
       }
     }
   }
   const pa=(A.sigStrikes-snap.a)+(A.takedowns-snap.at)*6+(A.controlTicks-snap.ac)*.7;
   const pb=(B.sigStrikes-snap.b)+(B.takedowns-snap.bt)*6+(B.controlTicks-snap.bc)*.7;
-  if(pa>pb){scores.sa+=10;scores.sb+=9;push(round,"0:00","rd",`Fim do round ${round}. ${A.ref.name} levou.`);}
-  else if(pb>pa){scores.sb+=10;scores.sa+=9;push(round,"0:00","rd",`Fim do round ${round}. ${B.ref.name} levou.`);}
-  else{scores.sa+=10;scores.sb+=10;push(round,"0:00","rd",`Fim do round ${round}. Round dividido.`);}
+  const evFim={tipo:"fimRound"};
+  if(pa>pb){scores.sa+=10;scores.sb+=9;push(round,"0:00","rd",`Fim do round ${round}. ${A.ref.name} levou.`,evFim);}
+  else if(pb>pa){scores.sb+=10;scores.sa+=9;push(round,"0:00","rd",`Fim do round ${round}. ${B.ref.name} levou.`,evFim);}
+  else{scores.sa+=10;scores.sb+=10;push(round,"0:00","rd",`Fim do round ${round}. Round dividido.`,evFim);}
   A.damage*=.88;B.damage*=.88;
   return null;
 }
@@ -4557,10 +4564,11 @@ function faixasV2(){
     faixas=[[-.07*U,-.01*U,.045],[0,.08*U,.075],[.10*U,.24*U,.125]];
   }else{
     c=U+(15-pos.n);
-    /* carta mais difícil no top 15 rende .11 (era .13): com .13, quem
-       sempre pega a mais difícil ganhava o cinturão em 18 a 23% das
-       carreiras (teto 20%); com .11, 12%, sem mudar as vitórias de ninguém */
-    faixas=[[-2,0,.05],[0,2,.08],[2,5,.11]];
+    /* carta mais difícil no top 15: .13 -> .11 (quem sempre pega a mais
+       difícil chegava a 23% de cinturão, teto 20%) -> .10 com o plano por
+       round (o melhor plano rende mais: ousado foi a 22%; com .10, 16%),
+       sem mudar as vitórias de ninguém */
+    faixas=[[-2,0,.05],[0,2,.08],[2,5,.10]];
   }
   const out=[];
   const livre=f=>f&&!fought.has(f.name)&&!out.some(o=>o.f.name===f.name);
@@ -8845,6 +8853,11 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-10-04",titulo:"Plano de luta",itens:[
+    "Antes de cada round você escolhe o plano entre 4 opções, que mudam conforme o que aconteceu no round anterior.",
+    "Cada plano melhora uma coisa e cobra outra, e rende menos se o adversário for forte justamente nisso. Escolher bem ganha luta; escolher mal perde.",
+    "O plano aparece em destaque na narração: o que você foi fazer, quando deu certo ou errado, e o resultado no fim do round, com a dica do que funciona contra ele.",
+    "No painel da luta, os knockdowns contam do lado de quem derrubou."]},
   {data:"2026-10-04",titulo:"Ranking do UFC",itens:[
     "Carreira nova começa sem ranking, contra lutadores do seu nível: campeão nenhum na estreia. O nível dos adversários sobe junto com o seu.",
     "O ranking da divisão segue o do UFC: o campeão, do #1 ao #15, e quem está sem ranking. Vencendo, você entra no top 15, sobe até o nº 1 e entra na fila do cinturão.",
@@ -9332,7 +9345,7 @@ function retomarPendente(){
     const opp=(p.rival&&st.rival)?st.rival.f
       :(LADDER.find(f=>f.name===p.adv)||(RANKING&&RANKING.lista.find(f=>f&&f.name===p.adv))||null);
     if(!opp){ PENDENTE=null; return; }
-    rodarLuta(opp,!!st.tituloEstaLuta,!!p.rival,p.semL,p.escolha||null);
+    rodarLuta(opp,!!st.tituloEstaLuta,!!p.rival,p.semL,p.escolhas||p.escolha||null);
   }else if(p.tipo==="oferta"&&Array.isArray(p.opts)){
     /* Oferta que já tinha sido sorteada: reabre as MESMAS cartas, sem
        candidatos() (o rng salvo já passou dela). Adversário que não
@@ -10821,7 +10834,12 @@ function sinalDoRound(s){
    35%) pra fechar o resto só com K simétrico maior — se quiser fechar o
    gap que falta, o próximo passo é K_CIMA/K_BAIXO assimétrico (aprovado
    como ajuste secundário), não subir este K sozinho. */
-const K_ESCOLHA_LUTA=.50;
+/* .70 desde o plano por round (2026-10-04): com custo em todo plano, .50
+   dava sempre o melhor +0,5 ponto e sempre o pior -6,7 contra lutar sem
+   plano (assimétrico, o custo comia o ganho). Com .70 e custo pela
+   metade: melhor +2,7, ao acaso -0,8, pior -5,5; nocaute até 34,6% em
+   toda política (node testar.js gapinterativa, 3000 pares). */
+const K_ESCOLHA_LUTA=.70;
 
 /* modificador de uma ação: contest() (o mesmo do motor) entre o percentil
    do SEU atributo e o percentil do contra-atributo do adversário — não é
@@ -10845,46 +10863,229 @@ function modificadorAcao(acao,jogadorRef,oppRef){
    escolha uma leitura de round, não aritmética pura. Automático nunca
    pausa — sempre neutro (mod 1, sem gastar rng), igual já escolhe
    adversário/camp sozinho. */
-function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher){
+/* ---------- plano do round: o que ele faz e como a narração conta ----------
+   Pedido do dono (2026-10-04): "as ações escolhidas têm que aparecer no que
+   acontece na luta, em negrito, e alterar a luta pra melhor ou pra pior".
+   Cada plano tem três partes, pelo eixo da ação (PERFIL_PLANO):
+   - eficácia: o eixo × mod (modificadorAcao: o confronto escondido; rende
+     mais se ele é fraco nisso, menos se é forte, até abaixo do normal);
+   - esforço: tenta mais aquilo (queda e finalização);
+   - custo: outra coisa piora (atacar menos, se expor mais).
+   A luta sem plano (automático) é a mesma de sempre: todo eixo fica 1. */
+const PERFIL_PLANO={
+  slpm:{eficacia:"slpm",custo:{strDef:.965}},
+  kdAvg:{eficacia:"kdAvg",custo:{slpm:.95}},
+  strDef:{eficacia:"strDef",custo:{slpm:.925}},
+  durability:{eficacia:"durability",custo:{slpm:.95}},
+  tdAvg:{eficacia:"tdAcc",esforco:{tdAvg:1.35},custo:{slpm:.95}},
+  tdDef:{eficacia:"tdDef",extra:"levantar",custo:{tdAvg:.8}},
+  subAvg:{eficacia:"subAcc",esforco:{subAvg:1.35},custo:{slpm:.96}},
+};
+const CUSTO_ATTR={slpm:"Você se expõe mais",kdAvg:"Menos golpes",strDef:"Ataca bem menos",durability:"Ataca menos",
+  tdAvg:"Menos golpes em pé",tdDef:"Quase não busca a queda",subAvg:"Menos golpes"};
+/* plano do round no estado do jogador; esc sem v:2 é save de antes do plano
+   por round (uma escolha só): só o mod no eixo, como era */
+function aplicarPlano(estado,base,esc){
+  estado.mAttr={...base};
+  if(!esc||!esc.attr)return;
+  if(esc.v!==2){estado.mAttr[esc.attr]=esc.mod;return;}
+  const p=PERFIL_PLANO[esc.attr];
+  if(!p)return;
+  const m=estado.mAttr;
+  m[p.eficacia]=(m[p.eficacia]||1)*esc.mod;
+  if(p.extra)m[p.extra]=(m[p.extra]||1)*esc.mod;
+  for(const[k,v]of Object.entries(p.esforco||{}))m[k]=(m[k]||1)*v;
+  for(const[k,v]of Object.entries(p.custo||{}))m[k]=(m[k]||1)*v;
+}
+/* O que a narração diz de cada plano ({eu}, {ele}): a intenção no começo do
+   round, o certo e o errado quando o motor faz algo daquele plano */
+const FRASES_PLANO={
+  trocar_distancia:{intencao:"trocar golpes na distância com {ele}",certo:"{eu} mantém {ele} na ponta dos golpes e acerta mais",falhou:"{eu} tenta trocar na distância, mas {ele} encurta e acerta primeiro"},
+  cortar_ringue:{intencao:"cortar o ringue e prender {ele} na grade",certo:"{eu} corta o ringue e encurrala {ele} na grade",falhou:"{eu} tenta cortar o ringue, mas {ele} circula e escapa da grade"},
+  meter_mao:{intencao:"meter a mão em {ele} sem esperar",certo:"{eu} mete a mão e {ele} recua",falhou:"{eu} mete a mão sem guarda e {ele} encaixa a resposta"},
+  subir_ritmo:{intencao:"subir o ritmo pra cansar {ele}",certo:"{eu} sobe o ritmo e {ele} não acompanha",falhou:"{eu} tenta subir o ritmo, mas {ele} acompanha e acerta mais"},
+  buscar_nocaute:{intencao:"buscar o nocaute em {ele}",certo:"{eu} solta a mão pesada e {ele} sente o golpe",falhou:"{eu} vai atrás do nocaute, erra e {ele} pune a abertura"},
+  castigar_perna:{intencao:"castigar a perna de {ele}",certo:"{eu} castiga a perna de {ele}, que já pisa torto",falhou:"{eu} tenta castigar a perna, mas {ele} tira a perna e acerta antes"},
+  ir_com_tudo:{intencao:"ir com tudo pra cima de {ele}",certo:"{eu} vai com tudo e {ele} fica na defensiva",falhou:"{eu} vai com tudo, se expõe e {ele} aproveita"},
+  chute_cabeca:{intencao:"procurar o chute na cabeça de {ele}",certo:"o chute alto de {eu} passa raspando e {ele} sente",falhou:"{eu} arrisca o chute alto e {ele} bloqueia e devolve"},
+  joelhada_clinch:{intencao:"amarrar {ele} no clinch e subir a joelhada",certo:"{eu} prende {ele} no clinch e acerta a joelhada",falhou:"{eu} busca o clinch, mas {ele} se solta e acerta na saída"},
+  fechar_guarda:{intencao:"fechar a guarda e cansar {ele}",certo:"{eu} fecha a guarda e os golpes de {ele} morrem no antebraço",falhou:"{eu} fecha a guarda, mas {ele} acha o espaço e acerta"},
+  amarrar_clinch:{intencao:"amarrar {ele} no clinch e esfriar a luta",certo:"{eu} amarra {ele} no clinch e a troca esfria",falhou:"{eu} tenta amarrar, mas {ele} se solta e volta a acertar"},
+  sair_linha:{intencao:"sair de linha e não dar alvo pra {ele}",certo:"{eu} sai de linha e {ele} acerta o ar",falhou:"{eu} tenta sair de linha, mas {ele} corta o caminho e acerta"},
+  aguentar_devolver:{intencao:"aguentar a pressão de {ele} e devolver",certo:"{eu} aguenta a pancada e devolve na mesma hora",falhou:"{eu} tenta aguentar e devolver, mas a mão de {ele} chega antes"},
+  queixo_por_queixo:{intencao:"trocar queixo por queixo com {ele}",certo:"{eu} aceita a troca franca e aguenta melhor que {ele}",falhou:"{eu} aceita a troca franca e {ele} aguenta mais"},
+  segurar_pressao:{intencao:"segurar a pressão de {ele} sem se desesperar",certo:"{eu} segura a pressão de {ele} sem perder a calma",falhou:"{eu} tenta segurar a pressão, mas {ele} acha o queixo"},
+  esperar_revidar:{intencao:"esperar o erro de {ele} e revidar",certo:"{eu} espera o erro de {ele} e revida",falhou:"{eu} espera demais e {ele} dita a luta"},
+  respirar_momento:{intencao:"respirar e escolher a hora de atacar {ele}",certo:"{eu} respira, escolhe a hora e acerta {ele} limpo",falhou:"{eu} tenta respirar, mas {ele} não dá espaço"},
+  buscar_dupla:{intencao:"buscar a queda de duas pernas em {ele}",certo:"a dupla de {eu} entra e {ele} cai de costas",falhou:"{eu} tenta a dupla, mas {ele} segura a base"},
+  encurtar_derrubar:{intencao:"encurtar a distância e derrubar {ele}",certo:"{eu} encurta, pega a cintura e derruba {ele}",falhou:"{eu} encurta, mas {ele} desvia a pegada e sai"},
+  trocar_nivel:{intencao:"fingir o golpe e trocar o nível pra derrubar {ele}",certo:"{eu} finge o golpe, troca o nível e derruba {ele}",falhou:"{eu} troca o nível, mas {ele} lê a entrada e defende"},
+  segurar_por_cima:{intencao:"derrubar {ele} e segurar por cima",certo:"{eu} derruba e segura {ele} por baixo",falhou:"{eu} tenta derrubar pra segurar por cima, mas {ele} não deixa a luta ir pro chão"},
+  buscar_montada:{intencao:"levar {ele} pro chão e trabalhar pra montar",certo:"{eu} derruba e trabalha pra montar em {ele}",falhou:"{eu} busca o chão pra montar, mas {ele} defende a entrada"},
+  sprawl_sair:{intencao:"jogar o quadril pra trás e não deixar {ele} derrubar",certo:"{eu} joga o quadril pra trás e {ele} não derruba",falhou:"{eu} tenta o sprawl, mas {ele} chega antes e derruba"},
+  postura_empurrar:{intencao:"manter a postura e empurrar {ele} de volta",certo:"{eu} mantém a postura e empurra {ele} de volta pro centro",falhou:"{eu} perde a postura e {ele} leva a luta pro chão"},
+  cortar_angulo:{intencao:"cortar o ângulo da entrada de {ele}",certo:"{eu} corta o ângulo e a entrada de {ele} morre",falhou:"{eu} tenta cortar o ângulo, mas {ele} entra mesmo assim"},
+  raspar_levantar:{intencao:"raspar e levantar sempre que a luta for pro chão",certo:"{eu} segura a base e {ele} não consegue derrubar",falhou:"{eu} não consegue raspar e {ele} prende por cima"},
+  voltar_centro:{intencao:"sair da grade e voltar pro centro",certo:"{eu} sai da grade e volta pro centro",falhou:"{eu} tenta voltar pro centro, mas {ele} prende na grade e derruba"},
+  cacar_pescoco:{intencao:"caçar o pescoço de {ele}",certo:"{eu} caça o pescoço e {ele} escapa por pouco",falhou:"{eu} procura o pescoço, mas {ele} protege e sai"},
+  passar_guarda:{intencao:"passar a guarda de {ele} e ameaçar a finalização",certo:"{eu} passa a guarda e ameaça a finalização",falhou:"{eu} tenta passar a guarda, mas {ele} recompõe e sai"},
+  isolar_braco:{intencao:"isolar o braço de {ele} no chão",certo:"{eu} isola o braço de {ele}, que se vira e escapa",falhou:"{eu} tenta isolar o braço, mas {ele} esconde e sai"},
+  guilhotina_pe:{intencao:"pegar a guilhotina quando {ele} baixar a cabeça",certo:"{eu} encaixa a guilhotina e {ele} sai no último segundo",falhou:"{eu} tenta a guilhotina, mas {ele} tira a cabeça e sai"},
+};
+const plural=(n,um,varios)=>`${n} ${n===1?um:varios}`;
+/* Narrador do plano de uma luta (A = jogador). inicio() no "Round N",
+   evento() a cada coisa que o motor faz (no máximo um certo e um errado
+   por round; knockdown, queda e finalização do plano sempre), fimRound()
+   com o resultado em números e o que ele ensinou, fim() se a luta acabou
+   pelo plano. Só texto: nada aqui mexe na luta. */
+function narradorDoPlano(A,B){
+  const eu=A.ref.name,ele=B.ref.name;
+  let esc=null,cont=null,snap=null;
+  const preencher=t=>t.replace(/\{eu\}/g,eu).replace(/\{ele\}/g,ele);
+  const frase=k=>{ const fr=esc&&FRASES_PLANO[esc.id]; return fr&&fr[k]?preencher(fr[k]):null; };
+  const maiuscula=t=>t.charAt(0).toUpperCase()+t.slice(1);
+  return{
+    inicio(e){
+      esc=e&&e.attr&&FRASES_PLANO[e.id]?e:null;
+      if(!esc)return null;
+      cont={ok:0,falhou:0,tq:0,qa:0,tb:0,qb:0,sub:0,chao:0};
+      snap={a:A.sigStrikes,b:B.sigStrikes,kdFeitos:B.knockdowns,kdSofridos:A.knockdowns};
+      return `Plano de ${eu}: ${frase("intencao")}.`;
+    },
+    evento(ev){
+      const out=[];
+      if(!esc||!ev)return out;
+      if(ev.tipo==="queda"){ if(ev.quem==="A"){cont.qa++;cont.tq++;} else {cont.qb++;cont.tb++;} cont.chao++; }
+      if(ev.tipo==="quedaDefendida"){ if(ev.quem==="A")cont.tq++; else cont.tb++; }
+      if(ev.tipo==="sub"&&ev.quem==="A")cont.sub++;
+      if(ev.tipo==="gnp"||ev.tipo==="controle")cont.chao++;
+      const certo=(forte=false)=>{ if(forte||cont.ok<1){cont.ok++;out.push(maiuscula(frase("certo"))+".");} };
+      const errado=(forte=false)=>{ if(forte||cont.falhou<1){cont.falhou++;out.push(maiuscula(frase("falhou"))+".");} };
+      const a=esc.attr;
+      if(ev.tipo==="kd"&&ev.quem==="A"&&(a==="slpm"||a==="kdAvg"))out.push(`O plano deu resultado: ${eu} derrubou ${ele}.`);
+      if(ev.tipo==="kd"&&ev.quem==="B"&&(a==="durability"||a==="strDef"||a==="slpm"||a==="kdAvg"))out.push(`O plano custou caro: ${ele} derrubou ${eu}.`);
+      if(ev.tipo==="janela"){
+        if(a==="slpm"){ if(ev.a>=ev.b+2)certo(); else if(ev.b>=ev.a+2)errado(); }
+        else if(a==="kdAvg"){ if(ev.a>ev.b&&ev.a>=3)certo(); else if(ev.b>=ev.a+2)errado(); }
+        else if(a==="strDef"){ if(ev.b<=2&&ev.a>=ev.b)certo(); else if(ev.b>=ev.a+3)errado(); }
+        else if(a==="durability"){ if(ev.b>=3&&ev.a>=ev.b-1)certo(); else if(ev.b>=ev.a+4)errado(); }
+      }
+      if(a==="tdAvg"){ if(ev.tipo==="queda"&&ev.quem==="A")certo(true); else if(ev.tipo==="quedaDefendida"&&ev.quem==="A")errado(); }
+      if(a==="tdDef"){
+        if(ev.tipo==="quedaDefendida"&&ev.quem==="B")certo();
+        else if(ev.tipo==="queda"&&ev.quem==="B")errado(true);
+        else if(ev.tipo==="levantou"&&ev.quem==="A")out.push(`${eu} levanta do chão, como o plano pedia.`);
+      }
+      if(a==="subAvg"){ if(ev.tipo==="sub"&&ev.quem==="A")certo(true); else if(ev.tipo==="levantou"&&ev.quem==="B")errado(); }
+      return out;
+    },
+    fimRound(){
+      if(!esc)return null;
+      const ga=A.sigStrikes-snap.a,gb=B.sigStrikes-snap.b;
+      const kdFeitos=B.knockdowns-snap.kdFeitos,kdSofridos=A.knockdowns-snap.kdSofridos;
+      const a=esc.attr;
+      let ok=null,num;
+      if(a==="slpm"){ok=ga>gb;num=`${plural(ga,"golpe","golpes")} contra ${gb}`;}
+      else if(a==="kdAvg"){ok=kdFeitos>0||ga>gb;num=`${plural(ga,"golpe","golpes")} contra ${gb}${kdFeitos?` e ${plural(kdFeitos,"knockdown","knockdowns")}`:""}`;}
+      else if(a==="strDef"){ok=gb<ga;num=`levou ${plural(gb,"golpe","golpes")} e acertou ${ga}`;}
+      else if(a==="durability"){ok=kdSofridos===0;num=kdSofridos?`foi derrubado ${plural(kdSofridos,"vez","vezes")}`:`aguentou ${plural(gb,"golpe","golpes")} sem cair`;}
+      else if(a==="tdAvg"){ok=cont.qa>0;num=cont.tq?`${plural(cont.qa,"queda","quedas")} em ${plural(cont.tq,"tentativa","tentativas")}`:"não achou a entrada pra queda";}
+      else if(a==="tdDef"){ if(!cont.tb)num=`${ele} nem tentou derrubar`; else {ok=cont.qb===0;num=`${ele} tentou ${plural(cont.tb,"queda","quedas")} e derrubou ${cont.qb}`;} }
+      else if(a==="subAvg"){ok=cont.sub>0;num=cont.sub?plural(cont.sub,"tentativa de finalização","tentativas de finalização"):cont.chao?"nenhuma tentativa de finalização":"a luta não foi pro chão";}
+      const veredito=ok===null?"sem teste":ok?"deu certo":"não deu certo";
+      const dica=esc.mod>=1.1?` Esse plano casa com o seu jogo contra ${ele}.`:esc.mod<=.9?` ${ele} é forte justamente nisso.`:"";
+      return `Resultado do plano ${esc.nome}: ${veredito}, ${num}.${dica}`;
+    },
+    fim(venceuA,metodo){
+      if(!esc)return null;
+      const a=esc.attr,ko=/ocaute/.test(metodo),sub=metodo==="Finalização",chao=/no chão/.test(metodo);
+      if(venceuA&&((ko&&!chao&&(a==="slpm"||a==="kdAvg"||a==="durability"))||(sub&&a==="subAvg")||(chao&&a==="tdAvg")))
+        return `O plano ${esc.nome} decidiu a luta.`;
+      if(!venceuA&&((ko&&!chao&&(a==="durability"||a==="strDef"))||((sub||chao)&&a==="tdDef")))
+        return `O plano ${esc.nome} não segurou ${ele}.`;
+      return null;
+    },
+  };
+}
+
+/* Luta interativa na carreira (2026-10-04, branch local, pedido do dono:
+   "no modo carreira a mesma coisa pras lutas mais interativas", só no
+   localhost pra ele testar). O plano abre ANTES DE CADA ROUND com 4
+   opções, que mudam de round pra round: a situação do round anterior
+   decide a pool (sinalDoRound), o escolhaRng (stream próprio) decide
+   quais, com eixos diferentes sempre que der e sem repetir as do round
+   anterior. O plano vale só naquele round (mAttr do round). Motor e rng
+   principal intactos. Automático nunca pausa (neutro, sem gastar rng). */
+const DICA_ATTR={slpm:"Mais golpes por round",kdAvg:"Golpes mais pesados, mais chance de derrubar",strDef:"Leva menos golpes",
+  durability:"Aguenta mais a pancada",tdAvg:"Tenta mais quedas",tdDef:"Defende a queda e levanta do chão",subAvg:"Tenta mais finalizações"};
+const ICONE_ATTR={slpm:"punho",kdAvg:"raio",strDef:"escudo",durability:"escudo",tdAvg:"queda",tdDef:"avancar",subAvg:"chave"};
+/* gerador: só a medição passa outro (suíte gapinterativa); o jogo usa o escolhaRng */
+function quartetoDoRound(sinal,anteriores,gerador=null){
+  const g=gerador||escolhaRng;
+  const sorteia=lista=>{ const i=Math.floor((g?g():Math.random())*lista.length); return lista.splice(i,1)[0]; };
+  const fora=new Set(anteriores||[]);
+  const daPool=ACOES_LUTA.filter(a=>a.pools.includes(sinal)&&!fora.has(a.id));
+  const reserva=ACOES_LUTA.filter(a=>!a.pools.includes(sinal)&&a.pools.includes("parelho")&&!fora.has(a.id));
+  const out=[],eixos=new Set();
+  /* primeiro um por eixo, da pool da situação; depois completa */
+  for(const lista of [daPool,reserva]){
+    const resto=[...lista];
+    while(out.length<4&&resto.length){
+      const a=sorteia(resto);
+      if(!eixos.has(a.attr)){out.push(a);eixos.add(a.attr);}
+    }
+  }
+  for(const lista of [daPool,reserva,ACOES_LUTA.filter(a=>!fora.has(a.id))]){
+    const resto=lista.filter(a=>!out.includes(a));
+    while(out.length<4&&resto.length)out.push(sorteia(resto));
+  }
+  return out;
+}
+function abrirEscolhaLuta(scouting,jogadorRef,opp,onEscolher,info={}){
   if(auto){onEscolher(1);return;}
+  const round=info.round||2,rounds=info.rounds||3;
   const s=scouting||{burstA:0,burstB:0,tdA:0,tdB:0,ctrlA:0,ctrlB:0};
   let cabecalho;
-  if(s.ctrlB>=3)cabecalho=`${opp.name} passou boa parte do round te segurando no chão.`;
-  else if(s.tdB>0)cabecalho=`${opp.name} te derrubou ${s.tdB===1?"uma vez":s.tdB+" vezes"} no primeiro round.`;
-  else if(s.burstB>=s.burstA+3)cabecalho=`${opp.name} acertou muito mais que você na troca: ${s.burstB} a ${s.burstA}.`;
-  else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca: ${s.burstA} a ${s.burstB}.`;
-  else cabecalho=`Round parelho, nada decidido ainda.`;
-
-  /* Revamp fase 5: save com a escolha aberta grava o escolhaRng de ANTES
-     do trio (montarSave), então recarregar sorteia o MESMO trio. */
-  if(PENDENTE&&PENDENTE.tipo==="luta"&&!PENDENTE.escolha&&escolhaRng&&escolhaRng.estado)
-    PENDENTE.escolhaRngAntes=escolhaRng.estado();
-  const sinal=sinalDoRound(s);
-  const pool=ACOES_LUTA.filter(a=>a.pools.includes(sinal));
-  const restante=[...pool];
-  const trio=[];
-  for(let i=0;i<3&&restante.length;i++){
-    const idx=Math.floor((escolhaRng?escolhaRng():Math.random())*restante.length);
-    trio.push(restante.splice(idx,1)[0]);
+  if(!scouting)cabecalho=`Round ${round} de ${rounds}. Escolha o plano pra começar.`;
+  else{
+    const ant=`no round ${round-1}`;
+    if(s.ctrlB>=3)cabecalho=`${opp.name} passou boa parte do round te segurando no chão.`;
+    else if(s.tdB>0)cabecalho=`${opp.name} te derrubou ${s.tdB===1?"uma vez":s.tdB+" vezes"} ${ant}.`;
+    else if(s.burstB>=s.burstA+3)cabecalho=`${opp.name} acertou muito mais que você na troca: ${s.burstB} a ${s.burstA}.`;
+    else if(s.burstA>=s.burstB+3)cabecalho=`Você levou a melhor na troca: ${s.burstA} a ${s.burstB}.`;
+    else cabecalho=`Round parelho, nada decidido ainda.`;
+    cabecalho+=` Round ${round} de ${rounds}: plano novo.`;
   }
+  /* Revamp fase 5: save com a escolha aberta grava o escolhaRng de ANTES
+     das opções (montarSave), então recarregar sorteia as MESMAS opções. */
+  if(PENDENTE&&PENDENTE.tipo==="luta"&&escolhaRng&&escolhaRng.estado)
+    PENDENTE.escolhaRngAntes=escolhaRng.estado();
+  const opcoes=quartetoDoRound(scouting?sinalDoRound(s):"parelho",info.anteriores);
 
   const box=document.getElementById("escolhaLuta");
   box.innerHTML="";
   box.style.display="";
+  box.classList.remove("mao-nova"); void box.offsetWidth; box.classList.add("mao-nova");
   box.appendChild(el("div","el-cab",cabecalho));
+  /* a regra do plano, em uma linha (pedido do dono: mais didático) */
+  box.appendChild(el("p","el-ajuda","O plano vale só neste round. Ele melhora uma coisa e cobra outra, e rende menos se o adversário for forte justamente nisso. O que ele fizer aparece em destaque na narração."));
   const opts=el("div","el-opts");
   box.appendChild(opts);
   const fechar=()=>{box.style.display="none";box.innerHTML="";};
-  trio.forEach(acao=>{
+  SOM.carta();
+  opcoes.forEach(acao=>{
     const mod=modificadorAcao(acao,jogadorRef,opp);
     const valor=FMT_ATTR[acao.attr]?FMT_ATTR[acao.attr](jogadorRef[acao.attr]):jogadorRef[acao.attr];
     const b=el("button","","");
     b.id="el_"+acao.id;
-    b.innerHTML=`<span class="el-nome">${acao.nome}</span>
-      <span class="el-attr">${ROTULO_ATTR[acao.attr]||acao.attr} <b>${valor}</b></span>`;
-    b.onclick=()=>{fechar();onEscolher(mod,acao.attr);};
+    b.innerHTML=`${ICONE(ICONE_ATTR[acao.attr]||"luta","el-ico")}<span class="el-nome">${acao.nome}</span>
+      <span class="el-dica"><b>Faz:</b> ${DICA_ATTR[acao.attr]||""}</span>
+      <span class="el-custo"><b>Custo:</b> ${CUSTO_ATTR[acao.attr]||""}</span>
+      <span class="el-attr">Você em ${(ROTULO_ATTR[acao.attr]||acao.attr).toLowerCase()} <b>${valor}</b></span>`;
+    b.onclick=()=>{SOM.toque();fechar();onEscolher(mod,acao.attr,acao);};
     opts.appendChild(b);
   });
+  return opcoes.map(a=>a.id);
 }
 
 /* Dispara o prefetch do feed e entrega pra finishFight(). Antes disto era
@@ -10929,10 +11130,15 @@ function lutar(escolhido,camp){
    retomada no meio da luta rodar SÓ isto, sem aplicar camp nem contar a
    luta de novo). escolhaFixa: a escolha do round 1 que já tinha sido
    feita antes de recarregar; reaplicada sem abrir a escolha de novo. */
-function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
+function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   const comCamp=lutadorEfetivo();
   me.__chance=chanceContra(opp);   // zebra no hype: chance real nesta luta, não o ranking
   const rounds=titleFight?5:3;
+  /* planos já escolhidos antes de recarregar (lista por round). Save de
+     antes da luta interativa tinha UMA escolha, valendo do round 2 ao fim:
+     vira a mesma luta de antes (round 1 neutro, depois ela). */
+  const escolhasFixas=Array.isArray(fixas)?fixas
+    :fixas&&typeof fixas==="object"?[{mod:1,attr:null},...Array(rounds-1).fill(fixas)]:null;
 
   /* Driver round a round (item 3, "escolha na luta"): o que simulateFight()
      fazia por dentro numa chamada só agora roda aqui, round a round, pra
@@ -10954,10 +11160,23 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
   if(st.coletivaPressao&&st.coletivaPressao.atributo)
     B.mAttr[st.coletivaPressao.atributo]=st.coletivaPressao.mult;
   const log=[];
-  const push=(round,clock,kind,text)=>log.push({round,clock,kind,text});
+  /* plano do round na narração: linhas de tipo "plano" (em negrito na tela
+     e no Cartel). Quem lê o log filtra pelo tipo (rd, kd, big, fin), então
+     elas não contam como knockdown, queda nem round. */
+  let planoAtual=null;
+  const narr=narradorDoPlano(A,B);
+  const linhaPlano=(round,clock,text)=>{ if(text)log.push({round,clock,kind:"plano",text}); };
+  const push=(round,clock,kind,text,ev)=>{
+    log.push({round,clock,kind,text});
+    if(!ev)return;
+    if(ev.tipo==="inicio")linhaPlano(round,clock,narr.inicio(planoAtual));
+    else if(ev.tipo==="fimRound")linhaPlano(round,clock,narr.fimRound());
+    else for(const t of narr.evento(ev))linhaPlano(round,clock,t);
+  };
   const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
   const fin=(w,l,round,clock,m)=>{
     push(round,clock,"fin",`${w.ref.name} vence por ${m.toLowerCase()}`);
+    linhaPlano(round,clock,narr.fim(w===A,m));
     return{winner:w.ref.name,loser:l.ref.name,method:m,round,clock,cards:null,log,knockdowns:kds()};
   };
   const scores={sa:0,sb:0};
@@ -10983,39 +11202,51 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
     finalizarLuta(opp,res,titleFight,won0,kd0,kdt0,td0,tdt0,ehRival);
   };
 
-  let round=1,marca=0;
-  const proximaRodada=()=>{
-    /* scouting do round 1: só interessa pra escolha, que só existe uma vez,
-       logo depois do primeiro round que a luta alcança sem terminar */
-    const antes=round===1?{a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,
-                            b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks}:null;
+  /* Luta interativa (2026-10-04, local): plano antes de CADA round, valendo
+     só naquele round. A ordem de consumo do rngL não muda (form, depois um
+     round de cada vez); a escolha só gasta o escolhaRng. */
+  let round=1,marca=0,scoutingAnt=null,anteriores=null;
+  const base={...A.mAttr};
+  const aplicar=esc=>{
+    aplicarPlano(A,base,esc);
+    planoAtual=esc&&esc.nome?esc:null;
+    mostrarPlano(planoAtual,round);
+  };
+  const planoDoRound=seguir=>{
+    const fixa=escolhasFixas&&escolhasFixas[round-1];
+    if(fixa){aplicar(fixa);seguir();return;}
+    const ids=abrirEscolhaLuta(scoutingAnt,A.ref,opp,(mod,attr,acao)=>{
+      const esc={v:2,mod,attr:attr||null,id:acao?acao.id:null,nome:acao?acao.nome:null};
+      if(attr&&PENDENTE&&PENDENTE.tipo==="luta"){   // plano de verdade (o neutro do automático não grava)
+        (PENDENTE.escolhas=PENDENTE.escolhas||[])[round-1]=esc;
+        PENDENTE.escolhaRngAntes=null;
+        salvarCarreira();
+      }
+      aplicar(esc);seguir();
+    },{round,rounds,anteriores});
+    if(ids)anteriores=ids;
+  };
+  const jogarRound=()=>{
+    const antes={a:A.sigStrikes,at:A.takedowns,ac:A.controlTicks,ak:A.knockdowns,
+                 b:B.sigStrikes,bt:B.takedowns,bc:B.controlTicks,bk:B.knockdowns};
     const res=simularRound(A,B,round,rngL,push,fin,scores);
     const trecho=log.slice(marca);marca=log.length;
     if(res){animarTrecho(trecho,()=>{atualizarNumerosLuta(A,B);encerrar(res);});return;}
-    const scouting=antes&&{burstA:A.sigStrikes-antes.a,burstB:B.sigStrikes-antes.b,
+    scoutingAnt={burstA:A.sigStrikes-antes.a,burstB:B.sigStrikes-antes.b,
       tdA:A.takedowns-antes.at,tdB:B.takedowns-antes.bt,
-      ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc};
+      ctrlA:A.controlTicks-antes.ac,ctrlB:B.controlTicks-antes.bc,
+      kdA:A.knockdowns-antes.ak,kdB:B.knockdowns-antes.bk};
     animarTrecho(trecho,()=>{
       atualizarNumerosLuta(A,B);
-      if(round===1){
-        if(escolhaFixa){
-          if(escolhaFixa.attr)A.mAttr[escolhaFixa.attr]=escolhaFixa.mod;
-          round++;proximaRodada();
-        }else abrirEscolhaLuta(scouting,A.ref,opp,(mod,attr)=>{
-          if(attr)A.mAttr[attr]=mod;
-          if(PENDENTE&&PENDENTE.tipo==="luta"){PENDENTE.escolha={mod,attr:attr||null};salvarCarreira();}
-          round++;proximaRodada();
-        });
-      }else if(round<rounds){
-        round++;proximaRodada();
+      if(!planoAtual)resumoDoRound(round,scoutingAnt);   // com plano, o resultado dele já fecha o round
+      if(round<rounds){
+        round++;planoDoRound(jogarRound);
       }else{
         /* montarDecisao() empurra a linha de resultado pro `log` DEPOIS que
            o trecho do round final já foi consumido acima — sem reanimar
            esse pedaço novo ela nunca chega na tela (achado jogando: luta
            que vai aos cartões terminava sem nenhuma linha de resultado,
-           mesmo com finishFight() rodando certo por baixo). Mesma
-           assinatura do branch de cima (if(res){...}): monta o resultado,
-           fatia só o que ele acabou de empurrar, anima, só then encerra. */
+           mesmo com finishFight() rodando certo por baixo). */
         const res=montarDecisao();
         const trechoFinal=log.slice(marca);marca=log.length;
         animarTrecho(trechoFinal,()=>encerrar(res));
@@ -11024,7 +11255,27 @@ function rodarLuta(opp,titleFight,ehRival,semL,escolhaFixa){
   };
   /* A entrada (revamp fase 5) só atrasa o COMEÇO da narração: o round 1
      é simulado no mesmo ponto da sequência de sempre, depois dela. */
-  aposEntrada(opp,titleFight,proximaRodada);
+  aposEntrada(opp,titleFight,()=>planoDoRound(jogarRound));
+}
+/* Plano do round no placar; resumo do round só sem plano (só tela: não
+   entra no log da luta). */
+function mostrarPlano(plano,round){
+  const p=document.getElementById("placarPlano");
+  if(!p)return;
+  p.hidden=!plano;
+  if(plano)p.innerHTML=`${ICONE("alvo")}<span>Plano do round ${round}: <b>${plano.nome}</b></span>`;
+}
+function resumoDoRound(round,s){
+  const play=document.getElementById("play");
+  if(!play||!s)return;
+  /* kdA/kdB são knockdowns SOFRIDOS (o motor conta em quem caiu): o placar
+     do resumo é de quem derrubou, então troca */
+  const partes=[`golpes ${s.burstA} a ${s.burstB}`];
+  if(s.tdA||s.tdB)partes.push(`quedas ${s.tdA} a ${s.tdB}`);
+  if(s.kdA||s.kdB)partes.push(`knockdowns ${s.kdB} a ${s.kdA}`);
+  const row=el("div","pbp resumo-round",`<span class="clk">${ICONE("grafico")}</span><span>Round ${round}: ${partes.join(", ")}.</span>`);
+  play.appendChild(row);
+  row.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 /* Entrada: 1,5 s de tale of the tape antes do primeiro round, pulável.
    Só no manual e sem prefers-reduced-motion; no automático vai direto. */
@@ -11060,7 +11311,9 @@ function aposEntrada(opp,titleFight,seguir){
 function atualizarNumerosLuta(A,B){
   const n=document.getElementById("lutaNumeros");
   if(!n||!A||!B)return;
-  n.innerHTML=painelNumeros({golpes:[A.sigStrikes||0,B.sigStrikes||0],quedas:[A.takedowns||0,B.takedowns||0],kd:[A.knockdowns||0,B.knockdowns||0]});
+  /* knockdowns: o motor conta em quem CAIU; o painel mostra quem derrubou
+     (o seu número é quantas vezes ele caiu), como golpes e quedas */
+  n.innerHTML=painelNumeros({golpes:[A.sigStrikes||0,B.sigStrikes||0],quedas:[A.takedowns||0,B.takedowns||0],kd:[B.knockdowns||0,A.knockdowns||0]});
 }
 function painelNumeros(v){
   const lin=(id,rot,[a,b])=>`<div class="num-linha"><span class="num-v" data-num="${id}-eu"><b>${a}</b></span><span class="num-rot">${rot}</span><span class="num-v" data-num="${id}-ele"><b>${b}</b></span>
@@ -11081,7 +11334,7 @@ function iniciarTelaLuta(opp,titleFight){
   live.innerHTML=`<div class="placar">
       <div class="placar-lado eu"><span class="placar-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:54})}</span><b>${me.name}</b></div>
       <div class="placar-centro"><span class="rd" id="rdlabel">Round 1</span><span class="placar-sub">${titleFight?5:3} rounds</span>${
-        titleFight?`<span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}</div>
+        titleFight?`<span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}<span class="placar-plano" id="placarPlano" hidden></span></div>
       <div class="placar-lado ele"><b>${opp.name}</b></div>
     </div>
     <div class="luta-grade">
@@ -11096,10 +11349,14 @@ function animarTrecho(lines,aoTerminar){
     if(tk!==CARREIRA_TOKEN)return;   // saiu da carreira: a narração para aqui
     if(i>=lines.length){aoTerminar();return;}
     const L=lines[i++];
-    if(L.kind==="rd"&&/^Round/.test(L.text))
-      document.getElementById("rdlabel").textContent=`Round ${L.round}`;
+    if(L.kind==="rd"&&/^Round/.test(L.text)){
+      const rl=document.getElementById("rdlabel");
+      rl.textContent=`Round ${L.round}`;
+      animarNo(rl,"pulsa");
+    }
+    if(L.kind==="kd"||L.kind==="big")animarNo(document.querySelector(`.placar-lado.${ladoQueApanhou(L)}`),L.kind==="kd"?"cai":"treme");
     const row=el("div","pbp"+(L.kind?" "+L.kind:""),
-      `<span class="clk">${L.clock}</span><span>${L.text}</span>`);
+      `<span class="clk">${L.kind==="plano"?ICONE("alvo"):L.clock}</span><span>${L.text}</span>`);
     play.appendChild(row);
     row.scrollIntoView({behavior:"smooth",block:"nearest"});
     /* o som sai do TIPO da linha e do texto (somDaLinha, fase 6) */
@@ -11109,11 +11366,23 @@ function animarTrecho(lines,aoTerminar){
       document.body.classList.add("ko");
       setTimeout(()=>document.body.classList.remove("ko"),440);
     }
-    const base=L.kind==="fin"?950:L.kind==="rd"?700:
+    const base=L.kind==="fin"?950:L.kind==="rd"?700:L.kind==="plano"?900:
                (L.kind==="kd"||L.kind==="big")?780:470;
     playTimer=setTimeout(step,reduceMotion()?10:base/speed);
   };
   step();
+}
+/* Quem levou a pior numa linha forte da narração: o knockdown nomeia quem
+   caiu; queda, ground and pound e finalização nomeiam quem atacou. */
+function ladoQueApanhou(L){
+  const t=String(L&&L.text||""),meu=me&&me.name?me.name:"";
+  if(L.kind==="kd")return t.startsWith(meu)?"eu":"ele";
+  const atacou=t.startsWith(`Queda de ${meu}`)||t.startsWith(meu);
+  return atacou?"ele":"eu";
+}
+function animarNo(no,cls){
+  if(!no||reduceMotion()||!no.classList)return;
+  no.classList.remove(cls); void no.offsetWidth; no.classList.add(cls);
 }
 /* Linha de uma luta no histórico (revamp fase 3). Uma função só: a luta
    que acabou agora e a carreira retomada de um save desenham igual. */
@@ -11135,7 +11404,7 @@ function linhaBout(reg){
     SOM.toque();
     if(!line.__narr){
       line.__narr=el("div","bout-narracao",reg.narracao.map(([c,k,t])=>
-        `<div class="pbp${k?" "+k:""}"><span class="clk">${c}</span><span>${semTravessao(t)}</span></div>`).join(""));
+        `<div class="pbp${k?" "+k:""}"><span class="clk">${k==="plano"?ICONE("alvo"):c}</span><span>${semTravessao(t)}</span></div>`).join(""));
       line.__narr.hidden=true;
       line.appendChild(line.__narr);
     }

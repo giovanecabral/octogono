@@ -373,14 +373,16 @@ caminho do título (`st.tituloEstaLuta`, igual à v1).
   ranking pega no máximo o #13 (achado da suíte `regras`: perto do limiar,
   a faixa de cima alcançava o #1).
 - Ranqueado no #k: até 2 posições abaixo, até 2 acima, e de 2 a 5 acima.
-- Ganho no standing: .045, .075 e .125 sem ranking; .05, .08 e .11 no top
+- Ganho no standing: .045, .075 e .125 sem ranking; .05, .08 e .10 no top
   15. Derrota no top 15 tira 60% da punição: no UFC uma derrota não joga
   um ranqueado pra fora.
 - A carta mais difícil no top 15 rendia .13: quem sempre pegava a mais
   difícil ganhava o cinturão em 18% a 23% das carreiras (teto 20%), porque
   o campeão dos leves na v2 (Islam Makhachev, pelos títulos) tem a nota de
   estatística no 32º percentil do elenco na ativa (51% na v1, com Khabib
-  na tabela). Com .11, 12%, sem mudar as vitórias de ninguém.
+  na tabela). Com .11, 12%, sem mudar as vitórias de ninguém. Com o plano
+  de luta a cada round, o melhor plano rende mais e o ousado foi a 22%:
+  .10, 16%.
 
 **Balanço medido** (50 carreiras por perfil, `node testar.js balanco`):
 
@@ -393,7 +395,12 @@ caminho do título (`st.tituloEstaLuta`, igual à v1).
 | estrategista | 12,8 | 8% |
 
 Com 30 carreiras (a bateria completa): 11,9 a 12,6 vitórias, cinturão 3% a
-13%. Lutas 1 a 5: 55% a 71% de vitória. Dentro das faixas do teste (9 a 14
+13%. Lutas 1 a 5: 55% a 71% de vitória.
+
+Com o plano de luta a cada round (os perfis manuais escolhem o plano: o
+comum ao acaso, os outros o que mais casa) e a carta difícil do top 15 em
+.10: 11,9 a 12,8 vitórias e cinturão 6% a 16% (50 carreiras); 11,7 a 12,7
+e 7% a 13% (30). Dentro das faixas do teste (9 a 14
 vitórias, cinturão até 20%); um pouco acima do 11 a 12,5 aprovado em
 2026-09-28, porque a estreia agora é contra gente do mesmo nível.
 
@@ -411,6 +418,107 @@ Dente provado com 5 mutações (cada uma reprova o teste dela). `hub`,
 `cinturao`, `interface`, `divisoes` e `save` foram atualizadas pra régua
 nova (semente do `save` 777004 virou 777005: a carreira de teste acabava
 no round 1 com os adversários novos).
+
+### Plano de luta a cada round (2026-10-04)
+
+**Pedido do dono, em dois tempos.** Primeiro: as lutas da carreira tão
+interativas quanto as do JxJ (testado no localhost). Depois de jogar: "as
+ações escolhidas têm que aparecer no que acontece na luta, em negrito, e
+alterar a luta pra melhor ou pra pior; mais didático e intuitivo". Foi pro
+ar junto com a segunda parte.
+
+**Escolha.** Antes de cada round (o 1º inclusive, depois da entrada), o
+plano abre com 4 opções de `ACOES_LUTA`, escolhidas por `quartetoDoRound`:
+- a situação do round anterior decide a pool (`sinalDoRound`);
+- o `escolhaRng` sorteia;
+- um eixo diferente por opção sempre que dá;
+- nada se repete do round anterior.
+
+Cada carta mostra o que o plano faz, quanto ele custa e o seu número no
+eixo. Uma linha explica a regra. O automático não abre o plano e não gasta
+o gerador.
+
+**O que o plano faz** (`PERFIL_PLANO`, aplicado por `aplicarPlano` só
+naquele round, em cima da base):
+
+| eixo da ação | eficácia (× mod) | esforço | custo |
+|---|---|---|---|
+| volume (`slpm`) | volume de golpes | | defesa de golpe × 0,965 |
+| poder (`kdAvg`) | chance de derrubar | | volume × 0,95 |
+| defesa (`strDef`) | defesa de golpe | | volume × 0,925 |
+| queixo (`durability`) | resistência | | volume × 0,95 |
+| queda (`tdAvg`) | acerto da queda (`tdAcc`) | tentativas × 1,35 | volume × 0,95 |
+| defesa de queda (`tdDef`) | defesa de queda e levantar do chão | | tentativas de queda × 0,8 |
+| finalização (`subAvg`) | acerto da finalização (`subAcc`) | tentativas × 1,35 | volume × 0,96 |
+
+O mod (`modificadorAcao`) vem do confronto escondido: o seu número no eixo
+contra o contra-atributo dele. Rende mais se ele é fraco nisso e menos se é
+forte, até abaixo do normal. `K_ESCOLHA_LUTA` subiu de .50 pra .70.
+
+Três eixos novos no motor (`tdAcc`, `subAcc`, `levantar`) ficam em 1 fora
+do plano. Sem plano, a luta é a mesma bit a bit (`driverluta`, `desafio`).
+
+**Na narração:** linhas de tipo `plano`, em negrito, com faixa dourada e o
+ícone de alvo no lugar do relógio. Saem do `narradorDoPlano`, com as frases
+de `FRASES_PLANO`:
+- no começo do round: "Plano de Kayo Brasa: castigar a perna de Jared
+  Gordon.";
+- nos eventos do motor que são do plano: "Kayo Brasa castiga a perna de
+  Jared Gordon, que já pisa torto." ou "Kayo Brasa tenta castigar a perna,
+  mas Jared Gordon tira a perna e acerta antes.";
+- no máximo um certo e um errado por round. Knockdown, queda e finalização
+  do plano sempre aparecem;
+- no fim do round, o resultado em números e o que ele ensinou: "Resultado
+  do plano Buscar a dupla: não deu certo, 0 quedas em 2 tentativas. Jared
+  Gordon é forte justamente nisso.";
+- se a luta acaba pelo plano: "O plano Buscar o nocaute decidiu a luta.".
+
+O motor manda o evento em dado (6º argumento do `push` em `simularRound`),
+sem consumir rng. As linhas ficam no log e no Cartel. Quem lê o log filtra
+pelo tipo (`rd`, `kd`, `big`, `fin`), então elas não contam como knockdown,
+queda nem round. O texto delas entra no `textoDoLog`: a entrevista pode
+citar o chute na perna que a narração contou.
+
+**Calibração** (`node testar.js gapinterativa`, 3000 pares; vitórias do
+lado que escolhe):
+
+| política | KO | FIN | DEC | vitórias |
+|---|---|---|---|---|
+| sem plano | 34,0 | 19,4 | 46,6 | 51,7% |
+| plano ao acaso | 33,6 | 20,2 | 46,3 | 50,9% |
+| sempre o melhor | 34,6 | 20,4 | 45,0 | 54,4% |
+| sempre o pior | 34,6 | 19,4 | 46,1 | 46,2% |
+
+Sempre o melhor contra sempre o pior: 1,79 vitória em 22. A suíte reprova
+se:
+- o nocaute passar de 35% em qualquer política;
+- o melhor plano não render 1 ponto acima de lutar sem plano;
+- o pior não ficar 2 pontos abaixo;
+- a diferença entre eles não passar de 1 vitória.
+
+Com K .50 e o custo inteiro, ficava assimétrico (melhor +0,5, pior −6,7).
+
+**Painel "Na luta":** os knockdowns estavam trocados desde a fase 5. O
+motor conta em quem caiu, e o painel mostrava isso do lado de quem caiu;
+agora mostra quem derrubou, igual ao Cartel.
+
+**Save:**
+- `PENDENTE.escolhas` guarda o plano de cada round, com `v: 2`;
+- entrada sem `v` (save de antes) aplica só o mod no eixo, como era;
+- save com a escolha única antiga refaz a luta antiga: round 1 neutro e a
+  escolha do round 2 ao fim.
+
+**Testes:**
+- `lutainterativa`:
+  - plano por round, rodízio, perfil aplicado sem herdar o round anterior;
+  - narração e Cartel com intenção e resultado;
+  - painel de knockdown;
+  - narrador nos eventos certos;
+  - o plano muda a luta;
+  - automático intacto.
+- `gapinterativa`: a calibração acima.
+- Adaptadas: `interface`, `save`, `hub` e `balanco` (escolhe o plano nos
+  perfis manuais).
 
 ## Progressão do lutador
 

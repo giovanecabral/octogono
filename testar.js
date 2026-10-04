@@ -141,7 +141,8 @@ const API_MOTOR = ["simulateFight", "simularRound", "mkState", "mulberry32", "ra
   "RARE", "LEGACY", "hypeOf", "followerDelta", "fmtNum", "CAMPS", "dificuldade",
   "TETO_TREINO", "RITMO_TREINO", "ATTR_TREINAVEIS",
   "ehLenda", "RATING_LENDA", "MIN_LUTADORES", "DIVISOES", "MIN_LUTADORES_V2", "ANO_ATIVO",
-  "ACOES_LUTA", "COUNTER_ATTR", "sinalDoRound", "contest", "K_ESCOLHA_LUTA"];
+  "ACOES_LUTA", "COUNTER_ATTR", "sinalDoRound", "contest", "K_ESCOLHA_LUTA", "quartetoDoRound",
+  "aplicarPlano", "PERFIL_PLANO", "FRASES_PLANO", "narradorDoPlano"];
 
 function carregarMotor() {
   const { sandbox } = criarAmbiente();
@@ -412,7 +413,9 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
        exatamente o "botão travado" que pegou esta refatoração na primeira
        rodada de teste. */
     const escBox = env.registro.escolhaLuta;
-    if (escBox && escBox.style.display !== "none") {
+    /* luta interativa (2026-10-04): o plano abre antes de CADA round, com 4
+       opções; resolve todos, um por vez, até a luta acabar */
+    for (let plano = 0; plano < 6 && escBox && escBox.style.display !== "none"; plano++) {
       /* teste explícito pedido: escolha aberta, jogador aperta "Próxima
          luta" — nada pode acontecer (mesma garantia que testarEscolhaLuta()
          prova de forma isolada; aqui é a versão de ponta a ponta, com a
@@ -431,9 +434,9 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
       /* item 6 (v2): ids dinâmicos ("el_"+id da ação, varia por round/pool),
          não mais 3 nomes fixos — acha pelo prefixo. */
       const idsOpcoes = Object.keys(env.registro).filter(k => k.startsWith("el_"));
-      if (idsOpcoes.length !== 3) throw new Error(`escolha na luta veio com ${idsOpcoes.length} opções, esperava 3`);
-      const op = env.registro[idsOpcoes[n % 3]];
-      if (!op || !op.onclick) throw new Error("escolha na luta apareceu sem os 3 botões esperados");
+      if (idsOpcoes.length !== 4) throw new Error(`plano do round veio com ${idsOpcoes.length} opções, esperava 4`);
+      const op = env.registro[idsOpcoes[(n + plano) % 4]];
+      if (!op || !op.onclick) throw new Error("plano do round apareceu sem os 4 botões esperados");
       op.onclick();
       idsOpcoes.forEach(id => delete env.registro[id]);
       env.drenar(); await respirar(); env.drenar();
@@ -7957,10 +7960,12 @@ async function testarSave() {
     if (linhas.length !== 11) throw new Error(`${linhas.length} linhas .bout no histórico retomado`);
   });
   /* retoma um save num sandbox zerado (mesmo passo dos testes acima) */
-  const retomarEm = (save) => {
+  /* antes: código rodado ANTES de retomar (luta interativa: o plano do
+     round abre na hora da retomada, então o stub da escolha vem antes) */
+  const retomarEm = (save, antes = "") => {
     const B = sandboxCarreira();
     B.sb.__F = F; B.sb.__save = save;
-    B.run(`ROSTER=rateAll(globalThis.__F);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
+    B.run(`ROSTER=rateAll(globalThis.__F);CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;${antes}
       retomarCarreira(JSON.parse(globalThis.__save));`);
     return B;
   };
@@ -7974,7 +7979,8 @@ async function testarSave() {
     const pend = JSON.parse(A.run("JSON.stringify(PENDENTE)"));
     if (!pend || pend.tipo !== "luta" || !Number.isFinite(pend.semL)) throw new Error("PENDENTE da luta não gravado: " + JSON.stringify(pend));
     const save = A.run("JSON.stringify(montarSave())");
-    const B = retomarEm(save);
+    /* plano neutro (o mesmo do automático que jogou a luta de C) */
+    const B = retomarEm(save, "abrirEscolhaLuta=function(sc,ref,opp,cb){cb(1);};");
     B.sb.__alvo = 7;   // só a luta retomada; o automático não segue pra 8
     B.run("auto=true;");
     for (let k = 0; k < 6; k++) { B.drenar(); await respirarCarreira(); }
@@ -7988,44 +7994,55 @@ async function testarSave() {
       if (lb[k] !== lc[k]) throw new Error(`luta 7 retomada divergiu em ${k}: ${lb[k]} vs ${lc[k]}`);
     if (B.run("PENDENTE") !== null) throw new Error("PENDENTE não foi limpo depois da luta");
   });
-  await conf("escolha feita no round 1 fica gravada e é reaplicada ao retomar (não abre de novo)", async () => {
+  await conf("luta interativa: o plano de cada round fica gravado e é reaplicado ao retomar (round já escolhido não abre de novo)", async () => {
+    const PLANO = `abrirEscolhaLuta=function(sc,ref,opp,cb,info){globalThis.__abertas=(globalThis.__abertas||0)+1;cb(1.08,"slpm",{id:"teste",nome:"Plano de teste"});};`;
     const A = sandboxCarreira();
     iniciarCarreiraTeste(A, F, 777005);
     await jogarCarreiraAte(A, 3);
-    // luta 4 no manual só na hora da escolha: troca abrirEscolhaLuta por uma que escolhe
-    // SEMPRE a 2ª ação com modificador 1.08 no 1º atributo (escolha de verdade, não a neutra)
-    A.run(`globalThis.__abertas=0;abrirEscolhaLuta=function(sc,ref,opp,cb){globalThis.__abertas++;cb(1.08,"slpm");};`);
+    A.run(PLANO + "globalThis.__abertas=0;");
+    A.sb.__alvo = 4;
     A.run("auto=true;nextFight();");
-    A.drenar(); await respirarCarreira();
-    const pend = JSON.parse(A.run("JSON.stringify(PENDENTE)"));
-    // a luta pode ter terminado no round 1 (sem escolha); nesse caso a semente muda de luta
-    if (A.run("globalThis.__abertas") === 0) throw new Error("semente de teste terminou a luta 4 no 1º round; trocar a semente");
-    void pend;
+    for (let k = 0; k < 6; k++) { A.drenar(); await respirarCarreira(); }
+    const abertasA = A.run("globalThis.__abertas");
+    if (abertasA < 2) throw new Error("semente de teste terminou a luta 4 no 1º round; trocar a semente");
     const B0 = sandboxCarreira();
     iniciarCarreiraTeste(B0, F, 777005);
     await jogarCarreiraAte(B0, 3);
-    B0.run(`abrirEscolhaLuta=function(sc,ref,opp,cb){cb(1.08,"slpm");};`);
-    // para logo depois da escolha: intercepta o callback pra salvar e sair
-    B0.run(`const __orig=abrirEscolhaLuta;abrirEscolhaLuta=function(sc,ref,opp,cb){__orig(sc,ref,opp,(m,a)=>{
-      globalThis.__saveDepoisDaEscolha=null; cb(m,a); });};
-      const __sc=salvarCarreira;salvarCarreira=function(){__sc();if(PENDENTE&&PENDENTE.escolha&&!globalThis.__saveDepoisDaEscolha)
+    // grava o save logo depois do PRIMEIRO plano escolhido
+    B0.run(PLANO + `const __sc=salvarCarreira;salvarCarreira=function(){__sc();if(PENDENTE&&PENDENTE.escolhas&&PENDENTE.escolhas.length&&!globalThis.__saveDepoisDaEscolha)
         globalThis.__saveDepoisDaEscolha=JSON.stringify(montarSave());};`);
+    B0.sb.__alvo = 4;
     B0.run("auto=true;nextFight();");
     for (let k = 0; k < 4; k++) { B0.drenar(); await respirarCarreira(); }
     const save = B0.run("globalThis.__saveDepoisDaEscolha");
-    if (!save) throw new Error("nenhum save com a escolha gravada");
-    if (!JSON.parse(save).pendente.escolha) throw new Error("save sem pendente.escolha");
-    const B = retomarEm(save);
-    /* só a luta retomada interessa: o automático para nela (sem isto ele
-       seguia pra luta seguinte e a escolha DELA contava como "reabriu") */
+    if (!save) throw new Error("nenhum save com o plano gravado");
+    const esc = JSON.parse(save).pendente.escolhas;
+    if (!esc || !esc[0] || esc[0].attr !== "slpm" || esc[0].nome !== "Plano de teste") throw new Error("save sem o plano do round 1: " + JSON.stringify(esc));
+    const B = retomarEm(save, PLANO + "globalThis.__abertas=0;");
     B.sb.__alvo = JSON.parse(save).fightNo;
-    B.run(`globalThis.__reabriu=0;abrirEscolhaLuta=function(){globalThis.__reabriu++;};auto=true;`);
+    B.run("auto=true;");
     for (let k = 0; k < 6; k++) { B.drenar(); await respirarCarreira(); }
-    if (B.run("globalThis.__reabriu") !== 0) throw new Error("retomada abriu a escolha de novo");
+    const abertasB = B.run("globalThis.__abertas");
+    if (abertasB !== abertasA - 1) throw new Error(`retomada abriu ${abertasB} planos; a luta direta abriu ${abertasA} (o do round 1 já estava escolhido)`);
     const lb = JSON.parse(B.run("JSON.stringify(st.registro[3])"));
     const la = JSON.parse(A.run("JSON.stringify(st.registro[3])"));
     for (const k of ["adv", "venceu", "metodo", "round", "relogio"])
-      if (lb[k] !== la[k]) throw new Error(`luta com escolha divergiu em ${k}: ${lb[k]} vs ${la[k]}`);
+      if (lb[k] !== la[k]) throw new Error(`luta com plano divergiu em ${k}: ${lb[k]} vs ${la[k]}`);
+  });
+  await conf("luta interativa: save de antes (uma escolha só, valendo do round 2 ao fim) refaz a mesma luta", async () => {
+    const A = sandboxCarreira();
+    iniciarCarreiraTeste(A, F, 777005);
+    await jogarCarreiraAte(A, 3);
+    A.run("auto=true;nextFight();");
+    const save = JSON.parse(A.run("JSON.stringify(montarSave())"));
+    save.pendente.escolha = { mod: 1.08, attr: "slpm" };
+    delete save.pendente.escolhas;
+    const B = retomarEm(JSON.stringify(save), "globalThis.__abertas=0;abrirEscolhaLuta=function(){globalThis.__abertas++;};");
+    B.sb.__alvo = save.fightNo;
+    B.run("auto=true;");
+    for (let k = 0; k < 6; k++) { B.drenar(); await respirarCarreira(); }
+    if (B.run("globalThis.__abertas") !== 0) throw new Error("save antigo abriu plano de novo");
+    if (!JSON.parse(B.run("JSON.stringify(st.registro[3]||null)"))) throw new Error("a luta do save antigo não terminou");
   });
   await conf("dilema aberto reabre O MESMO texto ao retomar, sem pedir dilema novo", async () => {
     const A = sandboxCarreira();
@@ -8218,15 +8235,17 @@ async function testarBalanco(N = 50, soPerfil = null) {
           /* escolha na luta: melhor modificador (esperto/ousado) ou aleatória (comum) */
           const orig=abrirEscolhaLuta;
           abrirEscolhaLuta=function(sc,jog,opp,onEscolher){
-            orig.apply(this,arguments);
-            if(auto)return;
+            /* devolve as opções abertas: o driver usa pra não repetir no round seguinte */
+            const abertas=orig.apply(this,arguments);
+            if(auto)return abertas;
             const box=document.getElementById("escolhaLuta");
-            const ops=(box.children||[]).find(c=>(c.className||"")==="el-opts");
+            const ops=(box.children||[]).find(c=>(c.className||"").split(" ").includes("el-opts"));
             const bs=ops?ops.children:[];
-            if(!bs.length)return;
+            if(!bs.length)return abertas;
             let alvo=bs[Math.floor(sorte()*bs.length)];
             if(perfil!=="comum"){let mx=-1;for(const b of bs){const a=ACOES_LUTA.find(x=>"el_"+x.id===b.id);const m=modificadorAcao(a,jog,opp);if(m>mx){mx=m;alvo=b;}}}
             alvo.onclick();
+            return abertas;
           };
           globalThis.__rotulos=[];
           globalThis.__decidir=function(){
@@ -9656,7 +9675,12 @@ async function testarHub() {
     if (!pular || !pular.onclick) throw new Error("entrada sem Pular");
     pular.onclick(); pular.onclick();
     if (X.run("noiteEtapa") !== "luta") throw new Error("Pular não foi pra luta");
-    if (X.registro.play.children.length <= playAntes) throw new Error("narração não começou depois da entrada");
+    /* luta interativa: depois da entrada abre o plano do round 1; a
+       narração começa quando o jogador escolhe */
+    const op = Object.keys(X.registro).filter(k => k.startsWith("el_")).map(k => X.registro[k]).filter(n => n.onclick);
+    if (op.length !== 4) throw new Error(`plano do round 1 com ${op.length} opções depois da entrada`);
+    op[0].onclick();
+    if (!X.registro.play || X.registro.play.children.length <= playAntes) throw new Error("narração não começou depois do plano");
   });
 
   await conf("entrada: pulada no automático e com reduce-motion (mesma luta, mesmo resultado)", async () => {
@@ -12286,6 +12310,255 @@ async function testarRegrasCarreira() {
   return okTudo;
 }
 
+/* ================================================================== *
+ * LUTA INTERATIVA NA CARREIRA (2026-10-04, branch local, pedido do dono):
+ *     plano antes de cada round, 4 opções que mudam, vale só no round.
+ * ================================================================== */
+async function testarLutaInterativa() {
+  console.log("\n" + cinza("luta interativa: plano antes de cada round, 4 opções que mudam, vale só no round, automático não abre"));
+  const F = lerLutadores();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const R0 = sandboxCarreira(); R0.sb.__F = F;
+  const RJ = R0.run("JSON.stringify(rateAll(globalThis.__F))");
+  /* joga lutas no manual clicando a opção k%4 de cada plano; registra o
+     plano aberto (ids, eixos) e o mAttr do jogador no começo de cada round */
+  const jogarManual = async (seed, nLutas) => {
+    const paineis = [];
+    const X = sandboxCarreira();
+    iniciarCarreiraTeste(X, F, seed, "normal", RJ);
+    X.run(`auto=false;globalThis.__planos=[];globalThis.__rounds=[];globalThis.__aplicados=[];
+      (function(){const ap=aplicarPlano;aplicarPlano=function(estado,base,esc){const r=ap.apply(this,arguments);
+          globalThis.__aplicados.push({luta:fightNo,esc:esc?JSON.parse(JSON.stringify(esc)):null,base:JSON.stringify(base),mAttr:JSON.stringify(estado.mAttr)});return r;};})();
+      (function(){const o=abrirEscolhaLuta;abrirEscolhaLuta=function(sc,ref,opp,cb,info){
+        const ids=o.apply(this,arguments);
+        if(ids)globalThis.__planos.push({luta:fightNo,round:info&&info.round,ids,eixos:ids.map(id=>ACOES_LUTA.find(a=>a.id===id).attr)});
+        return ids;};
+       const r=simularRound;simularRound=function(A,B,round){
+         /* só a luta de verdade (playing): chanceContra() simula lutas pelo mesmo simularRound */
+         if(playing)globalThis.__rounds.push({luta:fightNo,round,mAttr:JSON.stringify(A.mAttr),auto});return r.apply(this,arguments);};})();`);
+    for (let l = 0; l < nLutas; l++) {
+      X.run("nextFight();");
+      for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); }
+      const opps = X.registro.opps.children.filter(n => (n.className || "").split(" ").includes("opp") && n.onclick).slice(-X.run("ofertaAtual.length"));
+      opps[l % opps.length].onclick();
+      const camps = X.registro.camps.children.filter(n => (n.className || "").split(" ").includes("camp") && n.onclick).slice(-X.run("CAMPS.length"));
+      camps[0].onclick();
+      if (X.registro.colpular && X.registro.colpular.onclick) { X.registro.colpular.onclick(); delete X.registro.colpular; }
+      for (let g = 0; g < 60 && X.run("playing"); g++) {
+        X.drenar(); await respirarCarreira();
+        const op = Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).map(k2 => X.registro[k2]).filter(n => n.onclick);
+        if (op.length) { op[(l + g) % op.length].onclick(); Object.keys(X.registro).filter(k2 => k2.startsWith("el_")).forEach(k2 => delete X.registro[k2]); }
+      }
+      for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); }
+      paineis.push(X.registro.lutaNumeros ? X.registro.lutaNumeros.innerHTML : "");
+      /* resolverDilemaTeste liga o automático pra seguir; aqui a luta é manual */
+      if (await resolverDilemaTeste(X, "aceito, sem problema")) { X.run("auto=false;"); for (let k = 0; k < 4; k++) { X.drenar(); await respirarCarreira(); } }
+      X.run("auto=false;");
+      if (X.run("entrevistaAberta")) X.run("entrevistaAberta=false;");
+    }
+    return { X, planos: JSON.parse(X.run("JSON.stringify(__planos)")), rounds: JSON.parse(X.run("JSON.stringify(__rounds)")),
+      aplicados: JSON.parse(X.run("JSON.stringify(__aplicados)")), paineis,
+      registro: JSON.parse(X.run("JSON.stringify(st.registro)")), auto: X.run("auto") };
+  };
+  const j = await jogarManual(995001, 6);
+  await conf("um plano antes de cada round que a luta alcança (o 1º inclusive), sempre com 4 opções", () => {
+    if (j.registro.length < 5) throw new Error("só " + j.registro.length + " lutas");
+    for (const [i, reg] of j.registro.entries()) {
+      const n = j.planos.filter(p => p.luta === i + 1).length;
+      if (n !== reg.round) throw new Error(`luta ${i + 1} acabou no round ${reg.round} e abriu ${n} planos (auto ${JSON.stringify(j.rounds.filter(r => r.luta === i + 1).map(r => r.auto))}, ${j.planos.length} planos ao todo nas lutas ${[...new Set(j.planos.map(p => p.luta))]})`);
+    }
+    const ruins = j.planos.filter(p => p.ids.length !== 4);
+    if (ruins.length) throw new Error("plano sem 4 opções: " + JSON.stringify(ruins[0]));
+  });
+  await conf("as opções mudam: nenhuma repete a do round anterior, e pelo menos 3 eixos diferentes por plano", () => {
+    for (let i = 1; i < j.planos.length; i++) {
+      const a = j.planos[i - 1], b = j.planos[i];
+      if (a.luta === b.luta && b.ids.some(id => a.ids.includes(id))) throw new Error(`luta ${b.luta}, round ${b.round} repetiu opção do round anterior: ${b.ids}`);
+    }
+    const poucos = j.planos.filter(p => new Set(p.eixos).size < 3);
+    if (poucos.length) throw new Error("plano com menos de 3 eixos: " + JSON.stringify(poucos[0]));
+  });
+  await conf("o plano vale só no round dele: cada round roda com o plano aplicado em cima da base (eficácia, esforço e custo do perfil), sem herdar o round anterior", () => {
+    const P = JSON.parse(j.X.run("JSON.stringify(PERFIL_PLANO)"));
+    for (const [i, reg] of j.registro.entries()) {
+      const apl = j.aplicados.filter(x => x.luta === i + 1);
+      const rounds = j.rounds.filter(r => r.luta === i + 1).slice(0, reg.round);
+      if (apl.length !== reg.round) throw new Error(`luta ${i + 1}: ${apl.length} planos aplicados em ${reg.round} rounds`);
+      for (const [k, r] of rounds.entries()) {
+        const a = apl[k];
+        if (r.mAttr !== a.mAttr) throw new Error(`luta ${i + 1}, round ${r.round}: rodou com ${r.mAttr}, o plano aplicado era ${a.mAttr}`);
+        const base = JSON.parse(a.base), m = JSON.parse(a.mAttr), pf = P[a.esc.attr];
+        const permitidos = new Set([pf.eficacia, pf.extra, ...Object.keys(pf.esforco || {}), ...Object.keys(pf.custo || {})].filter(Boolean));
+        const mudados = Object.keys(m).filter(x => m[x] !== base[x]);
+        if (mudados.some(x => !permitidos.has(x))) throw new Error(`luta ${i + 1}, round ${r.round}: plano ${a.esc.nome} mexeu em ${mudados} (perfil ${[...permitidos]})`);
+        for (const c of Object.keys(pf.custo || {})) if (!(m[c] < base[c])) throw new Error(`luta ${i + 1}, round ${r.round}: o custo do plano ${a.esc.nome} (${c}) não pesou`);
+        if (JSON.stringify(base) !== JSON.stringify(JSON.parse(apl[0].base))) throw new Error(`luta ${i + 1}: a base mudou entre os rounds (o plano anterior ficou)`);
+      }
+    }
+  });
+  await conf("a narração cita o plano em destaque: a intenção no começo de cada round e o resultado no fim, no log da luta e no Cartel", () => {
+    const linhas = j.X.registro.play.children.filter(n => (n.className || "").split(" ").includes("plano")).map(n => n.innerHTML);
+    if (!linhas.some(h => /Plano de .+: /.test(h)) || !linhas.some(h => /Resultado do plano .+: (deu certo|não deu certo|sem teste)/.test(h)))
+      throw new Error("narração sem a intenção ou sem o resultado do plano: " + linhas.slice(0, 3).join(" | "));
+    for (const [i, reg] of j.registro.entries()) {
+      const pl = (reg.narracao || []).filter(([, k]) => k === "plano").map(([, , t]) => t);
+      const inicios = pl.filter(t => /^Plano de /.test(t)).length, fins = pl.filter(t => /^Resultado do plano /.test(t)).length;
+      const terminados = reg.metodo === "Decisão" ? reg.round : reg.round - 1;
+      if (inicios !== reg.round || fins !== terminados) throw new Error(`luta ${i + 1} (${reg.metodo}, round ${reg.round}): ${inicios} intenções e ${fins} resultados no Cartel`);
+    }
+    const chip = j.X.registro.placarPlano;
+    if (!chip || !/Plano do round \d+: <b>/.test(chip.innerHTML || "")) throw new Error("placar sem o plano: " + (chip && chip.innerHTML));
+  });
+  await conf("o painel conta os knockdowns de quem derrubou, igual ao registro da luta (o motor guarda em quem caiu)", () => {
+    /* reg.kd = [os que você fez, os que ele fez]; o painel de cada luta tem que bater */
+    let assimetricas = 0;
+    for (const [i, reg] of j.registro.entries()) {
+      const kd = [...(j.paineis[i] || "").matchAll(/data-num="kd-(eu|ele)"><b>(\d+)<\/b>/g)].map(m => +m[2]);
+      if (kd.length !== 2 || kd[0] !== reg.kd[0] || kd[1] !== reg.kd[1]) throw new Error(`luta ${i + 1}: painel kd ${kd}, registro ${reg.kd}`);
+      if (reg.kd[0] !== reg.kd[1]) assimetricas++;
+    }
+    if (!assimetricas) throw new Error("nenhuma luta com knockdowns diferentes dos dois lados; trocar a semente pro teste valer");
+  });
+  await conf("o narrador põe o plano nos eventos certos: queda com Buscar a dupla, sprawl com Sprawl e sair, knockdown com Buscar o nocaute; um certo e um errado por round no máximo", () => {
+    const r = JSON.parse(j.X.run(`JSON.stringify((function(){
+      const A={ref:{name:"Ana"},sigStrikes:0,knockdowns:0,takedowns:0},B={ref:{name:"Bia"},sigStrikes:0,knockdowns:0,takedowns:0};
+      const plano=(id,mod=1)=>{const a=ACOES_LUTA.find(x=>x.id===id);return{v:2,id,nome:a.nome,attr:a.attr,mod};};
+      const out={};
+      let n=narradorDoPlano(A,B);
+      out.dupla=[n.inicio(plano("buscar_dupla",1.2)),...n.evento({tipo:"quedaDefendida",quem:"A"}),...n.evento({tipo:"quedaDefendida",quem:"A"}),...n.evento({tipo:"queda",quem:"A"}),n.fimRound()];
+      n=narradorDoPlano(A,B);
+      out.sprawl=[n.inicio(plano("sprawl_sair",.8)),...n.evento({tipo:"quedaDefendida",quem:"B"}),...n.evento({tipo:"queda",quem:"B"}),n.fimRound()];
+      n=narradorDoPlano(A,B);
+      out.nocaute=[n.inicio(plano("buscar_nocaute")),...n.evento({tipo:"janela",a:5,b:2}),...n.evento({tipo:"janela",a:6,b:1}),...n.evento({tipo:"kd",quem:"A"}),...n.evento({tipo:"janela",a:0,b:5})];
+      n=narradorDoPlano(A,B);
+      out.semPlano=[n.inicio(null),...n.evento({tipo:"queda",quem:"A"}),n.fimRound()];
+      return out;})())`));
+    const d = r.dupla;
+    if (d[0] !== "Plano de Ana: buscar a queda de duas pernas em Bia." || d[1] !== "Ana tenta a dupla, mas Bia segura a base." || d.length !== 4
+      || d[2] !== "A dupla de Ana entra e Bia cai de costas." || d[3] !== "Resultado do plano Buscar a dupla: deu certo, 1 queda em 3 tentativas. Esse plano casa com o seu jogo contra Bia.")
+      throw new Error("dupla: " + JSON.stringify(d));
+    const sp = r.sprawl;
+    if (sp[1] !== "Ana joga o quadril pra trás e Bia não derruba." || sp[2] !== "Ana tenta o sprawl, mas Bia chega antes e derruba." || !/não deu certo, Bia tentou 2 quedas e derrubou 1\. Bia é forte justamente nisso\.$/.test(sp[3]))
+      throw new Error("sprawl: " + JSON.stringify(sp));
+    const nc = r.nocaute;
+    if (nc.filter(t => /pesada/.test(t)).length !== 1 || !nc.includes("O plano deu resultado: Ana derrubou Bia.") || !nc.some(t => /erra e Bia pune/.test(t)))
+      throw new Error("nocaute: " + JSON.stringify(nc));
+    if (r.semPlano.some(Boolean)) throw new Error("sem plano o narrador falou: " + JSON.stringify(r.semPlano));
+  });
+  await conf("o plano muda a luta de verdade: mesma luta (mesma semente), plano diferente, round diferente", () => {
+    const r = JSON.parse(j.X.run(`JSON.stringify((function(){
+      const opp=LADDER[Math.floor(LADDER.length/2)],eu=lutadorEfetivo();
+      const rodar=(id)=>{const rng=mulberry32(4242),form=()=>1+(rng()+rng()+rng()-1.5)/1.5*TUNING.formSpread;
+        const A=mkState(eu,form()),B=mkState(opp,form()),base={...A.mAttr};
+        if(id){const a=ACOES_LUTA.find(x=>x.id===id);aplicarPlano(A,base,{v:2,id,nome:a.nome,attr:a.attr,mod:modificadorAcao(a,A.ref,B.ref)});}
+        const tot={g:0,q:0,s:0};
+        for(let k=0;k<40;k++){const a2=mkState(eu,A.form),b2=mkState(opp,B.form);a2.mAttr={...A.mAttr};const r2=mulberry32(900+k);
+          simularRound(a2,b2,1,r2,()=>{},()=>({}),{sa:0,sb:0});tot.g+=a2.sigStrikes;tot.q+=a2.takedowns;tot.s+=a2.subAttempts;}
+        return tot;};
+      return {sem:rodar(null),dupla:rodar("buscar_dupla"),guarda:rodar("fechar_guarda"),pescoco:rodar("cacar_pescoco")};})())`));
+    if (!(r.dupla.q > r.sem.q)) throw new Error("Buscar a dupla não deu mais quedas: " + JSON.stringify(r));
+    if (!(r.guarda.g < r.sem.g)) throw new Error("Fechar a guarda não cobrou golpes: " + JSON.stringify(r));
+    if (JSON.stringify(r.pescoco) === JSON.stringify(r.sem)) throw new Error("Caçar o pescoço não mudou nada: " + JSON.stringify(r));
+  });
+  await conf("automático não abre o plano nem gasta o escolhaRng", async () => {
+    const X = sandboxCarreira();
+    iniciarCarreiraTeste(X, F, 995002, "normal", RJ);
+    const antes = X.run("escolhaRng.estado()");
+    await jogarCarreiraAte(X, 4);
+    if (X.run("escolhaRng.estado()") !== antes) throw new Error("o automático gastou o escolhaRng");
+    if (Object.keys(X.registro).some(k => k.startsWith("el_"))) throw new Error("o automático abriu plano");
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  luta interativa ok") : vermelho(`  ${falhas.length} falha(s) na luta interativa`)));
+  return okTudo;
+}
+
+/* ================================================================== *
+ * LUTA INTERATIVA: calibração (2026-10-04, branch local). Mesmo protocolo
+ *     da gapescolha (pares reais, sinal real), só que com o plano antes de
+ *     CADA round, 4 opções (quartetoDoRound) e valendo só no round.
+ *     Métodos com a política realista (opção ao acaso) contra o teto de
+ *     nocaute de 35% (CLAUDE.md, calibração do motor), e o gap em vitórias
+ *     entre sempre a que casa e sempre a que erra.
+ * ================================================================== */
+function testarGapInterativa(N = 3000) {
+  console.log("\n" + cinza(`${N} pares, plano a cada round (4 opções, vale só no round): métodos e gap`));
+  const M = carregarMotor(), F = lerLutadores();
+  const byDiv = {};
+  F.forEach(f => (byDiv[f.division] ||= []).push(f));
+  const divs = Object.keys(byDiv);
+  const pctPorDiv = {};
+  divs.forEach(d => pctPorDiv[d] = M.makePercentiler(byDiv[d]));
+  const modAcao = (acao, jog, opp, PCT) => 1 + M.K_ESCOLHA_LUTA * (M.contest(PCT(acao.attr, jog[acao.attr]), PCT(M.COUNTER_ATTR[acao.attr], opp[M.COUNTER_ATTR[acao.attr]])) - .5) * 2;
+  function driver(a, b, seed, politica) {
+    const PCT = pctPorDiv[a.division];
+    const rng = M.mulberry32(seed), escolha = M.mulberry32(seed ^ 0x5F3A9C21);
+    const form = () => 1 + (rng() + rng() + rng() - 1.5) / 1.5 * M.TUNING.formSpread;
+    const A = M.mkState(a, form()), B = M.mkState(b, form());
+    const base = { ...A.mAttr };
+    const kds = () => ({ [A.ref.name]: A.knockdowns, [B.ref.name]: B.knockdowns });
+    const fin = (w, l, round, clock, met) => ({ winner: w.ref.name, loser: l.ref.name, method: met, round, clock, cards: null, log: [], knockdowns: kds() });
+    const scores = { sa: 0, sb: 0 };
+    let res = null, sinal = "parelho", anteriores = [];
+    for (let round = 1; round <= 3 && !res; round++) {
+      /* as mesmas 4 opções do jogo (quartetoDoRound), com um gerador próprio */
+      const opcoes = M.quartetoDoRound(sinal, anteriores, escolha);
+      anteriores = opcoes.map(o => o.id);
+      let acao;
+      if (politica === "neutra") acao = null;
+      else if (politica === "realista") acao = opcoes[Math.floor(escolha() * opcoes.length)];
+      else {
+        const ord = [...opcoes].sort((x, y) => modAcao(y, A.ref, B.ref, PCT) - modAcao(x, A.ref, B.ref, PCT));
+        acao = politica === "sempreCasa" ? ord[0] : ord[ord.length - 1];
+      }
+      M.aplicarPlano(A, base, acao ? { v: 2, id: acao.id, nome: acao.nome, attr: acao.attr, mod: modAcao(acao, A.ref, B.ref, PCT) } : null);
+      const antes = { a: A.sigStrikes, at: A.takedowns, ac: A.controlTicks, b: B.sigStrikes, bt: B.takedowns, bc: B.controlTicks };
+      res = M.simularRound(A, B, round, rng, () => {}, fin, scores);
+      sinal = M.sinalDoRound({ burstA: A.sigStrikes - antes.a, burstB: B.sigStrikes - antes.b, tdA: A.takedowns - antes.at, tdB: B.takedowns - antes.bt, ctrlA: A.controlTicks - antes.ac, ctrlB: B.controlTicks - antes.bc });
+    }
+    if (!res) {
+      const w = scores.sa > scores.sb ? A : scores.sb > scores.sa ? B : (rng() < .5 ? A : B), l = w === A ? B : A;
+      res = { winner: w.ref.name, loser: l.ref.name, method: "Decisão", round: 3 };
+    }
+    return res;
+  }
+  const met = { neutra: {}, realista: {}, sempreCasa: {}, sempreErra: {} }, vit = { neutra: 0, realista: 0, sempreCasa: 0, sempreErra: 0 };
+  let pares = 0;
+  for (let i = 0; i < N; i++) {
+    const p = byDiv[divs[i % divs.length]];
+    const a = p[(i * 7919) % p.length], b = p[(i * 104729 + 3) % p.length];
+    if (a.name === b.name) continue;
+    pares++;
+    for (const pol of Object.keys(met)) {
+      const r = driver(a, b, i + 1, pol);
+      const m = /KO|nocaute/i.test(r.method) ? "KO" : /Finaliza/i.test(r.method) ? "FIN" : "DEC";
+      met[pol][m] = (met[pol][m] || 0) + 1;
+      if (r.winner === a.name) vit[pol]++;
+    }
+  }
+  const pc = (pol, m) => 100 * (met[pol][m] || 0) / pares;
+  for (const pol of Object.keys(met))
+    console.log(`  ${pol.padEnd(11)} KO ${pc(pol, "KO").toFixed(1)}%  FIN ${pc(pol, "FIN").toFixed(1)}%  DEC ${pc(pol, "DEC").toFixed(1)}%  vitórias do lado A ${(100 * vit[pol] / pares).toFixed(1)}%`);
+  const gap = (vit.sempreCasa - vit.sempreErra) / pares * 22;
+  console.log(`  gap: sempre a que casa menos sempre a que erra = ${gap.toFixed(2)} vitórias em 22`);
+  /* calibração (CLAUDE.md): nocaute até 35% em toda política. A escolha
+     pesa nos dois sentidos: o melhor plano rende mais que lutar sem plano,
+     o pior rende menos, e a diferença entre eles passa de 1 vitória */
+  const v = (pol) => 100 * vit[pol] / pares;
+  const checks = [
+    ["nocaute até 35% em toda política", Object.keys(met).every(pol => pc(pol, "KO") <= 35)],
+    ["o melhor plano rende mais que lutar sem plano (1 ponto ou mais)", v("sempreCasa") >= v("neutra") + 1],
+    ["o pior plano rende menos que lutar sem plano (2 pontos ou mais)", v("sempreErra") <= v("neutra") - 2],
+    ["sempre o melhor contra sempre o pior: mais de 1 vitória em 22", gap > 1],
+  ];
+  for (const [nome, ok] of checks) console.log((ok ? verde("  ok    ") : vermelho("  falha ")) + nome);
+  return checks.every(([, ok]) => ok);
+}
+
 const cmd = (process.argv[2] || "tudo").toLowerCase();
 const div = process.argv[3];
 let ok = true;
@@ -12338,6 +12611,8 @@ try {
   else if (cmd === "diversidade") ok = await testarDiversidade(Number(div) || 6);
   else if (cmd === "entrevista") ok = await testarEntrevista();
   else if (cmd === "regras") ok = await testarRegrasCarreira();
+  else if (cmd === "lutainterativa") ok = await testarLutaInterativa();
+  else if (cmd === "gapinterativa") ok = testarGapInterativa(Number(div) || 3000);
   else if (cmd === "jxj") ok = await testarJxJ();
   else if (cmd === "jxjmotor") ok = await testarJxJMotor();
   else if (cmd === "jxjarvore") ok = await testarJxJArvore();
@@ -12427,6 +12702,8 @@ try {
         ["entrevista", () => testarEntrevista()],
         ["personagem", () => testarPersonagem()],
         ["regras", () => testarRegrasCarreira()],
+        ["lutainterativa", () => testarLutaInterativa()],
+        ["gapinterativa", () => testarGapInterativa()],
         ["jxj", () => testarJxJ()],
         ["jxjmotor", () => testarJxJMotor()],
         ["jxjarvore", () => testarJxJArvore()],

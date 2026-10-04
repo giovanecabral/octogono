@@ -269,8 +269,8 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **Balanço pedido pelo dono em 2026-09-28: ~50% de vitórias pra quem joga
   bem, cinturão raro.** `BUDGET_PCT` .70 (ver o item acima), faixas de
   adversário +16% acima do ranking com piso de 45% da divisão (escada da
-  v1; carreira nova usa a escada v2, item abaixo, medida em 11,9 a 12,8
-  vitórias e cinturão 2% a 13%), teto de treino 1.05, rótulo de dificuldade e zebra pela
+  v1; carreira nova usa a escada v2, item abaixo, medida com o plano por
+  round em 11,7 a 12,8 vitórias e cinturão 6% a 16%), teto de treino 1.05, rótulo de dificuldade e zebra pela
   chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
   motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
   teste). Números no LEIA-ME "Balanço".
@@ -284,6 +284,15 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   e depois #15 ao #1, campeão só pelo caminho do título, sem ranking nunca
   passa do #13). Mexeu em pool, ranking ou escada: `node testar.js regras`
   e `node testar.js balanco`. Nunca mudar a v1 sem subir a versão.
+- **Plano de luta a cada round (2026-10-04, pedido do dono).** O plano só
+  mexe na luta por `aplicarPlano` (eixos de `mAttr`, só naquele round, em
+  cima da base); sem plano a luta é a mesma bit a bit (`driverluta`).
+  `K_ESCOLHA_LUTA` .70 e `PERFIL_PLANO` medidos juntos: mexeu em qualquer
+  um, `node testar.js gapinterativa` (nocaute até 35% em toda política,
+  melhor plano acima e pior abaixo de lutar sem plano) e `balanco`. A
+  narração do plano é linha de tipo `plano` no log: leitor novo do log
+  filtra pelo tipo, nunca pelo texto. Plano gravado com `v: 2`; entrada
+  sem `v` é save antigo e aplica só o mod no eixo.
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`
   (permanente, com teto) × `st.eventoMod` (eventos). Evento escrevendo direto no
   atributo apagaria a base.
