@@ -184,10 +184,18 @@ function vistaDaLuta(d, uid) {
     } : null,
     minhaAcao: lado ? acoesAbertas[lado] || null : null,
     adversarioEscolheu: lado ? !!acoesAbertas[outroLado(lado)] : null,
-    acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil) : null,
+    /* a mão do round (variantes) sai da semente: o servidor calcula e manda
+       só as 4 ações de quem pediu, nunca a semente nem a mão do outro */
+    acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil, L.semente) : null,
     papel: lado && estado ? MOTOR.papel(estado, lado) : null,
-    trocas: (d.trocas || []).map((t) => ({ round: t.round, troca: t.troca, acaoA: t.acao_a, acaoB: t.acao_b,
-      eventos: (t.eventos || []).map((ev) => MOTOR.textoEvento(ev, nomes)).filter(Boolean) })),
+    /* troca resolvida: o que cada um usou (variante) e os eventos em forma
+       de dado (tipo, quem) pra animação e som na tela, além do texto */
+    trocas: (d.trocas || []).map((t) => {
+      const evs = t.eventos || [], esc = evs.find((ev) => ev.tipo === "escolha") || {};
+      return { round: t.round, troca: t.troca, acaoA: t.acao_a, acaoB: t.acao_b, varA: esc.va || null, varB: esc.vb || null,
+        ev: evs.filter((ev) => ev.tipo !== "escolha").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, metodo: ev.metodo || null })),
+        eventos: evs.map((ev) => MOTOR.textoEvento(ev, nomes)).filter(Boolean) };
+    }),
   };
   if (L.status === "encerrada") {
     vista.resultado = L.resultado;
@@ -216,7 +224,6 @@ function narracaoLocal(vista) {
   partes.push(r.metodo === "DEC" && r.placar ? `${fim.slice(0, -1)}, ${Math.max(r.placar.a, r.placar.b)} a ${Math.min(r.placar.a, r.placar.b)}.` : fim);
   return partes.join(" ").replace(/[—–]/g, ",").slice(0, 900);
 }
-const GOLPES_INVENTADOS = /\b(clinch|jab|cruzado|uppercut|gancho|chute|joelhada|cotovelada|mata-le[aã]o|guilhotina|tri[aâ]ngulo|armlock|kimura|americana|chave de bra[çc]o|chave de p[eé]|guarda alta|cabeçada)\b/i;
 async function narracaoIA(vista) {
   if (!process.env.OPENROUTER_API_KEY || process.env.JXJ_NARRACAO_IA === "false") return null;
   const n = { a: vista.nomes.a.nome, b: vista.nomes.b.nome };
@@ -247,7 +254,7 @@ Responda só com o texto, sem aspas.` },
     let t = String((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "").trim();
     t = t.replace(/^["“]|["”]$/g, "").replace(/[—–]/g, ",").replace(/\s+/g, " ");
     if (t.length < 40 || t.length > 900) return null;
-    if (GOLPES_INVENTADOS.test(t) && !GOLPES_INVENTADOS.test(fatos)) return null;
+    if (MOTOR.golpesForaDosFatos(t, fatos).length) return null;   // golpe com nome só se está nos fatos
     if (/[!?]/.test(t)) return null;
     if (r.vencedor && !t.includes(n[r.vencedor])) return null;
     /* nome próprio que não é dos dois lutadores = invenção */
@@ -274,7 +281,8 @@ function definicoes(ativo) {
     mecanicas: Object.fromEntries(Object.entries(ARV.MECANICAS).map(([k, m]) => [k, { desc: m.desc, teto: m.teto }])),
     arvore: { nivelMaxNo: ARV.NIVEL_MAX_NO, pontosPorRamoMax: ARV.PONTOS_POR_RAMO_MAX, pedidoPorTier: ARV.PEDIDO_POR_TIER,
       custoProprio: ARV.CUSTO_PROPRIO, custoHibrido: ARV.CUSTO_HIBRIDO, tiersHibridos: ARV.TIERS_HIBRIDOS, tetoBonus: ARV.TETO_BONUS, atributoMax: ARV.ATRIBUTO_MAX },
-    acoes: { rotulos: MOTOR.ROTULOS, descricoes: MOTOR.DESCRICOES, custo: MOTOR.CUSTO },
+    acoes: { rotulos: MOTOR.ROTULOS, descricoes: MOTOR.DESCRICOES, custo: MOTOR.CUSTO, familias: MOTOR.FAMILIA_NOME, ciclo: MOTOR.CICLO,
+      variantes: Object.fromEntries(Object.entries(MOTOR.VARIANTE_POR_ID).map(([id, v]) => [id, { rotulo: v.rotulo, desc: v.desc, papel: v.papel, familia: v.familia }])) },
     formato: MOTOR.FORMATO,
     regras: { nivelMax: REG.NIVEL_MAX, slotsFree: REG.SLOTS_FREE, slotsPro: REG.SLOTS_PRO, trocaPrincipalHoras: REG.TROCA_PRINCIPAL_HORAS,
       custoRespec: REG.CUSTO_RESPEC, tetoFichasDia: REG.TETO_FICHAS_DIA, parRating24h: REG.PAR_RATING_24H, ausencia: REG.REGRA_AUSENCIA,

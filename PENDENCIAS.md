@@ -2353,7 +2353,8 @@ JxJ com `supabase_jxj_rollback.sql` (para sozinho se algo fora do JxJ
 depender das tabelas).
 
 Limites conhecidos (medidos, ver LEIA-ME):
-- Finalização em 12% das lutas no jogo racional, contra 19% no UFC.
+- Finalização em 14% das lutas no jogo racional, contra 19% no UFC (12%
+  antes das variantes de ação de 2026-10-04).
 - O modelo de "jogo racional" é a mistura de equilíbrio de uma troca, no
   começo da luta; no chão ele subestima avançar a posição, então as
   misturas do chão tendem a segurar e fechar a guarda (o juiz levanta
@@ -2364,3 +2365,23 @@ Limites conhecidos (medidos, ver LEIA-ME):
   o intervalo é o primeiro ajuste.
 - Sem cron: prazo, temporada e torneio andam na próxima chamada de
   qualquer jogador.
+
+## 43. Reta final do lançamento: carreira v2 e ações do JxJ (2026-10-04)
+
+Pedido do dono, com cinco pontos. Detalhe e números no LEIA-ME
+("Carreira v2" na seção Balanço; "Variantes de ação" na seção JxJ).
+
+1. **Oponentes do mesmo nível.** Carreira nova (0-0) podia pegar campeão
+   de cara. Escada v2: o nível cresce com o standing, estreia sem campeão
+   nem ranqueado, sem ranking nunca passa do #13. FEITO.
+2. **Ranking do UFC.** Campeão, #1 a #15, "Sem ranking". FEITO.
+3. **Aposentado fora do modo normal.** Só quem lutou de 2023 pra cá; as
+   lendas ficam no modo Lenda. FEITO.
+4. **Lutas do JxJ mais divertidas.** 30 variantes de ação, 4 por vez,
+   trocando a cada round; painel da troca anterior, animação e som.
+   FEITO (o JxJ continua desligado até a migração do item 42).
+5. **Luta interativa na carreira** (como o JxJ): pedido só no localhost
+   pro dono testar, sem deploy. Em branch própria.
+
+Os itens 1 a 3 valem só pra carreira nova: save e link de desafio antigos
+seguem na v1 (`st.regras`, `r=`), pela regra da semente.

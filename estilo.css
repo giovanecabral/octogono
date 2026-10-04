@@ -1409,6 +1409,43 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-log-lista li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;color:var(--osso-2);font-size:15px}
 .jxj-log-lista b{font-family:var(--f-ui);letter-spacing:.08em;color:var(--sangue)}
 @media (hover:hover) and (pointer:fine){.jxj-acao:hover:not(:disabled){border-color:var(--sangue);background:rgba(215,38,30,.12)}}
+/* variantes (2026-10-04): o ciclo da família no pé do botão, a troca
+   anterior revelada e a mão nova que vira no começo do round */
+.jxj-acao .jxj-ciclo{font-style:normal;font-family:var(--f-ui);font-size:12px;letter-spacing:.06em;color:var(--cinza);margin-top:auto;padding-top:4px;border-top:1px solid var(--linha-forte);align-self:stretch}
+.jxj-ultima{padding:12px 16px;background:rgba(17,19,26,.88);border:1px solid var(--linha-forte);display:flex;flex-direction:column;gap:8px}
+.jxj-ultima .jxj-rotulo{margin:0}
+.jxj-duelo{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px}
+.jxj-duelo span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.jxj-duelo span.ele{text-align:right}
+.jxj-duelo small{font-family:var(--f-ui);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);overflow-wrap:anywhere}
+.jxj-duelo b{font-family:var(--f-ui);font-size:20px;letter-spacing:.04em;text-transform:uppercase;overflow-wrap:anywhere}
+.jxj-duelo span.eu b{color:var(--sangue-vivo)}
+.jxj-duelo i{font-style:normal;font-family:var(--f-ui);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.jxj-ultima-txt{margin:0;color:var(--osso);line-height:1.45}
+.jxj-ultima.nova{animation:jxjRevela .45s var(--ease-soco) both}
+.jxj-ultima.nova .jxj-duelo span.eu{animation:jxjEntraEsq .4s var(--ease-soco) both}
+.jxj-ultima.nova .jxj-duelo span.ele{animation:jxjEntraDir .4s var(--ease-soco) both}
+@keyframes jxjRevela{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+@keyframes jxjEntraEsq{from{opacity:0;transform:translateX(-28px)}}
+@keyframes jxjEntraDir{from{opacity:0;transform:translateX(28px)}}
+.jxj-acoes-luta.mao-nova .jxj-acao{animation:jxjVira .5s var(--ease-soco) both}
+.jxj-acoes-luta.mao-nova .jxj-acao:nth-child(2){animation-delay:.07s}
+.jxj-acoes-luta.mao-nova .jxj-acao:nth-child(3){animation-delay:.14s}
+.jxj-acoes-luta.mao-nova .jxj-acao:nth-child(4){animation-delay:.21s}
+@keyframes jxjVira{from{opacity:0;transform:perspective(600px) rotateY(-70deg)}to{opacity:1;transform:none}}
+/* quem apanhou treme; knockdown treme forte e acende; finalização aperta */
+.jxj-lado.jxj-apanhou{animation:jxjApanha .38s ease}
+.jxj-lado.jxj-caiu{animation:jxjCai .7s ease}
+.jxj-lado.jxj-apertado{animation:jxjAperta .6s ease}
+.jxj-posicao.jxj-muda{animation:jxjMuda .6s ease}
+@keyframes jxjApanha{0%,100%{transform:none}20%{transform:translateX(-7px)}45%{transform:translateX(6px)}70%{transform:translateX(-3px)}}
+@keyframes jxjCai{0%,100%{transform:none;box-shadow:none}15%{transform:translate(-10px,4px) rotate(-1.5deg);box-shadow:0 0 0 3px var(--sangue-vivo)}
+  40%{transform:translate(8px,-3px) rotate(1deg)}65%{transform:translate(-4px,2px)}}
+@keyframes jxjAperta{0%,100%{transform:none}30%,60%{transform:scale(.97);box-shadow:0 0 0 2px var(--ouro)}}
+@keyframes jxjMuda{0%{opacity:.2;transform:translateY(6px)}100%{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .jxj-ultima.nova,.jxj-ultima.nova .jxj-duelo span,.jxj-acoes-luta.mao-nova .jxj-acao,.jxj-lado.jxj-apanhou,.jxj-lado.jxj-caiu,.jxj-lado.jxj-apertado,.jxj-posicao.jxj-muda{animation:none}
+}
 
 /* resultado */
 .jxj-resultado{padding:clamp(20px,3vw,34px);background:rgba(17,19,26,.86);border-left:6px solid var(--linha-forte)}
@@ -1476,6 +1513,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-acoes-luta{grid-template-columns:1fr 1fr;gap:8px}
   .jxj-acao{min-height:120px;padding:12px}
   .jxj-acao span{font-size:13px}
+  .jxj-duelo b{font-size:16px}
+  .jxj-acao .jxj-ciclo{font-size:11px}
   .jxj-hist-linha{grid-template-columns:80px minmax(0,1fr) auto;grid-template-areas:"res adv delta" "ver ver ver"}
   .jxj-hist-ver{grid-column:1 / -1;justify-self:start}
   .jxj-rank-linha{grid-template-columns:34px 44px minmax(0,1fr) 70px}

@@ -7,6 +7,7 @@
      node ferramentas/jxj-balanco.mjs nos        # valor de cada nó da árvore no nível 3
      node ferramentas/jxj-balanco.mjs builds     # builds diferentes do nível 30 contra a típica
      node ferramentas/jxj-balanco.mjs atributos  # valor de 1 ponto de cada atributo
+     node ferramentas/jxj-balanco.mjs variantes  # valor de cada variante de ação (2026-10-04)
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -161,17 +162,35 @@ export function adaptativa(pEu, pEle, { prior = 2, segue = 0.7, temp = 1 } = {})
 /* ---------- confronto ---------- */
 /* n lutas com lados alternados (sementes pareadas por tag). Devolve vitórias
    de X em % das lutas com vencedor, e a contagem de métodos. */
-export function confronto(pX, pO, eX, eO, n, tag) {
+export function confronto(pX, pO, eX, eO, n, tag, maoX = null) {
   const t = { vX: 0, vO: 0, KO: 0, TKO: 0, FIN: 0, DEC: 0, EMPATE: 0, WO: 0, ANULADA: 0, n, trocas: 0 };
   for (let i = 0; i < n; i++) {
     const inv = i % 2 === 1;
-    const f = (inv ? M.simularLuta(pO, pX, eO, eX, `${tag}:${i}`) : M.simularLuta(pX, pO, eX, eO, `${tag}:${i}`)).fim;
+    /* maoX: entradas fixas da mão de X ({pe: {golpes: "cruzado"}}), pra medir variante */
+    const op = maoX ? { mao: { [inv ? "b" : "a"]: maoX } } : null;
+    const f = (inv ? M.simularLuta(pO, pX, eO, eX, `${tag}:${i}`, op) : M.simularLuta(pX, pO, eX, eO, `${tag}:${i}`, op)).fim;
     t[f.metodo]++;
     t.trocas += (f.round - 1) * M.FORMATO.trocasPorRound + f.troca;
     if (f.vencedor) { if ((f.vencedor === "a") !== inv) t.vX++; else t.vO++; }
   }
   t.pct = 100 * t.vX / Math.max(1, t.vX + t.vO);
   return t;
+}
+/* Valor de cada variante de ação (2026-10-04): lutas espelho (mesmo perfil
+   dos dois lados, jogo racional) em que X SEMPRE recebe a variante v naquela
+   família e o outro joga com a mão normal. Variante equilibrada fica perto
+   de 50%; acima, ela vale mais que a média da família. Média dos 4 estilos. */
+export function valorDasVariantes(n = 400, estilos = ESTS, sal = "") {
+  const out = {};
+  for (const [pp, fams] of Object.entries(M.VARIANTES)) for (const [f, lista] of Object.entries(fams)) for (const v of lista) {
+    const porEstilo = {};
+    for (const s of estilos) {
+      const p = perfilTipico(s, 1);
+      porEstilo[s] = confronto(p, p, racional(p, p), racional(p, p), n, `var${sal}${v.id}${s}`, { [pp]: { [f]: v.id } }).pct;
+    }
+    out[v.id] = { papel: pp, familia: f, porEstilo, pct: Object.values(porEstilo).reduce((x, y) => x + y, 0) / estilos.length };
+  }
+  return out;
 }
 export const perfilTipico = (estilo, nivel = 1, categoria = "middleweight") =>
   A.perfilDeCombate({ estilo, categoria, build: A.buildTipica(estilo, nivel) });
@@ -290,7 +309,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else if (cmd === "atributos") {
     console.log("estilo    " + A.ATRIBUTOS.map((a) => a.padStart(9)).join(""));
     for (const s of ESTS) console.log(s.padEnd(10) + A.ATRIBUTOS.map((a) => valorDoAtributo(s, a, 3, N || 1000).toFixed(2).padStart(9)).join(""));
+  } else if (cmd === "variantes") {
+    console.log("variante sempre na mão de X, espelho no nível 1 (vitórias de X; 50 = igual à média da família):");
+    console.log("  " + "variante".padEnd(20) + "papel".padEnd(7) + "família".padEnd(9) + "média" + ESTS.map((o) => o.slice(0, 3).padStart(7)).join(""));
+    for (const [id, r] of Object.entries(valorDasVariantes(N || 400)))
+      console.log("  " + id.padEnd(20) + r.papel.padEnd(7) + r.familia.padEnd(9) + f1(r.pct).padStart(5) + ESTS.map((o) => f1(r.porEstilo[o]).padStart(7)).join(""));
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes] [n]");
   }
 }

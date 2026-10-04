@@ -11226,6 +11226,16 @@ async function testarJxJ() {
         await q("update jxj_config set valor = '300'::jsonb where chave = 'narracao_ia_dia'");
       }
     });
+    await conf("narração: IA que inventa golpe (kimura numa luta sem kimura) cai no molde local", async () => {
+      const x = await lutaPorWO();
+      await comIA(async (reg, op) => {
+        const res = /Resultado: (.*)\.$/.exec(JSON.parse(op.body).messages[1].content)[1];
+        return respostaIA(`${res}. Antes disso encaixou uma kimura que quase acabou a luta.`);
+      }, async (reg) => {
+        const n = await ok(x.u1, "narracao", { lutaId: x.lid });
+        if (reg.chamadas !== 1 || /kimura/i.test(n.narracao || "") || !/venceu/.test(n.narracao || "")) throw new Error(JSON.stringify({ chamadas: reg.chamadas, n }));
+      });
+    });
     await conf("segurança: conta que não lutou não provoca preparo, cancelamento por prazo nem gravação de troca (luta, confirmar, acao); quem lutou processa normalmente", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
       await zerarLimites();
@@ -11397,7 +11407,7 @@ async function testarJxJMotor() {
   });
   await conf("invariantes em 3000 lutas com escolhas ao acaso e prazo perdido às vezes: energia, dano, momento, posição, cartões, fim e texto", () => {
     const METODOS = new Set(["KO", "TKO", "FIN", "DEC", "EMPATE", "WO", "ANULADA"]);
-    const tipos = new Set();
+    const tipos = new Set(), vistas = new Set();
     for (let i = 0; i < 3000; i++) {
       const sa = ESTS[i % 4], sb = ESTS[(i >> 2) % 4], pA = perfil(sa, 1 + (i % 30)), pB = perfil(sb, 1 + ((i * 7) % 30));
       const P = { a: pA, b: pB };
@@ -11411,6 +11421,12 @@ async function testarJxJMotor() {
         e = res.estado;
         for (const ev of res.eventos) {
           tipos.add(ev.tipo);
+          if (ev.tipo === "escolha") {   // registro das variantes da troca: sem texto, mas sempre com as duas
+            if (!M.VARIANTE_POR_ID[ev.va] || !M.VARIANTE_POR_ID[ev.vb]) throw new Error("escolha sem variante: " + JSON.stringify(ev));
+            vistas.add(ev.va); vistas.add(ev.vb);
+            continue;
+          }
+          if (ev.v && !M.VARIANTE_POR_ID[ev.v]) throw new Error(`evento ${ev.tipo} com variante desconhecida ${ev.v}`);
           const t = M.textoEvento(ev, { a: "Ana", b: "Bia" });
           if (!t) throw new Error(`evento ${ev.tipo} sem texto`);
           const p = problemasDeTexto(t); if (p.length) throw new Error(`texto do evento ${ev.tipo}: ${p.join(", ")} (${t})`);
@@ -11438,6 +11454,80 @@ async function testarJxJMotor() {
     }
     for (const t of ["golpe", "queda", "knockdown", "fim", "ausente", "raspou", "avancou", "subFalhou", "levantou"])
       if (!tipos.has(t)) throw new Error(`3000 lutas sem nenhum evento "${t}"`);
+    const nunca = Object.keys(M.VARIANTE_POR_ID).filter((id) => !vistas.has(id));
+    if (nunca.length) throw new Error("variante que nunca saiu na mão em 3000 lutas: " + nunca.join(", "));
+  });
+  await conf("variantes: cada papel tem as 4 famílias com 2 ou 3 variantes; a mão do round tem uma de cada; em 3 rounds, família de 3 mostra as 3 e de 2 alterna; a ordem muda com a semente e com o lado", () => {
+    const ids = Object.keys(M.VARIANTE_POR_ID);
+    if (ids.length < 28) throw new Error("só " + ids.length + " variantes");
+    for (const pp of ["pe", "cima", "baixo"]) for (const f of F) {
+      const n = M.VARIANTES[pp][f].length;
+      if (n < 2 || n > 3) throw new Error(`${pp}/${f} com ${n} variantes`);
+    }
+    const ordens = new Set();
+    for (let k = 0; k < 40; k++) for (const lado of ["a", "b"]) {
+      const maos = [1, 2, 3].map((r) => M.maoDoRound("mao" + k, r, lado));
+      for (const pp of ["pe", "cima", "baixo"]) for (const f of F) {
+        const seq = maos.map((m) => m[pp][f]), n = M.VARIANTES[pp][f].length;
+        if (seq.some((id) => M.VARIANTE_POR_ID[id].papel !== pp || M.VARIANTE_POR_ID[id].familia !== f)) throw new Error(`mão com variante de outra família: ${pp}/${f} ${seq}`);
+        if (n === 3 && new Set(seq).size !== 3) throw new Error(`${pp}/${f} repetiu variante em 3 rounds: ${seq}`);
+        if (n === 2 && (seq[0] === seq[1] || seq[1] === seq[2])) throw new Error(`${pp}/${f} não alternou: ${seq}`);
+      }
+      ordens.add(JSON.stringify(maos[0]));
+      if (JSON.stringify(M.maoDoRound("mao" + k, 1, lado)) !== JSON.stringify(maos[0])) throw new Error("a mão do round mudou entre chamadas");
+    }
+    if (ordens.size < 40) throw new Error(`só ${ordens.size} mãos diferentes em 80 (semente e lado não mudam a ordem)`);
+  });
+  await conf("variantes: a ação que a tela mostra é a que a troca usa (rótulo, grupo, ciclo e custo da variante)", () => {
+    const p = perfil("wrestler", 12), P = { a: p, b: p };
+    for (let k = 0; k < 60; k++) {
+      let e = M.novaLuta(p, p);
+      for (let t = 0; t < (k % 9); t++) { const r = M.resolverTroca(e, P, { a: F[(t + k) % 4], b: F[(t * 3 + k) % 4] }, "tela" + k); if (r.estado.fim) break; e = r.estado; }
+      if (e.fim) continue;
+      const tela = { a: M.acoesDisponiveis(e, "a", p, "tela" + k), b: M.acoesDisponiveis(e, "b", p, "tela" + k) };
+      const fa = F[k % 4], fb = F[(k + 1) % 4];
+      const esc = M.resolverTroca(e, P, { a: fa, b: fb }, "tela" + k).eventos.find((ev) => ev.tipo === "escolha");
+      const va = tela.a.find((x) => x.familia === fa), vb = tela.b.find((x) => x.familia === fb);
+      if (esc.va !== va.variante || esc.vb !== vb.variante) throw new Error(`tela ${va.variante}/${vb.variante}, troca ${esc.va}/${esc.vb}`);
+      for (const x of [...tela.a, ...tela.b]) {
+        const V = M.VARIANTE_POR_ID[x.variante];
+        if (!V || x.rotulo !== V.rotulo || x.descricao !== V.desc || !x.grupo || !x.ciclo) throw new Error("ação da tela: " + JSON.stringify(x));
+        if (x.custo !== M.custoEnergia(M.papel(e, tela.a.includes(x) ? "a" : "b"), x.familia, p, V)) throw new Error("custo mostrado diferente do cobrado: " + JSON.stringify(x));
+      }
+    }
+  });
+  await conf("variantes mudam o jogo de verdade: cruzado nocauteia mais que jab, single leg custa menos, quadril cai na meia-guarda, mata-leão rende mais montado, triângulo finaliza por baixo", () => {
+    const n = neutro, P = { a: n, b: n };
+    const forca = (lado, pp, f, id) => ({ mao: { [lado]: { [pp]: { [f]: id } } } });
+    /* por golpe que entrou (o jab entra mais, o cruzado derruba mais) */
+    const porAcerto = (id) => { let ac = 0, kd = 0;
+      for (let k = 0; k < 4000; k++) {
+        const e = { ...M.novaLuta(n, n), b: { ...M.novaLuta(n, n).b, dano: 25 } };
+        const evs = M.resolverTroca(e, P, { a: "golpes", b: "pressao" }, "ko" + k, forca("a", "pe", "golpes", id)).eventos;
+        if (evs.some((ev) => ev.tipo === "golpe" && ev.quem === "a")) { ac++; if (evs.some((ev) => ev.quem === "a" && (ev.tipo === "knockdown" || ev.metodo === "KO"))) kd++; }
+      }
+      return { ac, kd, taxa: kd / Math.max(1, ac) }; };
+    const cz = porAcerto("cruzado"), jb = porAcerto("jab");
+    if (!(cz.taxa > jb.taxa * 1.6 && jb.ac > cz.ac)) throw new Error(`cruzado ${cz.kd}/${cz.ac}, jab ${jb.kd}/${jb.ac} (knockdown ou KO por golpe que entrou)`);
+    const custo = (id) => M.custoEnergia("pe", "queda", n, M.VARIANTE_POR_ID[id]);
+    if (!(custo("single_leg") < custo("double_leg"))) throw new Error("single leg não custa menos");
+    let meia = 0;
+    for (let k = 0; k < 400; k++) {
+      const r = M.resolverTroca(M.novaLuta(n, n), P, { a: "queda", b: "pressao" }, "qd" + k, forca("a", "pe", "queda", "quadril"));
+      if (r.estado.pos === "cima_a") { if (r.estado.nivelPos !== 1) throw new Error("quadril caiu em " + r.estado.nivelPos); meia++; }
+    }
+    if (!meia) throw new Error("quadril nunca entrou em 400");
+    const fin = (nivel) => { let x = 0; for (let k = 0; k < 3000; k++) x += M.resolverTroca({ ...M.novaLuta(n, n), pos: "cima_a", nivelPos: nivel }, P, { a: "queda", b: "golpes" }, "ml" + k, forca("a", "cima", "queda", "mata_leao")).estado.fim ? 1 : 0; return x; };
+    const f0 = fin(0), f2 = fin(2);
+    if (!(f2 > f0 * 1.5)) throw new Error(`mata-leão montado ${f2} x na guarda ${f0}`);
+    let tri = 0, ras = 0;
+    for (let k = 0; k < 3000; k++) {
+      const base = { ...M.novaLuta(n, n), pos: "cima_a" };
+      tri += M.resolverTroca(base, P, { a: "golpes", b: "queda" }, "tr" + k, forca("b", "baixo", "queda", "triangulo")).eventos.some((ev) => ev.tipo === "subFalhou" || ev.metodo === "FIN") ? 1 : 0;
+      ras += M.resolverTroca(base, P, { a: "golpes", b: "queda" }, "tr" + k, forca("b", "baixo", "queda", "raspagem")).eventos.some((ev) => ev.tipo === "subFalhou" || ev.metodo === "FIN") ? 1 : 0;
+    }
+    /* contra o ground and pound a raspagem tem vantagem e entra ~85%: sobra pouco pro triângulo, mas tem que existir */
+    if (!(tri > 80 && ras === 0)) throw new Error(`finalização por baixo: triângulo ${tri}, raspagem ${ras}`);
   });
   await conf("ausência: prazo perdido vira Defender; 2 seguidos dão a troca pro adversário; 3 dão W.O.; os dois 3 vezes anulam; escolher zera a conta", () => {
     const p = perfil("striker"), P = { a: p, b: p };
@@ -11477,6 +11567,32 @@ async function testarJxJMotor() {
     const m = R.metodos;
     console.log(cinza(`         KO/TKO ${f1(m.ko)}%  FIN ${f1(m.fin)}%  DEC ${f1(m.dec)}%  empate ${f1(m.empate)}%  duração média ${f1(m.trocasMedia)} trocas`));
     if (m.ko < 20 || m.ko > 34 || m.fin < 5 || m.fin > 16 || m.dec < 50 || m.dec > 72 || m.empate > 5 || m.trocasMedia < 7 || m.trocasMedia > 11.5) throw new Error("fora da faixa");
+  });
+  await conf("narração: golpe com nome só passa se está nos fatos (termo a termo, plural e acento não enganam)", () => {
+    const casos = [
+      ["Ana acertou um cruzado e venceu.", "Ana acertou o cruzado (7,2 de dano).", []],
+      ["Ana finalizou com um mata-leão.", "Ana acertou o cruzado (7,2 de dano).", ["mata-leao"]],
+      ["Bia acertou cotoveladas por cima.", "Bia acertou as cotoveladas (5 de dano).", []],
+      ["Ana acertou um jab.", "Ana acertou golpes (5 de dano).", ["jab"]],
+      ["Ana derrubou com o Double Leg e pegou a montada.", "Ana derrubou Bia com o double leg. Ana foi pra montada.", []],
+      ["Joelhadas no clinch.", "Ana acertou joelhadas no clinche.", []],
+      ["Bia tentou o triângulo e a kimura.", "Bia tentou o triângulo e Ana escapou.", ["kimura"]],
+    ];
+    for (const [t, f, esperado] of casos) {
+      const r = M.golpesForaDosFatos(t, f);
+      if (JSON.stringify(r) !== JSON.stringify(esperado)) throw new Error(`"${t}" contra "${f}": ${JSON.stringify(r)}, esperava ${JSON.stringify(esperado)}`);
+    }
+  });
+  await conf("variantes equilibradas: espelho com a variante sempre na mão, média dos 4 estilos e de duas amostras (3200 lutas), toda variante entre 44% e 56%", () => {
+    const r1 = BAL.valorDasVariantes(400, ESTS, "a"), r2 = BAL.valorDasVariantes(400, ESTS, "b");
+    const linhas = [], ruins = [];
+    for (const id of Object.keys(r1)) {
+      const v = (r1[id].pct + r2[id].pct) / 2;
+      linhas.push(`${id} ${f1(v)}`);
+      if (v < 44 || v > 56) ruins.push(`${id} ${f1(v)}%`);
+    }
+    console.log(cinza("         " + linhas.join(" ")));
+    if (ruins.length) throw new Error(ruins.join(", "));
   });
   await conf("sem ação dominante: em toda dupla, a mistura de equilíbrio em pé usa 2+ ações com 10%+ e nenhuma passa de 80%", () => {
     const ruins = [];
@@ -11578,6 +11694,8 @@ async function testarJxJArvore() {
       ...Object.values(A.RAMOS).flatMap((r) => [r.nome, ...r.nos.flatMap((n) => [n.nome, n.desc])]),
       ...Object.values(A.MECANICAS).map((m) => m.desc), ...Object.values(A.CATEGORIAS).map((c) => c.nome),
       ...Object.values(M.ROTULOS).flatMap(Object.values), ...Object.values(M.DESCRICOES).flatMap(Object.values),
+      ...Object.values(M.VARIANTE_POR_ID).flatMap((v) => [v.rotulo, v.desc, v.frase]),
+      ...Object.values(M.FAMILIA_NOME).flatMap(Object.values), ...Object.values(M.CICLO).flatMap(Object.values),
       ...REG.REGRA_AUSENCIA, ...Object.values(REG.CONQUISTAS).flatMap((c) => [c.nome, c.desc]), ...Object.values(REG.MOLDURAS).map((m) => m.nome),
     ];
     const ruins = textos.map((t) => [t, problemasDeTexto(t)]).filter(([, p]) => p.length);
@@ -11946,12 +12064,20 @@ async function testarJxJTelas() {
     const par = await api(u1, "fila");
     await api(u1, "confirmar", { lutaId: par.luta.id }); await api(u2, "confirmar", { lutaId: par.luta.id });
     const lid = par.luta.id;
-    await conf("luta: as 4 ações com o rótulo da posição e o custo; escolher manda a ação pro servidor, que guarda escondida", async () => {
+    /* a mão do round (variantes) vem do servidor; a tela mostra o que ele mandou */
+    const maoU1 = (await api(u1, "luta", { lutaId: lid })).acoes;
+    const golpesU1 = maoU1.find((a) => a.familia === "golpes");
+    await conf("luta: as 4 ações da mão do round (variante, família, custo e ciclo, iguais às do servidor); escolher manda a ação pro servidor, que guarda escondida", async () => {
       const m = await abrir(`luta/${lid}`);
       const acoes = desde(m).filter((n) => tem(n, "jxj-acao"));
-      const rot = Object.values(MOTOR.ROTULOS.pe);
-      if (acoes.length < 4 || !rot.every((r) => acoes.some((a) => String(a.innerHTML).includes(r)))) throw new Error("ações: " + acoes.map((a) => String(a.innerHTML).replace(/<[^>]+>/g, " ").trim().slice(0, 30)).join(" | "));
-      const golpes = acoes.find((a) => String(a.innerHTML).includes("Trocar golpes"));
+      if (acoes.length !== 4 || maoU1.length !== 4) throw new Error(`${acoes.length} botões, ${maoU1.length} ações do servidor`);
+      for (const a of maoU1) {
+        const V = MOTOR.VARIANTE_POR_ID[a.variante];
+        if (!V || V.papel !== "pe" || V.familia !== a.familia) throw new Error("variante do servidor: " + JSON.stringify(a));
+        if (!acoes.some((b) => { const h = String(b.innerHTML); return h.includes(`<b>${a.rotulo}</b>`) && h.includes(`${MOTOR.FAMILIA_NOME.pe[a.familia]} · `) && h.includes(a.ciclo) && h.includes(a.descricao); }))
+          throw new Error("botão sem a variante " + a.rotulo + ": " + acoes.map((b) => String(b.innerHTML).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60)).join(" | "));
+      }
+      const golpes = acoes.find((a) => String(a.innerHTML).includes(`<b>${golpesU1.rotulo}</b>`));
       await golpes.onclick(); await assentar(15);
       const linhas = (await db.query("select a.familia from jxj_acoes a join jxj_lutas l on l.id = a.luta_id where a.luta_id = $1 and a.lado = case when l.a_id = $2 then 'a' else 'b' end", [lid, l1])).rows;
       if (linhas.length !== 1 || linhas[0].familia !== "golpes") throw new Error("ação no banco: " + JSON.stringify(linhas));
@@ -11965,8 +12091,29 @@ async function testarJxJTelas() {
       const m2 = env.todos.length;
       faixa.onclick(); await assentar();
       const h = htmlDe(desde(m2));
-      if (!/Ação enviada: <b>Trocar golpes<\/b>/.test(h)) throw new Error("a luta retomada não mostra a ação enviada: " + h.replace(/\s+/g, " ").slice(0, 200));
+      if (!h.includes(`Ação enviada: <b>${golpesU1.rotulo}</b>`)) throw new Error("a luta retomada não mostra a ação enviada: " + h.replace(/\s+/g, " ").slice(0, 200));
       if (desde(m2).some((n) => tem(n, "jxj-acao"))) throw new Error("a luta retomada deixa escolher de novo");
+    });
+    await conf("troca resolvida: o painel da troca anterior mostra as duas variantes e o que aconteceu; som toca uma vez (redesenhar sem troca nova não repete)", async () => {
+      vm.runInContext(`globalThis.__som=[];for(const k of Object.keys(SOM)){const f=SOM[k];SOM[k]=function(){globalThis.__som.push(k);return f.apply(this,arguments);};}`, env.sandbox);
+      const m = env.todos.length;
+      const v2 = await api(u2, "luta", { lutaId: lid });
+      await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: "defesa" });
+      await assentar(60);
+      const vs = await api(u1, "luta", { lutaId: lid });
+      const t0 = vs.trocas[0];
+      if (!t0 || !t0.varA || !t0.varB || !t0.ev || !t0.ev.length) throw new Error("vista sem variantes ou eventos da troca: " + JSON.stringify(t0));
+      const ult = desde(m).filter((n) => tem(n, "jxj-ultima")).pop();
+      if (!ult) throw new Error("sem o painel da troca anterior");
+      const h = String(ult.innerHTML), eu = vs.lado;
+      const meu = MOTOR.VARIANTE_POR_ID[eu === "a" ? t0.varA : t0.varB].rotulo, dele = MOTOR.VARIANTE_POR_ID[eu === "a" ? t0.varB : t0.varA].rotulo;
+      if (meu !== golpesU1.rotulo || !h.includes(meu) || !h.includes(dele) || !t0.eventos.every((x) => h.includes(x.replace(/&/g, "&amp;"))))
+        throw new Error("painel: " + h.replace(/\s+/g, " ").slice(0, 300));
+      if (!tem(ult, "nova")) throw new Error("o painel da troca nova não anima");
+      const sons = env.sandbox.__som.slice();
+      if (!sons.length) throw new Error("troca resolvida sem som nenhum (eventos " + t0.ev.map((e) => e.tipo).join(",") + ")");
+      await assentar(60);
+      if (env.sandbox.__som.length !== sons.length) throw new Error("o som repetiu sem troca nova: " + env.sandbox.__som.join(","));
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,

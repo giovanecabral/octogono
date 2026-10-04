@@ -143,7 +143,8 @@ export const RAMOS = {
     n("controle_posicional", "Controle posicional", "Jogo por cima mais forte, com mais fôlego.", [{ a: "chao", v: 1.6 }, { a: "cardio", v: 0.1 }]),
     n("dominio", "Manutenção de domínio", "Por cima, o adversário escapa e raspa menos, e o fôlego aumenta.", [{ m: "dominio", v: 0.081 }, { a: "cardio", v: 0.8 }]),
     n("transicoes_controle", "Transições", "Avança a posição com mais facilidade, e a queda melhora.", [{ m: "transicao", v: 5.4 }, { a: "queda", v: 0.4 }]),
-    n("pressao_solo", "Pressão no solo", "Ground and pound bate mais forte e acerta mais.", [{ m: "gnp", v: 0.225 }, { a: "poder", v: 2 }, { a: "golpe", v: 1 }]),
+    /* +1 de chão em 2026-10-04: com as variantes de ação, o nó caiu pra 0,44 ponto (faixa da jxjarvore: 0,5 a 6,5); com o chão, 1,5 */
+    n("pressao_solo", "Pressão no solo", "Ground and pound bate mais forte e acerta mais, e o jogo de chão melhora um pouco.", [{ m: "gnp", v: 0.225 }, { a: "poder", v: 2 }, { a: "golpe", v: 1 }, { a: "chao", v: 1 }]),
   ]},
   defQuedas: { estilo: "wrestler", nome: "Defesa de quedas", nos: [
     n("equilibrio", "Equilíbrio", "Defende melhor a queda.", [{ a: "defQueda", v: 1.1 }]),

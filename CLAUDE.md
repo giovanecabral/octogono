@@ -70,6 +70,16 @@ metade). Regras do revamp que valem daqui pra frente:
 - **Noite de luta e hub: a lógica acha tudo por id**; a casca nova só
   decide ONDE cada id mora. Etapa da noite só muda depois que o estado do
   jogo mudou; Voltar nunca sorteia de novo (`ofertaAtual`).
+- **JxJ: variantes de ação (2026-10-04).** Cada família tem 2 ou 3
+  variantes por posição (`VARIANTES` em `api/_jxj-motor.js`); a mão do
+  round sai da semente (`maoDoRound`, rodízio), então o banco não mudou e
+  a luta continua refazível. O navegador manda só a família; o servidor
+  manda só a mão de quem pediu. `VERSAO_MOTOR` 2. Variante nova ou ajuste:
+  `node ferramentas/jxj-balanco.mjs variantes` e `node testar.js jxjmotor`
+  (toda variante entre 44% e 56%). Nome de golpe na narração da IA passa
+  por `golpesForaDosFatos` (só o que aconteceu). `VERSAO_BALANCEAMENTO`
+  continua 1 enquanto nenhuma build existir em produção (subir dá respec
+  grátis e mexe na fila; ela também vive em `jxj_config`).
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
@@ -258,11 +268,22 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   Sem teto, 22 camps de +10% viram +700%.
 - **Balanço pedido pelo dono em 2026-09-28: ~50% de vitórias pra quem joga
   bem, cinturão raro.** `BUDGET_PCT` .70 (ver o item acima), faixas de
-  adversário +16% acima do ranking com piso de 45% da divisão, teto de
-  treino 1.05, rótulo de dificuldade e zebra pela
+  adversário +16% acima do ranking com piso de 45% da divisão (escada da
+  v1; carreira nova usa a escada v2, item abaixo, medida em 11,9 a 12,8
+  vitórias), teto de treino 1.05, rótulo de dificuldade e zebra pela
   chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
   motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
   teste). Números no LEIA-ME "Balanço".
+- **Regras da carreira v2 (2026-10-04, pedido do dono).** Carreira nova
+  grava `st.regras: 2` e o link leva `&r=2`; save sem `st.regras` e link
+  sem `r=` continuam na v1 (pool com aposentados, escada antiga), pela
+  regra da semente. v2: modo normal só com quem lutou de `ANO_ATIVO`
+  (2023) pra cá (lendas só no modo Lenda), ranking do UFC (campeão pelos
+  títulos, #1 a #15 pela nota, jogador "Sem ranking" abaixo de standing
+  .45 e do #15 ao #1 até .88) e escada `faixasV2` (fila única sem ranking
+  e depois #15 ao #1, campeão só pelo caminho do título, sem ranking nunca
+  passa do #13). Mexeu em pool, ranking ou escada: `node testar.js regras`
+  e `node testar.js balanco`. Nunca mudar a v1 sem subir a versão.
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`
   (permanente, com teto) × `st.eventoMod` (eventos). Evento escrevendo direto no
   atributo apagaria a base.
@@ -337,11 +358,11 @@ de contender (`st.desafianteIdx`, cada defesa enfrenta um nome diferente do
 número novo — reaproveita `hype`, recorde relativo tipo `st.peak`). Ver
 LEIA-ME.md "O passo para o cinturão" e "Card de momento".
 
-**Contradição do "top 5" resolvida (revamp fase 5):** `passoCinturao()`
-fala na mesma régua da posição que o Painel e a ficha mostram ("Chegar ao
-#48 da divisão", o número que o limiar da faixa dá na tabela), em vez de
-"top 5"/"ranking dos 15" ao lado de um #95 de 236. Limiares intocados; a
-suíte `hub` reprova se o texto antigo voltar.
+**Ranking do UFC (regras v2, 2026-10-04):** a posição agora é "Sem
+ranking", "#15" a "#1" ou "Campeão" (`posicaoDivisao` v2, `rotuloPosicao`),
+e `passoCinturao()` fala nessa régua ("Vencer até entrar no top 15 da
+divisão"). Carreira na v1 (save ou link antigo) continua com "#48 de 236"
+e os textos da fase 5; a suíte `hub` confere as duas.
 
 Falta ainda: cinturão interino quando o campeão se machuca · luta principal
 em evento numerado · queda no ranking por inatividade.

@@ -324,6 +324,88 @@ motor, tela ignorando a regra e piso errado (reprovam 1.800+, 10 e 1.400+
 casos). As cópias do draft guloso dentro do `testar.js` (dez) usam a mesma
 `cartasDaMesa` do jogo.
 
+### Carreira v2: ranking do UFC, só quem está na ativa, adversário que cresce junto (2026-10-04)
+
+**Pedido do dono, com três achados de quem conhece UFC:**
+
+- carreira nova, 0-0, podia pegar campeão logo de cara;
+- o ranking "#95 de 236" não é como o UFC funciona;
+- aposentado (Khabib, GSP, Anderson Silva) aparecia no modo normal.
+
+Ele pediu que o nível dos adversários cresça junto com o lutador, o
+ranking siga o modelo do UFC real, e as lendas fiquem só no modo Lenda.
+
+**Regras versionadas (`st.regras`, `REGRAS`).** Toda carreira nova nasce
+com `regras: 2` e o link de desafio leva `&r=2`. Save gravado antes (sem
+`st.regras`) e link antigo (sem `r=`) continuam na v1, com o pool com
+aposentados e a escada antiga: a regra da semente vale pros dois (mesmo
+link e mesmo save = mesma carreira). Nada da v1 foi apagado.
+
+**Só quem está na ativa no modo normal.** `poolDivisao` v2 tira quem não
+luta desde antes de `ANO_ATIVO` (2023): sai Khabib, GSP, Anderson Silva,
+Cormier, BJ Penn, Frankie Edgar, Nate Diaz. O modo Lenda não mudou
+(continua com as lendas, aposentadas ou não). Lutadores na ativa por
+divisão: leve 89, pena 87, galo 83, meio-médio 82, médio 77, mosca 58,
+palha feminino 54, meio-pesado 50, pesado 42, mosca feminino 39, galo
+feminino 34. A divisão abre com 30 (`MIN_LUTADORES_V2`; a v1 pede 40 do
+elenco inteiro), então as 11 continuam jogáveis.
+
+**Ranking do UFC.** `buildRanking` v2: o campeão sai pelos títulos, como
+antes. O #1 ao #15 são os 15 mais fortes do resto pela nota. O jogador:
+
+- abaixo de `LIMIAR_TOP15` (standing .45): "Sem ranking";
+- de .45 até `LIMIAR_DESAFIANTE` (.88): do #15 ao #1;
+- com o cinturão: "Campeão".
+
+Painel, ficha, resultado, card de momento e `passoCinturao()` falam nessa
+régua ("Vencer até entrar no top 15 da divisão", "Você é o #7. Subir no
+top 15 vencendo quem está acima"). O cartão do adversário mostra a posição
+dele ("#4 do ranking", "Sem ranking") e a aposta diz o que a vitória faz
+("entra no top 15 (#14)", "sobe pro #6").
+
+**Escada v2 (`faixasV2`).** Uma fila só: os sem ranking em ordem de nota,
+depois do #15 ao #1. O campeão fica fora da escada; ele só aparece pelo
+caminho do título (`st.tituloEstaLuta`, igual à v1).
+
+- Sem ranking: o centro anda de 15% a 100% da parte sem ranking enquanto o
+  standing vai de 0 a .45. Faixas: de 7% a 1% abaixo, até 8% acima e de
+  10% a 24% acima (em fração da parte sem ranking). Teto: quem não tem
+  ranking pega no máximo o #13 (achado da suíte `regras`: perto do limiar,
+  a faixa de cima alcançava o #1).
+- Ranqueado no #k: até 2 posições abaixo, até 2 acima, e de 2 a 5 acima.
+- Ganho no standing: .045, .075 e .125 sem ranking; .05, .08 e .13 no top
+  15. Derrota no top 15 tira 60% da punição: no UFC uma derrota não joga
+  um ranqueado pra fora.
+
+**Balanço medido** (50 carreiras por perfil, `node testar.js balanco`):
+
+| perfil | vitórias em 22 | cinturão |
+|---|---|---|
+| automático | 12,8 | 12% |
+| comum | 12,5 | 8% |
+| esperto | 12,6 | 2% |
+| ousado | 11,9 | 18% |
+| estrategista | 12,7 | 6% |
+
+Lutas 1 a 5: 55% a 71% de vitória. Dentro das faixas do teste (9 a 14
+vitórias, cinturão até 20%); um pouco acima do 11 a 12,5 aprovado em
+2026-09-28, porque a estreia agora é contra gente do mesmo nível.
+
+**Testes:** suíte `regras`:
+
+- nenhum aposentado no modo normal, e o Khabib só no Lenda;
+- campeão e top 15 montados certo, e a régua da posição;
+- 40 estreias sem campeão nem ranqueado;
+- o nível cresce com o standing;
+- sem ranking nunca passa do #13;
+- save e link antigos na v1, com os aposentados;
+- a escada v1 intacta.
+
+Dente provado com 5 mutações (cada uma reprova o teste dela). `hub`,
+`cinturao`, `interface`, `divisoes` e `save` foram atualizadas pra régua
+nova (semente do `save` 777004 virou 777005: a carreira de teste acabava
+no round 1 com os adversários novos).
+
 ## Progressão do lutador
 
 O treino é **permanente**, e por isso precisa de teto. Sem ele, 22 camps de +10%
@@ -935,6 +1017,12 @@ forte do lutador. É **rótulo, não golpe simulado**: o motor não tem tipos de
 golpe, e inventar um seria mentir para o jogador.
 
 ### O passo para o cinturão
+
+**Regras v2 (2026-10-04):** carreira nova fala na régua do UFC ("Vencer até
+entrar no top 15 da divisão", "Você é o #7. Subir no top 15 vencendo quem
+está acima", "Você é o nº 1. Mais uma vitória te põe na fila do
+cinturão"); o resto desta seção descreve a v1, que continua valendo pra
+save e link antigos. Ver "Carreira v2" na seção Balanço.
 
 A ficha diz o que falta, em linguagem de UFC: sair do card preliminar, subir
 vencendo quem está acima, chegar ao topo, vencer um contender, emplacar 3
@@ -3849,6 +3937,70 @@ cima; na segunda vez seguida o juiz levanta a luta. Ausência: prazo
 perdido vira Defender; dois seguidos dão a troca pro adversário; três,
 W.O.; os dois três vezes, luta anulada.
 
+### Variantes de ação (2026-10-04)
+
+**Pedido do dono:** mais opções de ação, que vão trocando, "cada round
+você poderá fazer 4 opções de ações apenas, mas vá alterando", com
+animação e som.
+
+**Como ficou.** As quatro famílias e o ciclo não mudaram; cada família
+ganhou 2 ou 3 variantes por posição (30 no total, `VARIANTES` em
+`api/_jxj-motor.js`):
+
+- em pé: Jab e direto, Cruzado, Chute na perna; Double leg, Single leg,
+  Queda de quadril; Guarda alta, Sprawl, Esquiva e contra-ataque;
+  Pressionar na grade, Clinche e joelhadas, Cortar o octógono;
+- por cima: Socos por cima, Cotoveladas, Marteladas; Kimura, Mata-leão,
+  Triângulo de braço; Segurar a posição, Pressão de peso; Passar a guarda,
+  Ir pra montada;
+- por baixo: Golpes por baixo, Cotoveladas por baixo; Raspagem,
+  Triângulo; Fechar a guarda, Amarrar os braços; Levantar, Levantar pela
+  grade.
+
+A cada round, cada lado recebe uma variante de cada família
+(`maoDoRound`): a tela mostra sempre 4 ações, com nome, efeito e custo que
+mudam de round pra round. A ordem sai de `sha256(mao:semente:lado)` com
+rodízio: família de 3 variantes mostra as 3 numa luta (uma por round), a
+de 2 alterna. Como sai da semente, a luta continua refazível do zero e o
+banco não mudou (nenhuma coluna nova). O navegador continua mandando só a
+família; o servidor calcula a variante e manda só a mão de quem pediu.
+
+A variante muda risco e retorno dentro da família (`mod`): acerto, dano,
+nocaute, custo, o quanto expõe à queda, guarda, sprawl, contra-ataque,
+travar a perna, cansar, cair já na meia-guarda, pontos por posição na
+finalização (o mata-leão é fraco na guarda e forte montado), finalização
+por baixo depois da raspagem que falhou (triângulo). Cada troca grava um
+evento `escolha` com as duas variantes; os textos dizem o golpe ("Ana
+derrubou Bia com o double leg", "Bia defendeu o double leg com o
+sprawl"). `VERSAO_MOTOR` 2.
+
+**Tela.** Botão com a variante, a família, o custo, o efeito e o ciclo
+("Ganha de Pressão. Perde pra Queda."). Painel da troca anterior: o que
+cada um usou, lado a lado, e o que aconteceu. Round novo: as quatro cartas
+viram e o rótulo avisa "ações novas na mão". Som e animação saem dos
+eventos em forma de dado da vista (`ev`: tipo e quem): golpe treme o card
+de quem apanhou, knockdown treme forte, queda mexe na posição,
+finalização apertando, sino no fim e no começo do round, nocaute pisca a
+tela (a mesma classe `ko` da carreira), vinheta de vitória ou derrota.
+Cada efeito toca uma vez (a tela guarda quantas trocas já mostrou); sem
+movimento quando o sistema pede menos movimento.
+
+**Narração.** O filtro antigo reprovava qualquer nome de golpe, porque o
+motor não tinha nenhum. Agora `golpesForaDosFatos` confere termo a termo:
+"cruzado" passa se aconteceu, "kimura" numa luta sem kimura cai no molde
+local.
+
+**Balanço das variantes.** `node ferramentas/jxj-balanco.mjs variantes`:
+espelho no nível 1, X sempre com a variante, o outro com a mão normal.
+Todas entre 48,6% e 52,2% (média dos 4 estilos e de duas amostras; o
+teste reprova fora de 44 a 56). Os primeiros números mostraram o Cruzado
+forte demais (55,6%, 60,7% no espelho striker) e o Chute na perna fraco
+(45,2%): a média de dano e de nocaute dos golpes ficou 1. A Queda de
+quadril (cai na meia-guarda) puxava o grappler contra o striker pra
+55,9%; com acerto -2 e o Double leg +2, os estilos no nível 1 ficaram
+mais justos que antes (47% a 51%, era 44% a 53%). Sem nenhum ajuste, o
+motor reproduz exatamente os números da v1 (conferido).
+
 ### Balanço medido
 
 Como mede: `ferramentas/jxj-balanco.mjs`. "Jogo racional" = cada lado
@@ -3860,17 +4012,18 @@ fixas); as faixas estão nos testes.
 
 | medida | resultado | faixa no teste |
 |---|---|---|
-| estilos no nível 1 (600 lutas por dupla) | 44% a 53% | 42 a 58 |
-| nocaute / finalização / decisão / empate | 29,7 / 12,4 / 56,2 / 1,7% | 20-34 / 5-16 / 50-72 / até 5 |
-| nível 30 contra nível 1 (mesmo estilo) | striker 74, wrestler 69, grappler 69, counter 81% | 62 a 85 |
-| nível 30 contra nível 20 | 55% a 61% | acima de 50 |
-| estilos no nível 30 (build típica) | 40% a 57% | 40 a 60 |
-| repetir uma ação contra quem se adapta | no máximo 48% (striker só golpes); o resto 39% ou menos | até 50 |
-| mistura em pé | nenhuma ação passa de 67% | até 80, 2+ ações com 10%+ |
-| valor de cada nó no nível 3 | 0,8 (Pressão no solo) a 5,1 (Defesa de finalização) | 0,5 a 6,5 |
-| duração média da luta | 9,4 trocas de 12 | 7 a 11,5 |
-| outra ordem de ramos no nível 30, contra a típica | 49% a 51% | 42 a 58 |
-| build híbrida no nível 30 (8 pontos em nós de outro estilo) | 42% a 52% | 35 a 58 |
+| estilos no nível 1 (600 lutas por dupla) | 47% a 51% (era 44 a 53 antes das variantes) | 42 a 58 |
+| nocaute / finalização / decisão / empate | 29,7 / 13,9 / 54,7 / 1,7% (finalização era 12,4) | 20-34 / 5-16 / 50-72 / até 5 |
+| nível 30 contra nível 1 (mesmo estilo) | striker 74, wrestler 69, grappler 69, counter 79% | 62 a 85 |
+| nível 30 contra nível 20 | 53% a 60% | acima de 50 |
+| estilos no nível 30 (build típica) | 45% a 57% | 40 a 60 |
+| repetir uma ação contra quem se adapta | no máximo 46% (striker só golpes); o resto 37% ou menos | até 50 |
+| mistura em pé | nenhuma ação passa de 65% | até 80, 2+ ações com 10%+ |
+| valor de cada variante de ação (espelho, sempre na mão) | 48,6% a 52,2% | 44 a 56 |
+| valor de cada nó no nível 3 | 0,8 (Entradas) a 5,2 (Eficiência na finalização) | 0,5 a 6,5 |
+| duração média da luta | 9,3 trocas de 12 | 7 a 11,5 |
+| outra ordem de ramos no nível 30, contra a típica | 48% a 51% | 42 a 58 |
+| build híbrida no nível 30 (8 pontos em nós de outro estilo) | 41% a 55% | 35 a 58 |
 
 Rating (`jxjrating`, `jxjtemporada`): o Glicko-2 bate o exemplo do artigo
 do Glickman (1464,06 / 151,52 / 0,05999). Temporada simulada com 300
@@ -3905,14 +4058,22 @@ Defesa no chão, queixo e, fora do wrestler e do grappler, cardio valem
 pouco; por isso nenhum nó vive só deles.
 
 Limites conhecidos:
-- Finalização em 12% das lutas, contra 19% no UFC (era 4% antes do
-  ajuste do chão).
+- Finalização em 14% das lutas, contra 19% no UFC (era 4% antes do
+  ajuste do chão e 12% antes das variantes).
 - O "jogo racional" é a mistura de uma troca no começo da luta. No chão
   ele subestima avançar a posição, então as misturas do chão tendem a
   segurar e fechar a guarda. As faixas valem pra esse modelo; jogador de
   verdade vai achar coisa que ele não acha.
-- No espelho striker, trocar golpes sempre é a jogada mais segura (48%
+- No espelho striker, trocar golpes sempre é a jogada mais segura (46%
   contra quem se adapta): não vence, mas não perde muito.
+- O "jogo racional" não olha a mão: escolhe a família pela mistura média
+  das variantes. Jogador que lê a mão (usa o mata-leão quando está
+  montado, o cruzado quando o outro já está machucado) tira mais do que o
+  modelo mede.
+- O nó Pressão no solo ganhou +1 de chão em 2026-10-04 (caiu pra 0,44
+  com as variantes). `VERSAO_BALANCEAMENTO` continua 1: ela também vive no
+  banco (`jxj_config`) e dá respec grátis quando sobe, e nenhuma build
+  existe em produção ainda (o JxJ está desligado).
 - Custo: uma luta de 12 trocas custa da ordem de 100 a 200 chamadas da
   função por jogador (consulta a cada 1,2 s).
 
@@ -3962,11 +4123,11 @@ título). Todo movimento fica no livro-razão `jxj_fichas`, com motivo.
 
 ```bash
 node testar.js jxj           # servidor + banco de verdade (PGlite): fluxo, Free/Pro, fila, luta, temporada, torneio, ataques, rollback
-node testar.js jxjmotor      # determinismo, invariantes, ausência, ciclo, balanço, métodos, evolução
+node testar.js jxjmotor      # determinismo, invariantes, variantes (mão, tela = troca, efeito, equilíbrio), narração, ciclo, balanço, métodos, evolução
 node testar.js jxjarvore     # estrutura, regras de compra, teto, textos, valor de cada nó
 node testar.js jxjrating     # Glicko-2 contra o artigo, incerteza, reset, tolerância da fila
 node testar.js jxjtemporada  # temporada simulada, reset, lutador novo, progressão, economia
-node testar.js jxjtelas      # telas no DOM falso ligadas ao servidor de verdade
+node testar.js jxjtelas      # telas no DOM falso ligadas ao servidor de verdade (mão do round, troca anterior, som uma vez)
 ```
 
 PGlite (Postgres em WebAssembly) uma vez: `npm install --prefix

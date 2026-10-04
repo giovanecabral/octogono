@@ -8296,6 +8296,9 @@ async function jxjTelaLuta(id){
   try{ await jxjDef(); }catch(e){ return jxjErro(area,e,()=>jxjTelaLuta(id)); }
   const tk=JXJ_TOKEN;
   let assinatura="",relogio=null,vista=null,enviando=false;
+  /* o que esta tela já mostrou: troca resolvida nova toca som e anima uma
+     vez só (redesenhar pela assinatura não repete o efeito) */
+  let trocasVistas=null,roundVisto=null,statusVisto=null;
   const tick=setInterval(()=>{
     if(tk!==JXJ_TOKEN){ clearInterval(tick); return; }
     const alvo=document.getElementById("jxj-relogio");
@@ -8322,6 +8325,12 @@ async function jxjTelaLuta(id){
   };
   const lados=()=>{ const eu=vista.lado,ele=eu==="a"?"b":"a"; return{eu,ele}; };
   const desenhar=()=>{
+    const todas=vista.trocas||[];
+    const novas=trocasVistas==null?[]:todas.slice(trocasVistas);
+    const maoNova=vista.status==="andamento"&&roundVisto!=null&&vista.round!==roundVisto;
+    const comecou=vista.status==="andamento"&&statusVisto!=="andamento"&&!todas.length;
+    const acabouAgora=vista.status==="encerrada"&&statusVisto==="andamento";
+    trocasVistas=todas.length; roundVisto=vista.status==="andamento"?vista.round:roundVisto; statusVisto=vista.status;
     area.innerHTML="";
     const aviso=el("p","jxj-aviso"); aviso.id="jxj-aviso"; aviso.hidden=true; area.appendChild(aviso);
     if(vista.status==="cancelada"){
@@ -8330,11 +8339,16 @@ async function jxjTelaLuta(id){
       area.appendChild(el("div","jxj-acoes")).appendChild(b); return;
     }
     if(vista.status==="confirmacao")return jxjDesenharConfirmacao(area,vista,lados(),ciclo);
-    if(vista.status==="andamento")return jxjDesenharCombate(area,vista,lados(),async fam=>{
-      if(enviando)return; enviando=true;
-      try{ await ciclo("acao",{round:vista.round,troca:vista.troca,familia:fam}); }finally{ enviando=false; }
-    });
-    return jxjDesenharResultado(area,vista,lados(),ciclo);
+    if(vista.status==="andamento"){
+      jxjDesenharCombate(area,vista,lados(),async fam=>{
+        if(enviando)return; enviando=true;
+        try{ await ciclo("acao",{round:vista.round,troca:vista.troca,familia:fam}); }finally{ enviando=false; }
+      },{nova:novas.length>0,maoNova});
+      if(comecou)SOM.sinoInicio();
+      return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova});
+    }
+    jxjDesenharResultado(area,vista,lados(),ciclo);
+    if(acabouAgora)jxjEfeitos(novas,lados(),tk,{fim:vista});
   };
   ciclo();
 }
@@ -8373,29 +8387,45 @@ function jxjPosicaoTxt(v){
   const cima=e.pos==="cima_a"?"a":"b",nivel=["na guarda","na meia-guarda","montado"][e.nivelPos||0];
   return `${jxjEsc(v.nomes[cima].nome)} por cima, ${nivel}`;
 }
-function jxjDesenharCombate(area,v,{eu,ele},enviar){
+function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}){
   const F=v.formato;
   const topo=el("section","jxj-placar entra");
-  topo.append(jxjLadoCard(null,v,eu,{eu:true}));
+  const cardEu=jxjLadoCard(null,v,eu,{eu:true}); cardEu.id="jxj-card-eu";
+  topo.append(cardEu);
   const meio=el("div","jxj-placar-meio");
   const mom=v.estado.momento*(eu==="a"?1:-1);
   meio.innerHTML=`<p class="jxj-round">Round ${v.round} de ${F.rounds} · troca ${v.troca} de ${F.trocasPorRound}</p>
     <p class="jxj-relogio" id="jxj-relogio">${jxjSeg(F.prazoMs)}s</p>
-    <p class="jxj-posicao">${jxjPosicaoTxt(v)}</p>
+    <p class="jxj-posicao" id="jxj-posicao">${jxjPosicaoTxt(v)}</p>
     <div class="jxj-momento" role="img" aria-label="Momento ${mom>0?"a seu favor":mom<0?"a favor do adversário":"neutro"}">
       <span>Momento</span><div class="jxj-momento-trilho"><i style="left:${50+mom*12}%"></i></div></div>
     <p class="jxj-cartoes">${(v.estado.cartoes||[]).map((c,i)=>`R${i+1} ${c[eu]}-${c[ele]}`).join(" · ")||"Sem round fechado ainda"}</p>`;
-  topo.append(meio,jxjLadoCard(null,v,ele));
+  const cardEle=jxjLadoCard(null,v,ele); cardEle.id="jxj-card-ele";
+  topo.append(meio,cardEle);
   area.appendChild(topo);
+  /* a troca que acabou de ser resolvida: o que cada um usou e o que deu */
+  const ult=(v.trocas||[])[(v.trocas||[]).length-1];
+  if(ult){
+    const nomeVar=(id,fam)=>{ const x=id&&JXJ_DEF.acoes.variantes&&JXJ_DEF.acoes.variantes[id]; return x?x.rotulo:(fam||"Sem ação"); };
+    const meu=eu==="a"?ult.varA:ult.varB,dele=eu==="a"?ult.varB:ult.varA;
+    const famEu=eu==="a"?ult.acaoA:ult.acaoB,famEle=eu==="a"?ult.acaoB:ult.acaoA;
+    const sec=el("section","jxj-ultima"+(nova?" nova":""));
+    sec.innerHTML=`<p class="jxj-rotulo">${ICONE("espadas")} Troca anterior · round ${ult.round}, troca ${ult.troca}</p>
+      <div class="jxj-duelo"><span class="eu"><small>Você</small><b>${jxjEsc(nomeVar(meu,famEu))}</b></span><i>contra</i><span class="ele"><small>${jxjEsc(v.nomes[ele].nome)}</small><b>${jxjEsc(nomeVar(dele,famEle))}</b></span></div>
+      <p class="jxj-ultima-txt">${(ult.eventos||[]).map(jxjEsc).join(" ")||"Nada mudou."}</p>`;
+    area.appendChild(sec);
+  }
   const zona=el("section","jxj-zona-acao");
   if(v.minhaAcao){
     const rot=(v.acoes.find(a=>a.familia===v.minhaAcao)||{}).rotulo||v.minhaAcao;
     zona.appendChild(el("p","jxj-espera",`${ICONE("check")}<span>Ação enviada: <b>${rot}</b>. ${v.adversarioEscolheu?"O adversário também escolheu. Resolvendo.":"Esperando o adversário."}</span>`));
   }else{
-    zona.appendChild(el("p","jxj-rotulo",`Escolha a ação${v.adversarioEscolheu?" · o adversário já escolheu":""}`));
-    const g=el("div","jxj-acoes-luta");
+    zona.appendChild(el("p","jxj-rotulo",maoNova?`Round ${v.round}: ações novas na mão${v.adversarioEscolheu?" · o adversário já escolheu":""}`
+      :`Escolha a ação${v.adversarioEscolheu?" · o adversário já escolheu":""}`));
+    const g=el("div","jxj-acoes-luta"+(maoNova?" mao-nova":""));
     for(const a of v.acoes){
-      const b=el("button","jxj-acao",`${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}<b>${a.rotulo}</b><small>${a.custo<0?`recupera ${String(-a.custo).replace(".",",")} de energia`:a.custo===0?"não gasta energia":`gasta ${String(a.custo).replace(".",",")} de energia`}</small><span>${a.descricao}</span>`);
+      const custo=a.custo<0?`recupera ${String(-a.custo).replace(".",",")} de energia`:a.custo===0?"não gasta energia":`gasta ${String(a.custo).replace(".",",")} de energia`;
+      const b=el("button","jxj-acao",`${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}<b>${a.rotulo}</b><small>${a.grupo?`${a.grupo} · `:""}${custo}</small><span>${a.descricao}</span>${a.ciclo?`<em class="jxj-ciclo">${a.ciclo}</em>`:""}`);
       b.type="button";
       b.onclick=()=>{ SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(x=>{x.disabled=true;}); enviar(a.familia); };
       g.appendChild(b);
@@ -8411,6 +8441,38 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar){
   for(const t of ultimas)ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(jxjEsc).join(" ")||"Nada mudou."}</span>`));
   log.appendChild(ol);
   area.appendChild(log);
+}
+/* Som e animação da troca que acabou de ser resolvida (2026-10-04), a partir
+   dos eventos em forma de dado da vista (tipo, quem). Um efeito por vez, com
+   intervalo, como a narração da carreira. Quem apanhou treme; knockdown
+   treme forte; queda mexe na posição; nocaute pisca a tela (mesma classe
+   "ko" da carreira). Sem movimento quando o sistema pede menos movimento;
+   o som segue o volume do jogo. Desiste se a tela mudou (JXJ_TOKEN). */
+function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null}={}){
+  if(!novas.length&&!fim)return;
+  const card=l=>document.getElementById(l===eu?"jxj-card-eu":"jxj-card-ele");
+  const anima=(no,cls)=>{ if(!no||reduceMotion())return; no.classList.remove(cls); void no.offsetWidth; no.classList.add(cls); };
+  let t=120;
+  const depois=(fn,passo=340)=>{ setTimeout(()=>{ if(tk===JXJ_TOKEN)fn(); },t); t+=passo; };
+  for(const e of novas.flatMap(x=>x.ev||[])){
+    const alvo=e.quem==="a"?"b":"a";
+    if(e.tipo==="golpe"||e.tipo==="contra"||e.tipo==="punicao"||e.tipo==="gnp")depois(()=>{ SOM.golpe(); anima(card(alvo),"jxj-apanhou"); });
+    else if(e.tipo==="sujo"||e.tipo==="baixo")depois(()=>{ SOM.golpeLeve(); anima(card(alvo),"jxj-apanhou"); });
+    else if(e.tipo==="knockdown")depois(()=>{ SOM.knockdown(); anima(card(alvo),"jxj-caiu"); },700);
+    else if(e.tipo==="queda"||e.tipo==="puxouGuarda"||e.tipo==="raspou"||e.tipo==="levantou"||e.tipo==="juizLevantou")
+      depois(()=>{ if(e.tipo==="queda"||e.tipo==="puxouGuarda")SOM.queda(); anima(document.getElementById("jxj-posicao"),"jxj-muda"); });
+    else if(e.tipo==="subFalhou")depois(()=>{ SOM.quaseFinalizacao(); anima(card(alvo),"jxj-apertado"); },600);
+    else if(e.tipo==="bloqueou")depois(()=>SOM.golpeLeve());
+    else if(e.tipo==="fim"&&(e.metodo==="KO"||e.metodo==="TKO"))depois(()=>{ SOM.nocaute();
+      if(!reduceMotion()){ document.body.classList.add("ko"); setTimeout(()=>document.body.classList.remove("ko"),440); } },1200);
+    else if(e.tipo==="fim"&&e.metodo==="FIN")depois(()=>SOM.finalizacao(),1200);
+  }
+  if(fechouRound){ depois(()=>SOM.sinoFim(),900); depois(()=>SOM.sinoInicio(),200); }
+  if(fim){
+    const r=fim.resultado||{};
+    if(r.metodo==="DEC"||r.metodo==="EMPATE")depois(()=>SOM.sinoFim(),900);
+    if(fim.lado&&r.metodo!=="ANULADA")depois(()=>!r.vencedor?SOM.evento():r.vencedor===fim.lado?SOM.vitoria():SOM.derrota());
+  }
 }
 async function jxjConferirSemente(semente,compromisso){
   try{
@@ -8780,6 +8842,12 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-10-04",titulo:"Ranking do UFC",itens:[
+    "Carreira nova começa sem ranking, contra lutadores do seu nível: campeão nenhum na estreia. O nível dos adversários sobe junto com o seu.",
+    "O ranking da divisão segue o do UFC: o campeão, do #1 ao #15, e quem está sem ranking. Vencendo, você entra no top 15, sobe até o nº 1 e entra na fila do cinturão.",
+    "O cartão de cada adversário mostra a posição dele no ranking e o que a vitória faz com a sua.",
+    "No modo normal só lutam os que estão na ativa. Os aposentados, como Khabib, GSP e Anderson Silva, ficam no modo Lenda.",
+    "Carreira salva e link de desafio de antes continuam como eram."]},
   {data:"2026-10-01",titulo:"Amostra do Pro",itens:[
     "Sem o Pro, a coletiva e a entrevista da primeira luta de cada carreira ficam abertas: a imprensa reage ao que você responder, e a entrevista volta ao que você disse na coletiva.",
     "A amostra é da conta, não da carreira: são algumas respostas a cada 24 horas, e começar outra carreira no mesmo dia não renova a amostra.",
