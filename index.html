@@ -11415,18 +11415,16 @@ function animarTrecho(lines,aoTerminar){
   };
   step();
 }
-/* Ritmo da narração (2026-10-04, pedido do dono: "os textos estão
-   aparecendo muito rápidos e não consigo ler a tempo"). Cada linha fica
-   sozinha na tela o tempo de ser lida: 0,4 s mais 50 ms por caractere,
-   mais uma pausa nas linhas fortes, entre 0,9 s e 10 s na velocidade 1x.
-   Nenhuma linha passa de 20 caracteres por segundo (o teto das legendas);
-   uma linha comum fica em uns 17. Antes era 0,47 s por linha comum, uns 90
-   por segundo. O botão de velocidade divide (4x fica perto do ritmo
-   antigo). A suíte lutainterativa confere. */
+/* Ritmo da narração, pedido do dono: 50 caracteres por segundo
+   (2026-10-05). Cada linha fica 20 ms por caractere, no mínimo 0,5 s,
+   mais uma pausa nas linhas fortes, na velocidade 1x; o botão de
+   velocidade divide. Histórico: 0,47 s fixo por linha (uns 90 por
+   segundo, ele não conseguia ler); depois, em 2026-10-04, uns 17 por
+   segundo (lento demais). A suíte lutainterativa confere. */
 function tempoDeLeitura(L){
   const n=String(L&&L.text||"").replace(/<[^>]+>/g,"").length;
   const pausa=L.kind==="fin"?900:(L.kind==="kd"||L.kind==="big")?350:L.kind==="plano"?300:L.kind==="rd"?250:0;
-  return Math.min(10000,Math.max(900,400+50*n+pausa));
+  return Math.max(500,20*n)+pausa;
 }
 /* Quem levou a pior numa linha forte da narração: o knockdown nomeia quem
    caiu; queda, ground and pound e finalização nomeiam quem atacou. */

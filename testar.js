@@ -12609,9 +12609,10 @@ async function testarLutaInterativa() {
     if (X.run("escolhaRng.estado()") !== antes) throw new Error("o automático gastou o escolhaRng");
     if (Object.keys(X.registro).some(k => k.startsWith("el_"))) throw new Error("o automático abriu plano");
   });
-  await conf("narração no ritmo de leitura (2026-10-04): a 1x nenhuma linha passa de 20 caracteres por segundo nem fica menos de 0,9 s; 2x e 4x dividem o tempo", async () => {
-    /* o dono não conseguia ler: era 0,47 s por linha comum, uns 90 por segundo.
-       Linhas de uma luta de verdade, mais as do plano (as mais longas). */
+  await conf("narração a 50 caracteres por segundo (pedido do dono, 2026-10-05): a linha comum sai a 50 por segundo em 1x, nenhuma mais rápida, mínimo de 0,5 s; 2x e 4x dividem o tempo", async () => {
+    /* histórico: 0,47 s fixo por linha (uns 90 por segundo, ilegível), depois
+       uns 17 por segundo (lento demais). Linhas de uma luta de verdade, mais
+       as do plano (as mais longas). */
     const X = sandboxCarreira(); X.sb.__F = F;
     /* anota o intervalo de cada setTimeout da narração; o primeiro passo roda
        na hora e os outros saem dos timers, então drena antes de ler */
@@ -12636,8 +12637,16 @@ async function testarLutaInterativa() {
     if (!v1.acabou) throw new Error("a narração não chegou ao fim");
     if (v1.d.length !== v1.c.length) throw new Error(`esperava um intervalo por linha: ${v1.d.length} intervalos, ${v1.c.length} linhas`);
     v1.d.forEach((ms, i) => {
-      if (ms < 900) throw new Error(`linha ${i} ficou ${ms} ms`);
-      if (v1.c[i] / (ms / 1000) > 20) throw new Error(`linha ${i} (${v1.c[i]} caracteres) ficou ${ms} ms: ${(v1.c[i] / (ms / 1000)).toFixed(1)} por segundo`);
+      if (ms < 500) throw new Error(`linha ${i} ficou ${ms} ms`);
+      if (v1.c[i] / (ms / 1000) > 50.01) throw new Error(`linha ${i} (${v1.c[i]} caracteres) ficou ${ms} ms: ${(v1.c[i] / (ms / 1000)).toFixed(1)} por segundo`);
+    });
+    /* linha comum (sem pausa) e longa o bastante pra passar do mínimo: exatamente 50 por segundo */
+    const comuns = JSON.parse(X.run("JSON.stringify(globalThis.__ln.map(L=>!L.kind))"));
+    const exatas = v1.d.filter((ms, i) => comuns[i] && v1.c[i] * 20 >= 500);
+    if (exatas.length < 5) throw new Error("poucas linhas comuns na amostra: " + exatas.length);
+    v1.d.forEach((ms, i) => {
+      if (comuns[i] && v1.c[i] * 20 >= 500 && Math.abs(v1.c[i] / (ms / 1000) - 50) > 0.01)
+        throw new Error(`linha comum ${i} (${v1.c[i]} caracteres) ficou ${ms} ms: ${(v1.c[i] / (ms / 1000)).toFixed(1)} por segundo, não 50`);
     });
     v1.d.forEach((ms, i) => {
       if (Math.abs(v2.d[i] - ms / 2) > 1 || Math.abs(v4.d[i] - ms / 4) > 1) throw new Error(`linha ${i}: 1x ${ms}, 2x ${v2.d[i]}, 4x ${v4.d[i]}`);

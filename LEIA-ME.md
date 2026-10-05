@@ -4379,33 +4379,35 @@ migração não está lá.
   - dente provado: a função que só olha o raio de quem busca reprova.
 - `jxjtelas`: as quatro opções, a faixa e a escolha chegando ao banco.
 
-## Ritmo da narração da luta (2026-10-04)
+## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
-Pedido do dono, jogando em produção: "os textos estão aparecendo muito
-rápidos e não consigo ler a tempo".
+Duas rodadas com o dono, jogando em produção:
 
-**Medido antes:** numa luta da carreira, cada linha comum da narração
-ficava 0,47 s na tela antes da próxima. São uns 90 caracteres por segundo;
-uma legenda confortável fica entre 15 e 20. Uma luta sem plano passava em
-12 s (média de 596 lutas, 21 linhas cada).
+1. Antes, cada linha comum ficava 0,47 s, uns 90 caracteres por segundo, e
+   uma luta sem plano passava em 12 s (média de 596 lutas, 21 linhas
+   cada). Pedido: "os textos estão aparecendo muito rápidos e não consigo
+   ler a tempo".
+2. Em 2026-10-04 o tempo virou ritmo de legenda, uns 17 caracteres por
+   segundo (luta sem plano em 51 s). Pedido seguinte: "está muito lenta
+   agora, deixe 50 letras por segundo".
 
-**Agora** (`tempoDeLeitura` em `animarTrecho`): cada linha fica 0,4 s mais
-50 ms por caractere, com uma pausa a mais nas linhas fortes (nocaute ou
+**Agora** (`tempoDeLeitura` em `animarTrecho`): cada linha fica 20 ms por
+caractere, no mínimo 0,5 s, mais uma pausa nas linhas fortes (nocaute ou
 finalização 0,9 s, knockdown e lance grande 0,35 s, plano 0,3 s, round
-0,25 s). Fica entre 0,9 s e 10 s na velocidade 1x. A linha comum sai a uns
-17 caracteres por segundo e nenhuma passa de 20; a mais longa, o resultado
-do plano, chega a uns 7 s. A luta sem plano dura uns 51 s em 1x, 26 s em
-2x e 13 s em 4x, que é perto do ritmo antigo.
+0,25 s), na velocidade 1x. A linha comum sai a exatamente 50 caracteres
+por segundo. A luta sem plano dura uns 20 s em 1x, 10 s em 2x e 5 s em 4x.
 
-A ficha antes da luta (nomes, cartel, alcance, base e estilo) ficava 1,5 s;
-agora fica 3,5 s, e o Pular continua lá. O botão de velocidade mostra a
+A ficha antes da luta (nomes, cartel, alcance, base e estilo) fica 3,5 s
+(era 1,5 s), e o Pular continua lá. O botão de velocidade mostra a
 velocidade em uso quando a tela da noite é montada.
 
 **Teste:** a suíte `lutainterativa` roda a narração de uma luta de verdade,
-mais as duas linhas de plano mais longas, sem reduce-motion. Ela confere
-que nenhuma linha passa de 20 caracteres por segundo nem fica menos de
-0,9 s, e que 2x e 4x dividem o tempo. Com o ritmo antigo (470 ms fixo) ou
-com a velocidade sem efeito, o teste reprova.
+mais as duas linhas de plano mais longas, sem reduce-motion. Ela confere:
+- linha comum a 50 por segundo em 1x;
+- nenhuma linha mais rápida que isso, nem abaixo de 0,5 s;
+- 2x e 4x dividem o tempo.
+
+Com o ritmo antigo (470 ms fixo) ou com o de legenda, o teste reprova.
 
 ## Como jogar: tutorial com prints anotados (2026-09-28)
 
