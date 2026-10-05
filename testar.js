@@ -12279,9 +12279,11 @@ async function testarJxJTelas() {
       const m = env.todos.length;
       const v2 = await api(u2, "luta", { lutaId: lid });
       await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: "defesa" });
-      /* espera a tela consultar e redesenhar (o banco local às vezes demora
-         mais que um número fixo de voltas: falhou 1 vez em 2 em 2026-10-04) */
-      for (let k = 0; k < 12 && !desde(m).some((n) => tem(n, "jxj-ultima")); k++) await assentar(60);
+      /* espera a tela consultar e redesenhar, por tempo e não por número de
+         voltas: o banco local às vezes demora mais (falhou 1 vez em 2 em
+         2026-10-04 com voltas fixas, e de novo em 2026-10-05 com 12 voltas,
+         só dentro da bateria completa, que deixa a máquina mais lenta) */
+      for (const ate = Date.now() + 8000; Date.now() < ate && !desde(m).some((n) => tem(n, "jxj-ultima"));) await assentar(60);
       const vs = await api(u1, "luta", { lutaId: lid });
       const t0 = vs.trocas[0];
       if (!t0 || !t0.varA || !t0.varB || !t0.ev || !t0.ev.length) throw new Error("vista sem variantes ou eventos da troca: " + JSON.stringify(t0));
