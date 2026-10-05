@@ -419,6 +419,101 @@ Dente provado com 5 mutações (cada uma reprova o teste dela). `hub`,
 nova (semente do `save` 777004 virou 777005: a carreira de teste acabava
 no round 1 com os adversários novos).
 
+### Carreira v3: teto do estreante e adversário inicial mais forte (2026-10-05)
+
+**Pedido do dono, jogando em produção:** "lutas muito fáceis, joguei 4
+vezes seguidas e foram 4 nocautes no primeiro round". Ele sugeriu que o
+jogador "nunca poderá começar a carreira com alguma estatística
+masterizada" e que o nível dos adversários subisse, se a medição
+mostrasse que precisava.
+
+**Medido antes, na v2** (harness de carreira com o caminho real, 60
+carreiras por estilo, peso-leve; draft guloso ou com a Pancada primeiro;
+jogador esperto ou estrategista):
+- lutas 1 a 5: de 72% a 80% de vitórias;
+- 60% a 70% das lutas acabam em nocaute (no UFC real, 33%). Quem mais
+  nocauteia é o jogador, pelo volume de golpes: ele vence por nocaute 38%
+  a 45% das 10 primeiras lutas;
+- 18% dos lutadores draftados estreiam com volume entre os 5% melhores da
+  divisão.
+
+**O que mudou (só em carreira nova, `st.regras: 3` e `&r=3`).** Save e
+link de desafio antigos continuam na v1 ou na v2, pela regra da semente:
+- **Teto do estreante** (`TETO_ESTREANTE` .85, `cartaComTeto` em
+  `rollTable`). Cada atributo da carta, e os que vão junto (precisão,
+  golpes sofridos), entra no máximo no percentil 85 da divisão. Golpes
+  sofridos é ao contrário, menos é melhor, então o limite é o espelho
+  (percentil 15). A carta continua sendo do lutador real, com a marca
+  "teto" no atributo cortado, e o preço sai do valor com teto. A
+  legenda da primeira montagem explica. Não consome rng.
+- **Escada inicial mais alta** (`BASE_ESCADA_V3` .45 em `faixasV2`; era
+  .15). O centro da oferta na fila dos sem ranking sai de 49% para 67%
+  dela na estreia. Acima de .45, a carta difícil já alcança ranqueado
+  com standing .25 (uma ou duas vitórias), o que a regra do começo de
+  carreira proíbe.
+
+**O nível do adversário não acompanha o draft de cada um**, de propósito.
+Assim o link de desafio continua dando os mesmos adversários a quem usa a
+mesma semente, mesmo com drafts diferentes.
+
+**Medido depois** (mesmo harness, lutas 1 a 5):
+
+| teto | escada | vitórias nas lutas 1 a 5 |
+|---|---|---|
+| v2 (nenhum) | .15 | 72% a 80% |
+| .85 | .15 | 67% a 74% |
+| .85 | .45 | 65% a 74% |
+| .85 | .55 | 61% a 69% (reprova: ranqueado cedo) |
+| .80 | .45 | 60% a 70% |
+
+`node testar.js balanco` com a v3:
+- 11,3 a 12,5 vitórias em 22;
+- cinturão em 2% a 8% das carreiras;
+- nenhuma carreira com 2 derrotas ou menos;
+- lutas 1 a 5 com 54% a 70% de vitórias, conforme o perfil.
+
+Antes eram 11,7 a 12,8 vitórias e cinturão em 6% a 16%. A parte de
+nocautes quase não mudou (60% a 70%): ela vem do motor e do volume do
+lutador draftado, e o motor tem calibração própria que não se mexe.
+
+**Efeitos colaterais medidos:**
+- com o teto, a carta cara custa menos, e o bolso zera bem menos: no
+  teste de orçamento (2.160 drafts, três jeitos de escolher), 4%
+  precisaram da carta mínima. O teste de tela do orçamento roda na v3 e
+  na v2, pra continuar passando pela carta mínima;
+- a tabela de raridade das conquistas (`TAXA_MEDIDA_CONQUISTAS`) foi
+  medida de novo (150 carreiras, normal; lenda à parte). A anterior era
+  de antes das regras v2 e já estava errada em produção: Vidro aparecia
+  lendária com 4,7%, e a medição dá 80% em produção e 91% na v3. Lenda
+  coroada aparecia com 66,3%, e a medição dá 2%.
+
+**Testes (suíte `regras`):**
+- nenhuma carta da mesa da v3 passa do teto, e alguma carta bate nele;
+- a v2 continua sem teto;
+- a estreia da v3 sai mais alto que a da v2 com o mesmo standing;
+- carreira nova grava `regras: 3` e o link leva `r=3`;
+- link `r=2` continua na v2;
+- estreia sem ranqueado.
+
+**Card e conquista de nocaute rápido, até 2 minutos (2026-10-05).** O dono
+deu 6 nocautes no 1º round sem ver o card. Medido em 19.890 lutas: o
+motor anda de 15 em 15 segundos e acumula dano, e só 6% dos nocautes do
+1º round saem antes de 1 minuto. Até 2 minutos são 27%. `KO_RAPIDO_SEG`
+virou 120:
+- a frase de até 1 minuto continua, e a de 1 a 2 minutos fala do relógio;
+- o rótulo vira "NOCAUTE EM 1:45";
+- a conquista "Mão rápida" diz "em até 2 minutos".
+
+Não mexe em sorteio, então vale pra toda versão. O teste do bônus da
+noite usava nocaute aos 60 segundos e passou a usar 2:30, porque só um
+card sai por luta (o nocaute rápido ganha do bônus).
+
+**Rever narração (2026-10-05).** Na tela de vitória ou derrota, o botão
+"Rever narração" abre a narração inteira da luta, com o mesmo desenho e a
+mesma fonte do Cartel (`reg.narracao`, `htmlNarracao`). Ela começa
+fechada, e o botão vira "Esconder narração". Funciona também na carreira
+retomada no resultado. Suíte `hub`.
+
 ### Plano de luta a cada round (2026-10-04)
 
 **Pedido do dono, em dois tempos.** Primeiro: as lutas da carreira tão

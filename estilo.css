@@ -1104,6 +1104,12 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .res-rot .ico{width:16px;height:16px;color:var(--sangue)}
 .res-num b{font-family:var(--f-titulo);font-weight:400;font-size:42px;line-height:1;color:var(--osso)}
 .res-num .pos-mov{margin:0}
+/* teto do estreante no draft (regras v3, 2026-10-05): carta com atributo no limite */
+.elite.teto{color:var(--ouro);border-color:var(--ouro)}
+/* Rever narração no resultado (2026-10-05): o mesmo painel da luta */
+.res-rever{margin-top:14px}
+.res-narracao{width:100%;max-width:900px;max-height:60vh;overflow:auto;padding:6px 22px 18px;background:rgba(17,19,26,.92);border:1px solid var(--linha)}
+@media (max-width:640px){.res-narracao{padding:4px 14px 14px}}
 /* parte dos seguidores que veio da coletiva (2026-09-28) */
 .res-coletiva{font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--ouro)}
 #posluta{max-width:900px}

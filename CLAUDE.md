@@ -280,7 +280,8 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   bem, cinturão raro.** `BUDGET_PCT` .70 (ver o item acima), faixas de
   adversário +16% acima do ranking com piso de 45% da divisão (escada da
   v1; carreira nova usa a escada v2, item abaixo, medida com o plano por
-  round em 11,7 a 12,8 vitórias e cinturão 6% a 16%), teto de treino 1.05, rótulo de dificuldade e zebra pela
+  round em 11,7 a 12,8 vitórias e cinturão 6% a 16%; a v3, item abaixo,
+  em 11,3 a 12,5 e cinturão 2% a 8%), teto de treino 1.05, rótulo de dificuldade e zebra pela
   chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
   motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
   teste). Números no LEIA-ME "Balanço".
@@ -294,6 +295,17 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   e depois #15 ao #1, campeão só pelo caminho do título, sem ranking nunca
   passa do #13). Mexeu em pool, ranking ou escada: `node testar.js regras`
   e `node testar.js balanco`. Nunca mudar a v1 sem subir a versão.
+- **Regras da carreira v3 (2026-10-05, pedido do dono: "lutas muito
+  fáceis").** Carreira nova grava `st.regras: 3` e o link leva `&r=3`;
+  v1 e v2 ficam como estão. Teto do estreante: cada atributo da carta
+  entra no máximo no percentil 85 da divisão (`TETO_ESTREANTE`,
+  `cartaComTeto` em `rollTable`, sem rng). Escada inicial mais alta
+  (`BASE_ESCADA_V3` .45; acima disso a carta difícil alcança ranqueado
+  cedo). O nível do adversário nunca acompanha o draft de cada um (o link
+  de desafio daria adversários diferentes). Mexeu: `regras` e `balanco`.
+- **Nocaute rápido: 1º round até 2:00 (`KO_RAPIDO_SEG`, 2026-10-05).**
+  Antes de 1 minuto saíam só 6% dos nocautes do 1º round (o motor anda de
+  15 em 15 s). Card e conquista "Mão rápida" usam o mesmo limite.
 - **Plano de luta a cada round (2026-10-04, pedido do dono).** O plano só
   mexe na luta por `aplicarPlano` (eixos de `mAttr`, só naquele round, em
   cima da base); sem plano a luta é a mesma bit a bit (`driverluta`).

@@ -864,10 +864,11 @@ async function testarOrcamento() {
   /* a TELA de verdade: renderDraft() no DOM falso, sempre clicando a carta
      mais cara que aparece (o jeito mais rápido de zerar o bolso) */
   const RJ = JSON.stringify(R);
-  const abrirDraft = seed => {
+  const abrirDraft = (seed, regras = 3) => {
     const X = sandboxCarreira();
     X.sb.__RJ = RJ;
     X.run(`(function(){
+      REGRAS=${regras};
       ROSTER=JSON.parse(globalThis.__RJ);
       CUTOFF_RANKING=Math.max(...ROSTER.map(f=>f.era?f.era[1]:0))-6;
       DIVISION="lightweight"; MODO="normal"; SEED=${seed};
@@ -879,8 +880,11 @@ async function testarOrcamento() {
   const cartasNaTela = X => ((X.registro.cards || {}).children || []).filter(n => (n.className || "").split(" ").includes("card"));
   const custoDa = n => Number((/class="cost"><span>custo<\/span><b>([\d.]+)<\/b>/.exec(n.innerHTML) || [])[1]);
   let telasComMinima = 0;
-  for (const seed of [4242, 4343, 4444, 4545, 4646, 4747, 4848, 4949]) {
-    const X = abrirDraft(seed);
+  /* v3 (teto do estreante, 2026-10-05) e v2: com o teto as cartas caras
+     custam menos e o bolso quase não zera na v3 (4% dos drafts no modelo
+     acima); a v2 mantém o caminho da carta mínima na tela exercitado */
+  for (const regras of [3, 2]) for (const seed of [4242, 4343, 4444, 4545, 4646, 4747, 4848, 4949]) {
+    const X = abrirDraft(seed, regras);
     for (let passo = 0; passo < 4; passo++) {
       const cartas = cartasNaTela(X), bolso = X.run("budgetLeft");
       if (!cartas.length) { falha(`tela ${seed}: escolha ${passo + 1} sem carta nenhuma`); break; }
@@ -3087,6 +3091,17 @@ function testarMomentos() {
     passo("KO round 1 a 285s (clock 0:15, BAIXO) NÃO dispara koRapido — não é rápido, é tarde no round",
       !st.momentos.some(m=>m.tipo==="ko"));
 
+    /* até 2 minutos desde 2026-10-05 (era abaixo de 1): os dois lados do limite */
+    st=stBase(); st.fightNo=1; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"3:00"},false);
+    const ko120=st.momentos.find(m=>m.tipo==="ko");
+    passo("KO round 1 a 120s (clock 3:00) dispara koRapido, com rótulo NOCAUTE EM 2:00 e a frase do relógio",
+      ko120 && ko120.segundosKO===120 && rotuloMomento(ko120)==="NOCAUTE EM 2:00" && /antes dos dois minutos/.test(ko120.frase||ko120.texto||JSON.stringify(ko120)));
+    st=stBase(); st.fightNo=1; st.ganhoEscolhido=.07;
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"2:45"},false);
+    passo("KO round 1 a 135s (clock 2:45) NÃO dispara koRapido",
+      !st.momentos.some(m=>m.tipo==="ko"));
+
     /* --- estreia no main card (item 8): dispara em titleFight===true,
        VITÓRIA OU DERROTA (é sobre chegar lá, não sobre ganhar — diferente
        de "cinturao", que só dispara ganhando), e só a primeira vez. */
@@ -3212,8 +3227,10 @@ function testarMomentos() {
        dava 3+ cards por carreira, ruído. Só dispara 1x, no 1º recorde a
        partir da luta 12; st.bonusNoite (o número de verdade, sem trava)
        continua subindo depois disso. */
+    /* nocaute aos 2:30 decorridos: fora do card de nocaute rápido (até 2:00
+       desde 2026-10-05), que ganharia do bônus na mesma luta */
     st=stBase(); fightNo=5; st.fightNo=5; st.ganhoEscolhido=.07;
-    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"4:00"},false);
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"2:30"},false);
     passo("recorde de hype ANTES da luta 12 NÃO dispara bonusNoite",
       !st.momentos.some(m=>m.tipo==="bonusNoite"));
 
@@ -3223,12 +3240,12 @@ function testarMomentos() {
        constante) e dependeria do estado de rng/rareUsed acumulado pelos
        testes anteriores neste mesmo arquivo. */
     st=stBase(); fightNo=15; st.fightNo=15; st.ganhoEscolhido=.07;
-    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"4:00"},false);
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{},round:1,clock:"2:30"},false);
     passo("1º recorde de hype a partir da luta 12 dispara bonusNoite",
       st.momentos.some(m=>m.tipo==="bonusNoite"));
     const hypeCard=st.bonusNoite.hype;
     fightNo=20; st.fightNo=20; st.ganhoEscolhido=.07;
-    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{[opp.name]:2},round:1,clock:"4:00"},false);
+    finishFight(opp,{winner:me.name,method:"Nocaute",knockdowns:{[opp.name]:2},round:1,clock:"2:30"},false);
     passo("2º recorde (mais quedas, hype maior) NÃO dispara um 2º card",
       st.momentos.filter(m=>m.tipo==="bonusNoite").length===1);
     passo("mas st.bonusNoite (o número de verdade, sem trava) continua subindo",
@@ -9789,6 +9806,25 @@ async function testarHub() {
     for (let k = 0; k < 3; k++) { X.drenar(); await respirarCarreira(); }
   };
 
+  await conf("resultado: [Rever narração] abre a narração inteira da luta que acabou e fecha de novo (pedido do dono, 2026-10-05)", async () => {
+    const X = novo(778702);
+    X.run("meuPro=true;");
+    await lutarManual(X);
+    if (X.run("noiteEtapa") !== "resultado") throw new Error("etapa " + X.run("noiteEtapa"));
+    const reg = JSON.parse(X.run("JSON.stringify(st.registro[st.registro.length-1])"));
+    const b = X.registro.resRever;
+    if (!b || !b.onclick) throw new Error("sem o botão Rever narração");
+    if (!/Rever narração/.test(b.innerHTML) || !/#historico"/.test(b.innerHTML)) throw new Error("botão: " + b.innerHTML);
+    const painel = (X.registro.resultado.children || []).filter(n => (n.className || "").split(" ").includes("res-narracao")).pop();
+    if (!painel || painel.hidden !== true) throw new Error("a narração devia começar fechada");
+    b.onclick();
+    if (painel.hidden) throw new Error("não abriu");
+    const textos = JSON.parse(X.run(`JSON.stringify(st.registro[st.registro.length-1].narracao.map(([,,t])=>semTravessao(t)))`));
+    if (textos.length < 5 || !textos.every(t => painel.innerHTML.includes(t))) throw new Error("narração incompleta: " + textos.length + " linhas");
+    if (!/Esconder narração/.test(b.innerHTML)) throw new Error("o botão não virou Esconder: " + b.innerHTML);
+    b.onclick();
+    if (painel.hidden !== true || !/Rever narração/.test(b.innerHTML)) throw new Error("não fechou");
+  });
   await conf("resultado: a noite mostra VITÓRIA ou DERROTA, método, bolsa, seguidores e posição, com fundo próprio", async () => {
     const X = novo(778701);
     X.run("meuPro=true;");
@@ -12406,8 +12442,8 @@ async function testarRegrasCarreira() {
     if (semRank.some((m) => m < 13)) throw new Error("sem ranking enfrentou alguém acima do #13 (melhor posição por standing): " + JSON.stringify(semRank));
     if (r[5].rank < 0.6 || r[6].rank < 0.6) throw new Error("ranqueado enfrenta pouco ranqueado: " + JSON.stringify(r.slice(5)));
   });
-  await conf("v1 intacta: carreira nova grava regras 2 e o link leva r=2; save sem st.regras e link sem r= ficam na v1 (pool com aposentados)", () => {
-    if (X.run("st.regras") !== 2 || !/&r=2/.test(X.run("urlDesafio()"))) throw new Error("carreira nova: " + X.run("st.regras") + " " + X.run("urlDesafio()"));
+  await conf("v1 intacta: carreira nova grava regras 3 (v3 desde 2026-10-05) e o link leva r=3; link r=2 fica na v2; save sem st.regras e link sem r= ficam na v1 (pool com aposentados)", () => {
+    if (X.run("st.regras") !== 3 || !/&r=3/.test(X.run("urlDesafio()"))) throw new Error("carreira nova: " + X.run("st.regras") + " " + X.run("urlDesafio()"));
     const save = JSON.parse(X.run("JSON.stringify(montarSave())"));
     delete save.st.regras;
     const Y = sandboxCarreira();
@@ -12417,7 +12453,40 @@ async function testarRegrasCarreira() {
     if (!Y.run("POOL.some(f=>f.era&&f.era[1]<ANO_ATIVO)")) throw new Error("save antigo perdeu os aposentados do pool");
     Y.sb.URLSearchParams = URLSearchParams; // o vm não tem; sem ele lerDesafio() devolve null
     const ler = (q) => { Y.sb.location.search = q; return JSON.parse(Y.run("JSON.stringify(lerDesafio())")); };
-    if (ler("?d=lightweight&s=abc").regras !== 1 || ler("?d=lightweight&s=abc&r=2").regras !== 2) throw new Error("link: regras erradas");
+    if (ler("?d=lightweight&s=abc").regras !== 1 || ler("?d=lightweight&s=abc&r=2").regras !== 2 || ler("?d=lightweight&s=abc&r=3").regras !== 3)
+      throw new Error("link: regras erradas");
+  });
+  await conf("teto do estreante (v3, 2026-10-05): nenhuma carta da mesa traz atributo acima do percentil 85 da divisão (golpes sofridos: nunca abaixo do espelho); a v2 continua sem teto", () => {
+    const r = JSON.parse(X.run(`JSON.stringify((()=>{
+      const salva=REGRAS, rs=mulberry32(4242), ruins=[]; let comTeto=0, acimaV2=0;
+      for(const v of [3,2]){
+        REGRAS=v;
+        for(let k=0;k<200;k++)for(const c of rollTable(POOL,PAIRS,rs,PCT)){
+          for(const key of [c.pair.a.key,c.pair.b.key].flatMap(x=>[x,...(RIDERS[x]||[])])){
+            const t=tetoEstreante(POOL,key), val=c.src[key];
+            if(val==null)continue;
+            const passa=key==="sapm"?val<t:val>t;
+            if(v===3&&passa)ruins.push(key+" "+val+" passa de "+t);
+            if(v===2&&passa)acimaV2++;
+          }
+          if(v===3&&c.src.teto)comTeto++;
+        }
+      }
+      REGRAS=salva;
+      return {ruins:ruins.slice(0,3),comTeto,acimaV2};
+    })())`));
+    if (r.ruins.length) throw new Error("carta acima do teto na v3: " + r.ruins.join(" | "));
+    if (!r.comTeto) throw new Error("nenhuma carta bateu no teto (o teste não testou nada)");
+    if (!r.acimaV2) throw new Error("a v2 também ficou com teto (save e link antigos mudariam)");
+  });
+  await conf("escada v3 (2026-10-05): a estreia sai mais alto que na v2, com o mesmo standing", () => {
+    const r = JSON.parse(X.run(`JSON.stringify((()=>{
+      const salva=REGRAS, sStd=st.standing, saidas=[...fought];
+      const media=v=>{REGRAS=v;let soma=0;for(let k=0;k<30;k++){st.standing=.18;fought.clear();soma+=faixasV2().reduce((a,o)=>a+LADDER.indexOf(o.f),0)/3;}return soma/30/(LADDER.length-1);};
+      const v2=media(2),v3=media(3);REGRAS=salva;st.standing=sStd;fought.clear();saidas.forEach(n=>fought.add(n));
+      return {v2,v3};
+    })())`));
+    if (!(r.v3 > r.v2 + 0.1)) throw new Error("posição média do adversário na estreia: v2 " + r.v2.toFixed(2) + ", v3 " + r.v3.toFixed(2));
   });
   await conf("v1 intacta: a escada antiga continua igual pra quem está nela (centro nunca abaixo de 45% da divisão)", () => {
     const Y = sandboxCarreira();

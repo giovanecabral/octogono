@@ -89,6 +89,7 @@ function fmtClock(s){return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
    então "rápido" é clock ALTO, não baixo — o oposto do que a leitura de
    transmissão real sugere. Ver LEIA-ME "Card de momento". */
 function clockSeconds(s){const[m,ss]=s.split(":").map(Number);return m*60+ss;}
+const KO_RAPIDO_SEG=120;   // card e conquista de nocaute rápido: 1º round, até 2:00 decorridos
 
 /* mAttr: um multiplicador por eixo treinável (ATTR_TREINAVEIS), todos
    neutros (1) até a escolha na luta escrever no eixo específico da ação
@@ -307,9 +308,37 @@ function rollTable(pool,remaining,rng,pct){
       cand=[pool[Math.floor(rng()*pool.length)],pool[Math.floor(rng()*pool.length)]];
       if(cand.some(s=>s[pair.a.key]>0))break;
     }
-    cand.forEach(src=>rows.push({pair,src,cost:cost(pair,src,pct)}));
+    cand.forEach(f=>{const src=REGRAS>=3?cartaComTeto(f,pair,pool):f;rows.push({pair,src,cost:cost(pair,src,pct)});});
   }
   return rows;
+}
+/* Teto do estreante (regras v3, 2026-10-05, pedido do dono: "o jogador
+   nunca poderá começar a carreira com alguma estatística masterizada").
+   A carta continua sendo do lutador real, mas cada atributo dela, e os que
+   vão junto (precisão, golpes sofridos), entra no máximo no percentil
+   TETO_ESTREANTE da divisão. Golpes sofridos (sapm) é ao contrário, menos
+   é melhor: o limite é o espelho. O preço sai do valor com teto (paga o
+   que leva). Não consome rng: o sorteio da mesa e o link de desafio ficam
+   iguais. Medido em LEIA-ME "Balanço v3". */
+const TETO_ESTREANTE=.85;
+let cacheTeto=null;
+function tetoEstreante(pool,k){
+  if(!cacheTeto||cacheTeto.pool!==pool)cacheTeto={pool,v:{}};
+  if(!(k in cacheTeto.v)){
+    const v=pool.map(f=>f[k]).filter(x=>x!=null).sort((a,b)=>a-b);
+    cacheTeto.v[k]=v.length?v[Math.floor((k==="sapm"?1-TETO_ESTREANTE:TETO_ESTREANTE)*(v.length-1))]:null;
+  }
+  return cacheTeto.v[k];
+}
+function cartaComTeto(f,pair,pool){
+  const src={...f},teto=[];
+  [pair.a.key,pair.b.key].forEach(k=>[k,...(RIDERS[k]||[])].forEach(kk=>{
+    const t=tetoEstreante(pool,kk),v=f[kk];
+    if(v==null||t==null)return;
+    if(kk==="sapm"?v<t:v>t){src[kk]=t;teto.push(kk);}
+  }));
+  if(teto.length)src.teto=teto;
+  return src;
 }
 /* Orçamento é teto: nunca fica negativo (reta final, 2026-09-28). Antes,
    sem nenhuma carta no bolso, a mesa mostrava a mais barata MESMO acima do
@@ -447,7 +476,9 @@ function criarMomento(tipo,frase,opp,r){
     resultado:r?`${r.method} · round ${r.round} ${r.clock}`:null,
     posicao:rotuloPosicao(pos)};
 }
-const FRASE_KO_RAPIDO=n=>`${n} não deixou o locutor terminar de apresentar o adversário.`;
+/* nocaute rápido: até 1 minuto, o locutor; até 2 minutos (2026-10-05), o relógio */
+const FRASE_KO_RAPIDO=(n,seg)=>seg<=60?`${n} não deixou o locutor terminar de apresentar o adversário.`
+  :`${n} nocauteou antes dos dois minutos do primeiro round.`;
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
 /* Interino é anunciado como incompleto de propósito — nomeia quem está
    faltando enfrentar, não só "ganhou um cinturão". */
@@ -511,7 +542,7 @@ const CONQUISTAS=[
   check:st=>st.kdTaken>=6},
  {id:"zebra",cat:"alvo",nome:"Zebra",desc:"Vença como azarão, muito abaixo do favoritismo.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="upset")},
- {id:"mao_rapida",cat:"punho",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round, abaixo de 1 minuto.",
+ {id:"mao_rapida",cat:"punho",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round, em até 2 minutos.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="ko")},
  {id:"prudente",cat:"balanca",nome:"Prudente",desc:"Recuse um risco físico real pelo menos uma vez.",
   check:st=>!!st.evitouAlgumaVez},
@@ -618,15 +649,18 @@ function iconeConquista(cat){
    (`conquistas_usuario`, count(*) group by conquista_id) — raridadeDeTaxa()
    não muda, só de onde a taxa vem (ver PENDENCIAS.md item 31). */
 const TAXA_MEDIDA_CONQUISTAS={   // % de carreiras do bot que desbloqueiam — modo normal, salvo nota
-  primeiro_sangue:100, invicto:1.3, reinado:10.0, fenix:10.0,
-  nao_sente:44.0, nunca_finalizado:11.3, queixo_de_granito:37.3, fogo:68.0,
-  levantou_de_novo:5.3, zebra:0.0, mao_rapida:2.7, topo_da_divisao:4.7, idolo:11.3,
-  chegada_relampago:29.3, vidro:4.7, ex_campeao:38.7, zero_de_22:0.0,
-  sequencia_feia:0.7, cinturao_interino:7.3, nocauteado_do_trono:16.0,
-  nunca_precisou_do_juiz:6.0, chato_mas_eficaz:0.0, nunca_foi_ao_chao:21.3,
-  grande_queda:49.3, nunca_aplicou_queda:0.0, recusou_a_chance:37.3,
-  decisao_de_campeao:9.3,
-  lenda_coroada:66.3,   // só desbloqueia em modo lenda — a taxa É a de lenda, não a de normal (que dá 0% sempre)
+  /* medido de novo em 2026-10-05 (regras v3 e nocaute rápido até 2:00,
+     150 carreiras): a tabela anterior era de antes das regras v2 e do
+     plano por round (Vidro aparecia lendária a 4,7% e saía em 80%) */
+  primeiro_sangue:100, invicto:0.0, reinado:0.0, fenix:0.0,
+  nao_sente:78.7, nunca_finalizado:24.0, queixo_de_granito:0.0, fogo:3.3,
+  levantou_de_novo:94.0, zebra:50.0, mao_rapida:28.0, topo_da_divisao:40.0, idolo:0.0,
+  chegada_relampago:5.3, vidro:90.7, ex_campeao:0.7, zero_de_22:0.0,
+  sequencia_feia:28.7, cinturao_interino:0.0, nocauteado_do_trono:0.7,
+  nunca_precisou_do_juiz:10.0, chato_mas_eficaz:0.0, nunca_foi_ao_chao:0.0,
+  grande_queda:28.7, nunca_aplicou_queda:0.0, recusou_a_chance:2.7,
+  decisao_de_campeao:0.0,
+  lenda_coroada:2.0,   // só desbloqueia em modo lenda — a taxa É a de lenda (150 carreiras), não a de normal (que dá 0% sempre)
   // prudente: FORA de propósito — depende de j.evitouLesao (a IA de verdade),
   // o bot offline nunca preenche esse campo, medir aqui seria inventar 0%.
 };
@@ -4558,6 +4592,12 @@ function acrescentarRival(out){
    ranqueados perto dele: abaixo (k+1 a k+4), parelho (k-1 a k+1) e acima
    (k-2 a k-5). Mesmo sorteio da v1 (uma chamada de rng por tentativa) e a
    mesma busca pra fora quando a faixa já foi toda enfrentada. */
+/* v3: início da fila dos sem ranking (era .15 na v2). Medido (60
+   carreiras por perfil, lutas 1 a 5, com o teto do estreante): .15
+   deixava 72 a 80% de vitórias; .45 deixa 65 a 74%. Acima de .45 a carta
+   difícil do começo de carreira (standing .25, uma ou duas vitórias) já
+   alcança ranqueado, o que a regra proíbe (suíte regras). */
+const BASE_ESCADA_V3=.45;
 function faixasV2(){
   const lista=RANKING&&RANKING.lista||[];
   const nomesTop=new Set(lista.map(f=>f&&f.name));
@@ -4567,7 +4607,10 @@ function faixasV2(){
   const pos=posicaoDivisao(st.standing);
   let c,faixas;
   if(!pos||pos.n>15){
-    c=Math.round((.15+.85*clamp(st.standing/LIMIAR_TOP15,0,1))*Math.max(0,U-1));
+    /* v3: a estreia sai mais alto na fila dos sem ranking (o lutador
+       draftado nascia acima da metade da divisão e vencia 4 de 5 no começo) */
+    const b0=REGRAS>=3?BASE_ESCADA_V3:.15;
+    c=Math.round((b0+(1-b0)*clamp(st.standing/LIMIAR_TOP15,0,1))*Math.max(0,U-1));
     faixas=[[-.07*U,-.01*U,.045],[0,.08*U,.075],[.10*U,.24*U,.125]];
   }else{
     c=U+(15-pos.n);
@@ -6830,7 +6873,7 @@ const ORDEM_MOMENTO=["cinturao","cinturaoInterino","cinturaoPerdido","estreia",
   "topoDivisao","upset","ko","lesao","raro","bonusNoite"];
 function rotuloMomento(m){
   if(m.tipo==="raro")return ROTULO_RARO[m.raroId]||m.cartel;
-  if(m.tipo==="ko"&&m.segundosKO!=null)return`NOCAUTE EM ${m.segundosKO}s`;
+  if(m.tipo==="ko"&&m.segundosKO!=null)return m.segundosKO<60?`NOCAUTE EM ${m.segundosKO}s`:`NOCAUTE EM ${fmtClock(m.segundosKO)}`;
   return ROTULO_MOMENTO[m.tipo]||"MOMENTO";
 }
 
@@ -7195,7 +7238,7 @@ let MODO="normal";
    vitórias), em vez de campeão logo na estreia.
    v1: como era antes. Save e link de desafio antigos continuam nela, sem
    mudar uma carta (st.regras ausente = 1; link sem r= = 1). */
-const REGRAS_ATUAIS=2;
+const REGRAS_ATUAIS=3;   // v3 (2026-10-05): teto do estreante e escada inicial mais alta
 let REGRAS=REGRAS_ATUAIS;
 const ANO_ATIVO=2023;
 /* v2 aceita divisão menor: os adversários saem da tabela inteira (menos o
@@ -8889,6 +8932,12 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-10-05",titulo:"Lutas mais duras",itens:[
+    "Carreira nova: ninguém estreia no topo. Na montagem, atributo acima do teto de estreante entra no teto, e a carta mostra isso.",
+    "Os primeiros adversários ficaram mais fortes. Antes, quem jogava bem vencia quatro de cada cinco lutas no começo da carreira.",
+    "O card e a conquista de nocaute rápido valem para nocaute no primeiro round em até 2 minutos. Antes, só abaixo de 1 minuto.",
+    "Na tela de vitória ou derrota, o botão Rever narração mostra a narração da luta inteira de novo.",
+    "A narração da luta corre a 50 letras por segundo, e o botão de velocidade continua acelerando."]},
   {data:"2026-10-04",titulo:"Modo Online",itens:[
     "O modo competitivo agora se chama Online.",
     "No Online, antes de buscar adversário, você escolhe até quanto de diferença de rating aceita: 100, 200 ou 400 pontos, ou qualquer diferença. O par só sai se couber na escolha dos dois.",
@@ -9610,7 +9659,8 @@ function lerDesafio(){
     const n=parseInt(s,36);
     if(!Number.isFinite(n)||n<=0)return null;
     /* r= é a versão das regras (v2 em diante); link antigo, sem r=, segue na v1 */
-    return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal",regras:Number(p.get("r"))>=2?2:1};
+    const r=Number(p.get("r"));
+    return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal",regras:r>=3?3:r>=2?2:1};
   }catch(e){return null;}
 }
 function screenName(nomeInicial=""){
@@ -10184,7 +10234,7 @@ function renderDraft(){
     const pa=PCT(r.pair.a.key,r.src[r.pair.a.key]),pb=PCT(r.pair.b.key,r.src[r.pair.b.key]);
     const attr=(d,p)=>`<span class="attr mira-attr" style="display:block">
       <span style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-        <span class="attr-l">${d.label}${p>=.90?'<span class="elite">elite</span>':""}</span>
+        <span class="attr-l">${d.label}${r.src.teto&&r.src.teto.includes(d.key)?'<span class="elite teto">teto</span>':p>=.90?'<span class="elite">elite</span>':""}</span>
         <span class="attr-v">${d.fmt(r.src[d.key])}</span></span>
       ${pctBar(p)}</span>`;
     const c=el("button","card"+(r.src.minimo?" card-minima":""),`
@@ -10220,12 +10270,13 @@ function renderDraft(){
     grid.onclick=toqueForaDesseleciona;
     esq.onclick=toqueForaDesseleciona;
   }
+  const legendaTeto=REGRAS>=3?` Ninguém estreia no topo: atributo acima do <b>teto</b> de estreante entra no teto.`:"";
   if(picks.length===0)c.appendChild(el("div","legend",semHover()
     ?`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
      naquele atributo. Toque numa carta pra ver os dois lados que ela preenche.
-     Toque de novo pra confirmar.`
+     Toque de novo pra confirmar.${legendaTeto}`
     :`A barra é o <b>percentil na divisão</b>: quanto da divisão esse lutador supera
-     naquele atributo. Passe o mouse numa carta para ver os dois lados que ela preenche.`));
+     naquele atributo. Passe o mouse numa carta para ver os dois lados que ela preenche.${legendaTeto}`));
   /* primeira montagem: o tutorial abre por cima (uma vez por aparelho) */
   if(picks.length===0)abrirTutorialSeNovo("draft");
 }
@@ -10478,8 +10529,32 @@ function mostrarResultado(reg,extra){
     <div class="res-como"><b>${reg.metodo}</b> · round ${reg.round} · ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}</div>
     <div class="res-contra">contra ${reg.adv}${reg.titulo?` <span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}</div>
     ${nums}`;
+  /* Rever narração (2026-10-05, pedido do dono): a narração da luta que
+     acabou, inteira, na própria tela de vitória ou derrota. Mesma fonte e
+     mesmo desenho do Cartel (reg.narracao), então funciona também quando
+     a carreira é retomada no resultado. Começa fechada. */
+  if(reg.narracao&&reg.narracao.length){
+    const narr=el("div","res-narracao");narr.hidden=true;
+    const rever=el("button","botao botao-sec res-rever",`${ICONE("historico")}<span>Rever narração</span>`);
+    rever.type="button";rever.id="resRever";
+    if(rever.setAttribute)rever.setAttribute("aria-expanded","false");
+    rever.onclick=()=>{
+      SOM.toque();
+      if(!narr.innerHTML)narr.innerHTML=htmlNarracao(reg.narracao);
+      narr.hidden=!narr.hidden;
+      rever.innerHTML=`${ICONE("historico")}<span>${narr.hidden?"Rever narração":"Esconder narração"}</span>`;
+      if(rever.setAttribute)rever.setAttribute("aria-expanded",String(!narr.hidden));
+    };
+    box.append(rever,narr);
+  }
   mostrarNoite("resultado",reg.venceu?"confete":"apagado");
   contarNumeros(box);
+}
+/* Linhas da narração guardada ([relógio, tipo, texto]): o Cartel e o
+   Rever narração do resultado desenham igual */
+function htmlNarracao(narracao){
+  return narracao.map(([c,k,t])=>
+    `<div class="pbp${k?" "+k:""}"><span class="clk">${k==="plano"?ICONE("alvo"):c}</span><span>${semTravessao(t)}</span></div>`).join("");
 }
 function contarNumeros(box){
   if(reduceMotion()||!box.querySelectorAll||typeof requestAnimationFrame!=="function")return;
@@ -11457,8 +11532,7 @@ function linhaBout(reg){
   line.onclick=()=>{
     SOM.toque();
     if(!line.__narr){
-      line.__narr=el("div","bout-narracao",reg.narracao.map(([c,k,t])=>
-        `<div class="pbp${k?" "+k:""}"><span class="clk">${k==="plano"?ICONE("alvo"):c}</span><span>${semTravessao(t)}</span></div>`).join(""));
+      line.__narr=el("div","bout-narracao",htmlNarracao(reg.narracao));
       line.__narr.hidden=true;
       line.appendChild(line.__narr);
     }
@@ -11619,10 +11693,15 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
           eraUnificacao?FRASE_UNIFICACAO(me.name,opp.name):FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
       }
     }
-    /* rápido é clock ALTO nesta luta — ver clockSeconds() */
-    if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<60){
-      const mko=criarMomento("ko",FRASE_KO_RAPIDO(me.name),opp,r);
-      mko.segundosKO=300-clockSeconds(r.clock);      // pro rótulo "NOCAUTE EM Ns"
+    /* rápido é clock ALTO nesta luta — ver clockSeconds(). Até 2 minutos
+       desde 2026-10-05 (era abaixo de 1 minuto): o motor anda de 15 em 15 s
+       e acumula dano, só 6% dos nocautes do 1º round saíam antes de 1
+       minuto; o dono deu 6 nocautes no 1º round sem ver o card. Até 2
+       minutos são 27%. Não mexe em sorteio nenhum (vale pra toda versão). */
+    if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<=KO_RAPIDO_SEG){
+      const seg=300-clockSeconds(r.clock);
+      const mko=criarMomento("ko",FRASE_KO_RAPIDO(me.name,seg),opp,r);
+      mko.segundosKO=seg;      // pro rótulo "NOCAUTE EM Ns" (ou M:SS)
       st.momentos.push(mko);
     }
     if(lutandoMachucado&&!st.lesao.venceuMachucado){
