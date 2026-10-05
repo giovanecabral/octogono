@@ -7425,7 +7425,7 @@ async function testarRotas() {
       if (!txt.includes(t)) throw new Error("rodapé sem " + t + ": " + txt);
     /* suporte (2026-10-04): o servidor do Discord, em aba nova, com o ícone do sprite */
     const dc = rod.children.find(c => tem(c, "menu-contato"));
-    if (!dc || dc.href !== "https://discord.gg/evuz4qjRa" || dc.target !== "_blank" || !/noopener/.test(dc.rel || "") || !/#discord"/.test(String(dc.innerHTML)))
+    if (!dc || dc.href !== "https://discord.gg/qjRsMnKPX" || dc.target !== "_blank" || !/noopener/.test(dc.rel || "") || !/#discord"/.test(String(dc.innerHTML)))
       throw new Error("link do Discord: " + JSON.stringify(dc && { href: dc.href, target: dc.target, rel: dc.rel }));
     /* reta final (2026-09-28): o dono tirou a página Créditos */
     if (txt.includes("Créditos")) throw new Error("rodapé voltou a ter Créditos: " + txt);
