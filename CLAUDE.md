@@ -281,7 +281,7 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   adversário +16% acima do ranking com piso de 45% da divisão (escada da
   v1; carreira nova usa a escada v2, item abaixo, medida com o plano por
   round em 11,7 a 12,8 vitórias e cinturão 6% a 16%; a v3, item abaixo,
-  em 11,3 a 12,5 e cinturão 2% a 8%), teto de treino 1.05, rótulo de dificuldade e zebra pela
+  em 11,5 a 12,3 e cinturão 0% a 14%), teto de treino 1.05, rótulo de dificuldade e zebra pela
   chance real (`chanceContra()`). Mexeu em draft, treino, escada ou
   motor: `node testar.js balanco` (50 carreiras por perfil, faixas no
   teste). Números no LEIA-ME "Balanço".
@@ -296,16 +296,21 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   passa do #13). Mexeu em pool, ranking ou escada: `node testar.js regras`
   e `node testar.js balanco`. Nunca mudar a v1 sem subir a versão.
 - **Regras da carreira v3 (2026-10-05, pedido do dono: "lutas muito
-  fáceis").** Carreira nova grava `st.regras: 3` e o link leva `&r=3`;
-  v1 e v2 ficam como estão. Teto do estreante: cada atributo da carta
-  entra no máximo no percentil 85 da divisão (`TETO_ESTREANTE`,
-  `cartaComTeto` em `rollTable`, sem rng). Escada inicial mais alta
-  (`BASE_ESCADA_V3` .45; acima disso a carta difícil alcança ranqueado
-  cedo). O nível do adversário nunca acompanha o draft de cada um (o link
-  de desafio daria adversários diferentes). Mexeu: `regras` e `balanco`.
-- **Nocaute rápido: 1º round até 2:00 (`KO_RAPIDO_SEG`, 2026-10-05).**
+  fáceis", "nocaute 33%", "não deixe o mesmo adversário para todos").**
+  Carreira nova grava `st.regras: 3`; v1 e v2 ficam como estão. Três
+  peças, medidas juntas (`regras` e `balanco`; números no LEIA-ME):
+  `KO_CARREIRA` .24 (fator de nocaute só na luta da carreira, nos dois
+  lados e no `chanceContra`; `simulateFight` sem `koMult` não muda, a
+  calibração do motor fica), adversário sem ranking a partir do nível do
+  próprio jogador (`posicaoParelha`, semente fixa, sem rng;
+  `DESVIO_ESTREIA_V3` .05) e teto do estreante no percentil 75
+  (`TETO_ESTREANTE`, `cartaComTeto`). Como o adversário depende do draft,
+  a v3 não tem link de desafio (decisão do dono); link v1/v2 continua
+  abrindo.
+- **Nocaute rápido: o 1º round inteiro (`KO_RAPIDO_SEG` 300, 2026-10-05).**
   Antes de 1 minuto saíam só 6% dos nocautes do 1º round (o motor anda de
-  15 em 15 s). Card e conquista "Mão rápida" usam o mesmo limite.
+  15 em 15 s), e com o nocaute da v3 em 33% até 2 minutos quase não saía.
+  Card e conquista "Mão rápida" usam o mesmo limite.
 - **Plano de luta a cada round (2026-10-04, pedido do dono).** O plano só
   mexe na luta por `aplicarPlano` (eixos de `mAttr`, só naquele round, em
   cima da base); sem plano a luta é a mesma bit a bit (`driverluta`).

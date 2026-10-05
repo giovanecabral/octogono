@@ -419,94 +419,129 @@ Dente provado com 5 mutações (cada uma reprova o teste dela). `hub`,
 nova (semente do `save` 777004 virou 777005: a carreira de teste acabava
 no round 1 com os adversários novos).
 
-### Carreira v3: teto do estreante e adversário inicial mais forte (2026-10-05)
+### Carreira v3: teto do estreante, adversário do nível do jogador e nocaute de UFC (2026-10-05)
 
-**Pedido do dono, jogando em produção:** "lutas muito fáceis, joguei 4
-vezes seguidas e foram 4 nocautes no primeiro round". Ele sugeriu que o
-jogador "nunca poderá começar a carreira com alguma estatística
-masterizada" e que o nível dos adversários subisse, se a medição
-mostrasse que precisava.
+**Pedido do dono, jogando em produção, em duas rodadas:**
+1. "Lutas muito fáceis, joguei 4 vezes seguidas e foram 4 nocautes no
+   primeiro round." Ele sugeriu que o jogador "nunca poderá começar a
+   carreira com alguma estatística masterizada" e que o nível dos
+   adversários subisse, se a medição mostrasse que precisava.
+2. "Resolva o nocaute para ser mais raro, 33%, e também não deixe o mesmo
+   adversário para todos; caso isso realmente impacte no link do desafio,
+   podemos retirar essa opção."
 
-**Medido antes, na v2** (harness de carreira com o caminho real, 60
-carreiras por estilo, peso-leve; draft guloso ou com a Pancada primeiro;
-jogador esperto ou estrategista):
+**Medido antes, na v2** (harness de carreira com o caminho real, peso-leve,
+60 carreiras por estilo; draft guloso ou com a Pancada primeiro; jogador
+esperto ou estrategista):
 - lutas 1 a 5: de 72% a 80% de vitórias;
-- 60% a 70% das lutas acabam em nocaute (no UFC real, 33%). Quem mais
-  nocauteia é o jogador, pelo volume de golpes: ele vence por nocaute 38%
-  a 45% das 10 primeiras lutas;
-- 18% dos lutadores draftados estreiam com volume entre os 5% melhores da
-  divisão.
+- 60% a 70% das lutas acabavam em nocaute (no UFC real, 33%).
 
-**O que mudou (só em carreira nova, `st.regras: 3` e `&r=3`).** Save e
-link de desafio antigos continuam na v1 ou na v2, pela regra da semente:
-- **Teto do estreante** (`TETO_ESTREANTE` .85, `cartaComTeto` em
+Quem mais nocauteava era o jogador, pelo volume de golpes: ele vencia por
+nocaute de 38% a 45% das 10 primeiras lutas.
+
+O excesso de nocaute não vinha só do adversário fraco. O lutador draftado
+contra a divisão inteira acabava em nocaute 57% a 64% das vezes mesmo nas
+lutas parelhas, com chance de 35% a 65%. Ele junta atributos de lutadores
+diferentes (muito volume, queixo mediano), combinação que lutador real não
+tem, e o motor foi calibrado com lutador real.
+
+**O que mudou (só em carreira nova, `st.regras: 3`).** Save e link antigos
+continuam na v1 ou na v2, pela regra da semente.
+- **Nocaute da carreira** (`KO_CARREIRA` .24, `koMult` no estado da luta,
+  lido em `impact()`). É o fator de knockdown e nocaute da luta da
+  carreira, igual nos dois lados, e `chanceContra` simula com o mesmo
+  fator, então o rótulo das cartas bate com a luta. `simulateFight` sem
+  `koMult` continua bit a bit igual, e a calibração do motor (`motor`,
+  `drivermotor`) e as notas dos lutadores reais não mudam.
+  - Medido na carreira: 33% a 35% de nocaute, 18% a 21% de finalização e
+    44% a 50% de decisão (UFC: 33/19/48).
+  - Fator .30 deu 36%, .45 deu 44% e .60 deu 50%.
+- **Adversário do nível do jogador** (sem ranking; `posicaoParelha`,
+  `DESVIO_ESTREIA_V3` .05). A fila parte da posição onde o jogador vence
+  metade das lutas (busca binária com `chanceContra`, semente fixa, sem
+  rng). Na estreia ela fica 5% da fila abaixo disso e sobe até o melhor
+  sem ranking no limiar do top 15. Sem ranking, nada de ranqueado até 80%
+  do caminho (a carta difícil de um draft forte já nasce no topo da fila).
+  Ranqueado continua igual à v2: a posição é a do ranking.
+- **Teto do estreante** (`TETO_ESTREANTE` .75, `cartaComTeto` em
   `rollTable`). Cada atributo da carta, e os que vão junto (precisão,
-  golpes sofridos), entra no máximo no percentil 85 da divisão. Golpes
-  sofridos é ao contrário, menos é melhor, então o limite é o espelho
-  (percentil 15). A carta continua sendo do lutador real, com a marca
-  "teto" no atributo cortado, e o preço sai do valor com teto. A
-  legenda da primeira montagem explica. Não consome rng.
-- **Escada inicial mais alta** (`BASE_ESCADA_V3` .45 em `faixasV2`; era
-  .15). O centro da oferta na fila dos sem ranking sai de 49% para 67%
-  dela na estreia. Acima de .45, a carta difícil já alcança ranqueado
-  com standing .25 (uma ou duas vitórias), o que a regra do começo de
-  carreira proíbe.
+  golpes sofridos), entra no máximo no percentil 75 da divisão. Golpes
+  sofridos é ao contrário, menos é melhor, então o limite é o espelho. A
+  carta continua sendo do lutador real, com a marca "teto" no atributo
+  cortado, e o preço sai do valor com teto. A legenda da primeira
+  montagem explica. Não consome rng.
+- **Sem link de desafio na carreira v3.** Com adversário do nível de cada
+  um, a mesma semente não dá mais os mesmos adversários a quem draftou
+  diferente, e o dono preferiu tirar a opção. O botão "Copiar desafio"
+  só aparece em carreira v1 ou v2, e link antigo continua abrindo nas
+  regras dele.
 
-**O nível do adversário não acompanha o draft de cada um**, de propósito.
-Assim o link de desafio continua dando os mesmos adversários a quem usa a
-mesma semente, mesmo com drafts diferentes.
+**Por que .75 no teto e não .85.** Com menos nocaute, mais lutas vão aos
+juízes, e lá o volume de golpes do draftado pesa. Medido no `balanco`, com
+fator .24 e desvio .05:
+- teto .85: 12,3 a 13,4 vitórias em 22, e o cinturão do ousado chegou a 22%,
+  acima do teto de 20%;
+- teto .80: 12,1 a 13,3 vitórias, cinturão até 20%;
+- teto .75: 11,5 a 12,3 vitórias, cinturão de 0% a 14%.
 
-**Medido depois** (mesmo harness, lutas 1 a 5):
+**O limite da adaptação.** Diagnóstico de 24 estreias com os valores
+finais: em 21 delas o draftado vence até o melhor sem ranking (59% de
+chance, em média), então a estreia já sai no topo da fila, com as três
+cartas entre 50% e 60% de chance. Deixar mais difícil que isso pediria
+ranqueado na estreia, o que a regra não deixa. As lutas 1 a 5 ficam em 57%
+a 70% de vitórias, conforme o jeito de jogar (eram 72% a 80%). Vitória por
+nocaute no 1º round caiu de 15% a 22% pra perto de 5% por luta.
 
-| teto | escada | vitórias nas lutas 1 a 5 |
-|---|---|---|
-| v2 (nenhum) | .15 | 72% a 80% |
-| .85 | .15 | 67% a 74% |
-| .85 | .45 | 65% a 74% |
-| .85 | .55 | 61% a 69% (reprova: ranqueado cedo) |
-| .80 | .45 | 60% a 70% |
+**Testes (suíte `regras`):**
+- nenhuma carta da v3 passa do teto, alguma bate nele, e a v2 continua sem
+  teto;
+- sem ranking, o adversário acompanha o nível (um jogador mais fraco
+  começa mais embaixo), sem ranqueado na estreia;
+- a luta da carreira roda com `KO_CARREIRA` nos dois lados;
+- a chance das cartas usa o mesmo fator (comparado em 12 adversários,
+  com pelo menos um em que o fator muda a chance);
+- `simulateFight` sem o fator não muda;
+- com fator 0 não sai knockdown nenhum;
+- a v2 usa 1;
+- carreira nova grava `regras: 3`, e link `r=2` continua na v2.
 
-`node testar.js balanco` com a v3:
-- 11,3 a 12,5 vitórias em 22;
-- cinturão em 2% a 8% das carreiras;
-- nenhuma carreira com 2 derrotas ou menos;
-- lutas 1 a 5 com 54% a 70% de vitórias, conforme o perfil.
-
-Antes eram 11,7 a 12,8 vitórias e cinturão em 6% a 16%. A parte de
-nocautes quase não mudou (60% a 70%): ela vem do motor e do volume do
-lutador draftado, e o motor tem calibração própria que não se mexe.
+A suíte `hub` confere que o fim da carreira v3 não tem "Copiar desafio" e
+que a v2 continua com ele. Dente provado quebrando cada peça (a luta sem
+o fator, a escada sem `posicaoParelha`, a chance das cartas sem o fator).
 
 **Efeitos colaterais medidos:**
-- com o teto, a carta cara custa menos, e o bolso zera bem menos: no
-  teste de orçamento (2.160 drafts, três jeitos de escolher), 4%
-  precisaram da carta mínima. O teste de tela do orçamento roda na v3 e
-  na v2, pra continuar passando pela carta mínima;
+- com o teto, a carta cara custa menos, e o bolso zera bem menos: no teste
+  de orçamento (2.160 drafts, três jeitos de escolher), 4% precisaram da
+  carta mínima. O teste de tela do orçamento roda na v3 e na v2, pra
+  continuar passando pela carta mínima;
+- cards de momento por carreira (automático, 30 carreiras): 2,0, contra
+  3,0 em produção na v2;
 - a tabela de raridade das conquistas (`TAXA_MEDIDA_CONQUISTAS`) foi
   medida de novo (150 carreiras, normal; lenda à parte). A anterior era
   de antes das regras v2 e já estava errada em produção: Vidro aparecia
-  lendária com 4,7%, e a medição dá 80% em produção e 91% na v3. Lenda
-  coroada aparecia com 66,3%, e a medição dá 2%.
+  lendária com 4,7% e saía em 80%. Na v3 sai em 43%, e Lenda coroada, que
+  aparecia com 66,3%, sai em 1,3% no modo lenda.
 
-**Testes (suíte `regras`):**
-- nenhuma carta da mesa da v3 passa do teto, e alguma carta bate nele;
-- a v2 continua sem teto;
-- a estreia da v3 sai mais alto que a da v2 com o mesmo standing;
-- carreira nova grava `regras: 3` e o link leva `r=3`;
-- link `r=2` continua na v2;
-- estreia sem ranqueado.
-
-**Card e conquista de nocaute rápido, até 2 minutos (2026-10-05).** O dono
-deu 6 nocautes no 1º round sem ver o card. Medido em 19.890 lutas: o
+**Card e conquista de nocaute rápido: o 1º round inteiro (2026-10-05).** O
+dono deu 6 nocautes no 1º round sem ver o card. Medido em 19.890 lutas: o
 motor anda de 15 em 15 segundos e acumula dano, e só 6% dos nocautes do
-1º round saem antes de 1 minuto. Até 2 minutos são 27%. `KO_RAPIDO_SEG`
-virou 120:
-- a frase de até 1 minuto continua, e a de 1 a 2 minutos fala do relógio;
-- o rótulo vira "NOCAUTE EM 1:45";
-- a conquista "Mão rápida" diz "em até 2 minutos".
+1º round saem antes de 1 minuto (o limite antigo).
+- Primeiro o limite foi pra 2 minutos (27% dos nocautes do 1º round).
+- Com o nocaute da carreira v3 em 33%, o card quase sumiu: 1 em 30
+  carreiras do automático, e a conquista "Mão rápida" em 9%.
+- `KO_RAPIDO_SEG` virou 300, o 1º round inteiro, que agora é raro de
+  verdade (perto de 5% das lutas).
 
-Não mexe em sorteio, então vale pra toda versão. O teste do bônus da
-noite usava nocaute aos 60 segundos e passou a usar 2:30, porque só um
-card sai por luta (o nocaute rápido ganha do bônus).
+A frase muda com o tempo:
+- até 1 minuto, a do locutor;
+- até 2 minutos, a do relógio;
+- depois, "ainda no primeiro round".
+
+O rótulo mostra o tempo ("NOCAUTE EM 40s", "NOCAUTE EM 4:45"), e a
+conquista diz "Vença por nocaute no primeiro round". Não mexe em sorteio,
+então vale pra toda versão. O teste do bônus da noite usava nocaute no
+1º round e passou pro 2º, porque só um card sai por luta e o nocaute
+rápido ganha do bônus.
 
 **Rever narração (2026-10-05).** Na tela de vitória ou derrota, o botão
 "Rever narração" abre a narração inteira da luta, com o mesmo desenho e a

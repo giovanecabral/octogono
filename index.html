@@ -89,7 +89,7 @@ function fmtClock(s){return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
    então "rápido" é clock ALTO, não baixo — o oposto do que a leitura de
    transmissão real sugere. Ver LEIA-ME "Card de momento". */
 function clockSeconds(s){const[m,ss]=s.split(":").map(Number);return m*60+ss;}
-const KO_RAPIDO_SEG=120;   // card e conquista de nocaute rápido: 1º round, até 2:00 decorridos
+const KO_RAPIDO_SEG=300;   // card e conquista de nocaute rápido: o 1º round inteiro (2026-10-05)
 
 /* mAttr: um multiplicador por eixo treinável (ATTR_TREINAVEIS), todos
    neutros (1) até a escolha na luta escrever no eixo específico da ação
@@ -106,7 +106,11 @@ function mkState(f,form){return{ref:f,form,damage:0,sigStrikes:0,takedowns:0,kno
   /* tdAcc, subAcc e levantar (2026-10-04, plano por round): eficácia da
      queda, da finalização e de levantar do chão. Neutros (1) fora do plano:
      multiplicar por 1 não muda nada, a luta sem plano é a mesma bit a bit */
-  mAttr:{slpm:1,strDef:1,tdAvg:1,tdDef:1,subAvg:1,kdAvg:1,durability:1,tdAcc:1,subAcc:1,levantar:1}};}
+  mAttr:{slpm:1,strDef:1,tdAvg:1,tdDef:1,subAvg:1,kdAvg:1,durability:1,tdAcc:1,subAcc:1,levantar:1},
+  /* koMult (2026-10-05, regras v3): fator de knockdown e nocaute da luta da
+     carreira (KO_CARREIRA). 1 em todo o resto: luta entre lutadores reais
+     continua com a calibração de sempre, bit a bit */
+  koMult:1};}
 
 function exchange(att,def,rng,opts={}){
   const A=att.ref,D=def.ref,minutes=TUNING.tickSeconds/60;
@@ -135,7 +139,7 @@ function impact(att,def,landed,rng){
      durability real do lutador já faz. Multiplicar aqui inverteria o
      sentido e a ação de queixo que "casa" passaria a fragilizar. */
   const p=TUNING.kdBase*power*punch*landed*
-    Math.pow(clamp(def.damage/100,0,2.5),1.6)/(def.ref.durability??1)/def.mAttr.durability;
+    Math.pow(clamp(def.damage/100,0,2.5),1.6)/(def.ref.durability??1)/def.mAttr.durability*(att.koMult??1);
   if(rng()>=clamp(p,0,.9))return"";
   def.knockdowns=(def.knockdowns||0)+1;
   return rng()<TUNING.finishGivenKd?"ko":"kd";
@@ -222,10 +226,11 @@ function simularRound(A,B,round,rng,push,fin,scores){
   return null;
 }
 
-function simulateFight(fa,fb,{seed=1,rounds=3}={}){
+function simulateFight(fa,fb,{seed=1,rounds=3,koMult=1}={}){
   const rng=mulberry32(seed);
   const form=()=>1+(rng()+rng()+rng()-1.5)/1.5*TUNING.formSpread;
   const A=mkState(fa,form()),B=mkState(fb,form());
+  A.koMult=B.koMult=koMult;
   const log=[];
   const push=(round,clock,kind,text)=>log.push({round,clock,kind,text});
   const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
@@ -316,11 +321,13 @@ function rollTable(pool,remaining,rng,pct){
    nunca poderá começar a carreira com alguma estatística masterizada").
    A carta continua sendo do lutador real, mas cada atributo dela, e os que
    vão junto (precisão, golpes sofridos), entra no máximo no percentil
-   TETO_ESTREANTE da divisão. Golpes sofridos (sapm) é ao contrário, menos
+   TETO_ESTREANTE da divisão (.75: com o nocaute da carreira em 33%, o
+   volume de golpes do draftado pesa nas decisões, e com .85 ele vencia
+   13 de 22). Golpes sofridos (sapm) é ao contrário, menos
    é melhor: o limite é o espelho. O preço sai do valor com teto (paga o
    que leva). Não consome rng: o sorteio da mesa e o link de desafio ficam
    iguais. Medido em LEIA-ME "Balanço v3". */
-const TETO_ESTREANTE=.85;
+const TETO_ESTREANTE=.75;
 let cacheTeto=null;
 function tetoEstreante(pool,k){
   if(!cacheTeto||cacheTeto.pool!==pool)cacheTeto={pool,v:{}};
@@ -476,9 +483,11 @@ function criarMomento(tipo,frase,opp,r){
     resultado:r?`${r.method} · round ${r.round} ${r.clock}`:null,
     posicao:rotuloPosicao(pos)};
 }
-/* nocaute rápido: até 1 minuto, o locutor; até 2 minutos (2026-10-05), o relógio */
+/* nocaute rápido (qualquer nocaute no 1º round desde 2026-10-05): até 1
+   minuto, o locutor; até 2 minutos, o relógio; depois, o round */
 const FRASE_KO_RAPIDO=(n,seg)=>seg<=60?`${n} não deixou o locutor terminar de apresentar o adversário.`
-  :`${n} nocauteou antes dos dois minutos do primeiro round.`;
+  :seg<=120?`${n} nocauteou antes dos dois minutos do primeiro round.`
+  :`${n} resolveu por nocaute ainda no primeiro round.`;
 const FRASE_PRIMEIRO_CINTURAO=n=>`${n} levantou o cinturão e não soltou pra nenhuma foto.`;
 /* Interino é anunciado como incompleto de propósito — nomeia quem está
    faltando enfrentar, não só "ganhou um cinturão". */
@@ -542,7 +551,7 @@ const CONQUISTAS=[
   check:st=>st.kdTaken>=6},
  {id:"zebra",cat:"alvo",nome:"Zebra",desc:"Vença como azarão, muito abaixo do favoritismo.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="upset")},
- {id:"mao_rapida",cat:"punho",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round, em até 2 minutos.",
+ {id:"mao_rapida",cat:"punho",nome:"Mão rápida",desc:"Vença por nocaute no primeiro round.",
   check:st=>(st.momentos||[]).some(m=>m.tipo==="ko")},
  {id:"prudente",cat:"balanca",nome:"Prudente",desc:"Recuse um risco físico real pelo menos uma vez.",
   check:st=>!!st.evitouAlgumaVez},
@@ -649,18 +658,19 @@ function iconeConquista(cat){
    (`conquistas_usuario`, count(*) group by conquista_id) — raridadeDeTaxa()
    não muda, só de onde a taxa vem (ver PENDENCIAS.md item 31). */
 const TAXA_MEDIDA_CONQUISTAS={   // % de carreiras do bot que desbloqueiam — modo normal, salvo nota
-  /* medido de novo em 2026-10-05 (regras v3 e nocaute rápido até 2:00,
-     150 carreiras): a tabela anterior era de antes das regras v2 e do
-     plano por round (Vidro aparecia lendária a 4,7% e saía em 80%) */
+  /* medido de novo em 2026-10-05 (regras v3: nocaute de UFC, adversário do
+     nível do jogador, teto do estreante; nocaute rápido no 1º round
+     inteiro), 150 carreiras. A tabela anterior era de antes das regras v2
+     (Vidro aparecia lendária a 4,7% e saía em 80% em produção) */
   primeiro_sangue:100, invicto:0.0, reinado:0.0, fenix:0.0,
-  nao_sente:78.7, nunca_finalizado:24.0, queixo_de_granito:0.0, fogo:3.3,
-  levantou_de_novo:94.0, zebra:50.0, mao_rapida:28.0, topo_da_divisao:40.0, idolo:0.0,
-  chegada_relampago:5.3, vidro:90.7, ex_campeao:0.7, zero_de_22:0.0,
-  sequencia_feia:28.7, cinturao_interino:0.0, nocauteado_do_trono:0.7,
-  nunca_precisou_do_juiz:10.0, chato_mas_eficaz:0.0, nunca_foi_ao_chao:0.0,
-  grande_queda:28.7, nunca_aplicou_queda:0.0, recusou_a_chance:2.7,
-  decisao_de_campeao:0.0,
-  lenda_coroada:2.0,   // só desbloqueia em modo lenda — a taxa É a de lenda (150 carreiras), não a de normal (que dá 0% sempre)
+  nao_sente:72.0, nunca_finalizado:27.3, queixo_de_granito:6.7, fogo:2.0,
+  levantou_de_novo:40.7, zebra:40.0, mao_rapida:28.7, topo_da_divisao:38.0, idolo:0.0,
+  chegada_relampago:0.7, vidro:43.3, ex_campeao:0.7, zero_de_22:0.0,
+  sequencia_feia:18.0, cinturao_interino:0.0, nocauteado_do_trono:0.7,
+  nunca_precisou_do_juiz:0.0, chato_mas_eficaz:0.0, nunca_foi_ao_chao:2.0,
+  grande_queda:0.0, nunca_aplicou_queda:6.0, recusou_a_chance:1.3,
+  decisao_de_campeao:0.7,
+  lenda_coroada:1.3,   // só desbloqueia em modo lenda — a taxa É a de lenda (150 carreiras), não a de normal (que dá 0% sempre)
   // prudente: FORA de propósito — depende de j.evitouLesao (a IA de verdade),
   // o bot offline nunca preenche esse campo, medir aqui seria inventar 0%.
 };
@@ -4592,12 +4602,29 @@ function acrescentarRival(out){
    ranqueados perto dele: abaixo (k+1 a k+4), parelho (k-1 a k+1) e acima
    (k-2 a k-5). Mesmo sorteio da v1 (uma chamada de rng por tentativa) e a
    mesma busca pra fora quando a faixa já foi toda enfrentada. */
-/* v3: início da fila dos sem ranking (era .15 na v2). Medido (60
-   carreiras por perfil, lutas 1 a 5, com o teto do estreante): .15
-   deixava 72 a 80% de vitórias; .45 deixa 65 a 74%. Acima de .45 a carta
-   difícil do começo de carreira (standing .25, uma ou duas vitórias) já
-   alcança ranqueado, o que a regra proíbe (suíte regras). */
-const BASE_ESCADA_V3=.45;
+/* Regras v3 (2026-10-05, pedido do dono). Medido em LEIA-ME "Carreira v3".
+   KO_CARREIRA: fator de knockdown e nocaute da luta da carreira (os dois
+   lados, e a chance das cartas usa o mesmo). O lutador draftado junta
+   atributos de lutadores diferentes, e com o fator 1 a carreira acabava
+   em nocaute em 60 a 70% das lutas, mesmo em luta parelha; no UFC são 33%.
+   Luta entre lutadores reais (ratings, motor) continua com 1. */
+const KO_CARREIRA=.24;   // medido: 33% de nocaute na carreira (UFC 33%), finalização 18-21%, decisão 44-50%
+const fatorKoCarreira=()=>REGRAS>=3?KO_CARREIRA:1;
+/* Sem ranking, a fila parte do nível do PRÓPRIO jogador: a posição onde
+   ele vence metade das lutas (chanceContra, semente fixa, sem rng), um
+   pouco abaixo na estreia (DESVIO_ESTREIA_V3 da fila) e subindo até o
+   melhor sem ranking no limiar do top 15. Por isso a carreira v3 não tem
+   link de desafio: com drafts diferentes, a mesma semente já não dá os
+   mesmos adversários. */
+const DESVIO_ESTREIA_V3=.05;
+function posicaoParelha(fila){
+  let lo=0,hi=fila.length-1;
+  if(hi<0)return 0;
+  if(chanceContra(fila[hi])>=.5)return hi;
+  if(chanceContra(fila[lo])<.5)return lo;
+  while(hi-lo>1){const m=(lo+hi)>>1;if(chanceContra(fila[m])>=.5)lo=m;else hi=m;}
+  return lo;
+}
 function faixasV2(){
   const lista=RANKING&&RANKING.lista||[];
   const nomesTop=new Set(lista.map(f=>f&&f.name));
@@ -4607,10 +4634,12 @@ function faixasV2(){
   const pos=posicaoDivisao(st.standing);
   let c,faixas;
   if(!pos||pos.n>15){
-    /* v3: a estreia sai mais alto na fila dos sem ranking (o lutador
-       draftado nascia acima da metade da divisão e vencia 4 de 5 no começo) */
-    const b0=REGRAS>=3?BASE_ESCADA_V3:.15;
-    c=Math.round((b0+(1-b0)*clamp(st.standing/LIMIAR_TOP15,0,1))*Math.max(0,U-1));
+    if(REGRAS>=3){
+      /* v3: parte do nível do jogador (ver posicaoParelha) */
+      const x=clamp((st.standing-.18)/(LIMIAR_TOP15-.18),0,1);
+      const inicio=clamp(posicaoParelha(semRank)-Math.round(DESVIO_ESTREIA_V3*U),0,Math.max(0,U-1));
+      c=Math.round(inicio+x*(Math.max(0,U-1)-inicio));
+    }else c=Math.round((.15+.85*clamp(st.standing/LIMIAR_TOP15,0,1))*Math.max(0,U-1));
     faixas=[[-.07*U,-.01*U,.045],[0,.08*U,.075],[.10*U,.24*U,.125]];
   }else{
     c=U+(15-pos.n);
@@ -4622,8 +4651,11 @@ function faixasV2(){
   }
   const out=[];
   const livre=f=>f&&!fought.has(f.name)&&!out.some(o=>o.f.name===f.name);
-  /* sem ranking não pega o top 12: perto do limiar, o máximo é o #13 */
-  const teto=(!pos||pos.n>15)?Math.min(N-1,U+2):N-1;
+  /* sem ranking não pega o top 12: perto do limiar, o máximo é o #13. Na
+     v3 o ponto de partida acompanha o jogador, então um draft forte começaria
+     perto do topo dos sem ranking: ranqueado só no fim da subida */
+  const semRankTeto=REGRAS>=3&&clamp((st.standing-.18)/(LIMIAR_TOP15-.18),0,1)<.8?Math.max(0,U-1):Math.min(N-1,U+2);
+  const teto=(!pos||pos.n>15)?semRankTeto:N-1;
   for(const [lo,hi,ganho] of faixas){
     const a=Math.max(0,Math.min(teto,c+Math.round(lo)));
     const b=Math.max(a,Math.min(teto,c+Math.round(hi)));
@@ -4671,7 +4703,7 @@ function chanceContra(opp){
   if(chave in cacheChance.v)return cacheChance.v[chave];
   const eu=lutadorEfetivo();
   let w=0;
-  for(let s=1;s<=24;s++)if(simulateFight(eu,opp,{seed:s*31+7}).winner===eu.name)w++;
+  for(let s=1;s<=24;s++)if(simulateFight(eu,opp,{seed:s*31+7,koMult:fatorKoCarreira()}).winner===eu.name)w++;
   return cacheChance.v[chave]=w/24;
 }
 function dificuldade(opp){
@@ -8934,8 +8966,10 @@ registrarRota("404",screen404);
 const ATUALIZACOES=[
   {data:"2026-10-05",titulo:"Lutas mais duras",itens:[
     "Carreira nova: ninguém estreia no topo. Na montagem, atributo acima do teto de estreante entra no teto, e a carta mostra isso.",
-    "Os primeiros adversários ficaram mais fortes. Antes, quem jogava bem vencia quatro de cada cinco lutas no começo da carreira.",
-    "O card e a conquista de nocaute rápido valem para nocaute no primeiro round em até 2 minutos. Antes, só abaixo de 1 minuto.",
+    "Sem ranking, os adversários partem do seu nível. Antes, quem jogava bem vencia quatro de cada cinco lutas no começo da carreira.",
+    "Nocaute ficou tão comum quanto no UFC, perto de uma luta em três. Mais lutas vão pros juízes.",
+    "Por isso a carreira nova não tem mais o link de desafio: com adversários do nível de cada um, a mesma semente não dá os mesmos adversários. Link antigo continua abrindo.",
+    "O card e a conquista de nocaute rápido valem para qualquer nocaute no primeiro round. Antes, só abaixo de 1 minuto.",
     "Na tela de vitória ou derrota, o botão Rever narração mostra a narração da luta inteira de novo.",
     "A narração da luta corre a 50 letras por segundo, e o botão de velocidade continua acelerando."]},
   {data:"2026-10-04",titulo:"Modo Online",itens:[
@@ -11271,6 +11305,7 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   const rngL=mulberry32(semL);
   const form=()=>1+(rngL()+rngL()+rngL()-1.5)/1.5*TUNING.formSpread;
   const A=mkState(comCamp,form()),B=mkState(opp,form());
+  A.koMult=B.koMult=fatorKoCarreira();
   /* Plano Pro — pressão da coletiva: modificador TEMPORÁRIO só desta luta
      num atributo do ADVERSÁRIO, mesmo mecanismo já usado por "escolha na
      luta" (mAttr, ver A.mAttr[attr]=mod mais abaixo), só que em B em vez
@@ -11693,11 +11728,12 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
           eraUnificacao?FRASE_UNIFICACAO(me.name,opp.name):FRASE_PRIMEIRO_CINTURAO(me.name),opp,r));
       }
     }
-    /* rápido é clock ALTO nesta luta — ver clockSeconds(). Até 2 minutos
-       desde 2026-10-05 (era abaixo de 1 minuto): o motor anda de 15 em 15 s
-       e acumula dano, só 6% dos nocautes do 1º round saíam antes de 1
-       minuto; o dono deu 6 nocautes no 1º round sem ver o card. Até 2
-       minutos são 27%. Não mexe em sorteio nenhum (vale pra toda versão). */
+    /* rápido é clock ALTO nesta luta — ver clockSeconds(). Desde
+       2026-10-05 vale o 1º round inteiro (era abaixo de 1 minuto): o motor
+       anda de 15 em 15 s e acumula dano, só 6% dos nocautes do 1º round
+       saíam antes de 1 minuto, e o dono deu 6 nocautes no 1º round sem ver
+       o card. Com o nocaute da carreira v3 em 33%, nocaute no 1º round já
+       é raro (perto de 5% das lutas). Não mexe em sorteio (toda versão). */
     if(isKO&&r.round===1&&(300-clockSeconds(r.clock))<=KO_RAPIDO_SEG){
       const seg=300-clockSeconds(r.clock);
       const mko=criarMomento("ko",FRASE_KO_RAPIDO(me.name,seg),opp,r);
@@ -12139,7 +12175,11 @@ function screenReport(){
   const again=el("button","botao botao-sec","Nova carreira");
   again.onclick=()=>{docmeta.textContent="Comissão Atlética · Registro";
     history.replaceState(null,"",location.pathname);SEED=0;irPara("nova");};   // revamp fase 3: passa pelo portão e pela escolha de espaço
-  acoes.append(btnSalvar,btnCopiar,link,again);
+  /* v3 (2026-10-05): sem "Copiar desafio". O adversário acompanha o nível
+     de cada um, então a mesma semente não dá mais os mesmos adversários a
+     quem draftou diferente (o dono preferiu tirar a opção). Link antigo,
+     de carreira v1 ou v2, continua abrindo nas regras dele. */
+  acoes.append(...(REGRAS>=3?[btnSalvar,btnCopiar,again]:[btnSalvar,btnCopiar,link,again]));
   c.appendChild(acoes);
 
   /* revamp fase 3: carreira encerrada vai pro placar e libera o espaço
