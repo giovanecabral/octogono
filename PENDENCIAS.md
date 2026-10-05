@@ -2391,13 +2391,14 @@ seguem na v1 (`st.regras`, `r=`), pela regra da semente.
 
 ## 44. Passos finais do lançamento (2026-10-04)
 
-Pedido do dono: Pro a R$ 11,99, logo com rosto, suporte no Discord, JxJ
+Pedido do dono: Pro a R$ 11,99, logo do Octógono, suporte no Discord, JxJ
 vira "Online" com descrição, e o jogador escolhe a diferença de rating dos
 adversários na fila. Tudo FEITO no código (LEIA-ME "Passos finais do
 lançamento").
 
 Falta, e é do dono:
-1. Aprovar o logo.
+1. Aprovar a logo (`img/logo`). Ela ainda não está no site: o dono pediu o
+   layout como estava; favicon, menu e card do link só quando ele pedir.
 2. Rodar `supabase_jxj_raio.sql` no SQL Editor, depois do backup. É só
    aditiva: coluna `raio` na fila, `jxj_fila_entrar_raio` nova e
    `jxj_fila_parear` com a mesma assinatura. Sem ela, a fila funciona

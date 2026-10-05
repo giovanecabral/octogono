@@ -26,21 +26,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=Oswald:wght@500;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="legado.css">
 <link rel="stylesheet" href="estilo.css">
-<!-- logo (2026-10-04): o rosto do octógono. Favicon em SVG com PNG de reserva,
-     ícone do iPhone e o card que aparece quando alguém manda o link. -->
-<link rel="icon" type="image/svg+xml" href="/img/logo/icone.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/img/logo/icone-32.png">
-<link rel="apple-touch-icon" href="/img/logo/apple-touch-icon.png">
-<meta name="theme-color" content="#0B0C10">
-<meta name="description" content="Monte seu lutador com os atributos de lutadores reais e jogue uma carreira de MMA, ou enfrente outros jogadores no modo Online.">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://octogono.fun/">
-<meta property="og:title" content="Octógono">
-<meta property="og:description" content="Carreira de MMA e modo Online. Monte seu lutador com os atributos de lutadores reais e suba até o cinturão.">
-<meta property="og:image" content="https://octogono.fun/img/logo/compartilhar.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
 <div class="wrap">
@@ -8900,8 +8885,7 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
-  {data:"2026-10-04",titulo:"O Octógono ganhou rosto",itens:[
-    "Logo novo: o próprio octógono virou o rosto do jogo. Aparece no menu, no ícone da aba e no card quando alguém manda o link.",
+  {data:"2026-10-04",titulo:"Modo Online",itens:[
     "O modo competitivo agora se chama Online.",
     "No Online, antes de buscar adversário, você escolhe até quanto de diferença de rating aceita: 100, 200 ou 400 pontos, ou qualquer diferença. O par só sai se couber na escolha dos dois.",
     "O Pro passa a custar R$ 11,99 por 30 dias, sem cobrança automática.",
@@ -9051,9 +9035,8 @@ function screenMenu(){
   const c=montarTela({fundo:"arena",vivo:true,voltar:null,classe:"tela-menu"});
 
   const topo=el("div","menu-topo");
-  /* logo (2026-10-04): o rosto do octógono ao lado do nome */
   topo.appendChild(el("div","marca",
-    `<img class="marca-rosto" src="img/logo/rosto.svg" alt="" width="104" height="104"><span class="marca-texto"><span class="marca-nome">Octógono</span><span class="marca-sub">Carreira de MMA e modo Online</span></span>`));
+    `<span class="marca-nome">Octógono</span><span class="marca-sub">Carreira de MMA</span>`));
   const chip=el("button","chip-conta",`${ICONE("usuario")}<span class="chip-rot">Entrar</span>`);
   chip.type="button"; chip.onclick=()=>{ SOM.toque(); irPara("conta"); };
   topo.appendChild(chip);

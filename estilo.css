@@ -149,9 +149,7 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
 
 /* ---------- menu ---------- */
 .menu-topo{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 64px 34px 0}
-.marca{display:flex;align-items:center;gap:20px;line-height:1}
-.marca-rosto{width:clamp(72px,9vw,112px);height:auto;flex:none;filter:drop-shadow(0 10px 24px rgba(0,0,0,.55))}
-.marca-texto{display:flex;flex-direction:column}
+.marca{display:flex;flex-direction:column;line-height:1}
 .marca-nome{font-family:var(--f-titulo);font-size:clamp(46px,7vw,92px);text-transform:uppercase;letter-spacing:.01em}
 .marca-sub{font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.34em;text-transform:uppercase;color:var(--sangue);margin-top:8px}
 .chip-conta{display:inline-flex;align-items:center;gap:10px;max-width:280px;height:44px;padding:0 16px;cursor:pointer;
@@ -186,9 +184,6 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
   .menu-card-medio{grid-column:span 6;min-height:0}
   .menu-card-medio .cartao-foto{opacity:.45}
   .menu-contato{margin-left:0}
-  /* subtítulo maior desde o logo (carreira e Online): no celular, menos espaço entre letras */
-  .marca{gap:14px}
-  .marca-sub{font-size:12px;letter-spacing:.18em;margin-top:6px}
 }
 
 /* ---------- atualizações ---------- */

@@ -1,80 +1,115 @@
-"""Logo do Octógono: o rosto do octógono (2026-10-04, pedido do dono: "o
-octógono precisa ter um rosto e esse rosto vai ser a logo").
+"""Logo do Octógono (2026-10-04, pedido do dono: "quero uma logo profissional
+do octógono"; "rosto" era a identidade do site, não um rosto desenhado).
 
-O aro vermelho é o acolchoado da grade, com os 8 postes de metal nos cantos;
-dentro, a grade ao fundo e o rosto de um lutador concentrado: sobrancelhas
-descendo pro centro, a direita cortada por uma cicatriz costurada, olhos
-estreitos, nariz de boxeador torto e o protetor bucal vermelho num meio
-sorriso. Cores da marca (estilo.css): noite, sangue, osso e ouro.
+A direção saiu de conceitos gerados no OpenRouter (gpt-5.4-image-2 e
+gemini-3-pro-image chegaram, cada um, ao anel octogonal cortado por um
+golpe vermelho, e o gemini às letras octogonais). Aqui ela é redesenhada em
+vetor, letra por letra, sem depender de fonte:
+- símbolo: o anel do octógono (a jaula vista de cima) cortado por um golpe
+  vermelho que afina numa ponta; as duas metades do anel deslizam ao longo
+  do corte (lê como golpe e não como o sinal de proibido) e o anel some em
+  volta do golpe (máscara, fundo transparente de verdade);
+- logotipo: OCTÓGONO em letras condensadas de cantos chanfrados (os O são
+  octógonos), com o acento do Ó numa barra vermelha inclinada como o golpe;
+- ícone: o símbolo sobre um quadrado escuro (favicon e ícone do iPhone: tem
+  que aparecer em aba clara e escura).
 
-Gera img/logo/rosto.svg (completo: cabeçalho e compartilhamento) e
-img/logo/icone.svg (sem grade nem cicatriz e com traço mais grosso: favicon).
-Os PNG (favicon, ícone do iPhone, card de compartilhamento) saem de
-img/logo/rasterizar.mjs. Rodar: python3 img/logo/gerar.py
+Gera img/logo/simbolo.svg, palavra.svg, logo.svg (símbolo ao lado do
+logotipo), logo-fundo-claro.svg (a mesma em cor da noite) e icone.svg. Os PNG saem de img/logo/rasterizar.mjs.
+Rodar: python3 img/logo/gerar.py
 """
 import math, os
 AQUI = os.path.dirname(os.path.abspath(__file__))
-C=256
-def octo(R, cx=C, cy=C):
-    return " ".join(f"{cx+R*math.cos(math.radians(22.5+45*k)):.1f},{cy+R*math.sin(math.radians(22.5+45*k)):.1f}" for k in range(8))
-def vertices(R):
-    return [(C+R*math.cos(math.radians(22.5+45*k)), C+R*math.sin(math.radians(22.5+45*k))) for k in range(8)]
-INK="#0B0C10"; FACE="#15171F"; RED="#D7261E"; RED_D="#8F1712"; RED_L="#F05A4F"; BONE="#F2EEE6"; GOLD="#D4A017"; MESH="#252936"; METAL="#2B2F3A"
+OSSO, SANGUE, NOITE = "#F2EEE6", "#D7261E", "#0B0C10"
 
-def rosto(icone=False, pref="o"):
-    p=[]
-    p.append('<defs>')
-    p.append(f'<linearGradient id="{pref}-aro" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{RED_L}"/><stop offset=".45" stop-color="{RED}"/><stop offset="1" stop-color="{RED_D}"/></linearGradient>')
-    p.append(f'<radialGradient id="{pref}-luz" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="#20232D"/><stop offset="1" stop-color="{FACE}"/></radialGradient>')
-    p.append(f'<clipPath id="{pref}-rosto"><polygon points="{octo(196)}"/></clipPath>')
-    p.append(f'<pattern id="{pref}-grade" width="32" height="32" patternUnits="userSpaceOnUse" patternTransform="rotate(45 256 256)"><path d="M0 0H32M0 0V32" stroke="{MESH}" stroke-width="3" fill="none"/></pattern>')
-    p.append(f'<clipPath id="{pref}-dentes"><path d="M172 364 Q258 390 350 346 L352 368 Q260 404 170 386 Z"/></clipPath>')
-    p.append('</defs>')
-    # sombra no chão e aro acolchoado (luz em cima, sombra embaixo)
-    p.append(f'<polygon points="{octo(242, C, C+10)}" fill="{INK}" opacity=".5"/>')
-    p.append(f'<polygon points="{octo(240)}" fill="url(#{pref}-aro)"/>')
-    p.append(f'<polygon points="{octo(240)}" fill="none" stroke="{RED_D}" stroke-width="5"/>')
-    p.append(f'<polygon points="{octo(212)}" fill="none" stroke="{RED_D}" stroke-width="4" opacity=".8"/>')
-    # rosto com a grade ao fundo
-    p.append(f'<polygon points="{octo(198)}" fill="url(#{pref}-luz)"/>')
-    if not icone:
-        p.append(f'<rect x="0" y="0" width="512" height="512" fill="url(#{pref}-grade)" clip-path="url(#{pref}-rosto)"/>')
-    p.append(f'<polygon points="{octo(198)}" fill="none" stroke="{INK}" stroke-width="6"/>')
-    # postes de metal nos 8 cantos
-    for (x,y) in vertices(220):
-        p.append(f'<rect x="{x-15:.1f}" y="{y-15:.1f}" width="30" height="30" rx="6" fill="{METAL}" stroke="{INK}" stroke-width="4"/>')
-        p.append(f'<rect x="{x-9:.1f}" y="{y-11:.1f}" width="18" height="6" rx="3" fill="#4A5060"/>')
-    # sobrancelhas: afinadas, mais grossas no meio do rosto (cara de concentrado)
-    p.append(f'<path d="M104 204 Q172 206 242 236 L234 266 Q170 240 108 232 Z" fill="{BONE}"/>')
-    p.append(f'<path d="M408 204 Q340 206 270 236 L278 266 Q342 240 404 232 Z" fill="{BONE}"/>')
-    if not icone:
-        # cicatriz: corta a sobrancelha direita e leva pontos dourados
-        p.append(f'<path d="M322 188 L336 274" stroke="#1B1E27" stroke-width="15" stroke-linecap="round"/>')
-        p.append(f'<path d="M322 188 L336 274" stroke="{GOLD}" stroke-width="6" stroke-linecap="round"/>')
-        for t in (0.22, 0.42, 0.62, 0.82):
-            x=322+14*t; y=188+86*t
-            p.append(f'<path d="M{x-12:.1f} {y-2:.1f} L{x+12:.1f} {y+2:.1f}" stroke="{GOLD}" stroke-width="5" stroke-linecap="round"/>')
-    # olhos: fenda de osso, pupila escura com brilho
-    p.append(f'<path d="M136 272 Q184 254 232 276 Q184 292 136 272 Z" fill="{BONE}"/>')
-    p.append(f'<path d="M376 272 Q328 254 280 276 Q328 292 376 272 Z" fill="{BONE}"/>')
-    p.append(f'<circle cx="206" cy="275" r="{14 if icone else 12}" fill="{INK}"/>')
-    p.append(f'<circle cx="306" cy="275" r="{14 if icone else 12}" fill="{INK}"/>')
-    if not icone:
-        p.append(f'<circle cx="210" cy="271" r="3.5" fill="{BONE}"/>')
-        p.append(f'<circle cx="310" cy="271" r="3.5" fill="{BONE}"/>')
-    # nariz de boxeador, levemente torto
-    p.append(f'<path d="M252 284 Q246 304 262 320 Q252 326 240 320" fill="none" stroke="#3A3F4D" stroke-width="{9 if icone else 7}" stroke-linecap="round" stroke-linejoin="round"/>')
-    # protetor bucal: meio sorriso torto (canto direito mais alto), dentes cerrados
-    boca="M160 356 Q256 384 360 336 L364 374 Q258 416 156 394 Z"
-    p.append(f'<path d="{boca}" fill="{RED}" stroke="{RED_D}" stroke-width="7" stroke-linejoin="round"/>')
-    p.append(f'<g clip-path="url(#{pref}-dentes)"><rect x="140" y="320" width="240" height="100" fill="{BONE}"/>')
-    for x in (200, 228, 256, 284, 312):
-        p.append(f'<path d="M{x} 320 L{x+4} 420" stroke="{RED_D}" stroke-width="{6 if icone else 5}"/>')
-    p.append('</g>')
-    return "".join(p)
+def pts(lista):
+    return " ".join(f"{x:.1f},{y:.1f}" for x, y in lista)
 
-def svg(conteudo, w=512, h=512, vb="0 0 512 512"):
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="{w}" height="{h}" role="img" aria-label="Octógono">{conteudo}</svg>'
-open(os.path.join(AQUI,'rosto.svg'),'w').write(svg(rosto(False,"o")))
-open(os.path.join(AQUI,'icone.svg'),'w').write(svg(rosto(True,"i")))
-print("ok")
+# ---------- símbolo (caixa 512) ----------
+def octogono(cx, cy, r):
+    return [(cx + r * math.cos(math.radians(22.5 + 45 * k)), cy + r * math.sin(math.radians(22.5 + 45 * k))) for k in range(8)]
+def lamina(p0, p1, larg):
+    """golpe de p0 (ponta curta) a p1 (ponta longa e afiada), mais largo a um terço"""
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]; L = math.hypot(dx, dy); nx, ny = -dy / L, dx / L
+    m = (p0[0] + dx * .32, p0[1] + dy * .32)
+    return [p0, (m[0] + nx * larg / 2, m[1] + ny * larg / 2), p1, (m[0] - nx * larg / 2, m[1] - ny * larg / 2)]
+def expande(poly, d):
+    """polígono convexo aumentado em d a partir do centróide (a folga do corte)"""
+    cx = sum(x for x, _ in poly) / len(poly); cy = sum(y for _, y in poly) / len(poly)
+    out = []
+    for x, y in poly:
+        vx, vy = x - cx, y - cy; L = math.hypot(vx, vy) or 1
+        out.append((x + vx / L * d, y + vy / L * d))
+    return out
+GOLPE = lamina((96, 470), (436, 30), 58)
+DESLIZE = 16            # quanto cada metade do anel desliza ao longo do corte
+def simbolo(pref, cor_anel=OSSO):
+    """anel do octógono cortado pelo golpe: as duas metades deslizam em
+    sentidos opostos ao longo da linha do corte (lê como golpe, não como Ø)"""
+    (x0, y0), (x1, y1) = GOLPE[0], GOLPE[2]
+    L = math.hypot(x1 - x0, y1 - y0); ux, uy = (x1 - x0) / L, (y1 - y0) / L; nx, ny = -uy, ux
+    def lado(s):
+        a, b = (x0 - ux * 900, y0 - uy * 900), (x0 + ux * 900, y0 + uy * 900)
+        return [a, b, (b[0] + s * nx * 900, b[1] + s * ny * 900), (a[0] + s * nx * 900, a[1] + s * ny * 900)]
+    ext, inte = octogono(256, 256, 214), octogono(256, 256, 128)
+    anel = f"M{pts(ext)}Z M{pts(inte)}Z"
+    out = (f'<defs><mask id="{pref}-corte" maskUnits="userSpaceOnUse" x="-64" y="-64" width="640" height="640">'
+           f'<rect x="-64" y="-64" width="640" height="640" fill="#fff"/><polygon points="{pts(expande(GOLPE, 26))}" fill="#000"/></mask>'
+           f'<clipPath id="{pref}-a"><polygon points="{pts(lado(1))}"/></clipPath>'
+           f'<clipPath id="{pref}-b"><polygon points="{pts(lado(-1))}"/></clipPath></defs><g mask="url(#{pref}-corte)">')
+    for nome, s in (("a", 1), ("b", -1)):
+        out += (f'<g transform="translate({s * ux * DESLIZE:.1f} {s * uy * DESLIZE:.1f})">'
+                f'<path clip-path="url(#{pref}-{nome})" fill-rule="evenodd" fill="{cor_anel}" d="{anel}"/></g>')
+    return out + f'</g><polygon points="{pts(GOLPE)}" fill="{SANGUE}"/>'
+
+# ---------- logotipo (caixa alta com 100 de altura) ----------
+H, S = 100, 22          # altura e espessura do traço
+LARG = {"O": 62, "Ó": 62, "C": 60, "T": 56, "G": 62, "N": 60}
+def caixa_oct(x, y, w, h, c):
+    return [(x + c, y), (x + w - c, y), (x + w, y + c), (x + w, y + h - c), (x + w - c, y + h), (x + c, y + h), (x, y + h - c), (x, y + c)]
+def letra_O(x, w=62, c=18, k=6):
+    return f'<path fill-rule="evenodd" d="M{pts(caixa_oct(x, 0, w, H, c))}Z M{pts(caixa_oct(x + S, S, w - 2 * S, H - 2 * S, k))}Z"/>'
+def letra_C(x, w=60, c=18, k=6, abre=(34, 66)):
+    a, b = abre
+    xd, xi = x + w, x + w - S
+    contorno = [(xd, a), (xd, c), (xd - c, 0), (x + c, 0), (x, c), (x, H - c), (x + c, H), (xd - c, H), (xd, H - c), (xd, b),
+                (xi, b), (xi, H - S - k), (xi - k, H - S), (x + S + k, H - S), (x + S, H - S - k), (x + S, S + k), (x + S + k, S), (xi - k, S), (xi, S + k), (xi, a)]
+    return f'<polygon points="{pts(contorno)}"/>'
+def letra_G(x, w=62):
+    """um C com a abertura menor e a espora entrando no meio, do lado direito"""
+    return letra_C(x, w, abre=(34, 48)) + f'<rect x="{x + w - S - 12}" y="48" width="{S + 12}" height="16"/>'
+def letra_T(x, w=56):
+    return f'<rect x="{x}" y="0" width="{w}" height="{S}"/><rect x="{x + (w - S) / 2}" y="0" width="{S}" height="{H}"/>'
+def letra_N(x, w=60):
+    return (f'<rect x="{x}" y="0" width="{S}" height="{H}"/><rect x="{x + w - S}" y="0" width="{S}" height="{H}"/>'
+            f'<polygon points="{pts([(x, 0), (x + S + 2, 0), (x + w, H), (x + w - S - 2, H)])}"/>')
+def acento(x):
+    """barra vermelha inclinada como o golpe do símbolo, acima do Ó"""
+    return f'<polygon fill="{SANGUE}" points="{pts([(x + 22, -8), (x + 36, -8), (x + 50, -30), (x + 36, -30)])}"/>'
+def palavra(cor=OSSO):
+    partes, x, vao = [], 0, 9
+    for ch in "OCTÓGONO":
+        partes.append({"O": letra_O, "Ó": letra_O, "C": letra_C, "T": letra_T, "G": letra_G, "N": letra_N}[ch](x))
+        if ch == "Ó": partes.append(acento(x))
+        x += LARG[ch] + vao
+    return f'<g fill="{cor}">{"".join(partes)}</g>', x - vao
+
+def svg(corpo, vb, w, h):
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="{w:g}" height="{h:g}" role="img" aria-label="Octógono">{corpo}</svg>'
+
+if __name__ == "__main__":
+    corpo, larg = palavra()
+    escreve = lambda nome, txt: open(os.path.join(AQUI, nome), "w").write(txt)
+    escreve("simbolo.svg", svg(simbolo("s"), "0 0 512 512", 512, 512))
+    escreve("palavra.svg", svg(corpo, f"-4 -36 {larg + 8} 140", larg + 8, 140))
+    # símbolo com 150 de altura ao lado da palavra (caixa alta 100), centrados na vertical
+    lock = f'<g transform="scale({150 / 512:.5f})">{simbolo("l")}</g><g transform="translate(176 25)">{corpo}</g>'
+    escreve("logo.svg", svg(lock, f"0 -12 {176 + larg + 4} 174", 176 + larg + 4, 174))
+    # a mesma logo pra fundo claro: anel e letras na cor da noite, o vermelho fica
+    corpo_e, _ = palavra(NOITE)
+    lock_e = f'<g transform="scale({150 / 512:.5f})">{simbolo("e", NOITE)}</g><g transform="translate(176 25)">{corpo_e}</g>'
+    escreve("logo-fundo-claro.svg", svg(lock_e, f"0 -12 {176 + larg + 4} 174", 176 + larg + 4, 174))
+    # ícone: símbolo sobre quadrado escuro de cantos levemente arredondados
+    escreve("icone.svg", svg(f'<rect width="512" height="512" rx="96" fill="{NOITE}"/>'
+                             f'<g transform="translate(51 51) scale(.8)">{simbolo("i")}</g>', "0 0 512 512", 512, 512))
+    print("ok", larg)

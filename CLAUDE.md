@@ -26,7 +26,7 @@ api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usa
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
 supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
 supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas.
-img/logo/           Logo (o rosto do octógono): gerar.py faz os SVG, rasterizar.mjs os PNG.
+img/logo/           Logo (símbolo, palavra, ícone): gerar.py faz os SVG, rasterizar.mjs os PNG. Fora do site até o dono aprovar.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
@@ -305,11 +305,13 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **Preço do Pro: R$ 11,99 (2026-10-04).** `PRECO_PRO_MINIMO` continua
   9,9 de propósito: Pix de R$ 9,99 gerado antes da mudança e pago depois
   tem que ativar. Mexeu em preço: `node testar.js pagamento`.
-- **Logo (2026-10-04).** O rosto do octógono: `img/logo/gerar.py` (SVG) e
-  `img/logo/rasterizar.mjs` (PNG). Mudou o desenho, rode os dois. A suíte
-  `rotas` confere que o que o `<head>` cita existe e não cai no
-  `.vercelignore`. Suporte é o Discord (`URL_DISCORD`); o e-mail fica nos
-  Termos e na Privacidade (LGPD).
+- **Logo (2026-10-04).** Anel do octógono cortado por um golpe vermelho
+  e OCTÓGONO em letras desenhadas: `img/logo/gerar.py` (SVG) e
+  `img/logo/rasterizar.mjs` (PNG). Mudou o desenho, rode os dois. Ainda
+  fora do site: o dono pediu o layout como estava e aprova a logo antes;
+  colocar no favicon, no menu ou no card do link só quando ele pedir.
+  Suporte é o Discord (`URL_DISCORD`); o e-mail fica nos Termos e na
+  Privacidade (LGPD).
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`
   (permanente, com teto) × `st.eventoMod` (eventos). Evento escrevendo direto no
   atributo apagaria a base.

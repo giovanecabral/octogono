@@ -7391,27 +7391,15 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
   });
 
-  await conf("logo (2026-10-04): favicon, ícone do iPhone e card de compartilhamento existem e vão pro ar; o rosto no menu e no 404", () => {
-    const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8"), erro404 = fs.readFileSync(path.join(RAIZ, "404.html"), "utf8");
-    const cabeca = html.slice(0, html.indexOf("</head>"));
-    const refs = [...cabeca.matchAll(/<link rel="(?:icon|apple-touch-icon)"[^>]*href="\/([^"]+)"/g)].map(m => m[1]);
-    if (refs.length !== 3) throw new Error("ícones no head: " + refs);
-    const og = /<meta property="og:image" content="https:\/\/octogono\.fun\/([^"]+)"/.exec(cabeca);
-    if (!og) throw new Error("sem og:image");
-    const ignorar = fs.readFileSync(path.join(RAIZ, ".vercelignore"), "utf8").split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
-    for (const arq of [...refs, og[1], "img/logo/rosto.svg"]) {
-      if (!fs.existsSync(path.join(RAIZ, arq))) throw new Error("arquivo do logo não existe: " + arq);
-      if (ignorar.some(l => arq === l || arq.startsWith(l.replace(/\/$/, "") + "/") || (l.includes("*") && new RegExp("^" + l.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "$").test(arq))))
-        throw new Error("o .vercelignore tira do ar: " + arq);
-    }
-    for (const svg of ["rosto.svg", "icone.svg"]) {
+  await conf("logo (2026-10-04): os SVG de img/logo não dependem de nada de fora e têm rótulo; os PNG existem", () => {
+    /* a logo ainda não entrou no site (o dono aprova antes); quando entrar,
+       vai por <img>, que não carrega nada externo: tudo precisa estar no arquivo */
+    for (const svg of ["simbolo.svg", "palavra.svg", "logo.svg", "logo-fundo-claro.svg", "icone.svg"]) {
       const t = fs.readFileSync(path.join(RAIZ, "img", "logo", svg), "utf8");
-      if (/href="http|xlink:href|<image|@import/.test(t) || !/aria-label="Octógono"/.test(t)) throw new Error(svg + " depende de algo de fora ou não tem rótulo");
+      if (/href="http|xlink:href|<image|@import|<text/.test(t) || !/aria-label="Octógono"/.test(t)) throw new Error(svg + " depende de algo de fora ou não tem rótulo");
     }
-    if (!/rel="icon"/.test(erro404) || !/img\/logo\/rosto\.svg/.test(erro404)) throw new Error("404 sem o logo");
-    UI.irPara("menu"); env.drenar();
-    const marca = env.todos.filter(n => tem(n, "marca")).pop();
-    if (!marca || !/class="marca-rosto" src="img\/logo\/rosto\.svg"/.test(marca.innerHTML)) throw new Error("menu sem o rosto: " + (marca && marca.innerHTML.slice(0, 160)));
+    for (const png of ["icone-32.png", "apple-touch-icon.png", "compartilhar.png"])
+      if (!fs.existsSync(path.join(RAIZ, "img", "logo", png))) throw new Error("falta " + png);
   });
   await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade e suporte no Discord (sem Créditos)", () => {
     UI.irPara("menu"); env.drenar();

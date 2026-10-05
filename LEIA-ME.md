@@ -4267,47 +4267,44 @@ reprova com o mesmo erro se a correção sair.
 
 Pedido do dono: cinco itens antes do lançamento.
 
-### Logo: o rosto do octógono
+### Logo
 
-"O octógono precisa ter um rosto e esse rosto vai ser a logo."
+Pedido do dono: "quero uma logo profissional do octógono". "Rosto" era a
+identidade do site, não um rosto desenhado: a primeira versão (um lutador
+dentro do octógono) foi recusada.
 
-**O desenho.** O próprio octógono é a cabeça:
-- o aro vermelho é o acolchoado da grade, com luz em cima e sombra
-  embaixo;
-- os 8 postes de metal ficam nos cantos;
-- dentro, a grade da jaula aparece como textura;
-- o rosto é de um lutador concentrado:
-  - sobrancelhas descendo pro centro, a direita cortada por uma cicatriz
-    com pontos dourados;
-  - olhos estreitos;
-  - nariz de boxeador torto;
-  - protetor bucal vermelho num meio sorriso (o canto direito mais alto).
+**De onde veio.** Conceitos gerados no OpenRouter (gpt-5.4-image-2 e
+gemini-3-pro-image). Os dois modelos chegaram, cada um, ao anel octogonal
+cortado por um golpe vermelho, e o gemini às letras de cantos chanfrados.
+A logo é o redesenho disso em vetor, letra por letra, sem fonte e sem
+imagem dentro do arquivo.
 
-As cores são as da marca: noite, sangue, osso e ouro.
+**As peças** (todas saem de `img/logo/gerar.py`):
+- `simbolo.svg`: o anel do octógono (a jaula vista de cima) cortado por um
+  golpe vermelho que afina numa ponta. As duas metades do anel deslizam ao
+  longo do corte, pra ler como golpe, e não como o sinal de proibido ou um
+  "Ø" (a versão sem o deslize lia assim);
+- `palavra.svg`: OCTÓGONO em letras condensadas desenhadas uma a uma, os O
+  em octógono e o acento do Ó numa barra vermelha inclinada como o golpe;
+- `logo.svg`: o símbolo ao lado da palavra, e `logo-fundo-claro.svg`, a
+  mesma em cor da noite pra fundo claro (o vermelho fica);
+- `icone.svg`: o símbolo sobre um quadrado escuro, pra aparecer em aba clara
+  e escura.
 
-**As peças:**
-- `img/logo/gerar.py` gera `rosto.svg` (completo) e `icone.svg` (sem grade
-  nem cicatriz, com traço mais grosso, legível a 32 px);
-- `img/logo/rasterizar.mjs` (precisa de puppeteer-core e do Chrome) gera os
-  PNG:
-  - `icone-32.png`, favicon pra navegador sem SVG;
-  - `apple-touch-icon.png`, 180×180 com fundo da noite;
-  - `compartilhar.png`, o card de 1200×630 que aparece quando alguém
-    manda o link (rosto, nome em Anton, "Carreira de MMA e modo Online" e
-    o endereço).
+Cores: osso `#F2EEE6`, sangue `#D7261E`, noite `#0B0C10`.
 
-**Onde aparece:**
-- o rosto entra ao lado do nome no menu (`.marca-rosto`) e na página 404;
-- o `<head>` ganhou favicon, ícone do iPhone, `theme-color`, descrição e
-  as tags de compartilhamento (`og:*`, `twitter:card`).
+`img/logo/rasterizar.mjs` (puppeteer-core e o Chrome) gera os PNG:
+- `icone-32.png`, favicon pra navegador sem SVG;
+- `apple-touch-icon.png`, 180×180, o símbolo sobre a noite;
+- `compartilhar.png`, o card de 1200×630 do link.
 
-**Teste:** a suíte `rotas` confere três coisas:
-- os arquivos citados no `<head>` existem e nenhum deles cai no
-  `.vercelignore`;
-- os SVG não dependem de nada externo;
-- o rosto aparece no menu e no 404.
+**Onde aparece:** em lugar nenhum do site ainda. O dono pediu o layout como
+estava e a logo só pra ver; favicon, menu e card do link entram depois da
+aprovação, cada um pedido por ele.
 
-Os scripts do logo ficam fora do deploy.
+**Teste:** a suíte `rotas` confere que os SVG não dependem de nada de fora
+(vão entrar por `<img>`, que não carrega nada externo) e que os PNG
+existem. Os scripts do logo ficam fora do deploy.
 
 ### Pro a R$ 11,99
 
