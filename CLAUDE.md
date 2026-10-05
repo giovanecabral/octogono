@@ -303,6 +303,11 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   narração do plano é linha de tipo `plano` no log: leitor novo do log
   filtra pelo tipo, nunca pelo texto. Plano gravado com `v: 2`; entrada
   sem `v` é save antigo e aplica só o mod no eixo.
+- **Ritmo da narração da luta (2026-10-04, pedido do dono).** Cada linha
+  fica o tempo de ser lida (`tempoDeLeitura`: 0,4 s + 50 ms por caractere
+  + pausa nas linhas fortes); nenhuma passa de 20 caracteres por segundo
+  em 1x. Era 0,47 s por linha e ele não conseguia ler. O botão de
+  velocidade divide. Suíte `lutainterativa`.
 - **Preço do Pro: R$ 11,99 (2026-10-04).** `PRECO_PRO_MINIMO` continua
   9,9 de propósito: Pix de R$ 9,99 gerado antes da mudança e pago depois
   tem que ativar. Mexeu em preço: `node testar.js pagamento`.

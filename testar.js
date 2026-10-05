@@ -12609,6 +12609,40 @@ async function testarLutaInterativa() {
     if (X.run("escolhaRng.estado()") !== antes) throw new Error("o automático gastou o escolhaRng");
     if (Object.keys(X.registro).some(k => k.startsWith("el_"))) throw new Error("o automático abriu plano");
   });
+  await conf("narração no ritmo de leitura (2026-10-04): a 1x nenhuma linha passa de 20 caracteres por segundo nem fica menos de 0,9 s; 2x e 4x dividem o tempo", async () => {
+    /* o dono não conseguia ler: era 0,47 s por linha comum, uns 90 por segundo.
+       Linhas de uma luta de verdade, mais as do plano (as mais longas). */
+    const X = sandboxCarreira(); X.sb.__F = F;
+    /* anota o intervalo de cada setTimeout da narração; o primeiro passo roda
+       na hora e os outros saem dos timers, então drena antes de ler */
+    const coletar = vel => {
+      const mm = X.sb.window.matchMedia;
+      X.sb.window.matchMedia = () => ({ matches: false });   // sem reduce-motion: o ritmo de verdade
+      X.run("globalThis.__d=[];");
+      /* só os passos da narração (o nocaute também agenda o fim do piscar) */
+      X.run(`(function(){const st0=setTimeout;globalThis.__st0=st0;
+        setTimeout=function(fn,ms){if(fn&&fn.name==="step")globalThis.__d.push(ms);return st0(fn,ms);};})();`);
+      X.run(`speed=${vel};globalThis.__ln=simulateFight(__F[0],__F[3],{seed:11}).log.concat([
+        {round:1,clock:"",kind:"plano",text:"Plano de "+__F[0].name+": amarrar "+__F[3].name+" no clinch e esfriar a luta."},
+        {round:1,clock:"",kind:"plano",text:"Resultado do plano Amarrar no clinch: não deu certo, "+__F[3].name+" tentou 3 quedas e derrubou 2. "+__F[3].name+" é forte justamente nisso."}]);
+        animarTrecho(globalThis.__ln,function(){globalThis.__acabou=true;});`);
+      X.drenar();
+      const r = JSON.parse(X.run(`setTimeout=globalThis.__st0;JSON.stringify({d:globalThis.__d,c:globalThis.__ln.map(L=>String(L.text).replace(/<[^>]+>/g,"").length),acabou:!!globalThis.__acabou})`));
+      X.run("globalThis.__acabou=false;");
+      X.sb.window.matchMedia = mm;
+      return r;
+    };
+    const v1 = coletar(1), v2 = coletar(2), v4 = coletar(4);
+    if (!v1.acabou) throw new Error("a narração não chegou ao fim");
+    if (v1.d.length !== v1.c.length) throw new Error(`esperava um intervalo por linha: ${v1.d.length} intervalos, ${v1.c.length} linhas`);
+    v1.d.forEach((ms, i) => {
+      if (ms < 900) throw new Error(`linha ${i} ficou ${ms} ms`);
+      if (v1.c[i] / (ms / 1000) > 20) throw new Error(`linha ${i} (${v1.c[i]} caracteres) ficou ${ms} ms: ${(v1.c[i] / (ms / 1000)).toFixed(1)} por segundo`);
+    });
+    v1.d.forEach((ms, i) => {
+      if (Math.abs(v2.d[i] - ms / 2) > 1 || Math.abs(v4.d[i] - ms / 4) > 1) throw new Error(`linha ${i}: 1x ${ms}, 2x ${v2.d[i]}, 4x ${v4.d[i]}`);
+    });
+  });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  luta interativa ok") : vermelho(`  ${falhas.length} falha(s) na luta interativa`)));
   return okTudo;

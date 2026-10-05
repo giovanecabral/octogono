@@ -10505,7 +10505,7 @@ function montarNoite(){
   const esc=el("div","escolha");esc.id="escolha";esc.style.display="none";
   const stage=el("div","stage");stage.id="stage";stage.style.display="none";
   const ctrl=el("div","noite-luta-ctrl");
-  const sp=el("button","botao botao-sec","Velocidade 1x");sp.id="speedb";sp.onclick=cycleSpeed;
+  const sp=el("button","botao botao-sec",`Velocidade ${speed}x`);sp.id="speedb";sp.onclick=cycleSpeed;
   ctrl.append(sp);
   const live=el("div","live");live.id="live";
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
@@ -11348,7 +11348,7 @@ function aposEntrada(opp,titleFight,seguir){
   pular.type="button";pular.onclick=()=>{SOM.toque();fim();};
   e.appendChild(pular);
   mostrarNoite("entrada");
-  entradaTimer=setTimeout(fim,1500);
+  entradaTimer=setTimeout(fim,3500);   // dá tempo de ler a ficha; o Pular continua
 }
 /* Números ao lado da narração: atualizados no FIM de cada round narrado
    (o motor já simulou o round inteiro antes da narração começar; mostrar
@@ -11411,11 +11411,22 @@ function animarTrecho(lines,aoTerminar){
       document.body.classList.add("ko");
       setTimeout(()=>document.body.classList.remove("ko"),440);
     }
-    const base=L.kind==="fin"?950:L.kind==="rd"?700:L.kind==="plano"?900:
-               (L.kind==="kd"||L.kind==="big")?780:470;
-    playTimer=setTimeout(step,reduceMotion()?10:base/speed);
+    playTimer=setTimeout(step,reduceMotion()?10:tempoDeLeitura(L)/speed);
   };
   step();
+}
+/* Ritmo da narração (2026-10-04, pedido do dono: "os textos estão
+   aparecendo muito rápidos e não consigo ler a tempo"). Cada linha fica
+   sozinha na tela o tempo de ser lida: 0,4 s mais 50 ms por caractere,
+   mais uma pausa nas linhas fortes, entre 0,9 s e 10 s na velocidade 1x.
+   Nenhuma linha passa de 20 caracteres por segundo (o teto das legendas);
+   uma linha comum fica em uns 17. Antes era 0,47 s por linha comum, uns 90
+   por segundo. O botão de velocidade divide (4x fica perto do ritmo
+   antigo). A suíte lutainterativa confere. */
+function tempoDeLeitura(L){
+  const n=String(L&&L.text||"").replace(/<[^>]+>/g,"").length;
+  const pausa=L.kind==="fin"?900:(L.kind==="kd"||L.kind==="big")?350:L.kind==="plano"?300:L.kind==="rd"?250:0;
+  return Math.min(10000,Math.max(900,400+50*n+pausa));
 }
 /* Quem levou a pior numa linha forte da narração: o knockdown nomeia quem
    caiu; queda, ground and pound e finalização nomeiam quem atacou. */
