@@ -25,8 +25,8 @@ api/jxj.js          JxJ (jogador contra jogador): rota única, servidor decide t
 api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usam nada da carreira.
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
 supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
-supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas.
-img/logo/           Logo (símbolo, palavra, ícone): gerar.py faz os SVG, rasterizar.mjs os PNG. Fora do site até o dono aprovar.
+supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas. Rodada em 2026-10-04.
+img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
@@ -129,10 +129,11 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
 - **Na tela o modo se chama Online** (2026-10-04); rotas, código e banco
   continuam `jxj`. Texto novo visível diz "Online"/"modo Online"; mensagem
   do banco com "JxJ" é traduzida no `rpc()`.
-- **Diferença de rating na fila** (`supabase_jxj_raio.sql`): o servidor
-  tem que funcionar sem a migração (código `PGRST202` = função não existe,
-  cai na fila de antes). Função nova do banco que o servidor chama segue o
-  mesmo padrão até o dono rodar a migração.
+- **Diferença de rating na fila** (`supabase_jxj_raio.sql`, no banco de
+  produção desde 2026-10-04): o servidor continua funcionando sem a
+  migração (código `PGRST202` = função não existe, cai na fila de antes).
+  Função nova do banco que o servidor chama segue o mesmo padrão até o
+  dono rodar a migração.
 - **Mexeu no motor ou na árvore do JxJ:** `node testar.js jxjmotor` e
   `node testar.js jxjarvore` (faixas nos testes) e, pra ver os números,
   `node ferramentas/jxj-balanco.mjs matriz|niveis|nos|atributos`. Depois do
@@ -305,11 +306,12 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
 - **Preço do Pro: R$ 11,99 (2026-10-04).** `PRECO_PRO_MINIMO` continua
   9,9 de propósito: Pix de R$ 9,99 gerado antes da mudança e pago depois
   tem que ativar. Mexeu em preço: `node testar.js pagamento`.
-- **Logo (2026-10-04).** Anel do octógono cortado por um golpe vermelho
-  e OCTÓGONO em letras desenhadas: `img/logo/gerar.py` (SVG) e
-  `img/logo/rasterizar.mjs` (PNG). Mudou o desenho, rode os dois. Ainda
-  fora do site: o dono pediu o layout como estava e aprova a logo antes;
-  colocar no favicon, no menu ou no card do link só quando ele pedir.
+- **Logo (2026-10-04, aprovada).** Anel do octógono cortado por um golpe
+  vermelho e OCTÓGONO em letras desenhadas: `img/logo/gerar.py` (SVG) e
+  `img/logo/rasterizar.mjs` (PNG). Mudou o desenho, rode os dois. No site
+  ela é só o ícone da aba (`index.html` e `404.html`): o dono pediu "não
+  altere nada no jogo". Menu, card do link e ícone do iPhone ficam prontos
+  e só entram quando ele pedir. `discord.png` é o ícone do servidor.
   Suporte é o Discord (`URL_DISCORD`); o e-mail fica nos Termos e na
   Privacidade (LGPD).
 - **Três camadas de atributo:** `me.__base` (draft, nunca muda) × `st.treino`

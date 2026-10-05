@@ -3995,7 +3995,8 @@ as tabelas: rodar a migração é do dono, depois do backup.
    que já existe e podem rodar de novo sem erro. Conferir com
    `select count(*) from pg_proc where proname like 'jxj\_%'` (51).
    Depois, `supabase_jxj_raio.sql` (2026-10-04, diferença de rating na
-   fila; seção "Passos finais do lançamento"): 52 funções.
+   fila; seção "Passos finais do lançamento"): 52 funções. O dono rodou as
+   três em produção (a do raio em 2026-10-04).
 3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
    Production, e Redeploy do deploy atual (variável nova só vale em
    deploy novo; não precisa mudar código).
@@ -4296,15 +4297,20 @@ Cores: osso `#F2EEE6`, sangue `#D7261E`, noite `#0B0C10`.
 `img/logo/rasterizar.mjs` (puppeteer-core e o Chrome) gera os PNG:
 - `icone-32.png`, favicon pra navegador sem SVG;
 - `apple-touch-icon.png`, 180×180, o símbolo sobre a noite;
-- `compartilhar.png`, o card de 1200×630 do link.
+- `compartilhar.png`, o card de 1200×630 do link;
+- `discord.png`, 512×512, o ícone do servidor do Discord (o Discord recorta
+  em círculo, e o golpe inteiro cabe dentro).
 
-**Onde aparece:** em lugar nenhum do site ainda. O dono pediu o layout como
-estava e a logo só pra ver; favicon, menu e card do link entram depois da
-aprovação, cada um pedido por ele.
+**Onde aparece:** só no ícone da aba do navegador, no `index.html` e no
+`404.html`. O dono aprovou a logo e pediu que nada mais no jogo mudasse:
+menu, card do link e ícone do iPhone ficam prontos em `img/logo` pra quando
+ele pedir. O PNG de 32 px vem antes do SVG e com `sizes`: quem lê SVG fica
+com o SVG, e quem não lê usa o PNG.
 
-**Teste:** a suíte `rotas` confere que os SVG não dependem de nada de fora
-(vão entrar por `<img>`, que não carrega nada externo) e que os PNG
-existem. Os scripts do logo ficam fora do deploy.
+**Teste:** a suíte `rotas` confere que o ícone da aba, nas duas páginas,
+aponta pra arquivo que existe e que o `.vercelignore` não tira do ar, e que
+os SVG não dependem de nada de fora (vão por `<img>` ou `<link>`, que não
+carregam nada externo). Os scripts do logo ficam fora do deploy.
 
 ### Pro a R$ 11,99
 
@@ -4356,9 +4362,11 @@ também aceitar você") e, na busca, o limite escolhido e a faixa da hora.
 - `jxj_fila_parear` refeita com a mesma assinatura. Sem raio, ela se
   comporta igual a antes.
 
-**Rodar no SQL Editor, depois do backup:** o servidor funciona sem a
-migração. O `rpc()` reconhece o código `PGRST202`, de "função não existe",
-e cai na fila de antes, e a tela avisa que o filtro ainda não está ligado.
+**No banco desde 2026-10-04** (o dono rodou no SQL Editor). O servidor
+continua funcionando sem a migração: o `rpc()` reconhece o código
+`PGRST202`, de "função não existe", e cai na fila de antes, e a tela avisa
+que o filtro ainda não está ligado. Se esse aviso aparecer em produção, a
+migração não está lá.
 
 **Testes:**
 - `jxj` (Postgres local):

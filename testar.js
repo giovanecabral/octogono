@@ -7391,15 +7391,24 @@ async function testarRotas() {
     if (UI.rotaAtual() !== "menu") throw new Error("rotaAtual = " + UI.rotaAtual());
   });
 
-  await conf("logo (2026-10-04): os SVG de img/logo não dependem de nada de fora e têm rótulo; os PNG existem", () => {
-    /* a logo ainda não entrou no site (o dono aprova antes); quando entrar,
-       vai por <img>, que não carrega nada externo: tudo precisa estar no arquivo */
+  await conf("logo (2026-10-04): ícone da aba no index e no 404 aponta pra arquivo que existe e vai pro ar; os SVG não dependem de nada de fora", () => {
+    /* o dono pediu a logo só no ícone da aba; o resto do site não muda */
+    const ignorar = fs.readFileSync(path.join(RAIZ, ".vercelignore"), "utf8").split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    const foraDoAr = arq => ignorar.some(l => arq === l || arq.startsWith(l.replace(/\/$/, "") + "/") ||
+      (l.includes("*") && new RegExp("^" + l.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "$").test(arq)));
+    for (const pagina of ["index.html", "404.html"]) {
+      const html = fs.readFileSync(path.join(RAIZ, pagina), "utf8");
+      const refs = [...html.slice(0, html.indexOf("</head>")).matchAll(/<link rel="icon"[^>]*href="\/([^"]+)"/g)].map(m => m[1]);
+      if (refs.length !== 2) throw new Error(pagina + ": ícones da aba = " + refs);
+      for (const arq of refs) {
+        if (!fs.existsSync(path.join(RAIZ, arq))) throw new Error(pagina + ": ícone não existe: " + arq);
+        if (foraDoAr(arq)) throw new Error(pagina + ": o .vercelignore tira do ar: " + arq);
+      }
+    }
     for (const svg of ["simbolo.svg", "palavra.svg", "logo.svg", "logo-fundo-claro.svg", "icone.svg"]) {
       const t = fs.readFileSync(path.join(RAIZ, "img", "logo", svg), "utf8");
       if (/href="http|xlink:href|<image|@import|<text/.test(t) || !/aria-label="Octógono"/.test(t)) throw new Error(svg + " depende de algo de fora ou não tem rótulo");
     }
-    for (const png of ["icone-32.png", "apple-touch-icon.png", "compartilhar.png"])
-      if (!fs.existsSync(path.join(RAIZ, "img", "logo", png))) throw new Error("falta " + png);
   });
   await conf("menu: cards grandes e médios, marca, rodapé com Termos/Privacidade e suporte no Discord (sem Créditos)", () => {
     UI.irPara("menu"); env.drenar();

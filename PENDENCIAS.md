@@ -2396,11 +2396,12 @@ vira "Online" com descrição, e o jogador escolhe a diferença de rating dos
 adversários na fila. Tudo FEITO no código (LEIA-ME "Passos finais do
 lançamento").
 
-Falta, e é do dono:
-1. Aprovar a logo (`img/logo`). Ela ainda não está no site: o dono pediu o
-   layout como estava; favicon, menu e card do link só quando ele pedir.
-2. Rodar `supabase_jxj_raio.sql` no SQL Editor, depois do backup. É só
-   aditiva: coluna `raio` na fila, `jxj_fila_entrar_raio` nova e
-   `jxj_fila_parear` com a mesma assinatura. Sem ela, a fila funciona
-   como antes e a tela avisa que o filtro não está ligado.
+Fechado em 2026-10-04:
+1. O dono aprovou a logo (`img/logo`) e pediu que nada mais no jogo
+   mudasse: no site ela é só o ícone da aba (index e 404). Menu, card do
+   link e ícone do iPhone ficam prontos pra quando ele pedir; o ícone do
+   Discord (`discord.png`) ele mesmo coloca no servidor.
+2. O dono rodou `supabase_jxj_raio.sql` em produção. Se a tela da fila do
+   Online avisar que o filtro não está ligado, a migração não está lá.
+3. Deploy de tudo (pedido dele) pela `master`.
 

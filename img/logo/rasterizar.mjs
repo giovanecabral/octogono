@@ -1,7 +1,9 @@
 /* PNG do logo do Octógono a partir dos SVG de img/logo (gerar.py):
    - icone-32.png: favicon em PNG (navegador sem SVG no favicon), do icone.svg;
    - apple-touch-icon.png: 180x180, símbolo sobre fundo da noite (o iPhone não usa transparência);
-   - compartilhar.png: 1200x630, o card que aparece quando alguém manda o link.
+   - compartilhar.png: 1200x630, o card que aparece quando alguém manda o link;
+   - discord.png: 512x512, ícone do servidor do Discord (ele recorta em
+     círculo: o golpe inteiro cabe dentro).
    Uso (Chrome instalado; puppeteer-core numa pasta qualquer, como em
    img/tutorial/capturar.mjs):
      cd <pasta com puppeteer-core>
@@ -45,5 +47,6 @@ await foto(`<html><head>${FONTES}</head><body style="margin:0;width:1200px;heigh
     <div style="font-weight:700;font-size:30px;letter-spacing:.3em;text-transform:uppercase;color:#D7261E;margin:18px 0 0 6px">Carreira de MMA e modo Online</div>
     <div style="font-weight:700;font-size:28px;letter-spacing:.12em;color:#C9CBD2;margin:34px 0 0 6px">octogono.fun</div>
   </div></body></html>`, 1200, 630, "compartilhar.png");
+await foto(`<html><body style="margin:0;background:#0B0C10;display:grid;place-items:center;height:512px">${tam(simbolo, 400)}</body></html>`, 512, 512, "discord.png");
 fs.rmSync(path.join(AQUI, "__tmp.html"), { force: true });
 await b.close();
