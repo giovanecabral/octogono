@@ -7783,8 +7783,21 @@ async function jxjTelaEntrada(){
     b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj","luta/"+est.luta.id);};
     area.appendChild(b);
   }
+  if(est.movimento)area.appendChild(el("p","jxj-movimento",`${ICONE("grupo")}<span>${jxjTextoMovimento(est.movimento,false)}</span>`));
   if(!est.lutadores.length){ jxjApresentacao(area,def,{criar:true,est}); return; }
   jxjPainel(area,def,est);
+}
+/* Quantos estão no Online agora (2026-10-08, supabase_jxj_movimento.sql):
+   na fila, quem está buscando conta a si mesmo, então a frase fala dos
+   outros. Sem a migração, o servidor não manda nada e a linha não aparece. */
+function jxjTextoMovimento(m,naFila){
+  if(!m)return "";
+  const fila=Math.max(0,Number(m.fila)||0),lutando=Math.max(0,Number(m.lutando)||0);
+  const outros=naFila?Math.max(0,fila-1):fila;
+  const f=naFila
+    ?(outros?`${outros} ${outros===1?"pessoa":"pessoas"} na fila além de você`:"só você na fila")
+    :(fila?`${fila} ${fila===1?"pessoa":"pessoas"} na fila`:"ninguém na fila");
+  return `Agora no Online: ${f}${lutando?` e ${lutando} lutando`:""}.`;
 }
 function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=null}={}){
   const hero=el("section","jxj-hero entra");
@@ -8368,6 +8381,8 @@ async function jxjTelaFila(){
     const aviso=info.raioIndisponivel?"O filtro de diferença ainda não está ligado no servidor: a busca usa o padrão, até 400 pontos, crescendo com a espera.":textoRaio(info.raio);
     box.innerHTML=`<div class="jxj-busca-pulso">${ICONE("busca")}</div><h2 class="jxj-subtitulo">Procurando adversário</h2>
       <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. ${aviso?aviso+" ":""}A faixa aceita cresce com a espera. Ninguém é inventado: se não houver adversário agora, a busca continua.</p>`;
+    const mov=el("p","jxj-movimento","");mov.id="jxj-movimento";
+    box.appendChild(mov);
     const sair=el("button","botao botao-sec",`${ICONE("fechar")}<span>Sair da fila</span>`); sair.type="button";
     sair.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("filaSair"); }catch(e){} irPara("jxj"); };
     box.appendChild(sair); area.appendChild(box);
@@ -8380,6 +8395,7 @@ async function jxjTelaFila(){
         if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
         if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
         tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos de diferença`;
+        if(r.movimento)mov.innerHTML=`${ICONE("grupo")}<span>${jxjTextoMovimento(r.movimento,true)}</span>`;
       }catch(e){ tempo.textContent=e.erro||"Sem conexão; tentando de novo."; }
       JXJ_TIMER=setTimeout(ciclo,3000);
     };

@@ -34,7 +34,7 @@ grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
 `;
 
-export async function novoBanco({ jxj = true, raio = true } = {}) {
+export async function novoBanco({ jxj = true, raio = true, movimento = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB_SUPABASE);
   await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_schema.sql"), "utf8"));
@@ -44,6 +44,8 @@ export async function novoBanco({ jxj = true, raio = true } = {}) {
     await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_narracao.sql"), "utf8"));
     /* raio de rating na fila (2026-10-04); raio:false = banco de antes da migração */
     if (raio) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_raio.sql"), "utf8"));
+    /* contador de quem está no Online (2026-10-08); movimento:false = banco de antes */
+    if (movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_movimento.sql"), "utf8"));
   }
   await db.exec(GRANTS_SUPABASE);
   return db;

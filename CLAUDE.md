@@ -26,6 +26,7 @@ api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usa
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
 supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
 supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas. Rodada em 2026-10-04.
+supabase_jxj_movimento.sql  Quarta (contador de quem está na fila e lutando). Só uma função de leitura.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
@@ -140,6 +141,10 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
 - **Na tela o modo se chama Online** (2026-10-04); rotas, código e banco
   continuam `jxj`. Texto novo visível diz "Online"/"modo Online"; mensagem
   do banco com "JxJ" é traduzida no `rpc()`.
+- **Contador do Online** (`supabase_jxj_movimento.sql`, 2026-10-08): fila e
+  estado mandam `movimento` (na fila, com sinal dos últimos 12 s, e
+  lutando). Sem a migração, o servidor não manda nada e a tela não mostra
+  a linha. Suítes `jxj` e `jxjtelas`.
 - **Diferença de rating na fila** (`supabase_jxj_raio.sql`, no banco de
   produção desde 2026-10-04): o servidor continua funcionando sem a
   migração (código `PGRST202` = função não existe, cai na fila de antes).

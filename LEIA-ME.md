@@ -4127,6 +4127,8 @@ as tabelas: rodar a migração é do dono, depois do backup.
    Depois, `supabase_jxj_raio.sql` (2026-10-04, diferença de rating na
    fila; seção "Passos finais do lançamento"): 52 funções. O dono rodou as
    três em produção (a do raio em 2026-10-04).
+   Depois, `supabase_jxj_movimento.sql` (2026-10-08, contador de quem está
+   na fila e lutando; seção "Auditoria de pré-lançamento"): 53 funções.
 3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
    Production, e Redeploy do deploy atual (variável nova só vale em
    deploy novo; não precisa mudar código).
@@ -4657,6 +4659,32 @@ sem vínculo, patrocínio nem autorização do UFC, de outra organização ou
 dos lutadores (sem aceite novo: a regra é só a seção 6 pedir), e o rodapé
 do menu, a linha "Jogo independente, sem vínculo com o UFC." Teste na
 suíte `rotas`.
+
+### Online: contador de quem está lá agora (alto)
+
+Com pouca gente, quem entrava na fila esperava sem saber se havia alguém
+("se não houver adversário agora, a busca continua"). Agora a busca diz
+"Agora no Online: só você na fila e 4 lutando" (ou quantos estão além de
+você), e o painel do Online diz quantos estão na fila e lutando.
+
+- banco: `supabase_jxj_movimento.sql`, só aditiva, uma função de leitura
+  (`jxj_movimento`: fila com sinal dos últimos 12 segundos, o critério do
+  pareamento, e duas pessoas por luta aberta, pelo índice
+  `jxj_lutas_abertas`). Roda depois das outras três, com backup e
+  aprovação do dono;
+- servidor: `fila` (enquanto busca) e `estado` mandam `movimento`. Sem a
+  migração (`PGRST202`) ou com erro, não manda nada e a fila segue igual;
+- tela: `jxjTextoMovimento` na busca e no painel.
+
+Testes: `jxj` (conta fila e lutando, sinal velho não conta, banco sem a
+migração não quebra) e `jxjtelas` (busca e painel mostram a linha; dente
+provado tirando a linha da busca).
+
+**O que o contador não resolve:** quem não é Pro tem uma luta competitiva
+grátis no total (`jxj_fila_entrar`). A fila do lançamento depende de
+assinantes, e por isso o convite pra amigo, que a auditoria sugeriu, não
+foi feito: com essa regra, ele ajudaria pouco. Mudar a regra (por exemplo,
+algumas lutas grátis por dia) é decisão de produto do dono.
 
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 

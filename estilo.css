@@ -1108,6 +1108,10 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .res-num .pos-mov{margin:0}
 /* teto do estreante no draft (regras v3, 2026-10-05): carta com atributo no limite */
 .elite.teto{color:var(--ouro);border-color:var(--ouro)}
+/* contador do Online: quantos na fila e lutando agora (2026-10-08) */
+.jxj-movimento{display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:15px;color:var(--osso-2)}
+.jxj-movimento:empty{display:none}
+.jxj-movimento .ico{width:16px;height:16px;color:var(--ouro);flex:none}
 /* aviso de não afiliação no rodapé do menu (2026-10-08) */
 .menu-aviso-legal{flex-basis:100%;font-size:12px;letter-spacing:.06em;text-transform:none;color:var(--cinza)}
 /* Começar rápido na tela do nome (2026-10-08) */

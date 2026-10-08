@@ -59,6 +59,13 @@ async function rpc(nome, args) {
   }
   return j;
 }
+/* Quantos estão na fila e lutando agora (supabase_jxj_movimento.sql,
+   2026-10-08). Sem a migração (PGRST202) ou com o banco lento, a tela só
+   não mostra o contador: nunca derruba a fila. */
+async function movimento() {
+  try { return await rpc("jxj_movimento", {}); }
+  catch { return null; }
+}
 async function usuarioDoToken(token) {
   if (!token || typeof token !== "string" || token.length > 4096) return null;
   try {
@@ -351,6 +358,8 @@ async function executar(acao, c, uid) {
         l.pontosLivres = v.ok ? v.sobra : 0;
         l.respecGratis = l.buildVersao < ARV.VERSAO_BALANCEAMENTO;
       }
+      const mov = await movimento();
+      if (mov) est.movimento = mov;
       return est;
     }
     case "criar": {
@@ -421,7 +430,8 @@ async function executar(acao, c, uid) {
     case "fila": {
       const r = await rpc("jxj_fila_parear", { uid, semente_: novaSemente(), tol_base: REG.TOLERANCIA.base, tol_seg: REG.TOLERANCIA.porDezSeg, tol_max: REG.TOLERANCIA.max });
       if (r && r.luta) { const d = await processarLuta(r.luta, uid); return { luta: vistaDaLuta(d, uid) }; }
-      return r;
+      const mov = r && r.naFila ? await movimento() : null;
+      return mov ? { ...r, movimento: mov } : r;
     }
     case "luta": {
       const d = await processarLuta(idDe(c.lutaId, "luta"), uid);

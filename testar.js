@@ -11270,6 +11270,35 @@ async function testarJxJ() {
         if (f.status !== 200 || !f.json.luta) throw new Error("sem a migração, a fila de antes não pareou: " + JSON.stringify(f).slice(0, 200));
       } finally { globalThis.fetch = fetchAntes; }
     });
+    /* contador do Online (2026-10-08, supabase_jxj_movimento.sql) */
+    await conf("movimento: a fila e o estado contam quem está na fila (sinal dos últimos 12 s) e quem está lutando; sem a migração, nada aparece e nada quebra", async () => {
+      await zerarLimites();
+      await q("delete from jxj_fila");
+      const ua = await novoUsuario({ pro: true }), ub = await novoUsuario({ pro: true });
+      const la = (await criar(ua)).id, lb = (await criar(ub)).id;
+      await q("update jxj_lutadores set rating = $2 where id = $1", [la, 1500]);
+      await q("update jxj_lutadores set rating = $2 where id = $1", [lb, 2400]);
+      await ok(ua, "filaEntrar", { lutadorId: la, raio: 100 }); await ok(ub, "filaEntrar", { lutadorId: lb, raio: 100 });
+      const abertas = Number((await q("select count(*)::int as n from jxj_lutas where status in ('confirmacao','andamento')"))[0].n);
+      const f = await ok(ua, "fila");
+      if (f.luta || !f.movimento || f.movimento.fila !== 2 || f.movimento.lutando !== 2 * abertas) throw new Error("fila: " + JSON.stringify(f));
+      await q("update jxj_fila set sinal_em = now() - interval '30 seconds' where user_id = $1", [ub]);
+      const e = await ok(ua, "estado");
+      if (!e.movimento || e.movimento.fila !== 1) throw new Error("estado (sinal velho não conta): " + JSON.stringify(e.movimento));
+      await api(ua, "filaSair"); await api(ub, "filaSair");
+      const db2 = await B.novoBanco({ movimento: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const u1 = "00000000-0000-4000-8000-0000000009b1";
+        await B.criarUsuario(db2, u1, { pro: true });
+        const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Contador", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        await B.chamar(H, { token: "tok:" + u1, acao: "filaEntrar", lutadorId: c1.json.id });
+        const f2 = await B.chamar(H, { token: "tok:" + u1, acao: "fila" });
+        const e2 = await B.chamar(H, { token: "tok:" + u1, acao: "estado" });
+        if (f2.status !== 200 || f2.json.movimento || e2.status !== 200 || e2.json.movimento) throw new Error("sem a migração: " + JSON.stringify([f2.status, f2.json.movimento, e2.status]));
+      } finally { globalThis.fetch = fetchAntes; }
+    });
     await conf("grátis: a primeira luta competitiva entra; depois dela a fila é do Pro; torneio e revanche também", async () => {
       const f1 = await novoUsuario(), f2 = await novoUsuario();
       const l1 = (await criar(f1)).id, l2 = (await criar(f2)).id;
@@ -12474,8 +12503,17 @@ async function testarJxJTelas() {
       const linha = (await db.query("select raio from jxj_fila where user_id = $1", [u1])).rows[0];
       if (!linha || linha.raio !== 200) throw new Error("raio no banco: " + JSON.stringify(linha));
       if (!/até 200 pontos de rating de diferença/.test(htmlDe(desde(m2)))) throw new Error("a busca não mostra o limite escolhido");
+      /* contador do Online (2026-10-08): na busca, fala de quem está além de você */
+      for (let k = 0; k < 20 && !desde(m2).some((n) => tem(n, "jxj-movimento") && /Agora no Online/.test(String(n.innerHTML))); k++) await assentar(20);
+      const mov = desde(m2).filter((n) => tem(n, "jxj-movimento")).pop();
+      if (!mov || !/Agora no Online: só você na fila/.test(String(mov.innerHTML))) throw new Error("a busca não mostra quantos estão no Online: " + (mov && mov.innerHTML));
       UI.irPara("jxj"); await assentar();
       await api(u1, "filaSair");
+    });
+    await conf("painel do Online mostra quantos estão na fila e lutando agora", async () => {
+      const m = await abrir("");
+      const mov = desde(m).filter((n) => tem(n, "jxj-movimento")).pop();
+      if (!mov || !/Agora no Online: (ninguém|\d+ pessoas?) na fila/.test(String(mov.innerHTML))) throw new Error("painel sem o contador: " + (mov && mov.innerHTML));
     });
     const l2 = (await api(u2, "criar", { nome: "Tela Dois", rosto: ROSTO, categoria: "lightweight", estilo: "wrestler" })).id;
     await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
