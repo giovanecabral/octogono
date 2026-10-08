@@ -7379,7 +7379,7 @@ async function testarRotas() {
   env.sandbox.localStorage = { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } };
   vm.createContext(env.sandbox);
   try {
-    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "htmlPreviaRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
       "screenDivisao", "screenAtivarRival", "criarConta", "avisarConfirmacaoEmail"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}"
       + "\ntry{globalThis.__x.meuPro=()=>meuPro;}catch(e){}"
@@ -7481,6 +7481,19 @@ async function testarRotas() {
     UI.desenharRanking(area2, linhas, { nome_lutador: "Eu Mesmo", divisao: "lightweight", pontuacao: 4321, cartel: "12-10", nota: "D", cinturoes: 0, rosto: null, posicao: 41 });
     const minha = area2.children.find(n => tem(n, "rank-minha"));
     if (!minha || !/41/.test(minha.innerHTML) || !/Eu Mesmo/.test(minha.innerHTML)) throw new Error("faixa 'sua melhor posição' não apareceu certa");
+  });
+
+  await conf("ranking: nome de outro jogador nunca entra cru no HTML (prévia do menu, pódio, lista e sua posição; auditoria 2026-10-08)", () => {
+    const mau = '<img src=x onerror=alert(1)>';
+    const linhas = Array.from({ length: 5 }, (_, i) => ({ nome_lutador: mau + i, divisao: "lightweight", modo: "normal",
+      pontuacao: 9000 - i * 100, cartel: "18-4", nota: "A", cinturoes: 0, rosto: null }));
+    const area = { innerHTML: "", children: [], appendChild(c) { this.children.push(c); return c; } };
+    UI.desenharRanking(area, linhas, { ...linhas[0], posicao: 7 });
+    const nos = []; const andar = n => { if (!n) return; nos.push(n); (n.children || []).forEach(andar); };
+    area.children.forEach(andar);
+    const html = nos.map(n => String(n.innerHTML || "")).join("\n") + "\n" + UI.htmlPreviaRanking(linhas.slice(0, 3));
+    if (/<img src=x/.test(html)) throw new Error("nome cru no HTML: " + html.slice(html.indexOf("<img src=x") - 40, html.indexOf("<img src=x") + 40));
+    if (!/&lt;img src=x onerror=alert\(1\)&gt;/.test(html)) throw new Error("o nome escapado não apareceu");
   });
 
   await conf("continuar: 3 espaços, vazio leva a Nova carreira", async () => {
@@ -10646,6 +10659,17 @@ async function testarPlacar() {
   await recusa("nome com mais de 28 caracteres", c => { c.nome = "x".repeat(29); });
   await recusa("nome com link", c => { c.nome = "Veja www.site.com"; });
   await recusa("nome com palavrão (sem acento e em maiúscula também)", c => { c.nome = "Zé PORRA"; });
+  /* auditoria de 2026-10-08: nome com HTML no top 3 rodava código na página inicial */
+  await recusa("nome com HTML (<svg onload=...>)", c => { c.nome = "<svg onload=alert(1)>"; });
+  await recusa("nome com aspas, & ou crase", c => { c.nome = 'Zé "Brasa" & `cia`'; });
+  await recusa("nome com caractere de controle", c => { c.nome = "Zé\u202eBrasa"; });
+  await conf("nome comum com acento, apóstrofo, hífen e ponto continua aceito", () => {
+    for (const nome of ["José D'Arce", "Zé-Pequeno Jr.", "Ana Lúcia", "Kayo Brasa 2"]) {
+      const c = JSON.parse(JSON.stringify(real)); c.nome = nome;
+      const v = R.validarEnvio(c);
+      if (!v.ok) throw new Error(nome + ": " + v.erro);
+    }
+  });
   await recusa("divisão fora da lista", c => { c.divisao = "superpesado"; });
   await recusa("modo fora de normal/lenda", c => { c.modo = "deus"; });
   await conf("faixas de nota do servidor = as do grade() do jogo", () => {

@@ -22,6 +22,9 @@ const semAcento = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLo
 export function nomeAceito(nome) {
   const n = String(nome || "").trim();
   if (!n || n.length > 28) return false;
+  /* nada de HTML nem caractere de controle (auditoria de 2026-10-08: um
+     nome como <svg onload=...> no top 3 rodava código na página inicial) */
+  if (/[<>"&`\\]/.test(n) || /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/.test(n)) return false;
   if (/https?:|www\.|\.com|\.br\b|@/i.test(n)) return false;
   const palavras = semAcento(n).split(/[^a-z0-9]+/).filter(Boolean);
   return !palavras.some((p) => PROIBIDAS.includes(p));

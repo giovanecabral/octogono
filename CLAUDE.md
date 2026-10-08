@@ -86,6 +86,14 @@ metade). Regras do revamp que valem daqui pra frente:
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
   scripts de ponta a ponta já abortam essas requisições.
+- **Texto de outra pessoa nunca entra cru no HTML** (auditoria de
+  2026-10-08: um nome com `<svg onload=...>` no placar rodava código na
+  página inicial de todo visitante, e quem abrisse o site perdia a
+  sessão). Nome do placar passa por `escHtml`, nome do Online por
+  `jxjEsc`, e o servidor recusa caractere de HTML e de controle no nome
+  (`nomeAceito` em `api/_placar-regras.js`). Tela nova que mostra dado de
+  outro jogador escapa e ganha teste com nome malicioso (suítes `rotas`
+  e `placar`).
 - **Texto sem travessão e sem frase de efeito** (fase 7; regras e amostras
   no LEIA-ME, "Regras de texto"). `node testar.js texto` reprova travessão,
   frase proibida e emoji ou seta em caractere em qualquer literal do

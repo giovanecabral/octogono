@@ -7352,6 +7352,10 @@ const reduceMotion=()=>window.matchMedia("(prefers-reduced-motion: reduce)").mat
    não tem estado de "passando por cima" pra pré-visualizar de graça). */
 const semHover=()=>!window.matchMedia("(hover:hover) and (pointer:fine)").matches;
 
+/* Texto de outra pessoa (nome no placar) nunca entra cru no HTML
+   (auditoria de 2026-10-08: um nome com HTML no top 3 rodava código na
+   página inicial de todo visitante). Mesma regra do jxjEsc do Online. */
+const escHtml=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;
   if(h!==undefined)n.innerHTML=h;return n;};
 /* 5 faixas: o jogador precisa bater o olho e saber se é bom, sem fazer conta */
@@ -9170,9 +9174,12 @@ async function preencherPreviaRanking(){
   const linhas=await buscarPlacar({limite:3});
   const alvo=document.getElementById("previa-ranking");
   if(!alvo)return;
-  alvo.innerHTML=linhas.length
+  alvo.innerHTML=htmlPreviaRanking(linhas);
+}
+function htmlPreviaRanking(linhas){
+  return linhas.length
     ? linhas.map((l,i)=>`<span class="previa-linha"><span class="previa-pos">${i+1}</span>`+
-        `<span class="previa-txt">${l.nome_lutador}</span><span class="previa-num">${fmtPontos(l.pontuacao)} pts</span></span>`).join("")
+        `<span class="previa-txt">${escHtml(l.nome_lutador)}</span><span class="previa-num">${fmtPontos(l.pontuacao)} pts</span></span>`).join("")
     : `<span class="previa-linha"><span class="previa-txt">Nenhuma carreira no placar ainda.</span></span>`;
 }
 async function preencherPreviaConta(chip){
@@ -9372,7 +9379,7 @@ function degrauPodio(l,pos){
   return el("div",`degrau degrau-${pos} entra`,
     `<span class="degrau-retrato">${bonecoSVG(l.rosto||cfgPadrao(),{w:pos===1?120:96})}</span>
      <span class="degrau-pos">${pos}º</span>
-     <span class="degrau-nome">${l.nome_lutador}</span>
+     <span class="degrau-nome">${escHtml(l.nome_lutador)}</span>
      <span class="degrau-meta">${nomeDivisao(l.divisao)} · ${l.cartel}${l.cinturoes?` · ${ICONE("medalha")} ${l.cinturoes}`:""}</span>
      <span class="degrau-pontos">${fmtPontos(l.pontuacao)}<small>pontos de legado</small></span>`);
 }
@@ -9380,7 +9387,7 @@ function linhaRanking(l,pos){
   return el("li","rank-linha",
     `<span class="rank-pos">${pos}</span>
      <span class="rank-retrato">${bonecoSVG(l.rosto||cfgPadrao(),{w:44})}</span>
-     <span class="rank-nome">${l.nome_lutador}<small>${nomeDivisao(l.divisao)}</small></span>
+     <span class="rank-nome">${escHtml(l.nome_lutador)}<small>${nomeDivisao(l.divisao)}</small></span>
      <span class="rank-meta">${l.cartel}</span>
      <span class="rank-meta">${l.cinturoes?`${ICONE("medalha")} ${l.cinturoes}`:""}</span>
      <span class="rank-nota">${l.nota}</span>
@@ -9697,6 +9704,8 @@ function lerDesafio(){
     return{div:d,seed:n>>>0,modo:p.get("m")==="lenda"?"lenda":"normal",regras:r>=3?3:r>=2?2:1};
   }catch(e){return null;}
 }
+/* o placar recusa nome com caractere de HTML (2026-10-08): o campo nem deixa digitar */
+const semCaractereHtml=s=>String(s||"").replace(/[<>"&`\\]/g,"");
 function screenName(nomeInicial=""){
   /* Passo 1 do assistente (revamp fase 4). Link de desafio pula divisão e
      rival (vêm do link): 3 passos em vez de 5. */
@@ -9710,7 +9719,8 @@ function screenName(nomeInicial=""){
   }
   const form=el("div","nome-form");
   const inp=el("input");inp.type="text";inp.className="input-hero";
-  inp.placeholder="Nome do lutador";inp.maxLength=28;inp.value=nomeInicial||"";
+  inp.placeholder="Nome do lutador";inp.maxLength=28;inp.value=semCaractereHtml(nomeInicial||"");
+  inp.addEventListener("input",()=>{const v=semCaractereHtml(inp.value);if(v!==inp.value)inp.value=v;});
   const go=el("button","botao botao-grande","Montar o lutador");
   go.type="button";
   go.onclick=()=>{

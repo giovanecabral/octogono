@@ -4509,6 +4509,40 @@ migração não está lá.
   - dente provado: a função que só olha o raio de quem busca reprova.
 - `jxjtelas`: as quatro opções, a faixa e a escolha chegando ao banco.
 
+## Auditoria de pré-lançamento: correções (2026-10-08)
+
+O dono pediu uma auditoria completa antes do lançamento (relatório
+"O Octógono pode lançar?") e depois a correção de tudo, do mais grave ao
+mais tranquilo.
+
+### XSS armazenado no ranking da carreira (crítico)
+
+O nome do lutador vindo do placar entrava cru no HTML em três lugares: a
+prévia do ranking no menu inicial (top 3), o pódio e a lista. O servidor
+aceitava nome com HTML (`nomeAceito` só olhava tamanho, link e palavrão) e
+aceitava uma carreira forjada perfeita, 22-0 com nota S e 10.000 pontos,
+que vira o 1º lugar. Com `<svg onload=...>` (21 caracteres), qualquer conta
+rodava código na página inicial de todo visitante e lia a sessão do
+Supabase guardada no navegador.
+
+Correção:
+- `escHtml` (ao lado do `el()`) nos três pontos; a prévia virou a função
+  pura `htmlPreviaRanking`;
+- `nomeAceito` recusa `< > " & `` ` e `\`, caractere de controle e os de
+  direção de texto (U+200B a U+200F, U+2028 a U+202E, U+2060 a U+206F,
+  U+FEFF). O Online já tinha regra mais estrita (`nomeLutadorValido`);
+- o campo de nome da carreira nem deixa digitar esses caracteres
+  (`semCaractereHtml`), pra ninguém montar um nome que o placar recusa.
+
+Testes: `placar` recusa nome com HTML, com aspas/&/crase e com caractere
+de controle, e aceita nome comum com acento, apóstrofo, hífen e ponto;
+`rotas` desenha pódio, lista, "sua posição" e a prévia com
+`<img src=x onerror=...>` e reprova se o nome aparecer cru (dente provado
+tirando o escape). Nome que já esteja no banco: conferir com
+`select user_id, seed, nome_lutador from placar where nome_lutador ~ '[<>"&]'`
+e apagar pelo painel de admin; com o escape, mesmo um nome antigo assim
+já não roda nada.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:
