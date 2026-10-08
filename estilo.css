@@ -360,6 +360,8 @@ html[data-tela="nova"] .cfg-btn{background:rgba(17,19,26,.72);border:1px solid v
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
   box-shadow:0 6px 24px rgba(0,0,0,.5)}
 .selo-assine .ico{width:16px;height:16px}
+/* cartão de escolha travado (modo Lenda, Rival): o selo vai pro canto e não cobre o texto (2026-10-08) */
+.modos .selo-assine{left:auto;right:10px;top:10px;transform:none}
 .selo-assine:focus-visible{outline:2px solid var(--osso);outline-offset:3px}
 @media (hover:hover) and (pointer:fine){.selo-assine:hover{background:#E6B421}}
 
@@ -1106,6 +1108,11 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .res-num .pos-mov{margin:0}
 /* teto do estreante no draft (regras v3, 2026-10-05): carta com atributo no limite */
 .elite.teto{color:var(--ouro);border-color:var(--ouro)}
+/* aviso de não afiliação no rodapé do menu (2026-10-08) */
+.menu-aviso-legal{flex-basis:100%;font-size:12px;letter-spacing:.06em;text-transform:none;color:var(--cinza)}
+/* Começar rápido na tela do nome (2026-10-08) */
+.nome-rapido-box{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:22px;padding-top:18px;border-top:1px solid var(--linha);max-width:640px}
+.nome-rapido-box .tela-sub{margin:0;flex:1 1 260px}
 /* aviso de vencimento do Pro no menu (2026-10-08) */
 .aviso-pro{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:-14px 0 24px;padding:14px 18px;background:rgba(17,19,26,.92);border:1px solid var(--linha);border-left:3px solid var(--ouro);color:var(--osso)}
 .aviso-pro .ico{width:20px;height:20px;color:var(--ouro);flex:none}

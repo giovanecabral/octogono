@@ -273,7 +273,17 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
      screenAtivarRival() antes do draft — "Não" já nasce marcado, só
      precisa clicar "Continuar" pra seguir sem rival (o caminho "Sim"
      tem suíte própria, ver testarModoRival()). */
-  await passo("Modo Rival: tela de ativação abre, 'Continuar' sem escolher nada segue sem rival", () => {
+  /* 2026-10-08 (auditoria): o Rival é recurso do Pro, então quem não é Pro
+     pula a tela e a divisão abre o draft direto; com Pro (o modo lenda
+     deste teste liga o Pro antes da divisão) a tela abre como antes */
+  await passo("Modo Rival: com Pro a tela abre e 'Continuar' segue sem rival; sem Pro a tela é pulada e o draft abre direto", () => {
+    const pro = vm.runInContext("meuPro", env.sandbox);
+    const telaRival = env.todos.slice(marca).some(n => (n.className || "").split(" ").includes("rival-box"));
+    if (!pro) {
+      if (telaRival) throw new Error("sem Pro, a tela do Rival ainda apareceu");
+      if (!env.registro.reroll) throw new Error("sem Pro, a divisão não abriu o draft");
+      return;
+    }
     const continuar = env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Continuar").pop();
     if (!continuar || !continuar.onclick) throw new Error("botão 'Continuar' da tela de ativar Rival não foi montado");
     marca = env.todos.length;          // marca ANTES do clique: é ele que monta o draft
@@ -7388,7 +7398,7 @@ async function testarRotas() {
   vm.createContext(env.sandbox);
   try {
     vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "htmlPreviaRanking", "melhorPorConta", "textoAvisoPro", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
-      "screenDivisao", "screenAtivarRival", "criarConta", "avisarConfirmacaoEmail"])
+      "screenDivisao", "screenAtivarRival", "screenName", "criarConta", "avisarConfirmacaoEmail"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}"
       + "\ntry{globalThis.__x.meuPro=()=>meuPro;}catch(e){}"
       + "\ntry{globalThis.__x.setMeuPro=(v)=>{meuPro=v;};}catch(e){}",
@@ -7527,6 +7537,28 @@ async function testarRotas() {
       const b = (aviso.children || []).find(n => n.tagName === "button");
       if (!b || !/Renovar/.test(b.innerHTML) || !b.onclick) throw new Error("aviso sem o botão de renovar");
     } finally { estadoSb.assinatura = antes; await vm.runInContext("PRO_EXPIRA_EM=undefined", env.sandbox); }
+  });
+
+  await conf("Começar rápido: do nome direto pro draft, peso-leve, sem rival, com visual e nome mesmo com o campo vazio (auditoria 2026-10-08)", async () => {
+    const m = env.todos.length;
+    UI.screenName(""); env.drenar(); await respirar();
+    const b = desde(m).filter(n => n.id === "nomeRapido").pop();
+    if (!b || !b.onclick || !/Começar rápido/.test(b.innerHTML)) throw new Error("sem o botão Começar rápido");
+    const m2 = env.todos.length;
+    b.onclick(); env.drenar(); await respirar();
+    const r = JSON.parse(vm.runInContext("JSON.stringify({div:DIVISION,modo:MODO,rival:RIVAL_ATIVADO,nome:me&&me.name,rosto:!!ROSTO,restam:remaining.length})", env.sandbox));
+    if (r.div !== "lightweight" || r.modo !== "normal" || r.rival !== false || !r.nome || !r.rosto || r.restam !== 4) throw new Error("estado: " + JSON.stringify(r));
+    if (!desde(m2).some(n => (n.className || "").split(" ").includes("card") && n.onclick)) throw new Error("o draft não abriu");
+  });
+
+  await conf("cabeçalhos de segurança no vercel.json (sem moldura de outro site, nosniff, referrer) e aviso de não afiliação ao UFC nos Termos e no rodapé (auditoria 2026-10-08)", () => {
+    const v = JSON.parse(fs.readFileSync(path.join(RAIZ, "vercel.json"), "utf8"));
+    const regra = (v.headers || []).find(h => h.source === "/(.*)");
+    const h = Object.fromEntries(((regra && regra.headers) || []).map(x => [x.key.toLowerCase(), x.value]));
+    if (h["x-frame-options"] !== "DENY" || !/frame-ancestors 'none'/.test(h["content-security-policy"] || "") || h["x-content-type-options"] !== "nosniff" || !h["referrer-policy"])
+      throw new Error("cabeçalhos: " + JSON.stringify(h));
+    const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+    if (!/sem vínculo com o UFC/.test(html) || !/autorização do UFC/.test(html)) throw new Error("sem o aviso de não afiliação");
   });
 
   await conf("IA: todo pedido leva a sessão da conta, inclusive os grátis (feed, evento); o servidor recusa sem ela (auditoria 2026-10-08)", async () => {

@@ -4625,6 +4625,39 @@ faixa 3 dias antes e até 7 dias depois do vencimento, com "Renovar por R$
 de `atualizarStatusPro`, guardada em `PRO_EXPIRA_EM`). Teste na suíte
 `rotas`, com dente provado.
 
+### Caminho até a primeira luta (médio)
+
+Eram umas 10 telas e 8 cartões de tutorial até o primeiro round:
+- **Começar rápido** na tela do nome: usa o nome digitado (ou sorteia um de
+  `NOMES_RAPIDOS`, inventados), sorteia o visual (`rostoAleatorio`, agora
+  função de fora, a mesma do Sortear e do Pular), peso-leve, sem rival, e
+  abre o draft. Fora do link de desafio. Evento de funil `comecou_rapido`.
+- **Rival só pra quem é Pro**: a tela era uma escolha travada a mais antes
+  de jogar. Quem não é Pro vai da divisão direto pro draft
+  (`depoisDaDivisao`), e o assistente conta 4 passos em vez de 5
+  (`passosAssistente`).
+- **Selo do Pro no canto** dos cartões de escolha (modo Lenda, Rival): no
+  celular ele cobria o texto do cartão.
+
+Testes: `rotas` (Começar rápido com o campo vazio abre o draft no
+peso-leve, sem rival, com nome e visual) e `interface` (sem Pro a tela do
+Rival é pulada; com Pro, no modo lenda, ela abre como antes).
+
+### Cabeçalhos de segurança e aviso de não afiliação (médio)
+
+`vercel.json` novo, só com cabeçalhos (não muda rota nenhuma):
+`X-Frame-Options: DENY` e `frame-ancestors 'none'` (ninguém põe o jogo
+numa moldura de outro site), `nosniff`, `Referrer-Policy` e
+`Permissions-Policy` sem câmera, microfone, localização e pagamento pelo
+navegador. Uma CSP completa ficou de fora: o jogo é um script inline
+grande, e só valeria com `unsafe-inline`.
+
+Os Termos (seção 7) ganharam o parágrafo de que o Octógono é independente,
+sem vínculo, patrocínio nem autorização do UFC, de outra organização ou
+dos lutadores (sem aceite novo: a regra é só a seção 6 pedir), e o rodapé
+do menu, a linha "Jogo independente, sem vínculo com o UFC." Teste na
+suíte `rotas`.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:

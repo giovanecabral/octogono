@@ -2117,7 +2117,7 @@ function screenPaginaLegal(titulo,corpo){
 }
 function screenTermos(){
   screenPaginaLegal("Termos de Uso",`
-    <p class="rev">Versão 4. Última revisão: 22 de setembro de 2026.</p>
+    <p class="rev">Versão 4. Última revisão: 8 de outubro de 2026.</p>
 
     <h3>1. Aceitação e objeto</h3>
     <p>Estes Termos de Uso ("Termos") regem o acesso e a utilização do
@@ -2226,6 +2226,10 @@ function screenTermos(){
     Código Civil. O mesmo vale para a voz de rivais fictícios do Modo Pro
     (seção 6): stats emprestados de lutador real, nome e falas sempre
     inventados, sem vínculo com pessoa real nenhuma.</p>
+    <p>O Octógono é um jogo independente. Não tem vínculo, patrocínio nem
+    autorização do UFC (Ultimate Fighting Championship), de outra
+    organização de MMA ou dos lutadores citados. UFC é marca de seus
+    titulares, citada só para identificar o contexto esportivo do ranking.</p>
     <p>Dilemas, eventos narrativos, a coletiva de imprensa, a entrevista
     pós-luta e a "repercussão" simulada em rede social fictícia dentro do
     Jogo são produzidos por modelo de inteligência artificial a partir do
@@ -9186,7 +9190,9 @@ function screenMenu(){
      de pedido de dados, LGPD). */
   const discord=el("a","menu-contato",`${ICONE("discord")}<span>Suporte no Discord</span>`);
   discord.href=URL_DISCORD; discord.target="_blank"; discord.rel="noopener";
-  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),discord);
+  /* 2026-10-08 (auditoria): o jogo usa nome e estatística reais e a régua
+     do ranking do UFC, sem vínculo nenhum (Termos, seção 7) */
+  rod.append(lk("Termos de Uso","termos"),lk("Privacidade","privacidade"),discord,el("span","menu-aviso-legal","Jogo independente, sem vínculo com o UFC."));
   c.appendChild(rod);
 
   preencherPreviaRanking();
@@ -9763,7 +9769,7 @@ function screenName(nomeInicial=""){
   /* Passo 1 do assistente (revamp fase 4). Link de desafio pula divisão e
      rival (vêm do link): 3 passos em vez de 5. */
   const desafio=lerDesafio();
-  const total=desafio?3:5;
+  const total=passosAssistente();
   const c=montarPasso(1,total,{titulo:"Nome do lutador",fundo:"tunel",voltar:"menu"});
   if(desafio){
     const d=DIVISOES.find(x=>x.id===desafio.div);
@@ -9789,8 +9795,39 @@ function screenName(nomeInicial=""){
   form.append(inp,go);
   c.appendChild(form);
   c.appendChild(el("p","tela-sub nome-dica","Aparece em cada luta, no card de momento e no ranking."));
+  /* Começar rápido (auditoria de 2026-10-08): eram umas 10 telas até o
+     primeiro round. Pula visual, divisão e rival: visual sorteado, peso-leve,
+     sem rival, direto pro draft (o melhor do jogo). Fora do desafio, que
+     já vem com divisão e semente. */
+  if(!desafio){
+    const rapido=el("button","botao botao-sec nome-rapido",`${ICONE("play")}<span>Começar rápido</span>`);
+    rapido.type="button";rapido.id="nomeRapido";
+    rapido.onclick=()=>{
+      SOM.toque();
+      const n=inp.value.trim()||NOMES_RAPIDOS[Math.floor(Math.random()*NOMES_RAPIDOS.length)];
+      ROSTO=rostoAleatorio();
+      try{localStorage.setItem("rosto",JSON.stringify(ROSTO));}catch(e){}
+      evento("comecou_rapido");
+      SEED=0;MODO="normal";REGRAS=REGRAS_ATUAIS;DIVISION="lightweight";
+      RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null;
+      startDraft(n);
+    };
+    const caixa=el("div","nome-rapido-box",`<p class="tela-sub">Quer ir direto pro draft? Visual sorteado, peso-leve e sem rival.</p>`);
+    caixa.appendChild(rapido);
+    c.appendChild(caixa);
+  }
   inp.focus();
 }
+/* rosto aleatório (Sortear, Pular e Começar rápido): sorteia um arquétipo e
+   varia pele e cor do cabelo, pra dois lutadores sorteados raramente saírem
+   iguais */
+function rostoAleatorio(){
+  const r=n=>Math.floor(Math.random()*n);
+  const a=ARQUETIPOS[r(ARQUETIPOS.length)];
+  return{v:2,...a.cfg,arquetipo:a.id,pele:r(PELES.length),corCabelo:r(CORES_CABELO.length)};
+}
+/* nomes do Começar rápido quando o campo está vazio (inventados) */
+const NOMES_RAPIDOS=["Kayo Brasa","Davi Trovão","Rafa Muralha","Léo Furacão","Caio Navalha","Igor Pedreira","Bruno Tanque","Tiago Faísca","Ruan Marreta","Enzo Ventania"];
 
 /* ---------- tela 2: draft ---------- */
 /* Criador: personagem grande no palco, categorias em abas, alteração imediata.
@@ -9820,7 +9857,7 @@ function screenCriador(name){
      moldura nova. Voltar leva ao Passo 1 com o nome preenchido. */
   ROSTO=normalizarRosto(ROSTO||cfgPadrao());
   const dzPasso=lerDesafio();
-  const c=montarPasso(2,dzPasso?3:5,{titulo:"Visual",fundo:"vestiario",voltar:()=>screenName(name)});
+  const c=montarPasso(2,passosAssistente(),{titulo:"Visual",fundo:"vestiario",voltar:()=>screenName(name)});
   docmeta.textContent=`Registro · ${name}`;
 
   const wrap=el("div","criador");
@@ -9900,13 +9937,6 @@ function screenCriador(name){
     });
   }
 
-  /* aleatório (e o "Pular"): sorteia um arquétipo e varia pele e cor do
-     cabelo, pra dois lutadores sorteados raramente saírem iguais */
-  const rostoAleatorio=()=>{
-    const r=n=>Math.floor(Math.random()*n);
-    const a=ARQUETIPOS[r(ARQUETIPOS.length)];
-    return{v:2,...a.cfg,arquetipo:a.id,pele:r(PELES.length),corCabelo:r(CORES_CABELO.length)};
-  };
   const dz=lerDesafio();
   /* pular() e ok.onclick avançam pro mesmo lugar — pular só decide o rosto
      por sorteio em vez de deixar o jogador escolher. PLANO-LANCAMENTO.md
@@ -9948,7 +9978,7 @@ function screenDivisao(name){
   RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null; // reseta a cada carreira nova
   /* Passo 3 do assistente (revamp fase 4). Seja uma lenda passa pelo
      bloqueioPro() sem Pro: aparece apagado, só o selo clica. */
-  const c=montarPasso(3,5,{titulo:"Divisão",fundo:"arena-alto",voltar:()=>screenCriador(name)});
+  const c=montarPasso(3,passosAssistente(),{titulo:"Divisão",fundo:"arena-alto",voltar:()=>screenCriador(name)});
   docmeta.textContent=`Registro · ${name}`;
   c.appendChild(el("p","tela-sub","A divisão decide quem você enfrenta e como as lutas terminam. Peso-pesado acaba cedo; mosca vai pros cartões."));
   /* O modo vem ANTES da divisão porque é ele que decide quantos lutadores cada
@@ -10007,7 +10037,7 @@ function screenDivisao(name){
          <span class="qt"><b>${pool.length}</b> ${MODO==="lenda"?"lendas":"lutadores"}</span>
          <span class="top">O melhor daqui: ${top.name}</span>`);
       card.type="button";
-      card.onclick=()=>{SOM.toque();DIVISION=d.id;screenAtivarRival(name);};
+      card.onclick=()=>{SOM.toque();DIVISION=d.id;depoisDaDivisao(name);};
       grid.appendChild(card);
     });
 
@@ -10037,6 +10067,15 @@ function validarNomeRival(digitado){
   if(bateReal)return"Já existe um lutador real com esse nome. Escolhe outro.";
   if(conteudoInseguro(nome))return"Esse nome não pode ser usado.";
   return null;
+}
+/* Passos do assistente de carreira nova. O Rival é recurso do Pro: quem não
+   é Pro pula a tela (auditoria de 2026-10-08: era uma escolha travada a
+   mais antes de jogar). Desafio: nome, visual e draft. */
+const passosAssistente=()=>lerDesafio()?3:(meuPro?5:4);
+function depoisDaDivisao(name){
+  if(meuPro){screenAtivarRival(name);return;}
+  RIVAL_ATIVADO=false;RIVAL_NOME_ESCOLHIDO=null;
+  startDraft(name);
 }
 function screenAtivarRival(name){
   /* Passo 4 do assistente (revamp fase 4). "Sim" passa pelo bloqueioPro()
@@ -10261,8 +10300,8 @@ function renderDraft(){
   /* Passo 5 do assistente (revamp fase 4; 3 de 3 no desafio). Voltar só
      antes da 1ª carta: depois dela a carta já gastou orçamento e sorteio,
      voltar deixaria o draft pela metade. */
-  const dzPasso=lerDesafio(),totalP=dzPasso?3:5;
-  const voltarP=picks.length?null:(dzPasso?()=>screenCriador(me.name):()=>screenAtivarRival(me.name));
+  const dzPasso=lerDesafio(),totalP=passosAssistente();
+  const voltarP=picks.length?null:(dzPasso?()=>screenCriador(me.name):meuPro?()=>screenAtivarRival(me.name):()=>screenDivisao(me.name));
   const c=montarPasso(totalP,totalP,{titulo:"Draft",fundo:"octogono-luz",voltar:voltarP});
   c.appendChild(el("p","tela-sub",
     `${(DIVISOES.find(d=>d.id===DIVISION)||{}).nome||DIVISION} · montagem ${4-remaining.length+1} de 4. Cada carta traz dois atributos do mesmo lutador real.`));
