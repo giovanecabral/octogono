@@ -252,6 +252,14 @@ Cada uma foi tomada depois de medir. O `LEIA-ME.md` tem os números.
   de IA novo que possa falar do jogador passa por `falasAtribuidasOk`
   (suíte `falas`). A memória vem na MESMA chamada da reação: não criar
   chamada nova de IA pra isso.
+- **Todo pedido da IA exige conta e conta numa cota diária (2026-10-08).**
+  `api/ai.js` confere o token no Supabase antes de qualquer coisa (401
+  sem sessão), recusa pedido com mais de 32 mil caracteres (413), corta
+  campo comprido (2000 caracteres, listas de 40) e conta cada chamada no
+  grupo `geral` de `consumir_uso_ia` (padrão 500 por dia,
+  `LIMITE_IA_GERAL` na Vercel). O jogo manda a sessão em toda chamada
+  (`tentarChamadaIA`). Antes, feed, evento, dilema e julgar aceitavam
+  chamada sem conta e de qualquer tamanho. Suítes `amostra` e `rotas`.
 - **Amostra grátis do Pro: a cota é do servidor e da conta.** Sem Pro, a
   coletiva e a entrevista da 1ª luta chamam a IA com `amostra:true`;
   `api/ai.js` só libera com login válido e `consumir_uso_ia` (tabela

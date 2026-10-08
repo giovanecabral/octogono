@@ -4543,6 +4543,36 @@ tirando o escape). Nome que já esteja no banco: conferir com
 e apagar pelo painel de admin; com o escape, mesmo um nome antigo assim
 já não roda nada.
 
+### API da IA aberta a abuso de custo (alto)
+
+`api/ai.js` aceitava os pedidos `feed`, `evento`, `dilema` e `julgar` sem
+login, e nenhum campo tinha limite de tamanho: um script qualquer gastava o
+crédito do OpenRouter em loop, com prompt do tamanho que quisesse.
+
+Correção:
+- todo pedido confere a conta pelo token no Supabase (401 sem sessão); o
+  jogo manda a sessão em toda chamada (`tentarChamadaIA`);
+- corpo com mais de 32 mil caracteres é recusado (413) antes de qualquer
+  consulta; campo comprido é cortado (2000 caracteres, listas de 40, cinco
+  níveis), sem mudar nenhum prompt de verdade (a impressão digital da
+  coletiva continua igual);
+- cota diária por conta no grupo `geral` de `consumir_uso_ia` (a tabela já
+  aceitava o grupo, sem migração), padrão 500 por dia, ajustável em
+  `LIMITE_IA_GERAL`. Conta depois das recusas (Pro, amostra), e volta junto
+  com a da amostra quando a IA falha. Cota esgotada: 403 `geral-esgotada`,
+  e o jogo cai nos textos prontos.
+
+Testes (`amostra`): pedido grátis sem sessão dá 401 sem chamar a IA; com
+sessão conta só na geral; cota geral esgotada dá 403 sem gastar a amostra;
+pedido grande dá 413; campo comprido chega cortado em 2000 no prompt; falha
+da IA devolve uma unidade de cada cota. `rotas`: feed e evento saem com a
+sessão. Dente provado rodando os testes contra o servidor antigo (12
+reprovações) e tirando a sessão do pedido.
+
+Custo, com o modelo atual (US$ 0,03 por milhão de tokens de entrada e
+US$ 0,13 de saída): uma chamada típica sai por volta de US$ 0,0001; uma
+carreira grátis, de 50 a 60 chamadas, por volta de US$ 0,006.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:

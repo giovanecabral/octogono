@@ -35,6 +35,33 @@ const limiteAmostra = () => {
    Troque por QWEN_MODEL sem mexer no código. */
 const MODEL = process.env.QWEN_MODEL || "qwen/qwen3.7-flash";
 
+/* Auditoria de pré-lançamento (2026-10-08): todo pedido da IA exige conta
+   (o jogo já exige conta pra jogar) e conta numa cota diária por conta, a
+   mesma função atômica da amostra (grupo "geral"). Antes, feed, evento,
+   dilema e julgar aceitavam chamada sem login e campos de qualquer
+   tamanho: um script gastava o crédito do OpenRouter em loop. Uma
+   carreira com Pro gasta perto de 150 chamadas; 500 por dia dá folga pra
+   três carreiras. Ajustável sem mexer no código: LIMITE_IA_GERAL. */
+const limiteGeral = () => {
+  const bruto = String(process.env.LIMITE_IA_GERAL ?? "").trim();
+  const n = Number(bruto);
+  return bruto && Number.isInteger(n) && n >= 0 ? n : 500;
+};
+/* corpo grande demais nem é lido; campo comprido é cortado (o jogo manda
+   texto curto: nome, fala de até 200 letras, listas pequenas) */
+const LIMITE_CORPO = 32000;
+function cortarDados(v, prof = 0) {
+  if (typeof v === "string") return v.length > 2000 ? v.slice(0, 2000) : v;
+  if (Array.isArray(v)) return prof > 4 ? [] : v.slice(0, 40).map((x) => cortarDados(x, prof + 1));
+  if (v && typeof v === "object") {
+    if (prof > 4) return {};
+    const o = {};
+    for (const k of Object.keys(v).slice(0, 80)) o[k] = cortarDados(v[k], prof + 1);
+    return o;
+  }
+  return v;
+}
+
 /* Regra de texto do jogo (LEIA-ME "Regras de texto"), a mesma dos moldes
    locais. O navegador ainda troca travessão que escapar (semTravessao()
    no index.html); frase de efeito só o prompt evita. Os prompts abaixo
@@ -809,9 +836,17 @@ export default async function handler(req, res) {
   if (!process.env.OPENROUTER_API_KEY)
     return res.status(500).json({ error: "OPENROUTER_API_KEY não configurada", transitorio: false });
 
-  const { kind, data } = req.body || {};
+  const corpoBruto = req.body || {};
+  const { kind } = corpoBruto;
   const build = PROMPTS[kind];
   if (!build) return res.status(400).json({ error: "kind inválido", transitorio: false });
+  let tamanhoDados = 0;
+  try { tamanhoDados = JSON.stringify(corpoBruto.data || {}).length; } catch { tamanhoDados = Infinity; }
+  if (tamanhoDados > LIMITE_CORPO) return res.status(413).json({ error: "pedido grande demais", transitorio: false });
+  const data = cortarDados(corpoBruto.data || {});
+  /* conta conferida no Supabase pelo token (nunca um id do corpo) */
+  const uid = await usuarioDoToken(data.token);
+  if (!uid) return res.status(401).json({ error: "sem sessão", cota: "sem-sessao", transitorio: false });
 
   /* Plano Pro: fecha a porta AQUI, antes de gastar um token sequer de
      OpenRouter — nunca confia em "data.pro" ou qualquer campo do corpo,
@@ -825,18 +860,17 @@ export default async function handler(req, res) {
      válido e cota da CONTA (não da carreira: carreira nova não zera nada),
      contada no banco antes de gastar um token. A unidade volta se a IA
      falhar (devolver, abaixo). */
-  let cota = null, devolvida = false;
+  let cota = null, cotaGeral = null, devolvida = false;
   const devolver = async () => {
-    if (!cota || devolvida) return;
+    if (devolvida) return;
     devolvida = true;
-    await devolverUsoIA(cota.uid, cota.grupo, cota.janela);
+    if (cota) await devolverUsoIA(cota.uid, cota.grupo, cota.janela);
+    if (cotaGeral) await devolverUsoIA(cotaGeral.uid, cotaGeral.grupo, cotaGeral.janela);
   };
   if (PRO_KINDS.has(kind)) {
     const pro = await verificarPro(data && data.token);
     if (!pro) {
       if (!(data && data.amostra === true)) return res.status(403).json({ error: "plano Pro necessário", transitorio: false });
-      const uid = await usuarioDoToken(data.token);
-      if (!uid) return res.status(401).json({ error: "sem sessão", cota: "sem-sessao", transitorio: false });
       /* limite 0 desliga a amostra sem nem consultar o banco */
       const limite = limiteAmostra();
       const v = limite < 1 ? { estado: "esgotada" } : await consumirUsoIA(uid, "amostra", limite);
@@ -844,6 +878,19 @@ export default async function handler(req, res) {
       if (v.estado !== "ok") return res.status(503).json({ error: "cota indisponível", cota: "indisponivel", transitorio: false });
       cota = { uid, grupo: "amostra", janela: v.janela };
     }
+  }
+
+  /* cota diária da conta (todo pedido, Pro ou não), depois das recusas
+     acima pra recusa não gastar unidade */
+  {
+    const lg = limiteGeral();
+    const vg = lg < 1 ? { estado: "esgotada" } : await consumirUsoIA(uid, "geral", lg);
+    if (vg.estado !== "ok") {
+      await devolver();
+      if (vg.estado === "esgotada") return res.status(403).json({ error: "cota diária da IA esgotada", cota: "geral-esgotada", transitorio: false });
+      return res.status(503).json({ error: "cota indisponível", cota: "indisponivel", transitorio: false });
+    }
+    cotaGeral = { uid, grupo: "geral", janela: vg.janela };
   }
 
   let p;

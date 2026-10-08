@@ -2696,9 +2696,12 @@ async function tentarChamadaIA(kind,data,ms,podeRetentar){
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   try{
+    /* todo pedido leva a sessão (auditoria de 2026-10-08: o servidor
+       recusa pedido sem conta e conta uma cota diária por conta) */
+    const token=data&&data.token?data.token:await meuAccessToken();
     const r=await fetch(AI_URL,{method:"POST",signal:ctrl.signal,
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({kind,data})});
+      body:JSON.stringify({kind,data:{...(data||{}),token}})});
     clearTimeout(t);
     c.falhas=0;
     if(!r.ok){

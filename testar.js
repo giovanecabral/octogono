@@ -1350,15 +1350,19 @@ async function testarEntrevista() {
     process.env.OPENROUTER_API_KEY = "falsa"; console.error = () => {};
     globalThis.fetch = async (u, op = {}) => {
       u = String(u);
+      if (u.endsWith("/auth/v1/user")) return { ok: true, status: 200, json: async () => ({ id: "u-teste" }) };
+      /* cota diária da IA (auditoria de 2026-10-08): o banco falso sempre libera */
+      if (u.endsWith("/rest/v1/rpc/consumir_uso_ia")) return { ok: true, status: 200, json: async () => "2026-10-01T00:00:00.000000+00:00", text: async () => "" };
+      if (u.endsWith("/rest/v1/rpc/devolver_uso_ia")) return { ok: true, status: 204, json: async () => null, text: async () => "" };
       if (u.includes("/rest/v1/assinaturas")) return { ok: true, status: 200, json: async () => [{ pro: true, expira_em: null }] };
       if (u.startsWith("https://openrouter.ai/")) { corpo = op.body; return { ok: false, status: 500, text: async () => "x", json: async () => ({}) }; }
       return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
     };
     const res = { status() { return this; }, json() { return this; }, setHeader() {}, end() {} };
     try {
-      for (const d of COLETIVA_DADOS_DIGITAL) { corpo = null; await H({ method: "POST", headers: {}, body: { kind: "coletivaCena", data: d } }, res); hs.push(crypto.createHash("sha256").update(corpo || "").digest("hex").slice(0, 16)); }
+      for (const d of COLETIVA_DADOS_DIGITAL) { corpo = null; await H({ method: "POST", headers: {}, body: { kind: "coletivaCena", data: { ...d, token: "tok" } } }, res); hs.push(crypto.createHash("sha256").update(corpo || "").digest("hex").slice(0, 16)); }
       corpo = null;
-      await H({ method: "POST", headers: {}, body: { kind: "entrevistaCena", data: resultados[1].r.pedido } }, res);
+      await H({ method: "POST", headers: {}, body: { kind: "entrevistaCena", data: { ...resultados[1].r.pedido, token: "tok" } } }, res);
       const ent = JSON.parse(corpo).messages;
       if (/Twitter|digitação leves|engraçado/.test(ent[0].content)) throw new Error("a entrevista ainda usa a voz de torcedor do feed");
       if (!/repórter esportivo brasileiro/.test(ent[0].content) || !/O que aconteceu na luta:/.test(ent[1].content) || !/Pauta do repórter/.test(ent[1].content) || /Forma da pergunta|Situação desta vez/.test(ent[1].content))
@@ -1397,6 +1401,10 @@ async function testarEntrevista() {
     console.error = () => {};
     globalThis.fetch = async (u, op = {}) => {
       u = String(u);
+      if (u.endsWith("/auth/v1/user")) return { ok: true, status: 200, json: async () => ({ id: "u-teste" }) };
+      /* cota diária da IA (auditoria de 2026-10-08): o banco falso sempre libera */
+      if (u.endsWith("/rest/v1/rpc/consumir_uso_ia")) return { ok: true, status: 200, json: async () => "2026-10-01T00:00:00.000000+00:00", text: async () => "" };
+      if (u.endsWith("/rest/v1/rpc/devolver_uso_ia")) return { ok: true, status: 204, json: async () => null, text: async () => "" };
       if (u.includes("/rest/v1/assinaturas")) return { ok: true, status: 200, json: async () => [{ pro: true, expira_em: null }] };
       if (u.startsWith("https://openrouter.ai/")) return fetchOriginal(u, op);
       return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
@@ -1409,7 +1417,7 @@ async function testarEntrevista() {
         const res = { cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } };
         chamadas++;
         if (chamadas > 1) await new Promise(r => setTimeout(r, Number(process.env.ENTREVISTA_PAUSA) || 1500));
-        await H({ method: "POST", headers: {}, body: { kind: "entrevistaCena", data: base.pedido } }, res);
+        await H({ method: "POST", headers: {}, body: { kind: "entrevistaCena", data: { ...base.pedido, token: "tok" } } }, res);
         if (res.corpo && res.corpo.usage) { entrada += res.corpo.usage.prompt_tokens || 0; saida += res.corpo.usage.completion_tokens || 0; }
         const j = res.cod === 200 ? res.corpo.result : null;
         Y.sb.__j = j;
@@ -7496,6 +7504,16 @@ async function testarRotas() {
     if (!/&lt;img src=x onerror=alert\(1\)&gt;/.test(html)) throw new Error("o nome escapado não apareceu");
   });
 
+  await conf("IA: todo pedido leva a sessão da conta, inclusive os grátis (feed, evento); o servidor recusa sem ela (auditoria 2026-10-08)", async () => {
+    const antes = estadoSb.sessao;
+    estadoSb.sessao = { user: { id: "u-teste", email: "t@t.com" }, access_token: "tok-sessao" };
+    const corpos = [], fOrig = env.sandbox.fetch;
+    env.sandbox.fetch = async (u, op) => { if (/\/api\/ai\b/.test(String(u))) corpos.push(JSON.parse(op.body)); return { ok: false, status: 503, json: async () => ({ transitorio: true }) }; };
+    try { for (const k of ["feed", "evento"]) await vm.runInContext(`ai(${JSON.stringify(k)},{name:"Teste"})`, env.sandbox); }
+    finally { env.sandbox.fetch = fOrig; estadoSb.sessao = antes; }
+    if (corpos.length < 2 || !corpos.every(c => c.data && c.data.token === "tok-sessao")) throw new Error("pedido sem a sessão: " + JSON.stringify(corpos.map(c => c.kind + ":" + (c.data && c.data.token))));
+  });
+
   await conf("continuar: 3 espaços, vazio leva a Nova carreira", async () => {
     const m = env.todos.length;
     UI.irPara("continuar"); env.drenar(); await respirar(); env.drenar(); await respirar();
@@ -8774,6 +8792,10 @@ async function testarDiversidade(nCarreiras = 6) {
     process.env.OPENROUTER_API_KEY = modo === "real" ? fs.readFileSync(path.join(os.homedir(), ".octogono-openrouter"), "utf8").trim() : "chave-falsa";
     globalThis.fetch = async (u, op = {}) => {
       u = String(u);
+      if (u.endsWith("/auth/v1/user")) return { ok: true, status: 200, json: async () => ({ id: "u-teste" }) };
+      /* cota diária da IA (auditoria de 2026-10-08): o banco falso sempre libera */
+      if (u.endsWith("/rest/v1/rpc/consumir_uso_ia")) return { ok: true, status: 200, json: async () => "2026-10-01T00:00:00.000000+00:00", text: async () => "" };
+      if (u.endsWith("/rest/v1/rpc/devolver_uso_ia")) return { ok: true, status: 204, json: async () => null, text: async () => "" };
       if (u.includes("/rest/v1/assinaturas")) return { ok: true, status: 200, json: async () => [{ pro: true, expira_em: null }] };
       if (u.startsWith("https://openrouter.ai/")) {
         const b = JSON.parse(op.body); uso.caracteresPrompt += b.messages.reduce((a, m) => a + m.content.length, 0);
@@ -9049,10 +9071,11 @@ async function testarAmostra() {
       }
       if (consumos() || iaCorpos.length) throw new Error("contou ou chamou a IA");
     });
-    await conf("Pro com a marca de amostra não gasta cota nenhuma (o Pro passa antes)", async () => {
+    await conf("Pro com a marca de amostra não gasta a cota da amostra (o Pro passa antes); conta só na cota diária geral", async () => {
       zerar();
       for (let i = 0; i < 8; i++) { const r = await chamar("tok-pro"); if (r.cod !== 200) throw new Error("Pro recusado: " + r.cod); }
-      if (consumos() || banco.size) throw new Error("o Pro gastou cota");
+      if (rpc.some(c => c[0] === "consumir" && c[1].grupo_ === "amostra")) throw new Error("o Pro gastou a amostra");
+      if (rpc.filter(c => c[0] === "consumir" && c[1].grupo_ === "geral").length !== 8) throw new Error("o Pro não contou na cota geral");
     });
     for (const modo of ["500", "404", "rede", "estranho"])
       await conf(`banco fora (${modo}): recusa com 503 'cota indisponível', sem chamar a IA`, async () => {
@@ -9066,10 +9089,14 @@ async function testarAmostra() {
         zerar(); iaFila = [modo];
         const r = await chamar("tok-u1");
         if (r.cod < 500) throw new Error("status " + r.cod);
-        if (devolucoes() !== 1) throw new Error(devolucoes() + " devoluções");
-        const dev = rpc.find(x => x[0] === "devolver")[1];
-        if (dev.uid !== U1 || dev.grupo_ !== "amostra" || dev.janela !== linha(U1).janela) throw new Error("devolução sem a janela certa: " + JSON.stringify(dev));
+        /* uma devolução por cota contada: a da amostra e a geral (2026-10-08) */
+        const devs = rpc.filter(x => x[0] === "devolver").map(x => x[1]);
+        if (devs.length !== 2 || devs.filter(d => d.grupo_ === "amostra").length !== 1 || devs.filter(d => d.grupo_ === "geral").length !== 1)
+          throw new Error("devoluções: " + JSON.stringify(devs.map(d => d.grupo_)));
+        const dev = devs.find(d => d.grupo_ === "amostra"), geral = banco.get(U1 + "|geral");
+        if (dev.uid !== U1 || dev.janela !== linha(U1).janela) throw new Error("devolução sem a janela certa: " + JSON.stringify(dev));
         if (linha(U1).chamadas !== 0 || linha(U1).total !== 1) throw new Error("conta errada: " + JSON.stringify(linha(U1)));
+        if (!geral || geral.chamadas !== 0 || geral.total !== 1) throw new Error("cota geral não voltou: " + JSON.stringify(geral));
         if (r.corpo.amostra) throw new Error("o erro devolveu texto da IA de graça: " + r.corpo.amostra);
       });
     await conf("uma devolução por chamada, mesmo quando a resposta de erro falha no meio e o erro cai no catch (que devolve de novo)", async () => {
@@ -9078,7 +9105,9 @@ async function testarAmostra() {
       let jsons = 0;
       res.json = function (b) { if (++jsons === 1) throw new Error("resposta caiu"); this.corpo = b; return this; };
       try { await H({ method: "POST", headers: {}, body: { kind: "coletivaCena", data: { name: "Teste", opp: "Rival", token: "tok-u1", amostra: true } } }, res); } catch {}
-      if (devolucoes() !== 1) throw new Error(devolucoes() + " devoluções");
+      /* uma por cota contada (amostra e geral), nunca duas da mesma */
+      const grupos = rpc.filter(x => x[0] === "devolver").map(x => x[1].grupo_).sort().join();
+      if (grupos !== "amostra,geral") throw new Error("devoluções: " + grupos);
       if (linha(U1).chamadas !== 0) throw new Error(JSON.stringify(linha(U1)));
     });
     await conf("devolução de janela que já virou não mexe na janela nova", async () => {
@@ -9139,13 +9168,47 @@ async function testarAmostra() {
       if (r.cod !== 403 || r.corpo.cota !== "esgotada" || consumos() || iaCorpos.length) throw new Error("limite 0: " + r.cod + ", consumos " + consumos());
       delete process.env.LIMITE_AMOSTRA_IA;
     });
-    await conf("evento e feed não passam pela cota da amostra (o resto da IA é a etapa 6)", async () => {
+    /* auditoria de pré-lançamento (2026-10-08): antes, evento, feed, dilema
+       e julgar aceitavam chamada sem conta e de qualquer tamanho */
+    await conf("evento, feed, dilema e julgar sem sessão: 401, sem contar e sem chamar a IA", async () => {
+      zerar();
+      for (const kind of ["evento", "feed", "dilema", "julgar"]) {
+        const r = await chamar(null, { kind, amostra: false });
+        if (r.cod !== 401 || r.corpo.cota !== "sem-sessao") throw new Error(kind + ": " + r.cod);
+      }
+      if (consumos() || iaCorpos.length) throw new Error("contou ou chamou a IA");
+    });
+    await conf("evento e feed com sessão: não passam pela cota da amostra; contam uma vez na cota diária geral", async () => {
       zerar();
       for (const kind of ["evento", "feed"]) {
-        const r = await chamar(null, { kind, amostra: true });
+        const r = await chamar("tok-u1", { kind, amostra: true });
         if (r.cod !== 200) throw new Error(kind + ": " + r.cod);
       }
-      if (consumos()) throw new Error("contou");
+      if (rpc.some(c => c[0] === "consumir" && c[1].grupo_ === "amostra")) throw new Error("contou na amostra");
+      const g = banco.get(U1 + "|geral");
+      if (!g || g.chamadas !== 2) throw new Error("cota geral: " + JSON.stringify(g));
+    });
+    await conf("cota diária geral esgotada (LIMITE_IA_GERAL): 403 'geral-esgotada', sem chamar a IA, e a cota da amostra não é gasta", async () => {
+      zerar(); process.env.LIMITE_IA_GERAL = "2";
+      try {
+        for (let i = 0; i < 2; i++) { const r = await chamar("tok-u1", { kind: "feed" }); if (r.cod !== 200) throw new Error(`chamada ${i + 1}: ${r.cod}`); }
+        const n = iaCorpos.length;
+        const r3 = await chamar("tok-u1", { kind: "feed" });
+        if (r3.cod !== 403 || r3.corpo.cota !== "geral-esgotada" || r3.corpo.transitorio !== false) throw new Error("3ª: " + r3.cod + " " + JSON.stringify(r3.corpo));
+        const ra = await chamar("tok-u1", { kind: "coletivaCena" });
+        if (ra.cod !== 403 || linha(U1).chamadas !== 0) throw new Error("amostra com a geral esgotada: " + ra.cod + " " + JSON.stringify(linha(U1)));
+        if (iaCorpos.length !== n) throw new Error("chamou a IA com a cota esgotada");
+      } finally { delete process.env.LIMITE_IA_GERAL; }
+    });
+    await conf("pedido grande demais: 413 sem conferir conta, sem contar e sem chamar a IA; campo comprido é cortado antes do prompt", async () => {
+      zerar();
+      const r = await chamar("tok-u1", { kind: "feed", extra: { recentes: Array.from({ length: 30 }, () => "x".repeat(1500)) } });
+      if (r.cod !== 413) throw new Error("corpo grande: " + r.cod);
+      if (consumos() || iaCorpos.length) throw new Error("contou ou chamou a IA");
+      const r2 = await chamar("tok-u1", { kind: "feed", extra: { name: "y".repeat(5000) } });
+      if (r2.cod !== 200) throw new Error("campo comprido: " + r2.cod);
+      const prompt = iaCorpos[iaCorpos.length - 1];
+      if (prompt.includes("y".repeat(2001)) || !prompt.includes("y".repeat(2000))) throw new Error("o campo não foi cortado em 2000");
     });
   } finally {
     globalThis.fetch = fetchOriginal;
