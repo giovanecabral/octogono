@@ -1017,6 +1017,9 @@ function getSupabase(){
    este cache esteja desatualizado/forjado via DevTools, o pior caso é a
    UI mostrar "ativo" e o servidor recusar com 403 — nunca o contrário. */
 let meuPro=false;
+/* data de vencimento do Pro da conta (null: nunca teve; undefined: ainda
+   não conferido). Serve só pro aviso de vencimento no menu (2026-10-08). */
+let PRO_EXPIRA_EM;
 /* Amostra grátis do Pro (plano de evolução, etapa 2, 2026-10-01): sem o
    Pro, a coletiva e a entrevista da 1ª luta de cada carreira chamam a IA
    marcadas com amostra:true. Quem libera é o servidor (api/ai.js), pela
@@ -1079,6 +1082,7 @@ async function atualizarStatusPro(){
     if(!session){meuPro=false;return;}
     const{data}=await sb.from("assinaturas").select("pro,expira_em").eq("user_id",session.user.id).maybeSingle();
     meuPro=proAindaValido(data);
+    PRO_EXPIRA_EM=data&&data.pro===true&&data.expira_em?data.expira_em:null;
   }catch(e){meuPro=false;}
 }
 /* Celular: o teclado virtual cobre a metade de baixo da tela e o botão de
@@ -1357,9 +1361,11 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
       if(campoC)campoC.inp.disabled=v;
     };
 
-    const btnAcao=el("button","btn",modo==="entrar"?"Entrar":"Criar conta");
+    /* Google na frente (auditoria de 2026-10-08): um toque, sem senha e sem
+       esperar e-mail de confirmação; o e-mail fica como alternativa */
+    const btnAcao=el("button","btn btn-ghost",modo==="entrar"?"Entrar":"Criar conta");
     if(modo==="criar")btnAcao.disabled=true;
-    const btnGoogle=el("button","btn btn-ghost","Entrar com Google");
+    const btnGoogle=el("button","btn","Entrar com Google");
 
     btnAcao.onclick=async()=>{
       const email=inpEmail.value.trim(),senha=campoS.inp.value;
@@ -1387,7 +1393,7 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
       if(!r.ok){msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);trava(false);}
     };
 
-    container.append(el("h4","",modo==="entrar"?"Entrar":"Criar conta"),wrapEmail,campoS.wrap);
+    container.append(el("h4","",modo==="entrar"?"Entrar":"Criar conta"),btnGoogle,el("p","hint conta-ou","ou com e-mail"),wrapEmail,campoS.wrap);
 
     if(modo==="criar"){
       campoC=campoSenha("Confirmar senha","conta-senha-conf","new-password");
@@ -1412,7 +1418,7 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
       container.append(linkEsqueci);
     }
 
-    container.append(btnAcao,el("p","hint","ou"),btnGoogle,msg);
+    container.append(btnAcao,msg);
 
     const linkModo=el("p","conta-modo-link","");
     const link=el("a","",modo==="entrar"?"Criar conta":"Já tenho conta");link.href="#";link.id="conta-link-modo";
@@ -9098,11 +9104,24 @@ async function buscarPlacar({divisao=null,modo="normal",limite=50}={}){
   const sb=getSupabase();
   if(!sb)return[];
   try{
-    let q=sb.from("placar").select("nome_lutador,divisao,modo,pontuacao,cartel,nota,cinturoes,rosto").eq("modo",modo);
+    let q=sb.from("placar").select("user_id,nome_lutador,divisao,modo,pontuacao,cartel,nota,cinturoes,rosto").eq("modo",modo);
     if(divisao)q=q.eq("divisao",divisao);
-    const{data,error}=await q.order("pontuacao",{ascending:false}).limit(limite);
-    return error||!Array.isArray(data)?[]:data;
+    const{data,error}=await q.order("pontuacao",{ascending:false}).limit(Math.min(500,limite*5));
+    return error||!Array.isArray(data)?[]:melhorPorConta(data,limite);
   }catch(e){ return[]; }
+}
+/* Uma linha por conta no ranking: a melhor carreira de cada um (auditoria
+   de 2026-10-08: uma conta só, com carreiras forjadas, enchia o topo).
+   Recebe as linhas já em ordem de pontuação. */
+function melhorPorConta(linhas,limite){
+  const vistos=new Set(),out=[];
+  for(const l of linhas){
+    const k=l.user_id||("sem-conta:"+out.length);
+    if(vistos.has(k))continue;
+    vistos.add(k);out.push(l);
+    if(out.length>=limite)break;
+  }
+  return out;
 }
 
 function cartaoMenu({rota,tamanho,foto,rotulo,titulo,texto="",acao,extra="",i=0,apagado=false}){
@@ -9172,6 +9191,34 @@ function screenMenu(){
 
   preencherPreviaRanking();
   preencherPreviaConta(chip);
+  preencherAvisoPro(c);
+}
+/* Aviso de vencimento do Pro (auditoria de 2026-10-08): o passe de 30 dias
+   não renova sozinho e o e-mail é limitado, então o menu avisa 3 dias
+   antes e até 7 dias depois de vencer, com o botão de renovar. */
+function textoAvisoPro(expira,agora=Date.now()){
+  if(!expira)return null;
+  const t=new Date(expira).getTime(),dia=864e5;
+  if(!Number.isFinite(t))return null;
+  const data=new Date(t).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+  if(t>agora){
+    const d=Math.ceil((t-agora)/dia);
+    if(d>3)return null;
+    return `Seu Pro vence ${d<=1?"amanhã":`em ${d} dias`} (${data}). Renove pra continuar com a coletiva, a entrevista e o modo Lenda.`;
+  }
+  if(agora-t>7*dia)return null;
+  return `Seu Pro venceu em ${data}. Renove pra voltar a ter a coletiva, a entrevista e o modo Lenda.`;
+}
+async function preencherAvisoPro(container){
+  if(PRO_EXPIRA_EM===undefined){ if(!(await sessaoAtual()))return; await atualizarStatusPro(); }
+  const txt=textoAvisoPro(PRO_EXPIRA_EM);
+  if(!txt||!container||container.isConnected===false)return;
+  const aviso=el("div","aviso-pro",`${ICONE("coroa")}<span>${txt}</span>`);
+  const b=el("button","botao","Renovar por R$ 11,99");b.type="button";
+  b.onclick=()=>{ SOM.toque(); irPara("conta","pro"); };
+  aviso.appendChild(b);
+  const topo=container.querySelector&&container.querySelector(".menu-topo");
+  if(topo&&topo.after)topo.after(aviso); else container.appendChild(aviso);
 }
 async function preencherPreviaRanking(){
   const linhas=await buscarPlacar({limite:3});
@@ -9355,10 +9402,13 @@ async function buscarMinhaPosicao({divisao=null,modo="normal"}={}){
     const{data}=await q.order("pontuacao",{ascending:false}).limit(1);
     const minha=Array.isArray(data)&&data[0];
     if(!minha)return null;
-    let c=sb.from("placar").select("seed",{count:"exact",head:true}).eq("modo",modo).gt("pontuacao",minha.pontuacao);
+    /* posição entre CONTAS (o ranking mostra a melhor de cada uma): quantas
+       outras contas têm carreira acima da sua melhor */
+    let c=sb.from("placar").select("user_id").eq("modo",modo).gt("pontuacao",minha.pontuacao);
     if(divisao)c=c.eq("divisao",divisao);
-    const{count}=await c;
-    return{...minha,posicao:(count||0)+1};
+    const{data:acima}=await c.limit(2000);
+    const contas=new Set((Array.isArray(acima)?acima:[]).map(l=>l.user_id).filter(u=>u&&u!==USUARIO_ID));
+    return{...minha,posicao:contas.size+1};
   }catch(e){ return null; }
 }
 function desenharRanking(area,linhas,minha){

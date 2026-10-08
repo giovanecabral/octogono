@@ -12,7 +12,7 @@ import { cabecalhoServico } from "./_pro.js";
 const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
-const LIMITE_DIA = 20;
+const LIMITE_DIA = 5;   // 2026-10-08: era 20 (uma conta enchia o topo com carreira forjada)
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", process.env.ALLOWED_ORIGIN || "*");

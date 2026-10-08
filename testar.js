@@ -7387,7 +7387,7 @@ async function testarRotas() {
   env.sandbox.localStorage = { getItem: k => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: k => { delete dadosLS[k]; } };
   vm.createContext(env.sandbox);
   try {
-    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "htmlPreviaRanking", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
+    vm.runInContext(exportar(lerScript(), ["ready", "irPara", "lerRota", "ROTAS", "desenharRanking", "htmlPreviaRanking", "melhorPorConta", "textoAvisoPro", "consumirIntencao", "guardarIntencao", "bloqueioPro", "montarPasso",
       "screenDivisao", "screenAtivarRival", "criarConta", "avisarConfirmacaoEmail"])
       + "\ntry{globalThis.__x.rotaAtual=()=>rotaAtual;}catch(e){}"
       + "\ntry{globalThis.__x.meuPro=()=>meuPro;}catch(e){}"
@@ -7502,6 +7502,31 @@ async function testarRotas() {
     const html = nos.map(n => String(n.innerHTML || "")).join("\n") + "\n" + UI.htmlPreviaRanking(linhas.slice(0, 3));
     if (/<img src=x/.test(html)) throw new Error("nome cru no HTML: " + html.slice(html.indexOf("<img src=x") - 40, html.indexOf("<img src=x") + 40));
     if (!/&lt;img src=x onerror=alert\(1\)&gt;/.test(html)) throw new Error("o nome escapado não apareceu");
+  });
+
+  await conf("ranking: uma linha por conta, a melhor carreira de cada uma, na ordem dos pontos (auditoria 2026-10-08)", () => {
+    const linhas = [["u1", 9000], ["u1", 8900], ["u2", 8800], ["u1", 8750], ["u3", 8700], ["u2", 8600], ["u4", 8500]]
+      .map(([user_id, pontuacao]) => ({ user_id, pontuacao, nome_lutador: user_id + "-" + pontuacao }));
+    const r = UI.melhorPorConta(linhas, 3).map(l => l.nome_lutador).join(",");
+    if (r !== "u1-9000,u2-8800,u3-8700") throw new Error("ranking: " + r);
+  });
+
+  await conf("Pro: aviso de vencimento no menu 3 dias antes e até 7 depois, com o botão de renovar (auditoria 2026-10-08)", async () => {
+    const dia = 864e5, agora = Date.now(), iso = d => new Date(agora + d).toISOString();
+    const t = d => UI.textoAvisoPro(iso(d), agora);
+    if (!/vence em 2 dias/.test(t(2 * dia - 60000)) || !/amanhã/.test(t(dia / 2)) || t(5 * dia) !== null) throw new Error("antes: " + [t(2 * dia - 60000), t(dia / 2), t(5 * dia)].join(" | "));
+    if (!/venceu em/.test(t(-3 * dia)) || t(-10 * dia) !== null || UI.textoAvisoPro(null) !== null) throw new Error("depois: " + [t(-3 * dia), t(-10 * dia)].join(" | "));
+    const antes = estadoSb.assinatura;
+    estadoSb.assinatura = { pro: true, expira_em: iso(2 * dia - 60000) };
+    try {
+      await vm.runInContext("PRO_EXPIRA_EM=undefined", env.sandbox);
+      const m = env.todos.length;
+      UI.irPara("menu"); env.drenar(); await respirar(); await respirar(); env.drenar();
+      const aviso = desde(m).filter(n => tem(n, "aviso-pro")).pop();
+      if (!aviso || !/vence em 2 dias/.test(aviso.innerHTML)) throw new Error("menu sem o aviso");
+      const b = (aviso.children || []).find(n => n.tagName === "button");
+      if (!b || !/Renovar/.test(b.innerHTML) || !b.onclick) throw new Error("aviso sem o botão de renovar");
+    } finally { estadoSb.assinatura = antes; await vm.runInContext("PRO_EXPIRA_EM=undefined", env.sandbox); }
   });
 
   await conf("IA: todo pedido leva a sessão da conta, inclusive os grátis (feed, evento); o servidor recusa sem ela (auditoria 2026-10-08)", async () => {

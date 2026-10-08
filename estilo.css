@@ -1106,6 +1106,10 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .res-num .pos-mov{margin:0}
 /* teto do estreante no draft (regras v3, 2026-10-05): carta com atributo no limite */
 .elite.teto{color:var(--ouro);border-color:var(--ouro)}
+/* aviso de vencimento do Pro no menu (2026-10-08) */
+.aviso-pro{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:-14px 0 24px;padding:14px 18px;background:rgba(17,19,26,.92);border:1px solid var(--linha);border-left:3px solid var(--ouro);color:var(--osso)}
+.aviso-pro .ico{width:20px;height:20px;color:var(--ouro);flex:none}
+.aviso-pro span{flex:1 1 260px;font-size:15px;line-height:1.45}
 /* Rever narração no resultado (2026-10-05): o mesmo painel da luta */
 .res-rever{margin-top:14px}
 .res-narracao{width:100%;max-width:900px;max-height:60vh;overflow:auto;padding:6px 22px 18px;background:rgba(17,19,26,.92);border:1px solid var(--linha)}

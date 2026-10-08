@@ -4598,6 +4598,33 @@ chamadas): 10 conferências simultâneas dão uma ativação e 30 dias; webhook
 e volta ao jogo juntos dão 30 dias; falha ao gravar desfaz a reserva;
 reserva recente segura e reserva vencida libera.
 
+### Cadastro: Google na frente (alto)
+
+Jogar exige conta e a conta por e-mail exige confirmar o endereço, num
+provedor (Resend grátis) que manda 100 e-mails por dia. No portão e na
+tela da conta, "Entrar com Google" virou o botão principal e o primeiro do
+formulário (um toque, sem senha e sem esperar e-mail); o e-mail ficou
+embaixo, como alternativa ("ou com e-mail"). O limite de e-mails é
+configuração do dono: plano pago de SMTP ou confirmação desligada no
+Supabase.
+
+### Ranking: a melhor carreira de cada conta (médio)
+
+Uma conta só, com carreiras forjadas (o motor roda no navegador, então
+carreira plausível passa), enchia o topo: até 20 envios por dia, todos
+aparecendo. Agora o ranking e a prévia do menu mostram uma linha por conta,
+a melhor (`melhorPorConta`, sobre até 5 vezes o limite pedido), "sua
+posição" conta contas e não carreiras, e `api/placar.js` aceita 5 envios
+por dia. Teste na suíte `rotas`.
+
+### Aviso de vencimento do Pro (médio)
+
+O passe de 30 dias não renova sozinho e vencia sem aviso. O menu mostra uma
+faixa 3 dias antes e até 7 dias depois do vencimento, com "Renovar por R$
+11,99" (`textoAvisoPro`, `preencherAvisoPro`; a data vem da mesma consulta
+de `atualizarStatusPro`, guardada em `PRO_EXPIRA_EM`). Teste na suíte
+`rotas`, com dente provado.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:
