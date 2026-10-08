@@ -4573,6 +4573,31 @@ Custo, com o modelo atual (US$ 0,03 por milhão de tokens de entrada e
 US$ 0,13 de saída): uma chamada típica sai por volta de US$ 0,0001; uma
 carreira grátis, de 50 a 60 chamadas, por volta de US$ 0,006.
 
+### Ativação do Pro sem trava (alto)
+
+Ativar era conferir se o pagamento já tinha ativado, somar 30 dias e
+registrar, em passos separados. Duas execuções ao mesmo tempo passavam pela
+conferência antes do registro: o webhook e a volta pro jogo chegando
+juntos davam 60 dias, e `api/confirmar-pagamento.js` (chamado pelo próprio
+jogador, sem limite) disparado 10 vezes em paralelo dava 10 ativações.
+Reproduzido na suíte `pagamento` com o código antigo: 10 ativações, 60
+dias.
+
+Correção sem migração (`reservarAtivacao` e `liberarReserva` em
+`api/_pro.js`, usadas pelo webhook e pela conferência):
+- antes de ativar, grava a linha (pagamento, `ATIVACAO`) com
+  `ignore-duplicates`; a chave primária (asaas_payment_id, evento) deixa
+  uma execução só conseguir, e a outra desiste;
+- a gravação do Pro falhou: quem reservou desfaz a reserva, e a próxima
+  tentativa (reenvio da Asaas ou a volta pro jogo) ativa;
+- a função caiu no meio: a reserva sem ativação registrada vence em 2
+  minutos. Ninguém paga e fica sem Pro.
+
+Testes (`pagamento`, com atraso aleatório no banco falso pra intercalar as
+chamadas): 10 conferências simultâneas dão uma ativação e 30 dias; webhook
+e volta ao jogo juntos dão 30 dias; falha ao gravar desfaz a reserva;
+reserva recente segura e reserva vencida libera.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:

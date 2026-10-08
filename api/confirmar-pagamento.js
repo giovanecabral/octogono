@@ -18,6 +18,7 @@
 import {
   SUPABASE_URL, EVENTOS_ATIVACAO, jaProcessado, registrarProcessado,
   pagamentosDaConta, pagamentoValido, ativarPro, supabaseServiceRole,
+  reservarAtivacao, liberarReserva,
 } from "./_pro.js";
 
 /* mesma anon key pública de api/ai.js e api/criar-pagamento.js */
@@ -70,10 +71,13 @@ export default async function handler(req, res) {
     for (const p of cobrancas) {
       if (p.externalReference !== usuario.id || !pagamentoValido(p)) continue;
       if (await jaProcessado(p.id, EVENTOS_ATIVACAO)) continue;
-      const ate = await ativarPro(usuario.id, p.customer, p.id);
-      await registrarProcessado(p.id, usuario.id, "CONFIRMADO_NO_RETORNO", p.status, p.value);
-      ativados++;
-      log("Pro ativado no retorno", p.id, "até", ate);
+      if (!(await reservarAtivacao(p, usuario.id))) continue;   // outra chamada já ativou ou está ativando
+      try {
+        const ate = await ativarPro(usuario.id, p.customer, p.id);
+        await registrarProcessado(p.id, usuario.id, "CONFIRMADO_NO_RETORNO", p.status, p.value);
+        ativados++;
+        log("Pro ativado no retorno", p.id, "até", ate);
+      } catch (e) { await liberarReserva(p.id); throw e; }
     }
   } catch (e) {
     log("falha gravando no Supabase", usuario.id, e.message);

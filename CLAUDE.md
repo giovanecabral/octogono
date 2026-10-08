@@ -103,7 +103,10 @@ metade). Regras do revamp que valem daqui pra frente:
 - **Pro não depende só do webhook da Asaas.** `api/confirmar-pagamento.js`
   confere direto na Asaas quando o jogador volta; os dois usam
   `api/_pro.js`, e um pagamento ativa uma vez só (cartão manda dois
-  eventos). Mexeu em pagamento: `node testar.js pagamento`.
+  eventos). Desde 2026-10-08 a ativação reserva o pagamento antes
+  (`reservarAtivacao`: linha `ATIVACAO`, a chave primária garante uma
+  execução só; desfeita se a gravação falhar, vence em 2 minutos se a
+  função cair). Sem isso, 10 conferências simultâneas davam 10 ativações. Mexeu em pagamento: `node testar.js pagamento`.
 - **Painel de admin (`#/admin`, `api/admin.js`): a tela só mostra, o
   servidor decide.** Dono pelo e-mail em `ADMIN_DONO_EMAIL` (Vercel, nunca
   no código); admins na tabela `admins`. Toda ação nova do painel passa

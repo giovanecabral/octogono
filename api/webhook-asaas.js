@@ -46,7 +46,7 @@
 
 import {
   EVENTOS_ATIVACAO, jaProcessado, registrarProcessado, buscarPagamento,
-  pagamentoValido, ativarPro, desativarPro,
+  pagamentoValido, ativarPro, desativarPro, reservarAtivacao, liberarReserva,
 } from "./_pro.js";
 
 const EVENTOS_CONFIRMACAO = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
@@ -91,10 +91,14 @@ export default async function handler(req, res) {
     if (ehAtivacao) {
       if (!pagamentoValido(pagamentoReal)) {
         log("não ativa", paymentId, pagamentoReal.status, pagamentoReal.value);
+      } else if (!(await reservarAtivacao({ ...pagamentoReal, id: paymentId }, userId))) {
+        log("ativação já feita ou em andamento em outra chamada", paymentId);
       } else {
-        const ate = await ativarPro(userId, pagamentoReal.customer, paymentId);
-        await registrarProcessado(paymentId, userId, eventoNome, pagamentoReal.status, pagamentoReal.value);
-        log("Pro ativado", paymentId, "até", ate);
+        try {
+          const ate = await ativarPro(userId, pagamentoReal.customer, paymentId);
+          await registrarProcessado(paymentId, userId, eventoNome, pagamentoReal.status, pagamentoReal.value);
+          log("Pro ativado", paymentId, "até", ate);
+        } catch (e) { await liberarReserva(paymentId); throw e; }
       }
     } else if (pagamentoReal.status === "REFUNDED") {
       // reembolso PARCIAL não derruba o Pro (preço fixo, não fracionado);

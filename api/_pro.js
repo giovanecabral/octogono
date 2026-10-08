@@ -89,6 +89,52 @@ export async function pagamentosDaConta(userId) {
   return Array.isArray(j && j.data) ? j.data : [];
 }
 
+/* Reserva da ativação (auditoria de pré-lançamento, 2026-10-08). "Já
+   ativou?" e "soma 30 dias" eram passos separados: duas execuções ao
+   mesmo tempo (o webhook e a volta pro jogo juntos, ou várias
+   conferências disparadas de propósito) passavam pela conferência e
+   cada uma somava 30 dias. Agora só UMA execução consegue gravar a linha
+   (pagamento, "ATIVACAO"): a chave primária (asaas_payment_id, evento) da
+   tabela garante, sem migração. A outra desiste. Se a gravação do Pro
+   falhar, quem reservou desfaz (liberarReserva); se a função cair no meio,
+   a reserva sem ativação registrada vence em 2 minutos e pode ser refeita
+   (ninguém paga e fica sem Pro). */
+export const RESERVA_ATIVACAO = "ATIVACAO";
+const RESERVA_VENCE_MS = 120000;
+export async function reservarAtivacao(p, userId) {
+  const tenta = async () => {
+    const r = await supabaseServiceRole("pagamentos_processados", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      body: JSON.stringify({ asaas_payment_id: p.id, user_id: userId, evento: RESERVA_ATIVACAO, status: String(p.status), valor: Number(p.value) }),
+    });
+    if (!r.ok) throw new Error("reserva da ativação falhou (" + r.status + ")");
+    let linhas = null;
+    try { linhas = await r.json(); } catch { linhas = null; }
+    return Array.isArray(linhas) && linhas.length > 0;   // vazio: outra execução já tinha a reserva
+  };
+  if (await tenta()) return true;
+  const r = await supabaseServiceRole(
+    `pagamentos_processados?asaas_payment_id=eq.${encodeURIComponent(p.id)}&select=evento,processado_em`
+  );
+  if (!r.ok) return false;
+  const linhas = await r.json();
+  if (!Array.isArray(linhas)) return false;
+  const reserva = linhas.find((l) => l.evento === RESERVA_ATIVACAO);
+  const ativou = linhas.some((l) => EVENTOS_ATIVACAO.includes(l.evento));
+  if (ativou || !reserva || Date.now() - new Date(reserva.processado_em).getTime() < RESERVA_VENCE_MS) return false;
+  await liberarReserva(p.id);
+  return tenta();
+}
+export async function liberarReserva(paymentId) {
+  try {
+    await supabaseServiceRole(
+      `pagamentos_processados?asaas_payment_id=eq.${encodeURIComponent(paymentId)}&evento=eq.${RESERVA_ATIVACAO}`,
+      { method: "DELETE" }
+    );
+  } catch { /* fica reservada e vence em 2 minutos */ }
+}
+
 export const pagamentoValido = (p) =>
   !!p && STATUS_PAGO.has(p.status) && Number(p.value) >= PRECO_PRO_MINIMO;
 

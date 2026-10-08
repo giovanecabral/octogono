@@ -8473,13 +8473,16 @@ async function testarPagamento() {
   const fetchOriginal = globalThis.fetch;
   const envOriginal = { ...process.env };
   const logOriginal = console.log;
-  let banco, asaas, usuarios, falharEscrita;
+  let banco, asaas, usuarios, falharEscrita, falharAssinatura;
   const zerar = () => {
     banco = { assinaturas: {}, processados: [], upsertsPro: 0 };
     asaas = {};           // id -> cobrança
     usuarios = { "tok-u1": { id: "u1", email: "a@a.com" } };
-    falharEscrita = false;
+    falharEscrita = false; falharAssinatura = false;
   };
+  /* atraso aleatório no banco falso: chamadas simultâneas se intercalam
+     como no Supabase de verdade (é o que expõe corrida na ativação) */
+  const espera = () => new Promise(r => setTimeout(r, Math.random() * 6));
   globalThis.fetch = async (u, op = {}) => {
     u = String(u);
     const ok = (corpo, status = 200) => ({ ok: status < 300, status, json: async () => corpo });
@@ -8488,19 +8491,31 @@ async function testarPagamento() {
       return usuarios[tok] ? ok(usuarios[tok]) : ok({}, 401);
     }
     if (u.includes("/rest/v1/pagamentos_processados")) {
+      await espera();
+      const id = decodeURIComponent((u.match(/asaas_payment_id=eq\.([^&]+)/) || [])[1] || "");
       if (op.method === "POST") {
         if (falharEscrita) return ok({}, 500);
-        const l = JSON.parse(op.body);
-        if (!banco.processados.some(x => x.asaas_payment_id === l.asaas_payment_id && x.evento === l.evento)) banco.processados.push(l);
+        const l = { ...JSON.parse(op.body), processado_em: new Date().toISOString() };
+        const existe = banco.processados.some(x => x.asaas_payment_id === l.asaas_payment_id && x.evento === l.evento);
+        if (!existe) banco.processados.push(l);
+        /* ignore-duplicates + return=representation: só devolve o que inseriu (a reserva da ativação) */
+        if (/return=representation/.test(String((op.headers || {}).Prefer || ""))) return ok(existe ? [] : [l], 201);
         return ok(null, 201);
       }
-      const id = decodeURIComponent((u.match(/asaas_payment_id=eq\.([^&]+)/) || [])[1] || "");
-      const ev = decodeURIComponent((u.match(/evento=in\.\(([^)]*)\)/) || [])[1] || "").split(",");
+      if (op.method === "DELETE") {
+        const evd = decodeURIComponent((u.match(/evento=eq\.([^&]+)/) || [])[1] || "");
+        banco.processados = banco.processados.filter(x => !(x.asaas_payment_id === id && x.evento === evd));
+        return ok(null, 204);
+      }
+      const m = u.match(/evento=in\.\(([^)]*)\)/);
+      if (!m) return ok(banco.processados.filter(x => x.asaas_payment_id === id));
+      const ev = decodeURIComponent(m[1]).split(",");
       return ok(banco.processados.filter(x => x.asaas_payment_id === id && ev.includes(x.evento)));
     }
     if (u.includes("/rest/v1/assinaturas")) {
+      await espera();
       if (op.method === "POST") {
-        if (falharEscrita) return ok({}, 500);
+        if (falharEscrita || falharAssinatura) return ok({}, 500);
         const l = JSON.parse(op.body); banco.assinaturas[l.user_id] = { ...(banco.assinaturas[l.user_id] || {}), ...l }; banco.upsertsPro++;
         return ok(null, 201);
       }
@@ -8525,6 +8540,38 @@ async function testarPagamento() {
   const cobranca = (id, extra = {}) => (asaas[id] = { id, customer: "cus_1", externalReference: "u1", status: "RECEIVED", value: 9.99, ...extra });
   try {
     await conf("volta ao jogo sem sessão = 401", async () => { zerar(); const r = await confirmar(null); if (r.cod !== 401) throw new Error("status " + r.cod); });
+    /* auditoria de pré-lançamento (2026-10-08): "já ativou?" e "soma 30
+       dias" eram passos separados, e chamadas simultâneas somavam 30 dias cada */
+    const diasDePro = () => { const a = banco.assinaturas.u1; return a && a.expira_em ? (new Date(a.expira_em).getTime() - Date.now()) / 864e5 : 0; };
+    await conf("10 conferências ao mesmo tempo depois de um Pix: uma ativação só, 30 dias", async () => {
+      zerar(); cobranca("pay_par");
+      const rs = await Promise.all(Array.from({ length: 10 }, () => confirmar("tok-u1")));
+      if (rs.some(r => r.cod !== 200)) throw new Error("status " + rs.map(r => r.cod));
+      if (banco.upsertsPro !== 1 || Math.round(diasDePro()) !== 30) throw new Error(`${banco.upsertsPro} ativações, ${diasDePro().toFixed(1)} dias`);
+    });
+    await conf("webhook e volta ao jogo ao mesmo tempo: 30 dias, não 60", async () => {
+      zerar(); cobranca("pay_dois");
+      await Promise.all([webhook("PAYMENT_RECEIVED", "pay_dois"), confirmar("tok-u1"), webhook("PAYMENT_CONFIRMED", "pay_dois"), confirmar("tok-u1")]);
+      if (banco.upsertsPro !== 1 || Math.round(diasDePro()) !== 30) throw new Error(`${banco.upsertsPro} ativações, ${diasDePro().toFixed(1)} dias`);
+    });
+    await conf("falha ao gravar o Pro depois da reserva: a reserva é desfeita e a próxima conferência ativa", async () => {
+      zerar(); cobranca("pay_falha"); falharAssinatura = true;
+      const r1 = await confirmar("tok-u1");
+      if (r1.cod !== 502) throw new Error("1ª: " + r1.cod);
+      if (banco.processados.length) throw new Error("ficou marcado: " + JSON.stringify(banco.processados.map(x => x.evento)));
+      falharAssinatura = false;
+      const r2 = await confirmar("tok-u1");
+      if (r2.cod !== 200 || r2.corpo.ativados !== 1 || Math.round(diasDePro()) !== 30) throw new Error("2ª: " + r2.cod + " " + JSON.stringify(r2.corpo));
+    });
+    await conf("reserva sem ativação (a função caiu no meio): vale por 2 minutos, depois a próxima conferência ativa", async () => {
+      zerar(); cobranca("pay_caiu");
+      banco.processados.push({ asaas_payment_id: "pay_caiu", user_id: "u1", evento: "ATIVACAO", status: "RECEIVED", valor: 9.99, processado_em: new Date(Date.now() - 10000).toISOString() });
+      const r1 = await confirmar("tok-u1");
+      if (r1.corpo.ativados !== 0 || banco.upsertsPro) throw new Error("passou por cima de reserva recente: " + JSON.stringify(r1.corpo));
+      banco.processados[0].processado_em = new Date(Date.now() - 180000).toISOString();
+      const r2 = await confirmar("tok-u1");
+      if (r2.corpo.ativados !== 1 || banco.upsertsPro !== 1 || Math.round(diasDePro()) !== 30) throw new Error("reserva vencida não liberou: " + JSON.stringify(r2.corpo));
+    });
     await conf("volta ao jogo com Pix pago e SEM webhook: ativa 30 dias na hora", async () => {
       zerar(); cobranca("pay_1");
       const r = await confirmar("tok-u1");
