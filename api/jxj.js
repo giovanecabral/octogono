@@ -230,7 +230,9 @@ function vistaDaLuta(d, uid) {
     trocas: (d.trocas || []).map((t) => {
       const evs = t.eventos || [], esc = evs.find((ev) => ev.tipo === "escolha") || {};
       return { round: t.round, troca: t.troca, acaoA: t.acao_a, acaoB: t.acao_b, varA: esc.va || null, varB: esc.vb || null,
-        ev: evs.filter((ev) => ev.tipo !== "escolha").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, metodo: ev.metodo || null })),
+        ev: evs.filter((ev) => ev.tipo !== "escolha").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, metodo: ev.metodo || null,
+          /* dano do golpe (o mesmo número do texto), pro lance da tela */
+          dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null })),
         eventos: evs.map((ev) => MOTOR.textoEvento(ev, nomes)).filter(Boolean) };
     }),
   };

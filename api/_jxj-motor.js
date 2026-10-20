@@ -142,62 +142,62 @@ export const CICLO = {
 export const VARIANTES = {
   pe: {
     golpes: [
-      { id: "jab", rotulo: "Jab e direto", frase: "o jab e direto", desc: "Acerta mais e mantém a distância, então a queda dele entra menos. Dano e nocaute menores.", mod: { acerto: 5, dano: 0.85, ko: 0.7, exposto: -2 } },
-      { id: "cruzado", rotulo: "Cruzado", frase: "o cruzado", desc: "Mais dano e mais chance de nocaute. Acerta menos.", mod: { acerto: -6, dano: 1.2, ko: 1.5 } },
-      { id: "chute_perna", rotulo: "Chute na perna", frase: "o chute na perna", desc: "Cansa e pode travar a perna dele (a pressão e a queda dele pioram). Nocauteia menos, e a queda dele entra mais.", mod: { acerto: 3, dano: 0.95, ko: 0.8, trava: 0.5, cansa: 0.6, exposto: 3 } },
+      { id: "jab", rotulo: "Jab e direto", frase: "o jab e direto", desc: "Acerta mais e mantém a distância, então a queda dele entra menos. Dano e nocaute menores.", curto: "Acerta mais · menos dano", mod: { acerto: 5, dano: 0.85, ko: 0.7, exposto: -2 } },
+      { id: "cruzado", rotulo: "Cruzado", frase: "o cruzado", desc: "Mais dano e mais chance de nocaute. Acerta menos.", curto: "Mais dano e nocaute · acerta menos", mod: { acerto: -6, dano: 1.2, ko: 1.5 } },
+      { id: "chute_perna", rotulo: "Chute na perna", frase: "o chute na perna", desc: "Cansa e pode travar a perna dele (a pressão e a queda dele pioram). Nocauteia menos, e a queda dele entra mais.", curto: "Cansa e trava a perna · nocauteia menos", mod: { acerto: 3, dano: 0.95, ko: 0.8, trava: 0.5, cansa: 0.6, exposto: 3 } },
     ],
     queda: [
-      { id: "double_leg", rotulo: "Double leg", frase: "o double leg", desc: "A queda pelas duas pernas. Entra um pouco mais que as outras.", mod: { acerto: 2 } },
-      { id: "single_leg", rotulo: "Single leg", frase: "o single leg", desc: "Gasta menos energia. Marca menos ponto quando entra.", mod: { custo: -1, pontos: 0.5 } },
-      { id: "quadril", rotulo: "Queda de quadril", frase: "a queda de quadril", desc: "Entra menos, mas é boa contra quem pressiona e ruim contra quem golpeia. Quando entra, você já cai na meia-guarda.", mod: { acerto: -2, vsPressao: 9, vsGolpes: -7, nivel: 1 } },
+      { id: "double_leg", rotulo: "Double leg", frase: "o double leg", desc: "A queda pelas duas pernas. Entra um pouco mais que as outras.", curto: "Entra um pouco mais", mod: { acerto: 2 } },
+      { id: "single_leg", rotulo: "Single leg", frase: "o single leg", desc: "Gasta menos energia. Marca menos ponto quando entra.", curto: "Gasta menos · marca menos ponto", mod: { custo: -1, pontos: 0.5 } },
+      { id: "quadril", rotulo: "Queda de quadril", frase: "a queda de quadril", desc: "Entra menos, mas é boa contra quem pressiona e ruim contra quem golpeia. Quando entra, você já cai na meia-guarda.", curto: "Boa contra quem pressiona", mod: { acerto: -2, vsPressao: 9, vsGolpes: -7, nivel: 1 } },
     ],
     defesa: [
-      { id: "guarda_alta", rotulo: "Guarda alta", frase: "a guarda alta", desc: "O golpe dele bate mais na guarda. A queda dele entra mais fácil.", mod: { guarda: 4, sprawl: -3 } },
-      { id: "sprawl", rotulo: "Sprawl", frase: "o sprawl", desc: "Base baixa, segura melhor a queda. O golpe dele passa mais pela guarda.", mod: { sprawl: 6, guarda: -4 } },
-      { id: "esquiva", rotulo: "Esquiva e contra-ataque", frase: "a esquiva", desc: "Mais chance de contra-atacar quem golpeia. Recupera menos energia.", mod: { contra: 0.15, guarda: -1, custo: 1 } },
+      { id: "guarda_alta", rotulo: "Guarda alta", frase: "a guarda alta", desc: "O golpe dele bate mais na guarda. A queda dele entra mais fácil.", curto: "Segura golpes · a queda entra mais", mod: { guarda: 4, sprawl: -3 } },
+      { id: "sprawl", rotulo: "Sprawl", frase: "o sprawl", desc: "Base baixa, segura melhor a queda. O golpe dele passa mais pela guarda.", curto: "Segura a queda · o golpe passa mais", mod: { sprawl: 6, guarda: -4 } },
+      { id: "esquiva", rotulo: "Esquiva e contra-ataque", frase: "a esquiva", desc: "Mais chance de contra-atacar quem golpeia. Recupera menos energia.", curto: "Mais contra-ataque · recupera menos", mod: { contra: 0.15, guarda: -1, custo: 1 } },
     ],
     pressao: [
-      { id: "grade", rotulo: "Pressionar na grade", frase: "a pressão na grade", desc: "Encurrala na grade e marca ponto, a pressão padrão.", mod: {} },
-      { id: "joelhadas", rotulo: "Clinche e joelhadas", frase: "as joelhadas no clinche", desc: "Os golpes curtos machucam mais. Entra pior contra quem golpeia e gasta mais energia.", mod: { dano: 1.6, acerto: -4, custo: 0.5 } },
-      { id: "cortar", rotulo: "Cortar o octógono", frase: "o corte do octógono", desc: "Fecha a saída e cansa mais quem defende. Golpes curtos mais fracos.", mod: { cansa: 1, dano: 0.5 } },
+      { id: "grade", rotulo: "Pressionar na grade", frase: "a pressão na grade", desc: "Encurrala na grade e marca ponto, a pressão padrão.", curto: "Pressão padrão, marca ponto", mod: {} },
+      { id: "joelhadas", rotulo: "Clinche e joelhadas", frase: "as joelhadas no clinche", desc: "Os golpes curtos machucam mais. Entra pior contra quem golpeia e gasta mais energia.", curto: "Mais dano · gasta mais energia", mod: { dano: 1.6, acerto: -4, custo: 0.5 } },
+      { id: "cortar", rotulo: "Cortar o octógono", frase: "o corte do octógono", desc: "Fecha a saída e cansa mais quem defende. Golpes curtos mais fracos.", curto: "Cansa quem defende · golpe fraco", mod: { cansa: 1, dano: 0.5 } },
     ],
   },
   cima: {
     golpes: [
-      { id: "gnp", rotulo: "Socos por cima", frase: "os socos por cima", desc: "O ground and pound padrão.", mod: {} },
-      { id: "cotoveladas", rotulo: "Cotoveladas", frase: "as cotoveladas", desc: "Mais dano e mais chance de nocaute técnico. Acerta menos.", mod: { acerto: -5, dano: 1.3, ko: 1.4 } },
-      { id: "marteladas", rotulo: "Marteladas", frase: "as marteladas", desc: "Acerta mais, com menos dano.", mod: { acerto: 5, dano: 0.8, ko: 0.7 } },
+      { id: "gnp", rotulo: "Socos por cima", frase: "os socos por cima", desc: "O ground and pound padrão.", curto: "Ground and pound padrão", mod: {} },
+      { id: "cotoveladas", rotulo: "Cotoveladas", frase: "as cotoveladas", desc: "Mais dano e mais chance de nocaute técnico. Acerta menos.", curto: "Mais dano e nocaute · acerta menos", mod: { acerto: -5, dano: 1.3, ko: 1.4 } },
+      { id: "marteladas", rotulo: "Marteladas", frase: "as marteladas", desc: "Acerta mais, com menos dano.", curto: "Acerta mais · menos dano", mod: { acerto: 5, dano: 0.8, ko: 0.7 } },
     ],
     queda: [
-      { id: "kimura", rotulo: "Kimura", frase: "a kimura", desc: "Finalização que vale igual em qualquer posição.", mod: {} },
-      { id: "mata_leao", rotulo: "Mata-leão", frase: "o mata-leão", desc: "Forte com você montado, fraca na guarda dele. Melhore a posição antes.", mod: { porNivel: [-8, 0, 8] } },
-      { id: "triangulo_braco", rotulo: "Triângulo de braço", frase: "o triângulo de braço", desc: "Melhor na meia-guarda. Na guarda dele, entra pouco.", mod: { porNivel: [-4, 6, 2] } },
+      { id: "kimura", rotulo: "Kimura", frase: "a kimura", desc: "Finalização que vale igual em qualquer posição.", curto: "Vale igual em qualquer posição", mod: {} },
+      { id: "mata_leao", rotulo: "Mata-leão", frase: "o mata-leão", desc: "Forte com você montado, fraca na guarda dele. Melhore a posição antes.", curto: "Forte montado · fraca na guarda", mod: { porNivel: [-8, 0, 8] } },
+      { id: "triangulo_braco", rotulo: "Triângulo de braço", frase: "o triângulo de braço", desc: "Melhor na meia-guarda. Na guarda dele, entra pouco.", curto: "Melhor na meia-guarda", mod: { porNivel: [-4, 6, 2] } },
     ],
     defesa: [
-      { id: "segurar", rotulo: "Segurar a posição", frase: "o controle por cima", desc: "Segura por cima e marca controle, sem gastar energia.", mod: {} },
-      { id: "peso", rotulo: "Pressão de peso", frase: "o peso por cima", desc: "Cansa quem está por baixo. Marca menos ponto de controle.", mod: { cansa: 0.8, pontos: 0.5 } },
+      { id: "segurar", rotulo: "Segurar a posição", frase: "o controle por cima", desc: "Segura por cima e marca controle, sem gastar energia.", curto: "Controle sem gastar energia", mod: {} },
+      { id: "peso", rotulo: "Pressão de peso", frase: "o peso por cima", desc: "Cansa quem está por baixo. Marca menos ponto de controle.", curto: "Cansa quem está por baixo", mod: { cansa: 0.8, pontos: 0.5 } },
     ],
     pressao: [
-      { id: "passar", rotulo: "Passar a guarda", frase: "a passagem de guarda", desc: "Melhora a posição um degrau.", mod: {} },
-      { id: "montada", rotulo: "Ir pra montada", frase: "a montada", desc: "Quando entra, pula direto pra montada. Entra menos.", mod: { acerto: -8, nivel: 1 } },
+      { id: "passar", rotulo: "Passar a guarda", frase: "a passagem de guarda", desc: "Melhora a posição um degrau.", curto: "Melhora a posição um degrau", mod: {} },
+      { id: "montada", rotulo: "Ir pra montada", frase: "a montada", desc: "Quando entra, pula direto pra montada. Entra menos.", curto: "Pula pra montada · entra menos", mod: { acerto: -8, nivel: 1 } },
     ],
   },
   baixo: {
     golpes: [
-      { id: "golpes_baixo", rotulo: "Golpes por baixo", frase: "os golpes por baixo", desc: "Pouco dano. Atrapalha quem está por cima.", mod: {} },
-      { id: "cotoveladas_baixo", rotulo: "Cotoveladas por baixo", frase: "as cotoveladas por baixo", desc: "Mais dano, acerta menos.", mod: { acerto: -4, dano: 1.6 } },
+      { id: "golpes_baixo", rotulo: "Golpes por baixo", frase: "os golpes por baixo", desc: "Pouco dano. Atrapalha quem está por cima.", curto: "Pouco dano · atrapalha por cima", mod: {} },
+      { id: "cotoveladas_baixo", rotulo: "Cotoveladas por baixo", frase: "as cotoveladas por baixo", desc: "Mais dano, acerta menos.", curto: "Mais dano · acerta menos", mod: { acerto: -4, dano: 1.6 } },
     ],
     queda: [
-      { id: "raspagem", rotulo: "Raspagem", frase: "a raspagem", desc: "Inverte a posição com mais facilidade.", mod: { acerto: 4 } },
-      { id: "triangulo", rotulo: "Triângulo", frase: "o triângulo", desc: "Raspa menos, mas pode emendar uma finalização por baixo.", mod: { acerto: -6, sub: 0.35, subMult: 0.9 } },
+      { id: "raspagem", rotulo: "Raspagem", frase: "a raspagem", desc: "Inverte a posição com mais facilidade.", curto: "Inverte a posição mais fácil", mod: { acerto: 4 } },
+      { id: "triangulo", rotulo: "Triângulo", frase: "o triângulo", desc: "Raspa menos, mas pode emendar uma finalização por baixo.", curto: "Raspa menos · pode finalizar", mod: { acerto: -6, sub: 0.35, subMult: 0.9 } },
     ],
     defesa: [
-      { id: "guarda_fechada", rotulo: "Fechar a guarda", frase: "a guarda fechada", desc: "Segura a finalização e recebe menos dano, sem gastar energia.", mod: {} },
-      { id: "amarrar", rotulo: "Amarrar os braços", frase: "os braços amarrados", desc: "O ground and pound dele entra menos. A passagem dele entra mais.", mod: { guarda: 6, cede: 6 } },
+      { id: "guarda_fechada", rotulo: "Fechar a guarda", frase: "a guarda fechada", desc: "Segura a finalização e recebe menos dano, sem gastar energia.", curto: "Segura finalização · sem gastar", mod: {} },
+      { id: "amarrar", rotulo: "Amarrar os braços", frase: "os braços amarrados", desc: "O ground and pound dele entra menos. A passagem dele entra mais.", curto: "Trava o ground and pound dele", mod: { guarda: 6, cede: 6 } },
     ],
     pressao: [
-      { id: "levantar", rotulo: "Levantar", frase: "a levantada", desc: "Tenta voltar a ficar em pé.", mod: {} },
-      { id: "pela_grade", rotulo: "Levantar pela grade", frase: "a levantada pela grade", desc: "Usa a grade pra levantar. Entra mais e gasta um pouco mais de energia.", mod: { acerto: 7, custo: 0.5 } },
+      { id: "levantar", rotulo: "Levantar", frase: "a levantada", desc: "Tenta voltar a ficar em pé.", curto: "Tenta voltar a ficar em pé", mod: {} },
+      { id: "pela_grade", rotulo: "Levantar pela grade", frase: "a levantada pela grade", desc: "Usa a grade pra levantar. Entra mais e gasta um pouco mais de energia.", curto: "Levanta mais · gasta um pouco mais", mod: { acerto: 7, custo: 0.5 } },
     ],
   },
 };
@@ -267,6 +267,7 @@ export function acoesDisponiveis(estado, lado, perfil, semente = null) {
     return {
       familia: f, grupo: FAMILIA_NOME[pp][f], ciclo: CICLO[pp][f],
       variante: v ? v.id : null, rotulo: v ? v.rotulo : ROTULOS[pp][f], descricao: v ? v.desc : DESCRICOES[pp][f],
+      resumo: v ? (v.curto || v.desc) : DESCRICOES[pp][f],
       custo: custoEnergia(pp, f, perfil, v),
     };
   });

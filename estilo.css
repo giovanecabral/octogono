@@ -1602,3 +1602,123 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-busca-pulso{animation:none}
   .jxj-barra i,.jxj-momento-trilho i{transition:none}
 }
+
+/* ===== Luta do Online, revamp de 2026-10-20 (pedido do dono: tela
+   poluída, muito texto). Placar de transmissão, lance da troca, botões
+   limpos e histórico na gaveta. No fim do arquivo de propósito: as regras
+   antigas de .jxj-acao e .jxj-ultima continuam valendo pro resto, e estas
+   vencem por ordem. ===== */
+.jxj-combate{display:flex;flex-direction:column;gap:12px;width:100%;max-width:980px;margin:0 auto}
+.jxj-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px;padding:12px 16px;
+  background:rgba(10,11,15,.92);border:1px solid var(--linha-forte);border-bottom:3px solid var(--sangue)}
+.jxj-hud-lado{display:flex;align-items:center;gap:12px;min-width:0}
+.jxj-hud-lado.ele{flex-direction:row-reverse;text-align:right}
+.jxj-hud-lado .jxj-retrato{width:56px;flex:none}
+.jxj-hud-info{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.jxj-hud-nome{display:flex;align-items:center;gap:6px;min-width:0;font-family:var(--f-ui);font-size:19px;letter-spacing:.04em;text-transform:uppercase}
+.jxj-hud-lado.ele .jxj-hud-nome{flex-direction:row-reverse}
+.jxj-hud-nome span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jxj-hud-nome small{flex:none;font-size:11px;letter-spacing:.14em;color:var(--sangue-vivo)}
+.jxj-hud-nome .jxj-selo-bot{flex:none;margin-left:0}
+.jxj-vida{display:block;height:12px;background:rgba(255,255,255,.08);overflow:hidden}
+.jxj-vida i{display:block;height:100%;background:linear-gradient(90deg,#249A5B,var(--ganho));transition:width .5s var(--ease-soco)}
+.jxj-vida.baixa i{background:linear-gradient(90deg,var(--sangue-escuro),var(--sangue-vivo))}
+.jxj-folego{display:block;height:5px;background:rgba(255,255,255,.06);overflow:hidden}
+.jxj-folego i{display:block;height:100%;background:var(--ouro);transition:width .5s var(--ease-soco)}
+.jxj-hud-lado.ele .jxj-vida i,.jxj-hud-lado.ele .jxj-folego i{margin-left:auto}
+.jxj-hud-num{display:flex;gap:12px;font-family:var(--f-ui);font-size:13px;letter-spacing:.06em;color:var(--osso-2)}
+.jxj-hud-lado.ele .jxj-hud-num{justify-content:flex-end}
+.jxj-hud-num i{display:inline-flex;align-items:center;gap:4px;font-style:normal}
+.jxj-hud-num .ico{width:13px;height:13px;color:var(--cinza)}
+.jxj-hud-num .jxj-ausente{color:var(--sangue-vivo)}
+.jxj-hud-centro{display:flex;flex-direction:column;align-items:center;gap:6px}
+.jxj-anel{--p:1;position:relative;display:grid;place-items:center;width:84px;height:84px;border-radius:50%;
+  background:conic-gradient(var(--osso) calc(var(--p) * 360deg),rgba(255,255,255,.1) 0)}
+.jxj-anel::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#0B0C10}
+.jxj-anel.urgente{background:conic-gradient(var(--sangue-vivo) calc(var(--p) * 360deg),rgba(255,255,255,.1) 0)}
+.jxj-anel .jxj-relogio{position:relative;font-size:32px}
+.jxj-hud-centro .jxj-round{font-size:13px;margin:0}
+.jxj-hud-centro .jxj-round small{font-size:inherit;color:var(--cinza)}
+.jxj-faixa-combate{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 18px;padding:8px 14px;
+  background:rgba(10,11,15,.72);border:1px solid var(--linha-forte)}
+.jxj-faixa-combate .jxj-posicao{font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--ouro)}
+.jxj-faixa-combate .jxj-momento{width:170px;max-width:42%}
+.jxj-faixa-combate .jxj-momento-trilho{display:block;margin-top:0}
+.jxj-faixa-combate .jxj-cartoes{font-family:var(--f-ui);font-size:14px;letter-spacing:.06em;color:var(--cinza);margin:0}
+.jxj-faixa-combate .jxj-cartoes b{color:var(--osso);font-weight:700}
+.jxj-lance{padding:12px 16px}
+.jxj-lance .jxj-duelo span{flex-direction:row;align-items:center;gap:8px}
+.jxj-lance .jxj-duelo span.ele{justify-content:flex-end}
+.jxj-lance .jxj-duelo .ico{flex:none;width:22px;height:22px;color:var(--sangue)}
+.jxj-lance .jxj-duelo span.ele .ico{color:var(--osso-2)}
+.jxj-lance .jxj-duelo b{font-size:22px}
+.jxj-dano{flex:none;font-style:normal;font-family:var(--f-titulo);font-size:24px;line-height:1;color:var(--sangue-vivo)}
+.jxj-dano.kd{font-family:var(--f-ui);font-weight:800;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#fff;background:var(--sangue);padding:4px 8px}
+.jxj-lance.nova .jxj-dano{animation:jxjDano .7s var(--ease-soco) .25s both}
+@keyframes jxjDano{0%{opacity:0;transform:translateY(8px) scale(.6)}60%{opacity:1;transform:translateY(-4px) scale(1.15)}100%{opacity:1;transform:none}}
+.jxj-lance .jxj-ultima-txt{font-size:15px;color:var(--osso-2)}
+.jxj-zona-topo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.jxj-zona-topo .jxj-rotulo{margin:0}
+.jxj-ciclo-pe{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;font-family:var(--f-ui);font-size:13px;letter-spacing:.06em;color:var(--osso-2)}
+.jxj-ciclo-pe span{display:inline-flex;align-items:center;gap:4px}
+.jxj-ciclo-pe span .ico{width:15px;height:15px;color:var(--sangue)}
+.jxj-ciclo-pe > .ico{width:12px;height:12px;color:var(--cinza)}
+.jxj-ciclo-pe small{margin-left:4px;color:var(--cinza)}
+.jxj-ciclo-pe span.volta{opacity:.45}
+.jxj-acoes-luta{gap:10px}
+.jxj-acao{position:relative;min-height:0;gap:3px;padding:12px 14px}
+.jxj-acao-topo{display:flex;align-items:center;justify-content:space-between;align-self:stretch}
+.jxj-acao .jxj-acao-topo .ico{width:24px;height:24px}
+.jxj-custo{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;font-style:normal;font-family:var(--f-ui);font-weight:700;font-size:14px;
+  color:var(--ouro);background:rgba(212,160,23,.12)}
+.jxj-acao .jxj-custo .ico{width:13px;height:13px;color:var(--ouro)}
+.jxj-acao b{margin-top:4px}
+.jxj-acao small{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
+.jxj-acao .jxj-acao-efeito{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:14px;line-height:1.3;color:var(--osso-2)}
+.jxj-acao .jxj-acao-ciclo{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;font-family:var(--f-ui);font-size:12px;letter-spacing:.04em;color:var(--cinza)}
+.jxj-acao .jxj-acao-ciclo .ico{width:12px;height:12px;color:var(--ganho)}
+.jxj-acao .jxj-acao-ciclo .ico + .ico,.jxj-acao .jxj-acao-ciclo .ico:last-of-type{color:var(--sangue-vivo)}
+/* a frase inteira: por cima do próprio botão (o recorte dos cantos corta o que sai dele) */
+.jxj-acao .jxj-acao-bolha{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 14px;
+  background:rgba(11,12,16,.97);color:var(--osso);font-size:13px;line-height:1.35;opacity:0;visibility:hidden;transition:opacity .15s,visibility 0s .15s}
+.jxj-acao .jxj-acao-bolha i{font-style:normal;font-family:var(--f-ui);letter-spacing:.04em;color:var(--cinza)}
+.jxj-acao.segurando .jxj-acao-bolha,.jxj-acao:focus-visible .jxj-acao-bolha{opacity:1;visibility:visible;transition-delay:0s}
+@media (hover:hover) and (pointer:fine){.jxj-acao:hover:not(:disabled) .jxj-acao-bolha{opacity:1;visibility:visible;transition:opacity .15s .5s,visibility 0s .5s}}
+.jxj-gaveta{padding:0;background:rgba(10,11,15,.72);border:1px solid var(--linha-forte)}
+.jxj-gaveta summary{display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;list-style:none;font-family:var(--f-ui);font-weight:700;
+  font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--osso-2)}
+.jxj-gaveta summary::-webkit-details-marker{display:none}
+.jxj-gaveta summary .ico{width:16px;height:16px;color:var(--sangue)}
+.jxj-gaveta summary small{margin-left:auto;font-size:12px;color:var(--cinza)}
+.jxj-gaveta summary:focus-visible{outline:2px solid var(--sangue);outline-offset:-2px}
+.jxj-gaveta .jxj-log-lista{padding:0 16px 14px}
+.jxj-hud-lado.jxj-apanhou{animation:jxjApanha .38s ease}
+.jxj-hud-lado.jxj-caiu{animation:jxjCai .7s ease}
+.jxj-hud-lado.jxj-apertado{animation:jxjAperta .6s ease}
+@media (max-width:720px){
+  .jxj-hud{gap:8px;padding:10px}
+  .jxj-hud-lado,.jxj-hud-lado.ele{flex-direction:column;align-items:stretch;gap:6px}
+  .jxj-hud-lado .jxj-retrato{width:40px}
+  .jxj-hud-lado.ele .jxj-retrato{align-self:flex-end}
+  .jxj-hud-nome{font-size:15px}
+  .jxj-hud-num{gap:8px;font-size:12px}
+  .jxj-anel{width:64px;height:64px}
+  .jxj-anel::before{inset:5px}
+  .jxj-anel .jxj-relogio{font-size:24px}
+  .jxj-faixa-combate{gap:6px 12px;padding:8px 10px}
+  .jxj-lance{padding:10px 12px}
+  .jxj-lance .jxj-duelo{gap:8px}
+  .jxj-lance .jxj-duelo b{font-size:16px}
+  .jxj-lance .jxj-duelo .ico{width:18px;height:18px}
+  .jxj-dano{font-size:19px}
+  .jxj-lance .jxj-ultima-txt{font-size:14px}
+  .jxj-ciclo-pe small{flex-basis:100%;margin-left:0}
+  .jxj-acoes-luta{grid-template-columns:1fr 1fr;gap:8px}
+  .jxj-acao{padding:10px 12px}
+  .jxj-acao b{font-size:17px}
+  .jxj-acao .jxj-acao-efeito{font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){
+  .jxj-lance.nova .jxj-dano,.jxj-hud-lado.jxj-apanhou,.jxj-hud-lado.jxj-caiu,.jxj-hud-lado.jxj-apertado{animation:none}
+  .jxj-vida i,.jxj-folego i{transition:none}
+}

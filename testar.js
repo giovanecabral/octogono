@@ -11179,6 +11179,13 @@ async function testarJxJ() {
       await erro(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "voar" }, /ação inválida/);
     });
     await conf("a segunda ação resolve a troca uma vez só, mesmo com duas consultas ao mesmo tempo", async () => {
+      /* semente fixa em que a 1ª troca (pressão contra golpes) não acaba a luta. Com
+         a semente sorteada, um nocaute logo de cara derrubava este teste e o seguinte
+         (visto em 2026-10-20, 1 vez em 3) */
+      const L0 = (await q("select estado, perfis from jxj_lutas where id = $1", [lid1]))[0];
+      let fixa = null;
+      for (let k = 0; k < 50 && !fixa; k++) if (!MOTOR.resolverTroca(L0.estado, L0.perfis, { a: "pressao", b: "golpes" }, "teste-troca-" + k).estado.fim) fixa = "teste-troca-" + k;
+      await q("update jxj_lutas set semente = $2, compromisso = encode(sha256(convert_to($2, 'UTF8')), 'hex') where id = $1", [lid1, fixa]);
       await ok(pb, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "golpes" });
       await Promise.all([ok(pa, "luta", { lutaId: lid1 }), ok(pb, "luta", { lutaId: lid1 }), ok(pa, "luta", { lutaId: lid1 })]);
       const t = await q("select count(*)::int n from jxj_trocas where luta_id = $1", [lid1]);
@@ -11909,6 +11916,12 @@ async function testarJxJ() {
       const vista = await ok(u, "luta", { lutaId: lid });
       if (vista.revanche !== null || !vista.bot) throw new Error("vista final: " + JSON.stringify({ revanche: vista.revanche, bot: vista.bot }));
       if (/"mx"|"pol"|"build"|"prior"/.test(JSON.stringify(vista))) throw new Error("a vista leva dado escondido do bot");
+      /* revamp da tela (2026-10-20): cada golpe vem com o dano em número, o mesmo do texto */
+      /* todo golpe (todo evento golpe ou gnp tem dano no texto); luta decidida no chão pode não ter nenhum */
+      const golpesComDano = vista.trocas.flatMap((t) => (t.ev || []).filter((x) => x.tipo === "golpe" || x.tipo === "gnp").map((x) => [x.dano, t.eventos.join(" ")]));
+      const diferente = golpesComDano.find(([d, txt]) => typeof d !== "number" || !txt.includes(`(${String(d).replace(".", ",")} de dano)`));
+      if (diferente) throw new Error("dano da vista diferente do texto: " + JSON.stringify(diferente));
+      if (!vista.trocas.every((t) => (t.ev || []).every((x) => "dano" in x))) throw new Error("evento da vista sem o campo dano");
       const h = await ok(null, "historico", { lutadorId: l });
       if (!h.length || !h[0].adversario || h[0].adversario.bot !== true) throw new Error("histórico sem a marca de bot: " + JSON.stringify(h[0]).slice(0, 200));
       if (h[0].adversarioId !== null) throw new Error("o histórico expõe o id do âncora dos bots: " + h[0].adversarioId);
@@ -12891,16 +12904,29 @@ async function testarJxJTelas() {
     /* a mão do round (variantes) vem do servidor; a tela mostra o que ele mandou */
     const maoU1 = (await api(u1, "luta", { lutaId: lid })).acoes;
     const golpesU1 = maoU1.find((a) => a.familia === "golpes");
-    await conf("luta: as 4 ações da mão do round (variante, família, custo e ciclo, iguais às do servidor); escolher manda a ação pro servidor, que guarda escondida", async () => {
+    await conf("luta (revamp de 2026-10-20): placar com vida e energia, relógio em anel, ciclo dos 4 em pé, gaveta do histórico; as 4 ações da mão do round com nome, grupo, custo e a linha curta do servidor, e a frase inteira com o ciclo guardada no botão; escolher manda a ação pro servidor, que guarda escondida", async () => {
       const m = await abrir(`luta/${lid}`);
-      const acoes = desde(m).filter((n) => tem(n, "jxj-acao"));
+      const nos = desde(m);
+      const acoes = nos.filter((n) => tem(n, "jxj-acao"));
       if (acoes.length !== 4 || maoU1.length !== 4) throw new Error(`${acoes.length} botões, ${maoU1.length} ações do servidor`);
       for (const a of maoU1) {
         const V = MOTOR.VARIANTE_POR_ID[a.variante];
         if (!V || V.papel !== "pe" || V.familia !== a.familia) throw new Error("variante do servidor: " + JSON.stringify(a));
-        if (!acoes.some((b) => { const h = String(b.innerHTML); return h.includes(`<b>${a.rotulo}</b>`) && h.includes(`${MOTOR.FAMILIA_NOME.pe[a.familia]} · `) && h.includes(a.ciclo) && h.includes(a.descricao); }))
-          throw new Error("botão sem a variante " + a.rotulo + ": " + acoes.map((b) => String(b.innerHTML).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60)).join(" | "));
+        if (!V.curto || a.resumo !== V.curto) throw new Error("o servidor não mandou a linha curta de " + a.rotulo + ": " + a.resumo);
+        const custo = a.custo < 0 ? `+${String(-a.custo).replace(".", ",")}` : a.custo === 0 ? "0" : `−${String(a.custo).replace(".", ",")}`;
+        if (!acoes.some((b) => { const h = String(b.innerHTML); return h.includes(`<b>${a.rotulo}</b>`) && h.includes(`<small>${a.grupo}</small>`) && h.includes(a.resumo)
+          && h.includes(a.descricao) && h.includes(a.ciclo) && h.includes(custo) && h.includes("jxj-acao-bolha"); }))
+          throw new Error("botão sem a variante " + a.rotulo + ": " + acoes.map((b) => String(b.innerHTML).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80)).join(" | "));
       }
+      const hud = nos.filter((n) => tem(n, "jxj-hud")).pop();
+      if (!hud || !nos.some((n) => n.id === "jxj-card-eu") || !nos.some((n) => n.id === "jxj-card-ele")) throw new Error("sem o placar dos dois lados");
+      const hHud = htmlDe(nos.filter((n) => n.id === "jxj-card-eu" || n.id === "jxj-card-ele"));
+      if ((hHud.match(/class="jxj-vida"[^>]*><i style="width:100%"/g) || []).length !== 2) throw new Error("vida cheia no começo: " + hHud.replace(/\s+/g, " ").slice(0, 300));
+      if (!htmlDe(nos.filter((n) => tem(n, "jxj-hud-centro"))).includes('id="jxj-anel"')) throw new Error("sem o relógio em anel");
+      const ciclo = nos.filter((n) => tem(n, "jxj-ciclo-pe")).pop();
+      const ordem = ciclo ? (String(ciclo.innerHTML).match(/<\/svg>([^<]+)<\/span>/g) || []).map((x) => x.replace(/<[^>]+>/g, "")) : [];
+      if (JSON.stringify(ordem) !== JSON.stringify(["Golpes", "Pressão", "Defesa", "Queda", "Golpes"])) throw new Error("ciclo em pé: " + JSON.stringify(ordem));
+      if (!nos.some((n) => n.tagName === "details" && tem(n, "jxj-gaveta"))) throw new Error("sem a gaveta do histórico");
       const golpes = acoes.find((a) => String(a.innerHTML).includes(`<b>${golpesU1.rotulo}</b>`));
       await golpes.onclick(); await assentar(15);
       const linhas = (await db.query("select a.familia from jxj_acoes a join jxj_lutas l on l.id = a.luta_id where a.luta_id = $1 and a.lado = case when l.a_id = $2 then 'a' else 'b' end", [lid, l1])).rows;
@@ -12938,6 +12964,14 @@ async function testarJxJTelas() {
       if (meu !== golpesU1.rotulo || !h.includes(meu) || !h.includes(dele) || !t0.eventos.every((x) => h.includes(x.replace(/&/g, "&amp;"))))
         throw new Error("painel: " + h.replace(/\s+/g, " ").slice(0, 300));
       if (!tem(ult, "nova")) throw new Error("o painel da troca nova não anima");
+      /* dano de cada lado no lance: a soma dos golpes do outro (o mesmo número do texto) */
+      const levou = (l) => (t0.ev || []).filter((x) => x.quem && x.quem !== l && typeof x.dano === "number").reduce((s, x) => s + x.dano, 0);
+      const caiu = (l) => (t0.ev || []).some((x) => x.tipo === "knockdown" && x.quem && x.quem !== l);
+      for (const l of ["a", "b"]) {
+        if (caiu(l)) { if (!h.includes("jxj-dano kd")) throw new Error("knockdown sem a marca no lance"); continue; }
+        const d = Math.round(levou(l) * 10) / 10;
+        if (d && !h.includes(`−${String(d).replace(".", ",")}</em>`)) throw new Error(`lance sem o dano ${d} do lado ${l}: ` + h.replace(/\s+/g, " ").slice(0, 300));
+      }
       const sons = env.sandbox.__som.slice();
       if (!sons.length) throw new Error("troca resolvida sem som nenhum (eventos " + t0.ev.map((e) => e.tipo).join(",") + ")");
       await assentar(60);

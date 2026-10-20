@@ -4719,6 +4719,46 @@ foi feito: com essa regra, ele ajudaria pouco. Mudar a regra (por exemplo,
 algumas lutas grátis por dia) é decisão de produto do dono. A resposta do
 dono veio em 2026-10-19: bots (seção abaixo).
 
+## Tela da luta do Online: revamp (2026-10-20)
+
+**Pedido do dono:** "estou sentindo a tela de luta online muito poluída
+visualmente e desorganizada em relação à quantidade de texto, a mecânica é
+boa mas na prática está ruim". Plano aprovado antes ("pode seguir"); a
+mecânica e o servidor não mudaram, só a tela (`jxjDesenharCombate`) e duas
+coisas que a vista passou a mandar.
+
+- **Placar de transmissão:** os dois frente a frente numa faixa, com
+  retrato, nome, barra de vida grossa (100 menos o dano, verde, vermelha
+  abaixo de 35) e energia fina; no meio, o relógio num anel que esvazia
+  (`#jxj-anel`, `--p` atualizado pelo mesmo tique do relógio) e fica
+  vermelho nos últimos 5 s. Estilo, nível e rating saíram (aparecem na
+  confirmação e no fim).
+- **Faixa da luta:** posição, momento e cartões dos rounds fechados.
+- **O lance:** a troca que acabou, uma vez só: o golpe de cada um com
+  ícone e o dano que cada lado levou (`−4,6`, ou "caiu" no knockdown). O
+  dano vem da vista: `trocas[].ev[].dano`, o mesmo número do texto.
+- **Botões limpos:** ícone, nome, grupo (só se for diferente do nome),
+  custo de energia num selo e uma linha curta de efeito. A linha curta é
+  `curto` em cada uma das 30 variantes (`api/_jxj-motor.js`), mandada em
+  `acoes[].resumo`. A frase inteira e o ciclo ficam no botão e aparecem com
+  o mouse parado por cima, com o foco do teclado ou no toque longo (450
+  ms, que não manda a ação).
+- **Quem ganha de quem:** em pé, uma linha só com os 4 ícones em ciclo
+  (Golpes, Pressão, Defesa, Queda, de volta a Golpes) e "cada um vence o
+  próximo". No chão os nomes mudam de lado, então cada botão diz a ação
+  dele que vence (ícone de subir) e a que perde (ícone de descer).
+- **Histórico:** gaveta fechada ("O que aconteceu", com o número de
+  trocas), com tudo dentro.
+- **Meta:** no celular, a luta em pé cabe numa tela sem rolar.
+
+Testes: `jxjtelas` (placar com vida cheia no começo, anel, ciclo em pé na
+ordem, gaveta, cada botão com nome, grupo, custo, linha curta do servidor,
+frase inteira e ciclo; o lance com o dano igual à soma dos golpes do outro)
+e `jxj` (todo golpe da vista traz o dano igual ao do texto; dente provado
+tirando o dano da vista). Na mesma leva, dois testes do `jxj` que falhavam
+1 vez em 3 (a luta podia acabar na primeira troca com a semente sorteada)
+passaram a fixar uma semente em que a primeira troca não acaba a luta.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai
