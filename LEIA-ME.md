@@ -4899,6 +4899,15 @@ quem se adapta, no máximo 46,8%.
   calibração: o humano de estilo vence 57,5% do bot s=0, 48,6% do s=0,5,
   43,7% do s=1 e 51,5% do bot de 1500.
 
+### Testar jogando
+
+`node ferramentas/jogar-online-local.mjs` (rodado de uma pasta com
+`puppeteer-core`, como o E2E) abre um Chrome de verdade com o Online da
+pasta local: banco de teste (PGlite), conta Pro de teste e bots ligados.
+Nada vai pra produção e nenhuma IA é chamada. Com `2` no fim, abre duas
+contas em duas janelas, pra lutar contra você mesmo. Fechar o Chrome
+encerra tudo.
+
 ### Versão de balanceamento 2
 
 Número de combate novo: `VERSAO_BALANCEAMENTO` 2 no código e
@@ -5095,6 +5104,91 @@ bot (`PGRST202`, o mesmo padrão do raio).
 Mexeu no motor ou na política: `node ferramentas/jxj-balanco.mjs bots` e
 `node testar.js jxjbot`. Se a força do bot mudar, a faixa `RATING_BOT`
 muda junto (é a linha "vale" da tabela acima).
+
+### Bots com personalidade (2026-10-20, fase 1 do plano do Online)
+
+**Problema medido:** contra bot, ler o adversário quase não adiantava. O
+bot forte jogava a mistura de equilíbrio (de propósito impossível de ler)
+e o fraco sorteava; quase toda luta é contra bot. Contra o bot forte, um
+jogador que aprende o padrão do outro durante a luta ganhava só 4 pontos a
+mais que quem joga no peso do estilo.
+
+**O que mudou** (`api/_jxj-bot.js`, `PERSONALIDADES`). Cada bot sorteia
+um jeito de lutar, com um viés que dá pra descobrir em poucas trocas e
+punir:
+
+| jeito | alcunha na tela | o que faz | como punir |
+|---|---|---|---|
+| agressivo | o Provocador | golpeia e pressiona (78% em pé); quando apanha, golpeia ainda mais; às vezes ignora o cansaço; sempre striker | a queda ganha de golpes |
+| defensivo | o Paciente | defende 60% em pé; com você cansado (energia 3 ou menos), ataca; na frente no round, se fecha mais | a pressão ganha de defesa; defender quando você cansa |
+| leitor | o Observador | responde à sua última ação com a que ganha dela | a ação que ganha da resposta dele |
+| caotico | o Inquieto | anda numa roda própria das 4 famílias (nunca repete a anterior) | descobrir a roda e responder à próxima |
+
+- **Imperfeição de propósito:** 20% das escolhas saem do jeito (a jogada
+  da habilidade, a mesma do bot de antes) e nenhum bot repete a mesma ação
+  mais de 3 vezes seguidas (se a única possível era ela, sobra pras
+  outras 3).
+- **Energia, posição, grogue e encaixe** continuam respeitados: cansado,
+  descansa (o Provocador às vezes não); no momento decisivo, joga como
+  antes (o fraco faz o óbvio, o forte a mistura do momento).
+- **O rating do jogador escolhe a habilidade (faixa 1455 a 1560, como
+  antes) e o jeito aparece em toda faixa.** A habilidade muda a jogada fora
+  do jeito, o cansaço, os momentos e uma inclinação dentro do jeito
+  (`INCLINACAO`): o bot forte puxa os pesos do jeito pro que rende contra o
+  que você costuma fazer, sem nunca fazer o que o jeito não faz.
+- **O rating do bot é a força medida dele** (`FORCA_BOT`, por jeito e
+  habilidade, de 1448 a 1515). Antes, o bot entrava no Glicko com o rating
+  do jogador (até 1560); com o jeito legível, o bot forte ficou mais fraco
+  que isso, e quem está no topo ganharia rating de graça. A luta contra bot
+  continua valendo rating normalmente (decisão do dono).
+- **Na tela, só a alcunha**, em dourado embaixo do nome do bot no placar e
+  na linha do resultado ("Bot Aroeira, o Provocador"). O id, a roda, a
+  build e as misturas ficam nos dados da luta, no servidor. Luta criada
+  antes (sem jeito nos dados) segue o jogo de antes.
+
+**O que foi tentado e saiu:**
+- Inquieto com humor por round (o peso de um estilo diferente a cada
+  round, sem repetir a ação anterior): ninguém conseguia ler (o explorador
+  ganhava 3 pontos a mais que o jogador de estilo). Virou a roda.
+- Provocador de estilo sorteado: o jogador de estilo vencia 64% (wrestler e
+  grappler de estilo tentam a queda o tempo todo, que é o que pune ele).
+  Virou sempre striker.
+- Paciente como counter: forte demais (o jogador de estilo vencia 41% a
+  45%: a defesa dele anula golpe e queda). O estilo dele é sorteado.
+
+**Medido** (`node ferramentas/jxj-balanco.mjs personalidades`; caminho do
+servidor, níveis 1, 10 e 30; bot fraco / médio / forte):
+
+| contra o bot | antes (sem jeito) | Provocador | Paciente | Observador | Inquieto |
+|---|---|---|---|---|---|
+| quem joga no peso do estilo | 58 / 49 / 45 | 54 / 50 / 49 | 54 / 51 / 48 | 57 / 54 / 53 | 57 / 56 / 56 |
+| ganho de quem lê (explorador) | +9 / +15 / +4 | cerca de +20 | cerca de +9 | cerca de +26 | cerca de +14 |
+
+O "explorador" (`explorador` na ferramenta) não sabe nada do bot: guarda o
+que ele fez em cinco contextos e testa duas hipóteses que gente testa
+("ele responde ao que eu fiz?", "ele repete?"), dando peso a cada uma pelo
+quanto acertou. O "conhecedor" (`conhecedor`) vê a distribuição de verdade
+do bot (`BOT.distribuicaoDoBot`): é o teto do que dá pra tirar de cada
+jeito. O Paciente é
+o mais difícil de ler de propósito: punir a defesa dele rende ponto na
+grade, não nocaute. Achado no caminho: o explorador antigo zerava o
+aprendizado com uma jogada inesperada (log de zero) e às vezes devolvia
+ação inválida; o prior agora é suavizado.
+
+**Testes** (`jxjbot`): as 4 saem no sorteio, Provocador é striker, a tela
+só vê a alcunha, os dados guardam o jeito; cada jeito aparece nas escolhas
+em toda habilidade (Provocador ataca 73% a 79% em pé e golpeia mais depois
+de apanhar; Paciente defende 50% a 57% e ataca 73% a 76% com o adversário
+cansado; Observador responde 85% a 88%; Inquieto segue a roda 84% a 86%;
+nenhum repete 4 vezes); calibração por jeito (jogador de estilo de 45% a
+58% contra o bot médio, quem lê 7 pontos ou mais acima e 12 em média, força
+medida igual a `FORCA_BOT` com folga). `jxj`: o bot da luta tem o rating da
+força do jeito e a alcunha, sem o id. `jxjtelas`: a alcunha no placar, sem
+o jeito. Dente provado numa cópia da pasta: sem a regra de não repetir, a
+vitrine contando o jeito, o Observador sem responder e a força errada em
+100 pontos, cada um reprova. Mexeu no jeito, no motor ou na `INCLINACAO`:
+`node ferramentas/jxj-balanco.mjs personalidades`, copiar a força nova em
+`FORCA_BOT` e `node testar.js jxjbot`.
 
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 

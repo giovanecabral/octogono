@@ -6,10 +6,13 @@
  * novo, sempre marcado como bot na tela:
  *   - mesmo nível e categoria do jogador, estilo sorteado e uma build válida
  *     sorteada pra esse nível (build sorteada empata com a típica, medido);
- *   - rating do bot = o do jogador, preso na faixa RATING_BOT. A habilidade
- *     do bot (s, de 0 a 1) sai desse rating: o bot de rating R joga como
- *     alguém de rating R. Quem vence muito sobe, encontra bot mais forte e
- *     para de subir; ninguém faz rating infinito contra bot.
+ *   - a habilidade do bot (s, de 0 a 1) sai do rating do jogador, preso na
+ *     faixa RATING_BOT; o rating com que o bot entra no Glicko é a força
+ *     medida dele (FORCA_BOT, por jeito e habilidade), então o bot de
+ *     rating R joga como alguém de rating R e ninguém faz rating de graça
+ *     contra bot;
+ *   - cada bot tem um jeito de lutar (personalidade, 2026-10-20) que dá pra
+ *     ler e punir; ver PERSONALIDADES.
  *   - joga escolhendo ANTES de ver a ação do jogador: a escolha sai só do
  *     estado da luta, das trocas já resolvidas e da semente (secreta até o
  *     fim). O servidor chama acaoDoBot sem a ação do jogador.
@@ -26,7 +29,7 @@ import { createHash } from "node:crypto";
 import * as MOTOR from "./_jxj-motor.js";
 import * as ARV from "./_jxj-arvores.js";
 
-export const VERSAO_BOT = 1;
+export const VERSAO_BOT = 2;   // 2: personalidades (2026-10-20)
 /* faixa do rating do bot (medida: o bot de habilidade 0 vale ~1453 e o de
    habilidade 1 vale ~1559 contra quem joga no peso do estilo, que é 1500) */
 export const RATING_BOT = { min: 1455, max: 1560 };
@@ -165,6 +168,165 @@ export function misturasDosMomentos(pA, pB, n = N_MISTURA) {
   return r;
 }
 
+/* ---------- personalidades (2026-10-20) ----------
+   Pedido do dono: "ler o bot passar a valer a pena". Antes, o bot forte
+   jogava a mistura de equilíbrio (de propósito impossível de ler) e o
+   fraco sorteava: ler o adversário não adiantava contra bot, e quase toda
+   luta é contra bot. Agora cada bot tem um jeito de lutar sorteado, com um
+   viés que dá pra descobrir em poucas trocas e punir:
+     agressivo (o Provocador): golpeia e pressiona; quando apanha, golpeia
+       ainda mais; às vezes ignora o cansaço. Pune: a queda (ganha de
+       golpes).
+     defensivo (o Paciente): defende e espera; com o adversário cansado
+       (energia 3 ou menos), ataca; na frente no round, se fecha mais.
+       Pune: a pressão (ganha de defesa), e defender quando você cansa.
+     leitor (o Observador): responde à sua última ação com a que ganha
+       dela. Pune: a ação que ganha da resposta dele.
+     caotico (o Inquieto): parece não ter plano, mas anda numa roda: cada
+       bot tem uma ordem própria das 4 famílias e, depois de cada ação,
+       vai pra seguinte (nunca repete a anterior). Pune: descobrir a roda e
+       responder à próxima. (A primeira versão mudava de humor a cada round
+       e nunca repetia; medido, ninguém conseguia ler: saiu.)
+   Imperfeição de propósito: em ERRO_PERSONALIDADE das trocas ele sai do
+   jeito (a jogada vem da habilidade, como o bot sem personalidade), e nunca
+   repete a mesma ação mais de MAX_REPETE vezes seguidas. O jeito aparece em
+   toda faixa de rating; o rating muda o resto: a jogada fora do jeito, o
+   cansaço e os momentos decisivos. A tela só vê a alcunha, nunca o id nem a
+   regra (o id fica nos dados da luta, no servidor). */
+/* estilo: o jeito combina com o estilo do bot (o Provocador é striker);
+   sem estilo, sorteado. Medido: Provocador de estilo sorteado perdia 64%
+   pra quem joga no peso do estilo (wrestler e grappler tentam a queda o
+   tempo todo, que é o que pune ele). O Paciente como counter ficou forte
+   demais (o jogador de estilo vencia 41% a 45%: a defesa dele anula golpe e
+   queda, e só a pressão ganha dela), então o estilo dele é sorteado. */
+export const PERSONALIDADES = {
+  agressivo: { alcunha: "o Provocador", estilo: "striker" },
+  defensivo: { alcunha: "o Paciente" },
+  leitor: { alcunha: "o Observador" },
+  caotico: { alcunha: "o Inquieto" },
+};
+export const PERSONALIDADES_IDS = Object.keys(PERSONALIDADES);
+export const ERRO_PERSONALIDADE = 0.2, MAX_REPETE = 3;
+/* Força pelo rating dentro do jeito: o bot de habilidade s inclina os pesos
+   do jeito pro que rende contra o histórico do jogador (peso x
+   e^(INCLINACAO x s x ganho), ganho em pontos de chance de vencer). Ação
+   que o jeito nunca faz continua fora. Medido: sem isso a habilidade quase
+   não mudava a força (de 52% a 50% pro jogador de estilo, na média dos
+   jeitos), e o bot de 1560 jogava como um de 1500. */
+export const INCLINACAO = 0.06;
+/* Força medida de cada jeito em rating (1500 = quem joga no peso do estilo),
+   na habilidade 0, 0,5 e 1 (`node ferramentas/jxj-balanco.mjs
+   personalidades`; de 4.800 a 5.760 lutas por casa, níveis 1, 10 e 30). É o
+   rating com que o bot entra no Glicko e aparece na tela: o bot de rating R
+   joga como alguém de rating R, e quem vence o bot não ganha rating de
+   graça. A faixa RATING_BOT continua escolhendo a habilidade do bot pelo
+   rating do jogador. Mexeu no jeito, no motor ou na INCLINACAO: medir de
+   novo e copiar aqui (a suíte jxjbot confere com folga de 40 pontos). */
+export const FORCA_BOT = {
+  agressivo: [1470, 1503, 1507],
+  defensivo: [1474, 1495, 1515],
+  leitor: [1454, 1469, 1479],
+  caotico: [1448, 1457, 1461],
+};
+export function forcaDoBot(pers, s) {
+  const f = FORCA_BOT[pers];
+  if (!f) return null;
+  const x = clamp(Number(s) || 0, 0, 1);
+  return Math.round(x <= 0.5 ? f[0] + ((f[1] - f[0]) * x) / 0.5 : f[1] + ((f[2] - f[1]) * (x - 0.5)) / 0.5);
+}
+/* pesos (golpes, queda, defesa, pressão) por papel do bot */
+export const PESOS_PERSONALIDADE = {
+  agressivo: { pe: [45, 12, 10, 33], cima: [50, 15, 10, 25], baixo: [30, 15, 10, 45] },
+  agressivoApanhou: { pe: [65, 10, 5, 20], cima: [60, 15, 5, 20], baixo: [40, 15, 5, 40] },
+  defensivo: { pe: [12, 12, 60, 16], cima: [10, 10, 62, 18], baixo: [8, 12, 62, 18] },
+  defensivoAtaca: { pe: [40, 35, 10, 15], cima: [45, 30, 10, 15], baixo: [20, 45, 10, 25] },
+  defensivoFecha: { pe: [10, 10, 65, 15], cima: [10, 10, 65, 15], baixo: [5, 10, 70, 15] },
+};
+const UNIFORME = [1, 1, 1, 1];
+const normalizar = (p) => { const t = p.reduce((a, b) => a + b, 0); return t > 0 ? p.map((x) => x / t) : [0.25, 0.25, 0.25, 0.25]; };
+/* mistura de distribuições: [[peso, distribuição], ...] (cada uma normalizada antes) */
+const misturar = (partes) => {
+  const out = [0, 0, 0, 0];
+  for (const [w, d] of partes) { if (!(w > 0)) continue; const n = normalizar(d); for (let i = 0; i < 4; i++) out[i] += w * n[i]; }
+  return normalizar(out);
+};
+/* A jogada da habilidade em forma de distribuição: acaso (erro), peso do
+   estilo (estiloP) e, no resto, o jogo pensado (mistura de equilíbrio da
+   posição, às vezes respondendo ao que o jogador mais fez). É o mesmo jogo
+   do bot sem personalidade; o bot com personalidade usa quando sai do jeito. */
+/* ganho esperado de cada ação do bot contra o que o jogador costuma fazer
+   na posição (mistura de equilíbrio dele como ponto de partida, mais o
+   histórico da luta) */
+function ganhoContraHistorico(e, lado, d, hist) {
+  const pos = posDoBot(e.pos, lado), m = d.mx[pos];
+  const crenca = m.b.map((p, j) => d.pol.prior * p + hist[pos][j]);
+  const t = crenca.reduce((a, b) => a + b, 0);
+  return m.m.map((linha) => linha.reduce((s, v, j) => s + v * crenca[j] / t, 0));
+}
+function distribuicaoDaHabilidade(e, lado, d, hist) {
+  const pol = d.pol, pos = posDoBot(e.pos, lado), m = d.mx[pos];
+  const ganho = ganhoContraHistorico(e, lado, d, hist);
+  const g0 = Math.max(...ganho);
+  const pensado = misturar([[1 - pol.segue, m.a], [pol.segue, ganho.map((g) => Math.exp((g - g0) / pol.temp))]]);
+  return misturar([[pol.erro, UNIFORME], [pol.estiloP, PESOS_ESTILO[d.estilo][MOTOR.papel(e, lado)]],
+    [Math.max(0, 1 - pol.erro - pol.estiloP), pensado]]);
+}
+/* O jeito da personalidade agora, antes do erro e da regra de não repetir */
+export function pesosDaPersonalidade(e, lado, d) {
+  const o = lado === "a" ? "b" : "a", pp = MOTOR.papel(e, lado), po = MOTOR.papel(e, o), P = PESOS_PERSONALIDADE;
+  if (d.pers === "agressivo") return (e[lado].atingido ? P.agressivoApanhou : P.agressivo)[pp];
+  if (d.pers === "defensivo") {
+    if (e[o].energia <= 3) return P.defensivoAtaca[pp];
+    const pts = e.pontos[e.round - 1] || { a: 0, b: 0 };
+    return (pts[lado] - pts[o] >= 6 ? P.defensivoFecha : P.defensivo)[pp];
+  }
+  if (d.pers === "leitor") {
+    /* as ações que ganham da última dele, no papel de cada um agora */
+    const ultima = e[o].ultima;
+    const ganham = ultima ? F.map((f) => (MOTOR.quemLeu({ [lado]: pp, [o]: po }, { [lado]: f, [o]: ultima }) === lado ? 1 : 0)) : [0, 0, 0, 0];
+    return ganham.some(Boolean) ? ganham : PESOS_ESTILO[d.estilo][pp];
+  }
+  if (d.pers === "caotico") {
+    const roda = Array.isArray(d.roda) && d.roda.length === 4 ? d.roda : F, ult = e[lado].ultima;
+    const prox = ult && roda.includes(ult) ? roda[(roda.indexOf(ult) + 1) % 4] : roda[0];
+    return F.map((f) => (f === prox ? 1 : 0));
+  }
+  return PESOS_ESTILO[d.estilo][pp];
+}
+/* Distribuição da próxima ação do bot com personalidade (soma 1): cansaço,
+   momento decisivo (pela habilidade, como antes), o jeito com o erro de
+   propósito e a regra de não repetir. decidir sorteia daqui; a ferramenta
+   de balanço usa a mesma conta pro jogador que já sacou o jeito dele.
+   recentes = as ações do bot nas trocas anteriores, em ordem. */
+export function distribuicaoDoBot(e, lado, d, hist, recentes = []) {
+  const ch = MOTOR.momentoDoLado(e, lado);
+  let jogo;
+  if (ch && d.mm && d.mm[ch]) {
+    const ob = [0, 0, 0, 0]; ob[F.indexOf(OBVIO[ch])] = 1;
+    jogo = misturar([[d.pol.erro, UNIFORME], [d.pol.estiloP, ob], [Math.max(0, 1 - d.pol.erro - d.pol.estiloP), d.mm[ch].a]]);
+  } else {
+    const base = normalizar(pesosDaPersonalidade(e, lado, d)), k = INCLINACAO * (Number(d.s) || 0);
+    let jeito = base;
+    if (k > 0) {
+      const g = ganhoContraHistorico(e, lado, d, hist), g0 = Math.max(...g);
+      jeito = base.map((w, i) => w * Math.exp(k * (g[i] - g0)));
+    }
+    jogo = misturar([[ERRO_PERSONALIDADE, distribuicaoDaHabilidade(e, lado, d, hist)], [1 - ERRO_PERSONALIDADE, jeito]]);
+  }
+  /* cansado: descansa (o Provocador às vezes ignora) */
+  const descanso = d.pers === "agressivo" ? 0.25 : 0.5;
+  let p = e[lado].energia <= 1.5 ? misturar([[descanso, [0, 0, 1, 0]], [1 - descanso, jogo]]) : jogo;
+  const ult = recentes.slice(-MAX_REPETE);
+  if (ult.length === MAX_REPETE && ult.every((f) => f === ult[0]) && F.includes(ult[0])) {
+    /* a 4ª igual nunca sai; se ela era a única possível (o óbvio de um
+       momento, por exemplo), o resto fica com as outras 3 */
+    const i = F.indexOf(ult[0]);
+    p = p.slice(); p[i] = 0;
+    p = p.some((x) => x > 0) ? normalizar(p) : F.map((_, j) => (j === i ? 0 : 1 / 3));
+  }
+  return p;
+}
+
 /* ---------- montar o bot ---------- */
 /* O próprio estilo aceita até 30 pontos (3 ramos de 10); o que sobra (nível
    30 dá 32) vai pra nós de outro estilo, como um jogador faria. */
@@ -182,21 +344,29 @@ function completarHibrido(estilo, nivel, build, r) {
 }
 /* Bot novo pra uma luta: tudo sai da semente (crypto, do servidor).
    limitesRosto = {peça: quantidade} do editor de aparência. */
-export function montarBot({ nivel, categoria, rating, semente, limitesRosto = {} }) {
+export function montarBot({ nivel, categoria, rating, semente, limitesRosto = {}, pers: persForcada = null }) {
   const r = gerador(`bot:${semente}`);
   const nv = clamp(Math.floor(Number(nivel) || 1), 1, 30);
-  const estilo = ARV.ESTILOS_IDS[Math.floor(r() * ARV.ESTILOS_IDS.length)];
+  /* o jeito sai primeiro: ele decide o estilo de quem tem estilo próprio.
+     persForcada: só ferramenta e teste (o servidor nunca passa) */
+  const sorteada = PERSONALIDADES_IDS[Math.floor(r() * PERSONALIDADES_IDS.length)];
+  const pers = PERSONALIDADES[persForcada] ? persForcada : sorteada;
+  const estiloSorteado = ARV.ESTILOS_IDS[Math.floor(r() * ARV.ESTILOS_IDS.length)];
+  const estilo = PERSONALIDADES[pers].estilo || estiloSorteado;
   const build = completarHibrido(estilo, nv, ARV.buildTipica(estilo, nv, embaralhar(ARV.PRIORIDADE_TIPICA[estilo], r)), r);
   const nome = `Bot ${NOMES_BOT[Math.floor(r() * NOMES_BOT.length)]}`;
   const rosto = { v: 2 };
   for (const [k, q] of Object.entries(limitesRosto)) rosto[k] = Math.floor(r() * q);
   const perfil = ARV.perfilDeCombate({ estilo, categoria, build });
-  return { nome, estilo, nivel: nv, categoria, build, perfil, rosto,
-    s: habilidade(rating), rating: ratingDoBot(rating), rd: RD_BOT, vol: VOL_BOT };
+  const roda = embaralhar(F, r);
+  const s = habilidade(rating);
+  return { nome, estilo, nivel: nv, categoria, build, perfil, rosto, pers, roda,
+    s, rating: forcaDoBot(pers, s) ?? ratingDoBot(rating), rd: RD_BOT, vol: VOL_BOT };
 }
 /* O que a tela vê do bot (vai em nomes.b da luta) */
 export const vitrine = (bot) => ({ nome: bot.nome, rosto: bot.rosto, estilo: bot.estilo, nivel: bot.nivel,
-  rating: bot.rating, moldura: "padrao", bot: true });
+  rating: bot.rating, moldura: "padrao", bot: true,
+  ...(PERSONALIDADES[bot.pers] ? { alcunha: PERSONALIDADES[bot.pers].alcunha } : {}) });
 /* O que a luta guarda do bot (coluna bot de jxj_lutas). Fica no servidor:
    a tela nunca recebe build, misturas nem habilidade. As misturas têm o
    bot como A (perfilBot no lado a da conta, como na ferramenta). */
@@ -207,7 +377,8 @@ export function dadosDaLuta(bot, perfilHumano) {
   for (const [pos, x] of Object.entries(mx)) out[pos] = { a: x.a.map(q), b: x.b.map(q), m: x.m.map((l) => l.map(q)) };
   for (const [ch, x] of Object.entries(mm)) mom[ch] = { a: x.a.map(q) };
   return { v: VERSAO_BOT, s: bot.s, estilo: bot.estilo, nivel: bot.nivel, build: bot.build,
-    rating: bot.rating, rd: bot.rd, vol: bot.vol, pol: politica(bot.s), mx: out, mm: mom };
+    rating: bot.rating, rd: bot.rd, vol: bot.vol, pol: politica(bot.s), mx: out, mm: mom,
+    ...(PERSONALIDADES[bot.pers] ? { pers: bot.pers, roda: bot.roda } : {}) };
 }
 
 /* ---------- jogar ---------- */
@@ -231,8 +402,12 @@ export function historicoDasTrocas(trocas, ladoBot = "b") {
   }
   return hist;
 }
-/* Uma escolha do bot. d = dadosDaLuta; hist = historicoDasTrocas; r = sorteio */
-export function decidir(e, lado, d, hist, r) {
+/* Uma escolha do bot. d = dadosDaLuta; hist = historicoDasTrocas; r =
+   sorteio; recentes = as ações do bot nas trocas anteriores. Bot com
+   personalidade sorteia da distribuição dele; luta criada antes das
+   personalidades (sem d.pers) segue o jogo de antes, sorteio a sorteio. */
+export function decidir(e, lado, d, hist, r, recentes = []) {
+  if (d.pers && PERSONALIDADES[d.pers]) return amostra(distribuicaoDoBot(e, lado, d, hist, recentes), r);
   if (e[lado].energia <= 1.5 && r() < 0.5) return "defesa";
   const x = r();
   if (x < d.pol.erro) return F[Math.floor(r() * 4)];
@@ -253,7 +428,8 @@ export function decidir(e, lado, d, hist, r) {
    e trocas resolvidas) e a semente; a ação que o jogador mandou nesta troca
    nunca entra. O sorteio é próprio de cada troca: chamar de novo dá a mesma
    ação (duas resoluções ao mesmo tempo gravam a mesma coisa). */
+export const acoesDoBot = (trocas, lado = "b") => (trocas || []).map((t) => (lado === "a" ? t.acao_a : t.acao_b)).filter((f) => F.includes(f));
 export function acaoDoBot({ estado, semente, trocas, dados, lado = "b" }) {
   const r = gerador(`acao:${semente}:${estado.round}:${estado.troca}`);
-  return decidir(estado, lado, dados, historicoDasTrocas(trocas, lado), r);
+  return decidir(estado, lado, dados, historicoDasTrocas(trocas, lado), r, acoesDoBot(trocas, lado));
 }

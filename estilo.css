@@ -1797,3 +1797,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 @media (prefers-reduced-motion:reduce){
   .jxj-tag.grogue,.jxj-momento-decisivo,.jxj-hud-lado.jxj-grogue{animation:none}
 }
+
+/* Online: alcunha do bot com personalidade (2026-10-20), embaixo do nome no placar */
+.jxj-alcunha{display:block;margin-top:-3px;font-family:var(--f-ui);font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--ouro);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jxj-hud-lado.ele .jxj-alcunha{text-align:right}

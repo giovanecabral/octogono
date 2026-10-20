@@ -11930,7 +11930,9 @@ async function testarJxJ() {
       if (L.status !== "andamento" || !L.bot || L.a_user !== u || L.b_user !== contaBots || !L.com_rating) throw new Error("luta: " + JSON.stringify({ s: L.status, a: L.a_user, b: L.b_user }));
       if (L.nomes.b.nivel !== 7 || L.perfis.b.categoria !== "welterweight" || L.bot.nivel !== 7 || L.nomes.b.bot !== true || !/^Bot /.test(L.nomes.b.nome))
         throw new Error("bot: " + JSON.stringify(L.nomes.b));
-      if (L.bot.rating !== BOT.RATING_BOT.max || L.nomes.b.rating !== BOT.RATING_BOT.max || L.bot.s !== 1) throw new Error("rating fora da faixa: " + L.bot.rating);
+      /* rating 1720 = habilidade 1; o bot entra no rating com a força medida do jeito dele */
+      if (L.bot.s !== 1 || L.bot.rating !== BOT.forcaDoBot(L.bot.pers, 1) || L.nomes.b.rating !== L.bot.rating) throw new Error("rating do bot: " + JSON.stringify({ s: L.bot.s, r: L.bot.rating, pers: L.bot.pers }));
+      if (!L.nomes.b.alcunha || L.nomes.b.alcunha !== BOT.PERSONALIDADES[L.bot.pers].alcunha || "pers" in L.nomes.b) throw new Error("a tela do bot: " + JSON.stringify(L.nomes.b));
       if (!ARV.validarBuild(L.bot.estilo, L.bot.build, 7).ok) throw new Error("build inválida");
       if ((await q("select 1 from jxj_fila where user_id = $1", [u])).length) throw new Error("ficou na fila");
       if (Number((await q("select luta_aberta_id from jxj_contas where user_id = $1", [u]))[0].luta_aberta_id) !== Number(r.luta)) throw new Error("trava da luta aberta");
@@ -12817,9 +12819,17 @@ async function testarJxJBot() {
     const bate = BOT.NOMES_BOT.filter((n) => reais.has(n.toLowerCase()));
     if (bate.length) throw new Error("palavra que é nome de lutador: " + bate.join(", "));
   });
-  await conf("rating e habilidade: o rating do bot fica na faixa RATING_BOT; a habilidade vai de 0 a 1 e sobe com o rating; s=0 é acaso puro, s=0,5 peso do estilo, s=1 jogo pensado", () => {
+  await conf("rating e habilidade: a habilidade vai de 0 a 1 e sobe com o rating do jogador (faixa RATING_BOT); o rating do bot é a força medida do jeito dele (FORCA_BOT) e sobe com a habilidade; s=0 é acaso puro, s=0,5 peso do estilo, s=1 jogo pensado", () => {
     const { min, max } = BOT.RATING_BOT;
     if (BOT.ratingDoBot(900) !== min || BOT.ratingDoBot(2400) !== max || BOT.ratingDoBot(1500) !== 1500) throw new Error("faixa");
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const f = BOT.FORCA_BOT[pers];
+      if (BOT.forcaDoBot(pers, 0) !== f[0] || BOT.forcaDoBot(pers, 0.5) !== f[1] || BOT.forcaDoBot(pers, 1) !== f[2]) throw new Error("força de " + pers);
+      for (const r of [1400, 1500, 1600]) {
+        const b = BOT.montarBot({ nivel: 3, categoria: "middleweight", rating: r, semente: "forca" + pers + r, pers });
+        if (b.rating !== BOT.forcaDoBot(pers, BOT.habilidade(r))) throw new Error(`bot ${pers} de rating ${r}: ${b.rating}`);
+      }
+    }
     const ss = [1000, min, 1480, 1500, 1530, max, 2000].map(BOT.habilidade);
     if (ss[0] !== 0 || ss[1] !== 0 || ss[5] !== 1 || ss[6] !== 1 || !ss.every((x, i) => i === 0 || x >= ss[i - 1])) throw new Error("habilidade: " + ss.join(" "));
     const p0 = BOT.politica(0), p5 = BOT.politica(0.5), p1 = BOT.politica(1);
@@ -12896,16 +12906,95 @@ async function testarJxJBot() {
     }
     if (vistas.size < 2) throw new Error("o bot faz sempre a mesma coisa: " + [...vistas].join(","));
   });
-  await conf("calibração (caminho do servidor): contra quem joga no peso do estilo, o bot de rating 1500 fica perto de 50%; o mais fraco perde mais, o mais forte vence mais; o mais forte segura o jogo racional e o adaptativo", () => {
-    const r = T.medirBots({ n: 40, pares: 8, niveis: [1, 10], ss: [0, 0.5, 1], humanos: ["estilo", "racional", "adaptativo"], sal: "t" });
-    const s15 = BOT.habilidade(1500);
-    const meio = T.medirBots({ n: 40, pares: 8, niveis: [1, 10], ss: [s15], humanos: ["estilo"], sal: "u" })["estilo:" + s15];
-    const f = (x) => x.toFixed(1);
-    console.log(cinza(`         humano de estilo contra bot s=0, s=0,5, s=1: ${f(r["estilo:0"])}% ${f(r["estilo:0.5"])}% ${f(r["estilo:1"])}%; contra o bot de 1500 (s=${s15.toFixed(2)}): ${f(meio)}%`));
-    console.log(cinza(`         bot s=1 contra o racional ${f(r["racional:1"])}% e o adaptativo ${f(r["adaptativo:1"])}% (vitórias do humano)`));
-    if (meio < 43 || meio > 57) throw new Error(`bot de 1500 contra o jogador de estilo: ${f(meio)}% (faixa 43 a 57)`);
-    if (!(r["estilo:0"] > r["estilo:0.5"] + 3 && r["estilo:0.5"] > r["estilo:1"] + 3)) throw new Error("a habilidade não muda a força do bot");
-    for (const h of ["racional", "adaptativo"]) if (r[h + ":1"] < 40 || r[h + ":1"] > 56) throw new Error(`bot s=1 contra o ${h}: ${f(r[h + ":1"])}% (faixa 40 a 56)`);
+  await conf("personalidades (2026-10-20): as 4 saem no sorteio; Provocador é striker e Paciente é counter; a tela vê só a alcunha (sem id, roda, build nem misturas); os dados da luta guardam o jeito e a roda", () => {
+    const vistas = new Set();
+    for (let k = 0; k < 120; k++) {
+      const b = BOT.montarBot({ nivel: 1 + (k % 30), categoria: "middleweight", rating: 1500, semente: "pers" + k, limitesRosto: LIM });
+      const P = BOT.PERSONALIDADES[b.pers];
+      if (!P) throw new Error("personalidade desconhecida: " + b.pers);
+      vistas.add(b.pers);
+      if (P.estilo && b.estilo !== P.estilo) throw new Error(`${b.pers} com estilo ${b.estilo}`);
+      if (b.roda.slice().sort().join() !== F.slice().sort().join()) throw new Error("roda sem as 4 famílias: " + b.roda);
+      const v = BOT.vitrine(b), jv = JSON.stringify(v);
+      if (v.alcunha !== P.alcunha) throw new Error("alcunha: " + v.alcunha);
+      if (/agressivo|defensivo|leitor|caotico|"pers"|"roda"|"mx"|"build"|"pol"/.test(jv)) throw new Error("a vitrine conta o jeito do bot: " + jv);
+      const pt = problemasDeTexto(v.alcunha);
+      if (pt.length) throw new Error(`alcunha "${v.alcunha}": ${pt.join(", ")}`);
+    }
+    if (vistas.size !== 4) throw new Error("personalidades sorteadas: " + [...vistas].join(","));
+    const pH = T.perfilTipico("wrestler", 3);
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const b = BOT.montarBot({ nivel: 3, categoria: "middleweight", rating: 1500, semente: "dados" + pers, pers });
+      const d = BOT.dadosDaLuta(b, pH);
+      if (d.pers !== pers || JSON.stringify(d.roda) !== JSON.stringify(b.roda)) throw new Error("dados da luta sem o jeito: " + JSON.stringify({ pers: d.pers, roda: d.roda }));
+    }
+  });
+  await conf("cada jeito aparece nas escolhas, em toda habilidade (lutas contra um jogador que sorteia): Provocador golpeia ou pressiona 60%+ em pé e golpeia mais depois de apanhar; Paciente defende 35%+ em pé e ataca quando o adversário cansa; Observador responde à última ação do adversário com a que ganha dela 70%+; Inquieto segue a roda 70%+; nenhum repete a mesma ação 4 vezes seguidas", () => {
+    const pH = T.perfilTipico("striker", 4), ruins = [], linhas = [];
+    for (const pers of BOT.PERSONALIDADES_IDS) for (const s of [0, 0.5, 1]) {
+      const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
+      const bot = BOT.montarBot({ nivel: 4, categoria: "middleweight", rating, semente: `jeito${pers}${s}`, pers });
+      const dados = BOT.dadosDaLuta(bot, pH), c = {};
+      const conta = (k, ok) => { const x = (c[k] ||= [0, 0]); x[1]++; if (ok) x[0]++; };
+      for (let luta = 0; luta < 160; luta++) {
+        let e = M.novaLuta(pH, bot.perfil), n = 0, h = 31 + luta * 7;
+        const trocas = [], seq = [];
+        while (!e.fim && n++ < 40) {
+          h = (h * 1103515245 + 12345) % 2147483648;
+          const aH = F[h % 4];
+          const aB = BOT.acaoDoBot({ estado: e, semente: `j${pers}${s}${luta}`, trocas, dados, lado: "b" });
+          const mom = M.momentoDoLado(e, "b"), pe = e.pos === "pe", cansado = e.b.energia <= 1.5;
+          if (!mom && !cansado) {
+            if (pers === "agressivo" && pe) { conta("ataca", aB === "golpes" || aB === "pressao"); conta(e.b.atingido ? "golpesApanhou" : "golpesNormal", aB === "golpes"); }
+            if (pers === "defensivo" && pe) {
+              const pts = e.pontos[e.round - 1];
+              if (e.a.energia > 3 && pts.b - pts.a < 6) conta("defende", aB === "defesa");
+              if (e.a.energia <= 3) conta("atacaCansado", aB === "golpes" || aB === "queda");
+            }
+            if (pers === "leitor" && e.a.ultima) {
+              const pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
+              if (F.some((f) => M.quemLeu(pap, { a: e.a.ultima, b: f }) === "b")) conta("responde", M.quemLeu(pap, { a: e.a.ultima, b: aB }) === "b");
+            }
+            if (pers === "caotico" && e.b.ultima) conta("roda", aB === bot.roda[(bot.roda.indexOf(e.b.ultima) + 1) % 4]);
+          }
+          seq.push(aB);
+          if (seq.length >= 4 && seq.slice(-4).every((x) => x === aB)) ruins.push(`${pers} s=${s} repetiu ${aB} 4 vezes`);
+          const r = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: aH, b: aB }, `j${pers}${s}${luta}`);
+          trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
+          e = r.estado;
+        }
+      }
+      const tx = (k) => (c[k] && c[k][1] >= 30 ? c[k][0] / c[k][1] : null);
+      const exige = (k, min) => { const v = tx(k); if (v === null) ruins.push(`${pers} s=${s}: poucas trocas de ${k}`); else if (v < min) ruins.push(`${pers} s=${s}: ${k} ${(100 * v).toFixed(0)}% (mínimo ${100 * min}%)`); return v; };
+      if (pers === "agressivo") { exige("ataca", 0.6); if (!(tx("golpesApanhou") > tx("golpesNormal") + 0.08)) ruins.push(`agressivo s=${s}: apanhou ${tx("golpesApanhou")} x normal ${tx("golpesNormal")}`); }
+      if (pers === "defensivo") { exige("defende", 0.35); exige("atacaCansado", 0.45); }
+      if (pers === "leitor") exige("responde", 0.7);
+      if (pers === "caotico") exige("roda", 0.7);
+      linhas.push(`${pers.slice(0, 4)} s=${s}: ` + Object.entries(c).map(([k, v]) => `${k} ${(100 * v[0] / v[1]).toFixed(0)}%`).join(" "));
+    }
+    console.log(cinza("         " + linhas.join("\n         ")));
+    if (ruins.length) throw new Error(ruins.slice(0, 6).join(" | "));
+  });
+  await conf("calibração por jeito (caminho do servidor, níveis 1 e 10): quem joga no peso do estilo vence de 45% a 58% do bot de habilidade média e de 43% a 61% nas pontas; quem lê o jeito durante a luta (explorador) vence 7 pontos ou mais acima, em média 12+; a força medida bate com FORCA_BOT (média do jeito com folga de 35 pontos, cada habilidade com 60: a amostra do teste tem 480 lutas por casa)", () => {
+    const SS = [0, 0.5, 1], ruins = [], linhas = [], ganhos = [];
+    const rat = (p) => 1500 - 400 * Math.log10(p / (100 - p));
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const r = T.medirBots({ n: 30, pares: 8, niveis: [1, 10], ss: SS, humanos: ["estilo", "explorador"], pers, sal: "t" });
+      const est = SS.map((s) => r[`estilo:${s}:${pers}`]), exp = SS.map((s) => r[`explorador:${s}:${pers}`]);
+      const ganho = exp.reduce((a, x, i) => a + x - est[i], 0) / SS.length;
+      ganhos.push(ganho);
+      linhas.push(`${pers.padEnd(9)} estilo ${est.map((x) => x.toFixed(1)).join("/")} explorador ${exp.map((x) => x.toFixed(1)).join("/")} ganho ${ganho.toFixed(1)} força ${est.map((x) => Math.round(rat(x))).join("/")} (FORCA_BOT ${BOT.FORCA_BOT[pers].join("/")})`);
+      if (est[1] < 45 || est[1] > 58) ruins.push(`${pers}: estilo contra o bot médio ${est[1].toFixed(1)}%`);
+      if (Math.min(est[0], est[2]) < 43 || Math.max(est[0], est[2]) > 61) ruins.push(`${pers}: estilo nas pontas ${est[0].toFixed(1)}/${est[2].toFixed(1)}`);
+      if (ganho < 7) ruins.push(`${pers}: quem lê ganha só ${ganho.toFixed(1)} pontos`);
+      SS.forEach((s, i) => { if (Math.abs(rat(est[i]) - BOT.FORCA_BOT[pers][i]) > 60) ruins.push(`${pers} s=${s}: força medida ${Math.round(rat(est[i]))}, FORCA_BOT ${BOT.FORCA_BOT[pers][i]}`); });
+      const media = (v) => v.reduce((a, b) => a + b, 0) / v.length;
+      if (Math.abs(media(est.map(rat)) - media(BOT.FORCA_BOT[pers])) > 35) ruins.push(`${pers}: força média medida ${Math.round(media(est.map(rat)))}, FORCA_BOT ${Math.round(media(BOT.FORCA_BOT[pers]))}`);
+    }
+    const media = ganhos.reduce((a, b) => a + b, 0) / ganhos.length;
+    console.log(cinza("         " + linhas.join("\n         ") + `\n         ganho médio de quem lê: ${media.toFixed(1)} pontos`));
+    if (media < 12) ruins.push(`ganho médio de quem lê ${media.toFixed(1)}`);
+    if (ruins.length) throw new Error(ruins.join(" | "));
   });
 
   const okTudo = !falhas.length;
@@ -13245,6 +13334,10 @@ async function testarJxJTelas() {
       if (!L) throw new Error("não criou a luta contra o bot");
       const h = htmlDe(desde(m3));
       if (!h.includes("jxj-selo-bot") || !/Bot [A-ZÁÉÍÓÚ]/.test(h)) throw new Error("a luta não mostra o bot marcado: " + h.replace(/\s+/g, " ").slice(0, 200));
+      /* personalidade (2026-10-20): a alcunha aparece no placar; o jeito (id) nunca chega na tela */
+      const nb = (await db.query("select nomes from jxj_lutas where id = $1", [L.id])).rows[0].nomes.b;
+      if (!nb.alcunha || !h.includes(`<small class="jxj-alcunha">${nb.alcunha}</small>`)) throw new Error("o placar não mostra a alcunha do bot: " + JSON.stringify(nb));
+      if (/agressivo|defensivo|leitor|caotico/.test(h)) throw new Error("a tela conta o jeito do bot");
       if (!desde(m3).some((n) => tem(n, "jxj-acao"))) throw new Error("a luta contra o bot não mostra as ações");
       semLixo(h, "luta contra bot");
       await api(uo, "filaSair");

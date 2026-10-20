@@ -174,7 +174,12 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
   a força medida dele: sem a faixa, quem vence o bot sobe pra sempre.
   Mexeu no motor ou na política do bot: `node ferramentas/jxj-balanco.mjs
   bots` e `node testar.js jxjbot` (`PESOS_VALOR` tem que bater com o
-  treino da ferramenta). Ligar: a migração, uma conta só dos bots e
+  treino da ferramenta). **Personalidades (2026-10-20):** cada bot tem um
+  jeito legível (Provocador, Paciente, Observador, Inquieto; `PERSONALIDADES`)
+  e entra no rating com a força medida dele (`FORCA_BOT`), não com o rating
+  do jogador: mexeu no jeito, no motor ou na `INCLINACAO`, rode
+  `node ferramentas/jxj-balanco.mjs personalidades` e copie a força nova. A
+  tela só recebe a alcunha; o id do jeito nunca sai do servidor. Ligar: a migração, uma conta só dos bots e
   `select public.jxj_bot_configurar('email')`. Sem isso a tela não
   oferece bot (sem a migração, `PGRST202`, igual ao raio).
 - **Mexeu no motor ou na árvore do JxJ:** `node testar.js jxjmotor` e

@@ -8754,6 +8754,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
     const d=el("div","jxj-hud-lado "+(souEu?"eu":"ele")); d.id=souEu?"jxj-card-eu":"jxj-card-ele";
     d.innerHTML=`${jxjRetrato(n,56)}<div class="jxj-hud-info">
       <b class="jxj-hud-nome"><span>${jxjEsc(n.nome)}</span>${souEu?"<small>você</small>":""}${n.bot?jxjSeloBot():""}</b>
+      ${n.bot&&n.alcunha?`<small class="jxj-alcunha">${jxjEsc(n.alcunha)}</small>`:""}
       <span class="jxj-vida${vida<=35?" baixa":""}" role="img" aria-label="Vida ${vida} de 100"><i style="width:${vida}%"></i></span>
       <span class="jxj-folego" role="img" aria-label="Energia ${jxjNum(st.energia)} de ${jxjNum(st.energiaMax)}"><i style="width:${Math.round(ener*100)}%"></i></span>
       <span class="jxj-hud-num"><i>${ICONE("lesao")}${vida}</i><i>${ICONE("energia")}${jxjNum(st.energia)}</i>${st.ausentes?`<i class="jxj-ausente">${st.ausentes} sem ação</i>`:""}${jxjEtiquetas(e,l)}</span>
@@ -8908,7 +8909,7 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   const titulo=r.metodo==="ANULADA"?"Luta anulada":empate?"Empate":espectador?`${jxjEsc(v.nomes[r.vencedor].nome)} venceu`:ganhei?"Vitória":"Derrota";
   cab.innerHTML=`<p class="jxj-rotulo">${jxjMetodo(r.metodo)}${r.round?` · round ${r.round}`:""}</p>
     <h2 class="jxj-resultado-titulo">${titulo}</h2>
-    <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
+    <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${v.nomes[ele].bot&&v.nomes[ele].alcunha?`, ${jxjEsc(v.nomes[ele].alcunha)}`:""}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
   area.appendChild(cab);
   const g=el("div","jxj-grade");
   const ganhos=el("section","painel-n jxj-card");

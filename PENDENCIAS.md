@@ -2441,3 +2441,24 @@ Falta, do dono, nesta ordem:
    grátis e o banco cobra.
 3. Liberar o deploy (merge na `master`).
 
+
+## 47. Plano do Online em 6 fases (2026-10-20)
+
+Pedido do dono (roteiro colado em 2026-10-20, a partir do Raio-X do
+Online): bots com personalidade, placar do round ao vivo, fechar o motor
+v3, narração por IA durante a luta, integridade e pareamento, diagnóstico
+das variantes. Uma fase por vez, com métricas antes e depois, e parada pra
+validar. Decisões dele: a luta contra bot continua mexendo no rating
+normalmente; "humano médio" é o jogador que joga no peso do estilo; faixa
+de estilos do teste vai pra 45% a 57%; autorizou umas 50 chamadas reais da
+IA pra medir a fase 4; bots fantasma (1b) ficam fora por enquanto.
+
+1. Bots com personalidade: FEITO na branch `luta-estrategia` (LEIA-ME
+   "Bots com personalidade"). Falta a validação do dono.
+2. Placar do round ao vivo.
+3. Fechar o motor v3 (tabela da vantagem da leitura, estilos 45% a 57%).
+4. Narração por IA durante a luta (precisa de migração).
+5. Torneio exige 3 lutas com rating contra gente; nível no pareamento
+   (precisa de migração).
+6. Diagnóstico das variantes (sem código).
+

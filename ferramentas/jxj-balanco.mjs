@@ -11,6 +11,7 @@
      node ferramentas/jxj-balanco.mjs bots       # bot de cada habilidade contra jogadores-modelo (2026-10-19)
      node ferramentas/jxj-balanco.mjs leitura    # quanto vale acertar a leitura (motor v3, 2026-10-20)
      node ferramentas/jxj-balanco.mjs momentos   # grogue e encaixe: frequência, misturas e quanto valem
+     node ferramentas/jxj-balanco.mjs personalidades  # bots com personalidade: quem lê o jeito vence mais?
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -187,6 +188,77 @@ export function adaptativa(pEu, pEle, { prior = 2, segue = 0.7, temp = 1 } = {})
     const mx0 = Math.max(...ganho);
     return amostra(ganho.map((g) => Math.exp((g - mx0) / temp)), r);
   }, { mx: (ch) => misturaDoMomento(pEu, pEle, ch) });
+}
+
+/* Jogador que descobre o jeito do adversário durante a luta (2026-10-20,
+   bots com personalidade): não sabe nada dele no começo. Guarda o que ele
+   fez em cinco contextos (na posição; depois de cada ação dele; depois de
+   cada ação sua; depois de ele apanhar ou não; você cansado ou não) e testa
+   duas hipóteses que gente testa ("ele responde ao que eu fiz com o que
+   ganha disso?", "ele repete?"). Dá peso a cada um pelo quanto acertou as
+   últimas jogadas dele (média bayesiana com esquecimento), responde com a
+   melhor ação contra a previsão e explora um pouco. É o "humano atento"
+   que lê o padrão. */
+const posDoLado = (e, l) => (l === "a" ? e.pos : e.pos === "cima_a" ? "cima_b" : e.pos === "cima_b" ? "cima_a" : "pe");
+export function explorador(pEu, pEle, { exploracao = 0.08, esquece = 0.85 } = {}) {
+  const mx = misturas(pEu, pEle);
+  const TIPOS = ["m", "ele", "eu", "apanhou", "cansado", "contra", "repete"];
+  const HIP = 0.7;   // quanto a hipótese aposta no que ela diz
+  let mem = null;
+  return (e, l, p, r) => {
+    const o = l === "a" ? "b" : "a", pos = posDoLado(e, l);
+    if (e.round === 1 && e.troca === 1) mem = { cont: {}, logv: Object.fromEntries(TIPOS.map((t) => [t, 0])), ctxAnt: null, predAnt: null };
+    else if (mem.ctxAnt && e[o].ultima) {
+      const j = F.indexOf(e[o].ultima);
+      for (const t of TIPOS) mem.logv[t] = mem.logv[t] * esquece + Math.log(mem.predAnt[t][j]);
+      for (const t of TIPOS) {
+        if (t === "contra" || t === "repete") continue;
+        const c = (mem.cont[mem.ctxAnt[t]] ||= [0, 0, 0, 0]);
+        for (let i = 0; i < 4; i++) c[i] *= esquece;
+        c[j] += 1;
+      }
+    }
+    const ctx = { m: `m|${pos}`, ele: `ele|${pos}|${e[o].ultima}`, eu: `eu|${pos}|${e[l].ultima}`,
+      apanhou: `ap|${pos}|${!!e[o].atingido}`, cansado: `ca|${pos}|${e[l].energia <= 3}` };
+    /* prior suavizado: com zero, uma jogada inesperada zerava o peso de todo
+       contexto pra sempre (log 0) e a escolha virava ação inválida */
+    const prior = mx[pos].b.map((x) => 0.9 * x + 0.025), pred = {};
+    for (const t of TIPOS) {
+      if (t === "contra" || t === "repete") continue;
+      const c = mem.cont[ctx[t]] || [0, 0, 0, 0], n = c.reduce((a, b) => a + b, 0);
+      pred[t] = c.map((x, i) => (x + prior[i]) / (n + 1));
+    }
+    /* hipóteses: as ações dele que ganham da minha última; a última dele */
+    const pap = { [l]: M.papel(e, l), [o]: M.papel(e, o) };
+    const aposta = (alvos) => (alvos.length ? F.map((f) => (alvos.includes(f) ? HIP / alvos.length : 0) + (1 - HIP) * prior[F.indexOf(f)]) : prior.slice());
+    pred.contra = aposta(e[l].ultima ? F.filter((f) => M.quemLeu(pap, { [o]: f, [l]: e[l].ultima }) === o) : []);
+    pred.repete = aposta(e[o].ultima ? [e[o].ultima] : []);
+    mem.ctxAnt = ctx; mem.predAnt = pred;
+    const ch = M.momentoDoLado(e, l);
+    if (ch) return amostra(misturaDoMomento(pEu, pEle, ch).a, r);
+    if (e[l].energia <= 1.5 && r() < 0.5) return "defesa";
+    if (r() < exploracao) return amostra(mx[pos].a, r);
+    const lv = TIPOS.map((t) => mem.logv[t]), lm = Math.max(...lv), w = lv.map((x) => Math.exp(x - lm)), tw = w.reduce((a, b) => a + b, 0);
+    const crenca = [0, 0, 0, 0];
+    TIPOS.forEach((t, k) => { for (let i = 0; i < 4; i++) crenca[i] += (w[k] / tw) * pred[t][i]; });
+    const ganho = mx[pos].m.map((linha) => linha.reduce((s, v, j) => s + v * crenca[j], 0));
+    return F[ganho.indexOf(Math.max(...ganho))];
+  };
+}
+/* Jogador que já sacou o jeito do bot (teto do que dá pra tirar dele): vê a
+   distribuição verdadeira da próxima ação do bot (BOT.distribuicaoDoBot,
+   nunca a ação sorteada) e responde com a melhor ação contra ela. Só pra
+   luta contra bot com personalidade (lutaContraBot passa o contexto). */
+export function conhecedor(pEu, pEle) {
+  const mx = misturas(pEu, pEle);
+  return (e, l, p, r, ctx) => {
+    const o = l === "a" ? "b" : "a", pos = posDoLado(e, l), ch = M.momentoDoLado(e, l);
+    if (e[l].energia <= 1.5 && r() < 0.5) return "defesa";
+    const dist = BOT.distribuicaoDoBot(e, o, ctx.dados, BOT.historicoDasTrocas(ctx.trocas, o), BOT.acoesDoBot(ctx.trocas, o));
+    const m = ch ? misturaDoMomento(pEu, pEle, ch).m : mx[pos].m;
+    const ganho = m.map((linha) => linha.reduce((s, v, j) => s + v * dist[j], 0));
+    return F[ganho.indexOf(Math.max(...ganho))];
+  };
 }
 
 /* ---------- confronto ---------- */
@@ -374,7 +446,7 @@ export function lutaContraBot(pH, estrH, bot, dados, semente) {
   const rEst = lcg(h);
   let e = M.novaLuta(pH, bot.perfil), n = 0;
   while (!e.fim && n++ < 100) {
-    const aH = estrH(e, "a", pH, rEst);
+    const aH = estrH(e, "a", pH, rEst, { trocas, dados });
     const aB = BOT.acaoDoBot({ estado: e, semente, trocas, dados, lado: "b" });
     const r = M.resolverTroca(e, perfis, { a: aH, b: aB }, semente);
     trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
@@ -388,17 +460,23 @@ export const HUMANOS_MODELO = {
   estilo: (pH, pB, est) => heuristica(est),
   racional: (pH, pB) => racional(pH, pB),
   adaptativo: (pH, pB) => adaptativa(pH, pB),
+  explorador: (pH, pB) => explorador(pH, pB),
+  conhecedor: (pH, pB) => conhecedor(pH, pB),
 };
 /* Vitórias (%) do humano-modelo contra o bot de habilidade s. Cada par: um
    humano de build típica (estilo em rodízio) e um bot montado como no
    servidor (estilo e build sorteados), no mesmo nível. */
-export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "" } = {}) {
+/* pers: força a personalidade do bot (null = a sorteada; "nenhuma" = bot de
+   antes das personalidades). A chave do resultado ganha ":pers" quando pers
+   vem. */
+export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "", pers = null } = {}) {
   const res = {};
   for (const nivel of niveis) for (let i = 0; i < pares; i++) {
     const sH = ESTS[i % ESTS.length], pH = perfilTipico(sH, nivel);
     for (const s of ss) {
       const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
-      const bot = BOT.montarBot({ nivel, categoria: "middleweight", rating, semente: `mb${sal}:${nivel}:${i}:${s}` });
+      const bot = BOT.montarBot({ nivel, categoria: "middleweight", rating, semente: `mb${sal}:${nivel}:${i}:${s}`, pers: pers && pers !== "nenhuma" ? pers : null });
+      if (pers === "nenhuma") delete bot.pers;
       const dados = BOT.dadosDaLuta(bot, pH);
       for (const hu of humanos) {
         let v = 0, d = 0;
@@ -406,7 +484,7 @@ export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0
           const fim = lutaContraBot(pH, HUMANOS_MODELO[hu](pH, bot.perfil, sH), bot, dados, `lb${sal}:${nivel}:${i}:${s}:${hu}:${k}`).fim;
           if (fim.vencedor === "a") v++; else if (fim.vencedor === "b") d++;
         }
-        (res[hu + ":" + s] ||= []).push(100 * v / Math.max(1, v + d));
+        (res[hu + ":" + s + (pers ? ":" + pers : "")] ||= []).push(100 * v / Math.max(1, v + d));
       }
     }
   }
@@ -453,7 +531,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log("            " + SS.map((s) => ("s=" + s).padStart(8)).join(""));
     for (const hu of Object.keys(HUMANOS_MODELO)) console.log(hu.padEnd(12) + SS.map((s) => f1(r[hu + ":" + s]).padStart(8)).join(""));
     console.log("rating que o bot vale (1500 = humano de estilo):     " + SS.map((s) => String(Math.round(1500 + elo(r["estilo:" + s]))).padStart(8)).join(""));
-    console.log("rating que o servidor dá a esse bot (RATING_BOT):    " + SS.map((s) => String(Math.round(BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min))).padStart(8)).join(""));
+    const mediaForca = (s) => BOT.PERSONALIDADES_IDS.reduce((a, p) => a + BOT.forcaDoBot(p, s), 0) / BOT.PERSONALIDADES_IDS.length;
+    console.log("rating com que o bot entra (média de FORCA_BOT):    " + SS.map((s) => String(Math.round(mediaForca(s))).padStart(8)).join(""));
+  } else if (cmd === "personalidades") {
+    /* bots com personalidade (2026-10-20): vitórias do humano-modelo contra cada jeito, por habilidade do bot */
+    const SS = [0, 0.5, 1], HU = ["acaso", "estilo", "explorador", "conhecedor"];
+    for (const pers of [...BOT.PERSONALIDADES_IDS, "nenhuma"]) {
+      const r = medirBots({ n: N || 40, pares: 8, niveis: [1, 10, 30], ss: SS, humanos: HU, pers, sal: "p" });
+      console.log(`${pers === "nenhuma" ? "sem personalidade (antes)" : pers + " (" + BOT.PERSONALIDADES[pers].alcunha + ")"}:`);
+      console.log("              " + SS.map((s) => ("s=" + s).padStart(8)).join(""));
+      for (const hu of HU) console.log("  " + hu.padEnd(12) + SS.map((s) => f1(r[`${hu}:${s}:${pers}`]).padStart(8)).join(""));
+    }
   } else if (cmd === "leitura") {
     console.log(`vantagem da leitura: em pé ${M.K.vantagem}, no chão ${M.K.vantagemChao} (vitórias de quem vê a ação do outro e acerta a leitura com essa chance, contra o jogador de estilo):`);
     for (const ac of [0, 0.35, 0.5, 1]) console.log(`  acerto ${String(ac).padEnd(5)} ${f1(leituraOraculo(ac, N || 300))}%`);
@@ -467,6 +555,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log("  " + s.padEnd(9) + Object.keys(BOT.ESTADO_MOMENTO).map((ch) => `${ch} ${misturaDoMomento(p, p, ch).a.map((x) => Math.round(100 * x)).join("/")}`).join("  "));
     }
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|leitura|momentos] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos] [n]");
   }
 }
