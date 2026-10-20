@@ -12034,6 +12034,23 @@ async function testarJxJ() {
       await q("update jxj_lutas set prazo = now() - interval '2 minutes' where id = $1", [lid]);
       if ((await mov()) !== antes) throw new Error("luta largada contou");
     });
+    await conf("consulta das lutas contra bot por jeito (ferramentas/bots-por-jeito.sql, 2026-10-20): roda no banco de verdade, só lê, junta toda luta contra bot encerrada por jeito e força, e não devolve coluna nem valor de conta, e-mail, nome ou id", async () => {
+      const texto = fs.readFileSync(path.join(RAIZ, "ferramentas", "bots-por-jeito.sql"), "utf8");
+      const partes = texto.split(/^-- consulta \d.*$/m).slice(1).map((x) => x.trim().replace(/;\s*$/, ""));
+      if (partes.length !== 2) throw new Error("esperava 2 consultas, achei " + partes.length);
+      if (/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke)\b/i.test(texto.replace(/--.*$/gm, ""))) throw new Error("a consulta tem comando que grava");
+      const encerradas = (await q("select count(*)::int n from jxj_lutas where bot is not null and status = 'encerrada' and resultado->>'metodo' <> 'ANULADA'"))[0].n;
+      if (encerradas < 2) throw new Error("poucas lutas contra bot pra conferir: " + encerradas);
+      const r1 = await q(partes[0]), r2 = await q(partes[1]);
+      const soma = r1.reduce((a, x) => a + Number(x.lutas), 0);
+      if (soma !== encerradas) throw new Error(`a consulta juntou ${soma} lutas, o banco tem ${encerradas}`);
+      if (!r1.every((x) => ["agressivo", "defensivo", "leitor", "caotico", "sem jeito"].includes(x.jeito) && ["fraco", "médio", "forte"].includes(x.forca))) throw new Error("jeito ou força fora do esperado: " + JSON.stringify(r1));
+      if (!r2.length || !r2.every((x) => Number(x.troca_n) >= 1 && Number(x.troca_n) <= 12)) throw new Error("troca fora de 1 a 12: " + JSON.stringify(r2.slice(0, 3)));
+      for (const linha of [...r1, ...r2]) for (const [k, v] of Object.entries(linha)) {
+        if (/user|email|nome|_id$|^id$|^luta$/.test(k)) throw new Error("coluna com dado pessoal ou id: " + k);
+        if (typeof v === "string" && /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/.test(v)) throw new Error("valor parece id de conta em " + k);
+      }
+    });
     await conf("banco sem a migração dos bots: estado sem bot e chamar o bot responde 503 'ainda não foram ligadas'", async () => {
       const db2 = await B.novoBanco({ bot: false });
       const fetchAntes = globalThis.fetch;
@@ -12929,7 +12946,7 @@ async function testarJxJBot() {
       if (d.pers !== pers || JSON.stringify(d.roda) !== JSON.stringify(b.roda)) throw new Error("dados da luta sem o jeito: " + JSON.stringify({ pers: d.pers, roda: d.roda }));
     }
   });
-  await conf("cada jeito aparece nas escolhas, em toda habilidade (lutas contra um jogador que sorteia): Provocador golpeia ou pressiona 60%+ em pé e golpeia mais depois de apanhar; Paciente defende 35%+ em pé e ataca quando o adversário cansa; Observador responde à última ação do adversário com a que ganha dela 70%+; Inquieto segue a roda 70%+; nenhum repete a mesma ação 4 vezes seguidas", () => {
+  await conf("cada jeito aparece nas escolhas, em toda habilidade (lutas contra um jogador que sorteia): Provocador golpeia ou pressiona 60%+ em pé e golpeia mais depois de apanhar; Paciente defende 35%+ em pé e ataca quando o adversário cansa; Observador responde à última ação do adversário (ou, no bot forte, ao hábito dele) com a que ganha dela 70%+; Inquieto vai pra próxima casa da roda 60%+ e pra próxima ou a seguinte 75%+; nenhum repete a mesma ação 4 vezes seguidas", () => {
     const pH = T.perfilTipico("striker", 4), ruins = [], linhas = [];
     for (const pers of BOT.PERSONALIDADES_IDS) for (const s of [0, 0.5, 1]) {
       const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
@@ -12953,9 +12970,16 @@ async function testarJxJBot() {
             }
             if (pers === "leitor" && e.a.ultima) {
               const pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
-              if (F.some((f) => M.quemLeu(pap, { a: e.a.ultima, b: f }) === "b")) conta("responde", M.quemLeu(pap, { a: e.a.ultima, b: aB }) === "b");
+              const h = BOT.historicoDasTrocas(trocas, "b")[e.pos === "pe" ? "pe" : e.pos === "cima_a" ? "cima_b" : "cima_a"];
+              const habito = h.some((x) => x >= 1) && h.reduce((a, b) => a + b, 0) >= 2 ? F[h.indexOf(Math.max(...h))] : null;
+              const ganhaDe = (alvo) => alvo && M.quemLeu(pap, { a: alvo, b: aB }) === "b";
+              if (F.some((f) => M.quemLeu(pap, { a: e.a.ultima, b: f }) === "b")) conta("responde", ganhaDe(e.a.ultima) || ganhaDe(habito));
             }
-            if (pers === "caotico" && e.b.ultima) conta("roda", aB === bot.roda[(bot.roda.indexOf(e.b.ultima) + 1) % 4]);
+            if (pers === "caotico" && e.b.ultima) {
+              const i = bot.roda.indexOf(e.b.ultima);
+              conta("roda", aB === bot.roda[(i + 1) % 4]);
+              conta("rodaOuPulo", aB === bot.roda[(i + 1) % 4] || aB === bot.roda[(i + 2) % 4]);
+            }
           }
           seq.push(aB);
           if (seq.length >= 4 && seq.slice(-4).every((x) => x === aB)) ruins.push(`${pers} s=${s} repetiu ${aB} 4 vezes`);
@@ -12969,7 +12993,7 @@ async function testarJxJBot() {
       if (pers === "agressivo") { exige("ataca", 0.6); if (!(tx("golpesApanhou") > tx("golpesNormal") + 0.08)) ruins.push(`agressivo s=${s}: apanhou ${tx("golpesApanhou")} x normal ${tx("golpesNormal")}`); }
       if (pers === "defensivo") { exige("defende", 0.35); exige("atacaCansado", 0.45); }
       if (pers === "leitor") exige("responde", 0.7);
-      if (pers === "caotico") exige("roda", 0.7);
+      if (pers === "caotico") { exige("roda", 0.6); exige("rodaOuPulo", 0.75); }
       linhas.push(`${pers.slice(0, 4)} s=${s}: ` + Object.entries(c).map(([k, v]) => `${k} ${(100 * v[0] / v[1]).toFixed(0)}%`).join(" "));
     }
     console.log(cinza("         " + linhas.join("\n         ")));

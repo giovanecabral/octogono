@@ -200,7 +200,7 @@ export function adaptativa(pEu, pEle, { prior = 2, segue = 0.7, temp = 1 } = {})
    melhor ação contra a previsão e explora um pouco. É o "humano atento"
    que lê o padrão. */
 const posDoLado = (e, l) => (l === "a" ? e.pos : e.pos === "cima_a" ? "cima_b" : e.pos === "cima_b" ? "cima_a" : "pe");
-export function explorador(pEu, pEle, { exploracao = 0.08, esquece = 0.85 } = {}) {
+export function explorador(pEu, pEle, { exploracao = 0.08, esquece = 0.85, aoPrever = null } = {}) {
   const mx = misturas(pEu, pEle);
   const TIPOS = ["m", "ele", "eu", "apanhou", "cansado", "contra", "repete"];
   const HIP = 0.7;   // quanto a hipótese aposta no que ela diz
@@ -234,13 +234,15 @@ export function explorador(pEu, pEle, { exploracao = 0.08, esquece = 0.85 } = {}
     pred.contra = aposta(e[l].ultima ? F.filter((f) => M.quemLeu(pap, { [o]: f, [l]: e[l].ultima }) === o) : []);
     pred.repete = aposta(e[o].ultima ? [e[o].ultima] : []);
     mem.ctxAnt = ctx; mem.predAnt = pred;
+    const lv = TIPOS.map((t) => mem.logv[t]), lm = Math.max(...lv), w = lv.map((x) => Math.exp(x - lm)), tw = w.reduce((a, b) => a + b, 0);
+    const crenca = [0, 0, 0, 0];
+    TIPOS.forEach((t, k) => { for (let i = 0; i < 4; i++) crenca[i] += (w[k] / tw) * pred[t][i]; });
+    /* medição (quantas trocas até ler o jeito): a previsão desta troca */
+    if (aoPrever) aoPrever(crenca);
     const ch = M.momentoDoLado(e, l);
     if (ch) return amostra(misturaDoMomento(pEu, pEle, ch).a, r);
     if (e[l].energia <= 1.5 && r() < 0.5) return "defesa";
     if (r() < exploracao) return amostra(mx[pos].a, r);
-    const lv = TIPOS.map((t) => mem.logv[t]), lm = Math.max(...lv), w = lv.map((x) => Math.exp(x - lm)), tw = w.reduce((a, b) => a + b, 0);
-    const crenca = [0, 0, 0, 0];
-    TIPOS.forEach((t, k) => { for (let i = 0; i < 4; i++) crenca[i] += (w[k] / tw) * pred[t][i]; });
     const ganho = mx[pos].m.map((linha) => linha.reduce((s, v, j) => s + v * crenca[j], 0));
     return F[ganho.indexOf(Math.max(...ganho))];
   };

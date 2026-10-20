@@ -213,7 +213,25 @@ export const ERRO_PERSONALIDADE = 0.2, MAX_REPETE = 3;
    que o jeito nunca faz continua fora. Medido: sem isso a habilidade quase
    não mudava a força (de 52% a 50% pro jogador de estilo, na média dos
    jeitos), e o bot de 1560 jogava como um de 1500. */
-export const INCLINACAO = 0.06;
+/* Ajustes medidos da força dentro do jeito (objeto, como o K do motor: a
+   ferramenta de balanço mexe nele em experimento; o servidor nunca muda). */
+export const AJUSTE = {
+  inclinacao: 0.06,   // INCLINACAO (abaixo)
+  habitoLeitor: 0.6,  // HABITO_LEITOR
+  puloRoda: 0.3,      // PULO_RODA
+  segueRoda: 1,       // Inquieto forte: na jogada fora do jeito, responde ao hábito do jogador (0 a 1, vezes s)
+};
+export const INCLINACAO = AJUSTE.inclinacao;
+/* Observador e Inquieto não têm peso pra inclinar (a regra deles aponta uma
+   ação só), então a habilidade entra de outro jeito, medido pra o bot forte
+   ficar perto de 46% a 50% contra o jogador de estilo (antes, 53% e 55%):
+   - Observador: com peso HABITO_LEITOR x s, responde ao seu hábito (a ação
+     que você mais fez na posição) em vez da última;
+   - Inquieto: com chance até PULO_RODA x s, pula uma casa da roda quando a
+     próxima rende menos que a seguinte contra o seu histórico; e, na
+     jogada fora do jeito, responde ao seu hábito (segueRoda). Com pulo de
+     0,5 e sem isso, quem lê ganhava só 7 pontos do Inquieto forte. */
+export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
 /* Força medida de cada jeito em rating (1500 = quem joga no peso do estilo),
    na habilidade 0, 0,5 e 1 (`node ferramentas/jxj-balanco.mjs
    personalidades`; de 4.800 a 5.760 lutas por casa, níveis 1, 10 e 30). É o
@@ -225,8 +243,8 @@ export const INCLINACAO = 0.06;
 export const FORCA_BOT = {
   agressivo: [1470, 1503, 1507],
   defensivo: [1474, 1495, 1515],
-  leitor: [1454, 1469, 1479],
-  caotico: [1448, 1457, 1461],
+  leitor: [1452, 1476, 1495],
+  caotico: [1444, 1487, 1498],
 };
 export function forcaDoBot(pers, s) {
   const f = FORCA_BOT[pers];
@@ -272,7 +290,7 @@ function distribuicaoDaHabilidade(e, lado, d, hist) {
     [Math.max(0, 1 - pol.erro - pol.estiloP), pensado]]);
 }
 /* O jeito da personalidade agora, antes do erro e da regra de não repetir */
-export function pesosDaPersonalidade(e, lado, d) {
+export function pesosDaPersonalidade(e, lado, d, hist = null) {
   const o = lado === "a" ? "b" : "a", pp = MOTOR.papel(e, lado), po = MOTOR.papel(e, o), P = PESOS_PERSONALIDADE;
   if (d.pers === "agressivo") return (e[lado].atingido ? P.agressivoApanhou : P.agressivo)[pp];
   if (d.pers === "defensivo") {
@@ -280,16 +298,27 @@ export function pesosDaPersonalidade(e, lado, d) {
     const pts = e.pontos[e.round - 1] || { a: 0, b: 0 };
     return (pts[lado] - pts[o] >= 6 ? P.defensivoFecha : P.defensivo)[pp];
   }
+  const s = clamp(Number(d.s) || 0, 0, 1);
   if (d.pers === "leitor") {
-    /* as ações que ganham da última dele, no papel de cada um agora */
-    const ultima = e[o].ultima;
-    const ganham = ultima ? F.map((f) => (MOTOR.quemLeu({ [lado]: pp, [o]: po }, { [lado]: f, [o]: ultima }) === lado ? 1 : 0)) : [0, 0, 0, 0];
-    return ganham.some(Boolean) ? ganham : PESOS_ESTILO[d.estilo][pp];
+    /* as ações que ganham da última dele (e, no bot forte, do hábito dele), no papel de cada um agora */
+    const ganhamDe = (alvo) => (alvo ? F.map((f) => (MOTOR.quemLeu({ [lado]: pp, [o]: po }, { [lado]: f, [o]: alvo }) === lado ? 1 : 0)) : [0, 0, 0, 0]);
+    const ultima = ganhamDe(e[o].ultima);
+    const h = hist ? hist[posDoBot(e.pos, lado)] : null, nh = h ? h.reduce((a, b) => a + b, 0) : 0;
+    const habito = nh >= 2 ? ganhamDe(F[h.indexOf(Math.max(...h))]) : [0, 0, 0, 0];
+    const w = habito.some(Boolean) ? AJUSTE.habitoLeitor * s : 0;
+    const p = F.map((_, i) => (1 - w) * (ultima[i] / Math.max(1, ultima.reduce((a, b) => a + b, 0))) + w * (habito[i] / Math.max(1, habito.reduce((a, b) => a + b, 0))));
+    return p.some((x) => x > 0) ? p : PESOS_ESTILO[d.estilo][pp];
   }
   if (d.pers === "caotico") {
     const roda = Array.isArray(d.roda) && d.roda.length === 4 ? d.roda : F, ult = e[lado].ultima;
-    const prox = ult && roda.includes(ult) ? roda[(roda.indexOf(ult) + 1) % 4] : roda[0];
-    return F.map((f) => (f === prox ? 1 : 0));
+    const i = ult && roda.includes(ult) ? (roda.indexOf(ult) + 1) % 4 : 0;
+    const prox = roda[i], depois = roda[(i + 1) % 4];
+    let pulo = 0;
+    if (hist && s > 0) {
+      const g = ganhoContraHistorico(e, lado, d, hist);
+      if (g[F.indexOf(depois)] > g[F.indexOf(prox)]) pulo = AJUSTE.puloRoda * s;
+    }
+    return F.map((f) => (f === prox ? 1 - pulo : f === depois ? pulo : 0));
   }
   return PESOS_ESTILO[d.estilo][pp];
 }
@@ -305,13 +334,15 @@ export function distribuicaoDoBot(e, lado, d, hist, recentes = []) {
     const ob = [0, 0, 0, 0]; ob[F.indexOf(OBVIO[ch])] = 1;
     jogo = misturar([[d.pol.erro, UNIFORME], [d.pol.estiloP, ob], [Math.max(0, 1 - d.pol.erro - d.pol.estiloP), d.mm[ch].a]]);
   } else {
-    const base = normalizar(pesosDaPersonalidade(e, lado, d)), k = INCLINACAO * (Number(d.s) || 0);
+    const base = normalizar(pesosDaPersonalidade(e, lado, d, hist)), k = AJUSTE.inclinacao * (Number(d.s) || 0);
     let jeito = base;
     if (k > 0) {
       const g = ganhoContraHistorico(e, lado, d, hist), g0 = Math.max(...g);
       jeito = base.map((w, i) => w * Math.exp(k * (g[i] - g0)));
     }
-    jogo = misturar([[ERRO_PERSONALIDADE, distribuicaoDaHabilidade(e, lado, d, hist)], [1 - ERRO_PERSONALIDADE, jeito]]);
+    const dh = d.pers === "caotico" && AJUSTE.segueRoda > 0
+      ? { ...d, pol: { ...d.pol, segue: Math.max(d.pol.segue, AJUSTE.segueRoda * (Number(d.s) || 0)) } } : d;
+    jogo = misturar([[ERRO_PERSONALIDADE, distribuicaoDaHabilidade(e, lado, dh, hist)], [1 - ERRO_PERSONALIDADE, jeito]]);
   }
   /* cansado: descansa (o Provocador às vezes ignora) */
   const descanso = d.pers === "agressivo" ? 0.25 : 0.5;

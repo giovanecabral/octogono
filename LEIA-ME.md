@@ -5134,13 +5134,16 @@ punir:
 - **O rating do jogador escolhe a habilidade (faixa 1455 a 1560, como
   antes) e o jeito aparece em toda faixa.** A habilidade muda a jogada fora
   do jeito, o cansaço, os momentos e uma inclinação dentro do jeito
-  (`INCLINACAO`): o bot forte puxa os pesos do jeito pro que rende contra o
-  que você costuma fazer, sem nunca fazer o que o jeito não faz.
+  (`AJUSTE.inclinacao`): o bot forte puxa os pesos do jeito pro que rende
+  contra o que você costuma fazer, sem nunca fazer o que o jeito não faz.
+  As constantes ficam no objeto `AJUSTE` (como o `K` do motor: a
+  ferramenta mexe em experimento, o servidor nunca).
 - **O rating do bot é a força medida dele** (`FORCA_BOT`, por jeito e
-  habilidade, de 1448 a 1515). Antes, o bot entrava no Glicko com o rating
+  habilidade). Antes, o bot entrava no Glicko com o rating
   do jogador (até 1560); com o jeito legível, o bot forte ficou mais fraco
   que isso, e quem está no topo ganharia rating de graça. A luta contra bot
-  continua valendo rating normalmente (decisão do dono).
+  continua valendo rating normalmente (decisão do dono). Força de 1444 a
+  1515 conforme o jeito e a habilidade.
 - **Na tela, só a alcunha**, em dourado embaixo do nome do bot no placar e
   na linha do resultado ("Bot Aroeira, o Provocador"). O id, a roda, a
   build e as misturas ficam nos dados da luta, no servidor. Luta criada
@@ -5156,13 +5159,57 @@ punir:
 - Paciente como counter: forte demais (o jogador de estilo vencia 41% a
   45%: a defesa dele anula golpe e queda). O estilo dele é sorteado.
 
-**Medido** (`node ferramentas/jxj-balanco.mjs personalidades`; caminho do
-servidor, níveis 1, 10 e 30; bot fraco / médio / forte):
+**Medido** (caminho do servidor, níveis 1, 10 e 30, 12 pares de lutadores,
+2 sementes: 2.880 lutas por casa; % de vitória do jogador contra o bot
+fraco / médio / forte):
 
-| contra o bot | antes (sem jeito) | Provocador | Paciente | Observador | Inquieto |
-|---|---|---|---|---|---|
-| quem joga no peso do estilo | 58 / 49 / 45 | 54 / 50 / 49 | 54 / 51 / 48 | 57 / 54 / 53 | 57 / 56 / 56 |
-| ganho de quem lê (explorador) | +9 / +15 / +4 | cerca de +20 | cerca de +9 | cerca de +26 | cerca de +14 |
+| | Provocador | Paciente | Observador | Inquieto |
+|---|---|---|---|---|
+| ao acaso | 42 / 39 / 38 | 45 / 41 / 41 | 48 / 43 / 45 | 50 / 44 / 46 |
+| no peso do estilo | 54 / 50 / 49 | 54 / 52 / 48 | 57 / 53 / 51 | 58 / 52 / 50 |
+| explorador | 74 / 69 / 66 | 65 / 58 / 57 | 83 / 75 / 70 | 73 / 66 / 61 |
+| ganho de quem lê | +20 / +19 / +17 | +11 / +6 / +9 | +26 / +22 / +20 | +15 / +14 / +11 |
+
+Antes (bot sem jeito, mesma medição): estilo 58 / 49 / 45, explorador 68 /
+64 / 49, ganho de quem lê +9 / +15 / +4. Contra o bot forte, ler valia 4
+pontos; agora vale de 9 a 20.
+
+- **Bot forte contra o jogador de estilo: 48% a 51%** nos quatro (meta do
+  dono: perto de 46% a 50%). O Observador e o Inquieto fortes estavam em
+  53% e 55%; ganharam força só no bot forte (`AJUSTE.habitoLeitor`: o
+  Observador forte também responde ao seu hábito; `AJUSTE.puloRoda` e
+  `segueRoda`: o Inquieto forte às vezes pula uma casa quando a próxima
+  rende pouco contra você, e a jogada fora do jeito responde ao seu
+  hábito). Quem joga ao acaso perde mais (38% a 46% contra o forte): ele
+  ignora os atributos.
+- **Em quantas trocas dá pra identificar o jeito** (observador ideal: sabe
+  que existem os 4 jeitos e as 24 rodas possíveis do Inquieto, vê só as
+  ações do bot e faz a conta de Bayes; chance de o jeito certo ser o mais
+  provável, entre as lutas que ainda estão naquela troca):
+
+  | troca | 3 | 4 | 5 | 6 |
+  |---|---|---|---|---|
+  | Provocador | 45% | 49% | 57% | 63% |
+  | Paciente | 52% | 59% | 67% | 72% |
+  | Inquieto | 43% | 54% | 65% | 71% |
+  | Observador | 58% | 68% | 77% | 83% |
+
+  Só pelo comportamento, 80% de certeza vem lá pela 5ª ou 6ª troca, não na
+  3ª ou 4ª. A alcunha encurta isso: quem já sabe o que cada uma faz
+  identifica antes da primeira troca. Identificar não é o mesmo que punir:
+  o Provocador é o mais lento de identificar e o mais fácil de punir (ele
+  ataca muito, o que já basta). O jeito vale a luta inteira: nada reinicia
+  no round (a roda continua, o Observador lê a sua última ação mesmo na
+  virada, e a curva de certeza continua subindo da 4ª pra 5ª e da 8ª pra 9ª
+  troca).
+- **Jogo real:** `ferramentas/bots-por-jeito.sql` (só leitura, sem
+  migração) junta, por jeito e força, as lutas contra bot encerradas
+  (vitórias do jogador, rating médio, trocas lidas pelo jogador e pelo bot,
+  métodos) e a taxa de troca lida por número da troca. Os dados já estão
+  na linha de cada luta (coluna `bot`) e nas trocas (evento `leu`); nenhuma
+  coluna de conta, e-mail, nome ou id sai da consulta (suíte `jxj`). Pra
+  recalibrar com jogo real depois da fase 3: rodar e comparar com esta
+  tabela.
 
 O "explorador" (`explorador` na ferramenta) não sabe nada do bot: guarda o
 que ele fez em cinco contextos e testa duas hipóteses que gente testa

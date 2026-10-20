@@ -2454,7 +2454,12 @@ de estilos do teste vai pra 45% a 57%; autorizou umas 50 chamadas reais da
 IA pra medir a fase 4; bots fantasma (1b) ficam fora por enquanto.
 
 1. Bots com personalidade: FEITO na branch `luta-estrategia` (LEIA-ME
-   "Bots com personalidade"). Falta a validação do dono.
+   "Bots com personalidade"). Ajustes pedidos pelo dono antes de fechar
+   (2026-10-20): tabela exata, em quantas trocas dá pra identificar cada
+   jeito, bot forte perto de 46% a 50% contra o jogador de estilo, e a
+   consulta sem dado pessoal pra recalibrar com jogo real
+   (`ferramentas/bots-por-jeito.sql`), todos FEITOS. Falta a validação
+   final do dono. Não mexer no Paciente (pedido dele).
 2. Placar do round ao vivo.
 3. Fechar o motor v3 (tabela da vantagem da leitura, estilos 45% a 57%).
 4. Narração por IA durante a luta (precisa de migração).
