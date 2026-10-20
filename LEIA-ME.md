@@ -4497,9 +4497,19 @@ salvo nem save.
 
 ### Diferença de rating na fila
 
-**Antes de buscar adversário, o jogador escolhe até quanto de diferença
-aceita:** 100, 200 ou 400 pontos, ou qualquer diferença. O padrão é 400,
-o teto de antes, e a escolha é lembrada no aparelho.
+**O jogador escolhe até quanto de diferença aceita:** 100, 200 ou 400
+pontos, ou qualquer diferença. O padrão é 400, o teto de antes, e a escolha
+é lembrada no aparelho.
+
+**Sem tela antes da busca (2026-10-20, pedido do dono: "temos que diminuir
+essas telas").** Abrir a busca já entra na fila, com o lutador principal e
+a última diferença usada no aparelho. A diferença virou 4 botões dentro da
+busca ("Até 100", "Até 200", "Até 400", "Qualquer"); trocar chama
+`filaEntrar` de novo, que só grava o raio novo, e a espera continua. As
+regras da luta ficam num "Regras da luta" que abre e fecha na própria busca.
+Pro com mais de um lutador troca o principal na tela Lutadores. "Sair da
+fila" substitui o endereço, pra o Voltar do navegador não cair de novo na
+busca (que entraria na fila).
 
 **O par só sai se:**
 - a diferença couber no raio dos **dois**;
@@ -4833,11 +4843,18 @@ bot (`PGRST202`, o mesmo padrão do raio).
 
 ### Tela
 
-- **Fila:** as regras avisam do bot; a busca diz "se ninguém aparecer em
-  30 segundos, você pode lutar contra um bot, sempre marcado como bot".
-  Depois da espera (contada pelo servidor), aparece o cartão "Ninguém
-  apareceu ainda" com "Lutar contra bot". A busca continua por baixo: se
-  alguém aparecer, a luta com gente vale.
+- **Fila:** a busca avisa do bot. Se só você estiver na fila (o contador
+  do Online), o cartão "Só você na fila agora" com "Lutar contra bot"
+  aparece na hora; com mais gente na fila, "Ninguém apareceu ainda" depois
+  de 30 s sem par (contados pelo servidor). A busca continua por baixo: se
+  alguém aparecer, a luta com gente vale. Desde 2026-10-20 (pedido do
+  dono), sozinho na fila o bot sai na hora: o servidor confere o contador e
+  manda espera 0 pro banco (`jxj_bot_criar` recebe a espera, então não
+  precisou de migração); fora da fila, responde "entre na fila pra lutar
+  contra o bot".
+- **Painel com ninguém na fila (2026-10-20):** "Lutar contra bot" aparece
+  ao lado de "Buscar adversário". Um toque entra na fila e chama o bot; se
+  alguém entrou nesse meio tempo, a tela segue pra busca.
 - **Grátis sem a luta grátis:** no painel, "Buscar adversário" vira
   "Lutar contra bot (2 hoje)"; a fila mostra o mesmo botão. Sem lutas no
   dia, o botão fica desligado com "o limite volta à meia-noite" (dia de

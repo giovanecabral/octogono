@@ -525,13 +525,21 @@ async function executar(acao, c, uid) {
       const l = (est.lutadores || []).find((x) => x.id === lid);
       if (!l) throw new ErroJxJ("lutador não encontrado", 404);
       if (est.luta && ["confirmacao", "andamento"].includes(est.luta.status)) return { luta: est.luta.id, jaAberta: true };
+      /* Pro e grátis que ainda tem a luta grátis chamam o bot pela fila. Só
+         ele na fila (o contador do Online): o bot sai na hora; com mais
+         gente na fila, só depois da espera (pedido do dono, 2026-10-20). O
+         banco confere a espera que recebe aqui. */
+      const pelaFila = !!est.pro || !est.lutaGratisUsada;
+      if (pelaFila && !est.fila) throw new ErroJxJ("entre na fila pra lutar contra o bot");
+      const mov = pelaFila ? await movimento() : null;
+      const sozinho = !!mov && Number(mov.fila) <= 1;
       const bot = BOT.montarBot({ nivel: l.nivel, categoria: l.categoria, rating: l.rating, semente: novaSemente(), limitesRosto: LIMITES_ROSTO });
       const perfis = { a: perfilDoLutador(l), b: bot.perfil };
       try {
         return await rpc("jxj_bot_criar", {
           uid, lid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b),
           nome_b: BOT.vitrine(bot), bot_: BOT.dadosDaLuta(bot, perfis.a), prazo_ms: MOTOR.FORMATO.prazoMs,
-          espera_s: REG.BOT_ESPERA_S, limite_free: REG.BOT_FREE_DIA,
+          espera_s: sozinho ? 0 : REG.BOT_ESPERA_S, limite_free: REG.BOT_FREE_DIA,
         });
       } catch (e) {
         if (e.codigo === "PGRST202") throw new ErroJxJ("as lutas contra bot ainda não foram ligadas", 503);

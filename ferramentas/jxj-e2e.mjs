@@ -103,11 +103,10 @@ try {
   await clicar(p2, "button", "Criar lutador"); await esperar(1500);
   passo("segundo jogador criado");
   await ir(p1, "#/jxj"); await esperar(2500); await print(p1, "08-painel"); passo("painel");
-  await ir(p1, "#/jxj/fila"); await ir(p2, "#/jxj/fila"); await esperar(1500);
-  await print(p1, "09-fila-regras"); passo("fila: regras antes de entrar");
-  await clicar(p1, "button", "Entrar na fila"); await esperar(800);
-  await print(p1, "10-fila-buscando"); passo("fila buscando");
-  await clicar(p2, "button", "Entrar na fila"); await esperar(5000);
+  /* sem tela antes da busca (2026-10-20): abrir a fila já entra nela */
+  await ir(p1, "#/jxj/fila"); await esperar(1500);
+  await print(p1, "10-fila-buscando"); passo("fila buscando (entrou direto)");
+  await ir(p2, "#/jxj/fila"); await esperar(5000);
   await print(p1, "11-confronto"); passo("confronto encontrado");
   await clicar(p1, "button", "Confirmar"); await clicar(p2, "button", "Confirmar"); await esperar(3000);
   await print(p1, "12-luta"); passo("luta começou");
@@ -141,8 +140,7 @@ try {
   const ROSTO = { pele: 3, porte: 1, cabelo: 2, corCabelo: 1, barba: 0, orelha: 0, nariz: 0, cicatriz: 0, tatuagem: 0, entrada: 0, prajiad: 0, corEntrada: 0 };
   for (const [pg, nome, estilo] of [[c3, "Rui Cel " + SUF, "grappler"], [c4, "Ivo Cel " + SUF, "counter"]])
     await pg.evaluate(async (nome, estilo, rosto) => { await jxj("criar", { nome, estilo, categoria: "lightweight", rosto }); }, nome, estilo, ROSTO);
-  await ir(c3, "#/jxj/fila"); await ir(c4, "#/jxj/fila"); await esperar(1500);
-  await clicar(c3, "button", "Entrar na fila"); await clicar(c4, "button", "Entrar na fila"); await esperar(5000);
+  await ir(c3, "#/jxj/fila"); await ir(c4, "#/jxj/fila"); await esperar(5000);
   await print(c3, "34-cel-confronto");
   await clicar(c3, "button", "Confirmar"); await clicar(c4, "button", "Confirmar"); await esperar(3000);
   if (!(await c3.evaluate(() => document.querySelectorAll(".jxj-acao").length >= 4))) throw new Error("luta no celular sem as 4 ações");

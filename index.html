@@ -7908,13 +7908,30 @@ function jxjPainel(area,def,est){
     if(!podeFila){ buscar.disabled=true; }
     buscar.onclick=()=>{SOM.toque();irPara("jxj","fila");};
   }
+  /* Ninguém na fila agora, pelo contador do Online (pedido do dono,
+     2026-10-20): o bot já fica no painel. Um toque entra na fila e chama o
+     bot; o servidor libera na hora porque só você está na fila. Se alguém
+     entrou nesse meio tempo, segue pra busca, onde a oferta aparece. */
+  let botAgora=null;
+  if(podeFila&&!soBot&&jxjBotLigado(est)&&(est.pro||est.bot.restantes>0)&&est.movimento&&(Number(est.movimento.fila)||0)===0){
+    botAgora=el("button","botao botao-sec jxj-botao-bot",`${ICONE("bot")}<span>${jxjBotRotulo(est)}</span>`); botAgora.type="button";
+    botAgora.onclick=async()=>{
+      SOM.toque(); botAgora.disabled=true; msgBot.hidden=true;
+      let raio=(def.regras&&def.regras.raioPadrao)||400;
+      try{ const r=Number(localStorage.getItem("jxj:raio")); if((def.regras.raios||[]).includes(r))raio=r; }catch(e){}
+      try{ await jxj("filaEntrar",{lutadorId:principal.id,raio}); }
+      catch(e){ msgBot.textContent=e.erro||"Não deu pra entrar na fila. Tente de novo."; msgBot.hidden=false; botAgora.disabled=false; return; }
+      try{ const r=await jxj("bot",{lutadorId:principal.id}); jxjParar(); irPara("jxj","luta/"+r.luta,{substituir:true}); }
+      catch(e){ irPara("jxj","fila"); }
+    };
+  }
   const arv=el("button","botao botao-sec",`${ICONE("arvore")}<span>Árvore${principal.pontosLivres?` (${principal.pontosLivres} pontos)`:""}</span>`); arv.type="button";
   arv.onclick=()=>{SOM.toque();irPara("jxj","lutador/"+principal.id+"/arvore");};
   const slots=el("button","botao botao-sec",`${ICONE("grupo")}<span>Lutadores</span>`); slots.type="button";
   slots.onclick=()=>{SOM.toque();irPara("jxj","lutadores");};
-  acoes.append(buscar,arv,slots);
+  acoes.append(buscar,...(botAgora?[botAgora]:[]),arv,slots);
   hero.querySelector(".jxj-principal-info").appendChild(acoes);
-  if(soBot)hero.querySelector(".jxj-principal-info").appendChild(msgBot);
+  if(soBot||botAgora)hero.querySelector(".jxj-principal-info").appendChild(msgBot);
   if(!podeFila)hero.querySelector(".jxj-principal-info").appendChild(el("p","jxj-nota",
     !principal.utilizavel?"Este lutador está num slot extra e o Pro venceu. Escolha o lutador do slot 1 como principal ou renove o Pro."
     :soBot?(est.bot.restantes?`A luta grátis contra gente já foi usada. No plano grátis você tem ${def.regras.botFreeDia} lutas por dia contra bot, com o seu nível e o seu rating. O Pro libera a fila, a revanche e os torneios.`
@@ -8434,102 +8451,108 @@ async function jxjTelaFila(){
     area.appendChild(bloqueioPro(el("button","botao botao-sec","Entrar na fila")));
     return;
   }
-  let escolhido=(usaveis.find(l=>l.id===est.principalEfetivo)||usaveis[0]).id;
-  /* diferença de rating (2026-10-04, pedido do dono): até quanto o jogador
-     aceita no adversário. O par só sai se couber na escolha dos dois; a
-     faixa cresce com a espera até esse limite. Lembrada neste aparelho. */
+  /* Sem tela antes da busca (pedido do dono, 2026-10-20): abrir a fila já
+     entra nela, com o lutador principal e a última diferença de rating
+     escolhida neste aparelho. A diferença muda durante a busca, sem perder a
+     espera; Pro com mais de um lutador troca o principal na tela Lutadores.
+     Diferença de rating (2026-10-04): o par só sai se couber na escolha dos
+     dois, e a faixa cresce com a espera até esse limite. */
+  const lutador=usaveis.find(l=>est.fila&&l.id===est.fila.lutador_id)||usaveis.find(l=>l.id===est.principalEfetivo)||usaveis[0];
   const RAIOS=(def.regras&&def.regras.raios)||[100,200,400,2000],RAIO_PADRAO=(def.regras&&def.regras.raioPadrao)||400;
   let raio=RAIO_PADRAO;
   try{ const r=Number(localStorage.getItem("jxj:raio")); if(RAIOS.includes(r))raio=r; }catch(e){}
-  const nomeRaio=r=>r>=2000?"Qualquer diferença":`Até ${r} pontos`;
-  const dicaRaio=r=>r>=2000?"Acha adversário mais rápido, até bem mais forte ou mais fraco":r<=100?"Lutas mais parelhas, espera maior":r<=200?"Parelho, espera média":"O padrão: a faixa cresce com a espera até aqui";
-  const textoRaio=r=>r==null?"":r>=2000?"Você aceita qualquer diferença de rating.":`Você aceita até ${r} pontos de rating de diferença.`;
-  const buscar=async(info={})=>{
-    area.innerHTML="";
-    const tk=JXJ_TOKEN;
-    const box=el("section","painel-n jxj-busca entra");
-    const aviso=info.raioIndisponivel?"O filtro de diferença ainda não está ligado no servidor: a busca usa o padrão, até 400 pontos, crescendo com a espera.":textoRaio(info.raio);
-    const ESPERA_BOT=(def.regras&&def.regras.botEsperaS)||30;
-    const podeBot=jxjBotLigado(est)&&(est.pro||est.bot.restantes>0);
-    box.innerHTML=`<div class="jxj-busca-pulso">${ICONE("busca")}</div><h2 class="jxj-subtitulo">Procurando adversário</h2>
-      <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. ${aviso?aviso+" ":""}A faixa aceita cresce com a espera. ${podeBot
-        ?`Se ninguém aparecer em ${ESPERA_BOT} segundos, você pode lutar contra um bot, sempre marcado como bot.`
-        :"Ninguém é inventado: se não houver adversário agora, a busca continua."}</p>`;
-    const mov=el("p","jxj-movimento","");mov.id="jxj-movimento";
-    box.appendChild(mov);
-    const sair=el("button","botao botao-sec",`${ICONE("fechar")}<span>Sair da fila</span>`); sair.type="button";
-    sair.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("filaSair"); }catch(e){} irPara("jxj"); };
-    box.appendChild(sair); area.appendChild(box);
-    /* oferta do bot: aparece uma vez, depois da espera contada pelo servidor;
-       a busca continua por baixo e, se alguém aparecer, a luta com gente vale */
-    let ofertaFeita=false;
-    const oferecerBot=()=>{
-      if(ofertaFeita||!podeBot)return; ofertaFeita=true;
-      const l=usaveis.find(x=>est.fila&&x.id===est.fila.lutador_id)||usaveis.find(x=>x.id===escolhido)||usaveis[0];
-      const of=el("section","painel-n jxj-card jxj-oferta-bot entra");
-      of.innerHTML=`<p class="jxj-rotulo">${ICONE("bot")} Ninguém apareceu ainda</p>
-        <p>Você pode lutar agora contra um bot com o nível e o rating de ${jxjEsc(l.nome)}. A luta vale rating como qualquer outra${!est.pro?" e não gasta a sua luta grátis":""}. A busca continua enquanto você decide.</p>`;
-      const msg=el("p","jxj-erro"); msg.hidden=true;
-      of.appendChild(el("div","jxj-acoes")).appendChild(jxjBotaoBot(est,l.id,{msg}));
-      of.appendChild(msg);
-      area.appendChild(of);
-    };
-    const t0=Date.now(),tempo=box.querySelector(".jxj-busca-tempo");
-    const ciclo=async()=>{
-      if(tk!==JXJ_TOKEN)return;
-      try{
-        const r=await jxj("fila");
-        if(tk!==JXJ_TOKEN)return;
-        if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
-        if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
-        tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos de diferença`;
-        if((r.esperaSeg||0)>=ESPERA_BOT)oferecerBot();
-        if(r.movimento)mov.innerHTML=`${ICONE("grupo")}<span>${jxjTextoMovimento(r.movimento,true)}</span>`;
-      }catch(e){ tempo.textContent=e.erro||"Sem conexão; tentando de novo."; }
-      JXJ_TIMER=setTimeout(ciclo,3000);
-    };
-    ciclo();
-  };
-  if(est.fila)return buscar();
-  const esc=el("section","jxj-escolha-lutador");
-  esc.appendChild(el("p","jxj-rotulo","Quem vai lutar"));
-  const g=el("div","jxj-opcoes");
-  usaveis.forEach(l=>{
-    const b=el("button","jxj-opcao"+(l.id===escolhido?" on":""),`${jxjRetrato(l,64)}<b>${jxjEsc(l.nome)}</b><small>${jxjEstilo(l.estilo)} · nível ${l.nivel} · rating ${Math.round(l.rating)}${l.id===est.principalEfetivo?" · principal":""}</small>`);
-    b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(l.id===escolhido));
-    b.onclick=()=>{ SOM.toque(); escolhido=l.id; g.querySelectorAll(".jxj-opcao").forEach(x=>{ const on=x===b; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); }); atualizarFaixa(); };
-    g.appendChild(b);
-  });
-  esc.appendChild(g); area.appendChild(esc);
-  const secRaio=el("section","jxj-escolha-raio");
-  secRaio.appendChild(el("p","jxj-rotulo",`${ICONE("alvo")} Diferença de rating dos adversários`));
-  const gr=el("div","jxj-opcoes jxj-raios");
+  if(est.fila&&RAIOS.includes(Number(est.fila.raio)))raio=Number(est.fila.raio);
+  const ESPERA_BOT=(def.regras&&def.regras.botEsperaS)||30;
+  const podeBot=jxjBotLigado(est)&&(est.pro||est.bot.restantes>0);
+  const tk=JXJ_TOKEN;
+  const box=el("section","painel-n jxj-busca entra");
+  box.innerHTML=`<div class="jxj-busca-pulso">${ICONE("busca")}</div><h2 class="jxj-subtitulo">Procurando adversário</h2>
+    <p class="jxj-busca-tempo">Entrando na fila</p>
+    <p class="jxj-nota">${jxjEsc(lutador.nome)} · ${jxjEstilo(lutador.estilo)} · nível ${lutador.nivel} · rating ${Math.round(lutador.rating)}</p>`;
+  const tempo=box.querySelector(".jxj-busca-tempo");
+  const mov=el("p","jxj-movimento","");mov.id="jxj-movimento";
+  box.appendChild(mov);
+  /* diferença de rating aceita, trocável durante a busca */
+  const secRaio=el("div","jxj-busca-raio");
+  secRaio.appendChild(el("p","jxj-rotulo",`${ICONE("alvo")} Diferença de rating aceita`));
+  const gr=el("div","jxj-raios-busca");
   const faixa=el("p","jxj-nota jxj-raio-faixa","");
-  function atualizarFaixa(){
-    const l=usaveis.find(x=>x.id===escolhido),r=Math.round(l?l.rating:1500);
-    faixa.textContent=raio>=2000?`Rating de ${l?l.nome:"seu lutador"}: ${r}. Qualquer adversário da categoria serve.`
-      :`Rating de ${l?l.nome:"seu lutador"}: ${r}. Adversários de ${r-raio} a ${r+raio}, se o raio dele também aceitar você.`;
-  }
+  let semFiltro=false;
+  const atualizarFaixa=()=>{ const r=Math.round(lutador.rating);
+    faixa.textContent=semFiltro?"O filtro de diferença ainda não está ligado no servidor: vale o padrão, até 400 pontos, crescendo com a espera."
+      :raio>=2000?"Qualquer adversário da categoria serve.":`Adversários de ${r-raio} a ${r+raio}, se o raio dele também aceitar você.`; };
+  const marcar=()=>gr.querySelectorAll(".jxj-raio").forEach(x=>{ const on=Number(x.dataset.raio)===raio; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); });
+  const msg=el("p","jxj-erro"); msg.hidden=true;
   RAIOS.forEach(r=>{
-    const b=el("button","jxj-opcao jxj-raio"+(r===raio?" on":""),`<b>${nomeRaio(r)}</b><small>${dicaRaio(r)}</small>`);
+    const b=el("button","jxj-raio"+(r===raio?" on":""),r>=2000?"Qualquer":`Até ${r}`);
     b.type="button"; b.dataset.raio=String(r); if(b.setAttribute)b.setAttribute("aria-pressed",String(r===raio));
-    b.onclick=()=>{ SOM.toque(); raio=r; try{ localStorage.setItem("jxj:raio",String(r)); }catch(e){}
-      gr.querySelectorAll(".jxj-raio").forEach(x=>{ const on=x===b; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); }); atualizarFaixa(); };
+    b.onclick=async()=>{
+      if(r===raio||semFiltro)return;
+      SOM.toque(); const antes=raio; raio=r; marcar(); atualizarFaixa(); msg.hidden=true;
+      try{ localStorage.setItem("jxj:raio",String(r)); }catch(e){}
+      /* filaEntrar de quem já está na fila só grava o raio novo: a espera continua */
+      try{ const x=await jxj("filaEntrar",{lutadorId:lutador.id,raio}); if(x&&x.raioIndisponivel){ semFiltro=true; atualizarFaixa(); } }
+      catch(e){ raio=antes; marcar(); atualizarFaixa(); msg.textContent=e.erro||"Não deu pra trocar agora. Tente de novo."; msg.hidden=false; }
+    };
     gr.appendChild(b);
   });
-  secRaio.append(gr,faixa); area.appendChild(secRaio); atualizarFaixa();
-  const regras=el("section","painel-n jxj-card");
-  regras.innerHTML=`<p class="jxj-rotulo">${ICONE("info")} Antes de entrar</p><ul class="jxj-lista-simples">${def.regras.ausencia.map(t=>`<li>${t}</li>`).join("")}
-    <li>O par encontrado tem ${Math.round(20)} segundos pra confirmar. Quem recusa espera um minuto pra voltar.</li>
-    <li>O mesmo par vale rating no máximo ${def.regras.parRating24h} vezes em 24 horas.</li>${!est.pro?"<li>Esta é a sua luta grátis do plano grátis.</li>":""}
-    ${jxjBotLigado(est)?`<li>Se ninguém aparecer em ${def.regras.botEsperaS} segundos, você pode lutar contra um bot. A luta vale rating${!est.pro?` e não gasta a luta grátis (${def.regras.botFreeDia} por dia no plano grátis)`:""}.</li>`:""}</ul>`;
-  area.appendChild(regras);
-  const msg=el("p","jxj-erro"); msg.hidden=true; area.appendChild(msg);
-  const entrar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Entrar na fila</span>`); entrar.type="button";
-  entrar.onclick=async()=>{ SOM.toque(); entrar.disabled=true;
-    try{ const r=await jxj("filaEntrar",{lutadorId:escolhido,raio}); buscar({raio:r&&r.raio!=null?r.raio:null,raioIndisponivel:!!(r&&r.raioIndisponivel)}); }
-    catch(e){ msg.textContent=e.erro; msg.hidden=false; entrar.disabled=false; } };
-  area.appendChild(el("div","jxj-acoes")).appendChild(entrar);
+  secRaio.append(gr,faixa); box.appendChild(secRaio); atualizarFaixa();
+  box.appendChild(el("p","jxj-nota",`Mesma categoria, rating parecido; a faixa cresce com a espera. ${podeBot
+    ?`Se só você estiver na fila, ou se ninguém aparecer em ${ESPERA_BOT} segundos, dá pra lutar contra um bot, sempre marcado como bot.`
+    :"Ninguém é inventado: se não houver adversário agora, a busca continua."}`));
+  const regras=el("details","jxj-regras-busca");
+  regras.innerHTML=`<summary>Regras da luta</summary><ul class="jxj-lista-simples">${def.regras.ausencia.map(t=>`<li>${t}</li>`).join("")}
+    <li>O par encontrado tem 20 segundos pra confirmar. Quem recusa espera um minuto pra voltar.</li>
+    <li>O mesmo par vale rating no máximo ${def.regras.parRating24h} vezes em 24 horas.</li>${!est.pro?"<li>A primeira luta contra gente é a luta grátis do plano grátis.</li>":""}
+    ${jxjBotLigado(est)?`<li>Luta contra bot vale rating${!est.pro?` e não gasta a luta grátis (${def.regras.botFreeDia} por dia no plano grátis)`:""}.</li>`:""}</ul>`;
+  box.appendChild(regras);
+  const sair=el("button","botao botao-sec",`${ICONE("fechar")}<span>Sair da fila</span>`); sair.type="button";
+  /* substituir: o Voltar do navegador não pode cair de novo na busca (abrir a busca entra na fila) */
+  sair.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("filaSair"); }catch(e){} irPara("jxj",null,{substituir:true}); };
+  box.append(msg,sair); area.appendChild(box);
+  /* oferta do bot: uma vez, quando só você está na fila (o contador do
+     Online, pedido do dono em 2026-10-20) ou depois da espera contada pelo
+     servidor. A busca continua por baixo; se alguém aparecer, a luta com
+     gente vale. Fica em cima da busca, visível sem rolar. */
+  let ofertaFeita=false;
+  const oferecerBot=(sozinho)=>{
+    if(ofertaFeita||!podeBot)return; ofertaFeita=true;
+    const of=el("section","painel-n jxj-card jxj-oferta-bot entra");
+    of.innerHTML=`<p class="jxj-rotulo">${ICONE("bot")} ${sozinho?"Só você na fila agora":"Ninguém apareceu ainda"}</p>
+      <p>Você pode lutar agora contra um bot com o nível e o rating de ${jxjEsc(lutador.nome)}. A luta vale rating como qualquer outra${!est.pro?" e não gasta a sua luta grátis":""}. A busca continua enquanto você decide.</p>`;
+    const m2=el("p","jxj-erro"); m2.hidden=true;
+    of.appendChild(el("div","jxj-acoes")).appendChild(jxjBotaoBot(est,lutador.id,{msg:m2}));
+    of.appendChild(m2);
+    area.insertBefore(of,box);
+  };
+  if(!est.fila){
+    try{ const r=await jxj("filaEntrar",{lutadorId:lutador.id,raio}); if(r&&r.raioIndisponivel){ semFiltro=true; atualizarFaixa(); } }
+    catch(e){
+      if(tk!==JXJ_TOKEN)return;
+      tempo.textContent=e.erro||"Não deu pra entrar na fila.";
+      const de=el("button","botao",`${ICONE("reenviar")}<span>Tentar de novo</span>`); de.type="button";
+      de.onclick=()=>{ SOM.toque(); irPara("jxj","fila",{substituir:true}); };
+      box.insertBefore(de,sair);
+      return;
+    }
+  }
+  if(tk!==JXJ_TOKEN)return;
+  const t0=Date.now();
+  const ciclo=async()=>{
+    if(tk!==JXJ_TOKEN)return;
+    try{
+      const r=await jxj("fila");
+      if(tk!==JXJ_TOKEN)return;
+      if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
+      if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
+      tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos de diferença`;
+      if((r.esperaSeg||0)>=ESPERA_BOT)oferecerBot(false);
+      else if(r.movimento&&(Number(r.movimento.fila)||0)<=1)oferecerBot(true);
+      if(r.movimento)mov.innerHTML=`${ICONE("grupo")}<span>${jxjTextoMovimento(r.movimento,true)}</span>`;
+    }catch(e){ tempo.textContent=e.erro||"Sem conexão; tentando de novo."; }
+    JXJ_TIMER=setTimeout(ciclo,3000);
+  };
+  ciclo();
 }
 
 /* ---------- luta (#/jxj/luta/<id>) ---------- */

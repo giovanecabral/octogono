@@ -11825,7 +11825,9 @@ async function testarJxJ() {
       const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
       const e = await ok(u, "estado");
       if (!e.bot || e.bot.disponivel !== false) throw new Error("estado.bot: " + JSON.stringify(e.bot));
+      await ok(u, "filaEntrar", { lutadorId: l });
       await erro(u, "bot", { lutadorId: l }, /ainda não foram ligadas/);
+      await ok(u, "filaSair");
       if ((await q("select count(*)::int n from jxj_lutas where bot is not null"))[0].n) throw new Error("criou luta contra bot");
     });
     const contaBots = await novoUsuario({ email: "Bots.Octogono@teste" });
@@ -11842,12 +11844,25 @@ async function testarJxJ() {
       if (!/tem lutador/.test(String(e2))) throw new Error("conta com lutador: " + e2);
       if ((await q("select valor from jxj_config where chave = 'bot'"))[0].valor.user !== contaBots) throw new Error("a recusa trocou a conta dos bots");
     });
-    await conf("Pro: o bot só depois de 30 s na fila; a luta nasce em andamento contra um bot do nível e da categoria dele, com o rating preso na faixa; ele sai da fila; clique duplo devolve a mesma luta", async () => {
+    await conf("Pro sozinho na fila (2026-10-20): fora da fila o servidor pede pra entrar; na fila, sem mais ninguém, o bot sai na hora", async () => {
       await zerarLimites();
+      await q("delete from jxj_fila");
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      await erro(u, "bot", { lutadorId: l }, /entre na fila/);
+      await ok(u, "filaEntrar", { lutadorId: l });
+      const r = await ok(u, "bot", { lutadorId: l });
+      if (!r.luta) throw new Error("sozinho na fila, o bot não saiu na hora: " + JSON.stringify(r));
+      await lutarBot(r.luta, u);
+    });
+    await conf("Pro com mais gente na fila: o bot só depois de 30 s; a luta nasce em andamento contra um bot do nível e da categoria dele, com o rating preso na faixa; ele sai da fila; clique duplo devolve a mesma luta", async () => {
+      await zerarLimites();
+      await q("delete from jxj_fila");
+      const outro = await novoUsuario({ pro: true }), lo = (await criar(outro, { categoria: "heavyweight" })).id;
+      await ok(outro, "filaEntrar", { lutadorId: lo });
       const u = await novoUsuario({ pro: true }), l = (await criar(u, { categoria: "welterweight" })).id;
       await q("update jxj_lutadores set nivel = 7, xp = $2, rating = 1720 where id = $1", [l, REG.xpTotalAte(7)]);
-      await erro(u, "bot", { lutadorId: l }, /depois de 30 segundos/);
       await ok(u, "filaEntrar", { lutadorId: l });
+      await q("update jxj_fila set sinal_em = now() where user_id = $1", [outro]);
       await erro(u, "bot", { lutadorId: l }, /depois de 30 segundos/);
       await q("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [u]);
       const r = await ok(u, "bot", { lutadorId: l });
@@ -11862,6 +11877,7 @@ async function testarJxJ() {
       const r2 = await ok(u, "bot", { lutadorId: l });
       if (Number(r2.luta) !== Number(r.luta)) throw new Error("clique duplo criou outra luta: " + JSON.stringify(r2));
       if ((await q("select count(*)::int n from jxj_lutas where a_user = $1", [u]))[0].n !== 1) throw new Error("mais de uma luta");
+      await ok(outro, "filaSair");
     });
     await conf("luta contra bot até o fim: cada ação gravada do bot é a que ele já tinha antes do jogador mandar a dele; só o jogador muda (rating contra a foto do bot, XP, cartel); o âncora nunca muda; sem revanche; a vista não leva build, misturas nem habilidade; o histórico marca bot", async () => {
       await zerarLimites();
@@ -11917,7 +11933,7 @@ async function testarJxJ() {
     await conf("grátis com a luta grátis guardada: o bot só pela fila depois de 30 s, conta no limite do dia e a luta grátis continua guardada", async () => {
       await zerarLimites();
       const u = await novoUsuario(), l = (await criar(u)).id;
-      await erro(u, "bot", { lutadorId: l }, /depois de 30 segundos/);
+      await erro(u, "bot", { lutadorId: l }, /entre na fila/);
       await ok(u, "filaEntrar", { lutadorId: l });
       await q("update jxj_fila set entrou_em = now() - interval '40 seconds' where user_id = $1", [u]);
       const lid = (await ok(u, "bot", { lutadorId: l })).luta;
@@ -11938,7 +11954,9 @@ async function testarJxJ() {
     await conf("a conta dos bots não chama bot; lutador de outra conta é recusado; o contador do Online conta luta contra bot como uma pessoa e não conta a largada", async () => {
       await zerarLimites();
       const lb = (await criar(contaBots)).id;
+      await ok(contaBots, "filaEntrar", { lutadorId: lb });
       await erro(contaBots, "bot", { lutadorId: lb }, /conta dos bots/);
+      await ok(contaBots, "filaSair");
       const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
       await erro(u, "bot", { lutadorId: lb }, /lutador não encontrado/, 404);
       const mov = async () => (await q("select public.jxj_movimento() as m"))[0].m.lutando;
@@ -11958,6 +11976,7 @@ async function testarJxJ() {
         const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Bot", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
         const e = await B.chamar(H, { token: "tok:" + u1, acao: "estado" });
         if (e.status !== 200 || e.json.bot) throw new Error("estado: " + JSON.stringify(e.json.bot));
+        await B.chamar(H, { token: "tok:" + u1, acao: "filaEntrar", lutadorId: c1.json.id });
         const b = await B.chamar(H, { token: "tok:" + u1, acao: "bot", lutadorId: c1.json.id });
         if (b.status !== 503 || !/ainda não foram ligadas/.test(b.json.erro)) throw new Error("bot: " + JSON.stringify(b));
       } finally { globalThis.fetch = fetchAntes; }
@@ -12835,24 +12854,26 @@ async function testarJxJTelas() {
       const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
       if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
     });
-    await conf("fila: o jogador escolhe a diferença de rating (4 opções, padrão 400), vê a faixa, e a escolha chega ao banco", async () => {
+    await conf("fila sem tela antes (2026-10-20): abrir a busca já entra na fila com a última diferença de rating (padrão 400); os 4 botões ficam na busca e trocar grava no banco sem perder a espera", async () => {
+      await db.query("delete from jxj_fila");
       const m = await abrir("fila");
+      const linha0 = (await db.query("select raio, entrou_em from jxj_fila where user_id = $1", [u1])).rows[0];
+      if (!linha0 || linha0.raio !== 400) throw new Error("abrir a busca não entrou na fila com o padrão: " + JSON.stringify(linha0));
+      if (botao(desde(m), "Entrar na fila")) throw new Error("ainda existe a tela antes da busca");
       const ops = desde(m).filter((n) => tem(n, "jxj-raio"));
-      const rot = ops.map((n) => String(n.innerHTML).replace(/<[^>]+>/g, "|").split("|").filter(Boolean)[0]);
-      if (JSON.stringify(rot) !== JSON.stringify(["Até 100 pontos", "Até 200 pontos", "Até 400 pontos", "Qualquer diferença"])) throw new Error("opções: " + JSON.stringify(rot));
+      const rot = ops.map((n) => String(n.innerHTML));
+      if (JSON.stringify(rot) !== JSON.stringify(["Até 100", "Até 200", "Até 400", "Qualquer"])) throw new Error("opções: " + JSON.stringify(rot));
       if (!tem(ops[2], "on")) throw new Error("o padrão não é 400");
-      ops[1].onclick();
+      await ops[1].onclick(); await assentar(15);
       const faixa = desde(m).filter((n) => tem(n, "jxj-raio-faixa")).pop();
       if (!/Adversários de 1300 a 1700/.test(faixa.textContent || "")) throw new Error("faixa: " + faixa.textContent);
-      const m2 = env.todos.length;
-      const entrar = botao(desde(m), "Entrar na fila");
-      await entrar.onclick(); await assentar(15);
-      const linha = (await db.query("select raio from jxj_fila where user_id = $1", [u1])).rows[0];
+      const linha = (await db.query("select raio, entrou_em from jxj_fila where user_id = $1", [u1])).rows[0];
       if (!linha || linha.raio !== 200) throw new Error("raio no banco: " + JSON.stringify(linha));
-      if (!/até 200 pontos de rating de diferença/.test(htmlDe(desde(m2)))) throw new Error("a busca não mostra o limite escolhido");
+      if (String(linha.entrou_em) !== String(linha0.entrou_em)) throw new Error("trocar a diferença zerou a espera");
+      if (dadosLS["jxj:raio"] !== "200") throw new Error("a escolha não ficou lembrada no aparelho");
       /* contador do Online (2026-10-08): na busca, fala de quem está além de você */
-      for (let k = 0; k < 20 && !desde(m2).some((n) => tem(n, "jxj-movimento") && /Agora no Online/.test(String(n.innerHTML))); k++) await assentar(20);
-      const mov = desde(m2).filter((n) => tem(n, "jxj-movimento")).pop();
+      for (let k = 0; k < 20 && !desde(m).some((n) => tem(n, "jxj-movimento") && /Agora no Online/.test(String(n.innerHTML))); k++) await assentar(20);
+      const mov = desde(m).filter((n) => tem(n, "jxj-movimento")).pop();
       if (!mov || !/Agora no Online: só você na fila/.test(String(mov.innerHTML))) throw new Error("a busca não mostra quantos estão no Online: " + (mov && mov.innerHTML));
       UI.irPara("jxj"); await assentar();
       await api(u1, "filaSair");
@@ -12946,7 +12967,7 @@ async function testarJxJTelas() {
     };
     const botoesBot = (nos) => nos.filter((n) => n.tagName === "button" && tem(n, "jxj-botao-bot"));
     const lutaBotDe = async (u) => (await db.query("select id from jxj_lutas where a_user = $1 and bot is not null order by id desc limit 1", [u])).rows[0];
-    await conf("bot na fila (Pro): as regras da fila falam do bot; a oferta só aparece depois de 30 s sem adversário; chamar abre a luta contra o bot, com o selo Bot no card dele", async () => {
+    await conf("bot na fila (Pro): a busca e as regras falam do bot; sozinho na fila, a oferta aparece na hora; com gente na fila, só depois de 30 s; chamar abre a luta contra o bot, com o selo Bot no card dele", async () => {
       /* a luta entre gente das telas acima vai até o fim: o histórico fica com
          gente e bot (o painel trata os dois, rivais inclusive) */
       for (let n = 0; n < 40; n++) {
@@ -12960,19 +12981,29 @@ async function testarJxJTelas() {
       const ub = "00000000-0000-4000-8000-0000000000b9";
       await B.criarUsuario(db, ub, { email: "bots@teste" });
       await db.query("select public.jxj_bot_configurar('bots@teste')");
+      /* sozinho na fila: a oferta aparece na hora (pedido do dono, 2026-10-20) */
+      await db.query("delete from jxj_fila");
       const m = await abrir("fila");
-      const hRegras = htmlDe(desde(m));
-      if (!/Se ninguém aparecer em 30 segundos, você pode lutar contra um bot/.test(hRegras)) throw new Error("as regras da fila não falam do bot");
-      semLixo(hRegras, "fila antes de entrar");
-      const m2 = env.todos.length;
-      await botao(desde(m), "Entrar na fila").onclick(); await assentar(15);
-      await assentar(40);
-      if (desde(m2).some((n) => tem(n, "jxj-oferta-bot"))) throw new Error("a oferta apareceu antes da espera");
-      if (!/você pode lutar contra um bot, sempre marcado como bot/.test(htmlDe(desde(m2)))) throw new Error("a busca não avisa do bot");
+      const hBusca = htmlDe(desde(m));
+      if (!/Se só você estiver na fila, ou se ninguém aparecer em 30 segundos, dá pra lutar contra um bot, sempre marcado como bot/.test(hBusca)) throw new Error("a busca não avisa do bot");
+      if (!/Luta contra bot vale rating/.test(hBusca)) throw new Error("as regras da luta não falam do bot");
+      semLixo(hBusca, "busca");
+      for (let k = 0; k < 25 && !desde(m).some((n) => tem(n, "jxj-oferta-bot")); k++) await assentar(20);
+      const of1 = desde(m).filter((n) => tem(n, "jxj-oferta-bot")).pop();
+      if (!of1 || !/Só você na fila agora/.test(String(of1.innerHTML))) throw new Error("sozinho na fila, a oferta do bot não apareceu na hora");
+      /* com mais gente na fila (outra categoria, não forma par): só depois de 30 s */
+      const uo = "00000000-0000-4000-8000-0000000000b8";
+      await B.criarUsuario(db, uo, { pro: true });
+      const lo = (await api(uo, "criar", { nome: "Tela Outro", rosto: ROSTO, categoria: "welterweight", estilo: "counter" })).id;
+      await api(uo, "filaEntrar", { lutadorId: lo });
+      const vivo = () => db.query("update jxj_fila set sinal_em = now() where user_id = $1", [uo]);
+      const m2 = await abrir("fila");
+      for (let k = 0; k < 4; k++) { await vivo(); await assentar(15); }
+      if (desde(m2).some((n) => tem(n, "jxj-oferta-bot"))) throw new Error("com mais gente na fila, a oferta apareceu antes da espera");
       await db.query("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [u1]);
-      for (let k = 0; k < 25 && !desde(m2).some((n) => tem(n, "jxj-oferta-bot")); k++) await assentar(20);
+      for (let k = 0; k < 25 && !desde(m2).some((n) => tem(n, "jxj-oferta-bot")); k++) { await vivo(); await assentar(20); }
       const of = desde(m2).filter((n) => tem(n, "jxj-oferta-bot")).pop();
-      if (!of) throw new Error("a oferta do bot não apareceu depois de 30 s");
+      if (!of || !/Ninguém apareceu ainda/.test(String(of.innerHTML))) throw new Error("a oferta do bot não apareceu depois de 30 s");
       semLixo(String(of.innerHTML), "oferta do bot");
       const bb = botoesBot(desde(m2)).pop();
       if (!bb || !/<span>Lutar contra bot<\/span>/.test(String(bb.innerHTML))) throw new Error("botão do Pro: " + (bb && bb.innerHTML));
@@ -12984,6 +13015,7 @@ async function testarJxJTelas() {
       if (!h.includes("jxj-selo-bot") || !/Bot [A-ZÁÉÍÓÚ]/.test(h)) throw new Error("a luta não mostra o bot marcado: " + h.replace(/\s+/g, " ").slice(0, 200));
       if (!desde(m3).some((n) => tem(n, "jxj-acao"))) throw new Error("a luta contra o bot não mostra as ações");
       semLixo(h, "luta contra bot");
+      await api(uo, "filaSair");
     });
     await conf("luta contra bot acabou: sem botão de revanche; o histórico do lutador marca o bot com o selo", async () => {
       const L = await lutaBotDe(u1);
@@ -13039,6 +13071,30 @@ async function testarJxJTelas() {
         await db.query("update assinaturas set pro = true where user_id = $1", [u1]); UI.setMeuPro(true);
         await db.query("update jxj_contas set luta_gratis_usada = false, luta_aberta_id = null where user_id = $1", [u1]);
       }
+    });
+    await conf("painel com ninguém na fila (2026-10-20): Lutar contra bot aparece ao lado de Buscar adversário e, num toque, entra na fila e abre a luta contra o bot; com gente na fila, o painel não oferece", async () => {
+      await db.query("update jxj_lutas set status = 'cancelada' where a_user = $1 and status in ('confirmacao', 'andamento')", [u1]);
+      await db.query("update jxj_contas set luta_aberta_id = null where user_id = $1", [u1]);
+      await db.query("delete from jxj_fila");
+      const conta = async () => (await db.query("select count(*)::int n from jxj_lutas where a_user = $1 and bot is not null", [u1])).rows[0].n;
+      const antes = await conta();
+      const m = await abrir("");
+      const b = botoesBot(desde(m)).pop();
+      if (!b || !String(b.innerHTML).includes("<span>Lutar contra bot</span>")) throw new Error("painel sem o bot com a fila vazia: " + (b && b.innerHTML));
+      if (!botao(desde(m), "Buscar adversário")) throw new Error("o painel perdeu o Buscar adversário");
+      const m2 = env.todos.length;
+      await b.onclick(); await assentar();
+      if ((await conta()) !== antes + 1) throw new Error("o toque não criou a luta contra o bot");
+      if (!htmlDe(desde(m2)).includes("jxj-selo-bot")) throw new Error("não abriu a luta contra o bot");
+      await db.query("update jxj_lutas set status = 'cancelada' where a_user = $1 and status in ('confirmacao', 'andamento')", [u1]);
+      await db.query("update jxj_contas set luta_aberta_id = null where user_id = $1", [u1]);
+      await db.query("delete from jxj_fila");
+      const uo = "00000000-0000-4000-8000-0000000000b8";
+      const lo = (await api(uo, "estado")).lutadores[0].id;
+      await api(uo, "filaEntrar", { lutadorId: lo });
+      const m3 = await abrir("");
+      if (botoesBot(desde(m3)).length) throw new Error("com gente na fila, o painel ofereceu o bot direto");
+      await api(uo, "filaSair");
     });
     await conf("JxJ desligado (JXJ_ATIVO diferente de true): a entrada mostra 'abre em breve' e nenhum botão de criar", async () => {
       process.env.JXJ_ATIVO = "false";

@@ -1345,6 +1345,15 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-raio b{font-size:22px}
 .jxj-raio small{line-height:1.35}
 .jxj-raio-faixa{margin:0;color:var(--osso-2)}
+/* fila sem tela antes (2026-10-20): a diferença de rating vira botões dentro da busca */
+.jxj-busca-raio{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;max-width:560px}
+.jxj-raios-busca{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.jxj-raios-busca .jxj-raio{min-height:44px;padding:9px 16px;cursor:pointer;font-family:var(--f-ui);font-weight:700;font-size:17px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--osso);background:rgba(17,19,26,.86);border:1px solid var(--linha-forte);transition:border-color .2s,background .2s}
+.jxj-raios-busca .jxj-raio.on{border-color:var(--sangue);background:rgba(215,38,30,.18)}
+.jxj-raios-busca .jxj-raio:focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
+.jxj-regras-busca{width:100%;max-width:560px;text-align:left;background:rgba(17,19,26,.6);border:1px dashed var(--linha-forte);padding:12px 16px}
+.jxj-regras-busca summary{cursor:pointer;font-family:var(--f-ui);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--osso-2)}
 @media (max-width:720px){.jxj-raios{grid-template-columns:1fr 1fr}}
 .jxj-estilos{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
 .jxj-estilo-resumo{color:var(--osso-2);font-size:15px}
