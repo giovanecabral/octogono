@@ -11,7 +11,7 @@
    massa). O navegador nunca roda isto pra decidir nada. */
 import { createHash } from "node:crypto";
 
-export const VERSAO_MOTOR = 2;   // 2: variantes de ação por round (2026-10-04)
+export const VERSAO_MOTOR = 3;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20)
 /* Formato inicial (ajustado pela suíte jxjmotor; valores finais no LEIA-ME) */
 export const FORMATO = { rounds: 3, trocasPorRound: 4, prazoMs: 20000, toleranciaMs: 3000 };
 export const FAMILIAS = ["golpes", "queda", "defesa", "pressao"];
@@ -29,7 +29,7 @@ export const K = {
   danoDefesa: 0.12,           // defesa perde 0.12 ponto por ponto de dano acumulado
   escapeMult: 1.27,           // multiplica toda chance de levantar ou sair por baixo
   quedaFator: 1.17,           // multiplica toda chance de queda em pé
-  vantagem: 15,               // pontos de disputa pra quem escolheu a ação que ganha do par em pé (ciclo)
+  vantagem: 26,               // pontos de disputa pra quem escolheu a ação que ganha do par em pé (ciclo). v3: era 15; quem lê metade das trocas vence 77% (era 71%)
   contraBase: 0.28,           // chance base de contra-atacar quem troca golpes contra a defesa
   /* Golpes contra Defesa: o golpe bate na guarda. Sem pontosGuarda, no
      espelho striker "só golpes" vencia "só defesa" em 73% e a mistura
@@ -40,15 +40,54 @@ export const K = {
   pontosGuarda: 2,            // pontos pra quem defendeu quando o golpe não entra
   danoGolpe: 7.3, danoGnp: 6.5, danoSujo: 4, danoContra: 8, danoPunicao: 6.5,
   koPiso: 0.3, koExpoente: 1.6,  // nocaute: (dano acumulado/100 + piso)^expoente
-  koBase: 1, tkoBase: 0.31, kdFator: 2.0,
-  subBase: 0.78,              // finalização: subBase x disputa²
+  koBase: 0.72, tkoBase: 0.31, kdFator: 2.8,   // v3: menos nocaute direto, mais knockdown (o nocaute passa pelo grogue)
+  subBase: 0.62,              // finalização: subBase x disputa² (v3: 0.78, menos finalização direta, mais encaixe)
   vantagemChao: 26.6,         // pontos de disputa pra quem escolheu a ação que ganha do par no chão
   guardaContraSub: 0.47,      // finalização contra guarda fechada: fração da vantagem do chão que a guarda tira
   controleParado: 0.5,        // os dois parados no chão: fração do ponto de controle de quem está por cima
   recuperacaoRound: 4,
   bonusQueda: 4, bonusControle: 2.4, bonusGrade: 2, bonusTentativaSub: 1.5, bonusKD: 6, bonusMomento: 0.5, bonusAusencia: 5,
   limiteEmpateRound: 0.01, limite108: 22,
+  /* Momentos decisivos (v3, 2026-10-20, pedido do dono: "mais emoção"). Grogue:
+     o knockdown sempre deixa grogue; golpe pesado deixa às vezes (cresce com o
+     dano e cai com o queixo). Grogue vale a troca seguinte: defesas caem,
+     o nocaute contra ele fica mais provável; se ele Defender, segura e
+     respira (sem a queda de defesa); se trocar golpes, arrisca no desespero. */
+  grogueDano: 6.5,            // dano mínimo do golpe pra poder deixar grogue
+  grogueBase: 0.5,            // chance: base x (dano/10) x fator do queixo
+  grogueDef: 14,              // pontos a menos nas defesas de quem está grogue
+  grogueKO: 2.6,              // multiplica a chance de nocaute (e de knockdown) contra quem está grogue
+  grogueDesespero: 1.3,       // quem está grogue e golpeia: nocaute dele vale isto
+  danoGrade: 6,               // grogue que só cobriu e foi encurralado na grade: dano dos golpes (o juiz pode parar)
+  /* Finalização encaixada: a tentativa que quase entrou fica presa uma troca.
+     Quem encaixou escolhe entre apertar (a mesma família da finalização:
+     Finalização por cima, Raspar por baixo) e emendar outra (a família que
+     ganha da defesa no papel dele: Avançar por cima, Levantar por baixo).
+     Quem está preso escolhe entre defender (Defesa) e sair na força
+     (qualquer outra). Defender ganha de apertar, emendar ganha de defender,
+     sair na força ganha de emendar e perde pra apertar: nenhuma resposta
+     óbvia (sem a emenda, defender era sempre a certa e o encaixe não
+     pedia leitura nenhuma; medido com as misturas de equilíbrio). */
+  encaixeMargem: 0.36,        // tentativa que falhou por menos que isto (no sorteio) encaixa
+  encaixeBonus: 22,           // bônus da finalização de quem aperta
+  encaixeTroca: 12,           // bônus da finalização emendada contra quem defendeu
+  encaixeEscape: 12,          // bônus da defesa na disputa pra escapar de quem aperta
 };
+/* Quem ganha de quem (o ciclo), por papel: [família de quem ganha, família de quem perde].
+   Em pé, os dois têm os mesmos nomes; no chão, por cima x por baixo (CICLO). */
+const VENCE = {
+  pe: new Set(["golpes>pressao", "pressao>defesa", "defesa>queda", "queda>golpes"]),
+  cima: new Set(["golpes>pressao", "queda>pressao", "queda>golpes", "defesa>queda", "pressao>defesa", "pressao>golpes"]),
+  baixo: new Set(["queda>golpes", "queda>pressao", "defesa>queda", "pressao>defesa", "pressao>pressao"]),
+};
+/* Quem leu o outro nesta troca: "a", "b" ou null (par neutro ou espelho). */
+export function quemLeu(papeis, acoes) {
+  const { a, b } = acoes;
+  if (!a || !b) return null;
+  if (VENCE[papeis.a].has(`${a}>${b}`)) return "a";
+  if (VENCE[papeis.b].has(`${b}>${a}`)) return "b";
+  return null;
+}
 
 export const ROTULOS = {
   pe: { golpes: "Trocar golpes", queda: "Tentar a queda", defesa: "Defender", pressao: "Pressionar na grade" },
@@ -242,12 +281,12 @@ export const compromissoDaSemente = (semente) => createHash("sha256").update(Str
 /* ---------- estado ---------- */
 export const energiaMax = (p) => 10 + (p.atr.cardio - 50) / 10;
 const ladoNovo = (p) => ({
-  energia: energiaMax(p), dano: 0, ausentesSeguidas: 0, ultima: null, atingido: false, travado: false,
+  energia: energiaMax(p), dano: 0, ausentesSeguidas: 0, ultima: null, atingido: false, travado: false, grogue: false,
   total: { golpes: 0, acertos: 0, quedas: 0, quedasTentadas: 0, finalizacoes: 0, knockdowns: 0, controle: 0, contras: 0 },
 });
 export function novaLuta(perfilA, perfilB) {
   return {
-    v: VERSAO_MOTOR, round: 1, troca: 1, pos: "pe", nivelPos: 0, momento: 0, paradoChao: 0,
+    v: VERSAO_MOTOR, round: 1, troca: 1, pos: "pe", nivelPos: 0, momento: 0, paradoChao: 0, encaixe: null,
     a: ladoNovo(perfilA), b: ladoNovo(perfilB), pontos: [{ a: 0, b: 0 }], cartoes: [], fim: null,
   };
 }
@@ -257,11 +296,75 @@ export function papel(estado, lado) {
   const cima = estado.pos === "cima_a" ? "a" : "b";
   return lado === cima ? "cima" : "baixo";
 }
+/* Momento decisivo que o lado vive nesta troca, visto por ele, ou null:
+   "grogue_eu"/"grogue_ele" (em pé; o grogue no chão segue valendo no motor,
+   mas a escolha é a da posição), "enc_cima_eu"/"enc_baixo_eu" (ele encaixou
+   a finalização, por cima ou por baixo), "enc_cima_ele"/"enc_baixo_ele" (ele
+   está preso). Bot, ferramenta de balanço e tela leem daqui. */
+export function momentoDoLado(estado, lado) {
+  const o = lado === "a" ? "b" : "a";
+  if (estado.encaixe && estado.pos !== "pe") {
+    return (papel(estado, lado) === "cima" ? "enc_cima_" : "enc_baixo_") + (estado.encaixe.quem === lado ? "eu" : "ele");
+  }
+  if (estado.pos !== "pe") return null;
+  if (estado[lado].grogue) return "grogue_eu";
+  if (estado[o].grogue) return "grogue_ele";
+  return null;
+}
+/* O que a tela mostra no momento decisivo, por família (o efeito dela
+   naquela troca, curto pro botão). Conferido contra acertar, trocaEmPe e o
+   bloco do encaixe em trocaNoChao. */
+const SAIR_NA_FORCA = "Sair na força: escapa se ele emendar, não se apertar.";
+const SOLTA = "Solta a finalização.";
+const APERTAR = "Apertar: finaliza se ele não defender.", EMENDAR = "Emendar outra: pega ele se ele defender.";
+const DEFENDER_PRESO = "Defender: escapa se ele apertar, não se ele emendar.";
+export const MOMENTO_DICA = {
+  grogue_ele: {
+    golpes: "Nocaute bem mais provável se ele não cobrir.",
+    queda: "Ganha se ele trocar no desespero.",
+    defesa: "Segura se ele tentar a queda.",
+    pressao: "Pega ele na grade se ele cobrir. Perde pro golpe.",
+  },
+  grogue_eu: {
+    golpes: "Desespero: ganha da pressão, perde pro golpe.",
+    queda: "Agarrar: ganha do golpe, perde pra defesa.",
+    defesa: "Cobre e respira. Perde pra pressão na grade.",
+    pressao: "Arriscado: perde pro golpe dele.",
+  },
+  enc_cima_eu: { golpes: SOLTA, queda: APERTAR, defesa: SOLTA, pressao: EMENDAR },
+  enc_baixo_eu: { golpes: SOLTA, queda: APERTAR, defesa: SOLTA, pressao: EMENDAR },
+  enc_cima_ele: { golpes: SAIR_NA_FORCA, queda: SAIR_NA_FORCA, defesa: DEFENDER_PRESO, pressao: SAIR_NA_FORCA },
+  enc_baixo_ele: { golpes: SAIR_NA_FORCA, queda: SAIR_NA_FORCA, defesa: DEFENDER_PRESO, pressao: SAIR_NA_FORCA },
+};
+/* Duelos de atributo (v3, pra tela): de -2 (vantagem clara dele) a 2
+   (vantagem clara sua), só o nível, nunca o número (a build dele é
+   privada). Ataque de um contra a defesa do outro, nos dois sentidos; as
+   defesas já com o dano (val). Poder: chance de nocaute de cada um
+   (poder, queixo e dano, como em acertar). */
+export const DUELOS = ["trocacao", "poder", "queda", "chao"];
+export const DUELO_DA_ACAO = {
+  pe: { golpes: "trocacao", queda: "queda", defesa: null, pressao: "trocacao" },
+  cima: { golpes: "chao", queda: "chao", defesa: null, pressao: "chao" },
+  baixo: { golpes: "trocacao", queda: "chao", defesa: null, pressao: "chao" },
+};
+export function duelos(estado, perfis, lado) {
+  const o = lado === "a" ? "b" : "a", eu = perfis[lado].atr, ele = perfis[o].atr;
+  const def = (atr, l) => perfis[l].atr[atr] - estado[l].dano * K.danoDefesa;
+  const nivel = (x, d1, d2) => (x >= d2 ? 2 : x >= d1 ? 1 : x > -d1 ? 0 : x > -d2 ? -1 : -2);
+  const ko = (atk, dfs) => Math.pow(perfis[atk].atr.poder / 55, 1.4) * clamp(1.3 - perfis[dfs].atr.queixo / 100, 0.3, 1.2) * Math.pow(estado[dfs].dano / 100 + K.koPiso, K.koExpoente);
+  return {
+    trocacao: nivel((eu.golpe - def("defesa", o)) - (ele.golpe - def("defesa", lado)), 5, 15),
+    poder: nivel(Math.log2(ko(lado, o) / ko(o, lado)), 0.15, 0.5),
+    queda: nivel((eu.queda - def("defQueda", o)) - (ele.queda - def("defQueda", lado)), 5, 15),
+    chao: nivel((eu.chao - def("defChao", o)) - (ele.chao - def("defChao", lado)), 5, 15),
+  };
+}
 /* As 4 ações do lado agora. Com a semente (o servidor sempre passa), cada
    uma vem com a variante da mão do round: rótulo, efeito e custo dela. */
 export function acoesDisponiveis(estado, lado, perfil, semente = null) {
   const pp = papel(estado, lado);
   const mao = semente == null ? null : maoDoRound(semente, estado.round, lado)[pp];
+  const mom = momentoDoLado(estado, lado);
   return FAMILIAS.map((f) => {
     const v = mao ? VARIANTE_POR_ID[mao[f]] : null;
     return {
@@ -269,6 +372,8 @@ export function acoesDisponiveis(estado, lado, perfil, semente = null) {
       variante: v ? v.id : null, rotulo: v ? v.rotulo : ROTULOS[pp][f], descricao: v ? v.desc : DESCRICOES[pp][f],
       resumo: v ? (v.curto || v.desc) : DESCRICOES[pp][f],
       custo: custoEnergia(pp, f, perfil, v),
+      /* v3: o duelo de atributo de que a ação depende e, no momento decisivo, o efeito dela agora */
+      duelo: DUELO_DA_ACAO[pp][f], dica: mom ? MOMENTO_DICA[mom][f] : null,
     };
   });
 }
@@ -307,7 +412,10 @@ function ajuste(ctx, lado) {
 function val(ctx, lado, atr) {
   const s = ctx.estado[lado], p = ctx.perfis[lado];
   let v = p.atr[atr] + ctx.aj[lado];
-  if (atr === "defesa" || atr === "defChao" || atr === "defQueda") v -= s.dano * K.danoDefesa;
+  if (atr === "defesa" || atr === "defChao" || atr === "defQueda") {
+    v -= s.dano * K.danoDefesa;
+    if (ctx.grogue && ctx.grogue[lado] && ctx.acoes[lado] !== "defesa") v -= K.grogueDef;
+  }
   if (atr === "defesa" && s.atingido && p.mec.adaptacao) v += p.mec.adaptacao;
   return v;
 }
@@ -332,7 +440,7 @@ function acertar(ctx, atk, tipo, fatorDano = 1, fatorKO = fatorDano, vari = null
   const e = ctx.estado, def = outro(atk), pa = ctx.perfis[atk], pd = ctx.perfis[def];
   const mv = vari ? vari.mod : {};
   fatorDano *= mv.dano || 1; fatorKO *= mv.ko || 1;
-  const base = { golpe: K.danoGolpe, gnp: K.danoGnp, contra: K.danoContra, sujo: K.danoSujo, punicao: K.danoPunicao, baixo: 1.8 }[tipo];
+  const base = { golpe: K.danoGolpe, gnp: K.danoGnp, contra: K.danoContra, sujo: K.danoSujo, punicao: K.danoPunicao, baixo: 1.8, grade: K.danoGrade }[tipo];
   let d = base * fatorDano * (pa.atr.poder / 55) * (0.75 + ctx.r() * 0.5);
   if (tipo === "gnp") d *= (1 + (pa.mec.gnp || 0)) * (1 + e.nivelPos * 0.25) * (1 - (pd.mec.retencao || 0));
   if (tipo === "contra") d *= 1 + (pa.mec.contraDano || 0);
@@ -354,23 +462,35 @@ function acertar(ctx, atk, tipo, fatorDano = 1, fatorKO = fatorDano, vari = null
   let p = (tipo === "gnp" ? K.tkoBase : K.koBase) * Math.pow(pa.atr.poder / 55, 1.4) * fatorAcumulado * fatorQueixo * fatorKO;
   if (tipo === "contra") p *= 1 + (pa.mec.timingKO || 0);
   if (tipo === "gnp") p *= (1 + e.nivelPos * 0.3) * (1 - (pd.mec.sobrevivencia || 0));
+  /* momentos decisivos (v3): contra quem está grogue, o nocaute fica mais
+     provável (cobrir segura o golpe, mas não a pressão na grade); quem está
+     grogue e golpeia, golpeia no desespero */
+  if (ctx.grogue && ctx.grogue[def] && (ctx.acoes[def] !== "defesa" || tipo === "grade")) p *= K.grogueKO;
+  if (ctx.grogue && ctx.grogue[atk] && tipo !== "gnp") p *= K.grogueDesespero;
   const x = ctx.r();
   if (x < p) {
-    finalizar(ctx, atk, tipo === "gnp" ? "TKO" : "KO", vari);
+    finalizar(ctx, atk, tipo === "gnp" || tipo === "grade" ? "TKO" : "KO", vari);
     return true;
   }
-  if (tipo !== "gnp" && x < p * K.kdFator) {
+  if (tipo !== "gnp" && tipo !== "grade" && x < p * K.kdFator) {
     e[atk].total.knockdowns++;
     e[def].dano = Math.min(100, e[def].dano + 5);
     pontuar(ctx, atk, K.bonusKD);
     registrar(ctx, "knockdown", atk, vari ? { v: vari.id } : {});
     moverMomento(ctx, atk, 2);
+    if (!e[def].grogue) { e[def].grogue = true; registrar(ctx, "grogue", def); }
+    return false;
+  }
+  if (d >= K.grogueDano && !e[def].grogue && (tipo === "golpe" || tipo === "contra" || tipo === "punicao")
+    && ctx.r() < K.grogueBase * (d / 10) * fatorQueixo) {
+    e[def].grogue = true; registrar(ctx, "grogue", def);
   }
   return false;
 }
 /* vari: a finalização da mão (por cima, com pontos por posição; por baixo,
-   o triângulo); sem ela, a finalização genérica. */
-function tentarFinalizacao(ctx, atk, bonus, mult, vari = null) {
+   o triângulo); sem ela, a finalização genérica. teto: chance máxima (a
+   finalização encaixada aperta mais que a comum). */
+function tentarFinalizacao(ctx, atk, bonus, mult, vari = null, teto = 0.75) {
   const e = ctx.estado, def = outro(atk), pa = ctx.perfis[atk], pd = ctx.perfis[def];
   e[atk].total.finalizacoes++;
   pontuar(ctx, atk, K.bonusTentativaSub);
@@ -380,8 +500,15 @@ function tentarFinalizacao(ctx, atk, bonus, mult, vari = null) {
   let p = K.subBase * Math.pow(sig(x), 2) * mult * (1 + (pa.mec.finalizacao || 0));
   if (!cima) p *= 0.55 + (pa.mec.subDeBaixo || 0) * 2;
   if (e[def].energia <= 3) p *= 1.25 + (pa.mec.finalizacaoCansado || 0);
-  p = Math.min(0.75, p);
-  if (ctx.r() < p) { finalizar(ctx, atk, "FIN", vari); return true; }
+  p = Math.min(teto, p);
+  const sorte = ctx.r();
+  if (sorte < p) { finalizar(ctx, atk, "FIN", vari); return true; }
+  /* quase: fica encaixada pra troca seguinte (não encaixa duas vezes seguidas) */
+  if (!ctx.encaixe && sorte < p + K.encaixeMargem && e.pos !== "pe") {
+    e.encaixe = { quem: atk, v: vari ? vari.id : null };
+    registrar(ctx, "encaixou", atk, vari ? { v: vari.id } : {});
+    return false;
+  }
   registrar(ctx, "subFalhou", atk, vari ? { v: vari.id } : {});
   return false;
 }
@@ -402,7 +529,7 @@ function derrubar(ctx, atk, vari = null) {
 }
 function levantar(ctx, quem, vari = null) {
   const e = ctx.estado;
-  e.pos = "pe"; e.nivelPos = 0;
+  e.pos = "pe"; e.nivelPos = 0; e.encaixe = null;   // a finalização que encaixou nesta troca se desfaz
   registrar(ctx, "levantou", quem, vari ? { v: vari.id } : {});
 }
 
@@ -530,6 +657,12 @@ function trocaEmPe(ctx, A, B) {
     ctx.recuperacaoCortada[A] = true;
     e[A].energia = Math.max(0, e[A].energia - 1 - (md[B].cansa || 0));
     pontuar(ctx, B, K.bonusGrade);
+    /* momento decisivo (v3): grogue que só cobriu, encurralado na grade, apanha
+       sem responder e o juiz pode parar (cobrir segura o golpe, não a pressão) */
+    if (ctx.grogue && ctx.grogue[A]) {
+      if (disputa(ctx, val(ctx, B, "golpe") + V, val(ctx, A, "defesa"))) acertar(ctx, B, "grade", 1, 1, vr[B]);
+      return;
+    }
     if (disputa(ctx, val(ctx, B, "golpe") + V, val(ctx, A, "defesa"))) acertar(ctx, B, "sujo", 1, 1, vr[B]);
     if (ctx.r() < (ctx.perfis[B].mec.golpesNaPressao || 0) && disputa(ctx, val(ctx, B, "golpe"), val(ctx, A, "defesa"))) acertar(ctx, B, "golpe");
     return;
@@ -564,7 +697,7 @@ function trocaNoChao(ctx, T, U) {
     const mq = u === "queda" ? md[U] : {};
     const x = val(ctx, U, "chao") + bonus + (mq.acerto || 0) - val(ctx, T, "chao") - e.nivelPos * 6;
     if (ctx.r() < Math.min(0.9, sig(x) * fator * (1 + (mu.raspagem || 0) * 2)) * (1 - (mt.dominio || 0))) {
-      e.pos = U === "a" ? "cima_a" : "cima_b"; e.nivelPos = 0;
+      e.pos = U === "a" ? "cima_a" : "cima_b"; e.nivelPos = 0; e.encaixe = null;
       registrar(ctx, "raspou", U, u === "queda" ? { v: vr[U].id } : {}); moverMomento(ctx, U, 1); return true;
     }
     if (mq.sub && ctx.r() < mq.sub) return tentarFinalizacao(ctx, U, 0, mq.subMult || 1, vr[U]);
@@ -592,7 +725,6 @@ function trocaNoChao(ctx, T, U) {
   const golpesPorBaixo = (bonus = 0) => {
     if (disputa(ctx, val(ctx, U, "golpe") + bonus + (md[U].acerto || 0) - 8, val(ctx, T, "defesa"))) acertar(ctx, U, "baixo", 1, 1, vr[U]);
   };
-  if (!(t === "defesa" && u === "defesa")) e.paradoChao = 0;
   /* ponto de controle de quem segurou por cima; a pressão de peso marca
      menos e cansa quem está embaixo */
   const controle = () => {
@@ -602,6 +734,36 @@ function trocaNoChao(ctx, T, U) {
       if (t === "defesa" && md[T].cansa) e[U].energia = Math.max(0, e[U].energia - md[T].cansa);
     }
   };
+  if (!(t === "defesa" && u === "defesa")) e.paradoChao = 0;
+  /* finalização encaixada (v3): a troca é a briga pela finalização (ver
+     K.encaixeBonus). Apertar e emendar resolvem a troca inteira; soltar
+     (Golpes ou Defesa de quem encaixou) desfaz o encaixe e a troca segue
+     normal. A finalização apertada é a da mão (vari da troca anterior);
+     a emendada é outra, genérica. */
+  if (ctx.encaixe) {
+    const ea = ctx.encaixe.quem, ed = outro(ea), fa = ctx.acoes[ea], defende = ctx.acoes[ed] === "defesa";
+    const vEnc = ctx.encaixe.v ? VARIANTE_POR_ID[ctx.encaixe.v] || null : null;
+    if (fa === "queda") {
+      if (defende) {
+        if (disputa(ctx, val(ctx, ed, "defChao") + K.encaixeEscape, val(ctx, ea, "chao"))) {
+          registrar(ctx, "escapou", ed); moverMomento(ctx, ed, 1); return;
+        }
+        tentarFinalizacao(ctx, ea, K.encaixeBonus - VC * K.guardaContraSub, 1, vEnc, 0.85);
+        return;
+      }
+      const ciclo = VENCE[papel(e, ea)].has(`queda>${ctx.acoes[ed]}`) ? VC : 0;
+      tentarFinalizacao(ctx, ea, K.encaixeBonus + ciclo, 1, vEnc, 0.85);
+      return;
+    }
+    if (fa === "pressao") {
+      if (defende) {
+        registrar(ctx, "emendou", ea);
+        if (!tentarFinalizacao(ctx, ea, K.encaixeTroca, 1, null, 0.85)) controle();
+        return;
+      }
+      registrar(ctx, "escapou", ed);   // saiu na força enquanto ele trocava de finalização
+    } else registrar(ctx, "soltou", ea);
+  }
 
   if (t === "golpes") {
     if (u === "golpes") { if (gnp(VC / 2)) return; golpesPorBaixo(-6); }
@@ -625,7 +787,7 @@ function trocaNoChao(ctx, T, U) {
       if (mu.recuperarGuarda && e.nivelPos > 0 && ctx.r() < mu.recuperarGuarda) { e.nivelPos--; registrar(ctx, "recuperouGuarda", U); }
       /* os dois parados: na segunda seguida, o juiz levanta a luta */
       e.paradoChao = (e.paradoChao || 0) + 1;
-      if (e.paradoChao >= 2) { e.paradoChao = 0; e.pos = "pe"; e.nivelPos = 0; registrar(ctx, "juizLevantou", T); return; }
+      if (e.paradoChao >= 2) { e.paradoChao = 0; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; registrar(ctx, "juizLevantou", T); return; }
       e[T].total.controle++; pontuar(ctx, T, K.bonusControle * K.controleParado * (md[T].pontos || 1));
       if (md[T].cansa) e[U].energia = Math.max(0, e[U].energia - md[T].cansa);
       return;
@@ -661,11 +823,11 @@ function fecharRound(estado, perfis) {
     e.fim.placar = { a: ta, b: tb };
     return;
   }
-  e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0;
+  e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null;
   e.momento = Math.trunc(e.momento / 2);
   for (const l of ["a", "b"]) {
     e[l].energia = Math.min(energiaMax(perfis[l]), e[l].energia + K.recuperacaoRound + (perfis[l].atr.cardio - 50) / 12);
-    e[l].travado = false;
+    e[l].travado = false; e[l].grogue = false;
   }
   e.pontos.push({ a: 0, b: 0 });
 }
@@ -710,6 +872,13 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     ctx.var[l] = v; ctx.mod[l] = v.mod;
   }
   registrar(ctx, "escolha", null, { va: ctx.var.a.id, vb: ctx.var.b.id });
+  /* momentos decisivos (v3): o grogue e a finalização encaixada da troca
+     anterior valem só nesta troca; o que acontecer agora marca a próxima */
+  ctx.grogue = { a: !!estado.a.grogue, b: !!estado.b.grogue };
+  estado.a.grogue = false; estado.b.grogue = false;
+  ctx.encaixe = estado.encaixe && estado.pos !== "pe" ? { ...estado.encaixe } : null;
+  estado.encaixe = null;
+  for (const l of ["a", "b"]) if (ctx.grogue[l] && ctx.acoes[l] === "defesa") registrar(ctx, "respirou", l);
   /* custo de energia (ação de quem faltou não recupera) */
   for (const l of ["a", "b"]) {
     const c = custoEnergia(papeis[l], ctx.acoes[l], perfis[l], ctx.var[l]);
@@ -730,6 +899,15 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
   else if (estado.pos === "cima_a") trocaNoChao(ctx, "a", "b");
   else trocaNoChao(ctx, "b", "a");
 
+  /* leitura (v3): quem escolheu a ação que ganha da do outro. Só registro,
+     pra tela dizer por que a troca saiu assim; o efeito é K.vantagem e
+     K.vantagemChao nas disputas. Pontos e momento a mais por leitura e uma
+     sequência de leituras que deixava o outro grogue foram medidos e não
+     mudaram nada (ferramentas/jxj-balanco.mjs leitura) */
+  if (!estado.fim && !ausente.a && !ausente.b) {
+    const leu = quemLeu(papeis, ctx.acoes);
+    if (leu) registrar(ctx, "leu", leu, { fam: ctx.acoes[leu], vs: ctx.acoes[outro(leu)] });
+  }
   /* ausência repetida: a troca vai pro adversário na pontuação */
   for (const l of ["a", "b"]) if (estado[l].ausentesSeguidas >= 2) pontuar(ctx, outro(l), K.bonusAusencia);
   for (const l of ["a", "b"]) {
@@ -766,6 +944,7 @@ export function textoEvento(ev, nomes) {
     case "punicao": return fr ? `${q} acertou ${fr} na entrada da queda de ${o}.` : `${q} acertou ${o} na entrada da queda.`;
     case "contra": return deDefesa ? `${q} esquivou e acertou o contra-ataque.` : `${q} contra-atacou e acertou.`;
     case "sujo": return V && V.id === "joelhadas" ? `${q} acertou joelhadas no clinche.` : `${q} acertou golpes curtos na grade.`;
+    case "grade": return V && V.id === "joelhadas" ? `${q} encurralou ${o} na grade e acertou joelhadas sem resposta (${num(ev.dano)} de dano).` : `${q} encurralou ${o} na grade e acertou golpes sem resposta (${num(ev.dano)} de dano).`;
     case "gnp": return fr ? `${q} acertou ${fr} (${num(ev.dano)} de dano).` : `${q} acertou o ground and pound (${num(ev.dano)} de dano).`;
     case "baixo": return fr ? `${q} acertou ${fr}.` : `${q} acertou golpes por baixo.`;
     case "errou": return fr ? `${q} errou ${fr}.` : `${q} errou os golpes.`;
@@ -778,6 +957,13 @@ export function textoEvento(ev, nomes) {
       : VD && VD.id === "sprawl" ? `${q} defendeu ${fr} com o sprawl.` : `${q} defendeu ${fr}.`;
     case "embolou": return `Os dois tentaram a queda ao mesmo tempo e a luta seguiu em pé.`;
     case "estudo": return `Os dois se estudaram sem atacar.`;
+    case "grogue": return `${q} ficou grogue.`;
+    case "respirou": return `${q} segurou e respirou.`;
+    case "encaixou": return V ? `${q} encaixou ${V.frase}. ${o} está preso.` : `${q} encaixou a finalização. ${o} está preso.`;
+    case "escapou": return `${q} escapou da finalização.`;
+    case "emendou": return `${q} emendou outra finalização.`;
+    case "soltou": return `${q} soltou a finalização.`;
+    case "leu": return "";
     case "saiuDaGrade": return `${q} saiu da pressão na grade.`;
     case "pressaoTravada": return `${q} tentou pressionar com a perna travada.`;
     case "levantou": return V && V.id === "pela_grade" ? `${q} levantou pela grade.` : `${q} levantou.`;

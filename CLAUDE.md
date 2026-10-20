@@ -28,6 +28,7 @@ supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Ro
 supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas. Rodada em 2026-10-04.
 supabase_jxj_movimento.sql  Quarta (contador de quem está na fila e lutando). Só uma função de leitura.
 supabase_jxj_bot.sql  Quinta (lutas contra bot, 2026-10-19). Roda depois das quatro, com aprovação do dono.
+supabase_jxj_motor3.sql  Sexta (motor v3, 2026-10-20): só a versão de balanceamento 2 em jxj_config. O dono roda ANTES do deploy.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
@@ -78,12 +79,26 @@ metade). Regras do revamp que valem daqui pra frente:
   variantes por posição (`VARIANTES` em `api/_jxj-motor.js`); a mão do
   round sai da semente (`maoDoRound`, rodízio), então o banco não mudou e
   a luta continua refazível. O navegador manda só a família; o servidor
-  manda só a mão de quem pediu. `VERSAO_MOTOR` 2. Variante nova ou ajuste:
+  manda só a mão de quem pediu. `VERSAO_MOTOR` 3 desde o motor v3 (item abaixo). Variante nova ou ajuste:
   `node ferramentas/jxj-balanco.mjs variantes` e `node testar.js jxjmotor`
   (toda variante entre 44% e 56%). Nome de golpe na narração da IA passa
-  por `golpesForaDosFatos` (só o que aconteceu). `VERSAO_BALANCEAMENTO`
-  continua 1 enquanto nenhuma build existir em produção (subir dá respec
-  grátis e mexe na fila; ela também vive em `jxj_config`).
+  por `golpesForaDosFatos` (só o que aconteceu).
+- **Online: motor v3 (2026-10-20, pedido do dono: "escolhas sem
+  fundamento e sorte", "uma mecânica que realmente depende da
+  habilidade").** Leitura que decide (`K.vantagem` 26; quem lê metade das
+  trocas vence 77%, era 71%), grogue (knockdown sempre; cobrir segura o
+  golpe, não a pressão na grade) e finalização encaixada (apertar,
+  emendar, defender, sair na força: nenhuma resposta óbvia). Na tela:
+  duelos de atributo só com o nível (a build dele é secreta), por quê da
+  troca (evento `leu`, só dado), tendência dele, faixa do momento e dica
+  de cada ação (`MOMENTO_DICA`). Pontos ou sequência por leitura foram
+  medidos e não mudaram nada: não voltar com eles sem medir de novo
+  (`node ferramentas/jxj-balanco.mjs leitura|momentos`).
+  `VERSAO_BALANCEAMENTO` 2, no código e no banco
+  (`supabase_jxj_motor3.sql`, que o dono roda antes do deploy: banco em 1
+  e código em 2 = a tela promete respec grátis e o banco cobra; a suíte
+  `jxj` confere os dois). A tendência manda `cont` como lista: nome de
+  família na vista do outro reprova o teste de ação oculta.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

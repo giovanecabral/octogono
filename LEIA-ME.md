@@ -4199,8 +4199,9 @@ ferramentas/           PGlite, servidor local, balanço (jxj-balanco.mjs) e E2E 
 Quatro famílias de ação, com rótulo pela posição (em pé, por cima, por
 baixo). Em pé: Golpes ganha de Pressão, Pressão de Defesa, Defesa de
 Queda e Queda de Golpes; Golpes contra Defesa e Queda contra Pressão são
-parelhos. "Ganhar" é vantagem na disputa (15 pontos), nunca resultado
-garantido: atributo e árvore continuam pesando.
+parelhos. "Ganhar" é vantagem na disputa (15 pontos até o motor v3; 26
+desde 2026-10-20, seção "Online: motor v3"), nunca resultado garantido:
+atributo e árvore continuam pesando.
 
 Golpes contra Defesa bate na guarda: 13,5 pontos a menos pra acertar,
 60% do dano, metade do risco de nocaute, e o golpe que não entra conta 2
@@ -4758,6 +4759,170 @@ e `jxj` (todo golpe da vista traz o dano igual ao do texto; dente provado
 tirando o dano da vista). Na mesma leva, dois testes do `jxj` que falhavam
 1 vez em 3 (a luta podia acabar na primeira troca com a semente sorteada)
 passaram a fixar uma semente em que a primeira troca não acaba a luta.
+
+## Online: motor v3, leitura que decide e momentos decisivos (2026-10-20)
+
+**Pedido do dono:** "não sinto que é muito divertido essa luta online,
+sinto que é uma sequência de escolhas sem fundamento e sorte para ver se
+vai dar certo ou não. Adicione algumas coisas que possa montar estratégias
+e mais emoção na luta, atributos dos personagens sendo colocados para jogo
+também." Depois: "seria bom uma mecânica que realmente depende da
+habilidade do player". Ele escolheu "Momentos decisivos" e "Atributos na
+tela" e aprovou o plano ("pode"). `VERSAO_MOTOR` 3, `VERSAO_BALANCEAMENTO`
+2.
+
+### O que a medição mostrou antes de mexer
+
+- **Acertar a leitura já valia muito; o que faltava era a tela mostrar.**
+  Um jogador que vê a ação do outro e escolhe a que ganha dela, com chance
+  p (no resto sorteia), contra quem joga no peso do estilo:
+  p = 0,5 vencia 71% e p = 1 vencia 86,9% com a vantagem antiga (15).
+  Com 26 (igual à do chão, que já era 26,6): **77,2% e 93%**. A troca lida
+  passa de cerca de 78% pra cerca de 92% de vitória.
+  `node ferramentas/jxj-balanco.mjs leitura`.
+- **O que não funcionou e saiu:** pontos e momento a mais pra quem lê, e
+  uma sequência de leituras (2 seguidas deixavam o outro grogue). Medido
+  com os jogadores simulados (adaptativo, racional, estilo, acaso): a
+  diferença entre quem lê e quem não lê não mudou (54% a 56% nos dois
+  casos, ruído de 2 a 3 pontos). O jogador "de estilo" simulado é um
+  sorteio com pesos e não tem padrão pra ser lido; gente tem.
+- **Os momentos valem mais pela emoção que pela habilidade.** Jogar o
+  momento com a mistura certa contra quem faz o óbvio dá +2,6 pontos na
+  luta inteira (o momento é raro e dura uma troca). Cada momento, sozinho,
+  mexe muito: na matriz do grogue as casas vão de -23 a +32 pontos de
+  chance de vitória. O que decide a luta é a leitura; o momento é onde ela
+  pesa mais.
+
+### Leitura que decide
+
+`K.vantagem` 26 em pé (era 15). Cada troca grava um evento `leu` (quem
+leu, a família dele e a do outro; sem texto, só dado). A tela diz o
+porquê no lance: "Você leu: Queda ganha de Golpes", "Ele leu: ..." ou
+"Ninguém leu o outro: Golpes contra Defesa, decidiram os atributos".
+
+### Grogue
+
+- Knockdown sempre deixa grogue; golpe pesado (6,5 de dano ou mais, em
+  pé) às vezes: 0,5 x dano/10 x fator do queixo.
+- Vale só a troca seguinte (e acaba no fim do round). Quem está grogue e
+  não cobre perde 14 nas defesas e o nocaute contra ele fica 2,6 vezes
+  mais provável. Cobrir (Defesa) segura o golpe, mas **não a pressão na
+  grade**: Pressão contra o grogue que só cobriu vira golpes sem resposta
+  (`grade`, 6 de dano) e o juiz pode parar (nocaute técnico, 2,6 vezes
+  também). Quem está grogue e golpeia, golpeia no desespero (o nocaute
+  dele vale 1,3).
+- Medido com lutadores neutros (tudo 50, 30 de dano): golpes contra
+  golpes acaba a luta em 55,1% com grogue (18% sem); golpes contra quem
+  cobriu, 4,8%; pressão contra quem cobriu, 62,1% (0% sem grogue).
+- Nenhuma resposta óbvia: a mistura de equilíbrio do momento, dos dois
+  lados, usa 2 ou mais ações com 10%+ (o grogue no espelho striker: ele
+  cobre 35%, troca no desespero 33%, agarra 32%; quem ataca golpeia 42%,
+  defende 34%, pressiona 23%).
+
+### Finalização encaixada
+
+- A tentativa no chão que falhou por pouco (até 0,36 no sorteio) fica
+  presa pra troca seguinte. Não encaixa duas vezes seguidas; levantar,
+  raspar ou o juiz levantar desfaz.
+- Quem encaixou: **apertar** (a mesma família: Finalização por cima,
+  Raspar com triângulo por baixo; +22 e teto de 85%) ou **emendar outra**
+  (a família que ganha da defesa no papel dele: Avançar por cima,
+  Levantar por baixo; +12). Golpes ou Defesa soltam.
+- Quem está preso: **defender** (Defesa: disputa pra escapar com +12)
+  ou **sair na força** (qualquer outra).
+- Defender ganha de apertar, emendar ganha de defender, sair na força
+  ganha de emendar e perde pra apertar. Sem a emenda (o desenho
+  aprovado), defender era sempre a resposta certa e o encaixe não pedia
+  leitura nenhuma (mistura de equilíbrio 100% defesa pro grappler).
+- Medido (neutros, por cima na meia-guarda): apertar contra defender
+  acaba 8,6% (ele escapa 72,5%), apertar contra levantar 61,8%, emendar
+  contra defender 36,6%, emendar contra levantar: ele levanta 89,1%.
+
+### Frequência e calibração
+
+Pra o nocaute e a finalização passarem pelos momentos sem sair das
+faixas: `koBase` 1 para 0,72, `kdFator` 2 para 2,8 (mais knockdown, menos
+nocaute direto), `subBase` 0,78 para 0,62. Jogo racional, todas as duplas
+de estilo no nível 1 (`node ferramentas/jxj-balanco.mjs momentos`):
+
+| | |
+|---|---|
+| lutas com grogue | 35,6% |
+| lutas com finalização encaixada | 20,6% |
+| o grogue acaba a luta | 16,7% das vezes |
+| o encaixe acaba a luta | 25,1% das vezes |
+| nocautes e finalizações que saem de um momento | 25,3% (era cerca de 10%) |
+
+Suíte `jxjmotor` com o motor v3: estilos de 42,5% a 54,7%; KO/TKO 26,8%,
+finalização 15%, decisão 56,3%, empate 1,8%, 9,5 trocas; variantes de 48,3%
+a 51,6%; nível 30 contra 1 de 69,7% a 80%; repetir a mesma ação contra
+quem se adapta, no máximo 46,8%.
+
+### Atributos na tela
+
+- **Duelos:** 4 balanças entre a faixa da luta e o lance: Trocação (golpe
+  contra defesa, nos dois sentidos), Poder (chance de nocaute de cada um:
+  poder, queixo e dano, como no motor), Queda e Chão. Só o nível, de -2
+  (vantagem clara dele) a 2 (vantagem clara sua), porque a build dele é
+  secreta; as defesas já entram com o dano (`MOTOR.duelos`, limites 5 e
+  15 pontos de diferença líquida, 0,15 e 0,5 no log2 do poder).
+- **Cada botão** marca com uma seta se o duelo da ação é seu ou dele
+  (`acoes[].duelo`; Defesa não tem).
+- **Etiquetas no placar:** grogue (pulsa), preso e sem gás (energia em 2
+  ou menos: as ações dele rendem menos).
+- **Tendência dele:** o que ele fez no papel em que está agora, contado
+  das trocas resolvidas ("Ele em pé" com os 4 ícones e a contagem; a mais
+  usada em destaque, a última sublinhada). Aparece com 2 trocas ou mais.
+  A troca aberta nunca entra (suíte `jxj`).
+- **Faixa do momento decisivo:** antes das ações, "Ele está grogue: esta
+  troca pode acabar a luta", "Você está grogue: sobreviva a esta troca",
+  "Finalização encaixada" ou "Você está preso", dourada quando o momento é
+  seu e vermelha quando é contra você. Nos botões, a linha de efeito vira
+  a dica do momento (`MOMENTO_DICA`: "Pega ele na grade se ele cobrir.
+  Perde pro golpe.") e o ciclo sai da tela, porque a dica já diz o que
+  ganha e o que perde naquela troca.
+- Som e animação: grogue balança o placar de quem ficou, a grade é golpe,
+  encaixe e emenda apertam quem está preso, escapar toca o evento.
+
+### Servidor e bot
+
+- Vista: `momentoDecisivo` (de quem pede: `grogue_eu`, `enc_cima_ele`...),
+  `duelos`, `tendencia` (`cont` na ordem das famílias, pra não haver nome
+  de família da troca aberta na vista do outro), `estado.a/b.grogue` e
+  `cansado`, `estado.encaixe` só com `quem`, e `ev` do `leu` com `fam` e
+  `vs`.
+- Bot: `dadosDaLuta` leva a mistura de equilíbrio de cada um dos 6
+  momentos (`mm`, cerca de 250 ms a mais no começo da luta). O bot fraco
+  faz o óbvio (`OBVIO`: defende grogue, golpeia o grogue, aperta, defende
+  preso), que é o que o jogador atento pune; o forte joga a mistura. Luta
+  criada antes, sem `mm`, segue a mistura da posição. `PESOS_VALOR` novos;
+  calibração: o humano de estilo vence 57,5% do bot s=0, 48,6% do s=0,5,
+  43,7% do s=1 e 51,5% do bot de 1500.
+
+### Versão de balanceamento 2
+
+Número de combate novo: `VERSAO_BALANCEAMENTO` 2 no código e
+`supabase_jxj_motor3.sql` no banco (só um `update` em `jxj_config`). **O
+dono roda o SQL antes do deploy**: com o banco em 1 e o código em 2, a tela
+promete o respec grátis e o banco cobra. A suíte `jxj` confere que os dois
+batem. Luta que estiver no meio na hora do deploy termina com as regras
+novas (o estado guarda `v` da versão em que começou); refazer uma dessas
+pela semente exige os dois motores.
+
+### Testes
+
+`jxjmotor`: evento `leu` sempre pelo ciclo; encaixe nunca em pé; grogue
+(knockdown sempre deixa, dura uma troca, cobrir protege do golpe e não da
+grade); encaixe (as 4 relações e o soltar, por cima e por baixo); momentos
+sem resposta óbvia; leitura decide (0,5 acima de 72%, 1 acima de 88%).
+`jxjbot`: misturas dos momentos iguais às da ferramenta, bot forte na
+mistura, bot do meio no óbvio, luta antiga sem `mm`. `jxj`: duelos só com
+o nível e em espelho, momento dos dois lados com a dica, encaixe só com
+quem, tendência e por quê, versão do código igual à do banco. `jxjtelas`:
+balanças, por quê, etiquetas, faixa, dica, ciclo fora no momento,
+tendência. Dente provado em cópia da pasta: vantagem de volta a 15 (71% e
+86,9%, reprova), sem a emenda, sem a grade, leitura do lado errado,
+duelos sem espelho, botão sem a dica e banco sem a migração.
 
 ## Bots do Online (2026-10-19)
 

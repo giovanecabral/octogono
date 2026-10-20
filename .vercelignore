@@ -21,6 +21,7 @@ supabase_jxj_narracao.sql
 supabase_jxj_raio.sql
 supabase_jxj_movimento.sql
 supabase_jxj_bot.sql
+supabase_jxj_motor3.sql
 audio/bruto
 img/bruto
 *.py

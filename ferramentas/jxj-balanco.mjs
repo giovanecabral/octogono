@@ -9,6 +9,8 @@
      node ferramentas/jxj-balanco.mjs atributos  # valor de 1 ponto de cada atributo
      node ferramentas/jxj-balanco.mjs variantes  # valor de cada variante de ação (2026-10-04)
      node ferramentas/jxj-balanco.mjs bots       # bot de cada habilidade contra jogadores-modelo (2026-10-19)
+     node ferramentas/jxj-balanco.mjs leitura    # quanto vale acertar a leitura (motor v3, 2026-10-20)
+     node ferramentas/jxj-balanco.mjs momentos   # grogue e encaixe: frequência, misturas e quanto valem
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -41,7 +43,22 @@ export const PESOS_ESTILO = {
   grappler: { pe: [2, 4, 2, 2], cima: [2, 4, 1, 4], baixo: [1, 5, 2, 2] },
   counter: { pe: [3, 1, 4, 1], cima: [3, 1, 3, 2], baixo: [1, 1, 3, 4] },
 };
-export const heuristica = (est) => (e, l, p, r) => (e[l].energia <= 2 && r() < 0.6) ? "defesa" : amostra(PESOS_ESTILO[est][M.papel(e, l)], r);
+/* Momentos decisivos (motor v3): grogue e finalização encaixada. O jogo
+   pensado (racional, adaptativa) joga a mistura de equilíbrio do momento
+   (mx(chave), matriz de uma troca no estado do momento); o jogador de
+   estilo faz o óbvio (BOT.OBVIO) na maior parte dessas trocas e, no resto,
+   segue a base. Mesma ideia do bot (api/_jxj-bot.js). */
+export const MOMENTO_OBVIO = 0.62;
+export function momentos(base, { mx = null, obvio = MOMENTO_OBVIO } = {}) {
+  return (e, l, p, r) => {
+    const ch = M.momentoDoLado(e, l);
+    if (!ch) return base(e, l, p, r);
+    if (mx) return amostra(mx(ch).a, r);
+    return r() < obvio ? BOT.OBVIO[ch] : base(e, l, p, r);
+  };
+}
+const heuristicaBase = (est) => (e, l, p, r) => (e[l].energia <= 2 && r() < 0.6) ? "defesa" : amostra(PESOS_ESTILO[est][M.papel(e, l)], r);
+export const heuristica = (est) => momentos(heuristicaBase(est));
 export const spam = (f) => () => f;
 export const aleatoria = () => (e, l, p, r) => F[Math.floor(r() * 4)];
 
@@ -127,14 +144,25 @@ export function misturas(pA, pB, n = 400) {
   cacheMix.set(chave, r);
   return r;
 }
+/* mistura de equilíbrio de um momento decisivo, com pA no papel de "eu" */
+export function misturaDoMomento(pA, pB, chave, n = 300) {
+  const k = JSON.stringify([pA, pB, chave, n]);
+  if (cacheMix.has(k)) return cacheMix.get(k);
+  const base = M.novaLuta(pA, pB);
+  BOT.ESTADO_MOMENTO[chave](base);
+  const m = matriz(pA, pB, base, n), eq = equilibrio(m);
+  const r = { a: eq.pa, b: eq.pb, m };
+  cacheMix.set(k, r);
+  return r;
+}
 /* estratégia racional de quem tem o perfil pEu contra pEle */
 export function racional(pEu, pEle) {
   const mx = misturas(pEu, pEle);
-  return (e, l, p, r) => {
+  return momentos((e, l, p, r) => {
     if (e[l].energia <= 1.5 && r() < 0.5) return "defesa";
     const pos = l === "a" ? e.pos : e.pos === "cima_a" ? "cima_b" : e.pos === "cima_b" ? "cima_a" : "pe";
     return amostra(mx[pos].a, r);
-  };
+  }, { mx: (ch) => misturaDoMomento(pEu, pEle, ch) });
 }
 
 /* Jogador que se adapta (o que um humano atento faz): guarda as ações do
@@ -145,7 +173,7 @@ export function racional(pEu, pEle) {
 export function adaptativa(pEu, pEle, { prior = 2, segue = 0.7, temp = 1 } = {}) {
   const mx = misturas(pEu, pEle);
   let hist = null, posAnt = null;
-  return (e, l, p, r) => {
+  return momentos((e, l, p, r) => {
     const o = l === "a" ? "b" : "a";
     const pos = l === "a" ? e.pos : e.pos === "cima_a" ? "cima_b" : e.pos === "cima_b" ? "cima_a" : "pe";
     if (e.round === 1 && e.troca === 1) hist = { pe: [0, 0, 0, 0], cima_a: [0, 0, 0, 0], cima_b: [0, 0, 0, 0] };
@@ -158,7 +186,7 @@ export function adaptativa(pEu, pEle, { prior = 2, segue = 0.7, temp = 1 } = {})
     const ganho = mx[pos].m.map((linha) => linha.reduce((s, v, j) => s + v * crenca[j] / t, 0));
     const mx0 = Math.max(...ganho);
     return amostra(ganho.map((g) => Math.exp((g - mx0) / temp)), r);
-  };
+  }, { mx: (ch) => misturaDoMomento(pEu, pEle, ch) });
 }
 
 /* ---------- confronto ---------- */
@@ -285,6 +313,57 @@ export function valorDoAtributo(estilo, atr, pts = 3, n = 1000) {
   return soma / ESTS.length / pts;
 }
 
+/* ---------- leitura e momentos (motor v3, 2026-10-20) ---------- */
+/* Teto da leitura: X vê a ação de O antes de escolher e, com chance acerto,
+   escolhe uma que ganha dela no ciclo (no resto, sorteia). O joga no peso do
+   estilo. Mede quanto a luta inteira depende de acertar a leitura: com
+   acerto 0,5, X lê ~60% das trocas (quem sorteia lê ~25%). Espelho de
+   estilo, nível 1, média dos 4. */
+export function leituraOraculo(acerto, n = 300, sal = "") {
+  let v = 0, d = 0;
+  for (const s of ESTS) {
+    const p = perfilTipico(s, 1), eO = heuristica(s);
+    for (let i = 0; i < n; i++) {
+      const r = lcg(i * 104729 + s.length * 7 + 1), sem = `or${sal}${s}${i}`;
+      let e = M.novaLuta(p, p), k = 0;
+      while (!e.fim && k++ < 100) {
+        const aO = eO(e, "b", p, r), pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
+        const ganham = F.filter((f) => M.quemLeu(pap, { a: f, b: aO }) === "a");
+        const aX = ganham.length && r() < acerto ? ganham[Math.floor(r() * ganham.length)] : F[Math.floor(r() * 4)];
+        e = M.resolverTroca(e, { a: p, b: p }, { a: aX, b: aO }, sem).estado;
+      }
+      if (e.fim.vencedor === "a") v++; else if (e.fim.vencedor === "b") d++;
+    }
+  }
+  return 100 * v / Math.max(1, v + d);
+}
+/* Momentos decisivos no jogo racional (todas as duplas, nível 1): em quantas
+   lutas aparecem, quantos acabam a luta na troca do momento e que parte das
+   vitórias antes da decisão passa por eles. */
+export function medirMomentos(n = 120) {
+  const c = { lutas: 0, comG: 0, comE: 0, momG: 0, fimG: 0, momE: 0, fimE: 0, fins: 0, finsMomento: 0 };
+  for (const s of ESTS) for (const o of ESTS) {
+    const pA = perfilTipico(s, 1), pB = perfilTipico(o, 1), eA = racional(pA, pB), eB = racional(pB, pA);
+    for (let i = 0; i < n; i++) {
+      const r = lcg(i * 7717 + 11);
+      let e = M.novaLuta(pA, pB), g = false, en = false, k = 0;
+      while (!e.fim && k++ < 100) {
+        const mom = M.momentoDoLado(e, "a") || M.momentoDoLado(e, "b");
+        const res = M.resolverTroca(e, { a: pA, b: pB }, { a: eA(e, "a", pA, r), b: eB(e, "b", pB, r) }, `mm${s}${o}${i}`);
+        for (const ev of res.eventos) { if (ev.tipo === "grogue") g = true; if (ev.tipo === "encaixou") en = true; }
+        const fin = !!res.estado.fim && ["KO", "TKO", "FIN"].includes(res.estado.fim.metodo);
+        if (fin) { c.fins++; if (mom) c.finsMomento++; }
+        if (mom && mom.startsWith("grogue")) { c.momG++; if (fin) c.fimG++; }
+        if (mom && mom.startsWith("enc")) { c.momE++; if (fin) c.fimE++; }
+        e = res.estado;
+      }
+      c.lutas++; if (g) c.comG++; if (en) c.comE++;
+    }
+  }
+  const pc = (x, t) => 100 * x / Math.max(1, t);
+  return { comGrogue: pc(c.comG, c.lutas), comEncaixe: pc(c.comE, c.lutas), grogueAcaba: pc(c.fimG, c.momG), encaixeAcaba: pc(c.fimE, c.momE), finsDeMomento: pc(c.finsMomento, c.fins) };
+}
+
 /* ---------- bots do Online (2026-10-19) ---------- */
 /* Luta contra bot pelo caminho do servidor: o humano-modelo é o lado a; o
    bot (lado b) escolhe com BOT.acaoDoBot, que só lê o estado, as trocas
@@ -375,7 +454,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     for (const hu of Object.keys(HUMANOS_MODELO)) console.log(hu.padEnd(12) + SS.map((s) => f1(r[hu + ":" + s]).padStart(8)).join(""));
     console.log("rating que o bot vale (1500 = humano de estilo):     " + SS.map((s) => String(Math.round(1500 + elo(r["estilo:" + s]))).padStart(8)).join(""));
     console.log("rating que o servidor dá a esse bot (RATING_BOT):    " + SS.map((s) => String(Math.round(BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min))).padStart(8)).join(""));
+  } else if (cmd === "leitura") {
+    console.log(`vantagem da leitura: em pé ${M.K.vantagem}, no chão ${M.K.vantagemChao} (vitórias de quem vê a ação do outro e acerta a leitura com essa chance, contra o jogador de estilo):`);
+    for (const ac of [0, 0.35, 0.5, 1]) console.log(`  acerto ${String(ac).padEnd(5)} ${f1(leituraOraculo(ac, N || 300))}%`);
+  } else if (cmd === "momentos") {
+    const r = medirMomentos(N || 120);
+    console.log(`lutas com grogue ${f1(r.comGrogue)}%, com finalização encaixada ${f1(r.comEncaixe)}%`);
+    console.log(`o grogue acaba a luta em ${f1(r.grogueAcaba)}% das vezes, o encaixe em ${f1(r.encaixeAcaba)}%; ${f1(r.finsDeMomento)}% dos nocautes e finalizações saem de um momento`);
+    console.log("misturas de equilíbrio no espelho (golpes queda defesa pressão), nível 1:");
+    for (const s of ESTS) {
+      const p = perfilTipico(s, 1);
+      console.log("  " + s.padEnd(9) + Object.keys(BOT.ESTADO_MOMENTO).map((ch) => `${ch} ${misturaDoMomento(p, p, ch).a.map((x) => Math.round(100 * x)).join("/")}`).join("  "));
+    }
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|leitura|momentos] [n]");
   }
 }

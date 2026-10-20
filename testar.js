@@ -11127,6 +11127,13 @@ async function testarJxJ() {
       const nos = {}; ["precisao_maos", "combinacoes", "contra_maos", "eficiencia_golpes"].forEach((k) => { nos[k] = 3; });
       await erro(pro1, "build", { lutadorId: lp1, rev: r.buildRev, build: nos }, /aceita até 10/);
     });
+    await conf("versão de balanceamento: a do código (VERSAO_BALANCEAMENTO) é a do banco depois das migrações (supabase_jxj_motor3.sql); lutador novo nasce nela e sem respec grátis", async () => {
+      const v = (await q("select valor from jxj_config where chave = 'versao_balanceamento'"))[0].valor;
+      if (Number(v) !== ARV.VERSAO_BALANCEAMENTO) throw new Error(`banco ${v}, código ${ARV.VERSAO_BALANCEAMENTO}: a tela promete o respec grátis e o banco cobra (ou o contrário)`);
+      const l = (await ok(pro1, "estado")).lutadores.find((x) => x.id === lp1);
+      const bv = (await q("select build_versao from jxj_lutadores where id = $1", [lp1]))[0].build_versao;
+      if (bv !== ARV.VERSAO_BALANCEAMENTO || l.respecGratis) throw new Error(`lutador novo: build_versao ${bv}, respecGratis ${l.respecGratis}`);
+    });
     await conf("respec: sem fichas é recusado; com fichas custa 400 e zera a árvore; grátis uma vez quando a versão de balanceamento muda; árvore vazia não refaz nem cobra", async () => {
       const l = (await ok(pro1, "estado")).lutadores.find((x) => x.id === lp1);
       await erro(pro1, "respec", { lutadorId: lp1, rev: l.buildRev }, /fichas insuficientes/);
@@ -11173,6 +11180,8 @@ async function testarJxJ() {
       /* fora a lista das PRÓPRIAS opções de B, nada na vista dele pode dizer "pressao" */
       const { acoes: _opcoesDeB, ...resto } = vb;
       if (/pressao/.test(JSON.stringify(resto))) throw new Error("a ação de A vazou pra B");
+      /* v3: a tendência dele só conta troca resolvida, nunca a aberta */
+      if (!vb.tendencia || vb.tendencia.n !== 0 || vb.tendencia.cont.some((x) => x !== 0) || vb.tendencia.ultima !== null) throw new Error("a tendência contou a ação aberta: " + JSON.stringify(vb.tendencia));
       await ok(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "pressao" });
       await erro(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "golpes" }, /já foi enviada/);
       await erro(pa, "acao", { lutaId: lid1, round: 1, troca: 2, familia: "golpes" }, /já foi resolvida/);
@@ -11246,6 +11255,50 @@ async function testarJxJ() {
       const L = (await q("select a_id, b_id, status, tipo from jxj_lutas where id = $1", [r2.luta]))[0];
       if (L.a_id !== lb || L.b_id !== la || L.status !== "andamento" || L.tipo !== "revanche") throw new Error(JSON.stringify(L));
       await lutar(r2.luta, pb, pa);
+    });
+
+    await conf("motor v3 na vista: duelos só com o nível (-2 a 2) e em espelho, momento decisivo dos dois lados com a dica de cada botão, encaixe só com quem encaixou, tendência das trocas resolvidas e o por quê (leu)", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2, { estilo: "grappler" })).id;
+      const lid = await parear(u1, l1, u2, l2);
+      const v1 = await ok(u1, "luta", { lutaId: lid }), v2 = await ok(u2, "luta", { lutaId: lid });
+      const lu1 = v1.lado, lu2 = v2.lado;
+      for (const v of [v1, v2]) {
+        const d = v.duelos;
+        if (!d || Object.keys(d).sort().join() !== "chao,poder,queda,trocacao" || Object.values(d).some((x) => !Number.isInteger(x) || x < -2 || x > 2)) throw new Error("duelos: " + JSON.stringify(d));
+        if (/"atr"|"mec"|"perfis"|"build"/.test(JSON.stringify(v))) throw new Error("vazou perfil");
+        if (v.momentoDecisivo !== null || v.acoes.some((a) => a.dica !== null || !("duelo" in a))) throw new Error("momento sem motivo ou ação sem duelo");
+      }
+      if (!(v1.duelos.trocacao > 0 && v1.duelos.chao < 0)) throw new Error("striker contra grappler: " + JSON.stringify(v1.duelos));
+      for (const k of Object.keys(v1.duelos)) if (v1.duelos[k] !== -v2.duelos[k]) throw new Error("duelos fora de espelho em " + k);
+      const mexer = async (fn) => {
+        const e = (await q("select estado from jxj_lutas where id = $1", [lid]))[0].estado; fn(e);
+        await q("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(e)]);
+      };
+      await mexer((e) => { e[lu2].grogue = true; });
+      const g1 = await ok(u1, "luta", { lutaId: lid }), g2 = await ok(u2, "luta", { lutaId: lid });
+      if (g1.momentoDecisivo !== "grogue_ele" || g2.momentoDecisivo !== "grogue_eu") throw new Error(`grogue: ${g1.momentoDecisivo}/${g2.momentoDecisivo}`);
+      if (!g1.estado[lu2].grogue || g1.estado[lu1].grogue) throw new Error("grogue no placar");
+      for (const v of [g1, g2]) for (const a of v.acoes) if (a.dica !== MOTOR.MOMENTO_DICA[v.momentoDecisivo][a.familia]) throw new Error("dica de " + a.familia);
+      await mexer((e) => { e[lu2].grogue = false; e.pos = lu1 === "a" ? "cima_a" : "cima_b"; e.nivelPos = 1; e.encaixe = { quem: lu1, v: "kimura" }; });
+      const c1 = await ok(u1, "luta", { lutaId: lid }), c2 = await ok(u2, "luta", { lutaId: lid });
+      if (c1.momentoDecisivo !== "enc_cima_eu" || c2.momentoDecisivo !== "enc_baixo_ele") throw new Error(`encaixe: ${c1.momentoDecisivo}/${c2.momentoDecisivo}`);
+      if (JSON.stringify(c2.estado.encaixe) !== JSON.stringify({ quem: lu1 })) throw new Error("encaixe na vista: " + JSON.stringify(c2.estado.encaixe));
+      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; });
+      const troca = async (f1, f2) => {
+        const v = await ok(u1, "luta", { lutaId: lid });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: f1 });
+        await ok(u2, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: f2 });
+      };
+      await troca("defesa", "defesa"); await troca("defesa", "defesa"); await troca("pressao", "defesa");
+      const t = await ok(u1, "luta", { lutaId: lid });
+      if (t.status === "andamento") {
+        const td = t.tendencia;
+        if (!td || td.papel !== "pe" || td.n !== 3 || JSON.stringify(td.cont) !== "[0,0,3,0]" || td.ultima !== "defesa") throw new Error("tendência: " + JSON.stringify(td));
+      }
+      const leu = (t.trocas[t.trocas.length - 1].ev || []).find((x) => x.tipo === "leu");
+      if (!leu || leu.quem !== lu1 || leu.fam !== "pressao" || leu.vs !== "defesa") throw new Error("por quê: " + JSON.stringify(t.trocas[t.trocas.length - 1].ev));
+      if (t.trocas.slice(-3, -1).some((x) => (x.ev || []).some((y) => y.tipo === "leu"))) throw new Error("leu numa troca sem leitura (defesa contra defesa)");
     });
 
     await conf("ausência: prazo vencido vira Defender; três seguidos dão W.O. com rating e XP 40/0", async () => {
@@ -12110,13 +12163,18 @@ async function testarJxJMotor() {
       while (!e.fim) {
         if (++n > M.FORMATO.rounds * M.FORMATO.trocasPorRound) throw new Error(`luta ${i} passou de ${n - 1} trocas`);
         const esc = () => (r() < 0.06 ? null : F[Math.floor(r() * 4)]);
-        const res = M.resolverTroca(e, P, { a: esc(), b: esc() }, "inv" + i);
+        const ac = { a: esc(), b: esc() }, pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
+        const res = M.resolverTroca(e, P, ac, "inv" + i);
         e = res.estado;
         for (const ev of res.eventos) {
           tipos.add(ev.tipo);
           if (ev.tipo === "escolha") {   // registro das variantes da troca: sem texto, mas sempre com as duas
             if (!M.VARIANTE_POR_ID[ev.va] || !M.VARIANTE_POR_ID[ev.vb]) throw new Error("escolha sem variante: " + JSON.stringify(ev));
             vistas.add(ev.va); vistas.add(ev.vb);
+            continue;
+          }
+          if (ev.tipo === "leu") {   // registro de quem leu o outro (v3, a tela usa): sem texto, sempre pelo ciclo
+            if (ev.quem !== M.quemLeu(pap, ac) || ev.fam !== ac[ev.quem] || ev.vs !== ac[ev.quem === "a" ? "b" : "a"]) throw new Error("leu fora do ciclo: " + JSON.stringify({ ev, pap, ac }));
             continue;
           }
           if (ev.v && !M.VARIANTE_POR_ID[ev.v]) throw new Error(`evento ${ev.tipo} com variante desconhecida ${ev.v}`);
@@ -12129,6 +12187,9 @@ async function testarJxJMotor() {
           if (!(e[l].dano >= 0 && e[l].dano <= 100)) throw new Error(`dano ${e[l].dano}`);
         }
         if (Math.abs(e.momento) > M.K.momentoMax) throw new Error(`momento ${e.momento}`);
+        if (e.encaixe && (e.pos === "pe" || !["a", "b"].includes(e.encaixe.quem))) throw new Error("encaixe em pé ou sem dono: " + JSON.stringify(e.encaixe));
+        if (typeof e.a.grogue !== "boolean" || typeof e.b.grogue !== "boolean") throw new Error("grogue sem valor");
+        for (const l of ["a", "b"]) { const ch = M.momentoDoLado(e, l); if (ch !== null && !(ch in BAL.BOT.ESTADO_MOMENTO)) throw new Error("momento desconhecido " + ch); }
         if (!["pe", "cima_a", "cima_b"].includes(e.pos) || e.nivelPos < 0 || e.nivelPos > 2 || (e.pos === "pe" && e.nivelPos)) throw new Error(`posição ${e.pos}/${e.nivelPos}`);
         if (e.round < 1 || e.round > M.FORMATO.rounds || e.troca < 1 || e.troca > M.FORMATO.trocasPorRound) throw new Error(`round/troca ${e.round}/${e.troca}`);
       }
@@ -12145,7 +12206,8 @@ async function testarJxJMotor() {
         if (f.metodo === "EMPATE" ? ta !== tb : (ta > tb ? "a" : "b") !== f.vencedor) throw new Error(`cartões ${ta}x${tb} e ${f.metodo} ${f.vencedor}`);
       }
     }
-    for (const t of ["golpe", "queda", "knockdown", "fim", "ausente", "raspou", "avancou", "subFalhou", "levantou"])
+    for (const t of ["golpe", "queda", "knockdown", "fim", "ausente", "raspou", "avancou", "subFalhou", "levantou", "leu",
+      "grogue", "respirou", "grade", "encaixou", "escapou", "emendou", "soltou"])
       if (!tipos.has(t)) throw new Error(`3000 lutas sem nenhum evento "${t}"`);
     const nunca = Object.keys(M.VARIANTE_POR_ID).filter((id) => !vistas.has(id));
     if (nunca.length) throw new Error("variante que nunca saiu na mão em 3000 lutas: " + nunca.join(", "));
@@ -12249,6 +12311,64 @@ async function testarJxJMotor() {
       const r = M.resolverTroca(M.novaLuta(neutro, neutro), { a: neutro, b: neutro }, { a: fa, b: fb }, "par");
       if (!r.eventos.length) throw new Error(`par ${fa} x ${fb} sem nenhum evento`);
     }
+  });
+  await conf("grogue (v3): knockdown sempre deixa grogue; vale só a troca seguinte; cobrir segura o golpe, não a pressão na grade; golpe em quem está grogue e não cobre nocauteia mais", () => {
+    const n = neutro, P = { a: n, b: n };
+    const base = (extra = {}) => { const e = M.novaLuta(n, n); e.b = { ...e.b, dano: 30, ...extra }; e.troca = 2; return e; };
+    let kd = 0;
+    for (let k = 0; k < 3000; k++) {
+      const r = M.resolverTroca(base(), P, { a: "golpes", b: "pressao" }, "kd" + k);
+      if (!r.estado.fim && r.eventos.some((ev) => ev.tipo === "knockdown" && ev.quem === "a")) {
+        kd++;
+        if (!r.estado.b.grogue || !r.eventos.some((ev) => ev.tipo === "grogue" && ev.quem === "b")) throw new Error("knockdown sem grogue");
+      }
+    }
+    if (kd < 30) throw new Error("poucos knockdowns pra conferir: " + kd);
+    const r1 = M.resolverTroca(base({ grogue: true }), P, { a: "defesa", b: "defesa" }, "dura");
+    if (r1.estado.b.grogue || !r1.eventos.some((ev) => ev.tipo === "respirou" && ev.quem === "b")) throw new Error("o grogue não passou depois de uma troca (ou faltou o evento respirou)");
+    const taxa = (extra, aa, ab, tag) => { let f = 0; for (let k = 0; k < 4000; k++) if (M.resolverTroca(base(extra), P, { a: aa, b: ab }, tag + k).estado.fim) f++; return f / 4000; };
+    const gg = taxa({ grogue: true }, "golpes", "golpes", "gg"), sg = taxa({}, "golpes", "golpes", "gg"), gd = taxa({ grogue: true }, "golpes", "defesa", "gd");
+    const pd = taxa({ grogue: true }, "pressao", "defesa", "pd"), pd0 = taxa({}, "pressao", "defesa", "pd");
+    console.log(cinza(`         fim na troca: golpes x golpes ${f1(100 * gg)}% grogue, ${f1(100 * sg)}% sem; golpes x cobrir ${f1(100 * gd)}%; pressão x cobrir ${f1(100 * pd)}% grogue, ${f1(100 * pd0)}% sem`));
+    if (!(gg > 1.5 * sg)) throw new Error("grogue não aumenta o nocaute");
+    if (!(gg > 3 * gd)) throw new Error("cobrir não protege do golpe");
+    if (!(pd > 0.03 && pd0 === 0)) throw new Error("a pressão na grade não pega o grogue que só cobre (ou pega quem não está grogue)");
+  });
+  await conf("finalização encaixada (v3): defender ganha de apertar, emendar ganha de defender, sair na força ganha de emendar e perde pra apertar; por baixo também; soltar desfaz; em pé não vale", () => {
+    const n = neutro, P = { a: n, b: n };
+    const base = (quem) => ({ ...M.novaLuta(n, n), pos: "cima_a", nivelPos: 1, troca: 2, encaixe: { quem, v: null } });
+    const taxa = (quem, aa, ab, tag, tipo = null) => {
+      let f = 0;
+      for (let k = 0; k < 4000; k++) { const r = M.resolverTroca(base(quem), P, { a: aa, b: ab }, tag + k); if (tipo ? r.eventos.some((ev) => ev.tipo === tipo) : r.estado.fim) f++; }
+      return f / 4000;
+    };
+    /* a por cima encaixou; b por baixo está preso */
+    const apDef = taxa("a", "queda", "defesa", "e1"), escapa = taxa("a", "queda", "defesa", "e1", "escapou");
+    const apSai = taxa("a", "queda", "pressao", "e2"), emDef = taxa("a", "pressao", "defesa", "e3"), emSai = taxa("a", "pressao", "pressao", "e4", "levantou");
+    console.log(cinza(`         por cima, fim na troca: apertar x defender ${f1(100 * apDef)}% (escapa ${f1(100 * escapa)}%), apertar x levantar ${f1(100 * apSai)}%, emendar x defender ${f1(100 * emDef)}%; emendar x levantar: levanta ${f1(100 * emSai)}%`));
+    if (!(escapa > 0.4 && apSai > 2 * apDef)) throw new Error("defender não ganha de apertar");
+    if (!(emDef > 1.5 * apDef)) throw new Error("emendar não ganha de defender");
+    if (!(emSai > 0.3)) throw new Error("sair na força não ganha de emendar");
+    /* b por baixo encaixou o triângulo; a por cima está preso */
+    const bAp = taxa("b", "golpes", "queda", "e5"), bDef = taxa("b", "defesa", "queda", "e6");
+    if (!(bAp > 2 * bDef)) throw new Error(`por baixo: apertar contra o ground and pound ${f1(100 * bAp)}%, contra quem segura ${f1(100 * bDef)}%`);
+    const r = M.resolverTroca(base("a"), P, { a: "golpes", b: "defesa" }, "solta");
+    if (!r.eventos.some((ev) => ev.tipo === "soltou" && ev.quem === "a") || r.estado.encaixe) throw new Error("soltar não desfez o encaixe");
+    const pe = M.resolverTroca({ ...M.novaLuta(n, n), encaixe: { quem: "a", v: null } }, P, { a: "queda", b: "defesa" }, "pe");
+    if (pe.eventos.some((ev) => ["escapou", "emendou", "soltou"].includes(ev.tipo)) || pe.estado.encaixe) throw new Error("encaixe valeu em pé");
+  });
+  await conf("momentos sem resposta óbvia: no espelho de cada estilo, a mistura de equilíbrio do grogue e da finalização encaixada por cima (os dois lados de cada um) usa 2+ ações com 10%+ e nenhuma passa de 85%", () => {
+    const ruins = [];
+    for (const s of ESTS) for (const ch of ["grogue_eu", "grogue_ele", "enc_cima_eu", "enc_baixo_ele"]) {
+      const d = BAL.misturaDoMomento(perfil(s), perfil(s), ch).a;
+      if (Math.max(...d) > 0.85 || d.filter((x) => x >= 0.1).length < 2) ruins.push(`${s} ${ch} [${d.map((x) => Math.round(100 * x)).join(" ")}]`);
+    }
+    if (ruins.length) throw new Error(ruins.join("; "));
+  });
+  await conf("leitura decide (v3): quem acerta a leitura em metade das trocas vence 72%+ de quem joga no estilo; quem acerta sempre, 88%+", () => {
+    const meia = BAL.leituraOraculo(0.5, 150, "t"), sempre = BAL.leituraOraculo(1, 100, "t");
+    console.log(cinza(`         acerto 0,5: ${f1(meia)}%   acerto 1: ${f1(sempre)}%`));
+    if (meia < 72 || sempre < 88) throw new Error("acertar a leitura vale pouco");
   });
   const R = BAL.medirMatriz(600);
   await conf("balanço de estilos no nível 1, jogo racional (600 lutas por dupla): toda dupla entre 42% e 58%", () => {
@@ -12717,6 +12837,29 @@ async function testarJxJBot() {
     for (const pos of ["pe", "cima_a", "cima_b"]) for (const k of ["a", "b", "m"])
       if (JSON.stringify(a[pos][k]) !== JSON.stringify(b[pos][k])) throw new Error(`${pos}.${k} diferente`);
   });
+  await conf("momentos decisivos (motor v3): dadosDaLuta leva a mistura de cada momento (a mesma da ferramenta); o bot forte joga essa mistura, o do meio faz o óbvio; luta criada antes, sem mm, não quebra", () => {
+    const pA = T.perfilTipico("striker", 4), pB = T.perfilTipico("grappler", 4);
+    T.limparCache();
+    const mm = BOT.misturasDosMomentos(pA, pB, 40);
+    for (const ch of Object.keys(BOT.ESTADO_MOMENTO)) {
+      const a = mm[ch].a, b = T.misturaDoMomento(pA, pB, ch, 40).a;
+      if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${ch}: bot ${a} x ferramenta ${b}`);
+      if (Math.abs(a.reduce((x, y) => x + y, 0) - 1) > 1e-9) throw new Error(ch + " não soma 1");
+    }
+    const bot = BOT.montarBot({ nivel: 4, categoria: "middleweight", rating: 1500, semente: "mom" });
+    const dados = BOT.dadosDaLuta(bot, pA);
+    if (Object.keys(dados.mm || {}).sort().join() !== Object.keys(BOT.ESTADO_MOMENTO).sort().join()) throw new Error("dadosDaLuta sem as misturas dos momentos");
+    /* o bot é o lado b; o humano (a) está grogue: o momento do bot é grogue_ele */
+    const e = M.novaLuta(pA, bot.perfil); e.a.grogue = true; e.a.dano = 20;
+    if (M.momentoDoLado(e, "b") !== "grogue_ele") throw new Error("momento do bot: " + M.momentoDoLado(e, "b"));
+    const conta = (d) => { const c = { golpes: 0, queda: 0, defesa: 0, pressao: 0 }; for (let k = 0; k < 600; k++) c[BOT.acaoDoBot({ estado: e, semente: "m" + k, trocas: [], dados: d })]++; return c; };
+    const forte = conta({ ...dados, pol: BOT.politica(1) }), meio = conta({ ...dados, pol: BOT.politica(0.5) });
+    if (meio.golpes !== 600) throw new Error("o bot do meio não fez o óbvio (golpes no grogue): " + JSON.stringify(meio));
+    const esperado = dados.mm.grogue_ele.a;
+    for (let i = 0; i < 4; i++) if (Math.abs(forte[F[i]] / 600 - esperado[i]) > 0.07) throw new Error(`bot forte fora da mistura do momento: ${JSON.stringify(forte)} x ${esperado}`);
+    const antigo = { ...dados }; delete antigo.mm;
+    if (!F.includes(BOT.acaoDoBot({ estado: e, semente: "velho", trocas: [], dados: antigo }))) throw new Error("luta antiga sem mm quebrou");
+  });
   await conf("histórico tirado das trocas gravadas (acao e evento escolha) = o histórico contado troca a troca, nas 3 posições", () => {
     const pH = T.perfilTipico("wrestler", 5), bot = BOT.montarBot({ nivel: 5, categoria: "middleweight", rating: 1500, semente: "hist" });
     let conferidas = 0;
@@ -12976,6 +13119,61 @@ async function testarJxJTelas() {
       if (!sons.length) throw new Error("troca resolvida sem som nenhum (eventos " + t0.ev.map((e) => e.tipo).join(",") + ")");
       await assentar(60);
       if (env.sandbox.__som.length !== sons.length) throw new Error("o som repetiu sem troca nova: " + env.sandbox.__som.join(","));
+    });
+    const semLixoV3 = (h, onde) => {
+      const lixo = h.match(/undefined|NaN|\[object Object\]/);
+      if (lixo) throw new Error(`${onde}: "${lixo[0]}"`);
+      const p = problemasDeTexto(h.replace(/<[^>]*>/g, " "));
+      if (p.length) throw new Error(`${onde}: ${p.join(", ")}`);
+    };
+    await conf("motor v3 na tela: duelos (4 balanças, só o nível), por quê da troca, etiquetas no placar (grogue, preso, sem gás), faixa do momento decisivo com a dica de cada ação e a tendência dele", async () => {
+      const vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento" || vs.minhaAcao) throw new Error("estado inesperado da luta: " + vs.status + " " + vs.minhaAcao);
+      const eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      let m = await abrir(`luta/${lid}`), nos = desde(m);
+      const du = nos.filter((n) => tem(n, "jxj-duelos")).pop();
+      if (!du) throw new Error("sem os duelos");
+      const hd = String(du.innerHTML);
+      for (const [k, nome] of [["trocacao", "Trocação"], ["poder", "Poder"], ["queda", "Queda"], ["chao", "Chão"]]) {
+        const n = vs.duelos[k], cls = n < 0 ? "nm" + (-n) : "n" + n;
+        if (!new RegExp(`<span>${nome}</span>\\s*<i class="jxj-balanca ${cls}"`).test(hd)) throw new Error(`duelo ${nome} (${n}): ` + hd.replace(/\s+/g, " ").slice(0, 300));
+      }
+      const t0 = vs.trocas[vs.trocas.length - 1], leu = (t0.ev || []).find((x) => x.tipo === "leu");
+      const hl = String(nos.filter((n) => tem(n, "jxj-lance")).pop().innerHTML);
+      const esperado = !leu ? "Ninguém leu o outro" : leu.quem === eu ? "Você leu:" : "Ele leu:";
+      if (!hl.includes(esperado)) throw new Error(`por quê (${esperado}): ` + hl.replace(/\s+/g, " ").slice(0, 300));
+      if (nos.some((n) => tem(n, "jxj-momento-decisivo"))) throw new Error("faixa de momento sem momento");
+      const mexer = async (fn) => {
+        const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado);
+        await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]);
+      };
+      await mexer((e) => { e[ele].grogue = true; e[ele].energia = 1; });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const faixa = nos.filter((n) => tem(n, "jxj-momento-decisivo")).pop();
+      if (!faixa || !/Ele está grogue/.test(String(faixa.innerHTML)) || !tem(faixa, "favor")) throw new Error("faixa do grogue: " + (faixa && faixa.innerHTML));
+      if (nos.some((n) => tem(n, "jxj-ciclo-pe") || tem(n, "jxj-acao-ciclo"))) throw new Error("no momento, o ciclo continua na tela (a dica de cada botão já diz o que ganha e o que perde)");
+      const hEle = String(nos.find((n) => n.id === "jxj-card-ele").innerHTML);
+      if (!/jxj-tag grogue/.test(hEle) || !/sem gás/.test(hEle)) throw new Error("etiquetas no placar dele: " + hEle.replace(/\s+/g, " ").slice(0, 300));
+      const vg = await api(u1, "luta", { lutaId: lid }), botoes = nos.filter((n) => tem(n, "jxj-acao"));
+      for (const a of vg.acoes) if (!a.dica || !botoes.some((b) => tem(b, "com-dica") && String(b.innerHTML).includes(a.dica))) throw new Error("botão sem a dica de " + a.familia);
+      await mexer((e) => { e[ele].grogue = false; e[ele].energia = 6; e.pos = ele === "a" ? "cima_a" : "cima_b"; e.nivelPos = 1; e.encaixe = { quem: ele, v: "kimura" }; });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const f2 = nos.filter((n) => tem(n, "jxj-momento-decisivo")).pop();
+      if (!f2 || !/Você está preso/.test(String(f2.innerHTML)) || !tem(f2, "contra")) throw new Error("faixa do encaixe: " + (f2 && f2.innerHTML));
+      if (!/jxj-tag preso/.test(String(nos.find((n) => n.id === "jxj-card-eu").innerHTML))) throw new Error("placar sem a etiqueta preso");
+      semLixoV3(htmlDe(nos), "luta com momento");
+      /* de volta em pé; mais uma troca dele em pé e a tendência aparece (2+ trocas no papel de agora) */
+      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; });
+      const vt = await api(u1, "luta", { lutaId: lid });
+      await api(u1, "acao", { lutaId: lid, round: vt.round, troca: vt.troca, familia: "defesa" });
+      await api(u2, "acao", { lutaId: lid, round: vt.round, troca: vt.troca, familia: "defesa" });
+      const v3 = await api(u1, "luta", { lutaId: lid });
+      if (v3.status !== "andamento") throw new Error("a luta acabou numa troca de estudo");
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const td = nos.filter((n) => tem(n, "jxj-tendencia")).pop();
+      const ht = td ? String(td.innerHTML) : "";
+      const maior = v3.tendencia.cont.indexOf(Math.max(...v3.tendencia.cont)), icone = ["punho", "queda", "escudo", "avancar"][maior];
+      if (!td || !/Ele em pé/.test(ht) || !new RegExp(`class="mais[^"]*"[^>]*><svg[^>]*><use href="img/icones.svg#${icone}"`).test(ht)) throw new Error("tendência: " + ht.replace(/\s+/g, " ").slice(0, 300));
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,

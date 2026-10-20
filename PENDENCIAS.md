@@ -2422,3 +2422,22 @@ Falta, do dono, nesta ordem:
 3. Liberar o deploy (merge na `master`). O servidor funciona sem a
    migração (a tela só não oferece bot), então a ordem 3 antes de 1 não
    quebra nada.
+
+
+## 46. Online: motor v3, leitura e momentos decisivos (2026-10-20)
+
+Pedido do dono: a luta online parecia "uma sequência de escolhas sem
+fundamento e sorte"; ele quer estratégia, emoção, os atributos em jogo e
+"uma mecânica que realmente depende da habilidade do player". Plano
+aprovado ("pode"): leitura que decide, atributos na tela e momentos
+decisivos (grogue e finalização encaixada). FEITO no código, na branch
+`luta-estrategia` (LEIA-ME "Online: motor v3").
+
+Falta, do dono, nesta ordem:
+1. Ver os prints e os números e aprovar.
+2. Rodar `supabase_jxj_motor3.sql` no SQL Editor (só sobe a versão de
+   balanceamento pra 2 em `jxj_config`; não cria nem apaga nada). Antes
+   do deploy: com o banco em 1 e o código em 2, a tela promete respec
+   grátis e o banco cobra.
+3. Liberar o deploy (merge na `master`).
+

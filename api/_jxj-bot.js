@@ -86,9 +86,9 @@ export const PESOS_ESTILO = {
 /* ---------- valor de estado e equilíbrio de uma troca ---------- */
 /* chance de A vencer dali, regressão logística treinada pela ferramenta de
    balanço (treinarValor); motor mudou, a suíte jxjbot mostra os pesos novos */
-export const PESOS_VALOR = [-0.04203615557392559, 0.49466019220818924, 0.9456903688634037, 0.31886717604694076,
-  0.10962301237809013, 0.07815412818302735, 0.2438415374104045, 0.03726139104896311, 0.27814987498963945,
-  0.0540641197922806, 0.33230565636860493, 0.1706789830673897, -0.0862902248629841, 0.3151045451266708, 0.10065323175996282];
+export const PESOS_VALOR = [-0.04428163015542017, 0.4900652135317617, 0.9645936670001448, 0.35293915971269746,
+  0.1114446899976331, 0.024160934449267805, 0.22711870558313213, 0.018940343020683974, 0.2848475645595773,
+  0.058331072354313035, 0.2742220290886981, 0.23536890936846944, -0.06615259786665531, 0.3322988938054391, 0.12115416651842617];
 function feat(e, pA, pB) {
   const rd = e.round - 1, pts = e.pontos[rd] || { a: 0, b: 0 };
   const cards = e.cartoes.reduce((s, c) => s + (c.a - c.b), 0);
@@ -139,6 +139,31 @@ export function misturas(pA, pB, n = N_MISTURA) {
   }
   return r;
 }
+/* Momentos decisivos (motor v3): o estado de cada momento com A no papel de
+   "eu" (MOTOR.momentoDoLado), pra matriz de uma troca dele. Grogue com o
+   dano de um knockdown; encaixe na meia-guarda. */
+export const ESTADO_MOMENTO = {
+  grogue_eu: (b) => { b.a.grogue = true; b.a.dano = 20; },
+  grogue_ele: (b) => { b.b.grogue = true; b.b.dano = 20; },
+  enc_cima_eu: (b) => { b.pos = "cima_a"; b.nivelPos = 1; b.encaixe = { quem: "a", v: null }; },
+  enc_cima_ele: (b) => { b.pos = "cima_a"; b.nivelPos = 1; b.encaixe = { quem: "b", v: null }; },
+  enc_baixo_eu: (b) => { b.pos = "cima_b"; b.nivelPos = 1; b.encaixe = { quem: "a", v: null }; },
+  enc_baixo_ele: (b) => { b.pos = "cima_b"; b.nivelPos = 1; b.encaixe = { quem: "b", v: null }; },
+};
+/* O que quem não lê faz no momento: defende grogue, vai pro nocaute contra
+   o grogue, aperta a finalização que encaixou e defende quando está preso.
+   Dá pra ler (é o que a mistura de equilíbrio pune). */
+export const OBVIO = { grogue_eu: "defesa", grogue_ele: "golpes", enc_cima_eu: "queda", enc_baixo_eu: "queda", enc_cima_ele: "defesa", enc_baixo_ele: "defesa" };
+export function misturasDosMomentos(pA, pB, n = N_MISTURA) {
+  const r = {};
+  for (const [ch, montar] of Object.entries(ESTADO_MOMENTO)) {
+    const base = MOTOR.novaLuta(pA, pB);
+    montar(base);
+    const m = matriz(pA, pB, base, n), eq = equilibrio(m);
+    r[ch] = { a: eq.pa, b: eq.pb };
+  }
+  return r;
+}
 
 /* ---------- montar o bot ---------- */
 /* O próprio estilo aceita até 30 pontos (3 ramos de 10); o que sobra (nível
@@ -177,11 +202,12 @@ export const vitrine = (bot) => ({ nome: bot.nome, rosto: bot.rosto, estilo: bot
    bot como A (perfilBot no lado a da conta, como na ferramenta). */
 export function dadosDaLuta(bot, perfilHumano) {
   const q = (x) => Math.round(x * 1e4) / 1e4;
-  const mx = misturas(bot.perfil, perfilHumano);
-  const out = {};
+  const mx = misturas(bot.perfil, perfilHumano), mm = misturasDosMomentos(bot.perfil, perfilHumano);
+  const out = {}, mom = {};
   for (const [pos, x] of Object.entries(mx)) out[pos] = { a: x.a.map(q), b: x.b.map(q), m: x.m.map((l) => l.map(q)) };
+  for (const [ch, x] of Object.entries(mm)) mom[ch] = { a: x.a.map(q) };
   return { v: VERSAO_BOT, s: bot.s, estilo: bot.estilo, nivel: bot.nivel, build: bot.build,
-    rating: bot.rating, rd: bot.rd, vol: bot.vol, pol: politica(bot.s), mx: out };
+    rating: bot.rating, rd: bot.rd, vol: bot.vol, pol: politica(bot.s), mx: out, mm: mom };
 }
 
 /* ---------- jogar ---------- */
@@ -210,6 +236,10 @@ export function decidir(e, lado, d, hist, r) {
   if (e[lado].energia <= 1.5 && r() < 0.5) return "defesa";
   const x = r();
   if (x < d.pol.erro) return F[Math.floor(r() * 4)];
+  /* momento decisivo: o bot fraco faz o óbvio, o forte joga a mistura do
+     momento (luta criada antes do motor v3 não tem mm: segue a posição) */
+  const ch = MOTOR.momentoDoLado(e, lado);
+  if (ch && d.mm && d.mm[ch]) return x < d.pol.erro + d.pol.estiloP ? OBVIO[ch] : amostra(d.mm[ch].a, r);
   if (x < d.pol.erro + d.pol.estiloP) return amostra(PESOS_ESTILO[d.estilo][MOTOR.papel(e, lado)], r);
   const pos = posDoBot(e.pos, lado), m = d.mx[pos];
   if (r() >= d.pol.segue) return amostra(m.a, r);

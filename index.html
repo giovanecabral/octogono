@@ -8675,6 +8675,74 @@ function jxjCicloDe(acoes){
   /* "Ganha de X. Perde pra Y." (ou "Rende contra X.") -> {ganha:X, perde:Y} */
   return Object.fromEntries((acoes||[]).map(a=>{ const m=/(?:Ganha de|Rende contra) ([^.]+)\.\s*Perde pra ([^.]+)\./.exec(a.ciclo||""); return [a.familia,m?{ganha:m[1],perde:m[2]}:null]; }));
 }
+/* Online, motor v3 (2026-10-20, pedido do dono: "estratégia, emoção e os
+   atributos em jogo"): o que a tela mostra além do revamp.
+   - etiquetas no placar: grogue, preso (finalização encaixada) e sem gás;
+   - duelos de atributo: 4 balanças, só o nível (a build dele é secreta);
+     cada botão marca se o duelo da ação é seu ou dele;
+   - o por quê da troca: quem leu o outro (o ciclo decidiu) ou ninguém;
+   - o que ele mais fez no papel em que está agora (tendência);
+   - a faixa do momento decisivo e, nos botões, o efeito de cada ação nele. */
+const JXJ_DUELO_NOME={trocacao:"Trocação",poder:"Poder",queda:"Queda",chao:"Chão"};
+const JXJ_DUELO_NIVEL={"2":"vantagem clara sua","1":"vantagem sua","0":"parelho","-1":"vantagem dele","-2":"vantagem clara dele"};
+function jxjEtiquetas(e,l){
+  const st=e[l],out=[];
+  if(st.grogue)out.push(`<i class="jxj-tag grogue">grogue</i>`);
+  if(e.encaixe&&e.encaixe.quem!==l)out.push(`<i class="jxj-tag preso">${ICONE("cadeado")}preso</i>`);
+  if(st.cansado)out.push(`<i class="jxj-tag gas">sem gás</i>`);
+  return out.join("");
+}
+function jxjDuelos(d){
+  const sec=el("section","jxj-duelos");
+  sec.setAttribute&&sec.setAttribute("aria-label","Duelos de atributo: seus atributos contra os dele");
+  sec.innerHTML=Object.keys(JXJ_DUELO_NOME).map(k=>{
+    const n=Math.max(-2,Math.min(2,Math.round(Number(d[k])||0)));
+    return `<div class="jxj-duelo-at" title="${JXJ_DUELO_NOME[k]}: ${JXJ_DUELO_NIVEL[n]}"><span>${JXJ_DUELO_NOME[k]}</span>
+      <i class="jxj-balanca n${n<0?"m"+(-n):n}" role="img" aria-label="${JXJ_DUELO_NIVEL[n]}"><b></b></i></div>`;
+  }).join("")+`<small class="jxj-duelos-legenda"><span class="ele">dele</span><span class="eu">seu</span></small>`;
+  return sec;
+}
+/* nome da ação no papel em que cada um estava na troca (a variante diz o papel) */
+function jxjGrupoDaVariante(id,fam){
+  const x=id&&JXJ_DEF.acoes.variantes&&JXJ_DEF.acoes.variantes[id];
+  return x&&JXJ_DEF.acoes.familias[x.papel]?JXJ_DEF.acoes.familias[x.papel][x.familia]:fam;
+}
+function jxjPorque(t,eu){
+  const leu=(t.ev||[]).find(x=>x.tipo==="leu");
+  if(!t.acaoA||!t.acaoB)return"";
+  const ga=jxjGrupoDaVariante(t.varA,t.acaoA),gb=jxjGrupoDaVariante(t.varB,t.acaoB);
+  const [gEu,gEle]=eu==="a"?[ga,gb]:[gb,ga];
+  if(!leu)return `<p class="jxj-porque">Ninguém leu o outro: ${jxjEsc(gEu)} contra ${jxjEsc(gEle)}, decidiram os atributos.</p>`;
+  return leu.quem===eu?`<p class="jxj-porque bom">${ICONE("alvo")}<span>Você leu: ${jxjEsc(gEu)} ganha de ${jxjEsc(gEle)}.</span></p>`
+    :`<p class="jxj-porque ruim">${ICONE("alvo")}<span>Ele leu: ${jxjEsc(gEle)} ganha de ${jxjEsc(gEu)}.</span></p>`;
+}
+/* t.cont vem na ordem das famílias (golpes, queda, defesa, pressão) */
+function jxjTendencia(t){
+  if(!t||t.n<2||!Array.isArray(t.cont))return null;
+  const fams=["golpes","queda","defesa","pressao"],nomes=JXJ_DEF.acoes.familias[t.papel]||{},max=Math.max(...t.cont);
+  const onde={pe:"em pé",cima:"por cima",baixo:"por baixo"}[t.papel]||"";
+  const p=el("p","jxj-tendencia");
+  p.innerHTML=`<small>Ele ${onde}</small>`+fams.map((f,i)=>
+    `<span class="${t.cont[i]===max?"mais":""}${f===t.ultima?" ultima":""}" title="${nomes[f]||f}: ${t.cont[i]} de ${t.n}${f===t.ultima?", a última":""}">${ICONE(JXJ_ICONE_ACAO[f]||"luta")}${t.cont[i]}</span>`).join("");
+  p.setAttribute&&p.setAttribute("aria-label",`O que ele fez ${onde}: `+fams.map((f,i)=>`${nomes[f]||f} ${t.cont[i]}`).join(", "));
+  return p;
+}
+const JXJ_MOMENTO_TXT={
+  grogue_ele:["Ele está grogue","Esta troca pode acabar a luta."],
+  grogue_eu:["Você está grogue","Sobreviva a esta troca."],
+  enc_cima_eu:["Finalização encaixada","Aperte ou emende outra. Ele vai tentar escapar."],
+  enc_baixo_eu:["Finalização encaixada","Aperte ou emende outra. Ele vai tentar escapar."],
+  enc_cima_ele:["Você está preso","Defenda ou saia na força. Ele vai apertar ou emendar."],
+  enc_baixo_ele:["Você está preso","Defenda ou saia na força. Ele vai apertar ou emendar."],
+};
+function jxjFaixaMomento(ch){
+  const [tit,txt]=JXJ_MOMENTO_TXT[ch]||["Momento decisivo",""];
+  const grogue=ch.startsWith("grogue"),meu=ch.endsWith("_eu");
+  const f=el("div",`jxj-momento-decisivo ${grogue?"grogue":"encaixe"} ${meu===grogue?"contra":"favor"}`);
+  f.setAttribute&&f.setAttribute("role","status");
+  f.innerHTML=`${ICONE(grogue?"alerta":"cadeado")}<span><b>${tit}</b><small>${txt}</small></span>`;
+  return f;
+}
 function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}){
   const F=v.formato,e=v.estado,nomes=v.nomes;
   const tela=el("div","jxj-combate");
@@ -8688,7 +8756,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
       <b class="jxj-hud-nome"><span>${jxjEsc(n.nome)}</span>${souEu?"<small>você</small>":""}${n.bot?jxjSeloBot():""}</b>
       <span class="jxj-vida${vida<=35?" baixa":""}" role="img" aria-label="Vida ${vida} de 100"><i style="width:${vida}%"></i></span>
       <span class="jxj-folego" role="img" aria-label="Energia ${jxjNum(st.energia)} de ${jxjNum(st.energiaMax)}"><i style="width:${Math.round(ener*100)}%"></i></span>
-      <span class="jxj-hud-num"><i>${ICONE("lesao")}${vida}</i><i>${ICONE("energia")}${jxjNum(st.energia)}</i>${st.ausentes?`<i class="jxj-ausente">${st.ausentes} sem ação</i>`:""}</span>
+      <span class="jxj-hud-num"><i>${ICONE("lesao")}${vida}</i><i>${ICONE("energia")}${jxjNum(st.energia)}</i>${st.ausentes?`<i class="jxj-ausente">${st.ausentes} sem ação</i>`:""}${jxjEtiquetas(e,l)}</span>
     </div>`;
     return d;
   };
@@ -8704,6 +8772,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
     <span class="jxj-momento" role="img" aria-label="Momento ${mom>0?"a seu favor":mom<0?"a favor do adversário":"neutro"}"><span class="jxj-momento-trilho"><i style="left:${50+mom*12}%"></i></span></span>
     ${(e.cartoes||[]).length?`<span class="jxj-cartoes">${e.cartoes.map((c,i)=>`R${i+1} <b>${c[eu]}-${c[ele]}</b>`).join(" ")}</span>`:""}`;
   tela.appendChild(faixa);
+  if(v.duelos)tela.appendChild(jxjDuelos(v.duelos));
   /* o lance: a troca que acabou de ser resolvida */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
   if(ult){
@@ -8719,6 +8788,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
         <span class="eu">${ICONE(JXJ_ICONE_ACAO[famEu]||"luta")}<b>${jxjEsc(nomeVar(meu,famEu))}</b>${marca(eu)}</span>
         <i>contra</i>
         <span class="ele">${marca(ele)}<b>${jxjEsc(nomeVar(dele,famEle))}</b>${ICONE(JXJ_ICONE_ACAO[famEle]||"luta")}</span></div>
+      ${jxjPorque(ult,eu)}
       <p class="jxj-ultima-txt">${(ult.eventos||[]).map(jxjEsc).join(" ")||"Nada mudou."}</p>`;
     tela.appendChild(sec);
   }
@@ -8729,10 +8799,14 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
     zona.appendChild(el("p","jxj-espera",`${ICONE("check")}<span>Ação enviada: <b>${rot}</b>. ${v.adversarioEscolheu?"O adversário também escolheu. Resolvendo.":"Esperando o adversário."}</span>`));
   }else{
     const ciclo=jxjCicloDe(v.acoes);
+    /* momento decisivo: a faixa vem antes de tudo e o ciclo sai (a dica de
+       cada botão já diz o que ganha e o que perde naquela troca) */
+    const momDec=v.momentoDecisivo;
+    if(momDec)zona.appendChild(jxjFaixaMomento(momDec));
     const topo=el("div","jxj-zona-topo");
     topo.appendChild(el("p","jxj-rotulo",maoNova?`Round ${v.round}: ações novas${v.adversarioEscolheu?" · ele já escolheu":""}`:`Sua ação${v.adversarioEscolheu?" · ele já escolheu":""}`));
     /* em pé, os 4 nomes são os mesmos dos dois lados: um ciclo só */
-    if(v.papel==="pe"){
+    if(v.papel==="pe"&&!momDec){
       const porNome=Object.fromEntries(v.acoes.map(a=>[a.grupo,a]));
       const ordem=[]; let a=v.acoes.find(x=>x.familia==="golpes");
       for(let k=0;a&&k<4&&!ordem.includes(a);k++){ ordem.push(a); a=ciclo[a.familia]&&porNome[ciclo[a.familia].ganha]; }
@@ -8744,17 +8818,22 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
         topo.appendChild(c);
       }
     }
+    const tend=jxjTendencia(v.tendencia);
+    if(tend)topo.appendChild(tend);
     zona.appendChild(topo);
-    const g=el("div","jxj-acoes-luta"+(maoNova?" mao-nova":""));
+    const g=el("div","jxj-acoes-luta"+(maoNova?" mao-nova":"")+(momDec?" no-momento":""));
     for(const a of v.acoes){
       const custo=a.custo<0?`+${jxjNum(-a.custo)}`:a.custo===0?"0":`−${jxjNum(a.custo)}`;
       const custoTxt=a.custo<0?`recupera ${jxjNum(-a.custo)} de energia`:a.custo===0?"não gasta energia":`gasta ${jxjNum(a.custo)} de energia`;
       const cic=ciclo[a.familia];
-      const linhaCiclo=v.papel!=="pe"&&cic?`<span class="jxj-acao-ciclo">${ICONE("sobe")}${cic.ganha}${ICONE("desce")}${cic.perde}</span>`:"";
-      const b=el("button","jxj-acao",`<span class="jxj-acao-topo">${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}<em class="jxj-custo" aria-label="${custoTxt}">${ICONE("energia")}${custo}</em></span>
-        <b>${a.rotulo}</b>${a.grupo&&String(a.grupo).toLowerCase()!==String(a.rotulo).toLowerCase()?`<small>${a.grupo}</small>`:""}<span class="jxj-acao-efeito">${a.resumo||a.descricao}</span>${linhaCiclo}
-        <span class="jxj-acao-bolha">${a.descricao}${a.ciclo?` <i>${a.ciclo}</i>`:""}</span>`);
-      b.type="button"; b.title=`${a.descricao}${a.ciclo?" "+a.ciclo:""} (${custoTxt})`;
+      const linhaCiclo=v.papel!=="pe"&&cic&&!a.dica?`<span class="jxj-acao-ciclo">${ICONE("sobe")}${cic.ganha}${ICONE("desce")}${cic.perde}</span>`:"";
+      /* duelo de atributo da ação: seta pra cima se o seu leva vantagem, pra baixo se o dele */
+      const nd=a.duelo&&v.duelos?v.duelos[a.duelo]:0;
+      const marcaDuelo=nd?`<em class="jxj-acao-duelo ${nd>0?"bom":"ruim"}" aria-label="${JXJ_DUELO_NOME[a.duelo]}: ${nd>0?"vantagem sua":"vantagem dele"}">${ICONE(nd>0?"sobe":"desce")}</em>`:"";
+      const b=el("button","jxj-acao"+(a.dica?" com-dica":""),`<span class="jxj-acao-topo"><span class="jxj-acao-ico">${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}${marcaDuelo}</span><em class="jxj-custo" aria-label="${custoTxt}">${ICONE("energia")}${custo}</em></span>
+        <b>${a.rotulo}</b>${a.grupo&&String(a.grupo).toLowerCase()!==String(a.rotulo).toLowerCase()?`<small>${a.grupo}</small>`:""}<span class="jxj-acao-efeito">${a.dica||a.resumo||a.descricao}</span>${linhaCiclo}
+        <span class="jxj-acao-bolha">${a.dica?`<i class="dica">${a.dica}</i>`:""}${a.descricao}${a.ciclo?` <i>${a.ciclo}</i>`:""}</span>`);
+      b.type="button"; b.title=`${a.dica?a.dica+" ":""}${a.descricao}${a.ciclo?" "+a.ciclo:""} (${custoTxt})`;
       /* toque longo: mostra a frase inteira e não manda a ação */
       let segura=null,segurou=false;
       b.onpointerdown=ev=>{ if(ev&&ev.pointerType==="mouse")return; segurou=false; segura=setTimeout(()=>{ segurou=true; b.classList.add("segurando"); },450); };
@@ -8798,6 +8877,11 @@ function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null}={}){
     else if(e.tipo==="queda"||e.tipo==="puxouGuarda"||e.tipo==="raspou"||e.tipo==="levantou"||e.tipo==="juizLevantou")
       depois(()=>{ if(e.tipo==="queda"||e.tipo==="puxouGuarda")SOM.queda(); anima(document.getElementById("jxj-posicao"),"jxj-muda"); });
     else if(e.tipo==="subFalhou")depois(()=>{ SOM.quaseFinalizacao(); anima(card(alvo),"jxj-apertado"); },600);
+    /* motor v3: grogue balança o placar de quem ficou; a grade é golpe; encaixe e emenda apertam quem está preso */
+    else if(e.tipo==="grogue")depois(()=>anima(card(e.quem),"jxj-grogue"),500);
+    else if(e.tipo==="grade")depois(()=>{ SOM.golpe(); anima(card(alvo),"jxj-apanhou"); });
+    else if(e.tipo==="encaixou"||e.tipo==="emendou")depois(()=>{ SOM.quaseFinalizacao(); anima(card(alvo),"jxj-apertado"); },600);
+    else if(e.tipo==="escapou")depois(()=>SOM.evento());
     else if(e.tipo==="bloqueou")depois(()=>SOM.golpeLeve());
     else if(e.tipo==="fim"&&(e.metodo==="KO"||e.metodo==="TKO"))depois(()=>{ SOM.nocaute();
       if(!reduceMotion()){ document.body.classList.add("ko"); setTimeout(()=>document.body.classList.remove("ko"),440); } },1200);

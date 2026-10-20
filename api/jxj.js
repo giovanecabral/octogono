@@ -198,6 +198,24 @@ async function processarLuta(lid, uid) {
 }
 
 const nomesDaLuta = (L) => ({ a: (L.nomes.a || {}).nome || "A", b: (L.nomes.b || {}).nome || "B" });
+/* O que o adversário fez no papel em que ele está agora (em pé, por cima
+   ou por baixo), contado das trocas já resolvidas: a mesma informação do
+   registro da luta, só somada, pra ajudar a ler o padrão dele (v3). Troca
+   em que ele não mandou ação não conta; a troca aberta nunca entra (ela não
+   está em trocas). cont vem na ordem de MOTOR.FAMILIAS. */
+function tendenciaDoAdversario(trocas, lado, papelDele) {
+  const o = outroLado(lado), cont = [0, 0, 0, 0];
+  let ultima = null, n = 0;
+  for (const t of trocas || []) {
+    const fam = o === "a" ? t.acao_a : t.acao_b;
+    if (!MOTOR.FAMILIAS.includes(fam)) continue;
+    const esc = (t.eventos || []).find((ev) => ev && ev.tipo === "escolha");
+    const v = esc ? MOTOR.VARIANTE_POR_ID[o === "a" ? esc.va : esc.vb] : null;
+    if (!v || v.papel !== papelDele) continue;
+    cont[MOTOR.FAMILIAS.indexOf(fam)]++; n++; ultima = fam;
+  }
+  return { papel: papelDele, n, cont, ultima };
+}
 /* O que o jogador vê da luta: nunca a ação do adversário na troca aberta,
    nunca a semente antes do fim, nunca o perfil (build) do adversário. */
 function vistaDaLuta(d, uid) {
@@ -207,6 +225,10 @@ function vistaDaLuta(d, uid) {
   const acoesAbertas = Object.fromEntries((d.acoes || []).map((a) => [a.lado, a.familia]));
   const estado = L.estado;
   const meuPerfil = lado && L.perfis ? L.perfis[lado] : null;
+  const andando = !!(lado && estado && L.status === "andamento");
+  /* grogue e cansaço são públicos (a tela dos dois mostra); o encaixe diz só quem encaixou */
+  const ladoVisto = (x, l) => ({ energia: Math.round(x.energia * 10) / 10, energiaMax: L.perfis ? Math.round(MOTOR.energiaMax(L.perfis[l]) * 10) / 10 : 10,
+    dano: Math.round(x.dano), ausentes: x.ausentesSeguidas, total: x.total, grogue: !!x.grogue, cansado: x.energia <= MOTOR.K.cansacoLimite });
   const vista = {
     id: L.id, tipo: L.tipo, bot: !!L.bot, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
     confirmacaoAte: L.confirmacao_ate, confirmado: { a: L.confirmado_a, b: L.confirmado_b },
@@ -214,10 +236,16 @@ function vistaDaLuta(d, uid) {
     formato: MOTOR.FORMATO,
     estado: estado ? {
       pos: estado.pos, nivelPos: estado.nivelPos, momento: estado.momento,
-      a: { energia: Math.round(estado.a.energia * 10) / 10, energiaMax: L.perfis ? Math.round(MOTOR.energiaMax(L.perfis.a) * 10) / 10 : 10, dano: Math.round(estado.a.dano), ausentes: estado.a.ausentesSeguidas, total: estado.a.total },
-      b: { energia: Math.round(estado.b.energia * 10) / 10, energiaMax: L.perfis ? Math.round(MOTOR.energiaMax(L.perfis.b) * 10) / 10 : 10, dano: Math.round(estado.b.dano), ausentes: estado.b.ausentesSeguidas, total: estado.b.total },
+      a: ladoVisto(estado.a, "a"), b: ladoVisto(estado.b, "b"),
+      encaixe: estado.encaixe && estado.pos !== "pe" ? { quem: estado.encaixe.quem } : null,
       pontos: estado.pontos, cartoes: estado.cartoes,
     } : null,
+    /* v3: momento decisivo de quem pede (grogue_eu, enc_cima_ele...), os
+       duelos de atributo (só o nível, de -2 a 2: a build dele não sai daqui)
+       e o que ele fez no papel em que está agora */
+    momentoDecisivo: andando ? MOTOR.momentoDoLado(estado, lado) : null,
+    duelos: andando && L.perfis ? MOTOR.duelos(estado, L.perfis, lado) : null,
+    tendencia: andando ? tendenciaDoAdversario(d.trocas, lado, MOTOR.papel(estado, outroLado(lado))) : null,
     minhaAcao: lado ? acoesAbertas[lado] || null : null,
     /* o bot já tem a ação da troca (sai da semente), só não foi gravada */
     adversarioEscolheu: lado ? (L.bot && L.status === "andamento" ? true : !!acoesAbertas[outroLado(lado)]) : null,
@@ -232,7 +260,9 @@ function vistaDaLuta(d, uid) {
       return { round: t.round, troca: t.troca, acaoA: t.acao_a, acaoB: t.acao_b, varA: esc.va || null, varB: esc.vb || null,
         ev: evs.filter((ev) => ev.tipo !== "escolha").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, metodo: ev.metodo || null,
           /* dano do golpe (o mesmo número do texto), pro lance da tela */
-          dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null })),
+          dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null,
+          /* leitura (v3): a família de quem leu e a do outro, pro "por quê" da troca */
+          ...(ev.tipo === "leu" ? { fam: ev.fam, vs: ev.vs } : {}) })),
         eventos: evs.map((ev) => MOTOR.textoEvento(ev, nomes)).filter(Boolean) };
     }),
   };
@@ -255,7 +285,7 @@ function narracaoLocal(vista) {
   const porRound = {};
   for (const t of vista.trocas) (porRound[t.round] = porRound[t.round] || []).push(...t.eventos);
   for (const [rd, evs] of Object.entries(porRound)) {
-    const fortes = evs.filter((x) => /derrubou|levou a luta pro chão|finalização|raspou|passou a guarda|ground and pound|contra-atacou/.test(x));
+    const fortes = evs.filter((x) => /derrubou|grogue|encaixou|encurralou|levou a luta pro chão|finalização|raspou|passou a guarda|ground and pound|contra-atacou/.test(x));
     const escolhidos = (fortes.length ? fortes : evs).slice(0, 2);
     if (escolhidos.length) partes.push(`Round ${rd}: ${escolhidos.join(" ")}`);
   }

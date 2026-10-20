@@ -1722,3 +1722,78 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-lance.nova .jxj-dano,.jxj-hud-lado.jxj-apanhou,.jxj-hud-lado.jxj-caiu,.jxj-hud-lado.jxj-apertado{animation:none}
   .jxj-vida i,.jxj-folego i{transition:none}
 }
+
+/* ===== Online, motor v3 (2026-10-20, pedido do dono: estratégia, emoção e
+   os atributos em jogo): etiquetas no placar, duelos de atributo, por quê
+   da troca, tendência dele, faixa do momento decisivo e botões com o efeito
+   de cada ação no momento. Peso visual baixo pra tudo que fica sempre na
+   tela; só a faixa do momento grita, e só quando ele acontece. ===== */
+.jxj-tag{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;font-style:normal;font-family:var(--f-ui);font-weight:800;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;line-height:1.5}
+.jxj-hud-num .jxj-tag .ico{width:11px;height:11px;color:inherit}
+.jxj-tag.grogue{color:#fff;background:var(--sangue);animation:jxjTagPulsa 1.1s ease-in-out infinite}
+.jxj-tag.preso{color:#0B0C10;background:var(--ouro)}
+.jxj-tag.gas{color:var(--ouro);background:rgba(212,160,23,.14)}
+@keyframes jxjTagPulsa{0%,100%{opacity:1}50%{opacity:.55}}
+.jxj-hud-num{flex-wrap:wrap}
+.jxj-hud-lado.jxj-grogue{animation:jxjGrogue 1s ease}
+@keyframes jxjGrogue{0%,100%{transform:none}20%{transform:rotate(-1.2deg) translateX(-4px)}45%{transform:rotate(1deg) translateX(4px)}70%{transform:rotate(-.6deg)}}
+
+.jxj-duelos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:end;gap:6px 16px;padding:8px 14px 6px;
+  background:rgba(10,11,15,.6);border:1px solid var(--linha-forte)}
+.jxj-duelo-at{display:flex;flex-direction:column;gap:5px;min-width:0}
+.jxj-duelo-at span{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--osso-2);text-align:center}
+/* a balança: o meio é parelho; pra direita (verde) a vantagem é sua, pra esquerda (vermelho) é dele */
+.jxj-balanca{position:relative;display:block;height:6px;background:rgba(255,255,255,.08)}
+.jxj-balanca::after{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--cinza)}
+.jxj-balanca b{position:absolute;top:0;bottom:0}
+.jxj-balanca.n1 b{left:50%;width:25%;background:var(--ganho)}
+.jxj-balanca.n2 b{left:50%;width:50%;background:var(--ganho)}
+.jxj-balanca.nm1 b{right:50%;width:25%;background:var(--sangue-vivo)}
+.jxj-balanca.nm2 b{right:50%;width:50%;background:var(--sangue-vivo)}
+.jxj-duelos-legenda{grid-column:1/-1;display:flex;justify-content:space-between;font-family:var(--f-ui);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--cinza)}
+.jxj-duelos-legenda .ele{color:var(--sangue-vivo)}
+.jxj-duelos-legenda .eu{color:var(--ganho)}
+
+.jxj-porque{display:flex;align-items:center;gap:6px;margin:6px 0 2px;font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.04em;color:var(--cinza)}
+.jxj-porque .ico{flex:none;width:16px;height:16px}
+.jxj-porque.bom{color:var(--ganho)}
+.jxj-porque.ruim{color:var(--sangue-vivo)}
+
+.jxj-tendencia{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0;font-family:var(--f-ui);font-size:13px;letter-spacing:.06em;color:var(--cinza)}
+.jxj-tendencia small{font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+.jxj-tendencia span{display:inline-flex;align-items:center;gap:3px;padding:1px 4px;border-bottom:2px solid transparent}
+.jxj-tendencia span .ico{width:14px;height:14px;color:var(--cinza)}
+.jxj-tendencia span.mais{color:var(--osso);font-weight:700}
+.jxj-tendencia span.mais .ico{color:var(--sangue)}
+.jxj-tendencia span.ultima{border-bottom-color:var(--osso-2)}
+
+.jxj-momento-decisivo{display:flex;align-items:center;gap:12px;padding:10px 14px;border:2px solid var(--sangue-vivo);background:rgba(215,38,30,.16);
+  animation:jxjMomento 1.4s ease-in-out infinite}
+.jxj-momento-decisivo > .ico{flex:none;width:28px;height:28px;color:var(--sangue-vivo)}
+.jxj-momento-decisivo span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.jxj-momento-decisivo b{font-family:var(--f-titulo);font-size:24px;line-height:1;letter-spacing:.02em;text-transform:uppercase;color:#fff}
+.jxj-momento-decisivo small{font-family:var(--f-ui);font-size:14px;letter-spacing:.04em;color:var(--osso-2)}
+.jxj-momento-decisivo.favor{border-color:var(--ouro);background:rgba(212,160,23,.14);animation-name:jxjMomentoOuro}
+.jxj-momento-decisivo.favor > .ico{color:var(--ouro)}
+@keyframes jxjMomento{0%,100%{box-shadow:0 0 0 0 rgba(215,38,30,.0)}50%{box-shadow:0 0 0 6px rgba(215,38,30,.22)}}
+@keyframes jxjMomentoOuro{0%,100%{box-shadow:0 0 0 0 rgba(212,160,23,0)}50%{box-shadow:0 0 0 6px rgba(212,160,23,.2)}}
+.jxj-acoes-luta.no-momento .jxj-acao{border-color:rgba(212,160,23,.45)}
+.jxj-acao.com-dica .jxj-acao-efeito{-webkit-line-clamp:3;color:var(--ouro)}
+.jxj-acao .jxj-acao-bolha i.dica{color:var(--ouro)}
+.jxj-acao-ico{display:inline-flex;align-items:center;gap:4px}
+.jxj-acao-duelo{display:inline-flex;font-style:normal}
+.jxj-acao .jxj-acao-topo .jxj-acao-duelo .ico{width:15px;height:15px}
+.jxj-acao-duelo.bom .ico{color:var(--ganho)}
+.jxj-acao-duelo.ruim .ico{color:var(--sangue-vivo)}
+@media (max-width:720px){
+  .jxj-duelos{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;padding:8px 10px 6px}
+  .jxj-momento-decisivo{padding:8px 10px;gap:10px}
+  .jxj-momento-decisivo b{font-size:20px}
+  .jxj-momento-decisivo small{font-size:13px}
+  .jxj-porque{font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){
+  .jxj-tag.grogue,.jxj-momento-decisivo,.jxj-hud-lado.jxj-grogue{animation:none}
+}
