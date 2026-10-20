@@ -2872,9 +2872,29 @@ conta" ⇄ "Já tenho conta"), sem rota nem parâmetro.
   (`"Entrando…"`/`"Criando conta…"`) e trava e-mail/senha/Google
   (`trava(true)`) assim que clicado, antes de qualquer `await` —
   impede duplo clique, sem precisar de debounce.
-- Testado em `node testar.js inicial` (34 verificações), incluindo
-  troca de modo, checklist ao vivo, mostrar/ocultar, tradução de erro
-  e o botão nascendo desabilitado.
+- **E-mail que já tem conta (2026-10-19, pedido do dono).** Com a
+  confirmação ligada, o `signUp` do Supabase NÃO devolve erro pra e-mail
+  já cadastrado (é assim que ele esconde quem tem conta): devolve um
+  usuário com `identities` vazio e não manda e-mail nenhum. Antes a tela
+  pedia pra confirmar um e-mail que nunca chegava. `criarConta` trata
+  `identities` vazio como "User already registered": a tela mostra "Este
+  e-mail já está cadastrado." e o botão "Entrar com este e-mail" (modo
+  Entrar, e-mail preenchido). Conta criada e ainda não confirmada vem COM
+  identidade (o Supabase manda o e-mail de novo) e segue pra confirmação,
+  como antes.
+- **Reenvio do e-mail de confirmação: 1 minuto (2026-10-19, pedido do
+  dono).** A tela de confirmação já nasce com "Reenviar e-mail (60s)"
+  travado, contando a partir do envio (`enviadoEm`, criação ou reenvio);
+  depois de reenviar, trava de novo. O Supabase também recusa reenvio
+  antes de 60 s. Verificado em 2026-10-19 sem criar conta: o link do
+  e-mail volta pra `https://octogono.fun/` (Site URL; um `redirect_to`
+  fora da lista também cai nele) e o domínio tem DKIM, SPF e DMARC do
+  Resend no DNS.
+- Testado em `node testar.js inicial`, incluindo troca de modo,
+  checklist ao vivo, mostrar/ocultar, tradução de erro, o botão nascendo
+  desabilitado, e-mail já cadastrado sem erro do Supabase (aviso e botão
+  pro Entrar) e a contagem de 1 minuto do reenvio (dente provado tirando
+  cada uma das duas mudanças).
 
 **Configuração (uma vez, fora do código)**:
 1. Criar projeto em supabase.com, plano gratuito.

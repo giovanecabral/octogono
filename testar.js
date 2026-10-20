@@ -4568,7 +4568,15 @@ function testarTelaInicial() {
         signUp: async ({ email, password }) => {
           chamadasAuth.push(["signUp", email, password]);
           if (email === "repetido@teste.com") return { error: { message: "User already registered" } };
-          return { data: { session: null }, error: null }; // precisa confirmar e-mail
+          /* com a confirmação ligada, e-mail que já tem conta NÃO dá erro:
+             vem um usuário sem identidade (é assim que o Supabase esconde
+             quem tem conta) */
+          if (email === "ja-tem@teste.com") return { data: { session: null, user: { id: "x", identities: [] } }, error: null };
+          return { data: { session: null, user: { id: "n", identities: [{ provider: "email" }] } }, error: null }; // precisa confirmar e-mail
+        },
+        resend: async ({ type, email }) => {
+          chamadasAuth.push(["resend", type, email]);
+          return { error: null };
         },
         signInWithPassword: async ({ email, password }) => {
           chamadasAuth.push(["signInWithPassword", email, password]);
@@ -4843,6 +4851,59 @@ function testarTelaInicial() {
       const chamada = chamadasAuth.find(c => c[0] === "updateUser");
       if (!chamada || chamada[1] !== "novaSenha123")
         throw new Error("updateUser não recebeu a senha certa: " + JSON.stringify(chamada));
+    });
+
+    /* Pedido do dono (2026-10-19): e-mail já cadastrado avisa (o Supabase
+       não dá erro) e o reenvio do e-mail de confirmação só libera 1 minuto
+       depois do envio, com a contagem no botão. O ambiente falso não roda
+       setInterval: os tiques são guardados aqui e chamados à mão. */
+    const tiques = [];
+    const preencherCriar = (email) => {
+      const senha = env.todos.filter(n => n.id === "conta-senha").pop(), conf = env.todos.filter(n => n.id === "conta-senha-conf").pop();
+      senha.value = "s".repeat(UI.SENHA_MIN); conf.value = senha.value; senha.oninput(); conf.oninput();
+      env.todos.filter(n => n.type === "email").pop().value = email;
+      env.todos.filter(n => n.tagName === "button" && n.innerHTML === "Criar conta").pop().onclick();
+    };
+    await passo("Conta/Criar (e-mail já cadastrado): formulário novo no modo Criar, manda o cadastro", () => {
+      env.sandbox.setInterval = (fn) => { tiques.push(fn); return tiques.length; };
+      env.sandbox.clearInterval = (id) => { if (id) tiques[id - 1] = null; };
+      UI.screenInicio();
+      cardRota("conta").onclick();
+      env.todos.filter(n => n.id === "conta-link-modo").pop().onclick({ preventDefault(){} });
+      preencherCriar("ja-tem@teste.com");
+    });
+    await passo("Conta/Criar (e-mail já cadastrado): avisa em português, não abre a confirmação e o botão leva pro Entrar com o e-mail preenchido", () => {
+      const msg = env.todos.filter(n => n.tagName === "p" && ["hint", "msg-erro"].every(c => (n.className || "").split(" ").includes(c))).pop();
+      if (!msg || msg.textContent !== "Este e-mail já está cadastrado.") throw new Error("aviso: " + (msg && msg.textContent));
+      if (env.todos.filter(n => n.tagName === "h4").pop().innerHTML === "Confirme seu e-mail") throw new Error("abriu a confirmação pra um e-mail que já tem conta");
+      const ir = env.todos.filter(n => n.id === "conta-ir-entrar").pop();
+      if (!ir || ir.innerHTML !== "Entrar com este e-mail") throw new Error("sem o botão Entrar com este e-mail");
+      ir.onclick();
+      const h4 = env.todos.filter(n => n.tagName === "h4").pop(), email = env.todos.filter(n => n.id === "conta-email").pop();
+      if (h4.innerHTML !== "Entrar" || email.value !== "ja-tem@teste.com") throw new Error(`depois do botão: título ${h4.innerHTML}, e-mail ${email.value}`);
+    });
+    await passo("Conta/Criar (conta nova): volta pro Criar e cria", () => {
+      env.todos.filter(n => n.id === "conta-link-modo").pop().onclick({ preventDefault(){} });
+      preencherCriar("novo@teste.com");
+    });
+    await passo("Confirmação: o reenvio nasce travado por 1 minuto com a contagem no botão e libera no fim do minuto", () => {
+      if (env.todos.filter(n => n.tagName === "h4").pop().innerHTML !== "Confirme seu e-mail") throw new Error("não abriu a confirmação");
+      const btn = env.todos.filter(n => n.id === "conta-reenviar").pop();
+      if (!btn || !btn.disabled || btn.textContent !== "Reenviar e-mail (60s)") throw new Error(`no começo: ${btn && btn.disabled} "${btn && btn.textContent}"`);
+      const tique = tiques.filter(Boolean).pop();
+      if (!tique) throw new Error("a contagem não foi ligada");
+      for (let k = 0; k < 59; k++) tique();
+      if (!btn.disabled || btn.textContent !== "Reenviar e-mail (1s)") throw new Error(`aos 59 s: ${btn.disabled} "${btn.textContent}"`);
+      tique();
+      if (btn.disabled || btn.textContent !== "Reenviar e-mail") throw new Error(`depois do minuto: ${btn.disabled} "${btn.textContent}"`);
+      btn.onclick();
+    });
+    await passo("Confirmação: reenviar chama o Supabase (signup, mesmo e-mail) e trava de novo por 1 minuto", () => {
+      const ch = chamadasAuth.filter(c => c[0] === "resend").pop();
+      if (!ch || ch[1] !== "signup" || ch[2] !== "novo@teste.com") throw new Error("resend: " + JSON.stringify(ch));
+      const btn = env.todos.filter(n => n.id === "conta-reenviar").pop();
+      if (!btn.disabled || btn.textContent !== "Reenviar e-mail (60s)") throw new Error(`depois de reenviar: ${btn.disabled} "${btn.textContent}"`);
+      env.sandbox.setInterval = () => 0; env.sandbox.clearInterval = () => {};
     });
 
     UI.screenInicio();

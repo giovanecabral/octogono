@@ -1157,6 +1157,14 @@ async function criarConta(email,senha){
   try{
     const{data,error}=await sb.auth.signUp({email,password:senha});
     if(error)return{ok:false,erro:error.message};
+    /* E-mail que já tem conta (pedido do dono, 2026-10-19): com a
+       confirmação ligada o Supabase não devolve erro, pra não revelar
+       quem tem conta. Devolve um usuário sem nenhuma identidade e não
+       manda e-mail; sem este aviso a tela pedia pra confirmar um e-mail
+       que nunca chega. Conta criada e não confirmada vem com identidade
+       (o Supabase manda o e-mail de novo) e segue pra confirmação. */
+    const u=data&&data.user;
+    if(u&&Array.isArray(u.identities)&&u.identities.length===0)return{ok:false,erro:"User already registered",jaCadastrado:true};
     evento("criou_conta",{via:"email"});
     /* Supabase devolve sessão nula quando confirmação de e-mail está
        ligada (o normal) — cadastro funcionou, só falta confirmar. */
@@ -1269,6 +1277,11 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
   let modo=modoInicial==="criar"?"criar":"entrar";
   let emailPendente=null; // e-mail aguardando confirmação — não persiste:
   // fechar a aba e voltar cai direto no formulário normal, de propósito.
+  /* hora do último envio do e-mail de confirmação (criação ou reenvio):
+     o reenvio só libera 1 minuto depois dele (pedido do dono, 2026-10-19;
+     o Supabase também recusa antes disso) */
+  let enviadoEm=0;
+  const ESPERA_REENVIO_S=60;
 
   function campoSenha(rotulo,idBase,autocomplete){
     const rot=el("label","campo-rot",rotulo);
@@ -1313,12 +1326,16 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
       if(inp)inp.value=email;
     };
     const btnReenviar=el("button","btn btn-ghost","Reenviar e-mail");
+    btnReenviar.id="conta-reenviar";
     btnReenviar.onclick=async()=>{
       btnReenviar.disabled=true;msg.className="hint";msg.textContent="Reenviando…";
       const r=await reenviarConfirmacaoEmail(email);
-      if(r.ok){msg.className="hint msg-ok";msg.textContent="E-mail reenviado.";travarReenvio(btnReenviar,60);}
+      if(r.ok){enviadoEm=Date.now();msg.className="hint msg-ok";msg.textContent="E-mail reenviado.";travarReenvio(btnReenviar,ESPERA_REENVIO_S);}
       else{msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnReenviar.disabled=false;}
     };
+    /* o e-mail acabou de sair: o reenvio espera o minuto, com a contagem no botão */
+    const resta=Math.ceil((enviadoEm+ESPERA_REENVIO_S*1000-Date.now())/1000);
+    if(resta>0)travarReenvio(btnReenviar,Math.min(ESPERA_REENVIO_S,resta));
     container.append(p,aviso,btnEntrar,btnReenviar,msg);
   }
 
@@ -1382,8 +1399,18 @@ function montarFormularioConta(container,{modoInicial="entrar"}={}){
       }else{
         btnAcao.textContent="Criando conta…";
         const r=await criarConta(email,senha);
-        if(!r.ok){msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnAcao.textContent="Criar conta";trava(false);return;}
-        if(r.precisaConfirmar){emailPendente=email;render();}
+        if(!r.ok){
+          msg.className="hint msg-erro";msg.textContent=traduzErroSupabase(r.erro);btnAcao.textContent="Criar conta";trava(false);
+          /* e-mail já cadastrado: um toque leva pro Entrar com ele preenchido */
+          if(/already registered|already exists/i.test(String(r.erro||""))){
+            const velho=document.getElementById("conta-ir-entrar"); if(velho&&velho.remove)velho.remove();
+            const ir=el("button","btn btn-ghost","Entrar com este e-mail");ir.type="button";ir.id="conta-ir-entrar";
+            ir.onclick=()=>{ modo="entrar";render(); const inp=document.getElementById("conta-email"); if(inp)inp.value=email; };
+            msg.after?msg.after(ir):container.appendChild(ir);
+          }
+          return;
+        }
+        if(r.precisaConfirmar){enviadoEm=Date.now();emailPendente=email;render();}
         else setTimeout(()=>location.reload(),1200);
       }
     };
