@@ -8,6 +8,7 @@
      node ferramentas/jxj-balanco.mjs builds     # builds diferentes do nível 30 contra a típica
      node ferramentas/jxj-balanco.mjs atributos  # valor de 1 ponto de cada atributo
      node ferramentas/jxj-balanco.mjs variantes  # valor de cada variante de ação (2026-10-04)
+     node ferramentas/jxj-balanco.mjs bots       # bot de cada habilidade contra jogadores-modelo (2026-10-19)
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -25,8 +26,9 @@ import path from "node:path";
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const M = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
 const A = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
+const BOT = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-bot.js")).href);
 const F = M.FAMILIAS, ESTS = A.ESTILOS_IDS;
-export { M as MOTOR, A as ARVORES };
+export { M as MOTOR, A as ARVORES, BOT };
 
 /* gerador simples e reprodutível pra estratégia */
 const lcg = (s) => () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -283,6 +285,57 @@ export function valorDoAtributo(estilo, atr, pts = 3, n = 1000) {
   return soma / ESTS.length / pts;
 }
 
+/* ---------- bots do Online (2026-10-19) ---------- */
+/* Luta contra bot pelo caminho do servidor: o humano-modelo é o lado a; o
+   bot (lado b) escolhe com BOT.acaoDoBot, que só lê o estado, as trocas
+   gravadas e a semente. Devolve o estado final. */
+export function lutaContraBot(pH, estrH, bot, dados, semente) {
+  const perfis = { a: pH, b: bot.perfil }, trocas = [];
+  let h = 7; for (const ch of String(semente)) h = (h * 31 + ch.charCodeAt(0)) % 2147483647;
+  const rEst = lcg(h);
+  let e = M.novaLuta(pH, bot.perfil), n = 0;
+  while (!e.fim && n++ < 100) {
+    const aH = estrH(e, "a", pH, rEst);
+    const aB = BOT.acaoDoBot({ estado: e, semente, trocas, dados, lado: "b" });
+    const r = M.resolverTroca(e, perfis, { a: aH, b: aB }, semente);
+    trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
+    e = r.estado;
+  }
+  return e;
+}
+export const HUMANOS_MODELO = {
+  acaso: () => aleatoria(),
+  spam: () => spam("golpes"),
+  estilo: (pH, pB, est) => heuristica(est),
+  racional: (pH, pB) => racional(pH, pB),
+  adaptativo: (pH, pB) => adaptativa(pH, pB),
+};
+/* Vitórias (%) do humano-modelo contra o bot de habilidade s. Cada par: um
+   humano de build típica (estilo em rodízio) e um bot montado como no
+   servidor (estilo e build sorteados), no mesmo nível. */
+export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "" } = {}) {
+  const res = {};
+  for (const nivel of niveis) for (let i = 0; i < pares; i++) {
+    const sH = ESTS[i % ESTS.length], pH = perfilTipico(sH, nivel);
+    for (const s of ss) {
+      const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
+      const bot = BOT.montarBot({ nivel, categoria: "middleweight", rating, semente: `mb${sal}:${nivel}:${i}:${s}` });
+      const dados = BOT.dadosDaLuta(bot, pH);
+      for (const hu of humanos) {
+        let v = 0, d = 0;
+        for (let k = 0; k < n; k++) {
+          const fim = lutaContraBot(pH, HUMANOS_MODELO[hu](pH, bot.perfil, sH), bot, dados, `lb${sal}:${nivel}:${i}:${s}:${hu}:${k}`).fim;
+          if (fim.vencedor === "a") v++; else if (fim.vencedor === "b") d++;
+        }
+        (res[hu + ":" + s] ||= []).push(100 * v / Math.max(1, v + d));
+      }
+    }
+  }
+  const out = {};
+  for (const [k, l] of Object.entries(res)) out[k] = l.reduce((a, b) => a + b, 0) / l.length;
+  return out;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const cmd = process.argv[2], N = Number(process.argv[3]) || 0;
   const f1 = (x) => x.toFixed(1);
@@ -314,7 +367,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log("  " + "variante".padEnd(20) + "papel".padEnd(7) + "família".padEnd(9) + "média" + ESTS.map((o) => o.slice(0, 3).padStart(7)).join(""));
     for (const [id, r] of Object.entries(valorDasVariantes(N || 400)))
       console.log("  " + id.padEnd(20) + r.papel.padEnd(7) + r.familia.padEnd(9) + f1(r.pct).padStart(5) + ESTS.map((o) => f1(r.porEstilo[o]).padStart(7)).join(""));
+  } else if (cmd === "bots") {
+    const SS = [0, 0.25, 0.5, 0.75, 1], r = medirBots({ n: N || 100, pares: 12, ss: SS });
+    const elo = (p) => -400 * Math.log10(p / (100 - p));
+    console.log("vitórias do humano-modelo (linha) contra o bot de habilidade s (coluna), níveis 1, 10 e 30:");
+    console.log("            " + SS.map((s) => ("s=" + s).padStart(8)).join(""));
+    for (const hu of Object.keys(HUMANOS_MODELO)) console.log(hu.padEnd(12) + SS.map((s) => f1(r[hu + ":" + s]).padStart(8)).join(""));
+    console.log("rating que o bot vale (1500 = humano de estilo):     " + SS.map((s) => String(Math.round(1500 + elo(r["estilo:" + s]))).padStart(8)).join(""));
+    console.log("rating que o servidor dá a esse bot (RATING_BOT):    " + SS.map((s) => String(Math.round(BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min))).padStart(8)).join(""));
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots] [n]");
   }
 }

@@ -14,6 +14,11 @@
  *
  * Variáveis: SUPABASE_SERVICE_ROLE_KEY, JXJ_ATIVO, OPENROUTER_API_KEY
  * (narração, opcional), JXJ_NARRACAO_IA ("false" desliga a IA na narração).
+ *
+ * Bots (2026-10-19, supabase_jxj_bot.sql): quem não acha adversário pode
+ * lutar contra um bot (api/_jxj-bot.js). O bot é sempre o lado B, escolhe
+ * pela semente antes de ver a ação do jogador, e só o jogador ganha ou perde
+ * alguma coisa. Sem a migração, a tela só não oferece bot.
  */
 import { randomBytes } from "node:crypto";
 import { SUPABASE_URL, supabaseServiceRole } from "./_pro.js";
@@ -21,13 +26,14 @@ import * as MOTOR from "./_jxj-motor.js";
 import * as ARV from "./_jxj-arvores.js";
 import * as RAT from "./_jxj-rating.js";
 import * as REG from "./_jxj-regras.js";
+import * as BOT from "./_jxj-bot.js";
 
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
 const ID = /^[1-9]\d{0,14}$/;
 const ACOES_PUBLICAS = new Set(["definicoes", "ranking", "perfil", "historico", "hall", "temporada", "torneios", "torneio", "replay"]);
 const ACOES_CONTA = new Set(["estado", "criar", "build", "respec", "principal", "aposentar", "moldura", "buildPublica",
-  "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "revanche", "narracao",
+  "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "revanche", "narracao", "bot",
   "torneioInscrever", "torneioSair", "torneioSala"]);
 /* limite por conta: [máximo, janela em segundos] (o banco conta, atômico) */
 const LIMITES = {
@@ -35,6 +41,7 @@ const LIMITES = {
   moldura: [30, 3600], buildPublica: [30, 3600], filaEntrar: [40, 600], filaSair: [60, 600], fila: [400, 600],
   luta: [600, 600], confirmar: [60, 600], recusar: [60, 600], acao: [200, 600], revanche: [40, 600],
   narracao: [40, 3600], torneioInscrever: [20, 3600], torneioSair: [20, 3600], torneioSala: [300, 600], estado: [600, 600],
+  bot: [30, 600],
 };
 
 class ErroJxJ extends Error { constructor(msg, status = 400) { super(msg); this.status = status; } }
@@ -64,6 +71,13 @@ async function rpc(nome, args) {
    não mostra o contador: nunca derruba a fila. */
 async function movimento() {
   try { return await rpc("jxj_movimento", {}); }
+  catch { return null; }
+}
+/* Bots (supabase_jxj_bot.sql, 2026-10-19): ligados ou não e quantas lutas
+   contra bot a conta ainda tem hoje. Sem a migração ou com o banco lento,
+   null: a tela só não oferece bot. */
+async function botInfo(uid) {
+  try { return await rpc("jxj_bot_info", { uid, limite_free: REG.BOT_FREE_DIA }); }
   catch { return null; }
 }
 async function usuarioDoToken(token) {
@@ -111,8 +125,11 @@ async function prepararSeFaltar(d) {
 }
 
 const outroLado = (l) => (l === "a" ? "b" : "a");
+/* Luta contra bot: o lado B é o bot da luta (rating da foto do começo, em
+   L.bot); efeitos só do lado A, o do jogador. */
 function efeitosDoFim(d, estado, fim) {
-  const L = d.luta, F = { a: d.lutadorA, b: d.lutadorB };
+  const L = d.luta, bot = L.bot || null;
+  const F = { a: d.lutadorA, b: bot ? { rating: bot.rating, rd: bot.rd, vol: bot.vol, ultima_luta_rating: null } : d.lutadorB };
   const resultado = (lado) => fim.metodo === "ANULADA" ? "anulada" : fim.vencedor == null ? "empate" : fim.vencedor === lado ? "vitoria" : "derrota";
   const comRating = !!L.com_rating && fim.metodo !== "ANULADA";
   let novos = null;
@@ -124,7 +141,7 @@ function efeitosDoFim(d, estado, fim) {
       { diasA: dias(F.a), diasB: dias(F.b) });
   }
   const ef = {};
-  for (const lado of ["a", "b"]) {
+  for (const lado of bot ? ["a"] : ["a", "b"]) {
     const l = F[lado], res = resultado(lado);
     const xp = REG.xpDaLuta({ resultado: res, metodo: fim.metodo, lutasHoje: Number(d[lado === "a" ? "lutasHojeA" : "lutasHojeB"] || 0), comRating });
     const nivel = REG.nivelDoXp(l.xp + xp).nivel;
@@ -132,7 +149,7 @@ function efeitosDoFim(d, estado, fim) {
     const cartoes = (estado.cartoes || []).map((c) => ({ meu: c[lado], dele: c[outroLado(lado)] }));
     const conquistas = REG.conquistasNovas({
       venceu: res === "vitoria", metodo: fim.metodo, vitorias: l.vitorias + (res === "vitoria" ? 1 : 0), nivel,
-      perdeuUltimaParaEle: d.ultimoEntreEles === outroLado(lado), cartoes, ja,
+      perdeuUltimaParaEle: !bot && d.ultimoEntreEles === outroLado(lado), cartoes, ja,
     });
     ef[lado] = { resultado: res, xp, nivel, fichas: REG.fichasDaLuta({ resultado: res, metodo: fim.metodo, comRating }), conquistas };
     if (novos) { ef[lado].rating = novos[lado]; ef[lado].ratingAntes = { r: l.rating, rd: l.rd }; }
@@ -162,7 +179,13 @@ async function processarLuta(lid, uid) {
     const acoes = { a: null, b: null };
     for (const a of d.acoes || []) acoes[a.lado] = a.familia;
     const vencido = Date.parse(L.prazo) + MOTOR.FORMATO.toleranciaMs < agora;
-    if (!(acoes.a && acoes.b) && !vencido) return d;
+    if (L.bot) {
+      /* contra bot, a troca anda quando o jogador manda a ação (ou o prazo
+         vence). A ação do bot sai do estado, das trocas resolvidas e da
+         semente; a ação do jogador nesta troca não entra. */
+      if (!acoes.a && !vencido) return d;
+      acoes.b = BOT.acaoDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
+    } else if (!(acoes.a && acoes.b) && !vencido) return d;
     const { estado, eventos } = MOTOR.resolverTroca(L.estado, L.perfis, acoes, L.semente);
     const fim = estado.fim ? { ...estado.fim } : null;
     const efeitos = fim ? efeitosDoFim(d, estado, fim) : null;
@@ -185,7 +208,7 @@ function vistaDaLuta(d, uid) {
   const estado = L.estado;
   const meuPerfil = lado && L.perfis ? L.perfis[lado] : null;
   const vista = {
-    id: L.id, tipo: L.tipo, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
+    id: L.id, tipo: L.tipo, bot: !!L.bot, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
     confirmacaoAte: L.confirmacao_ate, confirmado: { a: L.confirmado_a, b: L.confirmado_b },
     round: L.round, troca: L.troca, prazo: L.prazo, agora: d.agora, comRating: L.com_rating,
     formato: MOTOR.FORMATO,
@@ -196,7 +219,8 @@ function vistaDaLuta(d, uid) {
       pontos: estado.pontos, cartoes: estado.cartoes,
     } : null,
     minhaAcao: lado ? acoesAbertas[lado] || null : null,
-    adversarioEscolheu: lado ? !!acoesAbertas[outroLado(lado)] : null,
+    /* o bot já tem a ação da troca (sai da semente), só não foi gravada */
+    adversarioEscolheu: lado ? (L.bot && L.status === "andamento" ? true : !!acoesAbertas[outroLado(lado)]) : null,
     /* a mão do round (variantes) sai da semente: o servidor calcula e manda
        só as 4 ações de quem pediu, nunca a semente nem a mão do outro */
     acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil, L.semente) : null,
@@ -215,7 +239,8 @@ function vistaDaLuta(d, uid) {
     vista.efeitos = L.efeitos;
     vista.semente = L.semente;
     vista.narracao = L.narracao;
-    vista.revanche = { a: !!L.revanche_a, b: !!L.revanche_b, luta: L.revanche_luta_id, ate: new Date(Date.parse(L.encerrada_em) + REG.REVANCHE_MS).toISOString() };
+    /* luta contra bot não tem revanche (o bot da luta não existe mais) */
+    vista.revanche = L.bot ? null : { a: !!L.revanche_a, b: !!L.revanche_b, luta: L.revanche_luta_id, ate: new Date(Date.parse(L.encerrada_em) + REG.REVANCHE_MS).toISOString() };
   }
   return vista;
 }
@@ -301,7 +326,8 @@ function definicoes(ativo) {
       custoRespec: REG.CUSTO_RESPEC, tetoFichasDia: REG.TETO_FICHAS_DIA, parRating24h: REG.PAR_RATING_24H, ausencia: REG.REGRA_AUSENCIA,
       temporadaDias: REG.TEMPORADA_DIAS, torneioVagas: REG.TORNEIO_VAGAS, torneioJanelaH: REG.TORNEIO_JANELA_H, torneioLutasMin: REG.TORNEIO_LUTAS_MIN,
       lutasPraClassificar: RAT.LUTAS_PRA_CLASSIFICAR, reset: RAT.RESET, fichasTorneio: REG.FICHAS_TORNEIO, xpTorneio: REG.XP_TORNEIO,
-      raios: REG.RAIOS, raioPadrao: REG.RAIO_PADRAO, tolerancia: REG.TOLERANCIA },
+      raios: REG.RAIOS, raioPadrao: REG.RAIO_PADRAO, tolerancia: REG.TOLERANCIA,
+      botEsperaS: REG.BOT_ESPERA_S, botFreeDia: REG.BOT_FREE_DIA },
     xpPorNivel: Array.from({ length: REG.NIVEL_MAX }, (_, i) => REG.xpProximo(i + 1)),
     molduras: REG.MOLDURAS,
     conquistas: REG.CONQUISTAS,
@@ -360,6 +386,8 @@ async function executar(acao, c, uid) {
       }
       const mov = await movimento();
       if (mov) est.movimento = mov;
+      const bi = await botInfo(uid);
+      if (bi) est.bot = bi;
       return est;
     }
     case "criar": {
@@ -460,6 +488,8 @@ async function executar(acao, c, uid) {
     }
     case "revanche": {
       const lid = idDe(c.lutaId, "luta");
+      const d0 = await rpc("jxj_luta", { lid });
+      if (d0 && d0.luta && d0.luta.bot) throw new ErroJxJ("luta contra bot não tem revanche");
       const r = await rpc("jxj_revanche_pedir", { uid, lid });
       if (r.luta) return { luta: r.luta };
       if (!r.pronta) return { esperando: true };
@@ -484,6 +514,29 @@ async function executar(acao, c, uid) {
       const texto = (r.ia ? await narracaoIA(vista) : null) || narracaoLocal(vista);
       const g = await rpc("jxj_narracao_concluir", { lid, reserva_: r.reserva, texto });
       return g && g.narracao ? { narracao: g.narracao } : { gerando: true };
+    }
+    case "bot": {
+      /* Luta contra bot (supabase_jxj_bot.sql). O banco confere o acesso
+         (Pro depois da espera na fila; grátis com o limite do dia) e a trava
+         de uma luta por conta; aqui só se monta o bot com o nível, a
+         categoria e o rating do lutador. */
+      const lid = idDe(c.lutadorId, "lutador");
+      const est = await rpc("jxj_estado", { uid });
+      const l = (est.lutadores || []).find((x) => x.id === lid);
+      if (!l) throw new ErroJxJ("lutador não encontrado", 404);
+      if (est.luta && ["confirmacao", "andamento"].includes(est.luta.status)) return { luta: est.luta.id, jaAberta: true };
+      const bot = BOT.montarBot({ nivel: l.nivel, categoria: l.categoria, rating: l.rating, semente: novaSemente(), limitesRosto: LIMITES_ROSTO });
+      const perfis = { a: perfilDoLutador(l), b: bot.perfil };
+      try {
+        return await rpc("jxj_bot_criar", {
+          uid, lid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b),
+          nome_b: BOT.vitrine(bot), bot_: BOT.dadosDaLuta(bot, perfis.a), prazo_ms: MOTOR.FORMATO.prazoMs,
+          espera_s: REG.BOT_ESPERA_S, limite_free: REG.BOT_FREE_DIA,
+        });
+      } catch (e) {
+        if (e.codigo === "PGRST202") throw new ErroJxJ("as lutas contra bot ainda não foram ligadas", 503);
+        throw e;
+      }
     }
     case "torneioInscrever": return rpc("jxj_torneio_inscrever", { uid, lid: idDe(c.lutadorId, "lutador") });
     case "torneioSair": return rpc("jxj_torneio_sair", { uid });

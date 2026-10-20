@@ -1440,6 +1440,12 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-lado-info>b{font-family:var(--f-ui);font-size:20px;text-transform:uppercase;letter-spacing:.04em;overflow-wrap:anywhere}
 .jxj-lado-info>b small{font-size:12px;color:var(--sangue);letter-spacing:.14em;margin-left:6px}
 .jxj-lado-info>span{color:var(--osso-2);font-size:14px}
+/* bot do Online (2026-10-19): sempre marcado, no card da luta e no histórico */
+.jxj-selo-bot{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 7px;vertical-align:middle;
+  font-family:var(--f-ui);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ouro);border:1px solid currentColor}
+.jxj-selo-bot .ico{width:13px;height:13px}
+.jxj-oferta-bot{display:flex;flex-direction:column;gap:8px}
+.jxj-oferta-bot p{margin:0}
 .jxj-medidor{display:flex;flex-direction:column;gap:3px}
 .jxj-medidor i{font-style:normal;font-family:var(--f-ui);font-size:13px;letter-spacing:.08em;color:var(--cinza);display:flex;align-items:center;gap:6px}
 .jxj-ausente{color:var(--ouro)!important;font-family:var(--f-ui);letter-spacing:.06em}

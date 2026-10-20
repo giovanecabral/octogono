@@ -22,11 +22,12 @@ testar.js           A única ferramenta de teste. Lê o motor de dentro do HTML.
 atualizar-dados.py  Regenera o fighters.json.
 api/ai.js           Proxy do OpenRouter. Roda na Vercel.
 api/jxj.js          JxJ (jogador contra jogador): rota única, servidor decide tudo.
-api/_jxj-*.js       Motor, árvores, rating (Glicko-2) e regras do JxJ. Não usam nada da carreira.
+api/_jxj-*.js       Motor, árvores, rating (Glicko-2), regras e bot do JxJ. Não usam nada da carreira.
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
 supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
 supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas. Rodada em 2026-10-04.
 supabase_jxj_movimento.sql  Quarta (contador de quem está na fila e lutando). Só uma função de leitura.
+supabase_jxj_bot.sql  Quinta (lutas contra bot, 2026-10-19). Roda depois das quatro, com aprovação do dono.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
@@ -150,6 +151,17 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
   migração (código `PGRST202` = função não existe, cai na fila de antes).
   Função nova do banco que o servidor chama segue o mesmo padrão até o
   dono rodar a migração.
+- **Bots do Online** (`api/_jxj-bot.js`, `supabase_jxj_bot.sql`,
+  2026-10-19): o bot é sempre o lado B e escolhe cego: `acaoDoBot` nunca
+  recebe a ação do jogador naquela troca (a suíte `jxj` prova pela ação
+  gravada). Só o jogador ganha ou perde algo; o lutador âncora da conta
+  dos bots nunca muda. O rating do bot fica preso em `RATING_BOT`, que é
+  a força medida dele: sem a faixa, quem vence o bot sobe pra sempre.
+  Mexeu no motor ou na política do bot: `node ferramentas/jxj-balanco.mjs
+  bots` e `node testar.js jxjbot` (`PESOS_VALOR` tem que bater com o
+  treino da ferramenta). Ligar: a migração, uma conta só dos bots e
+  `select public.jxj_bot_configurar('email')`. Sem isso a tela não
+  oferece bot (sem a migração, `PGRST202`, igual ao raio).
 - **Mexeu no motor ou na árvore do JxJ:** `node testar.js jxjmotor` e
   `node testar.js jxjarvore` (faixas nos testes) e, pra ver os números,
   `node ferramentas/jxj-balanco.mjs matriz|niveis|nos|atributos`. Depois do

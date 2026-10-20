@@ -2405,3 +2405,20 @@ Fechado em 2026-10-04:
    Online avisar que o filtro não está ligado, a migração não está lá.
 3. Deploy de tudo (pedido dele) pela `master`.
 
+
+## 45. Bots do Online (2026-10-19)
+
+Pedido do dono: o Online precisa de bots enquanto há pouca gente. Regras
+dele: a fila continua igual e, sem adversário, aparece a opção do bot; o
+rating mexe normalmente e o bot é feito no nível da pessoa; o Pro tem bot
+sem limite depois de 30 s na fila; o grátis tem 2 lutas por dia contra
+bot (direto, se já usou a luta grátis). FEITO no código, na branch
+`bots-online` (LEIA-ME "Bots do Online").
+
+Falta, do dono, nesta ordem:
+1. Aprovar e rodar `supabase_jxj_bot.sql` (só aditiva, depois do backup).
+2. Criar uma conta pelo site só pros bots e rodar
+   `select public.jxj_bot_configurar('email-dessa-conta');`.
+3. Liberar o deploy (merge na `master`). O servidor funciona sem a
+   migração (a tela só não oferece bot), então a ordem 3 antes de 1 não
+   quebra nada.

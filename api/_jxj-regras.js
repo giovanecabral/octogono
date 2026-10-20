@@ -25,6 +25,11 @@ export const TEMPORADA_DIAS = 56;
 export const TORNEIO_VAGAS = 8;
 export const TORNEIO_JANELA_H = 24;
 export const TORNEIO_LUTAS_MIN = 3;
+/* bots (2026-10-19): a oferta aparece depois de BOT_ESPERA_S na fila sem
+   adversário; o plano grátis tem BOT_FREE_DIA lutas contra bot por dia (dia
+   de São Paulo), o Pro não tem limite */
+export const BOT_ESPERA_S = 30;
+export const BOT_FREE_DIA = 2;
 
 /* XP pra passar do nível n pro n+1 */
 export const xpProximo = (n) => (n >= NIVEL_MAX ? Infinity : 80 + 20 * n);

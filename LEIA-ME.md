@@ -4129,6 +4129,8 @@ as tabelas: rodar a migração é do dono, depois do backup.
    três em produção (a do raio em 2026-10-04).
    Depois, `supabase_jxj_movimento.sql` (2026-10-08, contador de quem está
    na fila e lutando; seção "Auditoria de pré-lançamento"): 53 funções.
+   Depois, `supabase_jxj_bot.sql` (2026-10-19, lutas contra bot; seção
+   "Bots do Online"): 57 funções, e um passo a mais pra ligar os bots.
 3. Vercel > Settings > Environment Variables: `JXJ_ATIVO` = `true` em
    Production, e Redeploy do deploy atual (variável nova só vale em
    deploy novo; não precisa mudar código).
@@ -4684,7 +4686,173 @@ provado tirando a linha da busca).
 grátis no total (`jxj_fila_entrar`). A fila do lançamento depende de
 assinantes, e por isso o convite pra amigo, que a auditoria sugeriu, não
 foi feito: com essa regra, ele ajudaria pouco. Mudar a regra (por exemplo,
-algumas lutas grátis por dia) é decisão de produto do dono.
+algumas lutas grátis por dia) é decisão de produto do dono. A resposta do
+dono veio em 2026-10-19: bots (seção abaixo).
+
+## Bots do Online (2026-10-19)
+
+**Pedido do dono:** "para o online funcionar bem sem muitos players vai
+ser necessário adicionar bots". Regras decididas com ele:
+- o jogador fica na fila normalmente; se ninguém aparecer, aparece a opção
+  de lutar contra um bot;
+- a luta contra bot mexe no rating normalmente, e o bot é feito no nível
+  da pessoa;
+- Pro: a oferta aparece depois de 30 segundos na fila, sem limite;
+- grátis que já usou a luta grátis contra gente: botão direto "Lutar contra
+  bot (2 hoje)", sem fila, 2 por dia;
+- grátis que ainda tem a luta grátis: fila e oferta como o Pro, e a luta
+  conta nas 2 do dia. A luta grátis contra gente continua guardada.
+
+A spec do JxJ dizia "bots: não existem; se um dia existirem, aparecem
+marcados como bot". Por isso o bot aparece **sempre marcado**: nome "Bot"
++ uma palavra da natureza ("Bot Aroeira", nunca nome nem apelido de
+lutador real; a suíte confere contra o `fighters.json`), selo dourado
+"Bot" no card da luta e na linha do histórico, e a busca avisa antes.
+
+### Como o bot é feito
+
+Cada luta monta um bot novo no servidor (`api/_jxj-bot.js`,
+`montarBot`), tudo sorteado de uma semente de `crypto`:
+- **nível e categoria do jogador**, estilo sorteado e uma build válida
+  sorteada pra esse nível (prioridade embaralhada dos nós do estilo; o que
+  sobra no nível 30 vai pra nós de outro estilo, como um jogador faria).
+  Build sorteada empata com a típica do mesmo estilo (48,7% a 49,6% nos
+  níveis 1, 10 e 30, jogo racional), então o sorteio não enfraquece o bot;
+- aparência sorteada dentro das peças do editor (é um boneco, não uma
+  pessoa);
+- **rating** = o do jogador, preso na faixa `RATING_BOT` (1455 a 1560).
+
+**Habilidade.** O rating do bot decide como ele joga (`habilidade`, de 0 a
+1). Política (`politica`): parte das trocas no acaso, parte no peso do
+estilo e o resto no jogo pensado:
+- s = 0: acaso puro;
+- s = 0,5: peso do estilo (o "jogador de estilo" da ferramenta);
+- s = 1: jogo pensado, a mistura de equilíbrio da posição
+  (fictitious play nas matrizes de uma troca, as mesmas da ferramenta de
+  balanço), respondendo em 30% das trocas ao que o jogador mais fez
+  naquela posição.
+
+**Por que a faixa de rating.** A faixa é a força medida do bot. Com o
+humano que joga no peso do estilo valendo 1500, o bot de habilidade s vale
+(`node ferramentas/jxj-balanco.mjs bots`, 12 pares × 3 níveis × 100 lutas,
+pelo caminho do servidor):
+
+| s | 0 | 0,25 | 0,5 | 0,75 | 1 |
+|---|---|---|---|---|---|
+| vale (rating) | 1455 | 1468 | 1505 | 1536 | 1572 |
+| o servidor dá | 1455 | 1481 | 1508 | 1534 | 1560 |
+
+Vitórias do humano-modelo contra cada bot:
+
+| humano | s=0 | s=0,25 | s=0,5 | s=0,75 | s=1 |
+|---|---|---|---|---|---|
+| acaso | 47,3 | 44,6 | 40,5 | 37,3 | 30,3 |
+| só golpes | 42,3 | 39,4 | 34,8 | 28,2 | 21,5 |
+| estilo | 56,4 | 54,6 | 49,3 | 44,9 | 39,8 |
+| racional | 65,8 | 65,6 | 59,8 | 55,1 | 49,7 |
+| adaptativo | 63,9 | 64,1 | 62,4 | 54,8 | 47,4 |
+
+O bot de rating R joga como alguém de rating R. Quem vence muito sobe,
+encontra bot mais forte e para de subir; acima de 1560 o bot fica com
+1560, e o Glicko faz o resto (a expectativa do jogador passa de 50% e ele
+perde ponto se só empatar com o bot). Sem a faixa, quem vencesse o bot
+mais forte 52% das vezes subiria pra sempre contra um "adversário de
+rating igual". O bot mais forte segura o jogo racional e o adaptativo
+(cerca de 50%), então não há como fazer rating infinito contra bot.
+
+O rd do bot é 60 (força conhecida): o rating do jogador anda como contra um
+adversário estabelecido. O bot não tem rating próprio que mude.
+
+### Escolha cega
+
+O bot escolhe **antes** de ver a ação do jogador. `acaoDoBot` recebe só o
+estado, as trocas já resolvidas (públicas pros dois), a semente (secreta
+até o fim, a mesma regra do compromisso) e os dados do bot. A ação do
+jogador nesta troca nunca entra, e o sorteio é próprio de cada troca:
+chamar de novo dá a mesma ação, então duas resoluções ao mesmo tempo
+gravam igual. O histórico do jogador por posição sai das trocas gravadas
+(`acao_a` e o evento `escolha`, que diz a variante e o papel).
+
+Na prática, contra bot a troca anda quando o jogador manda a ação (ou o
+prazo vence), sem esperar ninguém. A vista diz que o adversário "já
+escolheu".
+
+### Banco: `supabase_jxj_bot.sql`
+
+Só aditiva, roda depois das outras quatro:
+- coluna `bot` (jsonb) em `jxj_lutas`, vazia em toda luta que já existe:
+  rating, rd, habilidade, estilo, build e misturas do bot. Nunca vai pra
+  tela (`vistaDaLuta` só manda `bot: true`);
+- funções novas: `jxj_bot_configurar` (liga os bots), `jxj_bot_hoje`,
+  `jxj_bot_info` (a tela pergunta se os bots estão ligados e quantas lutas
+  restam hoje), `jxj_bot_criar` (as regras de acesso e a trava de uma
+  luta por conta, numa transação);
+- refeitas com a mesma assinatura: `jxj_gravar_troca` (pula o lado sem
+  efeitos, o do bot), `jxj_luta` (não conta as milhares de lutas do
+  âncora a cada consulta da tela), `jxj_historico` (luta contra bot sai
+  sem o id do adversário: o âncora não vira link nem rival) e
+  `jxj_movimento` (luta contra bot é uma pessoa; bot largado há mais de um
+  minuto não conta).
+
+A tabela de lutas pede um lutador de verdade dos dois lados. O lado B de
+toda luta contra bot é o **lutador âncora** de uma conta só dos bots,
+aposentado: fora do ranking, da fila, da temporada e do Hall. Rating, XP,
+fichas, cartel e conquistas mudam só pro jogador; o âncora nunca muda (a
+suíte confere). A conquista "Revanche vencida" não vale contra bot (cada
+bot é outro).
+
+**Ligar (dono, depois do backup e da aprovação):**
+1. Rodar `supabase_jxj_bot.sql` no SQL Editor (57 funções `jxj_*`).
+2. Criar uma conta pelo site com um e-mail seu, só pros bots (ela não pode
+   ter lutador no Online e não precisa jogar).
+3. `select public.jxj_bot_configurar('o-email-dessa-conta');`
+
+Sem o passo 3 a tela não oferece bot. Sem a migração, o servidor responde
+"as lutas contra bot ainda não foram ligadas" e a tela não mostra nada de
+bot (`PGRST202`, o mesmo padrão do raio).
+
+### Tela
+
+- **Fila:** as regras avisam do bot; a busca diz "se ninguém aparecer em
+  30 segundos, você pode lutar contra um bot, sempre marcado como bot".
+  Depois da espera (contada pelo servidor), aparece o cartão "Ninguém
+  apareceu ainda" com "Lutar contra bot". A busca continua por baixo: se
+  alguém aparecer, a luta com gente vale.
+- **Grátis sem a luta grátis:** no painel, "Buscar adversário" vira
+  "Lutar contra bot (2 hoje)"; a fila mostra o mesmo botão. Sem lutas no
+  dia, o botão fica desligado com "o limite volta à meia-noite" (dia de
+  São Paulo).
+- **Luta:** selo "Bot" no card do bot; sem revanche no fim.
+- **Histórico:** selo "Bot" na linha; bot nunca vira rival.
+- **Planos:** com os bots ligados, o plano grátis mostra "2 lutas por dia
+  contra bot" e o Pro "lutas contra bot sem limite".
+
+### Testes
+
+- `jxjbot` (sem banco, ~17 s): build válida em todo nível, nome e rosto,
+  semente decide o bot, faixa e habilidade, `PESOS_VALOR` igual ao treino
+  da ferramenta (o motor mudou: a falha mostra os pesos novos pra copiar),
+  misturas iguais às da ferramenta, histórico das trocas = histórico troca
+  a troca, escolha cega e a calibração (bot de 1500 contra o jogador de
+  estilo entre 43% e 57%; o bot mais forte entre 40% e 56% contra o
+  racional e o adaptativo).
+- `jxj` (Postgres local): desligado, configurar, Pro só depois de 30 s,
+  clique duplo, luta até o fim (cada ação gravada do bot é a que ele já
+  tinha antes do jogador mandar a dele; rating igual ao Glicko contra a
+  foto do bot; âncora intacto; sem revanche; vista sem dado escondido),
+  grátis (2 por dia, virada do dia, luta grátis guardada), W.O., conta dos
+  bots, contador, banco sem a migração e permissões.
+- `jxjtelas`: oferta só depois da espera, luta com selo, resultado sem
+  revanche, histórico com selo, painel com histórico de gente e de bot
+  (nenhum card quebra, bot não vira rival), painel e fila do grátis (com e
+  sem lutas no dia).
+- Dente provado: o bot vendo a ação do jogador, o banco gravando efeito do
+  lado do bot, o limite do grátis frouxo (`>` no lugar de `>=`) e a linha
+  dos rivais quebrada no painel reprovam.
+
+Mexeu no motor ou na política: `node ferramentas/jxj-balanco.mjs bots` e
+`node testar.js jxjbot`. Se a força do bot mudar, a faixa `RATING_BOT`
+muda junto (é a linha "vale" da tabela acima).
 
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 

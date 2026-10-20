@@ -7799,6 +7799,25 @@ function jxjTextoMovimento(m,naFila){
     :(fila?`${fila} ${fila===1?"pessoa":"pessoas"} na fila`:"ninguém na fila");
   return `Agora no Online: ${f}${lutando?` e ${lutando} lutando`:""}.`;
 }
+/* Bots do Online (2026-10-19, supabase_jxj_bot.sql). est.bot vem do
+   servidor: disponivel (migração rodada e conta dos bots configurada),
+   restantes (lutas contra bot de hoje no plano grátis; null no Pro). Sem
+   est.bot, nada de bot aparece. O bot sempre aparece marcado como bot. */
+const jxjBotLigado=est=>!!(est&&est.bot&&est.bot.disponivel);
+function jxjSeloBot(){ return `<span class="jxj-selo-bot">${ICONE("bot")}Bot</span>`; }
+function jxjBotRotulo(est){
+  const b=est&&est.bot;
+  return b&&b.restantes!=null?`Lutar contra bot (${b.restantes} hoje)`:"Lutar contra bot";
+}
+/* botão que chama o bot pro lutador; erro (limite, espera) aparece em msg */
+function jxjBotaoBot(est,lutadorId,{classe="botao",msg=null}={}){
+  const b=el("button",classe+" jxj-botao-bot",`${ICONE("bot")}<span>${jxjBotRotulo(est)}</span>`); b.type="button";
+  if(est.bot&&est.bot.restantes===0)b.disabled=true;
+  b.onclick=async()=>{ SOM.toque(); b.disabled=true; if(msg)msg.hidden=true;
+    try{ const r=await jxj("bot",{lutadorId}); jxjParar(); irPara("jxj","luta/"+r.luta,{substituir:true}); }
+    catch(e){ if(msg){ msg.textContent=e.erro||"Não deu pra chamar o bot agora. Tente de novo."; msg.hidden=false; } b.disabled=false; } };
+  return b;
+}
 function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=null}={}){
   const hero=el("section","jxj-hero entra");
   hero.innerHTML=`<p class="jxj-rotulo">Jogador contra Jogador</p>
@@ -7823,10 +7842,11 @@ function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=n
   area.appendChild(hero);
   const planos=el("section","jxj-planos entra");
   const R=def.regras;
+  const bots=jxjBotLigado(est);
   planos.innerHTML=`<div class="jxj-plano"><b>Plano grátis</b><ul>
-      <li>${R.slotsFree} lutador</li><li>1 luta competitiva grátis</li><li>Ranking, perfis, torneios e Hall abertos pra ver</li></ul></div>
+      <li>${R.slotsFree} lutador</li><li>1 luta competitiva grátis</li>${bots?`<li>${R.botFreeDia} lutas por dia contra bot</li>`:""}<li>Ranking, perfis, torneios e Hall abertos pra ver</li></ul></div>
     <div class="jxj-plano jxj-plano-pro"><b>Pro</b><ul>
-      <li>${R.slotsPro} lutadores, cada um com rating e cartel próprios</li><li>Fila, revanche e torneios sem limite de acesso</li>
+      <li>${R.slotsPro} lutadores, cada um com rating e cartel próprios</li><li>${bots?"Fila, lutas contra bot, revanche e torneios":"Fila, revanche e torneios"} sem limite de acesso</li>
       <li>Nenhuma vantagem de atributo: o Pro libera acesso, não vitória</li></ul></div>`;
   area.appendChild(planos);
   if(est&&!est.pro&&est.lutaGratisUsada)area.appendChild(el("p","jxj-nota","A luta grátis desta conta já foi usada."));
@@ -7850,18 +7870,28 @@ function jxjPainel(area,def,est){
       ${nv.nivel<30?jxjBarra(nv.noNivel,nv.proximo,"jxj-barra-xp"):""}
     </div>`;
   const acoes=el("div","jxj-acoes");
-  const buscar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Buscar adversário</span>`); buscar.type="button";
   const podeFila=principal.utilizavel&&(est.pro||!est.lutaGratisUsada);
-  if(!podeFila){ buscar.disabled=true; }
-  buscar.onclick=()=>{SOM.toque();irPara("jxj","fila");};
+  /* grátis sem a luta grátis: no lugar da busca, o bot direto, sem fila (limite do dia) */
+  const soBot=!podeFila&&principal.utilizavel&&!est.pro&&jxjBotLigado(est);
+  const msgBot=el("p","jxj-erro"); msgBot.hidden=true;
+  let buscar;
+  if(soBot)buscar=jxjBotaoBot(est,principal.id,{classe:"botao jxj-buscar",msg:msgBot});
+  else{
+    buscar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Buscar adversário</span>`); buscar.type="button";
+    if(!podeFila){ buscar.disabled=true; }
+    buscar.onclick=()=>{SOM.toque();irPara("jxj","fila");};
+  }
   const arv=el("button","botao botao-sec",`${ICONE("arvore")}<span>Árvore${principal.pontosLivres?` (${principal.pontosLivres} pontos)`:""}</span>`); arv.type="button";
   arv.onclick=()=>{SOM.toque();irPara("jxj","lutador/"+principal.id+"/arvore");};
   const slots=el("button","botao botao-sec",`${ICONE("grupo")}<span>Lutadores</span>`); slots.type="button";
   slots.onclick=()=>{SOM.toque();irPara("jxj","lutadores");};
   acoes.append(buscar,arv,slots);
   hero.querySelector(".jxj-principal-info").appendChild(acoes);
+  if(soBot)hero.querySelector(".jxj-principal-info").appendChild(msgBot);
   if(!podeFila)hero.querySelector(".jxj-principal-info").appendChild(el("p","jxj-nota",
     !principal.utilizavel?"Este lutador está num slot extra e o Pro venceu. Escolha o lutador do slot 1 como principal ou renove o Pro."
+    :soBot?(est.bot.restantes?`A luta grátis contra gente já foi usada. No plano grátis você tem ${def.regras.botFreeDia} lutas por dia contra bot, com o seu nível e o seu rating. O Pro libera a fila, a revanche e os torneios.`
+      :`As ${def.regras.botFreeDia} lutas contra bot de hoje já foram usadas. O limite volta à meia-noite. O Pro libera a fila, a revanche e os torneios.`)
     :"A luta grátis já foi usada. O Pro libera a fila, a revanche e os torneios."));
   if(!podeFila&&!est.pro)hero.querySelector(".jxj-principal-info").appendChild(bloqueioPro(el("button","botao botao-sec","Fila do Pro")));
   area.appendChild(hero);
@@ -7912,7 +7942,8 @@ function jxjPainel(area,def,est){
     }
     evo.innerHTML=`<p class="jxj-rotulo">${ICONE("grafico")} Evolução do rating</p>${jxjSparkline(p.perfil.ratingHist)}`;
     const por={};
-    for(const x of h){ const k=x.adversarioId; if(!k)continue; const o=por[k]||(por[k]={nome:x.adversario&&x.adversario.nome,id:k,v:0,d:0,n:0}); o.n++;
+    /* bot muda a cada luta: nunca vira rival */
+    for(const x of h){ const k=x.adversarioId; if(!k||(x.adversario&&x.adversario.bot))continue; const o=por[k]||(por[k]={nome:x.adversario&&x.adversario.nome,id:k,v:0,d:0,n:0}); o.n++;
       if(x.resultado&&x.resultado.vencedor===x.lado)o.v++; else if(x.resultado&&x.resultado.vencedor)o.d++; }
     const rivais=Object.values(por).filter(o=>o.n>=2).sort((a,b)=>b.n-a.n).slice(0,3);
     riv.innerHTML=`<p class="jxj-rotulo">${ICONE("espadas")} Rivais</p>`+(rivais.length
@@ -8266,7 +8297,7 @@ function jxjLinhaHistorico(x){
   const r=x.resultado||{},emp=!r.vencedor,meu=r.vencedor===x.lado;
   const li=el("li","jxj-hist-linha "+(emp?"emp":meu?"vit":"der"));
   li.innerHTML=`<span class="jxj-hist-res">${emp?(r.metodo==="ANULADA"?"Anulada":"Empate"):meu?"Vitória":"Derrota"}</span>
-    <span class="jxj-hist-adv"><b>${jxjEsc(x.adversario&&x.adversario.nome)}</b><small>${jxjMetodo(r.metodo)}${r.round?` · round ${r.round}`:""} · ${fmtData(x.em)}${x.tipo!=="fila"?` · ${x.tipo}`:""}</small></span>
+    <span class="jxj-hist-adv"><b>${jxjEsc(x.adversario&&x.adversario.nome)}</b>${x.adversario&&x.adversario.bot?jxjSeloBot():""}<small>${jxjMetodo(r.metodo)}${r.round?` · round ${r.round}`:""} · ${fmtData(x.em)}${x.tipo!=="fila"?` · ${x.tipo}`:""}</small></span>
     <span class="jxj-hist-delta">${x.comRating?`${x.ratingDelta>=0?"+":""}${x.ratingDelta}`:"sem rating"}</span>`;
   const b=el("button","btn-voltar jxj-hist-ver",`<span>Ver</span>${ICONE("chevron-dir")}`); b.type="button";
   b.onclick=()=>{SOM.toque();irPara("jxj","replay/"+x.luta);};
@@ -8360,8 +8391,20 @@ async function jxjTelaFila(){
   area.innerHTML="";
   if(!usaveis.length){ area.appendChild(vazio("usuario","Nenhum lutador ativo","Crie um lutador ou escolha o do slot 1 como principal.")); return; }
   if(!est.pro&&est.lutaGratisUsada){
-    area.appendChild(vazio("cadeado","A luta grátis já foi usada","No plano grátis o modo Online tem uma luta. O Pro libera a fila, a revanche e os torneios."));
-    area.appendChild(bloqueioPro(el("button","botao","Entrar na fila")));
+    area.appendChild(vazio("cadeado","A luta grátis já foi usada","No plano grátis o modo Online tem uma luta contra gente. O Pro libera a fila, a revanche e os torneios."));
+    /* bot direto, sem fila: o limite do dia vem do servidor */
+    if(jxjBotLigado(est)){
+      const l=usaveis.find(x=>x.id===est.principalEfetivo)||usaveis[0];
+      const box=el("section","painel-n jxj-card jxj-oferta-bot entra");
+      box.innerHTML=`<p class="jxj-rotulo">${ICONE("bot")} Lutar contra bot</p>
+        <p>No plano grátis você tem ${def.regras.botFreeDia} lutas por dia contra bot. O bot tem o nível e o rating de ${jxjEsc(l.nome)}, e a luta vale rating como qualquer outra.</p>
+        ${est.bot.restantes?"":`<p class="jxj-nota">As ${def.regras.botFreeDia} de hoje já foram usadas. O limite volta à meia-noite.</p>`}`;
+      const msg=el("p","jxj-erro"); msg.hidden=true;
+      box.appendChild(el("div","jxj-acoes")).appendChild(jxjBotaoBot(est,l.id,{msg}));
+      box.appendChild(msg);
+      area.appendChild(box);
+    }
+    area.appendChild(bloqueioPro(el("button","botao botao-sec","Entrar na fila")));
     return;
   }
   let escolhido=(usaveis.find(l=>l.id===est.principalEfetivo)||usaveis[0]).id;
@@ -8379,13 +8422,31 @@ async function jxjTelaFila(){
     const tk=JXJ_TOKEN;
     const box=el("section","painel-n jxj-busca entra");
     const aviso=info.raioIndisponivel?"O filtro de diferença ainda não está ligado no servidor: a busca usa o padrão, até 400 pontos, crescendo com a espera.":textoRaio(info.raio);
+    const ESPERA_BOT=(def.regras&&def.regras.botEsperaS)||30;
+    const podeBot=jxjBotLigado(est)&&(est.pro||est.bot.restantes>0);
     box.innerHTML=`<div class="jxj-busca-pulso">${ICONE("busca")}</div><h2 class="jxj-subtitulo">Procurando adversário</h2>
-      <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. ${aviso?aviso+" ":""}A faixa aceita cresce com a espera. Ninguém é inventado: se não houver adversário agora, a busca continua.</p>`;
+      <p class="jxj-busca-tempo">0s</p><p class="jxj-nota">Mesma categoria, rating parecido. ${aviso?aviso+" ":""}A faixa aceita cresce com a espera. ${podeBot
+        ?`Se ninguém aparecer em ${ESPERA_BOT} segundos, você pode lutar contra um bot, sempre marcado como bot.`
+        :"Ninguém é inventado: se não houver adversário agora, a busca continua."}</p>`;
     const mov=el("p","jxj-movimento","");mov.id="jxj-movimento";
     box.appendChild(mov);
     const sair=el("button","botao botao-sec",`${ICONE("fechar")}<span>Sair da fila</span>`); sair.type="button";
     sair.onclick=async()=>{ SOM.toque(); jxjParar(); try{ await jxj("filaSair"); }catch(e){} irPara("jxj"); };
     box.appendChild(sair); area.appendChild(box);
+    /* oferta do bot: aparece uma vez, depois da espera contada pelo servidor;
+       a busca continua por baixo e, se alguém aparecer, a luta com gente vale */
+    let ofertaFeita=false;
+    const oferecerBot=()=>{
+      if(ofertaFeita||!podeBot)return; ofertaFeita=true;
+      const l=usaveis.find(x=>est.fila&&x.id===est.fila.lutador_id)||usaveis.find(x=>x.id===escolhido)||usaveis[0];
+      const of=el("section","painel-n jxj-card jxj-oferta-bot entra");
+      of.innerHTML=`<p class="jxj-rotulo">${ICONE("bot")} Ninguém apareceu ainda</p>
+        <p>Você pode lutar agora contra um bot com o nível e o rating de ${jxjEsc(l.nome)}. A luta vale rating como qualquer outra${!est.pro?" e não gasta a sua luta grátis":""}. A busca continua enquanto você decide.</p>`;
+      const msg=el("p","jxj-erro"); msg.hidden=true;
+      of.appendChild(el("div","jxj-acoes")).appendChild(jxjBotaoBot(est,l.id,{msg}));
+      of.appendChild(msg);
+      area.appendChild(of);
+    };
     const t0=Date.now(),tempo=box.querySelector(".jxj-busca-tempo");
     const ciclo=async()=>{
       if(tk!==JXJ_TOKEN)return;
@@ -8395,6 +8456,7 @@ async function jxjTelaFila(){
         if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
         if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
         tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos de diferença`;
+        if((r.esperaSeg||0)>=ESPERA_BOT)oferecerBot();
         if(r.movimento)mov.innerHTML=`${ICONE("grupo")}<span>${jxjTextoMovimento(r.movimento,true)}</span>`;
       }catch(e){ tempo.textContent=e.erro||"Sem conexão; tentando de novo."; }
       JXJ_TIMER=setTimeout(ciclo,3000);
@@ -8432,7 +8494,8 @@ async function jxjTelaFila(){
   const regras=el("section","painel-n jxj-card");
   regras.innerHTML=`<p class="jxj-rotulo">${ICONE("info")} Antes de entrar</p><ul class="jxj-lista-simples">${def.regras.ausencia.map(t=>`<li>${t}</li>`).join("")}
     <li>O par encontrado tem ${Math.round(20)} segundos pra confirmar. Quem recusa espera um minuto pra voltar.</li>
-    <li>O mesmo par vale rating no máximo ${def.regras.parRating24h} vezes em 24 horas.</li>${!est.pro?"<li>Esta é a sua luta grátis do plano grátis.</li>":""}</ul>`;
+    <li>O mesmo par vale rating no máximo ${def.regras.parRating24h} vezes em 24 horas.</li>${!est.pro?"<li>Esta é a sua luta grátis do plano grátis.</li>":""}
+    ${jxjBotLigado(est)?`<li>Se ninguém aparecer em ${def.regras.botEsperaS} segundos, você pode lutar contra um bot. A luta vale rating${!est.pro?` e não gasta a luta grátis (${def.regras.botFreeDia} por dia no plano grátis)`:""}.</li>`:""}</ul>`;
   area.appendChild(regras);
   const msg=el("p","jxj-erro"); msg.hidden=true; area.appendChild(msg);
   const entrar=el("button","botao jxj-buscar",`${ICONE("espadas")}<span>Entrar na fila</span>`); entrar.type="button";
@@ -8511,7 +8574,7 @@ function jxjLadoCard(n,info,lado,{eu=false}={}){
   const est=info&&info.estado?info.estado[lado]:null;
   const nome=info.nomes[lado];
   const card=el("div","jxj-lado"+(eu?" eu":""));
-  card.innerHTML=`${jxjRetrato(nome,96)}<div class="jxj-lado-info"><b>${jxjEsc(nome.nome)}${eu?" <small>você</small>":""}</b>
+  card.innerHTML=`${jxjRetrato(nome,96)}<div class="jxj-lado-info"><b>${jxjEsc(nome.nome)}${eu?" <small>você</small>":""}${nome.bot?jxjSeloBot():""}</b>
     <span>${jxjEstilo(nome.estilo)} · nível ${nome.nivel} · rating ${Math.round(nome.rating)}</span>
     ${est?`<span class="jxj-medidor"><i>${ICONE("energia")} Energia ${String(est.energia).replace(".",",")}</i>${jxjBarra(est.energia,est.energiaMax,"jxj-barra-energia")}</span>
     <span class="jxj-medidor"><i>${ICONE("lesao")} Dano ${est.dano}</i>${jxjBarra(est.dano,100,"jxj-barra-dano")}</span>

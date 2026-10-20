@@ -11742,6 +11742,177 @@ async function testarJxJ() {
       }
       if (lidos.some((n) => n !== 0) || gravou.some(Boolean) || executou.some(Boolean)) throw new Error(JSON.stringify({ lidos, gravou, executou }));
     });
+    /* ---------- bots do Online (2026-10-19, supabase_jxj_bot.sql) ---------- */
+    const BOT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot.js")).href);
+    const RAT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-rating.js")).href);
+    const lutarBot = async (lid, u, e1 = (n) => F[n % 4]) => {
+      for (let n = 0; n < 40; n++) {
+        const v = await ok(u, "luta", { lutaId: lid });
+        if (v.status !== "andamento") return v;
+        await ok(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: e1(n) });
+      }
+      return ok(u, "luta", { lutaId: lid });
+    };
+    /* Pro na fila há 31 s chama o bot; devolve o id da luta */
+    const botDoPro = async (u, l) => {
+      await ok(u, "filaEntrar", { lutadorId: l });
+      await q("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [u]);
+      return (await ok(u, "bot", { lutadorId: l })).luta;
+    };
+    await conf("bots desligados (migração rodada, conta dos bots ainda não configurada): estado diz disponivel:false e chamar o bot é recusado sem criar luta", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      const e = await ok(u, "estado");
+      if (!e.bot || e.bot.disponivel !== false) throw new Error("estado.bot: " + JSON.stringify(e.bot));
+      await erro(u, "bot", { lutadorId: l }, /ainda não foram ligadas/);
+      if ((await q("select count(*)::int n from jxj_lutas where bot is not null"))[0].n) throw new Error("criou luta contra bot");
+    });
+    const contaBots = await novoUsuario({ email: "Bots.Octogono@teste" });
+    await conf("configurar os bots: pelo e-mail (maiúscula e espaço não importam), o âncora nasce aposentado; rodar de novo não duplica; e-mail sem conta e conta com lutador ativo são recusados sem mexer na configuração", async () => {
+      const r1 = (await q("select public.jxj_bot_configurar('bots.octogono@TESTE') as r"))[0].r;
+      const r2 = (await q("select public.jxj_bot_configurar(' Bots.Octogono@teste ') as r"))[0].r;
+      if (r1.user !== contaBots || r1.lutador !== r2.lutador) throw new Error(JSON.stringify([r1, r2]));
+      const anc = await q("select status from jxj_lutadores where user_id = $1", [contaBots]);
+      if (anc.length !== 1 || anc[0].status !== "aposentado") throw new Error("âncora: " + JSON.stringify(anc));
+      let e1 = null; try { await q("select public.jxj_bot_configurar('ninguem@teste')"); } catch (e) { e1 = e.message; }
+      if (!/nenhuma conta/.test(String(e1))) throw new Error("e-mail sem conta: " + e1);
+      const jog = await novoUsuario({ email: "jogador.bot@teste" }); await criar(jog);
+      let e2 = null; try { await q("select public.jxj_bot_configurar('jogador.bot@teste')"); } catch (e) { e2 = e.message; }
+      if (!/tem lutador/.test(String(e2))) throw new Error("conta com lutador: " + e2);
+      if ((await q("select valor from jxj_config where chave = 'bot'"))[0].valor.user !== contaBots) throw new Error("a recusa trocou a conta dos bots");
+    });
+    await conf("Pro: o bot só depois de 30 s na fila; a luta nasce em andamento contra um bot do nível e da categoria dele, com o rating preso na faixa; ele sai da fila; clique duplo devolve a mesma luta", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u, { categoria: "welterweight" })).id;
+      await q("update jxj_lutadores set nivel = 7, xp = $2, rating = 1720 where id = $1", [l, REG.xpTotalAte(7)]);
+      await erro(u, "bot", { lutadorId: l }, /depois de 30 segundos/);
+      await ok(u, "filaEntrar", { lutadorId: l });
+      await erro(u, "bot", { lutadorId: l }, /depois de 30 segundos/);
+      await q("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [u]);
+      const r = await ok(u, "bot", { lutadorId: l });
+      const L = (await q("select * from jxj_lutas where id = $1", [r.luta]))[0];
+      if (L.status !== "andamento" || !L.bot || L.a_user !== u || L.b_user !== contaBots || !L.com_rating) throw new Error("luta: " + JSON.stringify({ s: L.status, a: L.a_user, b: L.b_user }));
+      if (L.nomes.b.nivel !== 7 || L.perfis.b.categoria !== "welterweight" || L.bot.nivel !== 7 || L.nomes.b.bot !== true || !/^Bot /.test(L.nomes.b.nome))
+        throw new Error("bot: " + JSON.stringify(L.nomes.b));
+      if (L.bot.rating !== BOT.RATING_BOT.max || L.nomes.b.rating !== BOT.RATING_BOT.max || L.bot.s !== 1) throw new Error("rating fora da faixa: " + L.bot.rating);
+      if (!ARV.validarBuild(L.bot.estilo, L.bot.build, 7).ok) throw new Error("build inválida");
+      if ((await q("select 1 from jxj_fila where user_id = $1", [u])).length) throw new Error("ficou na fila");
+      if (Number((await q("select luta_aberta_id from jxj_contas where user_id = $1", [u]))[0].luta_aberta_id) !== Number(r.luta)) throw new Error("trava da luta aberta");
+      const r2 = await ok(u, "bot", { lutadorId: l });
+      if (Number(r2.luta) !== Number(r.luta)) throw new Error("clique duplo criou outra luta: " + JSON.stringify(r2));
+      if ((await q("select count(*)::int n from jxj_lutas where a_user = $1", [u]))[0].n !== 1) throw new Error("mais de uma luta");
+    });
+    await conf("luta contra bot até o fim: cada ação gravada do bot é a que ele já tinha antes do jogador mandar a dele; só o jogador muda (rating contra a foto do bot, XP, cartel); o âncora nunca muda; sem revanche; a vista não leva build, misturas nem habilidade; o histórico marca bot", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      const lid = await botDoPro(u, l);
+      const sqlAnc = "select xp, nivel, vitorias, derrotas, empates, rating, rd, lutas_rating from jxj_lutadores where id = (select b_id from jxj_lutas where id = $1)";
+      const ancAntes = (await q(sqlAnc, [lid]))[0];
+      const jogAntes = (await q("select rating, rd, vol from jxj_lutadores where id = $1", [l]))[0];
+      const previstas = [];
+      for (let n = 0; n < 40; n++) {
+        const v = await ok(u, "luta", { lutaId: lid });
+        if (v.status !== "andamento") break;
+        if (!v.bot || v.adversarioEscolheu !== true) throw new Error("vista da luta contra bot: " + JSON.stringify({ bot: v.bot, esc: v.adversarioEscolheu }));
+        const d = (await q("select public.jxj_luta($1) as d", [lid]))[0].d;
+        previstas.push(BOT.acaoDoBot({ estado: d.luta.estado, semente: d.luta.semente, trocas: d.trocas, dados: d.luta.bot }));
+        await ok(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: F[(n * 3 + 1) % 4] });
+      }
+      const gravadas = (await q("select acao_b from jxj_trocas where luta_id = $1 order by round, troca", [lid])).map((t) => t.acao_b);
+      if (!gravadas.length || gravadas.join() !== previstas.join()) throw new Error(`previstas ${previstas.join()} | gravadas ${gravadas.join()}`);
+      const L = (await q("select status, resultado, efeitos, bot from jxj_lutas where id = $1", [lid]))[0];
+      if (L.status !== "encerrada" || Object.keys(L.efeitos).join() !== "a") throw new Error("efeitos: " + JSON.stringify(L.efeitos));
+      const sv = L.resultado.vencedor === "a" ? 1 : L.resultado.vencedor === "b" ? 0 : 0.5;
+      const esperado = RAT.luta({ r: jogAntes.rating, rd: jogAntes.rd, vol: jogAntes.vol }, { r: L.bot.rating, rd: L.bot.rd, vol: L.bot.vol }, sv).a;
+      const dep = (await q("select rating, xp, vitorias, derrotas, empates, lutas_rating from jxj_lutadores where id = $1", [l]))[0];
+      if (Math.abs(dep.rating - esperado.r) > 1e-6 || dep.lutas_rating !== 1 || dep.xp !== L.efeitos.a.xp || dep.vitorias + dep.derrotas + dep.empates !== 1)
+        throw new Error("jogador: " + JSON.stringify({ dep, esperado: esperado.r }));
+      if (JSON.stringify((await q(sqlAnc, [lid]))[0]) !== JSON.stringify(ancAntes)) throw new Error("o âncora mudou");
+      await erro(u, "revanche", { lutaId: lid }, /não tem revanche/);
+      const vista = await ok(u, "luta", { lutaId: lid });
+      if (vista.revanche !== null || !vista.bot) throw new Error("vista final: " + JSON.stringify({ revanche: vista.revanche, bot: vista.bot }));
+      if (/"mx"|"pol"|"build"|"prior"/.test(JSON.stringify(vista))) throw new Error("a vista leva dado escondido do bot");
+      const h = await ok(null, "historico", { lutadorId: l });
+      if (!h.length || !h[0].adversario || h[0].adversario.bot !== true) throw new Error("histórico sem a marca de bot: " + JSON.stringify(h[0]).slice(0, 200));
+      if (h[0].adversarioId !== null) throw new Error("o histórico expõe o id do âncora dos bots: " + h[0].adversarioId);
+    });
+    await conf("grátis que já usou a luta grátis: bot direto, sem fila, 2 por dia (a 3ª é recusada sem criar luta); a fila de gente continua fechada; na virada do dia em São Paulo o limite volta", async () => {
+      await zerarLimites();
+      const u = await novoUsuario(), l = (await criar(u)).id;
+      await q("update jxj_contas set luta_gratis_usada = true where user_id = $1", [u]);
+      for (let k = 0; k < 2; k++) {
+        const e = await ok(u, "estado");
+        if (e.bot.restantes !== 2 - k || e.bot.limite !== 2 || e.bot.disponivel !== true) throw new Error("antes da luta " + (k + 1) + ": " + JSON.stringify(e.bot));
+        const v = await lutarBot((await ok(u, "bot", { lutadorId: l })).luta, u);
+        if (v.status !== "encerrada") throw new Error("a luta contra bot não acabou");
+      }
+      await erro(u, "bot", { lutadorId: l }, /2 lutas contra bot de hoje já foram usadas/);
+      if ((await ok(u, "estado")).bot.restantes !== 0) throw new Error("restantes depois do limite");
+      if ((await q("select count(*)::int n from jxj_lutas where a_user = $1 and bot is not null", [u]))[0].n !== 2) throw new Error("passou do limite");
+      await erro(u, "filaEntrar", { lutadorId: l }, /luta grátis já foi usada/);
+      await q("update jxj_lutas set criada_em = (date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo') - interval '1 minute' where a_user = $1 and bot is not null", [u]);
+      if ((await ok(u, "estado")).bot.restantes !== 2) throw new Error("o limite não voltou no dia seguinte");
+    });
+    await conf("grátis com a luta grátis guardada: o bot só pela fila depois de 30 s, conta no limite do dia e a luta grátis continua guardada", async () => {
+      await zerarLimites();
+      const u = await novoUsuario(), l = (await criar(u)).id;
+      await erro(u, "bot", { lutadorId: l }, /depois de 30 segundos/);
+      await ok(u, "filaEntrar", { lutadorId: l });
+      await q("update jxj_fila set entrou_em = now() - interval '40 seconds' where user_id = $1", [u]);
+      const lid = (await ok(u, "bot", { lutadorId: l })).luta;
+      await lutarBot(lid, u);
+      if ((await q("select luta_gratis_usada from jxj_contas where user_id = $1", [u]))[0].luta_gratis_usada) throw new Error("gastou a luta grátis");
+      if ((await q("select gratis_a from jxj_lutas where id = $1", [lid]))[0].gratis_a) throw new Error("luta contra bot marcada como a luta grátis");
+      if ((await ok(u, "estado")).bot.restantes !== 1) throw new Error("não contou no limite do dia");
+    });
+    await conf("o jogador ausente 3 trocas seguidas perde por W.O. contra o bot (o bot nunca falta) e a conta fica livre", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      const lid = await botDoPro(u, l);
+      for (let k = 0; k < 3; k++) { await vencerPrazo(lid); await ok(u, "luta", { lutaId: lid }); }
+      const L = (await q("select status, resultado, efeitos from jxj_lutas where id = $1", [lid]))[0];
+      if (L.status !== "encerrada" || L.resultado.metodo !== "WO" || L.resultado.vencedor !== "b" || L.efeitos.a.resultado !== "derrota") throw new Error(JSON.stringify(L.resultado));
+      if ((await q("select luta_aberta_id from jxj_contas where user_id = $1", [u]))[0].luta_aberta_id !== null) throw new Error("a conta ficou presa na luta");
+    });
+    await conf("a conta dos bots não chama bot; lutador de outra conta é recusado; o contador do Online conta luta contra bot como uma pessoa e não conta a largada", async () => {
+      await zerarLimites();
+      const lb = (await criar(contaBots)).id;
+      await erro(contaBots, "bot", { lutadorId: lb }, /conta dos bots/);
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      await erro(u, "bot", { lutadorId: lb }, /lutador não encontrado/, 404);
+      const mov = async () => (await q("select public.jxj_movimento() as m"))[0].m.lutando;
+      const antes = await mov();
+      const lid = await botDoPro(u, l);
+      if ((await mov()) !== antes + 1) throw new Error(`luta contra bot: ${antes} para ${await mov()}`);
+      await q("update jxj_lutas set prazo = now() - interval '2 minutes' where id = $1", [lid]);
+      if ((await mov()) !== antes) throw new Error("luta largada contou");
+    });
+    await conf("banco sem a migração dos bots: estado sem bot e chamar o bot responde 503 'ainda não foram ligadas'", async () => {
+      const db2 = await B.novoBanco({ bot: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const u1 = "00000000-0000-4000-8000-0000000009c1";
+        await B.criarUsuario(db2, u1, { pro: true });
+        const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Bot", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const e = await B.chamar(H, { token: "tok:" + u1, acao: "estado" });
+        if (e.status !== 200 || e.json.bot) throw new Error("estado: " + JSON.stringify(e.json.bot));
+        const b = await B.chamar(H, { token: "tok:" + u1, acao: "bot", lutadorId: c1.json.id });
+        if (b.status !== 503 || !/ainda não foram ligadas/.test(b.json.erro)) throw new Error("bot: " + JSON.stringify(b));
+      } finally { globalThis.fetch = fetchAntes; }
+    });
+    await conf("segurança: as funções dos bots ficam fechadas pra anon e authenticated (execução revogada)", async () => {
+      const executou = [];
+      for (const papel of ["authenticated", "anon"]) {
+        await db.exec(`set role ${papel};`);
+        for (const f of ["select public.jxj_bot_info(gen_random_uuid(), 2)", "select public.jxj_bot_hoje(gen_random_uuid())", "select public.jxj_bot_configurar('x@teste')",
+          "select public.jxj_bot_criar(gen_random_uuid(), 1, 's', '{}', '{}', '{}', '{}', 1, 1, 1)"]) {
+          let e = true; try { await db.query(f); } catch { e = false; } executou.push(e);
+        }
+        await db.exec("reset role;");
+      }
+      if (executou.some(Boolean)) throw new Error(JSON.stringify(executou));
+    });
     await conf("rollback (supabase_jxj_rollback.sql): apaga só o que é do JxJ, as tabelas e os dados do jogo ficam; roda duas vezes; o JxJ instala de novo depois", async () => {
       const rb = fs.readFileSync(path.join(RAIZ, "supabase_jxj_rollback.sql"), "utf8");
       const d2 = await B.novoBanco();
@@ -12391,6 +12562,121 @@ async function testarJxJTemporada() {
  *     bug achado no navegador: clicar num nó da árvore quebrava (o nó da
  *     tela não tinha o ramo) e ninguém conseguia gastar ponto.
  * ================================================================== */
+/* ================================================================== *
+ * JXJ BOT (2026-10-19): o bot do modo Online sozinho, sem banco
+ *     (api/_jxj-bot.js). Build válida, identidade pela semente, faixa de
+ *     rating, escolha que nunca vê a ação do jogador, histórico tirado das
+ *     trocas gravadas, pesos e misturas iguais aos da ferramenta de balanço
+ *     e a calibração (o bot de rating R joga como alguém de rating R).
+ *     Fluxo com banco nas suítes jxj e jxjtelas; números no LEIA-ME.
+ * ================================================================== */
+async function testarJxJBot() {
+  console.log("\n" + cinza("jxjbot: bot do Online (build, semente, faixa de rating, escolha cega, histórico, pesos, calibração)"));
+  const url = require("url");
+  const falhas = [], conf = confJxJ(falhas);
+  const T = await carregarBalancoJxJ();
+  const BOT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot.js")).href);
+  const M = T.MOTOR, A = T.ARVORES, F = M.FAMILIAS;
+  const LIM = { pele: 6, porte: 3, cabelo: 9, corCabelo: 7, barba: 6, orelha: 2, nariz: 2, cicatriz: 4, tatuagem: 7, entrada: 7, prajiad: 2, corEntrada: 8 };
+
+  await conf("montarBot: build válida pro nível (1 a 30, os 4 estilos aparecem), mesmo nível e categoria, nome Bot + palavra da lista, rosto dentro dos limites; a mesma semente dá o mesmo bot", () => {
+    const estilos = new Set(), ruins = [];
+    for (let k = 0; k < 120; k++) {
+      const nivel = 1 + (k % 30), b = BOT.montarBot({ nivel, categoria: "welterweight", rating: 1500, semente: "s" + k, limitesRosto: LIM });
+      estilos.add(b.estilo);
+      const v = A.validarBuild(b.estilo, b.build, nivel);
+      if (!v.ok) ruins.push(`nível ${nivel}: ${v.erro}`);
+      else if (v.sobra > 1) ruins.push(`nível ${nivel}: sobraram ${v.sobra} pontos`);
+      if (b.nivel !== nivel || b.categoria !== "welterweight" || b.perfil.categoria !== "welterweight") ruins.push("nível ou categoria");
+      if (!/^Bot /.test(b.nome) || !BOT.NOMES_BOT.includes(b.nome.slice(4))) ruins.push("nome " + b.nome);
+      for (const [p, q] of Object.entries(LIM)) if (!Number.isInteger(b.rosto[p]) || b.rosto[p] < 0 || b.rosto[p] >= q) ruins.push(`rosto.${p}=${b.rosto[p]}`);
+    }
+    if (ruins.length) throw new Error(ruins.slice(0, 4).join(" | "));
+    if (estilos.size !== 4) throw new Error("estilos sorteados: " + [...estilos].join(","));
+    const x = JSON.stringify(BOT.montarBot({ nivel: 12, categoria: "lightweight", rating: 1600, semente: "igual", limitesRosto: LIM }));
+    const y = JSON.stringify(BOT.montarBot({ nivel: 12, categoria: "lightweight", rating: 1600, semente: "igual", limitesRosto: LIM }));
+    const z = JSON.stringify(BOT.montarBot({ nivel: 12, categoria: "lightweight", rating: 1600, semente: "outra", limitesRosto: LIM }));
+    if (x !== y || x === z) throw new Error("a semente não decide o bot");
+  });
+  await conf("nome do bot: nenhuma palavra é nome de lutador real do fighters.json", () => {
+    const reais = new Set();
+    for (const f of lerLutadores()) for (const w of String(f.name || "").split(/\s+/)) reais.add(w.toLowerCase());
+    const bate = BOT.NOMES_BOT.filter((n) => reais.has(n.toLowerCase()));
+    if (bate.length) throw new Error("palavra que é nome de lutador: " + bate.join(", "));
+  });
+  await conf("rating e habilidade: o rating do bot fica na faixa RATING_BOT; a habilidade vai de 0 a 1 e sobe com o rating; s=0 é acaso puro, s=0,5 peso do estilo, s=1 jogo pensado", () => {
+    const { min, max } = BOT.RATING_BOT;
+    if (BOT.ratingDoBot(900) !== min || BOT.ratingDoBot(2400) !== max || BOT.ratingDoBot(1500) !== 1500) throw new Error("faixa");
+    const ss = [1000, min, 1480, 1500, 1530, max, 2000].map(BOT.habilidade);
+    if (ss[0] !== 0 || ss[1] !== 0 || ss[5] !== 1 || ss[6] !== 1 || !ss.every((x, i) => i === 0 || x >= ss[i - 1])) throw new Error("habilidade: " + ss.join(" "));
+    const p0 = BOT.politica(0), p5 = BOT.politica(0.5), p1 = BOT.politica(1);
+    if (p0.erro !== 1 || p5.erro !== 0 || p5.estiloP !== 1 || p1.erro !== 0 || p1.estiloP !== 0) throw new Error(JSON.stringify({ p0, p5, p1 }));
+  });
+  await conf("pesos do valor de estado (PESOS_VALOR) batem com o treino da ferramenta de balanço (motor mudou: copie os pesos novos)", () => {
+    const w = T.treinarValor();
+    const dif = Math.max(...w.map((x, i) => Math.abs(x - BOT.PESOS_VALOR[i])));
+    if (!(dif < 1e-9)) throw new Error(`diferença ${dif}; pesos novos: ${JSON.stringify(w)}`);
+  });
+  await conf("misturas do bot = misturas da ferramenta (mesmo par de perfis, mesmas matrizes de uma troca)", () => {
+    const pA = T.perfilTipico("grappler", 7), pB = T.perfilTipico("counter", 7);
+    T.limparCache();
+    const a = BOT.misturas(pA, pB, 40), b = T.misturas(pA, pB, 40);
+    for (const pos of ["pe", "cima_a", "cima_b"]) for (const k of ["a", "b", "m"])
+      if (JSON.stringify(a[pos][k]) !== JSON.stringify(b[pos][k])) throw new Error(`${pos}.${k} diferente`);
+  });
+  await conf("histórico tirado das trocas gravadas (acao e evento escolha) = o histórico contado troca a troca, nas 3 posições", () => {
+    const pH = T.perfilTipico("wrestler", 5), bot = BOT.montarBot({ nivel: 5, categoria: "middleweight", rating: 1500, semente: "hist" });
+    let conferidas = 0;
+    for (let luta = 0; luta < 60; luta++) {
+      let e = M.novaLuta(pH, bot.perfil), n = 0, h = 17 + luta;
+      const trocas = [], conta = { pe: [0, 0, 0, 0], cima_a: [0, 0, 0, 0], cima_b: [0, 0, 0, 0] };
+      while (!e.fim && n++ < 40) {
+        const hist = BOT.historicoDasTrocas(trocas, "b");
+        if (JSON.stringify(hist) !== JSON.stringify(conta)) throw new Error(`luta ${luta}, troca ${n}: ${JSON.stringify(hist)} contra ${JSON.stringify(conta)}`);
+        conferidas++;
+        h = (h * 1103515245 + 12345) % 2147483648;
+        const aH = F[h % 4], aB = F[(h >> 7) % 4];
+        /* posição vista pelo bot (o bot é A nas misturas): humano por cima = cima_b */
+        conta[e.pos === "pe" ? "pe" : e.pos === "cima_a" ? "cima_b" : "cima_a"][F.indexOf(aH)]++;
+        const res = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: aH, b: aB }, "h" + luta);
+        trocas.push({ acao_a: aH, acao_b: aB, eventos: res.eventos });
+        e = res.estado;
+      }
+    }
+    if (conferidas < 200) throw new Error("poucas trocas conferidas: " + conferidas);
+  });
+  await conf("escolha cega: acaoDoBot só recebe estado, trocas resolvidas, semente e os dados do bot; a mesma troca dá a mesma ação (duas resoluções gravam igual) e trocas diferentes variam", () => {
+    const fonte = BOT.acaoDoBot.toString();
+    const params = fonte.slice(fonte.indexOf("{") + 1, fonte.indexOf("}")).split(",").map((x) => x.trim().split("=")[0].trim());
+    if (JSON.stringify(params) !== JSON.stringify(["estado", "semente", "trocas", "dados", "lado"])) throw new Error("parâmetros: " + params.join(","));
+    const pH = T.perfilTipico("striker", 3), bot = BOT.montarBot({ nivel: 3, categoria: "middleweight", rating: 1560, semente: "cega" });
+    const dados = BOT.dadosDaLuta(bot, pH);
+    if (/"mx"|"pol"|"build"/.test(JSON.stringify(BOT.vitrine(bot)))) throw new Error("a vitrine leva dado escondido do bot");
+    const e = M.novaLuta(pH, bot.perfil), vistas = new Set();
+    for (let k = 0; k < 40; k++) {
+      const x = BOT.acaoDoBot({ estado: e, semente: "sem" + k, trocas: [], dados }), y = BOT.acaoDoBot({ estado: e, semente: "sem" + k, trocas: [], dados });
+      if (x !== y) throw new Error("a mesma troca deu duas ações");
+      vistas.add(x);
+    }
+    if (vistas.size < 2) throw new Error("o bot faz sempre a mesma coisa: " + [...vistas].join(","));
+  });
+  await conf("calibração (caminho do servidor): contra quem joga no peso do estilo, o bot de rating 1500 fica perto de 50%; o mais fraco perde mais, o mais forte vence mais; o mais forte segura o jogo racional e o adaptativo", () => {
+    const r = T.medirBots({ n: 40, pares: 8, niveis: [1, 10], ss: [0, 0.5, 1], humanos: ["estilo", "racional", "adaptativo"], sal: "t" });
+    const s15 = BOT.habilidade(1500);
+    const meio = T.medirBots({ n: 40, pares: 8, niveis: [1, 10], ss: [s15], humanos: ["estilo"], sal: "u" })["estilo:" + s15];
+    const f = (x) => x.toFixed(1);
+    console.log(cinza(`         humano de estilo contra bot s=0, s=0,5, s=1: ${f(r["estilo:0"])}% ${f(r["estilo:0.5"])}% ${f(r["estilo:1"])}%; contra o bot de 1500 (s=${s15.toFixed(2)}): ${f(meio)}%`));
+    console.log(cinza(`         bot s=1 contra o racional ${f(r["racional:1"])}% e o adaptativo ${f(r["adaptativo:1"])}% (vitórias do humano)`));
+    if (meio < 43 || meio > 57) throw new Error(`bot de 1500 contra o jogador de estilo: ${f(meio)}% (faixa 43 a 57)`);
+    if (!(r["estilo:0"] > r["estilo:0.5"] + 3 && r["estilo:0.5"] > r["estilo:1"] + 3)) throw new Error("a habilidade não muda a força do bot");
+    for (const h of ["racional", "adaptativo"]) if (r[h + ":1"] < 40 || r[h + ":1"] > 56) throw new Error(`bot s=1 contra o ${h}: ${f(r[h + ":1"])}% (faixa 40 a 56)`);
+  });
+
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjbot ok") : vermelho(`  ${falhas.length} falha(s) no jxjbot`)));
+  return okTudo;
+}
+
 async function testarJxJTelas() {
   console.log("\n" + cinza("jxjtelas: telas do JxJ no DOM falso com o servidor de verdade (árvore, luta, todas as rotas, desligado)"));
   const url = require("url");
@@ -12589,6 +12875,109 @@ async function testarJxJTelas() {
         if (p.length) ruins.push(`#/jxj/${r}: ${p.join(", ")}`);
       }
       if (ruins.length) throw new Error(ruins.join("\n         "));
+    });
+    /* bots do Online (2026-10-19): oferta na fila, botão direto do grátis, selo Bot */
+    const semLixo = (h, onde) => {
+      const lixo = h.match(/undefined|NaN|\[object Object\]/);
+      if (lixo) throw new Error(`${onde}: "${lixo[0]}"`);
+      const p = problemasDeTexto(h.replace(/<[^>]*>/g, " "));
+      if (p.length) throw new Error(`${onde}: ${p.join(", ")}`);
+    };
+    const botoesBot = (nos) => nos.filter((n) => n.tagName === "button" && tem(n, "jxj-botao-bot"));
+    const lutaBotDe = async (u) => (await db.query("select id from jxj_lutas where a_user = $1 and bot is not null order by id desc limit 1", [u])).rows[0];
+    await conf("bot na fila (Pro): as regras da fila falam do bot; a oferta só aparece depois de 30 s sem adversário; chamar abre a luta contra o bot, com o selo Bot no card dele", async () => {
+      /* a luta entre gente das telas acima vai até o fim: o histórico fica com
+         gente e bot (o painel trata os dois, rivais inclusive) */
+      for (let n = 0; n < 40; n++) {
+        const v = await api(u1, "luta", { lutaId: lid });
+        if (v.status !== "andamento") break;
+        if (!v.minhaAcao) await api(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: MOTOR.FAMILIAS[n % 4] });
+        const v2 = await api(u2, "luta", { lutaId: lid });
+        if (v2.status === "andamento" && !v2.minhaAcao) await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: MOTOR.FAMILIAS[(n + 1) % 4] });
+      }
+      if ((await api(u1, "luta", { lutaId: lid })).status !== "encerrada") throw new Error("a luta entre gente não acabou");
+      const ub = "00000000-0000-4000-8000-0000000000b9";
+      await B.criarUsuario(db, ub, { email: "bots@teste" });
+      await db.query("select public.jxj_bot_configurar('bots@teste')");
+      const m = await abrir("fila");
+      const hRegras = htmlDe(desde(m));
+      if (!/Se ninguém aparecer em 30 segundos, você pode lutar contra um bot/.test(hRegras)) throw new Error("as regras da fila não falam do bot");
+      semLixo(hRegras, "fila antes de entrar");
+      const m2 = env.todos.length;
+      await botao(desde(m), "Entrar na fila").onclick(); await assentar(15);
+      await assentar(40);
+      if (desde(m2).some((n) => tem(n, "jxj-oferta-bot"))) throw new Error("a oferta apareceu antes da espera");
+      if (!/você pode lutar contra um bot, sempre marcado como bot/.test(htmlDe(desde(m2)))) throw new Error("a busca não avisa do bot");
+      await db.query("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [u1]);
+      for (let k = 0; k < 25 && !desde(m2).some((n) => tem(n, "jxj-oferta-bot")); k++) await assentar(20);
+      const of = desde(m2).filter((n) => tem(n, "jxj-oferta-bot")).pop();
+      if (!of) throw new Error("a oferta do bot não apareceu depois de 30 s");
+      semLixo(String(of.innerHTML), "oferta do bot");
+      const bb = botoesBot(desde(m2)).pop();
+      if (!bb || !/<span>Lutar contra bot<\/span>/.test(String(bb.innerHTML))) throw new Error("botão do Pro: " + (bb && bb.innerHTML));
+      const m3 = env.todos.length;
+      await bb.onclick(); await assentar();
+      const L = await lutaBotDe(u1);
+      if (!L) throw new Error("não criou a luta contra o bot");
+      const h = htmlDe(desde(m3));
+      if (!h.includes("jxj-selo-bot") || !/Bot [A-ZÁÉÍÓÚ]/.test(h)) throw new Error("a luta não mostra o bot marcado: " + h.replace(/\s+/g, " ").slice(0, 200));
+      if (!desde(m3).some((n) => tem(n, "jxj-acao"))) throw new Error("a luta contra o bot não mostra as ações");
+      semLixo(h, "luta contra bot");
+    });
+    await conf("luta contra bot acabou: sem botão de revanche; o histórico do lutador marca o bot com o selo", async () => {
+      const L = await lutaBotDe(u1);
+      for (let n = 0; n < 40; n++) {
+        const v = await api(u1, "luta", { lutaId: L.id });
+        if (v.status !== "andamento") break;
+        await api(u1, "acao", { lutaId: L.id, round: v.round, troca: v.troca, familia: MOTOR.FAMILIAS[n % 4] });
+      }
+      const m = await abrir(`luta/${L.id}`);
+      const h = htmlDe(desde(m));
+      if (!/Vitória|Derrota|Empate/.test(h)) throw new Error("tela do resultado: " + h.replace(/\s+/g, " ").slice(0, 160));
+      if (botao(desde(m), "revanche")) throw new Error("luta contra bot com botão de revanche");
+      semLixo(h, "resultado contra bot");
+      const m2 = await abrir(`lutador/${l1}/historico`);
+      const linha = desde(m2).filter((n) => tem(n, "jxj-hist-linha")).find((n) => String(n.innerHTML).includes("jxj-selo-bot"));
+      if (!linha) throw new Error("o histórico não marca o bot");
+      /* painel com histórico: último resultado contra o bot e nenhum card quebrado; bot não vira rival */
+      const m3 = await abrir("");
+      await assentar(40);
+      const cards = desde(m3).filter((n) => tem(n, "jxj-card"));
+      const hp = htmlDe(cards);
+      if (/Não carregou agora/.test(hp)) throw new Error("card do painel quebrou com luta contra bot no histórico");
+      const ult = cards.find((n) => String(n.innerHTML).includes("Último resultado"));
+      if (!ult || !/Contra Bot /.test(String(ult.innerHTML))) throw new Error("último resultado: " + (ult && String(ult.innerHTML).replace(/\s+/g, " ").slice(0, 200)));
+      const riv = cards.find((n) => String(n.innerHTML).includes("Rivais"));
+      if (!riv || /Bot /.test(String(riv.innerHTML))) throw new Error("rivais: " + (riv && String(riv.innerHTML).replace(/\s+/g, " ").slice(0, 200)));
+    });
+    await conf("grátis sem a luta grátis: o painel troca Buscar adversário por Lutar contra bot (2 hoje); a fila mostra o mesmo botão; chamar abre a luta; sem lutas no dia, o botão fica desligado com o aviso", async () => {
+      await db.query("update assinaturas set pro = false where user_id = $1", [u1]); UI.setMeuPro(false);
+      try {
+        await db.query("update jxj_lutas set criada_em = criada_em - interval '2 days' where a_user = $1 and bot is not null", [u1]);
+        await db.query("update jxj_contas set luta_gratis_usada = true, luta_aberta_id = null where user_id = $1", [u1]);
+        const m = await abrir("");
+        const b = botoesBot(desde(m)).pop();
+        if (!b || !String(b.innerHTML).includes("<span>Lutar contra bot (2 hoje)</span>") || b.disabled) throw new Error("painel: " + (b && b.innerHTML));
+        if (botao(desde(m), "Buscar adversário")) throw new Error("o painel ainda mostra Buscar adversário");
+        semLixo(htmlDe(desde(m)), "painel do grátis");
+        const m2 = await abrir("fila");
+        const b2 = botoesBot(desde(m2)).pop();
+        if (!b2 || !String(b2.innerHTML).includes("(2 hoje)")) throw new Error("fila do grátis sem o botão do bot");
+        semLixo(htmlDe(desde(m2)), "fila do grátis");
+        await b2.onclick(); await assentar();
+        const L = await lutaBotDe(u1);
+        if (!L) throw new Error("o botão da fila não criou a luta");
+        await db.query("update jxj_lutas set status = 'cancelada' where id = $1", [L.id]);
+        await db.query("update jxj_contas set luta_aberta_id = null where user_id = $1", [u1]);
+        await db.query("insert into jxj_lutas (tipo, a_id, b_id, a_user, b_user, status, semente, compromisso, nomes, bot) select 'fila', a_id, b_id, a_user, b_user, 'cancelada', 'x', 'x', nomes, bot from jxj_lutas where id = $1", [L.id]);
+        const m3 = await abrir("");
+        const b3 = botoesBot(desde(m3)).pop();
+        if (!b3 || !b3.disabled || !String(b3.innerHTML).includes("(0 hoje)")) throw new Error("sem lutas no dia: " + (b3 && b3.innerHTML));
+        if (!/lutas contra bot de hoje já foram usadas/.test(htmlDe(desde(m3)))) throw new Error("sem o aviso do limite");
+      } finally {
+        await db.query("update assinaturas set pro = true where user_id = $1", [u1]); UI.setMeuPro(true);
+        await db.query("update jxj_contas set luta_gratis_usada = false, luta_aberta_id = null where user_id = $1", [u1]);
+      }
     });
     await conf("JxJ desligado (JXJ_ATIVO diferente de true): a entrada mostra 'abre em breve' e nenhum botão de criar", async () => {
       process.env.JXJ_ATIVO = "false";
@@ -13148,6 +13537,7 @@ try {
   else if (cmd === "jxjrating") ok = await testarJxJRating();
   else if (cmd === "jxjtemporada") ok = await testarJxJTemporada();
   else if (cmd === "jxjtelas") ok = await testarJxJTelas();
+  else if (cmd === "jxjbot") ok = await testarJxJBot();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -13239,6 +13629,7 @@ try {
         ["jxjrating", () => testarJxJRating()],
         ["jxjtemporada", () => testarJxJTemporada()],
         ["jxjtelas", () => testarJxJTelas()],
+        ["jxjbot", () => testarJxJBot()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],

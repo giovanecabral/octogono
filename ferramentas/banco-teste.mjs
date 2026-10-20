@@ -1,8 +1,9 @@
 /* Banco de teste do JxJ: Postgres de verdade (PGlite, WebAssembly) com o
    mínimo do Supabase que as migrações usam (esquema auth, auth.uid(),
    papéis anon/authenticated/service_role). Roda supabase_schema.sql (o
-   banco de hoje), depois supabase_jxj.sql e supabase_jxj_narracao.sql, na
-   mesma ordem da produção.
+   banco de hoje), depois supabase_jxj.sql, supabase_jxj_narracao.sql,
+   supabase_jxj_raio.sql, supabase_jxj_movimento.sql e supabase_jxj_bot.sql,
+   na mesma ordem da produção.
 
    fetchFalso() imita a REST do Supabase pro servidor (api/jxj.js) rodar
    inteiro contra esse banco: POST /rest/v1/rpc/<função> e GET
@@ -34,7 +35,7 @@ grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
 `;
 
-export async function novoBanco({ jxj = true, raio = true, movimento = true } = {}) {
+export async function novoBanco({ jxj = true, raio = true, movimento = true, bot = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB_SUPABASE);
   await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_schema.sql"), "utf8"));
@@ -46,6 +47,9 @@ export async function novoBanco({ jxj = true, raio = true, movimento = true } = 
     if (raio) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_raio.sql"), "utf8"));
     /* contador de quem está no Online (2026-10-08); movimento:false = banco de antes */
     if (movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_movimento.sql"), "utf8"));
+    /* lutas contra bot (2026-10-19), depois de todas as outras; bot:false =
+       banco de antes (e um banco sem o raio ou sem o contador também não tem) */
+    if (bot && raio && movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_bot.sql"), "utf8"));
   }
   await db.exec(GRANTS_SUPABASE);
   return db;

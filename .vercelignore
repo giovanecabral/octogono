@@ -20,6 +20,7 @@ supabase_jxj_rollback.sql
 supabase_jxj_narracao.sql
 supabase_jxj_raio.sql
 supabase_jxj_movimento.sql
+supabase_jxj_bot.sql
 audio/bruto
 img/bruto
 *.py
