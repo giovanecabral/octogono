@@ -199,14 +199,26 @@ export function misturasDosMomentos(pA, pB, n = N_MISTURA) {
    tempo todo, que é o que pune ele). O Paciente como counter ficou forte
    demais (o jogador de estilo vencia 41% a 45%: a defesa dele anula golpe e
    queda, e só a pressão ganha dela), então o estilo dele é sorteado. */
+/* licao: a frase da tela de resultado (só depois do fim da luta: durante,
+   a tela vê só a alcunha). Pedido do dono, 2026-10-20: "ensino pós-luta",
+   o jeito que o bot jogou e como puni-lo, numa frase. */
 export const PERSONALIDADES = {
-  agressivo: { alcunha: "o Provocador", estilo: "striker" },
-  defensivo: { alcunha: "o Paciente" },
-  leitor: { alcunha: "o Observador" },
-  caotico: { alcunha: "o Inquieto" },
+  agressivo: { alcunha: "o Provocador", estilo: "striker",
+    licao: "O Provocador golpeia e pressiona quase sempre, e mais ainda depois de apanhar: a queda pune ele." },
+  defensivo: { alcunha: "o Paciente",
+    licao: "O Paciente defende a maior parte das trocas e ataca quando você cansa: pressione na grade e guarde energia." },
+  leitor: { alcunha: "o Observador",
+    licao: "O Observador responde à sua última ação com a que ganha dela: jogue a que ganha dessa resposta." },
+  caotico: { alcunha: "o Inquieto",
+    licao: "O Inquieto anda numa roda fixa das 4 ações e nunca repete a anterior: descubra a ordem e responda à próxima." },
 };
 export const PERSONALIDADES_IDS = Object.keys(PERSONALIDADES);
 export const ERRO_PERSONALIDADE = 0.2, MAX_REPETE = 3;
+/* Primeira luta contra bot da conta (pedido do dono, 2026-10-20): nas
+   TROCAS_PURAS primeiras trocas o bot joga o jeito sem o erro de propósito,
+   pra quem ainda não conhece as alcunhas ver o jeito limpo. O servidor
+   decide e grava em dados.puro; o resto da luta é igual. */
+export const TROCAS_PURAS = 3;
 /* Força pelo rating dentro do jeito: o bot de habilidade s inclina os pesos
    do jeito pro que rende contra o histórico do jogador (peso x
    e^(INCLINACAO x s x ganho), ganho em pontos de chance de vencer). Ação
@@ -342,7 +354,9 @@ export function distribuicaoDoBot(e, lado, d, hist, recentes = []) {
     }
     const dh = d.pers === "caotico" && AJUSTE.segueRoda > 0
       ? { ...d, pol: { ...d.pol, segue: Math.max(d.pol.segue, AJUSTE.segueRoda * (Number(d.s) || 0)) } } : d;
-    jogo = misturar([[ERRO_PERSONALIDADE, distribuicaoDaHabilidade(e, lado, dh, hist)], [1 - ERRO_PERSONALIDADE, jeito]]);
+    const nTroca = (e.round - 1) * MOTOR.FORMATO.trocasPorRound + e.troca;
+    const erro = Number(d.puro) > 0 && nTroca <= Number(d.puro) ? 0 : ERRO_PERSONALIDADE;
+    jogo = misturar([[erro, distribuicaoDaHabilidade(e, lado, dh, hist)], [1 - erro, jeito]]);
   }
   /* cansado: descansa (o Provocador às vezes ignora) */
   const descanso = d.pers === "agressivo" ? 0.25 : 0.5;
@@ -401,7 +415,7 @@ export const vitrine = (bot) => ({ nome: bot.nome, rosto: bot.rosto, estilo: bot
 /* O que a luta guarda do bot (coluna bot de jxj_lutas). Fica no servidor:
    a tela nunca recebe build, misturas nem habilidade. As misturas têm o
    bot como A (perfilBot no lado a da conta, como na ferramenta). */
-export function dadosDaLuta(bot, perfilHumano) {
+export function dadosDaLuta(bot, perfilHumano, { puro = 0 } = {}) {
   const q = (x) => Math.round(x * 1e4) / 1e4;
   const mx = misturas(bot.perfil, perfilHumano), mm = misturasDosMomentos(bot.perfil, perfilHumano);
   const out = {}, mom = {};
@@ -409,7 +423,8 @@ export function dadosDaLuta(bot, perfilHumano) {
   for (const [ch, x] of Object.entries(mm)) mom[ch] = { a: x.a.map(q) };
   return { v: VERSAO_BOT, s: bot.s, estilo: bot.estilo, nivel: bot.nivel, build: bot.build,
     rating: bot.rating, rd: bot.rd, vol: bot.vol, pol: politica(bot.s), mx: out, mm: mom,
-    ...(PERSONALIDADES[bot.pers] ? { pers: bot.pers, roda: bot.roda } : {}) };
+    ...(PERSONALIDADES[bot.pers] ? { pers: bot.pers, roda: bot.roda } : {}),
+    ...(PERSONALIDADES[bot.pers] && puro > 0 ? { puro: Math.min(TROCAS_PURAS, Math.floor(puro)) } : {}) };
 }
 
 /* ---------- jogar ---------- */

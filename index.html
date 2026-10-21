@@ -8911,6 +8911,8 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
     <h2 class="jxj-resultado-titulo">${titulo}</h2>
     <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${v.nomes[ele].bot&&v.nomes[ele].alcunha?`, ${jxjEsc(v.nomes[ele].alcunha)}`:""}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
   area.appendChild(cab);
+  /* luta contra bot: o jeito que ele jogou e como puni-lo (só aqui, depois do fim) */
+  if(v.licaoBot)area.appendChild(el("p","jxj-licao",`${ICONE("alvo")}<span>${jxjEsc(v.licaoBot)}</span>`));
   const g=el("div","jxj-grade");
   const ganhos=el("section","painel-n jxj-card");
   const delta=ef.rating&&ef.ratingAntes?Math.round(ef.rating.r-ef.ratingAntes.r):null;

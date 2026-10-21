@@ -11953,6 +11953,7 @@ async function testarJxJ() {
         const v = await ok(u, "luta", { lutaId: lid });
         if (v.status !== "andamento") break;
         if (!v.bot || v.adversarioEscolheu !== true) throw new Error("vista da luta contra bot: " + JSON.stringify({ bot: v.bot, esc: v.adversarioEscolheu }));
+        if ("licaoBot" in v) throw new Error("a lição do bot apareceu antes do fim da luta");
         const d = (await q("select public.jxj_luta($1) as d", [lid]))[0].d;
         previstas.push(BOT.acaoDoBot({ estado: d.luta.estado, semente: d.luta.semente, trocas: d.trocas, dados: d.luta.bot }));
         await ok(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: F[(n * 3 + 1) % 4] });
@@ -11970,6 +11971,9 @@ async function testarJxJ() {
       await erro(u, "revanche", { lutaId: lid }, /não tem revanche/);
       const vista = await ok(u, "luta", { lutaId: lid });
       if (vista.revanche !== null || !vista.bot) throw new Error("vista final: " + JSON.stringify({ revanche: vista.revanche, bot: vista.bot }));
+      /* lição (2026-10-20): o jeito e como puni-lo, só depois do fim; primeira luta contra bot da conta = começo puro */
+      if (vista.licaoBot !== BOT.PERSONALIDADES[L.bot.pers].licao) throw new Error("lição do fim: " + vista.licaoBot);
+      if (L.bot.puro !== BOT.TROCAS_PURAS) throw new Error("a primeira luta contra bot da conta sem o começo puro: " + L.bot.puro);
       if (/"mx"|"pol"|"build"|"prior"/.test(JSON.stringify(vista))) throw new Error("a vista leva dado escondido do bot");
       /* revamp da tela (2026-10-20): cada golpe vem com o dano em número, o mesmo do texto */
       /* todo golpe (todo evento golpe ou gnp tem dano no texto); luta decidida no chão pode não ter nenhum */
@@ -11980,6 +11984,11 @@ async function testarJxJ() {
       const h = await ok(null, "historico", { lutadorId: l });
       if (!h.length || !h[0].adversario || h[0].adversario.bot !== true) throw new Error("histórico sem a marca de bot: " + JSON.stringify(h[0]).slice(0, 200));
       if (h[0].adversarioId !== null) throw new Error("o histórico expõe o id do âncora dos bots: " + h[0].adversarioId);
+      /* a segunda luta contra bot da mesma conta já não tem o começo puro */
+      const lid2 = await botDoPro(u, l);
+      const B2 = (await q("select bot from jxj_lutas where id = $1", [lid2]))[0].bot;
+      if ("puro" in B2) throw new Error("a segunda luta contra bot veio com o começo puro");
+      await lutarBot(lid2, u);
     });
     await conf("grátis que já usou a luta grátis: bot direto, sem fila, 2 por dia (a 3ª é recusada sem criar luta); a fila de gente continua fechada; na virada do dia em São Paulo o limite volta", async () => {
       await zerarLimites();
@@ -12887,6 +12896,34 @@ async function testarJxJBot() {
     const antigo = { ...dados }; delete antigo.mm;
     if (!F.includes(BOT.acaoDoBot({ estado: e, semente: "velho", trocas: [], dados: antigo }))) throw new Error("luta antiga sem mm quebrou");
   });
+  await conf("primeira luta contra bot da conta (2026-10-20): com dados.puro, nas 3 primeiras trocas o bot joga só o jeito (sem a jogada da habilidade); da 4ª em diante, igual à luta comum; dadosDaLuta só grava puro, no máximo TROCAS_PURAS", () => {
+    const pH = T.perfilTipico("counter", 2), igual = (a, b) => a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      /* rating 1455: habilidade 0 (sem inclinação), então o jeito puro é o peso normalizado */
+      const bot = BOT.montarBot({ nivel: 2, categoria: "middleweight", rating: 1455, semente: "puro" + pers, pers });
+      const comum = BOT.dadosDaLuta(bot, pH), puro = BOT.dadosDaLuta(bot, pH, { puro: 9 });
+      if ("puro" in comum || puro.puro !== BOT.TROCAS_PURAS) throw new Error(`puro gravado: ${comum.puro}/${puro.puro}`);
+      let e = M.novaLuta(pH, bot.perfil), conferidas = 0;
+      const trocas = [];
+      for (let t = 1; t <= 6 && !e.fim; t++) {
+        const hist = BOT.historicoDasTrocas(trocas, "b"), rec = BOT.acoesDoBot(trocas, "b");
+        const dP = BOT.distribuicaoDoBot(e, "b", puro, hist, rec), dC = BOT.distribuicaoDoBot(e, "b", comum, hist, rec);
+        const pj = BOT.pesosDaPersonalidade(e, "b", comum, hist), tj = pj.reduce((a, b) => a + b, 0), jeito = pj.map((x) => x / tj);
+        const repetiu = rec.length >= 3 && rec.slice(-3).every((x) => x === rec[rec.length - 1]);
+        if (!M.momentoDoLado(e, "b") && e.b.energia > 1.5 && !repetiu) {
+          if (t <= BOT.TROCAS_PURAS && !igual(dP, jeito)) throw new Error(`${pers} troca ${t}: puro ${dP.map((x) => x.toFixed(2))} x jeito ${jeito.map((x) => x.toFixed(2))}`);
+          if (t <= BOT.TROCAS_PURAS && igual(dP, dC)) throw new Error(`${pers} troca ${t}: o começo puro ficou igual à luta comum`);
+          if (t > BOT.TROCAS_PURAS && !igual(dP, dC)) throw new Error(`${pers} troca ${t}: depois das puras ficou diferente da comum`);
+          conferidas++;
+        }
+        const aB = BOT.acaoDoBot({ estado: e, semente: "p" + pers, trocas, dados: puro, lado: "b" }), aH = F[t % 4];
+        const r = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: aH, b: aB }, "p" + pers);
+        trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
+        e = r.estado;
+      }
+      if (conferidas < 4) throw new Error(`${pers}: poucas trocas conferidas (${conferidas})`);
+    }
+  });
   await conf("histórico tirado das trocas gravadas (acao e evento escolha) = o histórico contado troca a troca, nas 3 posições", () => {
     const pH = T.perfilTipico("wrestler", 5), bot = BOT.montarBot({ nivel: 5, categoria: "middleweight", rating: 1500, semente: "hist" });
     let conferidas = 0;
@@ -13039,6 +13076,7 @@ async function testarJxJTelas() {
   const db = await B.novoBanco();
   const { SUPABASE_URL } = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
   const MOTOR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
+  const BOT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot.js")).href);
   const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
   globalThis.fetch = B.fetchFalso(db, { SUPABASE_URL });
   process.env.SUPABASE_SERVICE_ROLE_KEY = "falsa"; process.env.JXJ_ATIVO = "true";
@@ -13377,6 +13415,10 @@ async function testarJxJTelas() {
       const h = htmlDe(desde(m));
       if (!/Vitória|Derrota|Empate/.test(h)) throw new Error("tela do resultado: " + h.replace(/\s+/g, " ").slice(0, 160));
       if (botao(desde(m), "revanche")) throw new Error("luta contra bot com botão de revanche");
+      /* lição do fim (2026-10-20): o jeito que o bot jogou e como puni-lo, numa frase */
+      const pers = (await db.query("select bot->>'pers' as p from jxj_lutas where id = $1", [L.id])).rows[0].p;
+      const licao = BOT.PERSONALIDADES[pers].licao;
+      if (!desde(m).some((n) => tem(n, "jxj-licao") && String(n.innerHTML).includes(licao))) throw new Error("o resultado não mostra a lição do bot: " + licao);
       semLixo(h, "resultado contra bot");
       const m2 = await abrir(`lutador/${l1}/historico`);
       const linha = desde(m2).filter((n) => tem(n, "jxj-hist-linha")).find((n) => String(n.innerHTML).includes("jxj-selo-bot"));

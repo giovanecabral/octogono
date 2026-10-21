@@ -76,6 +76,20 @@ async function movimento() {
 /* Bots (supabase_jxj_bot.sql, 2026-10-19): ligados ou não e quantas lutas
    contra bot a conta ainda tem hoje. Sem a migração ou com o banco lento,
    null: a tela só não oferece bot. */
+/* A conta nunca lutou contra bot? Sem contagem da vida inteira no banco, olha
+   o histórico de cada lutador da conta (as últimas 20 lutas de cada): nenhuma
+   contra bot = primeira. Quem fez mais de 20 lutas contra gente depois da
+   última contra bot ganha o começo limpo de novo (raro; o efeito é pequeno).
+   Erro de leitura = não é a primeira. */
+async function primeiraContraBot(est) {
+  try {
+    for (const l of est.lutadores || []) {
+      const h = await rpc("jxj_historico", { lid: l.id, pagina: 0 });
+      if ((h || []).some((x) => x && x.adversario && x.adversario.bot)) return false;
+    }
+    return true;
+  } catch { return false; }
+}
 async function botInfo(uid) {
   try { return await rpc("jxj_bot_info", { uid, limite_free: REG.BOT_FREE_DIA }); }
   catch { return null; }
@@ -271,6 +285,10 @@ function vistaDaLuta(d, uid) {
     vista.efeitos = L.efeitos;
     vista.semente = L.semente;
     vista.narracao = L.narracao;
+    /* luta contra bot: o jeito que o bot jogou e como puni-lo, só depois do
+       fim (durante, a tela vê só a alcunha) */
+    const P = L.bot && BOT.PERSONALIDADES[L.bot.pers];
+    if (P) vista.licaoBot = P.licao;
     /* luta contra bot não tem revanche (o bot da luta não existe mais) */
     vista.revanche = L.bot ? null : { a: !!L.revanche_a, b: !!L.revanche_b, luta: L.revanche_luta_id, ate: new Date(Date.parse(L.encerrada_em) + REG.REVANCHE_MS).toISOString() };
   }
@@ -566,11 +584,13 @@ async function executar(acao, c, uid) {
       const mov = pelaFila ? await movimento() : null;
       const sozinho = !!mov && Number(mov.fila) <= 1;
       const bot = BOT.montarBot({ nivel: l.nivel, categoria: l.categoria, rating: l.rating, semente: novaSemente(), limitesRosto: LIMITES_ROSTO });
+      /* primeira luta contra bot da conta: o jeito sai limpo nas primeiras trocas (BOT.TROCAS_PURAS) */
+      const primeira = await primeiraContraBot(est);
       const perfis = { a: perfilDoLutador(l), b: bot.perfil };
       try {
         return await rpc("jxj_bot_criar", {
           uid, lid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b),
-          nome_b: BOT.vitrine(bot), bot_: BOT.dadosDaLuta(bot, perfis.a), prazo_ms: MOTOR.FORMATO.prazoMs,
+          nome_b: BOT.vitrine(bot), bot_: BOT.dadosDaLuta(bot, perfis.a, { puro: primeira ? BOT.TROCAS_PURAS : 0 }), prazo_ms: MOTOR.FORMATO.prazoMs,
           espera_s: sozinho ? 0 : REG.BOT_ESPERA_S, limite_free: REG.BOT_FREE_DIA,
         });
       } catch (e) {

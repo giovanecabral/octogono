@@ -2458,8 +2458,11 @@ IA pra medir a fase 4; bots fantasma (1b) ficam fora por enquanto.
    (2026-10-20): tabela exata, em quantas trocas dá pra identificar cada
    jeito, bot forte perto de 46% a 50% contra o jogador de estilo, e a
    consulta sem dado pessoal pra recalibrar com jogo real
-   (`ferramentas/bots-por-jeito.sql`), todos FEITOS. Falta a validação
-   final do dono. Não mexer no Paciente (pedido dele).
+   (`ferramentas/bots-por-jeito.sql`), todos FEITOS. Fase 1 fechada pelo
+   dono em 2026-10-20, com dois acréscimos FEITOS: a lição depois da luta
+   (o jeito e como puni-lo, só no resultado) e o começo puro (3 trocas sem
+   o erro) na primeira luta contra bot de cada conta. Não mexer no Paciente
+   (pedido dele).
 2. Placar do round ao vivo.
 3. Fechar o motor v3 (tabela da vantagem da leitura, estilos 45% a 57%).
 4. Narração por IA durante a luta (precisa de migração).

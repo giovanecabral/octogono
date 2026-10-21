@@ -1802,3 +1802,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-alcunha{display:block;margin-top:-3px;font-family:var(--f-ui);font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--ouro);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .jxj-hud-lado.ele .jxj-alcunha{text-align:right}
+
+/* Online: a lição da luta contra bot no resultado (2026-10-20): o jeito dele e como puni-lo */
+.jxj-licao{display:flex;align-items:flex-start;gap:10px;max-width:68ch;margin:0;padding:12px 16px;background:rgba(212,160,23,.1);
+  border-left:3px solid var(--ouro);font-size:16px;line-height:1.45;color:var(--osso)}
+.jxj-licao .ico{flex:none;width:20px;height:20px;margin-top:2px;color:var(--ouro)}

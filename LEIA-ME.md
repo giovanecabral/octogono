@@ -5149,6 +5149,30 @@ punir:
   build e as misturas ficam nos dados da luta, no servidor. Luta criada
   antes (sem jeito nos dados) segue o jogo de antes.
 
+**Lição depois da luta e começo puro (2026-10-20, decisões do dono ao
+fechar a fase 1):**
+- **Lição:** na tela de resultado de uma luta contra bot, uma frase com o
+  jeito que ele jogou e como puni-lo (`PERSONALIDADES[jeito].licao`, vista
+  `licaoBot`). Só depois do fim; durante a luta a tela vê só a alcunha
+  (suítes `jxj` e `jxjtelas`).
+- **Começo puro:** na primeira luta contra bot de cada conta, as 3
+  primeiras trocas (`TROCAS_PURAS`) saem sem o erro de propósito, pra quem
+  ainda não conhece as alcunhas ver o jeito limpo. O servidor decide
+  (`primeiraContraBot`: nenhum lutador da conta tem luta contra bot no
+  histórico) e grava `puro` nos dados da luta. Sem contagem da vida inteira
+  no banco, olha as últimas 20 lutas de cada lutador: quem fez mais de 20
+  lutas contra gente depois da última contra bot ganha o começo puro de
+  novo (raro, efeito pequeno). O jeito puro nas primeiras trocas de toda
+  luta foi recusado pelo dono.
+- **Medido** (jogador novo: nível 1, bot de quem tem 1500 de rating, 2.400
+  lutas por casa, mesmas sementes com e sem): a vitória muda menos de 1,5
+  ponto em todo jeito e todo jogador (ao acaso, estilo, explorador), dentro
+  do ruído. O que muda é a identificação (observador ideal): chance do
+  jeito certo na 4ª troca de 49% para 63% (Provocador), 56% para 70%
+  (Paciente), 65% para 81% (Observador) e 56% para 72% (Inquieto); lutas
+  com mais de 80% de certeza até a 4ª troca de 17%, 38%, 50% e 21% para
+  46%, 60%, 78% e 53%.
+
 **O que foi tentado e saiu:**
 - Inquieto com humor por round (o peso de um estilo diferente a cada
   round, sem repetir a ação anterior): ninguém conseguia ler (o explorador

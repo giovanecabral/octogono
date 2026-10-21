@@ -471,7 +471,7 @@ export const HUMANOS_MODELO = {
 /* pers: força a personalidade do bot (null = a sorteada; "nenhuma" = bot de
    antes das personalidades). A chave do resultado ganha ":pers" quando pers
    vem. */
-export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "", pers = null } = {}) {
+export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "", pers = null, puro = 0 } = {}) {
   const res = {};
   for (const nivel of niveis) for (let i = 0; i < pares; i++) {
     const sH = ESTS[i % ESTS.length], pH = perfilTipico(sH, nivel);
@@ -479,7 +479,7 @@ export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0
       const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
       const bot = BOT.montarBot({ nivel, categoria: "middleweight", rating, semente: `mb${sal}:${nivel}:${i}:${s}`, pers: pers && pers !== "nenhuma" ? pers : null });
       if (pers === "nenhuma") delete bot.pers;
-      const dados = BOT.dadosDaLuta(bot, pH);
+      const dados = BOT.dadosDaLuta(bot, pH, { puro });
       for (const hu of humanos) {
         let v = 0, d = 0;
         for (let k = 0; k < n; k++) {
