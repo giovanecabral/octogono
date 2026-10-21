@@ -1807,3 +1807,15 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-licao{display:flex;align-items:flex-start;gap:10px;max-width:68ch;margin:0;padding:12px 16px;background:rgba(212,160,23,.1);
   border-left:3px solid var(--ouro);font-size:16px;line-height:1.45;color:var(--osso)}
 .jxj-licao .ico{flex:none;width:20px;height:20px;margin-top:2px;color:var(--ouro)}
+
+/* Online: placar do round ao vivo (2026-10-20, fase 2): a parte de cada um nos pontos dos juízes do round */
+.jxj-placar-round{display:flex;flex-direction:column;gap:3px;min-width:150px;max-width:260px}
+.jxj-placar-trilho{display:block;height:6px;background:rgba(232,54,45,.55);overflow:hidden}
+.jxj-placar-trilho i{display:block;height:100%;background:var(--ganho);transition:width .5s var(--ease-soco)}
+.jxj-placar-round.empate .jxj-placar-trilho{background:rgba(242,238,230,.18)}
+.jxj-placar-round.empate .jxj-placar-trilho i{background:rgba(242,238,230,.45)}
+.jxj-placar-round small{font-family:var(--f-ui);font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--osso-2);white-space:nowrap}
+.jxj-placar-round.frente small{color:var(--ganho)}
+.jxj-placar-round.atras small{color:var(--sangue-vivo)}
+@media (max-width:720px){.jxj-placar-round{min-width:0;max-width:none;flex-basis:100%}}
+@media (prefers-reduced-motion:reduce){.jxj-placar-trilho i{transition:none}}

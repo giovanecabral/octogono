@@ -805,7 +805,10 @@ function trocaNoChao(ctx, T, U) {
 }
 
 /* ---------- fechamento de round e decisão ---------- */
-function cartaoDoRound(pts) {
+/* O cartão dos juízes pros pontos de um round. Exportada (2026-10-20, placar
+   do round ao vivo): a tela mostra o cartão que sairia se o round acabasse
+   agora, com esta mesma conta. */
+export function cartaoDoRound(pts) {
   const d = pts.a - pts.b;
   if (Math.abs(d) < K.limiteEmpateRound) return { a: 10, b: 10 };
   const [v, p] = d > 0 ? ["a", "b"] : ["b", "a"];

@@ -258,6 +258,13 @@ function vistaDaLuta(d, uid) {
        duelos de atributo (só o nível, de -2 a 2: a build dele não sai daqui)
        e o que ele fez no papel em que está agora */
     momentoDecisivo: andando ? MOTOR.momentoDoLado(estado, lado) : null,
+    /* placar do round ao vivo (2026-10-20): os pontos dos juízes no round em
+       andamento, só das trocas já resolvidas (iguais pros dois), e o cartão
+       que sairia se o round acabasse agora, pela mesma conta dos juízes */
+    placarRound: andando && estado.pontos && estado.pontos[estado.round - 1] ? (() => {
+      const p = estado.pontos[estado.round - 1];
+      return { round: estado.round, pts: { a: Math.round(p.a * 10) / 10, b: Math.round(p.b * 10) / 10 }, cartao: MOTOR.cartaoDoRound(p) };
+    })() : null,
     duelos: andando && L.perfis ? MOTOR.duelos(estado, L.perfis, lado) : null,
     tendencia: andando ? tendenciaDoAdversario(d.trocas, lado, MOTOR.papel(estado, outroLado(lado))) : null,
     minhaAcao: lado ? acoesAbertas[lado] || null : null,

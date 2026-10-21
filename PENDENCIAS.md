@@ -2463,7 +2463,8 @@ IA pra medir a fase 4; bots fantasma (1b) ficam fora por enquanto.
    (o jeito e como puni-lo, só no resultado) e o começo puro (3 trocas sem
    o erro) na primeira luta contra bot de cada conta. Não mexer no Paciente
    (pedido dele).
-2. Placar do round ao vivo.
+2. Placar do round ao vivo: FEITO na branch (LEIA-ME "Online: placar do
+   round ao vivo"). Falta a validação do dono.
 3. Fechar o motor v3 (tabela da vantagem da leitura, estilos 45% a 57%).
 4. Narração por IA durante a luta (precisa de migração).
 5. Torneio exige 3 lutas com rating contra gente; nível no pareamento

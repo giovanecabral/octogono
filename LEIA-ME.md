@@ -4933,6 +4933,38 @@ tendência. Dente provado em cópia da pasta: vantagem de volta a 15 (71% e
 86,9%, reprova), sem a emenda, sem a grade, leitura do lado errado,
 duelos sem espelho, botão sem a dica e banco sem a migração.
 
+## Online: placar do round ao vivo (2026-10-20, fase 2 do plano)
+
+**Pedido do dono:** mais da metade das lutas acaba na decisão, e os pontos
+do round só apareciam quando o round fechava; o jogador não sabia se estava
+ganhando. Mostrar, durante o round, uma barra de domínio com a mesma conta
+dos juízes, só do que já foi resolvido, igual pros dois, sem poluir a tela
+e sem mexer na conta.
+
+- **Servidor:** nada de regra nova. A vista já mandava os pontos dos juízes
+  (`estado.pontos`), que só mudam quando a troca é resolvida. Agora manda
+  também `placarRound`: os pontos do round em andamento e o cartão que
+  sairia se ele acabasse agora, pela mesma função dos juízes
+  (`cartaoDoRound`, só exportada do motor).
+- **Tela:** na faixa embaixo do placar, entre o momento e os cartões dos
+  rounds fechados, uma barra fina com a parte de cada um nos pontos do
+  round (verde sua, vermelha dele) e uma linha: "Você lidera o round · 14 a
+  9", "Ele na frente por pouco · 7 a 8", "Round empatado · 0 a 0" e, quando
+  for o caso, "· 10-8 se acabasse agora". Os juízes dão o round a qualquer
+  diferença; "por pouco" só avisa que está apertado (menos de 3 pontos, uma
+  queda vale 4). Números inteiros; se arredondar empatar sem estar
+  empatado, uma casa decimal. No celular, a linha inteira embaixo da
+  posição.
+- **Métricas:** o motor não mudou; a suíte `jxjmotor` dá os mesmos números
+  antes e depois (nocaute 26,8%, finalização 15%, decisão 56,3%, empate
+  1,8%; leitura 77,2% e 93%).
+- **Testes:** `jxj` (o placar é o do estado, igual pros dois, com o cartão
+  dos juízes; escolher a ação não mexe nele, só a troca resolvida; 30 a 5
+  dá 10-8) e `jxjtelas` (a frase, a classe e a barra em seis situações:
+  liderando, por pouco dos dois lados, empatado, 10-8, perdendo). Dente
+  provado numa cópia da pasta: cartão com os lados trocados no servidor e a
+  tela sem o "por pouco", os dois reprovam.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

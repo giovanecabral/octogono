@@ -11301,6 +11301,39 @@ async function testarJxJ() {
       if (t.trocas.slice(-3, -1).some((x) => (x.ev || []).some((y) => y.tipo === "leu"))) throw new Error("leu numa troca sem leitura (defesa contra defesa)");
     });
 
+    await conf("placar do round ao vivo (2026-10-20): a vista manda os pontos dos juízes do round em andamento (os do estado, iguais pros dois) e o cartão que sairia agora pela mesma conta (cartaoDoRound); escolher a ação não mexe no placar, só a troca resolvida; 30 a 5 dá 10-8", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2);
+      const lado1 = (await ok(u1, "luta", { lutaId: lid })).lado;
+      /* semente em que a 1ª troca (golpes do u1 contra pressão do u2) não acaba a luta */
+      const L0 = (await q("select estado, perfis from jxj_lutas where id = $1", [lid]))[0];
+      const ac = lado1 === "a" ? { a: "golpes", b: "pressao" } : { a: "pressao", b: "golpes" };
+      let fixa = null;
+      for (let k = 0; k < 50 && !fixa; k++) if (!MOTOR.resolverTroca(L0.estado, L0.perfis, ac, "teste-placar-" + k).estado.fim) fixa = "teste-placar-" + k;
+      await q("update jxj_lutas set semente = $2, compromisso = encode(sha256(convert_to($2, 'UTF8')), 'hex') where id = $1", [lid, fixa]);
+      const confere = async () => {
+        const v1 = await ok(u1, "luta", { lutaId: lid }), v2 = await ok(u2, "luta", { lutaId: lid });
+        const e = (await q("select estado from jxj_lutas where id = $1", [lid]))[0].estado, p = e.pontos[e.round - 1];
+        for (const v of [v1, v2]) {
+          const pr = v.placarRound;
+          if (!pr || pr.round !== e.round || pr.pts.a !== Math.round(p.a * 10) / 10 || pr.pts.b !== Math.round(p.b * 10) / 10) throw new Error("placar: " + JSON.stringify(pr) + " estado " + JSON.stringify(p));
+          if (JSON.stringify(pr.cartao) !== JSON.stringify(MOTOR.cartaoDoRound(p))) throw new Error("cartão diferente do dos juízes: " + JSON.stringify(pr.cartao));
+        }
+        return JSON.stringify(v1.placarRound);
+      };
+      const antes = await confere();
+      const v = await ok(u1, "luta", { lutaId: lid });
+      await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "golpes" });
+      if ((await confere()) !== antes) throw new Error("escolher a ação mexeu no placar");
+      await ok(u2, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "pressao" });
+      const depois = await confere();
+      const e1 = (await q("select estado from jxj_lutas where id = $1", [lid]))[0].estado;
+      if (e1.pontos[0].a + e1.pontos[0].b > 0 && depois === antes) throw new Error("a troca resolvida não mudou o placar");
+      await q("update jxj_lutas set estado = jsonb_set(estado, '{pontos,0}', '{\"a\":30,\"b\":5}'::jsonb) where id = $1", [lid]);
+      const v10 = await ok(u2, "luta", { lutaId: lid });
+      if (JSON.stringify(v10.placarRound.cartao) !== JSON.stringify({ a: 10, b: 8 })) throw new Error("30 a 5 não deu 10-8: " + JSON.stringify(v10.placarRound));
+    });
     await conf("ausência: prazo vencido vira Defender; três seguidos dão W.O. com rating e XP 40/0", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
@@ -13325,6 +13358,33 @@ async function testarJxJTelas() {
       const ht = td ? String(td.innerHTML) : "";
       const maior = v3.tendencia.cont.indexOf(Math.max(...v3.tendencia.cont)), icone = ["punho", "queda", "escudo", "avancar"][maior];
       if (!td || !/Ele em pé/.test(ht) || !new RegExp(`class="mais[^"]*"[^>]*><svg[^>]*><use href="img/icones.svg#${icone}"`).test(ht)) throw new Error("tendência: " + ht.replace(/\s+/g, " ").slice(0, 300));
+    });
+    await conf("placar do round ao vivo na tela (2026-10-20): a faixa diz quem lidera com o número, avisa o por pouco (menos de 3 pontos), o empate e o 10-8 se o round acabasse agora; a barra tem a parte de cada um", async () => {
+      const vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+      const eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      const pontos = async (meu, dele) => {
+        const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0].estado;
+        r.pontos[r.round - 1] = { a: eu === "a" ? meu : dele, b: eu === "a" ? dele : meu };
+        await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r)]);
+        const m = await abrir(`luta/${lid}`);
+        const no = desde(m).filter((n) => tem(n, "jxj-faixa-combate")).pop();
+        return String(no ? no.innerHTML : "");
+      };
+      const casos = [
+        [14, 9, "Você lidera o round · 14 a 9", "frente", 61],
+        [7, 7.5, "Ele na frente por pouco · 7 a 8", "atras", 48],
+        [8.2, 7.8, "Você na frente por pouco · 8,2 a 7,8", "frente", 51],
+        [0, 0, "Round empatado · 0 a 0", "empate", 50],
+        [30, 5, "Você lidera o round · 30 a 5 · 10-8 se acabasse agora", "frente", 86],
+        [4, 22.5, "Ele lidera o round · 4 a 23", "atras", 15],
+      ];
+      for (const [meu, dele, frase, classe, parte] of casos) {
+        const h = await pontos(meu, dele);
+        if (!h.includes(`<small>${frase}</small>`)) throw new Error(`${meu} a ${dele}: ` + h.replace(/\s+/g, " ").slice(0, 400));
+        if (!new RegExp(`jxj-placar-round ${classe}"`).test(h) || !h.includes(`width:${parte}%`)) throw new Error(`${meu} a ${dele}: classe ou barra (${classe}, ${parte}%)`);
+      }
+      semLixoV3(await pontos(0, 0), "placar do round");
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,

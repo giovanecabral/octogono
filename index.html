@@ -8743,6 +8743,25 @@ function jxjFaixaMomento(ch){
   f.innerHTML=`${ICONE(grogue?"alerta":"cadeado")}<span><b>${tit}</b><small>${txt}</small></span>`;
   return f;
 }
+/* Placar do round ao vivo (2026-10-20, fase 2 do plano do Online): os
+   pontos dos juízes no round em andamento, que o servidor manda só das
+   trocas já resolvidas, e o cartão que sairia agora (a mesma conta dos
+   juízes). Os juízes dão o round a qualquer diferença; "por pouco" só avisa
+   que está apertado (menos de 3 pontos: uma queda vale 4). */
+const JXJ_POR_POUCO=3;
+function jxjPlacarRound(p,eu,ele){
+  if(!p||!p.pts)return"";
+  const meu=Number(p.pts[eu])||0,dele=Number(p.pts[ele])||0,dif=meu-dele;
+  /* números inteiros; se arredondar empatar sem empatar, uma casa decimal */
+  const casas=Math.round(meu)===Math.round(dele)&&Math.abs(dif)>=0.01?1:0;
+  const n=x=>String(Math.round(x*10**casas)/10**casas).replace(".",",");
+  const frase=Math.abs(dif)<0.01?"Round empatado":dif>0?(dif<JXJ_POR_POUCO?"Você na frente por pouco":"Você lidera o round"):(-dif<JXJ_POR_POUCO?"Ele na frente por pouco":"Ele lidera o round");
+  const c=p.cartao||{},dez8=c[eu]===8||c[ele]===8?" · 10-8 se acabasse agora":"";
+  const parte=meu+dele>0?Math.round(100*meu/(meu+dele)):50;
+  const classe=Math.abs(dif)<0.01?"empate":dif>0?"frente":"atras";
+  const txt=`${frase} · ${n(meu)} a ${n(dele)}${dez8}`;
+  return `<span class="jxj-placar-round ${classe}" role="img" aria-label="Round ${p.round}: ${txt}"><span class="jxj-placar-trilho"><i style="width:${parte}%"></i></span><small>${txt}</small></span>`;
+}
 function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}){
   const F=v.formato,e=v.estado,nomes=v.nomes;
   const tela=el("div","jxj-combate");
@@ -8771,6 +8790,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
   const faixa=el("div","jxj-faixa-combate");
   faixa.innerHTML=`<span class="jxj-posicao" id="jxj-posicao">${jxjPosicaoTxt(v)}</span>
     <span class="jxj-momento" role="img" aria-label="Momento ${mom>0?"a seu favor":mom<0?"a favor do adversário":"neutro"}"><span class="jxj-momento-trilho"><i style="left:${50+mom*12}%"></i></span></span>
+    ${jxjPlacarRound(v.placarRound,eu,ele)}
     ${(e.cartoes||[]).length?`<span class="jxj-cartoes">${e.cartoes.map((c,i)=>`R${i+1} <b>${c[eu]}-${c[ele]}</b>`).join(" ")}</span>`:""}`;
   tela.appendChild(faixa);
   if(v.duelos)tela.appendChild(jxjDuelos(v.duelos));
