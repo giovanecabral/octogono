@@ -4795,7 +4795,9 @@ tela" e aprovou o plano ("pode"). `VERSAO_MOTOR` 3, `VERSAO_BALANCEAMENTO`
 
 ### Leitura que decide
 
-`K.vantagem` 26 em pé (era 15). Cada troca grava um evento `leu` (quem
+`K.vantagem` 26 em pé (era 15); 22 em pé e no chão desde a fase 3 do
+plano (2026-10-21, ver "Fase 3 do plano" no fim desta seção). Cada troca
+grava um evento `leu` (quem
 leu, a família dele e a do outro; sem texto, só dado). A tela diz o
 porquê no lance: "Você leu: Queda ganha de Golpes", "Ele leu: ..." ou
 "Ninguém leu o outro: Golpes contra Defesa, decidiram os atributos".
@@ -4923,7 +4925,8 @@ pela semente exige os dois motores.
 `jxjmotor`: evento `leu` sempre pelo ciclo; encaixe nunca em pé; grogue
 (knockdown sempre deixa, dura uma troca, cobrir protege do golpe e não da
 grade); encaixe (as 4 relações e o soltar, por cima e por baixo); momentos
-sem resposta óbvia; leitura decide (0,5 acima de 72%, 1 acima de 88%).
+sem resposta óbvia; leitura decide (0,5 acima de 72%, 1 acima de 88%;
+com a vantagem 22 da fase 3, 71% e 85,5%).
 `jxjbot`: misturas dos momentos iguais às da ferramenta, bot forte na
 mistura, bot do meio no óbvio, luta antiga sem `mm`. `jxj`: duelos só com
 o nível e em espelho, momento dos dois lados com a dica, encaixe só com
@@ -4932,6 +4935,70 @@ balanças, por quê, etiquetas, faixa, dica, ciclo fora no momento,
 tendência. Dente provado em cópia da pasta: vantagem de volta a 15 (71% e
 86,9%, reprova), sem a emenda, sem a grade, leitura do lado errado,
 duelos sem espelho, botão sem a dica e banco sem a migração.
+
+### Fase 3 do plano (2026-10-21): vantagem 22 e o motor fechado
+
+**Pedido do dono** (roteiro das 6 fases): tabela da vantagem da leitura em
+82%, 86%, 89% e 92% de chance de ganhar a troca lida; medir quantos fins
+saem de momentos e propor ajuste; estilos de 45% a 57% e variantes de 48% a
+52,5%; revisar a branch pra ficar pronta. Ele mandou seguir com a
+recomendação.
+
+**A tabela** (vantagem no chão igual à de pé, nível 1, jogo racional;
+"nominal" é a chance de quem leu ganhar a troca com atributos iguais;
+"lê sempre" e "lê metade" são as vitórias de quem vê a ação do outro e
+acerta a leitura com essa chance, contra o jogador de estilo):
+
+| vantagem | nominal | medida | lê sempre | lê metade | nível 30 x 1 | estilos | KO / FIN / DEC | variantes | fins de momento |
+|---|---|---|---|---|---|---|---|---|---|
+| 18,2 | 82% | 86,4% | 90,0% | 74,5% | 68% a 80% | 43,4% a 56,7% | 27,8 / 16,9 / 53,6 | 48,1% a 51,8% | 28,2% |
+| 21,8 | 86% | 87,8% | 92,9% | 77,9% | 70,4% a 81,4% | 44,6% a 56,6% | 27,0 / 16,0 / 55,2 | 47,8% a 51,5% | 26,7% |
+| 25,1 | 89% | 89,1% | 94,4% | 80,6% | | 42,4% a 54,4% | 26,8 / 15,3 / 56,2 | | 26,2% |
+| 29,3 | 92% | 91,0% | 95,8% | 82,3% | | 42,6% a 55,3% | 26,3 / 14,5 / 57,4 | | 25,0% |
+
+**Escolha: 86% (vantagem 22, em pé e no chão).** A leitura continua
+decidindo (quem lê sempre vence perto de 9 em 10) e é a maior vantagem que
+deixa os estilos na faixa sem mexer em quase nada; com 89% e 92% os estilos
+saem da faixa por baixo e a decisão passa de 56%. Com 22, duas duplas ainda
+ficavam fora (o counter perdia do wrestler em 44,9% e o striker do
+grappler em 44,6%): striker e counter passaram 3 pontos de Queda pra
+Defesa de queda (striker 37/60, era 40/57; counter 39/59, era 42/56; a
+soma continua 450). A vantagem no chão segue a de pé (era 26,6): a mesma
+regra de leitura em pé e no chão, uma das recomendações que o dono mandou
+seguir.
+
+**Motor fechado** (suíte `jxjmotor`, 1.200 lutas por dupla): estilos de
+46,6% a 51,4%; nocaute 29%, finalização 15,4%, decisão 53,9%, empate 1,7%,
+9,4 trocas; variantes de 48,2% a 52,1%; nível 30 contra 1 de 70% a
+79,1%; nível 30 sem dupla fora de 40% a 60%; leitura metade 73,7% e
+sempre 86,9%.
+
+**Fins que saem de momentos** (`node ferramentas/jxj-balanco.mjs
+momentos`, motor fechado): lutas com grogue 35,6%, com finalização
+encaixada 19,3%; o grogue acaba a luta em 24,9% das vezes, o encaixe em
+28,9%; **30% dos nocautes e finalizações saem de um momento** (25,3% com a
+vantagem 26). Proposta: manter. Os métodos estão na faixa, as misturas dos
+momentos não têm resposta óbvia e é no momento que a leitura pesa mais. Se
+o dono quiser menos fins em momento, o botão é a chance de grogue do golpe
+pesado (0,5 x dano/10 x queixo) ou o limite do encaixe (0,36).
+
+**Bots com o motor fechado:** a tabela da fase 1 foi medida de novo
+(seção "Bots com personalidade") e a `FORCA_BOT` também. O Provocador é
+sempre striker e o striker ficou com mais defesa de queda, a fraqueza
+dele: o jogador de estilo caiu de 49% pra 45% contra o Provocador forte.
+`AJUSTE.inclinacaoAgressivo` 0,03 (os outros jeitos seguem com 0,06)
+devolve 46% (meta do dono: 46% a 50%). A inclinação pesa pouco aqui (com
+0, 46,3%): o resto da força do bot forte vem da jogada pensada e dos
+momentos, iguais pra todos os jeitos.
+
+**Testes que mudaram:** `jxjmotor` com 1.200 lutas por dupla na matriz e
+no nível 30 (com 600, saíam casas de 44,7% e 60,7% que não se repetiam em
+amostras maiores), faixa de estilos 45% a 57%, variantes 48% a 52,5%,
+leitura 71% e 85,5% (com a vantagem 15: 68,7% e 84,4%, reprova). `jxjbot`:
+calibração nos níveis 1, 10 e 30 (os mesmos da `FORCA_BOT`; nos níveis 1
+e 10 o Provocador forte dava 41% a 43%) e o Inquieto forte na roda 55%+
+(ele pula uma casa quando a próxima rende pouco: 58% na roda, 88% na roda
+ou no pulo). `PESOS_VALOR` treinados de novo com o motor fechado.
 
 ## Online: placar do round ao vivo (2026-10-20, fase 2 do plano)
 
@@ -4964,6 +5031,167 @@ e sem mexer na conta.
   liderando, por pouco dos dois lados, empatado, 10-8, perdendo). Dente
   provado numa cópia da pasta: cartão com os lados trocados no servidor e a
   tela sem o "por pouco", os dois reprovam.
+
+## Online: narração ao vivo (2026-10-21, fase 4 do plano)
+
+**Pedido do dono:** uma linha de narração por troca importante, junto da
+animação, sem atrasar o ritmo; molde local nas trocas comuns e IA só no
+knockdown, no grogue, na finalização apertando, no fim de round, na virada
+e no nocaute; o mesmo filtro contra invenção; molde quando a IA falha,
+demora ou inventa; a mesma linha pros dois; respeitar o teto diário; "a
+luta nunca espera a IA"; modelo barato e rápido; custo e tempo no log.
+
+### Como funciona
+
+- `api/_jxj-narracao.js`: `destaqueDaTroca` decide se a troca resolvida é
+  um destaque (nocaute, finalização, knockdown, finalização apertando,
+  grogue, virada, fim de round; a luta que acaba nos pontos dá o fim do
+  último round com o resultado). Troca comum não ganha linha: o lance já
+  mostra os fatos. `moldeDoDestaque` é a frase local de cada um.
+- `api/jxj.js` chama `narracaoDaTroca` logo depois do `resolverTroca` e
+  grava a linha nos eventos da troca (evento `narracao`, com fonte, tempo,
+  tokens e custo). Os dois lutadores veem a mesma, e a luta refeita pela
+  semente não muda (o motor não lê esse evento; suíte `jxj`).
+- **IA:** no destaque, uma chamada com prazo de 1,5 s
+  (`PRAZO_IA_TROCA_MS`), no máximo uma por pedido, contando 1 no mesmo teto
+  diário da narração do fim (`jxj_narracao_cota_ia`, chave
+  `narracao_ia_dia`). Modelo: `JXJ_NARRACAO_TROCA_MODELO` ou `QWEN_MODEL`
+  (hoje `qwen/qwen3.7-flash`), sem raciocínio, 80 tokens.
+  `JXJ_NARRACAO_TROCA=false` na Vercel desliga a IA ao vivo (fica o molde).
+- **Filtro** (`validarNarracaoTroca`): golpe com nome só se está nos fatos;
+  número só se está nos fatos (o número do nome do lutador não conta);
+  palavra de resultado (venceu, nocaute, finalização, decisão, empate,
+  cartões, juiz, placar...) só se o mesmo radical está nos fatos; round
+  por extenso só o certo; nome próprio só os dois lutadores, inclusive no
+  começo da frase; sem exclamação, pergunta ou HTML; frase cortada pelo
+  limite de tokens não vale. No fim de round e na virada a IA narra só o
+  último lance, sem número e sem dizer quem levou; quem levou e o placar
+  vêm do molde, colado depois.
+- **Quem resolve a troca:** antes do prazo, só o pedido que acabou de
+  gravar a ação (`porAcao`). A consulta do outro lado (a cada 1,2 s na
+  tela) não resolve junto; senão os dois pedidos chamavam a IA pro mesmo
+  lance. Depois do prazo, qualquer pedido resolve; se dois resolverem
+  juntos, `jxj_gravar_troca` grava um só.
+- **Tela:** a linha aparece no lance, em itálico com a borda vermelha, e
+  a do último lance (nocaute, finalização ou fim do último round) aparece
+  também no resultado, porque a tela de combate dá lugar ao resultado
+  antes de mostrá-la. O texto passa por `jxjEsc`.
+- **Log:** uma linha JSON por destaque com IA, sem nome nem texto:
+  `{"jxj":"narracao-troca","destaque":...,"fonte":"ia"|"molde","ms":...,"tokens":...,"custo":...}`.
+
+### Medido com a IA real (2026-10-21, 50 chamadas, autorizadas pelo dono)
+
+- **Primeiras 40, com o raciocínio ligado** (o padrão dos Flash da Qwen):
+  nenhuma frase. Os 70 tokens acabavam no raciocínio (mediana 1,5 s, 90%
+  até 1,9 s). Desligado (`reasoning: {enabled: false}`, como o
+  `api/ai.js` já fazia).
+- **8 lances com o pedido corrigido:** 8 de 8 passaram no filtro da época,
+  7 de 8 dentro de 1,5 s (de 0,9 a 1,6 s, mediana 1,14 s), cerca de 200
+  tokens (27 de saída), US$ 0,0000095 por chamada. Lidas uma a uma: 6
+  certas; uma dizia "vencendo por decisão" num encaixe, e era fato (a luta
+  acabou nos pontos naquela troca: daí a regra de a decisão virar o fim do
+  último round); uma confundiu o total com o placar do round, por culpa do
+  molde (a virada era marcada pra quem levou o round e continuou atrás:
+  "virou a luta, 18 a 19"). As duas coisas foram corrigidas; o pedido novo
+  do fim de round ainda não foi medido com a IA real.
+- **A narração do fim, como está em produção:** 260 tokens de raciocínio
+  e nenhum texto (`finish_reason` "length"). Em produção ela deve estar
+  caindo sempre no resumo local. Sem raciocínio: texto bom em 2,8 s, 150
+  tokens, US$ 0,000032. Corrigido nesta branch (sem raciocínio, e frase
+  cortada no limite volta pro molde).
+- **Custo:** cerca de US$ 0,00001 por linha. A luta tem 3 destaques em
+  média (um terço das trocas, jogo racional: 1,5 fim de round, 0,4
+  knockdown, 0,3 nocaute, 0,3 virada, 0,2 encaixe, 0,2 finalização, 0,1
+  grogue); com a narração do fim, perto de US$ 0,00006 por luta.
+- **Teto:** a narração ao vivo divide o teto diário com a do fim (padrão
+  300 chamadas por dia, `narracao_ia_dia` em `jxj_config`). Com 3
+  destaques e a narração do fim, 300 cobrem perto de 75 lutas por dia; acima disso,
+  tudo sai do molde (a luta não muda). Subir o teto é um `update` em
+  `jxj_config`, decisão do dono (3.000 por dia custariam perto de US$ 0,03).
+- **Ritmo:** no destaque (uma troca em três), o pedido que resolve a troca
+  espera a IA até 1,5 s (mediana 1,1 s); nas outras, nada muda.
+
+**Testes** (`jxj`): troca comum sem linha; fim de round com o molde, igual
+na vista dos dois, luta refeita pela semente igual; IA falsa boa (1
+chamada, 1 do teto, texto dela mais o molde), a consulta do outro lado no
+meio da resposta não resolve nem chama de novo, e a IA que inventa golpe,
+número, resultado ou quem levou, que corta no limite, que demora ou que
+falha vira o molde; teto zerado não chama; a consulta não resolve antes do
+prazo e resolve depois; destaques e moldes de todos os tipos; filtro com
+textos bons e ruins; virada só de quem estava atrás. `jxjtelas`: linha no
+lance escapada (nome com `<img onerror>`) e a do último lance no resultado.
+Dente provado numa cópia da pasta: consulta resolvendo antes do prazo,
+frase cortada aceita, sem a regra do resultado, virada antiga, nome no
+começo da frase liberado, linha sem `jxjEsc` e resultado sem a linha:
+cada um reprova.
+
+## Online: integridade e pareamento (2026-10-21, fase 5 do plano)
+
+**Pedido do dono:** luta contra bot continua valendo rating (decisão dele);
+torneio pede 3 lutas com rating contra gente; o pareamento olha o nível,
+abrindo com a espera pra fila não esvaziar.
+
+`supabase_jxj_fase5.sql` (o dono roda, depois do `supabase_jxj_motor3.sql`;
+só aditiva, refaz duas funções com a mesma assinatura):
+
+- **Torneio:** `jxj_torneio_inscrever` conta as lutas encerradas, com
+  rating, sem bot e não anuladas do lutador (`jxj_lutas_gente_do_lutador`).
+  Menos de 3: "são precisas 3 lutas com rating contra outros jogadores pra
+  entrar em torneio (luta contra bot não conta)". O estado manda
+  `lutasGente` de cada lutador (`jxj_lutas_contra_gente`), e o painel diz
+  quantas faltam; os textos do torneio dizem "contra outros jogadores".
+- **Fila:** o par precisa ter no máximo `fila_nivel_base` (5) níveis de
+  diferença, mais `fila_nivel_seg` (2) a cada 10 s da espera mais longa do
+  par, sem teto (aos 30 s, quando a tela oferece o bot, já são 11). As
+  duas chaves ficam em `jxj_config`: o dono ajusta sem migração. A fila
+  responde `toleranciaNivel` e a tela diz "aceita agora até 100 pontos e 5
+  níveis de diferença". Rating e raio continuam como antes.
+- **Sem a migração** o servidor funciona como antes: torneio pelo número
+  de lutas com rating, estado sem `lutasGente`, fila sem olhar o nível
+  (suíte `jxj`).
+
+**Medido** (a temporada simulada da suíte `jxjtemporada`, com nível que
+sobe pelo XP de cada luta, gente nova chegando todo dia e quem fica 30 s
+sem par indo pro bot):
+
+| fila | regra de nível | pares com mais de 10 níveis | 90% dos pares até | vai pro bot |
+|---|---|---|---|---|
+| cheia (8 chegadas a cada 10 s) | sem | 20,8% | 15 níveis | 1,4% |
+| cheia | 5 + 2 a cada 10 s | 0,7% | 7 | 2,4% |
+| rala (1 a cada 10 s) | sem | 19,2% | 14 | 20,8% |
+| rala | 5 + 1 a cada 10 s | 0% | 7 | 33,4% |
+| rala | **5 + 2 a cada 10 s** | **2,8%** | **9** | **27,6%** |
+| rala | 5 + 3 a cada 10 s | 9,0% | 10 | 24,9% |
+| muito rala (1 a cada 30 s) | sem | 10,0% | 10 | 57,1% |
+| muito rala | 5 + 2 a cada 10 s | 2,5% | 8 | 60,4% |
+
+5 + 2 tira quase todo par desigual (de 19% pra 3% na fila rala) e manda 7
+pontos a mais de gente pro bot; 5 + 1 tira tudo, mas manda 13. A suíte
+`jxjtemporada` guarda isso (fila rala: no máximo 5% acima de 10 níveis e
+no máximo 10 pontos a mais pro bot) e confere que a regra do servidor
+(`REG.NIVEL_FILA`) é a padrão do banco.
+
+**Testes** (`jxj`): luta contra bot, anulada e sem rating não contam pro
+torneio; 2 contra gente recusa, a 3ª libera; `lutasGente` no estado; nível
+1 contra 13 não pareia na hora, com 31 s de espera também não (11), com 41
+s sim (13); 1 contra 6 pareia na hora; a configuração vale sem migração;
+banco sem a migração funciona como antes. Dente provado numa cópia: a
+contagem com bot, a fila sem o nível e o `REG` diferente do banco, cada um
+reprova.
+
+## Online: diagnóstico das variantes (2026-10-21, fase 6 do plano)
+
+Só diagnóstico, sem mudança no jogo: `docs/online-variantes-diagnostico.md`
+(as 30 variantes com o efeito medido por uso e na luta, e as duas
+propostas com impacto e esforço). Em resumo: todas vencem entre 47% e 52%
+na luta (desvio de 1 ponto, perto do erro de amostra); o maior efeito por
+uso é o do cruzado (nocaute 6,2% contra 3,9% do jab), mas cada variante
+aparece cerca de meia vez por luta e o jogador não percebe; amarrar os
+braços e fechar a guarda dão os mesmos números; no chão a escolha quase
+não aparece (1,7 uso por luta contra 7,7 em pé). A mão escolhida antes da
+luta valeria de 1 a 2 pontos (a melhor) e custaria 4 (a pior). A
+recomendação é (a) primeiro, só em pé, com 2 variantes por família e efeito
+calibrado par a par; (b) não agora.
 
 ## Bots do Online (2026-10-19)
 
@@ -5229,6 +5457,22 @@ fraco / médio / forte):
 Antes (bot sem jeito, mesma medição): estilo 58 / 49 / 45, explorador 68 /
 64 / 49, ganho de quem lê +9 / +15 / +4. Contra o bot forte, ler valia 4
 pontos; agora vale de 9 a 20.
+
+**Com o motor fechado (fase 3, 2026-10-21; mesma medição, mesmas
+sementes):**
+
+| | Provocador | Paciente | Observador | Inquieto |
+|---|---|---|---|---|
+| ao acaso | 40 / 37 / 36 | 44 / 40 / 39 | 47 / 43 / 45 | 49 / 43 / 44 |
+| no peso do estilo | 53 / 48 / 46 | 54 / 51 / 48 | 58 / 55 / 50 | 59 / 52 / 51 |
+| explorador | 74 / 68 / 65 | 65 / 58 / 57 | 82 / 74 / 69 | 73 / 66 / 61 |
+| ganho de quem lê | +21 / +19 / +19 | +11 / +7 / +9 | +24 / +20 / +19 | +14 / +13 / +10 |
+
+O Provocador está com a inclinação 0,03 (com a de antes, 0,06, o jogador
+de estilo vencia 45% do forte: ver "Fase 3 do plano" na seção do motor
+v3). Bot forte contra o jogador de estilo: 46%, 48%, 50% e 51%. `FORCA_BOT`
+nova: Provocador 1480/1510/1527, Paciente 1470/1492/1515, Observador
+1444/1468/1498, Inquieto 1438/1485/1493.
 
 - **Bot forte contra o jogador de estilo: 48% a 51%** nos quatro (meta do
   dono: perto de 46% a 50%). O Observador e o Inquieto fortes estavam em

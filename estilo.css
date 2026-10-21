@@ -1819,3 +1819,12 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-placar-round.atras small{color:var(--sangue-vivo)}
 @media (max-width:720px){.jxj-placar-round{min-width:0;max-width:none;flex-basis:100%}}
 @media (prefers-reduced-motion:reduce){.jxj-placar-trilho i{transition:none}}
+
+/* Online: narração ao vivo do destaque (2026-10-21, fase 4): a linha do narrador no lance */
+.jxj-narracao-troca{margin:8px 0 2px;padding-left:12px;border-left:3px solid var(--sangue);font-family:var(--f-texto);font-style:italic;
+  font-size:17px;line-height:1.4;color:var(--osso)}
+.jxj-lance.nova .jxj-narracao-troca{animation:jxjNarra .5s var(--ease-soco) .2s both}
+.jxj-narracao-fim{margin:0 auto;max-width:640px;width:100%}
+@keyframes jxjNarra{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (max-width:720px){.jxj-narracao-troca{font-size:15px}}
+@media (prefers-reduced-motion:reduce){.jxj-lance.nova .jxj-narracao-troca{animation:none}}

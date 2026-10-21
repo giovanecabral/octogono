@@ -16,6 +16,12 @@ export const REVANCHE_MS = 60000;
 export const SINAL_FILA_MS = 12000;       // fila só pareia quem deu sinal de vida há pouco
 export const BLOQUEIO_RECUSA_MS = 60000;  // quem não confirmou o par fica 60 s fora da fila
 export const TOLERANCIA = { base: 100, porDezSeg: 25, max: 400 };
+/* Diferença de nível na fila (2026-10-21, fase 5): base mais porDezSeg a
+   cada 10 s da espera mais longa do par, sem teto. Quem decide é o banco
+   (supabase_jxj_fase5.sql, chaves fila_nivel_base e fila_nivel_seg do
+   jxj_config, com estes valores de padrão); aqui fica a mesma conta pra
+   simulação da temporada (suíte jxjtemporada). */
+export const NIVEL_FILA = { base: 5, porDezSeg: 2 };
 /* Diferença máxima de rating que o jogador aceita na fila (2026-10-04, pedido
    do dono). 2000 = qualquer diferença. O padrão (400) é o teto de antes. O
    banco confere os mesmos valores (supabase_jxj_raio.sql). */
@@ -121,6 +127,8 @@ export function nomeLutadorValido(nome) {
   return { ok: true, nome: n };
 }
 
+/* Tolerância de nível da fila pelo tempo de espera (ms) */
+export const toleranciaNivelFila = (esperaMs) => NIVEL_FILA.base + NIVEL_FILA.porDezSeg * Math.floor(Math.max(0, esperaMs) / 10000);
 /* Tolerância de rating da fila pelo tempo de espera (ms) */
 export const toleranciaFila = (esperaMs) =>
   Math.min(TOLERANCIA.max, TOLERANCIA.base + TOLERANCIA.porDezSeg * Math.floor(Math.max(0, esperaMs) / 10000));

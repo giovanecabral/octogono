@@ -10989,6 +10989,7 @@ async function testarJxJ() {
   const { SUPABASE_URL } = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
   const MOTOR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
   const ARV = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
+  const NARR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-narracao.js")).href);
   const REG = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-regras.js")).href);
   const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, erroOriginal = console.error;
   const chamadas = [];
@@ -11038,6 +11039,12 @@ async function testarJxJ() {
     return ok(u1, "luta", { lutaId: lid });
   };
   const vencerPrazo = (lid) => q("update jxj_lutas set prazo = now() - interval '10 seconds' where id = $1", [lid]);
+  /* n lutas encerradas entre dois lutadores (só a linha da luta, pra contar
+     no torneio: fase 5); bot, anulada e sem rating pra provar o que não conta */
+  const lutasFeitas = (a, b, n, { bot = false, metodo = "DEC", comRating = true } = {}) => q(`insert into jxj_lutas (tipo, a_id, b_id, a_user, b_user, status, semente, compromisso, nomes, com_rating, resultado, bot, encerrada_em)
+      select 'fila', la.id, lb.id, la.user_id, lb.user_id, 'encerrada', 's', 'c', '{}'::jsonb, $4, jsonb_build_object('metodo', $5::text), case when $6 then '{"pers":"agressivo","s":0.5}'::jsonb end, now()
+      from jxj_lutadores la, jxj_lutadores lb, generate_series(1, $3) where la.id = $1 and lb.id = $2`, [a, b, n, comRating, metodo, bot]);
+  const apagarLutasFeitas = () => q("delete from jxj_lutas where semente = 's' and compromisso = 'c'");
 
   try {
     await conf("desligado (JXJ_ATIVO diferente de true): definições dizem ativo:false e toda ação responde 503", async () => {
@@ -11652,6 +11659,7 @@ async function testarJxJ() {
       const us = [], ls = [];
       for (let k = 0; k < 8; k++) { const u = await novoUsuario({ pro: true }); us.push(u); ls.push((await criar(u, { categoria: "middleweight" })).id); }
       await q("update jxj_lutadores set lutas_rating = 4, rating = 1500 + id where id = any($1::bigint[])", [ls]);
+      for (let k = 0; k < 8; k++) await lutasFeitas(ls[k], ls[(k + 1) % 8], 2);   // 4 lutas contra gente cada (2 de A, 2 de B)
       const extra = (await criar(us[0], { categoria: "middleweight", estilo: "counter" })).id;
       await q("update jxj_lutadores set lutas_rating = 4 where id = $1", [extra]);
       await erro(us[0], "torneioInscrever", { lutadorId: extra }, /principal/);
@@ -11662,6 +11670,7 @@ async function testarJxJ() {
       const tor = lista.find((t) => t.status === "andamento");
       if (!tor) throw new Error(JSON.stringify(lista).slice(0, 200));
       await erro(us[0], "torneioInscrever", { lutadorId: ls[0] }, /já está num torneio/);
+      await apagarLutasFeitas();
       let det = await ok(us[0], "torneio", { torneioId: tor.id });
       if (det.confrontos.length !== 4) throw new Error("quartas " + det.confrontos.length);
       const sem = Object.fromEntries(det.inscritos.map((i) => [i.lutador, i.semente]));
@@ -11699,6 +11708,87 @@ async function testarJxJ() {
       if (!hall.cinturoes.some((h) => h.lutador === camp)) throw new Error("hall sem o campeão");
       const outro = await ok(us[1], "torneios", { categoria: "middleweight" });
       if (!outro.some((t) => t.status === "inscricoes")) throw new Error("não abriu o próximo torneio");
+    });
+    /* fase 5 (2026-10-21, supabase_jxj_fase5.sql): integridade e pareamento */
+    await conf("torneio pede 3 lutas com rating contra gente (fase 5): luta contra bot, anulada e sem rating não contam; o estado diz quantas cada lutador tem", async () => {
+      const u = await novoUsuario({ pro: true }), l = (await criar(u, { categoria: "heavyweight" })).id;
+      const o = await novoUsuario({ pro: true }), lo = (await criar(o, { categoria: "heavyweight" })).id;
+      await q("update jxj_lutadores set lutas_rating = 9 where id = $1", [l]);
+      try {
+        await lutasFeitas(l, lo, 4, { bot: true });
+        await lutasFeitas(lo, l, 1, { metodo: "ANULADA" });
+        await lutasFeitas(l, lo, 1, { comRating: false });
+        await lutasFeitas(l, lo, 1); await lutasFeitas(lo, l, 1);
+        let e = await ok(u, "estado");
+        if (e.lutadores.find((x) => x.id === l).lutasGente !== 2) throw new Error("lutasGente: " + JSON.stringify(e.lutadores.map((x) => [x.id, x.lutasGente])));
+        await erro(u, "torneioInscrever", { lutadorId: l }, /3 lutas com rating contra outros jogadores/);
+        await lutasFeitas(lo, l, 1);
+        e = await ok(u, "estado");
+        if (e.lutadores.find((x) => x.id === l).lutasGente !== 3) throw new Error("lutasGente depois da 3ª: " + e.lutadores.find((x) => x.id === l).lutasGente);
+        const r = await ok(u, "torneioInscrever", { lutadorId: l });
+        if (!r.torneio || r.inscritos !== 1) throw new Error("inscrição com 3 contra gente: " + JSON.stringify(r));
+        await ok(u, "torneioSair");
+      } finally { await apagarLutasFeitas(); }   // as lutas de mentira contra bot não podem sobrar pros testes dos bots
+    });
+    await conf("fila olha o nível (fase 5): até 5 níveis de diferença na hora, mais 2 a cada 10 s da espera mais longa, sem teto; a resposta diz a tolerância de nível; a configuração muda sem migração", async () => {
+      await zerarLimites();
+      await q("delete from jxj_fila");
+      const ua = await novoUsuario({ pro: true }), ub = await novoUsuario({ pro: true }), uc = await novoUsuario({ pro: true });
+      const la = (await criar(ua, { categoria: "welterweight" })).id, lb = (await criar(ub, { categoria: "welterweight" })).id, lc = (await criar(uc, { categoria: "welterweight" })).id;
+      await q("update jxj_lutadores set nivel = 13 where id = $1", [lb]);
+      await q("update jxj_lutadores set nivel = 6 where id = $1", [lc]);
+      await ok(ua, "filaEntrar", { lutadorId: la }); await ok(ub, "filaEntrar", { lutadorId: lb });
+      let f = await ok(ua, "fila");
+      if (f.luta || f.toleranciaNivel !== 5) throw new Error("nível 1 contra 13 na hora: " + JSON.stringify(f));
+      await q("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [ub]);   // 5 + 2 x 3 = 11 < 12
+      f = await ok(ua, "fila");
+      if (f.luta) throw new Error("pareou com 11 de tolerância e 12 de diferença");
+      await q("update jxj_fila set entrou_em = now() - interval '41 seconds' where user_id = $1", [ub]);   // 5 + 2 x 4 = 13
+      f = await ok(ua, "fila");
+      if (!f.luta) throw new Error("não pareou com 13 de tolerância: " + JSON.stringify(f));
+      await q("delete from jxj_fila"); await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [ua, ub]);
+      await q("update jxj_lutas set status = 'cancelada' where id = $1", [f.luta.id]);
+      /* 5 de diferença pareia na hora (nível 1 e 6) */
+      await zerarLimites();
+      await ok(ua, "filaEntrar", { lutadorId: la }); await ok(uc, "filaEntrar", { lutadorId: lc });
+      f = await ok(ua, "fila");
+      if (!f.luta) throw new Error("nível 1 contra 6 não pareou na hora");
+      await q("update jxj_lutas set status = 'cancelada' where id = $1", [f.luta.id]);
+      await q("delete from jxj_fila"); await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2, $3)", [ua, ub, uc]);
+      /* configuração: base 0 e 0 por 10 s = só o mesmo nível */
+      await q("update jxj_config set valor = '0'::jsonb where chave in ('fila_nivel_base', 'fila_nivel_seg')");
+      try {
+        await zerarLimites();
+        await ok(ua, "filaEntrar", { lutadorId: la }); await ok(uc, "filaEntrar", { lutadorId: lc });
+        await q("update jxj_fila set entrou_em = now() - interval '300 seconds'");
+        f = await ok(ua, "fila");
+        if (f.luta || f.toleranciaNivel !== 0) throw new Error("configuração não valeu: " + JSON.stringify(f));
+      } finally {
+        await q("update jxj_config set valor = '5'::jsonb where chave = 'fila_nivel_base'"); await q("update jxj_config set valor = '2'::jsonb where chave = 'fila_nivel_seg'");
+        await q("delete from jxj_fila");
+      }
+    });
+    await conf("banco sem a migração da fase 5: torneio pelo número de lutas com rating (como antes), estado sem lutasGente, fila sem olhar o nível", async () => {
+      const db2 = await B.novoBanco({ fase5: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const u1 = "00000000-0000-4000-8000-0000000009b1", u2 = "00000000-0000-4000-8000-0000000009b2";
+        await B.criarUsuario(db2, u1, { pro: true }); await B.criarUsuario(db2, u2, { pro: true });
+        const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Fase Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const c2 = await B.chamar(H, { token: "tok:" + u2, acao: "criar", nome: "Sem Fase Dois", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        await db2.query("update jxj_lutadores set lutas_rating = 3 where id = $1", [c1.json.id]);
+        await db2.query("update jxj_lutadores set nivel = 25 where id = $1", [c2.json.id]);
+        const e = await B.chamar(H, { token: "tok:" + u1, acao: "estado" });
+        if (e.status !== 200 || e.json.lutadores.some((x) => "lutasGente" in x)) throw new Error("estado sem a migração: " + JSON.stringify(e).slice(0, 200));
+        const t = await B.chamar(H, { token: "tok:" + u1, acao: "torneioInscrever", lutadorId: c1.json.id });
+        if (t.status !== 200 || !t.json.torneio) throw new Error("torneio sem a migração: " + JSON.stringify(t));
+        await B.chamar(H, { token: "tok:" + u1, acao: "torneioSair" });
+        await B.chamar(H, { token: "tok:" + u1, acao: "filaEntrar", lutadorId: c1.json.id });
+        await B.chamar(H, { token: "tok:" + u2, acao: "filaEntrar", lutadorId: c2.json.id });
+        const f = await B.chamar(H, { token: "tok:" + u1, acao: "fila" });
+        if (f.status !== 200 || !f.json.luta || "toleranciaNivel" in f.json) throw new Error("fila sem a migração (nível 1 contra 25 pareia na hora, como antes): " + JSON.stringify(f).slice(0, 200));
+      } finally { globalThis.fetch = fetchAntes; }
     });
     /* ---------------- segurança (auditoria de 2026-10-03) ----------------
        Três bloqueadores corrigidos: narração só de quem lutou, com reserva
@@ -11739,6 +11829,169 @@ async function testarJxJ() {
     const usoHoje = async () => (await q("select coalesce((select chamadas from jxj_narracao_uso where dia = (now() at time zone 'America/Sao_Paulo')::date), 0)::int n"))[0].n;
     const esperarAte = async (cond, ms = 3000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 10)); } return true; };
 
+    /* narração ao vivo (2026-10-21, fase 4): uma luta parada na 4ª troca do round 1, depois de 3 trocas de estudo */
+    const lutaNaUltimaTroca = async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const lid = await parear(u1, l1, u2, l2);
+      for (let k = 0; k < 3; k++) {
+        const v = await ok(u1, "luta", { lutaId: lid });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await ok(u2, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+      }
+      const v = await ok(u1, "luta", { lutaId: lid });
+      if (v.status !== "andamento" || v.troca !== 4) throw new Error("luta de apoio fora da 4ª troca: " + v.status + " " + v.troca);
+      const nomes = (await q("select nomes from jxj_lutas where id = $1", [lid]))[0].nomes;
+      return { u1, u2, lid, v, nomes: { a: nomes.a.nome, b: nomes.b.nome } };
+    };
+    const fecharRound = async (x) => {
+      await ok(x.u1, "acao", { lutaId: x.lid, round: x.v.round, troca: x.v.troca, familia: "defesa" });
+      const t0 = Date.now();
+      await ok(x.u2, "acao", { lutaId: x.lid, round: x.v.round, troca: x.v.troca, familia: "defesa" });
+      return Date.now() - t0;
+    };
+    const narracaoDaTroca4 = async (lid) => {
+      const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 4", [lid]))[0];
+      return t ? t.eventos.filter((ev) => ev.tipo === "narracao") : null;
+    };
+    await conf("narração ao vivo (fase 4): troca comum não ganha linha; o fim do round ganha a frase local (sem IA), gravada nos eventos da troca e a mesma na vista dos dois; a luta refeita pela semente não muda", async () => {
+      const x = await lutaNaUltimaTroca();
+      const comuns = await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca < 4", [x.lid]);
+      if (comuns.length !== 3 || comuns.some((t) => t.eventos.some((ev) => ev.tipo === "narracao"))) throw new Error("troca comum ganhou narração");
+      await fecharRound(x);
+      const n = await narracaoDaTroca4(x.lid);
+      if (!n || n.length !== 1 || n[0].fonte !== "molde" || n[0].destaque !== "fimRound" || !/round 1/.test(n[0].texto)) throw new Error("fim de round: " + JSON.stringify(n));
+      const va = await ok(x.u1, "luta", { lutaId: x.lid }), vb = await ok(x.u2, "luta", { lutaId: x.lid });
+      const ta = va.trocas.find((t) => t.round === 1 && t.troca === 4), tb = vb.trocas.find((t) => t.round === 1 && t.troca === 4);
+      if (!ta.narracao || JSON.stringify(ta.narracao) !== JSON.stringify(tb.narracao) || ta.narracao.texto !== n[0].texto) throw new Error("vista da narração: " + JSON.stringify([ta.narracao, tb.narracao]));
+      if (ta.ev.some((e) => e.tipo === "narracao") || ta.eventos.some((e) => e === n[0].texto)) throw new Error("a narração entrou nos eventos de fato");
+      const d = (await q("select public.jxj_luta($1::bigint) as d", [x.lid]))[0].d;
+      let e = MOTOR.novaLuta(d.luta.perfis.a, d.luta.perfis.b);
+      for (const t of d.trocas) e = MOTOR.resolverTroca(e, d.luta.perfis, { a: t.acao_a, b: t.acao_b }, d.luta.semente).estado;
+      /* (o jsonb reordena as chaves: compara com as chaves em ordem) */
+      const canon = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((c) => [c, v[c]])) : v));
+      if (canon(e) !== canon(d.luta.estado)) throw new Error("a luta refeita pela semente ficou diferente");
+    });
+    await conf("narração ao vivo com IA (falsa): o destaque chama a IA uma vez (a consulta do outro lado enquanto ela responde não chama de novo), gasta 1 do teto do dia e grava o texto dela, com quem levou o round e o placar do molde; IA que inventa golpe, número, resultado ou quem levou, que corta no limite de tokens, que demora mais que o prazo ou que falha vira a frase local; teto zerado não chama", async () => {
+      const nomesDoPedido = (op) => /Só existem duas pessoas: (.+) e (.+)\. Não cite/.exec(JSON.parse(op.body).messages[0].content).slice(1, 3);
+      /* 1: texto bom; no meio da resposta, o outro lado consulta a luta (a cada 1,2 s na tela) */
+      let x = await lutaNaUltimaTroca();
+      let usoAntes = await usoHoje();
+      await comIA(async (reg, op) => {
+        const corpo = JSON.parse(op.body);
+        if (!corpo.reasoning || corpo.reasoning.enabled !== false) throw new Error("pedido sem desligar o raciocínio");
+        if (!/sem dizer quem levou o round/.test(corpo.messages[1].content)) throw new Error("pedido do fim de round: " + corpo.messages[1].content);
+        if (reg.chamadas === 1) { const v = await ok(x.u1, "luta", { lutaId: x.lid }); if (v.trocas.length !== 3) throw new Error("a consulta do outro lado resolveu a troca no meio"); }
+        const [a, b] = nomesDoPedido(op); return respostaIA(`${a} e ${b} fecharam o round sem nenhum golpe certo.`);
+      }, async (reg) => {
+        await fecharRound(x);
+        const n = await narracaoDaTroca4(x.lid);
+        if (reg.chamadas !== 1 || !n || n[0].fonte !== "ia" || !/^.+ fecharam o round sem nenhum golpe certo\. (.+ levou o round 1, \d+ a \d+\.|O round 1 terminou empatado)/.test(n[0].texto)) throw new Error("IA boa: " + JSON.stringify({ c: reg.chamadas, n }));
+        if ((await usoHoje()) !== usoAntes + 1) throw new Error("não gastou 1 do teto do dia");
+      });
+      /* as duas ações gravadas, mas o pedido que gravou a segunda caiu antes de
+         resolver: a consulta não resolve antes do prazo; depois do prazo, resolve */
+      x = await lutaNaUltimaTroca();
+      await ok(x.u1, "acao", { lutaId: x.lid, round: x.v.round, troca: x.v.troca, familia: "defesa" });
+      await q("insert into jxj_acoes (luta_id, round, troca, lado, familia) select $1, 1, 4, case when a_user = $2 then 'b' else 'a' end, 'defesa' from jxj_lutas where id = $1", [x.lid, x.u1]);
+      if ((await ok(x.u1, "luta", { lutaId: x.lid })).trocas.length !== 3 || (await ok(x.u2, "luta", { lutaId: x.lid })).trocas.length !== 3) throw new Error("a consulta resolveu a troca antes do prazo");
+      await vencerPrazo(x.lid);
+      const vv = await ok(x.u2, "luta", { lutaId: x.lid });
+      if (vv.trocas.length !== 4 || vv.trocas[3].acaoA !== "defesa" || vv.trocas[3].acaoB !== "defesa") throw new Error("depois do prazo a consulta não resolveu com as duas ações: " + JSON.stringify(vv.trocas[3]));
+      /* 2: inventa golpe; 3: inventa número; 4: diz quem levou; 5: inventa resultado */
+      for (const inventado of [(a, b) => `${a} acertou um mata-leão em ${b} no fim do round.`, (a, b) => `${a} e ${b} fecharam o round 7 parados.`,
+        (a, b) => `${a} levou o round contra ${b} com a defesa.`, (a, b) => `${a} venceu ${b} por decisão.`]) {
+        x = await lutaNaUltimaTroca();
+        await comIA(async (reg, op) => respostaIA(inventado(...nomesDoPedido(op))), async (reg) => {
+          await fecharRound(x);
+          const n = await narracaoDaTroca4(x.lid);
+          if (reg.chamadas !== 1 || !n || n[0].fonte !== "molde") throw new Error("IA que inventa passou: " + JSON.stringify(n));
+        });
+      }
+      /* 6: frase boa, mas cortada no limite de tokens (finish_reason length) */
+      x = await lutaNaUltimaTroca();
+      await comIA(async (reg, op) => { const [a, b] = nomesDoPedido(op);
+        return { ok: true, status: 200, json: async () => ({ choices: [{ finish_reason: "length", message: { content: `${a} e ${b} fecharam o round sem nenhum golpe` } }] }) }; }, async (reg) => {
+        await fecharRound(x);
+        const n = await narracaoDaTroca4(x.lid);
+        if (reg.chamadas !== 1 || !n || n[0].fonte !== "molde") throw new Error("frase cortada passou: " + JSON.stringify(n));
+      });
+      /* 4: demora mais que o prazo: a luta não espera */
+      x = await lutaNaUltimaTroca();
+      await comIA(async (reg, op) => {
+        await new Promise((r, rej) => { const t = setTimeout(r, 4000); if (op.signal) op.signal.addEventListener("abort", () => { clearTimeout(t); rej(new Error("abort")); }); });
+        return respostaIA("tarde demais");
+      }, async () => {
+        const ms = await fecharRound(x);
+        const n = await narracaoDaTroca4(x.lid);
+        if (!n || n[0].fonte !== "molde") throw new Error("IA lenta: " + JSON.stringify(n));
+        if (ms > NARR.PRAZO_IA_TROCA_MS + 2500) throw new Error(`a luta esperou a IA lenta: ${ms} ms`);
+      });
+      /* 5: falha */
+      x = await lutaNaUltimaTroca();
+      await comIA(async () => ({ ok: false, status: 500, json: async () => ({}) }), async () => {
+        await fecharRound(x);
+        const n = await narracaoDaTroca4(x.lid);
+        if (!n || n[0].fonte !== "molde") throw new Error("IA que falha: " + JSON.stringify(n));
+      });
+      /* 6: teto zerado: não chama */
+      x = await lutaNaUltimaTroca();
+      await q("insert into jxj_config (chave, valor) values ('narracao_ia_dia', '0'::jsonb) on conflict (chave) do update set valor = excluded.valor");
+      try {
+        await comIA(async () => respostaIA("não devia chamar"), async (reg) => {
+          await fecharRound(x);
+          const n = await narracaoDaTroca4(x.lid);
+          if (reg.chamadas !== 0 || !n || n[0].fonte !== "molde") throw new Error("teto zerado: " + JSON.stringify({ c: reg.chamadas, n }));
+        });
+      } finally { await q("update jxj_config set valor = '300'::jsonb where chave = 'narracao_ia_dia'"); }
+    });
+    await conf("narração ao vivo, destaques: knockdown, encaixe, grogue, nocaute, finalização, virada e fim de round viram a frase certa (só fatos, regra de texto); troca comum não", async () => {
+      const n = { a: "Ana", b: "Bia" }, p = { a: ARV.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build: {} }), b: ARV.perfilDeCombate({ estilo: "grappler", categoria: "middleweight", build: {} }) };
+      const vistos = new Set();
+      for (let k = 0; k < 3000 && vistos.size < NARR.DESTAQUES.length; k++) {
+        let e = MOTOR.novaLuta(p.a, p.b);
+        for (let t = 0; t < 12 && !e.fim; t++) {
+          const fa = MOTOR.FAMILIAS[(k + t) % 4], fb = MOTOR.FAMILIAS[(k * 7 + t * 3) % 4];
+          const r = MOTOR.resolverTroca(e, p, { a: fa, b: fb }, "dq" + k);
+          const d = NARR.destaqueDaTroca(e, r.estado, r.eventos);
+          if (d) {
+            vistos.add(d.tipo);
+            const m = NARR.moldeDoDestaque(d, r.eventos, n);
+            if (!m || m.length < 10) throw new Error("molde vazio pra " + d.tipo);
+            const pt = problemasDeTexto(m); if (pt.length) throw new Error(`molde de ${d.tipo}: ${pt.join(", ")} (${m})`);
+            if (!/Ana|Bia|round/.test(m)) throw new Error("molde sem nome: " + m);
+          } else if (r.eventos.some((ev) => ["knockdown", "grogue", "encaixou", "emendou"].includes(ev.tipo)) || r.estado.cartoes.length > e.cartoes.length) throw new Error("destaque perdido: " + r.eventos.map((ev) => ev.tipo).join(","));
+          e = r.estado;
+        }
+      }
+      const faltam = NARR.DESTAQUES.filter((t) => !vistos.has(t));
+      if (faltam.length) throw new Error("destaques que nunca saíram em 3000 lutas: " + faltam.join(", "));
+      const fatos = "Ana acertou o cruzado (7,3 de dano). Bia ficou grogue. round 2", dg = { tipo: "grogue", quem: "a", round: 2 };
+      for (const bom of ["Ana acertou o cruzado e Bia ficou grogue.", "Ana acertou o cruzado no segundo round e Bia ficou grogue.", "No round 2, Ana acertou o cruzado e Bia ficou grogue."])
+        if (NARR.validarNarracaoTroca(bom, fatos, n, dg) === null) throw new Error("recusou texto bom: " + bom);
+      for (const ruim of ["Ana acertou um mata-leão em Bia.", "Ana acertou o cruzado com 9 de dano.", "Ana acertou o cruzado! Bia caiu.", "Carla acertou Bia.", "Ana acertou Bia. Carla viu tudo.", "Ana <b>acertou</b> o cruzado em Bia.",
+        "Ana acertou o cruzado e venceu Bia.", "Ana acertou o cruzado e Bia quase foi nocauteada.", "Ana acertou o cruzado e Bia ficou grogue, rumo à decisão.",
+        "Ana acertou o cruzado no terceiro round e Bia ficou grogue.", "Ana acertou o cruzado no round três e Bia ficou grogue."])
+        if (NARR.validarNarracaoTroca(ruim, fatos, n, dg) !== null) throw new Error("passou: " + ruim);
+      /* nocaute: o resultado está nos fatos, então pode */
+      const fk = "Ana acertou o cruzado (9,1 de dano). Ana venceu por nocaute com o cruzado. round 1";
+      if (NARR.validarNarracaoTroca("Ana acertou o cruzado e venceu Bia por nocaute.", fk, n, { tipo: "nocaute", quem: "a", round: 1 }) === null) throw new Error("recusou o nocaute que aconteceu");
+      /* fim de round: só o lance, sem número nem quem levou (o molde diz) */
+      const fr = "Ana acertou o jab (3,1 de dano). Bia errou a queda. round 1", dr = { tipo: "fimRound", quem: "a", round: 1 };
+      if (NARR.validarNarracaoTroca("Ana acertou o jab e Bia errou a queda no fim do round.", fr, n, dr) === null) throw new Error("recusou o lance do fim do round");
+      for (const ruim of ["Ana acertou o jab e levou o round contra Bia.", "Ana acertou o jab e Bia errou a queda, 10 a 9.", "Ana dominou Bia com o jab."])
+        if (NARR.validarNarracaoTroca(ruim, fr, n, dr) !== null) throw new Error("fim de round passou: " + ruim);
+      /* virada só quando quem levou o round estava atrás e passou ou empatou */
+      const est = (cartoes) => ({ round: cartoes.length + 1, cartoes, fim: null });
+      const dv = (antes, c) => NARR.destaqueDaTroca(est(antes), { ...est([...antes, c]), fim: null }, []);
+      if (dv([{ a: 10, b: 9 }], { a: 9, b: 10 }).tipo !== "virada" || !/empatou a luta nos cartões: 19 a 19 no total/.test(NARR.moldeDoDestaque(dv([{ a: 10, b: 9 }], { a: 9, b: 10 }), [], n))) throw new Error("empate nos cartões não é virada");
+      if (dv([{ a: 10, b: 8 }], { a: 9, b: 10 }).tipo !== "fimRound") throw new Error("levou o round e continuou atrás virou virada");
+      const vir = dv([{ a: 10, b: 9 }], { a: 8, b: 10 });
+      if (vir.tipo !== "virada" || vir.quem !== "b" || !/Bia levou o round 2, 10 a 8, e virou a luta nos cartões: 19 a 18 no total\./.test(NARR.moldeDoDestaque(vir, [], n))) throw new Error("virada: " + JSON.stringify(vir));
+      if (dv([{ a: 10, b: 9 }, { a: 10, b: 9 }], { a: 8, b: 10 }).tipo !== "virada") throw new Error("de 18 a 20 pra 28 a 28 é virada (empatou)");
+      if (dv([{ a: 9, b: 10 }, { a: 10, b: 9 }], { a: 10, b: 8 }).tipo !== "fimRound") throw new Error("quem estava empatado e passou na frente não virou nada");
+    });
     await conf("segurança: narração de luta alheia é recusada antes de consultar ou gerar (sem reserva, sem cota, sem IA); quem lutou recebe", async () => {
       const { u1, lid } = await lutaPorWO();
       const u3 = await novoUsuario({ pro: true });
@@ -12426,14 +12679,17 @@ async function testarJxJMotor() {
     }
     if (ruins.length) throw new Error(ruins.join("; "));
   });
-  await conf("leitura decide (v3): quem acerta a leitura em metade das trocas vence 72%+ de quem joga no estilo; quem acerta sempre, 88%+", () => {
+  await conf("leitura decide (v3, vantagem 22 desde a fase 3): quem acerta a leitura em metade das trocas vence 71%+ de quem joga no estilo; quem acerta sempre, 85,5%+ (com a vantagem antiga, 15: 68,7% e 84,4%)", () => {
     const meia = BAL.leituraOraculo(0.5, 150, "t"), sempre = BAL.leituraOraculo(1, 100, "t");
     console.log(cinza(`         acerto 0,5: ${f1(meia)}%   acerto 1: ${f1(sempre)}%`));
-    if (meia < 72 || sempre < 88) throw new Error("acertar a leitura vale pouco");
+    if (meia < 71 || sempre < 85.5) throw new Error("acertar a leitura vale pouco");
   });
-  const R = BAL.medirMatriz(600);
-  await conf("balanço de estilos no nível 1, jogo racional (600 lutas por dupla): toda dupla entre 42% e 58%", () => {
-    const fora = Object.entries(R.mat).filter(([, v]) => v < 42 || v > 58);
+  /* 1.200 lutas por dupla (fase 3): com 600, o ruído da amostra (cerca de 2
+     pontos) já tirava da faixa apertada de 45% a 57% uma dupla que, medida
+     com mais lutas, estava em 46,6% */
+  const R = BAL.medirMatriz(1200);
+  await conf("balanço de estilos no nível 1, jogo racional (1.200 lutas por dupla): toda dupla entre 45% e 57% (faixa do dono, fase 3)", () => {
+    const fora = Object.entries(R.mat).filter(([, v]) => v < 45 || v > 57);
     console.log(cinza("         " + ESTS.map((s) => `${s.slice(0, 3)}: ` + ESTS.map((o) => f1(R.mat[s + ":" + o])).join(" ")).join(" | ")));
     if (fora.length) throw new Error("fora da faixa: " + fora.map(([k, v]) => `${k} ${f1(v)}%`).join(", "));
   });
@@ -12457,13 +12713,13 @@ async function testarJxJMotor() {
       if (JSON.stringify(r) !== JSON.stringify(esperado)) throw new Error(`"${t}" contra "${f}": ${JSON.stringify(r)}, esperava ${JSON.stringify(esperado)}`);
     }
   });
-  await conf("variantes equilibradas: espelho com a variante sempre na mão, média dos 4 estilos e de duas amostras (3200 lutas), toda variante entre 44% e 56%", () => {
+  await conf("variantes equilibradas: espelho com a variante sempre na mão, média dos 4 estilos e de duas amostras (3200 lutas), toda variante entre 48% e 52,5% (faixa do dono, fase 3; era 44% a 56%)", () => {
     const r1 = BAL.valorDasVariantes(400, ESTS, "a"), r2 = BAL.valorDasVariantes(400, ESTS, "b");
     const linhas = [], ruins = [];
     for (const id of Object.keys(r1)) {
       const v = (r1[id].pct + r2[id].pct) / 2;
       linhas.push(`${id} ${f1(v)}`);
-      if (v < 44 || v > 56) ruins.push(`${id} ${f1(v)}%`);
+      if (v < 48 || v > 52.5) ruins.push(`${id} ${f1(v)}%`);
     }
     console.log(cinza("         " + linhas.join(" ")));
     if (ruins.length) throw new Error(ruins.join(", "));
@@ -12511,12 +12767,12 @@ async function testarJxJMotor() {
     console.log(cinza("         " + linhas.join(" | ")));
     if (ruins.length) throw new Error(ruins.join(", "));
   });
-  await conf("no nível 30 (build típica), nenhuma dupla de estilos sai de 40% a 60%", () => {
+  await conf("no nível 30 (build típica, 1.200 lutas por dupla), nenhuma dupla de estilos sai de 40% a 60%", () => {
     const ruins = [];
     for (const s of ESTS) for (const o of ESTS) {
       if (s >= o) continue;
       const pA = perfil(s, 30), pB = perfil(o, 30);
-      const t = BAL.confronto(pA, pB, BAL.racional(pA, pB), BAL.racional(pB, pA), 600, `n30${s}${o}`);
+      const t = BAL.confronto(pA, pB, BAL.racional(pA, pB), BAL.racional(pB, pA), 1200, `n30${s}${o}`);
       if (t.pct < 40 || t.pct > 60) ruins.push(`${s} x ${o}: ${f1(t.pct)}%`);
     }
     if (ruins.length) throw new Error(ruins.join(", "));
@@ -12823,6 +13079,55 @@ async function testarJxJTemporada() {
     if ([...gastos].sort().join() !== "moldura,respec") throw new Error("gasto de fichas fora de cosmético/respec: " + [...gastos].join(","));
     if (REG.CUSTO_RESPEC / 20 < 15) throw new Error("respec barato demais: " + REG.CUSTO_RESPEC);
   });
+  /* fase 5 (2026-10-21): a fila olha o nível. A mesma temporada com nível
+     que sobe pelo XP de cada luta, gente nova chegando todo dia e fila rala
+     (1 chegada a cada 10 s); quem fica 30 s sem par vai pro bot (a tela
+     oferece aos 30 s). Com e sem a regra, mesma semente. */
+  await conf("fila com nível (fase 5, fila rala): par com mais de 10 níveis de diferença cai pra 5% ou menos (sem a regra, 15%+) e quem vai pro bot sobe no máximo 10 pontos; a regra do servidor (REG) é a do banco (supabase_jxj_fase5.sql)", () => {
+    const sql = fs.readFileSync(path.join(RAIZ, "supabase_jxj_fase5.sql"), "utf8");
+    const cfg = (k) => Number((new RegExp(`'${k}', '(\\d+)'::jsonb`).exec(sql) || [])[1]), dflt = (k) => Number((new RegExp(`jxj_cfg\\('${k}'\\);\\s*\\w+ := case [^;]*? else (\\d+) end`).exec(sql) || [])[1]);
+    if (cfg("fila_nivel_base") !== REG.NIVEL_FILA.base || cfg("fila_nivel_seg") !== REG.NIVEL_FILA.porDezSeg || dflt("fila_nivel_base") !== REG.NIVEL_FILA.base || dflt("fila_nivel_seg") !== REG.NIVEL_FILA.porDezSeg)
+      throw new Error(`banco ${cfg("fila_nivel_base")}+${cfg("fila_nivel_seg")} (padrão ${dflt("fila_nivel_base")}+${dflt("fila_nivel_seg")}) x REG ${REG.NIVEL_FILA.base}+${REG.NIVEL_FILA.porDezSeg}`);
+    const rodar = (comNivel) => {
+      let sd = 20261021;
+      const rn = () => ((sd = (sd * 1103515245 + 12345) >>> 0) / 4294967296);
+      const nm = () => { let u = 0, v = 0; while (!u) u = rn(); while (!v) v = rn(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+      const res = (ha, hb) => { const x = rn(); if (x < 0.03) return 0.5; return rn() < 1 / (1 + Math.exp(-K_HAB * (ha - hb))) ? 1 : 0; };
+      const novo = (d) => ({ hab: nm(), ativ: 0.3 + rn() * 2.7, ...R.INICIAL, ultima: d, xp: 0, nivel: 1 });
+      const gente = Array.from({ length: 300 }, () => novo(0));
+      const dif = []; let foi = 0, entrou = 0;
+      for (let d = 0; d < REG.TEMPORADA_DIAS; d++) {
+        for (let i = 0; i < gente.length; i++) if (rn() < 0.025) gente[i] = novo(d);
+        const hoje = [];
+        for (const j of gente) { let n = Math.floor(j.ativ) + (rn() < j.ativ % 1 ? 1 : 0); while (n-- > 0) hoje.push(j); }
+        for (let i = hoje.length - 1; i > 0; i--) { const k = Math.floor(rn() * (i + 1)); [hoje[i], hoje[k]] = [hoje[k], hoje[i]]; }
+        const fila = [];
+        for (let passo = 0; hoje.length || fila.length; passo++) {
+          if (hoje.length) { const j = hoje.pop(); if (!fila.some((f) => f.j === j)) { fila.push({ j, desde: passo }); entrou++; } }
+          for (let i = 0; i < fila.length; i++) {
+            const a = fila[i], esp = (k) => (passo - Math.min(a.desde, fila[k].desde)) * 10000;
+            let m = -1;
+            for (let k = 0; k < fila.length; k++) {
+              if (k === i || Math.abs(fila[k].j.r - a.j.r) > REG.toleranciaFila(esp(k))) continue;
+              if (comNivel && Math.abs(fila[k].j.nivel - a.j.nivel) > REG.toleranciaNivelFila(esp(k))) continue;
+              if (m < 0 || Math.abs(fila[k].j.r - a.j.r) < Math.abs(fila[m].j.r - a.j.r)) m = k;
+            }
+            if (m < 0) continue;
+            const b = fila[m];
+            dif.push(Math.abs(a.j.nivel - b.j.nivel));
+            const sc = res(a.j.hab, b.j.hab), up = R.luta(a.j, b.j, sc, { diasA: d - a.j.ultima, diasB: d - b.j.ultima });
+            for (const [x, u, v] of [[a.j, up.a, sc], [b.j, up.b, 1 - sc]]) { Object.assign(x, u, { ultima: d }); x.xp += v === 1 ? 120 : v === 0.5 ? 90 : 70; x.nivel = REG.nivelDoXp(x.xp).nivel; }
+            fila.splice(Math.max(i, m), 1); fila.splice(Math.min(i, m), 1); i = -1;
+          }
+          for (let i = fila.length - 1; i >= 0; i--) if (passo - fila[i].desde >= 3) { fila.splice(i, 1); foi++; }
+        }
+      }
+      return { acima10: 100 * dif.filter((x) => x > 10).length / dif.length, bot: 100 * foi / entrou };
+    };
+    const sem = rodar(false), com = rodar(true);
+    console.log(cinza(`         sem a regra: ${sem.acima10.toFixed(1)}% dos pares com mais de 10 níveis, ${sem.bot.toFixed(1)}% vão pro bot | com: ${com.acima10.toFixed(1)}% e ${com.bot.toFixed(1)}%`));
+    if (sem.acima10 < 15 || com.acima10 > 5 || com.bot - sem.bot > 10) throw new Error(JSON.stringify({ sem, com }));
+  });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjtemporada ok") : vermelho(`  ${falhas.length} falha(s) no jxjtemporada`)));
   return okTudo;
@@ -13016,7 +13321,7 @@ async function testarJxJBot() {
       if (d.pers !== pers || JSON.stringify(d.roda) !== JSON.stringify(b.roda)) throw new Error("dados da luta sem o jeito: " + JSON.stringify({ pers: d.pers, roda: d.roda }));
     }
   });
-  await conf("cada jeito aparece nas escolhas, em toda habilidade (lutas contra um jogador que sorteia): Provocador golpeia ou pressiona 60%+ em pé e golpeia mais depois de apanhar; Paciente defende 35%+ em pé e ataca quando o adversário cansa; Observador responde à última ação do adversário (ou, no bot forte, ao hábito dele) com a que ganha dela 70%+; Inquieto vai pra próxima casa da roda 60%+ e pra próxima ou a seguinte 75%+; nenhum repete a mesma ação 4 vezes seguidas", () => {
+  await conf("cada jeito aparece nas escolhas, em toda habilidade (lutas contra um jogador que sorteia): Provocador golpeia ou pressiona 60%+ em pé e golpeia mais depois de apanhar; Paciente defende 35%+ em pé e ataca quando o adversário cansa; Observador responde à última ação do adversário (ou, no bot forte, ao hábito dele) com a que ganha dela 70%+; Inquieto vai pra próxima casa da roda 60%+ (55%+ no bot forte, que pula uma casa quando a próxima rende pouco) e pra próxima ou a seguinte 75%+; nenhum repete a mesma ação 4 vezes seguidas", () => {
     const pH = T.perfilTipico("striker", 4), ruins = [], linhas = [];
     for (const pers of BOT.PERSONALIDADES_IDS) for (const s of [0, 0.5, 1]) {
       const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
@@ -13063,17 +13368,20 @@ async function testarJxJBot() {
       if (pers === "agressivo") { exige("ataca", 0.6); if (!(tx("golpesApanhou") > tx("golpesNormal") + 0.08)) ruins.push(`agressivo s=${s}: apanhou ${tx("golpesApanhou")} x normal ${tx("golpesNormal")}`); }
       if (pers === "defensivo") { exige("defende", 0.35); exige("atacaCansado", 0.45); }
       if (pers === "leitor") exige("responde", 0.7);
-      if (pers === "caotico") { exige("roda", 0.6); exige("rodaOuPulo", 0.75); }
+      /* bot forte: o pulo (até PULO_RODA) tira casas da roda de propósito; com
+         a vantagem 22 (fase 3) a próxima rende menos mais vezes: 58% na roda,
+         88% na roda ou no pulo */
+      if (pers === "caotico") { exige("roda", s === 1 ? 0.55 : 0.6); exige("rodaOuPulo", 0.75); }
       linhas.push(`${pers.slice(0, 4)} s=${s}: ` + Object.entries(c).map(([k, v]) => `${k} ${(100 * v[0] / v[1]).toFixed(0)}%`).join(" "));
     }
     console.log(cinza("         " + linhas.join("\n         ")));
     if (ruins.length) throw new Error(ruins.slice(0, 6).join(" | "));
   });
-  await conf("calibração por jeito (caminho do servidor, níveis 1 e 10): quem joga no peso do estilo vence de 45% a 58% do bot de habilidade média e de 43% a 61% nas pontas; quem lê o jeito durante a luta (explorador) vence 7 pontos ou mais acima, em média 12+; a força medida bate com FORCA_BOT (média do jeito com folga de 35 pontos, cada habilidade com 60: a amostra do teste tem 480 lutas por casa)", () => {
+  await conf("calibração por jeito (caminho do servidor, níveis 1, 10 e 30, os mesmos da FORCA_BOT): quem joga no peso do estilo vence de 45% a 58% do bot de habilidade média e de 43% a 61% nas pontas; quem lê o jeito durante a luta (explorador) vence 7 pontos ou mais acima, em média 12+; a força medida bate com FORCA_BOT (média do jeito com folga de 35 pontos, cada habilidade com 60: a amostra do teste tem 720 lutas por casa)", () => {
     const SS = [0, 0.5, 1], ruins = [], linhas = [], ganhos = [];
     const rat = (p) => 1500 - 400 * Math.log10(p / (100 - p));
     for (const pers of BOT.PERSONALIDADES_IDS) {
-      const r = T.medirBots({ n: 30, pares: 8, niveis: [1, 10], ss: SS, humanos: ["estilo", "explorador"], pers, sal: "t" });
+      const r = T.medirBots({ n: 30, pares: 8, niveis: [1, 10, 30], ss: SS, humanos: ["estilo", "explorador"], pers, sal: "t" });
       const est = SS.map((s) => r[`estilo:${s}:${pers}`]), exp = SS.map((s) => r[`explorador:${s}:${pers}`]);
       const ganho = exp.reduce((a, x, i) => a + x - est[i], 0) / SS.length;
       ganhos.push(ganho);
@@ -13386,6 +13694,21 @@ async function testarJxJTelas() {
       }
       semLixoV3(await pontos(0, 0), "placar do round");
     });
+    await conf("narração ao vivo na tela (fase 4): a linha do destaque aparece no lance, escapada; troca sem linha não mostra nada", async () => {
+      const t = (await db.query("select round, troca, eventos from jxj_trocas where luta_id = $1 order by round desc, troca desc limit 1", [lid])).rows[0];
+      const gravar = (evs) => db.query("update jxj_trocas set eventos = $4::jsonb where luta_id = $1 and round = $2 and troca = $3", [lid, t.round, t.troca, JSON.stringify(evs)]);
+      const semLinha = t.eventos.filter((ev) => ev.tipo !== "narracao");
+      try {
+        await gravar(semLinha);
+        let m = await abrir(`luta/${lid}`);
+        if (String(desde(m).filter((n) => tem(n, "jxj-lance")).pop().innerHTML).includes("jxj-narracao-troca")) throw new Error("troca sem linha mostrou linha");
+        await gravar([...semLinha, { tipo: "narracao", destaque: "knockdown", texto: 'Fulano <img src=x onerror="alert(1)"> derrubou Beltrano.', fonte: "ia" }]);
+        m = await abrir(`luta/${lid}`);
+        const h = String(desde(m).filter((n) => tem(n, "jxj-lance")).pop().innerHTML);
+        const linha = /<p class="jxj-narracao-troca">([^]*?)<\/p>/.exec(h);
+        if (!linha || /<img/.test(linha[1]) || !linha[1].includes("&lt;img")) throw new Error("linha da narração: " + (linha ? linha[1] : h.replace(/\s+/g, " ").slice(0, 300)));
+      } finally { await gravar(t.eventos); }
+    });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,
         `lutador/${l1}/arvore`, `lutador/${l1}/historico`, `lutador/${l1}/aparencia`, `lutador/${l1}/gerenciar`, `luta/${lid}`];
@@ -13479,6 +13802,9 @@ async function testarJxJTelas() {
       const pers = (await db.query("select bot->>'pers' as p from jxj_lutas where id = $1", [L.id])).rows[0].p;
       const licao = BOT.PERSONALIDADES[pers].licao;
       if (!desde(m).some((n) => tem(n, "jxj-licao") && String(n.innerHTML).includes(licao))) throw new Error("o resultado não mostra a lição do bot: " + licao);
+      /* narração ao vivo (fase 4): a linha do último lance (nocaute, finalização ou fim do último round) aparece no resultado */
+      const vf = await api(u1, "luta", { lutaId: L.id }), ultN = vf.trocas[vf.trocas.length - 1].narracao;
+      if (!ultN || !desde(m).some((n) => tem(n, "jxj-narracao-fim") && String(n.innerHTML).includes(ultN.texto))) throw new Error("o resultado não mostra a linha do último lance: " + JSON.stringify(ultN));
       semLixo(h, "resultado contra bot");
       const m2 = await abrir(`lutador/${l1}/historico`);
       const linha = desde(m2).filter((n) => tem(n, "jxj-hist-linha")).find((n) => String(n.innerHTML).includes("jxj-selo-bot"));

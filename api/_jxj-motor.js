@@ -29,7 +29,7 @@ export const K = {
   danoDefesa: 0.12,           // defesa perde 0.12 ponto por ponto de dano acumulado
   escapeMult: 1.27,           // multiplica toda chance de levantar ou sair por baixo
   quedaFator: 1.17,           // multiplica toda chance de queda em pé
-  vantagem: 26,               // pontos de disputa pra quem escolheu a ação que ganha do par em pé (ciclo). v3: era 15; quem lê metade das trocas vence 77% (era 71%)
+  vantagem: 22,               // pontos de disputa pra quem escolheu a ação que ganha do par em pé (ciclo): 86% com atributos iguais. v2: 15 (78%). Fase 3 (2026-10-21): escolhida entre 82%, 86%, 89% e 92% pela tabela do LEIA-ME (quem lê metade das trocas vence 78%; estilos mais justos que com 26)
   contraBase: 0.28,           // chance base de contra-atacar quem troca golpes contra a defesa
   /* Golpes contra Defesa: o golpe bate na guarda. Sem pontosGuarda, no
      espelho striker "só golpes" vencia "só defesa" em 73% e a mistura
@@ -42,7 +42,7 @@ export const K = {
   koPiso: 0.3, koExpoente: 1.6,  // nocaute: (dano acumulado/100 + piso)^expoente
   koBase: 0.72, tkoBase: 0.31, kdFator: 2.8,   // v3: menos nocaute direto, mais knockdown (o nocaute passa pelo grogue)
   subBase: 0.62,              // finalização: subBase x disputa² (v3: 0.78, menos finalização direta, mais encaixe)
-  vantagemChao: 26.6,         // pontos de disputa pra quem escolheu a ação que ganha do par no chão
+  vantagemChao: 22,           // pontos de disputa pra quem escolheu a ação que ganha do par no chão (acompanha a de em pé desde a fase 3; era 26,6)
   guardaContraSub: 0.47,      // finalização contra guarda fechada: fração da vantagem do chão que a guarda tira
   controleParado: 0.5,        // os dois parados no chão: fração do ponto de controle de quem está por cima
   recuperacaoRound: 4,

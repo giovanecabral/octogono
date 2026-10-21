@@ -27,6 +27,7 @@ import * as ARV from "./_jxj-arvores.js";
 import * as RAT from "./_jxj-rating.js";
 import * as REG from "./_jxj-regras.js";
 import * as BOT from "./_jxj-bot.js";
+import * as NARR from "./_jxj-narracao.js";
 
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
@@ -73,9 +74,6 @@ async function movimento() {
   try { return await rpc("jxj_movimento", {}); }
   catch { return null; }
 }
-/* Bots (supabase_jxj_bot.sql, 2026-10-19): ligados ou não e quantas lutas
-   contra bot a conta ainda tem hoje. Sem a migração ou com o banco lento,
-   null: a tela só não oferece bot. */
 /* A conta nunca lutou contra bot? Sem contagem da vida inteira no banco, olha
    o histórico de cada lutador da conta (as últimas 20 lutas de cada): nenhuma
    contra bot = primeira. Quem fez mais de 20 lutas contra gente depois da
@@ -89,6 +87,17 @@ async function primeiraContraBot(est) {
     }
     return true;
   } catch { return false; }
+}
+/* Bots (supabase_jxj_bot.sql, 2026-10-19): ligados ou não e quantas lutas
+   contra bot a conta ainda tem hoje. Sem a migração ou com o banco lento,
+   null: a tela só não oferece bot. */
+/* Lutas com rating contra gente de cada lutador da conta, {id: n}
+   (supabase_jxj_fase5.sql, 2026-10-21): o torneio pede 3, luta contra bot
+   não conta. Sem a migração (ou erro de leitura), null: a tela usa a conta
+   de lutas com rating, como antes. */
+async function lutasContraGente(uid) {
+  try { return await rpc("jxj_lutas_contra_gente", { uid }); }
+  catch { return null; }
 }
 async function botInfo(uid) {
   try { return await rpc("jxj_bot_info", { uid, limite_free: REG.BOT_FREE_DIA }); }
@@ -177,8 +186,13 @@ function efeitosDoFim(d, estado, fim) {
    uid é obrigatório: conta que não lutou não provoca preparo, cancelamento
    por prazo nem gravação de troca (a conferência vem antes de qualquer
    escrita; sem uid, nada é processado). */
-async function processarLuta(lid, uid) {
-  let d = null;
+/* porAcao = este pedido acabou de gravar a ação do jogador. Antes do prazo,
+   só ele resolve a troca: a consulta do outro lado (a cada 1,2 s) não
+   resolve junto, senão os dois pedidos chamavam a IA da narração ao vivo
+   pro mesmo lance (fase 4). Depois do prazo, qualquer pedido resolve; se
+   dois resolverem juntos, jxj_gravar_troca grava um só (versao). */
+async function processarLuta(lid, uid, { porAcao = false } = {}) {
+  let d = null, iaNarrou = false;
   for (let passo = 0; passo < 6; passo++) {
     d = await rpc("jxj_luta", { lid });
     if (!d || !d.luta) throw new ErroJxJ("luta não encontrada", 404);
@@ -197,10 +211,15 @@ async function processarLuta(lid, uid) {
       /* contra bot, a troca anda quando o jogador manda a ação (ou o prazo
          vence). A ação do bot sai do estado, das trocas resolvidas e da
          semente; a ação do jogador nesta troca não entra. */
-      if (!acoes.a && !vencido) return d;
+      if ((!acoes.a || !porAcao) && !vencido) return d;
       acoes.b = BOT.acaoDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
-    } else if (!(acoes.a && acoes.b) && !vencido) return d;
+    } else if ((!(acoes.a && acoes.b) || !porAcao) && !vencido) return d;
     const { estado, eventos } = MOTOR.resolverTroca(L.estado, L.perfis, acoes, L.semente);
+    /* narração ao vivo do destaque (fase 4): gravada com a troca, a mesma pros
+       dois; a IA no máximo uma vez por resolução e com prazo curto */
+    const narr = await NARR.narracaoDaTroca({ antes: L.estado, depois: estado, eventos, nomes: nomesDaLuta(L), comIA: !iaNarrou,
+      cotaIA: () => rpc("jxj_narracao_cota_ia", {}) });
+    if (narr) { eventos.push(narr); if (narr.ms != null) iaNarrou = true; }
     const fim = estado.fim ? { ...estado.fim } : null;
     const efeitos = fim ? efeitosDoFim(d, estado, fim) : null;
     await rpc("jxj_gravar_troca", {
@@ -277,9 +296,11 @@ function vistaDaLuta(d, uid) {
     /* troca resolvida: o que cada um usou (variante) e os eventos em forma
        de dado (tipo, quem) pra animação e som na tela, além do texto */
     trocas: (d.trocas || []).map((t) => {
-      const evs = t.eventos || [], esc = evs.find((ev) => ev.tipo === "escolha") || {};
+      const evs = t.eventos || [], esc = evs.find((ev) => ev.tipo === "escolha") || {}, narr = evs.find((ev) => ev.tipo === "narracao");
       return { round: t.round, troca: t.troca, acaoA: t.acao_a, acaoB: t.acao_b, varA: esc.va || null, varB: esc.vb || null,
-        ev: evs.filter((ev) => ev.tipo !== "escolha").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, metodo: ev.metodo || null,
+        /* narração ao vivo do destaque (fase 4): só o texto e a fonte; custo e tempo ficam no banco e no log */
+        narracao: narr && typeof narr.texto === "string" ? { texto: narr.texto, fonte: narr.fonte === "ia" ? "ia" : "molde" } : null,
+        ev: evs.filter((ev) => ev.tipo !== "escolha" && ev.tipo !== "narracao").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, metodo: ev.metodo || null,
           /* dano do golpe (o mesmo número do texto), pro lance da tela */
           dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null,
           /* leitura (v3): a família de quem leu e a do outro, pro "por quê" da troca */
@@ -327,6 +348,9 @@ async function narracaoIA(vista) {
   const fim = r.vencedor ? `${n[r.vencedor]} venceu por ${METODO_TXT[r.metodo]} no round ${r.round}` : METODO_TXT[r.metodo];
   const corpo = {
     model: process.env.QWEN_MODEL || "qwen/qwen3.7-flash", temperature: 0.7, max_tokens: 260,
+    /* sem raciocínio: com ele os 260 tokens podiam acabar antes do texto
+       (achado na fase 4, 2026-10-21; o api/ai.js já desligava) */
+    reasoning: { enabled: false },
     messages: [
       { role: "system", content: `Você narra o resumo de uma luta de MMA de um jogo, em português brasileiro, em 3 a 5 frases curtas.
 Use SÓ os fatos da lista, na ordem em que aconteceram. Não invente golpe, posição, número, fala, torcida, juiz, lesão ou emoção.
@@ -346,16 +370,16 @@ Responda só com o texto, sem aspas.` },
     clearTimeout(tm);
     if (!rr.ok) return null;
     const j = await rr.json();
+    if (j.choices && j.choices[0] && j.choices[0].finish_reason === "length") return null;   // texto cortado no limite
     let t = String((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "").trim();
     t = t.replace(/^["“]|["”]$/g, "").replace(/[—–]/g, ",").replace(/\s+/g, " ");
     if (t.length < 40 || t.length > 900) return null;
     if (MOTOR.golpesForaDosFatos(t, fatos).length) return null;   // golpe com nome só se está nos fatos
     if (/[!?]/.test(t)) return null;
     if (r.vencedor && !t.includes(n[r.vencedor])) return null;
-    /* nome próprio que não é dos dois lutadores = invenção */
-    const permitidos = new Set([...n.a.split(/\s+/), ...n.b.split(/\s+/), "Round", "O", "A", "Os", "As", "No", "Na", "Depois", "Com", "Em", "Logo", "Então", "Mesmo", "Ele", "Ela", "Ao", "Pelo", "Pela", "Já", "Sem", "Mas", "E", "Quando", "Nos", "Nas", "Do", "Da", "Primeiro", "Segundo", "Terceiro"]);
-    const nomesProprios = (t.match(/(?<![.!?]\s)(?<!^)\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+/g) || []).filter((w) => !permitidos.has(w));
-    if (nomesProprios.length) return null;
+    /* nome próprio que não é dos dois lutadores = invenção (inclusive no
+       começo da frase; a mesma conta da narração ao vivo) */
+    if (NARR.nomesInventados(t, n).length) return null;
     return t;
   } catch {
     return null;
@@ -433,7 +457,9 @@ async function executar(acao, c, uid) {
         const d = await processarLuta(est.luta.id, uid);
         est.luta = { id: d.luta.id, status: d.luta.status, tipo: d.luta.tipo };
       }
+      const gente = (est.lutadores || []).length ? await lutasContraGente(uid) : null;
       for (const l of est.lutadores || []) {
+        if (gente && typeof gente === "object" && Object.hasOwn(gente, String(l.id))) l.lutasGente = Number(gente[String(l.id)]) || 0;
         l.perfil = perfilDoLutador(l);
         l.nivelInfo = REG.nivelDoXp(l.xp);
         l.pontos = ARV.pontosDoNivel(l.nivel);
@@ -541,7 +567,7 @@ async function executar(acao, c, uid) {
       if (!(round >= 1 && round <= 9 && troca >= 1 && troca <= 9)) throw new ErroJxJ("troca inválida");
       await processarLuta(lid, uid);
       await rpc("jxj_enviar_acao", { uid, lid, round_: round, troca_: troca, familia_: c.familia });
-      return vistaDaLuta(await processarLuta(lid, uid), uid);
+      return vistaDaLuta(await processarLuta(lid, uid, { porAcao: true }), uid);
     }
     case "revanche": {
       const lid = idDe(c.lutaId, "luta");

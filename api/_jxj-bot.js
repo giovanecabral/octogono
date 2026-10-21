@@ -89,9 +89,9 @@ export const PESOS_ESTILO = {
 /* ---------- valor de estado e equilíbrio de uma troca ---------- */
 /* chance de A vencer dali, regressão logística treinada pela ferramenta de
    balanço (treinarValor); motor mudou, a suíte jxjbot mostra os pesos novos */
-export const PESOS_VALOR = [-0.04428163015542017, 0.4900652135317617, 0.9645936670001448, 0.35293915971269746,
-  0.1114446899976331, 0.024160934449267805, 0.22711870558313213, 0.018940343020683974, 0.2848475645595773,
-  0.058331072354313035, 0.2742220290886981, 0.23536890936846944, -0.06615259786665531, 0.3322988938054391, 0.12115416651842617];
+export const PESOS_VALOR = [-0.051177711574587816, 0.5015817671420097, 0.9909430117068747, 0.337069565246341,
+  0.11348007506058293, 0.04915116537192604, 0.23631167597479932, 0.0015231662868500826, 0.2970019064480512,
+  0.06976117435655224, 0.30053565286038486, 0.24657070525301655, -0.07666164197683842, 0.3251670373181852, 0.11240037514661033];
 function feat(e, pA, pB) {
   const rd = e.round - 1, pts = e.pontos[rd] || { a: 0, b: 0 };
   const cards = e.cartoes.reduce((s, c) => s + (c.a - c.b), 0);
@@ -229,6 +229,11 @@ export const TROCAS_PURAS = 3;
    ferramenta de balanço mexe nele em experimento; o servidor nunca muda). */
 export const AJUSTE = {
   inclinacao: 0.06,   // INCLINACAO (abaixo)
+  /* a do Provocador (fase 3, 2026-10-21): o striker ficou com mais defesa
+     de queda (base 60) e o Provocador, que é sempre striker, foi de 49% pra
+     45% contra o jogador de estilo no bot forte. Com 0,03: 46% (a meta do
+     dono é 46% a 50%); com 0: 46%, a inclinação pesa pouco aqui */
+  inclinacaoAgressivo: 0.03,
   habitoLeitor: 0.6,  // HABITO_LEITOR
   puloRoda: 0.3,      // PULO_RODA
   segueRoda: 1,       // Inquieto forte: na jogada fora do jeito, responde ao hábito do jogador (0 a 1, vezes s)
@@ -246,17 +251,18 @@ export const INCLINACAO = AJUSTE.inclinacao;
 export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
 /* Força medida de cada jeito em rating (1500 = quem joga no peso do estilo),
    na habilidade 0, 0,5 e 1 (`node ferramentas/jxj-balanco.mjs
-   personalidades`; de 4.800 a 5.760 lutas por casa, níveis 1, 10 e 30). É o
+   personalidades`; medida de novo com o motor v3 final em 2026-10-21:
+   2.880 lutas por casa, 2 sementes, 12 pares, níveis 1, 10 e 30). É o
    rating com que o bot entra no Glicko e aparece na tela: o bot de rating R
    joga como alguém de rating R, e quem vence o bot não ganha rating de
    graça. A faixa RATING_BOT continua escolhendo a habilidade do bot pelo
    rating do jogador. Mexeu no jeito, no motor ou na INCLINACAO: medir de
    novo e copiar aqui (a suíte jxjbot confere com folga de 40 pontos). */
 export const FORCA_BOT = {
-  agressivo: [1470, 1503, 1507],
-  defensivo: [1474, 1495, 1515],
-  leitor: [1452, 1476, 1495],
-  caotico: [1444, 1487, 1498],
+  agressivo: [1480, 1510, 1527],
+  defensivo: [1470, 1492, 1515],
+  leitor: [1444, 1468, 1498],
+  caotico: [1438, 1485, 1493],
 };
 export function forcaDoBot(pers, s) {
   const f = FORCA_BOT[pers];
@@ -346,7 +352,8 @@ export function distribuicaoDoBot(e, lado, d, hist, recentes = []) {
     const ob = [0, 0, 0, 0]; ob[F.indexOf(OBVIO[ch])] = 1;
     jogo = misturar([[d.pol.erro, UNIFORME], [d.pol.estiloP, ob], [Math.max(0, 1 - d.pol.erro - d.pol.estiloP), d.mm[ch].a]]);
   } else {
-    const base = normalizar(pesosDaPersonalidade(e, lado, d, hist)), k = AJUSTE.inclinacao * (Number(d.s) || 0);
+    const base = normalizar(pesosDaPersonalidade(e, lado, d, hist));
+    const k = (d.pers === "agressivo" ? AJUSTE.inclinacaoAgressivo : AJUSTE.inclinacao) * (Number(d.s) || 0);
     let jeito = base;
     if (k > 0) {
       const g = ganhoContraHistorico(e, lado, d, hist), g0 = Math.max(...g);

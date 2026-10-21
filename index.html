@@ -7954,7 +7954,9 @@ function jxjPainel(area,def,est){
   const obj=el("section","painel-n jxj-card entra");
   const metas=[];
   if(jxjProvisorio(principal))metas.push(`Fazer ${def.regras.lutasPraClassificar-(principal.lutasRating||0)} luta(s) com rating pra entrar no ranking.`);
-  if((principal.lutasRating||0)<def.regras.torneioLutasMin)metas.push(`Chegar a ${def.regras.torneioLutasMin} lutas com rating pra entrar em torneio.`);
+  /* torneio: lutas com rating contra gente (fase 5; sem a migração, lutasGente não vem e vale a conta de antes) */
+  const pTorneio=principal.lutasGente!=null?principal.lutasGente:(principal.lutasRating||0);
+  if(pTorneio<def.regras.torneioLutasMin)metas.push(`Chegar a ${def.regras.torneioLutasMin} lutas com rating contra outros jogadores pra entrar em torneio${principal.lutasGente!=null?` (faltam ${def.regras.torneioLutasMin-pTorneio})`:""}.`);
   if(principal.pontosLivres)metas.push(`Gastar ${principal.pontosLivres} ponto(s) de habilidade na árvore.`);
   if(nv.nivel<30)metas.push(`Faltam ${nv.proximo-nv.noNivel} XP pro nível ${nv.nivel+1}.`);
   obj.innerHTML=`<p class="jxj-rotulo">${ICONE("alvo")} Próximos objetivos</p><ul class="jxj-lista-simples">${metas.slice(0,4).map(m=>`<li>${m}</li>`).join("")||"<li>Tudo em dia. Hora de lutar.</li>"}</ul>`;
@@ -8000,7 +8002,7 @@ function jxjPainel(area,def,est){
     const t=meu||ab;
     tor.innerHTML=`<p class="jxj-rotulo">${ICONE("coroa")} Próximo torneio</p>`+(t
       ?`<p class="jxj-card-num">${t.inscritos} de ${t.vagas}<small>${t.status==="andamento"?"em andamento":"inscritos"} · ${jxjCategoria(t.categoria)}</small></p>${jxjBarra(t.inscritos,t.vagas)}
-        <p class="jxj-nota">${meu?"Você está inscrito.":"Pede Pro, lutador principal e 3 lutas com rating."}</p>`
+        <p class="jxj-nota">${meu?"Você está inscrito.":"Pede Pro, lutador principal e 3 lutas com rating contra outros jogadores."}</p>`
       :`<p class="jxj-nota">Nenhum torneio aberto nesta categoria agora.</p>`);
     const b=el("button","botao botao-sec","Ver os torneios"); b.type="button"; b.onclick=()=>{SOM.toque();irPara("jxj",t?"torneio/"+t.id:"torneios");}; tor.appendChild(b);
   }).catch(()=>{ if(tk===JXJ_TOKEN)tor.innerHTML=`<p class="jxj-nota">Não carregou agora.</p>`; });
@@ -8545,7 +8547,9 @@ async function jxjTelaFila(){
       if(tk!==JXJ_TOKEN)return;
       if(r.luta)return irPara("jxj","luta/"+r.luta.id,{substituir:true});
       if(r.naFila===false){ tempo.textContent="Você saiu da fila."; return; }
-      tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos de diferença`;
+      /* toleranciaNivel só vem com supabase_jxj_fase5.sql (a fila olha o nível) */
+      const tn=r.toleranciaNivel!=null&&isFinite(r.toleranciaNivel)?Math.round(r.toleranciaNivel):null;
+      tempo.textContent=`${jxjFmtDuracao(Date.now()-t0)} de espera · aceita agora até ${Math.round(r.tolerancia||100)} pontos${tn!=null?` e ${tn} níveis`:""} de diferença`;
       if((r.esperaSeg||0)>=ESPERA_BOT)oferecerBot(false);
       else if(r.movimento&&(Number(r.movimento.fila)||0)<=1)oferecerBot(true);
       if(r.movimento)mov.innerHTML=`${ICONE("grupo")}<span>${jxjTextoMovimento(r.movimento,true)}</span>`;
@@ -8809,6 +8813,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
         <span class="eu">${ICONE(JXJ_ICONE_ACAO[famEu]||"luta")}<b>${jxjEsc(nomeVar(meu,famEu))}</b>${marca(eu)}</span>
         <i>contra</i>
         <span class="ele">${marca(ele)}<b>${jxjEsc(nomeVar(dele,famEle))}</b>${ICONE(JXJ_ICONE_ACAO[famEle]||"luta")}</span></div>
+      ${ult.narracao&&ult.narracao.texto?`<p class="jxj-narracao-troca">${jxjEsc(ult.narracao.texto)}</p>`:""}
       ${jxjPorque(ult,eu)}
       <p class="jxj-ultima-txt">${(ult.eventos||[]).map(jxjEsc).join(" ")||"Nada mudou."}</p>`;
     tela.appendChild(sec);
@@ -8931,6 +8936,11 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
     <h2 class="jxj-resultado-titulo">${titulo}</h2>
     <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${v.nomes[ele].bot&&v.nomes[ele].alcunha?`, ${jxjEsc(v.nomes[ele].alcunha)}`:""}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
   area.appendChild(cab);
+  /* a linha da narração ao vivo do último lance (nocaute, finalização ou o
+     fim do último round): a tela de combate dá lugar ao resultado antes de
+     mostrá-la, então ela aparece aqui */
+  const ultT=(v.trocas||[])[(v.trocas||[]).length-1];
+  if(ultT&&ultT.narracao&&ultT.narracao.texto)area.appendChild(el("p","jxj-narracao-troca jxj-narracao-fim",jxjEsc(ultT.narracao.texto)));
   /* luta contra bot: o jeito que ele jogou e como puni-lo (só aqui, depois do fim) */
   if(v.licaoBot)area.appendChild(el("p","jxj-licao",`${ICONE("alvo")}<span>${jxjEsc(v.licaoBot)}</span>`));
   const g=el("div","jxj-grade");
@@ -9146,7 +9156,7 @@ async function jxjTelaTorneios(){
   catch(e){ return jxjErro(area,e,jxjTelaTorneios); }
   area.innerHTML="";
   area.appendChild(el("p","tela-sub",`Chave de ${def.regras.torneioVagas}: quartas, semifinal e final. Fecha quando chega a ${def.regras.torneioVagas} inscritos e as sementes saem do rating. Cada confronto tem ${def.regras.torneioJanelaH} horas pra acontecer: os dois entram na sala e lutam. Quem não aparece perde por W.O. O campeão leva o cinturão da categoria.`));
-  const reqs=el("p","jxj-nota",`Pra entrar: Pro, lutador principal da categoria e ${def.regras.torneioLutasMin} lutas com rating. Uma inscrição por conta.`);
+  const reqs=el("p","jxj-nota",`Pra entrar: Pro, lutador principal da categoria e ${def.regras.torneioLutasMin} lutas com rating contra outros jogadores (luta contra bot vale rating, mas não conta aqui). Uma inscrição por conta.`);
   area.appendChild(reqs);
   const principal=est&&est.lutadores.find(l=>l.id===est.principalEfetivo);
   const g=el("div","jxj-torneios");

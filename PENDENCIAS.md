@@ -2464,10 +2464,30 @@ IA pra medir a fase 4; bots fantasma (1b) ficam fora por enquanto.
    o erro) na primeira luta contra bot de cada conta. Não mexer no Paciente
    (pedido dele).
 2. Placar do round ao vivo: FEITO na branch (LEIA-ME "Online: placar do
-   round ao vivo"). Falta a validação do dono.
-3. Fechar o motor v3 (tabela da vantagem da leitura, estilos 45% a 57%).
-4. Narração por IA durante a luta (precisa de migração).
-5. Torneio exige 3 lutas com rating contra gente; nível no pareamento
-   (precisa de migração).
-6. Diagnóstico das variantes (sem código).
+   round ao vivo"). Validado pelo dono ("ok").
+3. Fechar o motor v3: FEITO na branch em 2026-10-21 (o dono mandou seguir
+   com as recomendações e fazer as fases restantes). Vantagem 22 (86%),
+   no chão igual; striker e counter com 3 pontos de Queda em Defesa de
+   queda; bots medidos de novo (`FORCA_BOT`, Provocador com inclinação
+   0,03). LEIA-ME "Fase 3 do plano".
+4. Narração ao vivo: FEITO na branch, sem migração (usa o teto da
+   narração do fim). 50 chamadas reais medidas; achado que a narração do
+   fim em produção não tem texto (raciocínio ligado), corrigido na branch.
+   LEIA-ME "Online: narração ao vivo". Falta: medir com a IA real o pedido
+   novo do fim de round (umas 20 chamadas, com autorização) e decidir o
+   teto diário (`narracao_ia_dia`, hoje 300 pra ao vivo e fim juntos).
+5. Integridade e pareamento: FEITO na branch, com migração
+   (`supabase_jxj_fase5.sql`). LEIA-ME "Online: integridade e
+   pareamento".
+6. Diagnóstico das variantes: FEITO (`docs/online-variantes-diagnostico.md`).
+   Falta a decisão do dono sobre as propostas (a) e (b).
+
+Falta, do dono, nesta ordem (nada disso foi feito por mim):
+1. Validar as fases 3 a 6.
+2. Backup e, com aprovação, rodar no SQL Editor `supabase_jxj_motor3.sql`
+   e depois `supabase_jxj_fase5.sql` (antes do deploy).
+3. Opcional: subir o teto da narração (`update jxj_config set valor =
+   '3000'::jsonb where chave = 'narracao_ia_dia'`, perto de US$ 0,03 por
+   dia no teto).
+4. Liberar o merge na `master` e o deploy ("deploya").
 

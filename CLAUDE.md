@@ -22,18 +22,20 @@ testar.js           A única ferramenta de teste. Lê o motor de dentro do HTML.
 atualizar-dados.py  Regenera o fighters.json.
 api/ai.js           Proxy do OpenRouter. Roda na Vercel.
 api/jxj.js          JxJ (jogador contra jogador): rota única, servidor decide tudo.
-api/_jxj-*.js       Motor, árvores, rating (Glicko-2), regras e bot do JxJ. Não usam nada da carreira.
+api/_jxj-*.js       Motor, árvores, rating (Glicko-2), regras, bot e narração ao vivo do JxJ. Não usam nada da carreira.
 supabase_jxj.sql    Migração só aditiva do JxJ (tabelas e funções jxj_*). Quem roda é o dono.
 supabase_jxj_narracao.sql  Segunda migração (reserva e teto da narração). Roda depois da primeira.
 supabase_jxj_raio.sql  Terceira (diferença de rating na fila). Roda depois das duas. Rodada em 2026-10-04.
 supabase_jxj_movimento.sql  Quarta (contador de quem está na fila e lutando). Só uma função de leitura.
 supabase_jxj_bot.sql  Quinta (lutas contra bot, 2026-10-19). Roda depois das quatro, com aprovação do dono.
 supabase_jxj_motor3.sql  Sexta (motor v3, 2026-10-20): só a versão de balanceamento 2 em jxj_config. O dono roda ANTES do deploy.
+supabase_jxj_fase5.sql  Sétima (2026-10-21): torneio só com lutas contra gente e nível na fila. Depois da sexta, com aprovação do dono.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
 docs/superpowers/   Spec e planos do revamp da interface e do JxJ.
+docs/online-variantes-diagnostico.md  Diagnóstico das 30 variantes do Online (fase 6, 2026-10-21).
 ```
 
 ## Revamp da interface (2026-09-26 a 27): concluído e no ar
@@ -81,12 +83,15 @@ metade). Regras do revamp que valem daqui pra frente:
   a luta continua refazível. O navegador manda só a família; o servidor
   manda só a mão de quem pediu. `VERSAO_MOTOR` 3 desde o motor v3 (item abaixo). Variante nova ou ajuste:
   `node ferramentas/jxj-balanco.mjs variantes` e `node testar.js jxjmotor`
-  (toda variante entre 44% e 56%). Nome de golpe na narração da IA passa
-  por `golpesForaDosFatos` (só o que aconteceu).
+  (toda variante entre 48% e 52,5% desde a fase 3). Nome de golpe na narração da IA passa
+  por `golpesForaDosFatos` (só o que aconteceu). Diagnóstico das 30
+  (efeito por uso, mão escolhida, proposta de menos variantes):
+  `docs/online-variantes-diagnostico.md`.
 - **Online: motor v3 (2026-10-20, pedido do dono: "escolhas sem
   fundamento e sorte", "uma mecânica que realmente depende da
-  habilidade").** Leitura que decide (`K.vantagem` 26; quem lê metade das
-  trocas vence 77%, era 71%), grogue (knockdown sempre; cobrir segura o
+  habilidade").** Leitura que decide (`K.vantagem` 22 em pé e no chão
+  desde a fase 3 do plano, 2026-10-21: 86% com atributos iguais, escolhida
+  numa tabela de 82% a 92%; quem lê metade das trocas vence 74%), grogue (knockdown sempre; cobrir segura o
   golpe, não a pressão na grade) e finalização encaixada (apertar,
   emendar, defender, sair na força: nenhuma resposta óbvia). Na tela:
   duelos de atributo só com o nível (a build dele é secreta), por quê da
@@ -98,7 +103,34 @@ metade). Regras do revamp que valem daqui pra frente:
   (`supabase_jxj_motor3.sql`, que o dono roda antes do deploy: banco em 1
   e código em 2 = a tela promete respec grátis e o banco cobra; a suíte
   `jxj` confere os dois). A tendência manda `cont` como lista: nome de
-  família na vista do outro reprova o teste de ação oculta.
+  família na vista do outro reprova o teste de ação oculta. Fase 3: striker
+  e counter com 3 pontos de Queda em Defesa de queda (a soma segue 450);
+  `jxjmotor` mede com 1.200 lutas por dupla (com 600 saíam casas fora da
+  faixa que não se repetiam), estilos de 45% a 57%.
+- **Narração ao vivo do Online (fase 4, 2026-10-21, `api/_jxj-narracao.js`).**
+  Só nos destaques (nocaute, finalização, knockdown, encaixe, grogue,
+  virada, fim de round), gravada como evento `narracao` na troca: a mesma
+  pros dois, e o motor não lê (a luta refeita pela semente não muda). IA
+  no máximo uma vez por pedido, prazo `PRAZO_IA_TROCA_MS` 1,5 s, mesmo
+  teto diário da narração do fim; falhou, demorou ou inventou: molde.
+  Antes do prazo só o pedido que gravou a ação resolve a troca
+  (`porAcao`): a consulta do outro lado resolvendo junto chamava a IA duas
+  vezes. No fim de round a IA narra só o lance; quem levou e o placar vêm
+  do molde. **Qwen Flash raciocina por padrão: toda chamada nova leva
+  `reasoning: {enabled: false}`** (sem isso, 40 de 40 voltaram sem texto e
+  a narração do fim em produção caía sempre no molde). Frase com
+  `finish_reason` "length" não vale. Filtro novo de narração entra em
+  `validarNarracaoTroca`/`nomesInventados` (a do fim usa o mesmo).
+  `JXJ_NARRACAO_TROCA=false` desliga a IA ao vivo. Medir com a IA real só
+  com autorização do dono (gasta crédito).
+- **Integridade e pareamento do Online (fase 5, 2026-10-21,
+  `supabase_jxj_fase5.sql`).** Luta contra bot vale rating (decisão do
+  dono), mas torneio pede 3 lutas com rating contra gente (sem bot, sem
+  anulada). A fila olha o nível: 5 de diferença, mais 2 a cada 10 s, sem
+  teto (`fila_nivel_base`/`fila_nivel_seg` em `jxj_config`; o padrão é
+  `REG.NIVEL_FILA`, e a suíte `jxjtemporada` confere os dois). Sem a
+  migração, tudo como antes (`lutasGente` não vem, `toleranciaNivel` não
+  vem).
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
@@ -178,7 +210,9 @@ passo a passo de ligar no LEIA-ME, seção "JxJ". O que não pode ser esquecido:
   jeito legível (Provocador, Paciente, Observador, Inquieto; `PERSONALIDADES`)
   e entra no rating com a força medida dele (`FORCA_BOT`), não com o rating
   do jogador: mexeu no jeito, no motor ou na `INCLINACAO`, rode
-  `node ferramentas/jxj-balanco.mjs personalidades` e copie a força nova. A
+  `node ferramentas/jxj-balanco.mjs personalidades` e copie a força nova
+  (fase 3: o Provocador tem inclinação própria, 0,03, porque é sempre
+  striker e o striker ganhou defesa de queda). A
   tela só recebe a alcunha; o id do jeito nunca sai do servidor. Ligar: a migração, uma conta só dos bots e
   `select public.jxj_bot_configurar('email')`. Sem isso a tela não
   oferece bot (sem a migração, `PGRST202`, igual ao raio).

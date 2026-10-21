@@ -21,11 +21,14 @@ export const NOME_ATRIBUTO = {
 };
 
 /* Os quatro perfis somam 450 (média 50): estilo é orientação, nunca
-   vantagem de soma. */
+   vantagem de soma. Fase 3 (2026-10-21): striker e counter passaram 3
+   pontos de Queda pra Defesa de queda (com a vantagem da leitura em 22, o
+   counter perdia do wrestler em 44,9% e o striker do grappler em 44,6%;
+   depois, todas as duplas entre 47,5% e 52%). */
 export const ESTILOS = {
   striker: {
     nome: "Striker", resumo: "Vence em pé: volume, precisão e poder nas mãos e nos chutes.",
-    base: { golpe: 57, poder: 58, defesa: 52, queda: 40, defQueda: 57, chao: 38, defChao: 46, cardio: 52, queixo: 50 },
+    base: { golpe: 57, poder: 58, defesa: 52, queda: 37, defQueda: 60, chao: 38, defChao: 46, cardio: 52, queixo: 50 },
     ramos: ["boxe", "chutes", "pressao"],
   },
   wrestler: {
@@ -43,7 +46,7 @@ export const ESTILOS = {
   },
   counter: {
     nome: "Counterfighter", resumo: "Lê o adversário, defende e pune o erro com o contra-ataque.",
-    base: { golpe: 58, poder: 52, defesa: 56, queda: 42, defQueda: 56, chao: 40, defChao: 46, cardio: 50, queixo: 50 },
+    base: { golpe: 58, poder: 52, defesa: 56, queda: 39, defQueda: 59, chao: 40, defChao: 46, cardio: 50, queixo: 50 },
     ramos: ["leitura", "defesaCounter", "precisao"],
   },
 };
