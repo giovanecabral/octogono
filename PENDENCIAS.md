@@ -2433,13 +2433,8 @@ aprovado ("pode"): leitura que decide, atributos na tela e momentos
 decisivos (grogue e finalização encaixada). FEITO no código, na branch
 `luta-estrategia` (LEIA-ME "Online: motor v3").
 
-Falta, do dono, nesta ordem:
-1. Ver os prints e os números e aprovar.
-2. Rodar `supabase_jxj_motor3.sql` no SQL Editor (só sobe a versão de
-   balanceamento pra 2 em `jxj_config`; não cria nem apaga nada). Antes
-   do deploy: com o banco em 1 e o código em 2, a tela promete respec
-   grátis e o banco cobra.
-3. Liberar o deploy (merge na `master`).
+NO AR desde 2026-10-21, junto com as fases do item 47 (o dono rodou
+`supabase_jxj_motor3.sql` antes do deploy).
 
 
 ## 47. Plano do Online em 6 fases (2026-10-20)
@@ -2482,12 +2477,20 @@ IA pra medir a fase 4; bots fantasma (1b) ficam fora por enquanto.
 6. Diagnóstico das variantes: FEITO (`docs/online-variantes-diagnostico.md`).
    Falta a decisão do dono sobre as propostas (a) e (b).
 
-Falta, do dono, nesta ordem (nada disso foi feito por mim):
-1. Validar as fases 3 a 6.
-2. Backup e, com aprovação, rodar no SQL Editor `supabase_jxj_motor3.sql`
-   e depois `supabase_jxj_fase5.sql` (antes do deploy).
-3. Opcional: subir o teto da narração (`update jxj_config set valor =
-   '3000'::jsonb where chave = 'narracao_ia_dia'`, perto de US$ 0,03 por
-   dia no teto).
-4. Liberar o merge na `master` e o deploy ("deploya").
+NO AR desde 2026-10-21 (21h47): o dono fez o backup e rodou
+`supabase_jxj_motor3.sql` e `supabase_jxj_fase5.sql` ("rodei td") e
+liberou o deploy ("pode deployar tudo"). `master` em `6493ef9` (as 6
+fases), deploy `dpl_H3EtjYMTwKrXVoaawez7XDVjrYbt` conferido arquivo por
+arquivo contra o commit; SQL e docs dão 404 no site; `definicoes` responde
+`versaoBalanceamento` 2.
+
+Falta, do dono:
+1. Conferir no banco: `select chave, valor from jxj_config where chave in
+   ('versao_balanceamento', 'fila_nivel_base', 'fila_nivel_seg');` tem que
+   dar 2, 5 e 2.
+2. Opcional: subir o teto da narração (`update jxj_config set valor =
+   '3000'::jsonb, atualizado_em = now() where chave = 'narracao_ia_dia'`,
+   perto de US$ 0,03 por dia no teto).
+3. Decidir as propostas da fase 6 e autorizar (se quiser) umas 20
+   chamadas reais pra medir o pedido novo do fim de round.
 
