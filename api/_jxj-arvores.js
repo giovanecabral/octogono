@@ -11,8 +11,9 @@
    Respec fica grátis uma vez por versão nova, e a fila só junta lutadores
    da mesma versão. O banco guarda o mesmo número (jxj_config
    versao_balanceamento): os dois sobem juntos, o banco antes do deploy.
-   2: motor v3 (2026-10-20, supabase_jxj_motor3.sql). */
-export const VERSAO_BALANCEAMENTO = 2;
+   2: motor v3 (2026-10-20, supabase_jxj_motor3.sql).
+   3: mão à vista, motor v4 (2026-10-27, supabase_jxj_estrategia.sql). */
+export const VERSAO_BALANCEAMENTO = 3;
 
 export const ATRIBUTOS = ["golpe", "poder", "defesa", "queda", "defQueda", "chao", "defChao", "cardio", "queixo"];
 export const NOME_ATRIBUTO = {

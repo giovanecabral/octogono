@@ -3,7 +3,7 @@
    papéis anon/authenticated/service_role). Roda supabase_schema.sql (o
    banco de hoje), depois supabase_jxj.sql, supabase_jxj_narracao.sql,
    supabase_jxj_raio.sql, supabase_jxj_movimento.sql, supabase_jxj_bot.sql,
-   supabase_jxj_motor3.sql e supabase_jxj_fase5.sql, na mesma ordem da
+   supabase_jxj_motor3.sql, supabase_jxj_fase5.sql e supabase_jxj_estrategia.sql, na mesma ordem da
    produção.
 
    fetchFalso() imita a REST do Supabase pro servidor (api/jxj.js) rodar
@@ -36,7 +36,7 @@ grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
 `;
 
-export async function novoBanco({ jxj = true, raio = true, movimento = true, bot = true, motor3 = true, fase5 = true } = {}) {
+export async function novoBanco({ jxj = true, raio = true, movimento = true, bot = true, motor3 = true, fase5 = true, estrategia = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB_SUPABASE);
   await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_schema.sql"), "utf8"));
@@ -55,6 +55,8 @@ export async function novoBanco({ jxj = true, raio = true, movimento = true, bot
     if (motor3) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_motor3.sql"), "utf8"));
     /* fase 5 (2026-10-21): torneio pede lutas contra gente, fila olha o nível */
     if (fase5 && bot && raio && movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_fase5.sql"), "utf8"));
+    /* estratégia (2026-10-27): versão de balanceamento 3 (motor v4) */
+    if (estrategia && fase5 && bot && raio && movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_estrategia.sql"), "utf8"));
   }
   await db.exec(GRANTS_SUPABASE);
   return db;

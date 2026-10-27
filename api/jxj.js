@@ -28,6 +28,7 @@ import * as RAT from "./_jxj-rating.js";
 import * as REG from "./_jxj-regras.js";
 import * as BOT from "./_jxj-bot.js";
 import * as NARR from "./_jxj-narracao.js";
+import * as EST from "./_jxj-estrategia.js";
 
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
@@ -293,6 +294,8 @@ function vistaDaLuta(d, uid) {
        só as 4 ações de quem pediu, nunca a semente nem a mão do outro */
     acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil, L.semente) : null,
     papel: lado && estado ? MOTOR.papel(estado, lado) : null,
+    /* v4: as duas mãos são públicas (contagem por família); luta v3, null */
+    maos: estado && estado.mao ? estado.mao : null,
     /* troca resolvida: o que cada um usou (variante) e os eventos em forma
        de dado (tipo, quem) pra animação e som na tela, além do texto */
     trocas: (d.trocas || []).map((t) => {
@@ -565,7 +568,11 @@ async function executar(acao, c, uid) {
       if (!MOTOR.FAMILIAS.includes(c.familia)) throw new ErroJxJ("ação inválida");
       const round = Math.floor(Number(c.round)), troca = Math.floor(Number(c.troca));
       if (!(round >= 1 && round <= 9 && troca >= 1 && troca <= 9)) throw new ErroJxJ("troca inválida");
-      await processarLuta(lid, uid);
+      const d0 = await processarLuta(lid, uid);
+      const L0 = d0.luta, lado0 = L0.a_user === uid ? "a" : L0.b_user === uid ? "b" : null;
+      /* v4: só ação com carta na mão; recusa antes de gravar (o console não passa daqui) */
+      if (L0.status === "andamento" && lado0 && L0.estado && L0.round === round && L0.troca === troca && !EST.temCarta(L0.estado, lado0, c.familia))
+        throw new ErroJxJ("Você já usou essa ação neste round.");
       await rpc("jxj_enviar_acao", { uid, lid, round_: round, troca_: troca, familia_: c.familia });
       return vistaDaLuta(await processarLuta(lid, uid, { porAcao: true }), uid);
     }

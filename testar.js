@@ -11185,7 +11185,10 @@ async function testarJxJ() {
       const vb = await ok(pb, "luta", { lutaId: lid1 });
       if (vb.adversarioEscolheu !== true || vb.minhaAcao !== null) throw new Error("vista de B: " + JSON.stringify({ e: vb.adversarioEscolheu, m: vb.minhaAcao }));
       /* fora a lista das PRÓPRIAS opções de B, nada na vista dele pode dizer "pressao" */
-      const { acoes: _opcoesDeB, ...resto } = vb;
+      /* v4: a mão dele não muda com a ação aberta (só com a troca resolvida) */
+      const cheia = { golpes: 2, queda: 1, defesa: 2, pressao: 1 }, canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
+      if (!vb.maos || canonMao(vb.maos.a) !== canonMao(cheia) || canonMao(vb.maos.b) !== canonMao(cheia)) throw new Error("a mão mudou com a ação aberta: " + JSON.stringify(vb.maos));
+      const { acoes: _opcoesDeB, maos: _maos, ...resto } = vb;
       if (/pressao/.test(JSON.stringify(resto))) throw new Error("a ação de A vazou pra B");
       /* v3: a tendência dele só conta troca resolvida, nunca a aberta */
       if (!vb.tendencia || vb.tendencia.n !== 0 || vb.tendencia.cont.some((x) => x !== 0) || vb.tendencia.ultima !== null) throw new Error("a tendência contou a ação aberta: " + JSON.stringify(vb.tendencia));
@@ -11291,7 +11294,8 @@ async function testarJxJ() {
       const c1 = await ok(u1, "luta", { lutaId: lid }), c2 = await ok(u2, "luta", { lutaId: lid });
       if (c1.momentoDecisivo !== "enc_cima_eu" || c2.momentoDecisivo !== "enc_baixo_ele") throw new Error(`encaixe: ${c1.momentoDecisivo}/${c2.momentoDecisivo}`);
       if (JSON.stringify(c2.estado.encaixe) !== JSON.stringify({ quem: lu1 })) throw new Error("encaixe na vista: " + JSON.stringify(c2.estado.encaixe));
-      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; });
+      /* v4: Defesas a mais na mão (este teste é da tendência e do por quê, não da mão) */
+      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.mao = { a: { golpes: 2, queda: 1, defesa: 4, pressao: 1 }, b: { golpes: 2, queda: 1, defesa: 4, pressao: 1 } }; });
       const troca = async (f1, f2) => {
         const v = await ok(u1, "luta", { lutaId: lid });
         await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: f1 });
@@ -11347,7 +11351,7 @@ async function testarJxJ() {
       const lid = await parear(u1, l1, u2, l2);
       for (let k = 0; k < 3; k++) {
         const v = await ok(u1, "luta", { lutaId: lid });
-        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: ["defesa", "defesa", "golpes"][k] });   // v4: só carta que tem
         await vencerPrazo(lid);
       }
       const v = await ok(u1, "luta", { lutaId: lid });
@@ -11625,7 +11629,7 @@ async function testarJxJ() {
       const lid = await parear(u1, a, u2, b);
       for (let k = 0; k < 3; k++) {
         const v = await ok(u1, "luta", { lutaId: lid });
-        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: ["defesa", "defesa", "golpes"][k] });   // v4: só carta que tem
         await vencerPrazo(lid);
       }
       const v = await ok(u1, "luta", { lutaId: lid });
@@ -11802,7 +11806,7 @@ async function testarJxJ() {
       const lid = await parear(u1, l1, u2, l2);
       for (let k = 0; k < 3; k++) {
         const v = await ok(u1, "luta", { lutaId: lid });
-        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
+        await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: ["defesa", "defesa", "golpes"][k] });   // v4: só carta que tem
         await vencerPrazo(lid);
       }
       const v = await ok(u1, "luta", { lutaId: lid });
@@ -11829,12 +11833,16 @@ async function testarJxJ() {
     const usoHoje = async () => (await q("select coalesce((select chamadas from jxj_narracao_uso where dia = (now() at time zone 'America/Sao_Paulo')::date), 0)::int n"))[0].n;
     const esperarAte = async (cond, ms = 3000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 10)); } return true; };
 
-    /* narração ao vivo (2026-10-21, fase 4): uma luta parada na 4ª troca do round 1, depois de 3 trocas de estudo */
+    /* narração ao vivo (2026-10-21, fase 4): uma luta parada na 4ª troca do round 1, depois de 3 trocas de estudo.
+       v4: a luta de apoio ganha 4 Defesas na mão (MAO_APOIO), pra seguir só com Defesa */
+    const MAO_APOIO = { a: { golpes: 2, queda: 1, defesa: 4, pressao: 1 }, b: { golpes: 2, queda: 1, defesa: 4, pressao: 1 } };
     const lutaNaUltimaTroca = async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       await zerarLimites();
       const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
       const lid = await parear(u1, l1, u2, l2);
+      /* v4: 4 Defesas na mão pra a luta de apoio seguir só com Defesa (estes testes são da narração, não da mão) */
+      await q("update jxj_lutas set estado = jsonb_set(estado, '{mao}', $2::jsonb) where id = $1", [lid, JSON.stringify(MAO_APOIO)]);
       for (let k = 0; k < 3; k++) {
         const v = await ok(u1, "luta", { lutaId: lid });
         await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
@@ -11855,6 +11863,27 @@ async function testarJxJ() {
       const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 4", [lid]))[0];
       return t ? t.eventos.filter((ev) => ev.tipo === "narracao") : null;
     };
+    await conf("mão à vista (v4): a vista manda as duas mãos, iguais pros dois; ação sem carta é recusada (400) sem gravar nada, mesmo por chamada direta; prazo vencido sem Defesa nem Pressão usa Golpes", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      const v0 = await ok(u1, "luta", { lutaId: lid });
+      const canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));   // (o jsonb reordena as chaves)
+      if (!v0.maos || canonMao(v0.maos.a) !== canonMao({ golpes: 2, queda: 1, defesa: 2, pressao: 1 }) || canonMao(v0.maos.b) !== canonMao(v0.maos.a)) throw new Error("mão inicial: " + JSON.stringify(v0.maos));
+      const curta = { golpes: 1, queda: 1, defesa: 0, pressao: 0 };
+      await q("update jxj_lutas set estado = jsonb_set(estado, '{mao}', $2::jsonb) where id = $1", [lid, JSON.stringify({ a: curta, b: curta })]);
+      const va = await ok(u1, "luta", { lutaId: lid }), vb = await ok(u2, "luta", { lutaId: lid });
+      if (JSON.stringify(va.maos) !== JSON.stringify(vb.maos) || va.maos.a.defesa !== 0) throw new Error("maos: " + JSON.stringify([va.maos, vb.maos]));
+      if (va.acoes.find((a) => a.familia === "defesa").restam !== 0 || va.acoes.find((a) => a.familia === "golpes").restam !== 1) throw new Error("restam: " + JSON.stringify(va.acoes.map((a) => [a.familia, a.restam])));
+      await erro(u1, "acao", { lutaId: lid, round: va.round, troca: va.troca, familia: "defesa" }, /já usou essa ação/);
+      await erro(u2, "acao", { lutaId: lid, round: va.round, troca: va.troca, familia: "pressao" }, /já usou essa ação/);
+      if ((await q("select count(*)::int n from jxj_acoes where luta_id = $1", [lid]))[0].n !== 0) throw new Error("gravou ação sem carta");
+      await vencerPrazo(lid);
+      await ok(u2, "luta", { lutaId: lid });
+      const t1 = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 1", [lid]))[0];
+      const esc = t1 && t1.eventos.find((ev) => ev.tipo === "escolha");
+      if (!esc || MOTOR.VARIANTE_POR_ID[esc.va].familia !== "golpes" || MOTOR.VARIANTE_POR_ID[esc.vb].familia !== "golpes") throw new Error("padrão sem Defesa nem Pressão: " + JSON.stringify(esc));
+    });
     await conf("narração ao vivo (fase 4): troca comum não ganha linha; o fim do round ganha a frase local (sem IA), gravada nos eventos da troca e a mesma na vista dos dois; a luta refeita pela semente não muda", async () => {
       const x = await lutaNaUltimaTroca();
       const comuns = await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca < 4", [x.lid]);
@@ -11868,6 +11897,7 @@ async function testarJxJ() {
       if (ta.ev.some((e) => e.tipo === "narracao") || ta.eventos.some((e) => e === n[0].texto)) throw new Error("a narração entrou nos eventos de fato");
       const d = (await q("select public.jxj_luta($1::bigint) as d", [x.lid]))[0].d;
       let e = MOTOR.novaLuta(d.luta.perfis.a, d.luta.perfis.b);
+      e.mao = JSON.parse(JSON.stringify(MAO_APOIO));   // a mesma mão que a luta de apoio recebeu
       for (const t of d.trocas) e = MOTOR.resolverTroca(e, d.luta.perfis, { a: t.acao_a, b: t.acao_b }, d.luta.semente).estado;
       /* (o jsonb reordena as chaves: compara com as chaves em ordem) */
       const canon = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((c) => [c, v[c]])) : v));

@@ -2,6 +2,7 @@
    (spec docs/superpowers/specs/2026-10-01-jxj-design.md, seções 4, 5 e 8).
    Funções puras: o servidor (api/jxj.js) aplica, o banco grava, a suíte
    jxj confere. Nenhum número aqui vem do cliente. */
+import { ESTRATEGIA } from "./_jxj-estrategia.js";
 import { nomeAceito } from "./_placar-regras.js";
 
 export const NIVEL_MAX = 30;
@@ -135,8 +136,8 @@ export const toleranciaFila = (esperaMs) =>
 
 /* Regra pública de ausência (aparece antes de entrar na fila) */
 export const REGRA_AUSENCIA = [
-  "Cada troca tem 20 segundos pra escolher a ação.",
-  "Prazo perdido vira Defender automático.",
+  `Cada troca tem ${ESTRATEGIA.prazos.acaoMs / 1000} segundos pra escolher a ação.`,
+  "Prazo perdido vira Defender automático (sem Defesa na mão, a próxima ação que sobrou).",
   "Dois prazos perdidos seguidos: a troca conta pro adversário.",
   "Três seguidos: derrota por W.O., com rating e histórico.",
   "Sair da página não cancela a luta: ela continua e você pode voltar.",
