@@ -5193,6 +5193,102 @@ luta valeria de 1 a 2 pontos (a melhor) e custaria 4 (a pior). A
 recomendação é (a) primeiro, só em pé, com 2 variantes por família e efeito
 calibrado par a par; (b) não agora.
 
+## Online: estratégia por informação, fase 1: a mão à vista (2026-10-27)
+
+**Pedido do dono:** a luta tem que passar a sensação de estratégia, combo e
+leitura, "e não só apertar em qualquer opção e torcer para dar certo".
+Spec: `docs/superpowers/specs/2026-10-27-online-estrategia-design.md`
+(quatro fases: mão à vista, sinais e blefe, iniciativa, ficha). Plano das
+fases 0 e 1: `docs/superpowers/plans/2026-10-27-online-estrategia-fase0-1.md`.
+As quatro fases vão pro ar juntas, num deploy só.
+
+### Regras (motor v4)
+
+- Cada round começa com a mão cheia: **2 Golpes, 2 Quedas, 4 Defesas, 1
+  Pressão**. Na prática, o ataque é contado e a Defesa dá pra todas as 4
+  trocas. A mão não passa pro round seguinte.
+- Usar uma ação gasta uma carta da família, em qualquer posição (a
+  finalização por cima é Queda e gasta a mesma carta da queda em pé).
+- As duas mãos são públicas o tempo todo (`maos` na vista, com `maoCheia`).
+- O servidor recusa ação sem carta antes de gravar ("Você já usou essa
+  ação neste round."). O motor, se receber uma (não deveria), troca pela
+  ação padrão e grava o evento `semCarta`, pra a luta nunca travar.
+- Prazo de 12 s (era 20). Prazo estourado: a primeira família com carta na
+  ordem Defesa, Pressão, Golpes, Queda. A ausência conta igual.
+- Cada carta que sobra no fim do round vira 0,25 de energia (evento
+  `guardou`), até o máximo.
+- Luta do v3 (sem `mao` no estado) segue as regras de antes; refazer pela
+  semente continua valendo pras duas.
+- Os números ficam em `api/_jxj-estrategia.js` (`ESTRATEGIA`); mudou algum,
+  sobe `VERSAO_MOTOR` e mede de novo. `VERSAO_BALANCEAMENTO` 3, no código e
+  no banco (`supabase_jxj_estrategia.sql`, o dono roda antes do deploy).
+
+### Por que a mão ficou com 9 cartas
+
+O ponto de partida aprovado era 6 (2 Golpes, 1 Queda, 2 Defesas, 1
+Pressão). Medido no simulador (`node ferramentas/jxj-balanco.mjs matriz` e
+`mao`, 1.200 lutas por dupla):
+
+| mão | estilos nível 1 | nocaute / finalização / decisão | o que quebrou |
+|---|---|---|---|
+| 2/1/2/1 (6) | 29,8% a 69,7% | 34,7 / 1,3 / 61,9 | uma Queda só: o chão some, o grappler vence 30% do striker |
+| 2/2/2/1 (7) | 43,9% a 53,9% | 28,6 / 18,6 / 50,9 | finalização acima da faixa, wrestler fraco |
+| 2/2/3/1 (8) | 45,5% a 54,8% | 26,4 / 15,3 / 56,3 | wrestler do nível 30 em 39% a 40% |
+| **2/2/4/1 (9)** | **45,7% a 55,7%** | **26,4 / 14,1 / 57,3** | nada fora da faixa, menos a evolução do wrestler (abaixo) |
+
+A energia por carta guardada começou em 0,5; com 0,25 o nível 30 ficou
+mais justo (wrestler contra counter de 42% pra 45%).
+
+### Números (suíte `jxjmotor`, motor v3 contra v4)
+
+| | v3 (antes) | v4 (mão à vista) |
+|---|---|---|
+| estilos nível 1 | 46,6% a 51,4% | 45,7% a 55,7% |
+| nocaute / finalização / decisão / empate | 29,0 / 15,4 / 53,9 / 1,7 | 26,4 / 14,1 / 57,3 / 2,2 |
+| trocas por luta | 9,4 | 9,6 |
+| lê metade / lê sempre (oráculo) | 73,7% / 86,9% | 71,3% / 87,2% |
+| nível 30 contra 1 | 70,0% a 79,1% | 60,6% (wrestler) a 75,9% |
+| quanto vale contar as cartas dele | não existia | +2,5 pontos |
+
+O oráculo da leitura agora só acerta com o que tem na mão, por isso cai
+um pouco. "Contar as cartas" é medido com o mesmo jogador (lê o estilo
+dele) contando e ignorando a mão dele, com as mesmas sementes.
+
+**Falha conhecida:** a evolução do wrestler (nível 30 contra 1) dá 60,6%
+e a faixa do teste é 62% a 85%. Com o ataque contado, o wrestler usa menos
+os atributos de queda que ganhou. A faixa não foi baixada; a correção é da
+fase 4 (o estilo muda a mão: o wrestler troca uma Defesa por uma Queda).
+
+### Tela
+
+- Os dois lados do placar mostram a mão (ícone e quantidade de cada
+  família; família vazia apagada).
+- Cada botão de ação mostra quantas restam; o botão sem carta fica apagado
+  e desabilitado.
+- Primeira luta do lutador (cartel vazio no começo da luta): no começo de
+  cada round, "Cada round você tem 9 ações. A que você usar sai da mão; a
+  mão dele aparece no placar."; depois, "Ele só tem Defesa e Pressão neste
+  round." quando ele só tem uma ou duas famílias.
+
+### Bots
+
+O bot só escolhe família com carta (`filtrarPelaMao` no fim de
+`distribuicaoDoBot`; o bot sem jeito das lutas antigas cai na ação
+padrão). `PESOS_VALOR` treinados de novo com a mão; `FORCA_BOT` medida de
+novo (seção "Bots com personalidade").
+
+### Testes
+
+`jxjmotor`: configuração, mão inicial e gasto em qualquer posição, ação
+sem carta e ação padrão, energia por carta guardada, `restam`, v3 sem
+mão, invariantes com escolhas na mão, valor da informação, faixas.
+`jxjbot`: o bot nunca escolhe família sem carta (inclusive no momento
+decisivo com o óbvio sem carta). `jxj`: a vista com as duas mãos iguais
+pros dois, a mão não muda com a ação aberta, ação sem carta recusada sem
+gravar (também por chamada direta), prazo vencido sem Defesa nem Pressão
+usa Golpes. `jxjtelas`: mão no placar, botão sem carta, dicas da primeira
+luta, luta sem mão não quebra.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

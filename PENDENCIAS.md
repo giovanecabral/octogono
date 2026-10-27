@@ -2494,3 +2494,20 @@ Falta, do dono:
 3. Decidir as propostas da fase 6 e autorizar (se quiser) umas 20
    chamadas reais pra medir o pedido novo do fim de round.
 
+
+## 48. Online com estratégia por informação (2026-10-27)
+
+Pedido do dono: a luta tem que passar estratégia, combo e leitura, não
+"apertar e torcer". Spec aprovada
+(`docs/superpowers/specs/2026-10-27-online-estrategia-design.md`): mão à
+vista, sinais e blefe, iniciativa, ficha. Branch `online-estrategia`.
+
+1. Fase 0 e Fase 1 (mão à vista): FEITAS na branch. Mão medida em 2/2/4/1
+   (o ponto de partida 2/1/2/1 matava o chão). Falha conhecida: evolução do
+   wrestler (nível 30 contra 1) em 60,6% (faixa 62% a 85%), pra fase 4.
+2. Fase 2 (sinais e blefe), Fase 3 (iniciativa), Fase 4 (ficha): falta
+   planejar e fazer.
+3. Do dono, antes do deploy (depois das 4 fases): backup e
+   `supabase_jxj_estrategia.sql` (versão de balanceamento 3; a fase 2 vai
+   acrescentar os sinais nesse mesmo arquivo). Deploy só com "deploya".
+

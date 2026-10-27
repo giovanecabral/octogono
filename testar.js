@@ -12510,6 +12510,10 @@ async function testarJxJMotor() {
     const e2 = M.novaLuta(pA, pB); e2.mao.b = { golpes: 1, queda: 1, defesa: 0, pressao: 0 };
     const r2 = M.resolverTroca(e2, P, { a: "golpes", b: null }, "s2");
     if (r2.estado.b.ultima !== "golpes" || r2.estado.mao.b.golpes !== 0 || r2.estado.b.ausentesSeguidas !== 1 || !r2.eventos.some((ev) => ev.tipo === "ausente" && ev.quem === "b")) throw new Error("padrão sem Defesa nem Pressão: " + JSON.stringify(r2.estado.b));
+    /* mão vazia (só por manipulação; com 9 cartas e 4 trocas não acontece): a padrão é Defesa e a contagem nunca fica negativa */
+    const e4 = M.novaLuta(pA, pB); e4.mao.a = { golpes: 0, queda: 0, defesa: 0, pressao: 0 };
+    const r4 = M.resolverTroca(e4, P, { a: "golpes", b: "golpes" }, "s4");
+    if (r4.estado.a.ultima !== "defesa" || Object.values(r4.estado.mao.a).some((x) => x < 0)) throw new Error("mão vazia: " + JSON.stringify(r4.estado.mao.a));
     const r3 = M.resolverTroca(M.novaLuta(pA, pB), P, { a: null, b: "queda" }, "s3");
     if (r3.estado.a.ultima !== "defesa" || r3.estado.mao.a.defesa !== EST.maoCheia().defesa - 1) throw new Error("padrão com Defesa");
   });

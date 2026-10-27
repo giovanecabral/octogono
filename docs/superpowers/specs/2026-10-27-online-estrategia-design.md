@@ -38,7 +38,7 @@ blefe).
 | Chão | A mão vale em toda posição (a carta é da família) |
 | Placar | Cartões dos juízes, como hoje; nocaute e finalização encerram antes |
 | Tempo | Sinal 5 s, ação 12 s |
-| Mão | 6 cartas por round: 2 Golpes, 1 Queda, 2 Defesas, 1 Pressão |
+| Mão | 6 cartas por round: 2 Golpes, 1 Queda, 2 Defesas, 1 Pressão (ponto de partida). Medido na fase 1: 2 Golpes, 2 Quedas, 4 Defesas, 1 Pressão, energia 0,25 por carta guardada (LEIA-ME, "a mão à vista") |
 | Sem sinal no prazo | Mostra a postura da ação padrão |
 | Finta | Aparece pros dois na revelação e entra no histórico dele |
 | Iniciativa | Dá finta pela metade do custo na troca seguinte |

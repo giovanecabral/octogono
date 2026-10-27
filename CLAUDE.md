@@ -131,6 +131,18 @@ metade). Regras do revamp que valem daqui pra frente:
   `REG.NIVEL_FILA`, e a suíte `jxjtemporada` confere os dois). Sem a
   migração, tudo como antes (`lutasGente` não vem, `toleranciaNivel` não
   vem).
+- **Online com estratégia por informação (2026-10-27, branch
+  `online-estrategia`; spec `docs/superpowers/specs/2026-10-27-online-estrategia-design.md`).**
+  Motor v4: mão à vista por round (2 Golpes, 2 Quedas, 4 Defesas, 1
+  Pressão, medida no simulador; 1 Queda matava o chão), pública pros dois,
+  validada no servidor (ação sem carta: 400 antes de gravar). Todos os
+  números em `api/_jxj-estrategia.js` (`ESTRATEGIA`), no código e com
+  versão: mudar número sobe `VERSAO_MOTOR`. Luta v3 (estado sem `mao`)
+  segue as regras de antes. `VERSAO_BALANCEAMENTO` 3 com
+  `supabase_jxj_estrategia.sql` (o dono roda antes do deploy). Fases 2 a 4
+  (sinais e blefe, iniciativa, ficha) vão pro ar junto com esta.
+  Estratégia de simulação que pede família sem carta passa por
+  `familiaNaMao`; bot filtra por `filtrarPelaMao`.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

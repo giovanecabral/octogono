@@ -884,7 +884,7 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     return { estado, eventos: ctx.eventos };
   }
   /* v4: a ação gasta a carta da família (em qualquer posição) */
-  if (estado.mao) for (const l of ["a", "b"]) estado.mao[l][ctx.acoes[l]]--;
+  if (estado.mao) for (const l of ["a", "b"]) if (estado.mao[l][ctx.acoes[l]] > 0) estado.mao[l][ctx.acoes[l]]--;
   /* variante de cada lado (a de quem faltou é a da ação padrão dele) */
   const papeis = { a: papel(estado, "a"), b: papel(estado, "b") };
   for (const l of ["a", "b"]) {
