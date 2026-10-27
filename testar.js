@@ -13567,6 +13567,8 @@ async function testarJxJTelas() {
       if (r.status !== 200) throw new Error(`${acao} deu ${r.status}: ${JSON.stringify(r.json).slice(0, 140)}`);
       return r.json;
     };
+    /* v4: a família pedida, se ainda tem carta na mão; senão a primeira que tem */
+    const naMao = (v, f) => (!v.acoes || v.acoes.some((x) => x.familia === f && x.restam !== 0) ? f : v.acoes.find((x) => x.restam !== 0).familia);
     const u1 = "00000000-0000-4000-8000-0000000000a1", u2 = "00000000-0000-4000-8000-0000000000a2";
     await B.criarUsuario(db, u1, { pro: true }); await B.criarUsuario(db, u2, { pro: true });
     const ROSTO = { pele: 2, porte: 1, cabelo: 1, corCabelo: 0, barba: 1, orelha: 0, nariz: 0, cicatriz: 0, tatuagem: 0, entrada: 0, prajiad: 0, corEntrada: 0 };
@@ -13831,6 +13833,32 @@ async function testarJxJTelas() {
       }
       semLixoV3(await pontos(0, 0), "placar do round");
     });
+    await conf("mão à vista na tela (v4): os dois lados do placar mostram a mão; o botão sem carta fica apagado e desabilitado com a contagem; a primeira luta dá a dica (início do round e 'ele só tem'); luta sem mão (v3) não quebra", async () => {
+      const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
+      const vs = await api(u1, "luta", { lutaId: lid }), eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+      const original = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0].estado.mao;
+      try {
+        await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.mao[eu] = { golpes: 1, queda: 0, defesa: 2, pressao: 1 }; e.mao[ele] = { golpes: 0, queda: 0, defesa: 1, pressao: 1 }; });
+        let m = await abrir(`luta/${lid}`), nos = desde(m);
+        const hEu = String(nos.find((n) => n.id === "jxj-card-eu").innerHTML), hEle = String(nos.find((n) => n.id === "jxj-card-ele").innerHTML);
+        if (!/jxj-mao/.test(hEu) || !/jxj-mao/.test(hEle) || !/class="vazio"[^>]*>.*?0</.test(hEle)) throw new Error("mão no placar: " + hEle.replace(/\s+/g, " ").slice(0, 400));
+        const bq = nos.filter((n) => tem(n, "jxj-acao")).find((b) => /jxj-restam[^>]*>0</.test(String(b.innerHTML)));
+        if (!bq || !tem(bq, "sem-carta") || !bq.disabled) throw new Error("botão sem carta: " + (bq ? bq.className : "nenhum com 0"));
+        if (nos.filter((n) => tem(n, "jxj-acao") && tem(n, "sem-carta")).length !== 1) throw new Error("só a Queda está sem carta");
+        const dica = nos.find((n) => tem(n, "jxj-dica-mao"));
+        if (!dica || !/só tem Defesa e Pressão/.test(String(dica.innerHTML))) throw new Error("dica da primeira luta: " + (dica && dica.innerHTML));
+        semLixoV3(htmlDe(nos), "mão à vista");
+        await mexer((e) => { e.mao = { a: { golpes: 2, queda: 1, defesa: 2, pressao: 1 }, b: { golpes: 2, queda: 1, defesa: 2, pressao: 1 } }; });
+        m = await abrir(`luta/${lid}`); nos = desde(m);
+        const d2 = nos.find((n) => tem(n, "jxj-dica-mao"));
+        if (!d2 || !/Cada round você tem 6 ações/.test(String(d2.innerHTML))) throw new Error("dica do começo do round: " + (d2 && d2.innerHTML));
+        await mexer((e) => { delete e.mao; });
+        m = await abrir(`luta/${lid}`); nos = desde(m);
+        if (nos.some((n) => tem(n, "sem-carta") || tem(n, "jxj-dica-mao")) || /jxj-mao"/.test(htmlDe(nos))) throw new Error("luta sem mão mostrou mão");
+        semLixoV3(htmlDe(nos), "luta sem mão");
+      } finally { await mexer((e) => { e.mao = original; }); }
+    });
     await conf("narração ao vivo na tela (fase 4): a linha do destaque aparece no lance, escapada; troca sem linha não mostra nada", async () => {
       const t = (await db.query("select round, troca, eventos from jxj_trocas where luta_id = $1 order by round desc, troca desc limit 1", [lid])).rows[0];
       const gravar = (evs) => db.query("update jxj_trocas set eventos = $4::jsonb where luta_id = $1 and round = $2 and troca = $3", [lid, t.round, t.troca, JSON.stringify(evs)]);
@@ -13876,9 +13904,9 @@ async function testarJxJTelas() {
       for (let n = 0; n < 40; n++) {
         const v = await api(u1, "luta", { lutaId: lid });
         if (v.status !== "andamento") break;
-        if (!v.minhaAcao) await api(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: MOTOR.FAMILIAS[n % 4] });
+        if (!v.minhaAcao) await api(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, MOTOR.FAMILIAS[n % 4]) });
         const v2 = await api(u2, "luta", { lutaId: lid });
-        if (v2.status === "andamento" && !v2.minhaAcao) await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: MOTOR.FAMILIAS[(n + 1) % 4] });
+        if (v2.status === "andamento" && !v2.minhaAcao) await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: naMao(v2, MOTOR.FAMILIAS[(n + 1) % 4]) });
       }
       if ((await api(u1, "luta", { lutaId: lid })).status !== "encerrada") throw new Error("a luta entre gente não acabou");
       const ub = "00000000-0000-4000-8000-0000000000b9";
@@ -13929,7 +13957,7 @@ async function testarJxJTelas() {
       for (let n = 0; n < 40; n++) {
         const v = await api(u1, "luta", { lutaId: L.id });
         if (v.status !== "andamento") break;
-        await api(u1, "acao", { lutaId: L.id, round: v.round, troca: v.troca, familia: MOTOR.FAMILIAS[n % 4] });
+        await api(u1, "acao", { lutaId: L.id, round: v.round, troca: v.troca, familia: naMao(v, MOTOR.FAMILIAS[n % 4]) });
       }
       const m = await abrir(`luta/${L.id}`);
       const h = htmlDe(desde(m));

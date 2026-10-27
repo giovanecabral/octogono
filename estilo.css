@@ -1828,3 +1828,13 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 @keyframes jxjNarra{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (max-width:720px){.jxj-narracao-troca{font-size:15px}}
 @media (prefers-reduced-motion:reduce){.jxj-lance.nova .jxj-narracao-troca{animation:none}}
+
+/* Online: mão à vista (v4, 2026-10-27): a mão de cada um no placar, a contagem no botão, a dica da primeira luta */
+.jxj-mao{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:12px;color:var(--osso-2)}
+.jxj-mao i{display:inline-flex;align-items:center;gap:2px;font-style:normal;font-variant-numeric:tabular-nums}
+.jxj-mao i .icone,.jxj-mao i svg{width:12px;height:12px}
+.jxj-mao i.vazio{opacity:.35}
+.jxj-restam{font-style:normal;font-weight:700;font-size:12px;min-width:18px;text-align:center;border-radius:9px;padding:0 5px;border:1px solid currentColor;opacity:.85;font-variant-numeric:tabular-nums}
+.jxj-acao.sem-carta{opacity:.38;filter:grayscale(1);cursor:not-allowed}
+.jxj-dica-mao{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}
+.jxj-dica-mao svg{width:14px;height:14px;flex:none}

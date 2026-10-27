@@ -8562,6 +8562,25 @@ async function jxjTelaFila(){
 /* ---------- luta (#/jxj/luta/<id>) ---------- */
 const JXJ_ICONE_ACAO={golpes:"punho",queda:"queda",defesa:"escudo",pressao:"avancar"};
 function jxjChance(ra,rb){ return 1/(1+Math.pow(10,(rb-ra)/400)); }
+/* mão à vista (v4, 2026-10-27): quantas ações de cada família restam no round */
+const JXJ_FAMILIA_TXT={golpes:"Golpes",queda:"Queda",defesa:"Defesa",pressao:"Pressão"};
+const JXJ_FAMILIAS=["golpes","queda","defesa","pressao"];
+function jxjMao(maos,l){
+  if(!maos||!maos[l])return "";
+  const m=maos[l];
+  return `<span class="jxj-mao" role="img" aria-label="Ações que restam no round: ${JXJ_FAMILIAS.map(f=>`${JXJ_FAMILIA_TXT[f]} ${m[f]}`).join(", ")}">${JXJ_FAMILIAS.map(f=>`<i${m[f]?"":` class="vazio"`}>${ICONE(JXJ_ICONE_ACAO[f]||"luta")}${m[f]}</i>`).join("")}</span>`;
+}
+/* dica da primeira luta (cartel vazio quando a luta começou): o começo do
+   round explica a mão; depois, avisa quando ele só tem uma ou duas famílias */
+function jxjDicaMao(v,eu,ele){
+  const c=v.nomes[eu]&&v.nomes[eu].cartel;
+  if(!v.maos||!v.maos[eu]||!v.maos[ele]||!Array.isArray(c)||c.some(x=>x>0))return "";
+  const soma=m=>JXJ_FAMILIAS.reduce((s,f)=>s+(m[f]||0),0);
+  if(soma(v.maos[eu])>=6&&soma(v.maos[ele])>=6)return "Cada round você tem 6 ações. A que você usar sai da mão; a mão dele aparece no placar.";
+  const tem=JXJ_FAMILIAS.filter(f=>v.maos[ele][f]>0).map(f=>JXJ_FAMILIA_TXT[f]);
+  if(tem.length&&tem.length<=2)return `Ele só tem ${tem.join(" e ")} neste round.`;
+  return "";
+}
 async function jxjTelaLuta(id){
   const c=jxjTela({titulo:"Luta",fundo:"octogono-luz",voltar:()=>irPara("jxj"),nav:null,classe:"tela-jxj-luta"});
   const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
@@ -8781,6 +8800,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
       <span class="jxj-vida${vida<=35?" baixa":""}" role="img" aria-label="Vida ${vida} de 100"><i style="width:${vida}%"></i></span>
       <span class="jxj-folego" role="img" aria-label="Energia ${jxjNum(st.energia)} de ${jxjNum(st.energiaMax)}"><i style="width:${Math.round(ener*100)}%"></i></span>
       <span class="jxj-hud-num"><i>${ICONE("lesao")}${vida}</i><i>${ICONE("energia")}${jxjNum(st.energia)}</i>${st.ausentes?`<i class="jxj-ausente">${st.ausentes} sem ação</i>`:""}${jxjEtiquetas(e,l)}</span>
+      ${jxjMao(v.maos,l)}
     </div>`;
     return d;
   };
@@ -8847,8 +8867,11 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
     const tend=jxjTendencia(v.tendencia);
     if(tend)topo.appendChild(tend);
     zona.appendChild(topo);
+    const dicaMao=jxjDicaMao(v,eu,ele);
+    if(dicaMao)zona.appendChild(el("p","jxj-dica-mao",`${ICONE("info")}<span>${dicaMao}</span>`));
     const g=el("div","jxj-acoes-luta"+(maoNova?" mao-nova":"")+(momDec?" no-momento":""));
     for(const a of v.acoes){
+      const semCarta=a.restam===0;
       const custo=a.custo<0?`+${jxjNum(-a.custo)}`:a.custo===0?"0":`−${jxjNum(a.custo)}`;
       const custoTxt=a.custo<0?`recupera ${jxjNum(-a.custo)} de energia`:a.custo===0?"não gasta energia":`gasta ${jxjNum(a.custo)} de energia`;
       const cic=ciclo[a.familia];
@@ -8856,10 +8879,12 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
       /* duelo de atributo da ação: seta pra cima se o seu leva vantagem, pra baixo se o dele */
       const nd=a.duelo&&v.duelos?v.duelos[a.duelo]:0;
       const marcaDuelo=nd?`<em class="jxj-acao-duelo ${nd>0?"bom":"ruim"}" aria-label="${JXJ_DUELO_NOME[a.duelo]}: ${nd>0?"vantagem sua":"vantagem dele"}">${ICONE(nd>0?"sobe":"desce")}</em>`:"";
-      const b=el("button","jxj-acao"+(a.dica?" com-dica":""),`<span class="jxj-acao-topo"><span class="jxj-acao-ico">${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}${marcaDuelo}</span><em class="jxj-custo" aria-label="${custoTxt}">${ICONE("energia")}${custo}</em></span>
+      const restam=a.restam!=null?`<em class="jxj-restam" aria-label="Restam ${a.restam} no round">${a.restam}</em>`:"";
+      const b=el("button","jxj-acao"+(a.dica?" com-dica":"")+(semCarta?" sem-carta":""),`<span class="jxj-acao-topo"><span class="jxj-acao-ico">${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}${marcaDuelo}</span>${restam}<em class="jxj-custo" aria-label="${custoTxt}">${ICONE("energia")}${custo}</em></span>
         <b>${a.rotulo}</b>${a.grupo&&String(a.grupo).toLowerCase()!==String(a.rotulo).toLowerCase()?`<small>${a.grupo}</small>`:""}<span class="jxj-acao-efeito">${a.dica||a.resumo||a.descricao}</span>${linhaCiclo}
         <span class="jxj-acao-bolha">${a.dica?`<i class="dica">${a.dica}</i>`:""}${a.descricao}${a.ciclo?` <i>${a.ciclo}</i>`:""}</span>`);
       b.type="button"; b.title=`${a.dica?a.dica+" ":""}${a.descricao}${a.ciclo?" "+a.ciclo:""} (${custoTxt})`;
+      if(semCarta){ b.disabled=true; b.title="Você já usou essa ação neste round."; }
       /* toque longo: mostra a frase inteira e não manda a ação */
       let segura=null,segurou=false;
       b.onpointerdown=ev=>{ if(ev&&ev.pointerType==="mouse")return; segurou=false; segura=setTimeout(()=>{ segurou=true; b.classList.add("segurando"); },450); };
