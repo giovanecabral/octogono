@@ -2503,8 +2503,8 @@ Pedido do dono: a luta tem que passar estratégia, combo e leitura, não
 vista, sinais e blefe, iniciativa, ficha. Branch `online-estrategia`.
 
 1. Fase 0 e Fase 1 (mão à vista): FEITAS na branch. Mão medida em 2/2/4/1
-   (o ponto de partida 2/1/2/1 matava o chão). Falha conhecida: evolução do
-   wrestler (nível 30 contra 1) em 60,6% (faixa 62% a 85%), pra fase 4.
+   (o ponto de partida 2/1/2/1 matava o chão); dois nós do wrestler
+   recalibrados com a mão.
 2. Fase 2 (sinais e blefe), Fase 3 (iniciativa), Fase 4 (ficha): falta
    planejar e fazer.
 3. Do dono, antes do deploy (depois das 4 fases): backup e

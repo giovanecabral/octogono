@@ -5234,7 +5234,7 @@ Pressão). Medido no simulador (`node ferramentas/jxj-balanco.mjs matriz` e
 | 2/1/2/1 (6) | 29,8% a 69,7% | 34,7 / 1,3 / 61,9 | uma Queda só: o chão some, o grappler vence 30% do striker |
 | 2/2/2/1 (7) | 43,9% a 53,9% | 28,6 / 18,6 / 50,9 | finalização acima da faixa, wrestler fraco |
 | 2/2/3/1 (8) | 45,5% a 54,8% | 26,4 / 15,3 / 56,3 | wrestler do nível 30 em 39% a 40% |
-| **2/2/4/1 (9)** | **45,7% a 55,7%** | **26,4 / 14,1 / 57,3** | nada fora da faixa, menos a evolução do wrestler (abaixo) |
+| **2/2/4/1 (9)** | **45,7% a 55,7%** | **26,4 / 14,1 / 57,3** | nada fora da faixa (depois do ajuste de dois nós do wrestler, abaixo) |
 
 A energia por carta guardada começou em 0,5; com 0,25 o nível 30 ficou
 mais justo (wrestler contra counter de 42% pra 45%).
@@ -5247,17 +5247,20 @@ mais justo (wrestler contra counter de 42% pra 45%).
 | nocaute / finalização / decisão / empate | 29,0 / 15,4 / 53,9 / 1,7 | 26,4 / 14,1 / 57,3 / 2,2 |
 | trocas por luta | 9,4 | 9,6 |
 | lê metade / lê sempre (oráculo) | 73,7% / 86,9% | 71,3% / 87,2% |
-| nível 30 contra 1 | 70,0% a 79,1% | 60,6% (wrestler) a 75,9% |
+| nível 30 contra 1 | 70,0% a 79,1% | 63,6% (wrestler) a 75,9% |
 | quanto vale contar as cartas dele | não existia | +2,5 pontos |
 
 O oráculo da leitura agora só acerta com o que tem na mão, por isso cai
 um pouco. "Contar as cartas" é medido com o mesmo jogador (lê o estilo
 dele) contando e ignorando a mão dele, com as mesmas sementes.
 
-**Falha conhecida:** a evolução do wrestler (nível 30 contra 1) dá 60,6%
-e a faixa do teste é 62% a 85%. Com o ataque contado, o wrestler usa menos
-os atributos de queda que ganhou. A faixa não foi baixada; a correção é da
-fase 4 (o estilo muda a mão: o wrestler troca uma Defesa por uma Queda).
+**Dois nós do wrestler:** com o ataque contado, "Eficiência de tentativas"
+(economia de energia na queda) passou a valer -0,38 ponto e "Manutenção de
+domínio" 0,30 (a suíte `jxjarvore` pede de 0,5 a 6,5), e a evolução do
+wrestler (nível 30 contra 1) caiu pra 60,6% (faixa 62% a 85%). Ajuste:
+eficiência de queda 0,06 para 0,2 e cardio 0,2 para 0,8 no primeiro,
+cardio 0,8 para 1,4 no segundo. Os dois valem cerca de 1,3 ponto, e o
+wrestler nível 30 vence 63,6% do nível 1.
 
 ### Tela
 
