@@ -5275,7 +5275,11 @@ fase 4 (o estilo muda a mão: o wrestler troca uma Defesa por uma Queda).
 O bot só escolhe família com carta (`filtrarPelaMao` no fim de
 `distribuicaoDoBot`; o bot sem jeito das lutas antigas cai na ação
 padrão). `PESOS_VALOR` treinados de novo com a mão; `FORCA_BOT` medida de
-novo (seção "Bots com personalidade").
+novo (2 sementes, 2.880 lutas por casa): Provocador 1471/1492/1513,
+Paciente 1485/1492/1521, Observador 1442/1469/1503, Inquieto 1455/1476/1494.
+Bot forte contra o jogador de estilo: 48%, 47%, 50% e 51%. Quem lê o
+jeito do bot forte ganha menos que no v3 (+13, +7, +14 e +10 pontos, eram
++19, +9, +19 e +10): a mão limita o bot e quem lê.
 
 ### Testes
 

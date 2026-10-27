@@ -253,7 +253,7 @@ export const INCLINACAO = AJUSTE.inclinacao;
 export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
 /* Força medida de cada jeito em rating (1500 = quem joga no peso do estilo),
    na habilidade 0, 0,5 e 1 (`node ferramentas/jxj-balanco.mjs
-   personalidades`; medida de novo com o motor v3 final em 2026-10-21:
+   personalidades`; medida de novo com o motor v4 (mão à vista) em 2026-10-27:
    2.880 lutas por casa, 2 sementes, 12 pares, níveis 1, 10 e 30). É o
    rating com que o bot entra no Glicko e aparece na tela: o bot de rating R
    joga como alguém de rating R, e quem vence o bot não ganha rating de
@@ -261,10 +261,10 @@ export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
    rating do jogador. Mexeu no jeito, no motor ou na INCLINACAO: medir de
    novo e copiar aqui (a suíte jxjbot confere com folga de 40 pontos). */
 export const FORCA_BOT = {
-  agressivo: [1480, 1510, 1527],
-  defensivo: [1470, 1492, 1515],
-  leitor: [1444, 1468, 1498],
-  caotico: [1438, 1485, 1493],
+  agressivo: [1471, 1492, 1513],
+  defensivo: [1485, 1492, 1521],
+  leitor: [1442, 1469, 1503],
+  caotico: [1455, 1476, 1494],
 };
 export function forcaDoBot(pers, s) {
   const f = FORCA_BOT[pers];
