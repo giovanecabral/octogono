@@ -10,10 +10,12 @@
    Quem chama: api/jxj.js (o servidor decide) e testar.js (simulação em
    massa). O navegador nunca roda isto pra decidir nada. */
 import { createHash } from "node:crypto";
+import { ESTRATEGIA, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao } from "./_jxj-estrategia.js";
 
-export const VERSAO_MOTOR = 3;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20)
-/* Formato inicial (ajustado pela suíte jxjmotor; valores finais no LEIA-ME) */
-export const FORMATO = { rounds: 3, trocasPorRound: 4, prazoMs: 20000, toleranciaMs: 3000 };
+export const VERSAO_MOTOR = 4;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20); 4: mão à vista (2026-10-27)
+/* Formato (ajustado pela suíte jxjmotor; valores finais no LEIA-ME). O
+   prazo da ação vem da configuração da estratégia (12 s desde o v4). */
+export const FORMATO = { rounds: 3, trocasPorRound: 4, prazoMs: ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000 };
 export const FAMILIAS = ["golpes", "queda", "defesa", "pressao"];
 export const AUSENCIAS_WO = 3;
 
@@ -288,6 +290,8 @@ export function novaLuta(perfilA, perfilB) {
   return {
     v: VERSAO_MOTOR, round: 1, troca: 1, pos: "pe", nivelPos: 0, momento: 0, paradoChao: 0, encaixe: null,
     a: ladoNovo(perfilA), b: ladoNovo(perfilB), pontos: [{ a: 0, b: 0 }], cartoes: [], fim: null,
+    /* v4: a mão de cada lado no round (contagem por família, pública) */
+    mao: { a: maoCheia(), b: maoCheia() },
   };
 }
 /* Papel de cada lado na posição atual: "pe", "cima" ou "baixo". */
@@ -372,6 +376,8 @@ export function acoesDisponiveis(estado, lado, perfil, semente = null) {
       variante: v ? v.id : null, rotulo: v ? v.rotulo : ROTULOS[pp][f], descricao: v ? v.desc : DESCRICOES[pp][f],
       resumo: v ? (v.curto || v.desc) : DESCRICOES[pp][f],
       custo: custoEnergia(pp, f, perfil, v),
+      /* v4: cartas dessa família que ainda restam no round (null sem mão) */
+      restam: estado.mao ? estado.mao[lado][f] : null,
       /* v3: o duelo de atributo de que a ação depende e, no momento decisivo, o efeito dela agora */
       duelo: DUELO_DA_ACAO[pp][f], dica: mom ? MOMENTO_DICA[mom][f] : null,
     };
@@ -816,23 +822,31 @@ export function cartaoDoRound(pts) {
   /* sempre {a, b} nessa ordem: é como o banco devolve, e a auditoria compara */
   return v === "a" ? { a: 10, b: perdedor } : { a: perdedor, b: 10 };
 }
+/* Fecha o round. Devolve o que cada lado guardou de carta (v4) e quanto
+   isso rendeu de energia ({a, b}, null pra quem não guardou). */
 function fecharRound(estado, perfis) {
-  const e = estado;
+  const e = estado, guardou = { a: null, b: null };
   e.cartoes.push(cartaoDoRound(e.pontos[e.round - 1]));
   if (e.round >= FORMATO.rounds) {
     const ta = e.cartoes.reduce((s, c) => s + c.a, 0), tb = e.cartoes.reduce((s, c) => s + c.b, 0);
     e.fim = ta === tb ? { vencedor: null, metodo: "EMPATE", round: e.round, troca: FORMATO.trocasPorRound }
       : { vencedor: ta > tb ? "a" : "b", metodo: "DEC", round: e.round, troca: FORMATO.trocasPorRound };
     e.fim.placar = { a: ta, b: tb };
-    return;
+    return guardou;
   }
   e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null;
   e.momento = Math.trunc(e.momento / 2);
   for (const l of ["a", "b"]) {
-    e[l].energia = Math.min(energiaMax(perfis[l]), e[l].energia + K.recuperacaoRound + (perfis[l].atr.cardio - 50) / 12);
+    const max = energiaMax(perfis[l]), base = e[l].energia + K.recuperacaoRound + (perfis[l].atr.cardio - 50) / 12;
+    /* v4: cada carta guardada vira energia (até o máximo); a mão volta cheia logo abaixo */
+    const sobra = e.mao ? cartasNaMao(e.mao[l]) : 0, semCartas = Math.min(max, base);
+    e[l].energia = Math.min(max, base + sobra * ESTRATEGIA.energiaPorCartaGuardada);
+    if (sobra) guardou[l] = { cartas: sobra, energia: Math.round((e[l].energia - semCartas) * 100) / 100 };
     e[l].travado = false; e[l].grogue = false;
   }
+  if (e.mao) e.mao = { a: maoCheia(), b: maoCheia() };
   e.pontos.push({ a: 0, b: 0 });
+  return guardou;
 }
 
 /* ---------- troca ---------- */
@@ -852,7 +866,11 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     if (ac && !FAMILIAS.includes(ac)) throw new Error("ação inválida");
     ausente[l] = !ac;
     estado[l].ausentesSeguidas = ac ? 0 : estado[l].ausentesSeguidas + 1;
-    ctx.acoes[l] = ac || "defesa";
+    /* v4: só vale ação com carta; a sem carta (o servidor recusa antes)
+       vira a ação padrão, pra luta nunca travar */
+    let fam = ac || acaoPadrao(estado, l);
+    if (ac && !temCarta(estado, l, ac)) { registrar(ctx, "semCarta", l, { fam: ac }); fam = acaoPadrao(estado, l); }
+    ctx.acoes[l] = fam;
     if (!ac) registrar(ctx, "ausente", l, { seguidas: estado[l].ausentesSeguidas });
   }
   if (estado.a.ausentesSeguidas >= AUSENCIAS_WO && estado.b.ausentesSeguidas >= AUSENCIAS_WO) {
@@ -865,7 +883,9 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     registrar(ctx, "fim", outro(l), { metodo: "WO" });
     return { estado, eventos: ctx.eventos };
   }
-  /* variante de cada lado (a de quem faltou é a Defesa da mão dele) */
+  /* v4: a ação gasta a carta da família (em qualquer posição) */
+  if (estado.mao) for (const l of ["a", "b"]) estado.mao[l][ctx.acoes[l]]--;
+  /* variante de cada lado (a de quem faltou é a da ação padrão dele) */
   const papeis = { a: papel(estado, "a"), b: papel(estado, "b") };
   for (const l of ["a", "b"]) {
     const pp = papeis[l], f = ctx.acoes[l];
@@ -925,7 +945,10 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     if (ctx.r() >= ret) estado.momento -= Math.sign(estado.momento);
   }
   if (!estado.fim) {
-    if (estado.troca >= FORMATO.trocasPorRound) fecharRound(estado, perfis);
+    if (estado.troca >= FORMATO.trocasPorRound) {
+      const guardou = fecharRound(estado, perfis);
+      for (const l of ["a", "b"]) if (guardou[l]) registrar(ctx, "guardou", l, guardou[l]);
+    }
     else estado.troca++;
   }
   if (estado.fim && !ctx.eventos.some((ev) => ev.tipo === "fim")) registrar(ctx, "fim", estado.fim.vencedor, { metodo: estado.fim.metodo });
@@ -943,6 +966,10 @@ export function textoEvento(ev, nomes) {
   const fr = V ? V.frase : null, deDefesa = V && V.familia === "defesa";
   switch (ev.tipo) {
     case "escolha": return "";
+    case "semCarta": return `${q} já tinha usado essa ação no round e fez a ação padrão.`;
+    case "guardou": return ev.energia > 0
+      ? `${q} guardou ${ev.cartas} ${ev.cartas === 1 ? "ação" : "ações"} e recuperou ${num(ev.energia)} de energia.`
+      : `${q} guardou ${ev.cartas} ${ev.cartas === 1 ? "ação" : "ações"}, com a energia cheia.`;
     case "golpe": return fr && !deDefesa ? `${q} acertou ${fr} (${num(ev.dano)} de dano).` : `${q} acertou golpes (${num(ev.dano)} de dano).`;
     case "punicao": return fr ? `${q} acertou ${fr} na entrada da queda de ${o}.` : `${q} acertou ${o} na entrada da queda.`;
     case "contra": return deDefesa ? `${q} esquivou e acertou o contra-ataque.` : `${q} contra-atacou e acertou.`;
@@ -1017,6 +1044,8 @@ export function simularLuta(perfilA, perfilB, estrA, estrB, semente, opcoes = nu
   let n = 0;
   while (!estado.fim && n++ < 100) {
     const acoes = { a: estrA(estado, "a", perfilA, rEst), b: estrB(estado, "b", perfilB, rEst) };
+    /* v4 (só simulação): estratégia que pede família sem carta joga uma das que têm */
+    for (const l of ["a", "b"]) if (acoes[l]) acoes[l] = familiaNaMao(estado, l, acoes[l], rEst);
     estado = resolverTroca(estado, perfis, acoes, semente, opcoes).estado;
   }
   return estado;

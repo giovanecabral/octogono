@@ -12454,6 +12454,56 @@ async function testarJxJMotor() {
     for (let k = 0; k < 20; k++) if (!["golpes", "pressao"].includes(EST.familiaNaMao(e, "a", "queda", r))) throw new Error("sorteio fora da mão");
     if (EST.familiaNaMao(e, "a", "golpes", () => { throw new Error("sorteou sem precisar"); }) !== "golpes") throw new Error("família com carta");
   });
+  await conf("mão (v4): a luta nova começa com a mão cheia nos dois lados; cada ação gasta a carta da família em qualquer posição; a mão volta cheia no round seguinte; luta v3 (sem mão) resolve como antes", () => {
+    const pA = perfil("striker"), pB = perfil("grappler"), P = { a: pA, b: pB };
+    let e = M.novaLuta(pA, pB);
+    if (e.v !== 4 || JSON.stringify(e.mao) !== JSON.stringify({ a: EST.maoCheia(), b: EST.maoCheia() })) throw new Error("mão inicial " + JSON.stringify(e.mao));
+    e = M.resolverTroca(e, P, { a: "golpes", b: "defesa" }, "m1").estado;
+    if (e.mao.a.golpes !== 1 || e.mao.b.defesa !== 1) throw new Error("não gastou: " + JSON.stringify(e.mao));
+    /* no chão, Queda é finalização/raspar: gasta a mesma carta */
+    const chao = { ...M.novaLuta(pA, pB), pos: "cima_a" };
+    const r2 = M.resolverTroca(chao, P, { a: "queda", b: "pressao" }, "m2").estado;
+    if (r2.mao.a.queda !== 0 || r2.mao.b.pressao !== 0) throw new Error("no chão não gastou: " + JSON.stringify(r2.mao));
+    for (const ac of [{ a: "queda", b: "golpes" }, { a: "defesa", b: "pressao" }, { a: "pressao", b: "queda" }]) { if (e.fim) break; e = M.resolverTroca(e, P, ac, "m3" + e.troca).estado; }
+    if (!e.fim && (e.round !== 2 || JSON.stringify(e.mao) !== JSON.stringify({ a: EST.maoCheia(), b: EST.maoCheia() }))) throw new Error("round 2 sem a mão cheia: " + JSON.stringify(e.mao));
+    const v3 = M.novaLuta(pA, pB); delete v3.mao; v3.v = 3;
+    const r3 = M.resolverTroca(v3, P, { a: "golpes", b: "golpes" }, "m4");
+    if ("mao" in r3.estado || r3.eventos.some((ev) => ev.tipo === "semCarta" || ev.tipo === "guardou")) throw new Error("v3 ganhou mão");
+  });
+  await conf("ação sem carta vira a ação padrão (evento semCarta, a luta não trava); prazo perdido usa Defesa ou, sem Defesa, Pressão, Golpes, Queda; a ausência conta igual", () => {
+    const pA = perfil("striker"), pB = perfil("wrestler"), P = { a: pA, b: pB };
+    const e = M.novaLuta(pA, pB); e.mao.a = { golpes: 0, queda: 1, defesa: 0, pressao: 1 };
+    const r = M.resolverTroca(e, P, { a: "golpes", b: "golpes" }, "s1");
+    const sc = r.eventos.find((ev) => ev.tipo === "semCarta");
+    if (!sc || sc.quem !== "a" || sc.fam !== "golpes" || r.estado.mao.a.pressao !== 0 || r.estado.a.ultima !== "pressao" || r.estado.a.ausentesSeguidas !== 0) throw new Error("sem carta: " + JSON.stringify({ sc, mao: r.estado.mao.a, ultima: r.estado.a.ultima }));
+    const e2 = M.novaLuta(pA, pB); e2.mao.b = { golpes: 1, queda: 1, defesa: 0, pressao: 0 };
+    const r2 = M.resolverTroca(e2, P, { a: "golpes", b: null }, "s2");
+    if (r2.estado.b.ultima !== "golpes" || r2.estado.mao.b.golpes !== 0 || r2.estado.b.ausentesSeguidas !== 1 || !r2.eventos.some((ev) => ev.tipo === "ausente" && ev.quem === "b")) throw new Error("padrão sem Defesa nem Pressão: " + JSON.stringify(r2.estado.b));
+    const r3 = M.resolverTroca(M.novaLuta(pA, pB), P, { a: null, b: "queda" }, "s3");
+    if (r3.estado.a.ultima !== "defesa" || r3.estado.mao.a.defesa !== 1) throw new Error("padrão com Defesa");
+  });
+  await conf("carta guardada vira energia no fim do round (0,5 por carta, até o máximo), com o evento guardou; no último round não sobra nada estranho", () => {
+    const pA = perfil("counter"), pB = perfil("counter"), P = { a: pA, b: pB };
+    let e = M.novaLuta(pA, pB); e.troca = M.FORMATO.trocasPorRound;
+    e.a.energia = 1; e.b.energia = M.energiaMax(pB);
+    e.mao.a = { golpes: 1, queda: 1, defesa: 2, pressao: 0 };   // 4 cartas, gasta 1: guarda 3
+    const r = M.resolverTroca(e, P, { a: "defesa", b: "defesa" }, "g1");
+    const ga = r.eventos.find((ev) => ev.tipo === "guardou" && ev.quem === "a"), gb = r.eventos.find((ev) => ev.tipo === "guardou" && ev.quem === "b");
+    if (r.estado.fim || !ga || ga.cartas !== 3 || Math.abs(ga.energia - 1.5) > 1e-9) throw new Error("guardou a: " + JSON.stringify(ga));
+    if (!gb || gb.energia !== 0 || r.estado.b.energia > M.energiaMax(pB) + 1e-9) throw new Error("energia passou do máximo: " + JSON.stringify(gb));
+    for (const ev of [ga, gb]) { const t = M.textoEvento(ev, { a: "Ana", b: "Bia" }); if (!t || problemasDeTexto(t).length) throw new Error("texto: " + t); }
+    const f = M.novaLuta(pA, pB); f.round = M.FORMATO.rounds; f.troca = M.FORMATO.trocasPorRound; f.pontos = [{ a: 0, b: 0 }, { a: 0, b: 0 }, { a: 5, b: 0 }]; f.cartoes = [{ a: 10, b: 9 }, { a: 9, b: 10 }];
+    const fim = M.resolverTroca(f, P, { a: "defesa", b: "defesa" }, "g2");
+    if (!fim.estado.fim || fim.eventos.some((ev) => ev.tipo === "guardou")) throw new Error("último round: " + JSON.stringify(fim.estado.fim));
+  });
+  await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
+    const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
+    const ac = M.acoesDisponiveis(e, "a", pA, "sem");
+    if (ac.find((x) => x.familia === "queda").restam !== 0 || ac.find((x) => x.familia === "golpes").restam !== 2) throw new Error(JSON.stringify(ac.map((x) => [x.familia, x.restam])));
+    const v3 = { ...e }; delete v3.mao;
+    if (M.acoesDisponiveis(v3, "a", pA, "sem").some((x) => x.restam !== null)) throw new Error("v3 com restam");
+    if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo " + M.FORMATO.prazoMs);
+  });
 
   await conf("determinismo: mesma semente e mesmas escolhas dão a mesma luta; semente diferente dá outra; o estado recebido não muda", () => {
     const pA = perfil("striker"), pB = perfil("grappler");
@@ -12493,8 +12543,10 @@ async function testarJxJMotor() {
       let e = M.novaLuta(pA, pB), n = 0;
       while (!e.fim) {
         if (++n > M.FORMATO.rounds * M.FORMATO.trocasPorRound) throw new Error(`luta ${i} passou de ${n - 1} trocas`);
-        const esc = () => (r() < 0.06 ? null : F[Math.floor(r() * 4)]);
-        const ac = { a: esc(), b: esc() }, pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
+        /* v4: quase sempre uma família com carta; às vezes uma sem (vira a padrão) */
+        const esc = (l) => { const x = r(); if (x < 0.06) return null; const disp = EST.familiasComCarta(e, l); return x < 0.09 ? F[Math.floor(r() * 4)] : disp[Math.floor(r() * disp.length)]; };
+        const ac = { a: esc("a"), b: esc("b") }, pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
+        const real = Object.fromEntries(["a", "b"].map((l) => [l, ac[l] && EST.temCarta(e, l, ac[l]) ? ac[l] : EST.acaoPadrao(e, l)]));
         const res = M.resolverTroca(e, P, ac, "inv" + i);
         e = res.estado;
         for (const ev of res.eventos) {
@@ -12505,7 +12557,7 @@ async function testarJxJMotor() {
             continue;
           }
           if (ev.tipo === "leu") {   // registro de quem leu o outro (v3, a tela usa): sem texto, sempre pelo ciclo
-            if (ev.quem !== M.quemLeu(pap, ac) || ev.fam !== ac[ev.quem] || ev.vs !== ac[ev.quem === "a" ? "b" : "a"]) throw new Error("leu fora do ciclo: " + JSON.stringify({ ev, pap, ac }));
+            if (ev.quem !== M.quemLeu(pap, real) || ev.fam !== real[ev.quem] || ev.vs !== real[ev.quem === "a" ? "b" : "a"]) throw new Error("leu fora do ciclo: " + JSON.stringify({ ev, pap, real }));
             continue;
           }
           if (ev.v && !M.VARIANTE_POR_ID[ev.v]) throw new Error(`evento ${ev.tipo} com variante desconhecida ${ev.v}`);
@@ -12538,7 +12590,7 @@ async function testarJxJMotor() {
       }
     }
     for (const t of ["golpe", "queda", "knockdown", "fim", "ausente", "raspou", "avancou", "subFalhou", "levantou", "leu",
-      "grogue", "respirou", "grade", "encaixou", "escapou", "emendou", "soltou"])
+      "grogue", "respirou", "grade", "encaixou", "escapou", "emendou", "soltou", "guardou", "semCarta"])
       if (!tipos.has(t)) throw new Error(`3000 lutas sem nenhum evento "${t}"`);
     const nunca = Object.keys(M.VARIANTE_POR_ID).filter((id) => !vistas.has(id));
     if (nunca.length) throw new Error("variante que nunca saiu na mão em 3000 lutas: " + nunca.join(", "));
@@ -12568,10 +12620,12 @@ async function testarJxJMotor() {
     const p = perfil("wrestler", 12), P = { a: p, b: p };
     for (let k = 0; k < 60; k++) {
       let e = M.novaLuta(p, p);
-      for (let t = 0; t < (k % 9); t++) { const r = M.resolverTroca(e, P, { a: F[(t + k) % 4], b: F[(t * 3 + k) % 4] }, "tela" + k); if (r.estado.fim) break; e = r.estado; }
+      /* v4: só famílias com carta (a sem carta vira a padrão e a variante seria outra) */
+      const naMao = (l, f) => EST.familiaNaMao(e, l, f, () => 0);
+      for (let t = 0; t < (k % 9); t++) { const r = M.resolverTroca(e, P, { a: naMao("a", F[(t + k) % 4]), b: naMao("b", F[(t * 3 + k) % 4]) }, "tela" + k); if (r.estado.fim) break; e = r.estado; }
       if (e.fim) continue;
       const tela = { a: M.acoesDisponiveis(e, "a", p, "tela" + k), b: M.acoesDisponiveis(e, "b", p, "tela" + k) };
-      const fa = F[k % 4], fb = F[(k + 1) % 4];
+      const fa = naMao("a", F[k % 4]), fb = naMao("b", F[(k + 1) % 4]);
       const esc = M.resolverTroca(e, P, { a: fa, b: fb }, "tela" + k).eventos.find((ev) => ev.tipo === "escolha");
       const va = tela.a.find((x) => x.familia === fa), vb = tela.b.find((x) => x.familia === fb);
       if (esc.va !== va.variante || esc.vb !== vb.variante) throw new Error(`tela ${va.variante}/${vb.variante}, troca ${esc.va}/${esc.vb}`);
