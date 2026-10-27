@@ -12339,6 +12339,8 @@ async function testarJxJ() {
       await zerarLimites();
       const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
       const lid = await botDoPro(u, l);
+      /* v4: quem falta defende, e a Defesa pode contra-atacar; sem golpe nem poder, o contra-ataque dele não nocauteia o bot (o teste é da ausência) */
+      await q("update jxj_lutas set perfis = jsonb_set(jsonb_set(perfis, '{a,atr,poder}', '1'::jsonb), '{a,atr,golpe}', '1'::jsonb) where id = $1", [lid]);
       for (let k = 0; k < 3; k++) { await vencerPrazo(lid); await ok(u, "luta", { lutaId: lid }); }
       const L = (await q("select status, resultado, efeitos from jxj_lutas where id = $1", [lid]))[0];
       if (L.status !== "encerrada" || L.resultado.metodo !== "WO" || L.resultado.vencedor !== "b" || L.efeitos.a.resultado !== "derrota") throw new Error(JSON.stringify(L.resultado));
