@@ -144,8 +144,8 @@ A troca tem três etapas, cada uma com seu prazo:
 
 Ausência conta só na etapa da ação, como hoje.
 
-Banco (migração `supabase_jxj_sinais.sql`, só aditiva, com aprovação do
-dono):
+Banco (migração `supabase_jxj_estrategia.sql`, a mesma da Fase 1, que já
+sobe a versão de balanceamento; só aditiva, com aprovação do dono):
 - tabela `jxj_sinais (luta_id, round, troca, lado, familia, criado_em)`,
   chave primária `(luta_id, round, troca, lado)`, RLS sem policy;
 - `jxj_enviar_sinal(uid, lid, round_, troca_, familia_)`: confere
