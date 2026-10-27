@@ -12437,6 +12437,23 @@ async function testarJxJMotor() {
   const f1 = (x) => x.toFixed(1);
   /* lutador "neutro": tudo 50, sem mecânica (pra medir só o ciclo) */
   const neutro = { estilo: "striker", categoria: "middleweight", atr: Object.fromEntries(A.ATRIBUTOS.map((k) => [k, 50])), mec: {} };
+  const EST = await import(require("url").pathToFileURL(path.join(RAIZ, "api", "_jxj-estrategia.js")).href);
+  await conf("configuração da estratégia (v4): famílias na ordem do motor, mão padrão 2/1/2/1, ação padrão pela ordem, filtro e sorteio só nas famílias com carta; sem mão (v3) nada muda", () => {
+    if (EST.FAMILIAS_MAO.join() !== F.join()) throw new Error("ordem das famílias");
+    const m = EST.maoCheia();
+    if (JSON.stringify(m) !== JSON.stringify({ golpes: 2, queda: 1, defesa: 2, pressao: 1 }) || EST.cartasNaMao(m) !== 6) throw new Error("mão " + JSON.stringify(m));
+    m.golpes = 0; if (EST.ESTRATEGIA.mao.golpes !== 2) throw new Error("maoCheia devolveu a configuração, não uma cópia");
+    const e = { mao: { a: { golpes: 1, queda: 0, defesa: 0, pressao: 1 }, b: EST.maoCheia() } };
+    if (EST.acaoPadrao(e, "a") !== "pressao" || EST.acaoPadrao(e, "b") !== "defesa" || EST.acaoPadrao({}, "a") !== "defesa") throw new Error("ação padrão");
+    if (EST.familiasComCarta(e, "a").join() !== "golpes,pressao" || EST.temCarta(e, "a", "queda") || !EST.temCarta({}, "a", "queda")) throw new Error("temCarta");
+    const d = EST.filtrarPelaMao([0.4, 0.3, 0.2, 0.1], e, "a");
+    if (Math.abs(d[0] - 0.8) > 1e-9 || d[1] || d[2] || Math.abs(d[3] - 0.2) > 1e-9) throw new Error("filtro " + d);
+    if (EST.filtrarPelaMao([0, 1, 1, 0], e, "a").join() !== "0.5,0,0,0.5") throw new Error("filtro sem peso nas que têm carta");
+    const igual = [0.1, 0.2, 0.3, 0.4]; if (EST.filtrarPelaMao(igual, {}, "a") !== igual) throw new Error("sem mão o filtro mexeu");
+    let x = 0; const r = () => (x = (x + 0.37) % 1);
+    for (let k = 0; k < 20; k++) if (!["golpes", "pressao"].includes(EST.familiaNaMao(e, "a", "queda", r))) throw new Error("sorteio fora da mão");
+    if (EST.familiaNaMao(e, "a", "golpes", () => { throw new Error("sorteou sem precisar"); }) !== "golpes") throw new Error("família com carta");
+  });
 
   await conf("determinismo: mesma semente e mesmas escolhas dão a mesma luta; semente diferente dá outra; o estado recebido não muda", () => {
     const pA = perfil("striker"), pB = perfil("grappler");
