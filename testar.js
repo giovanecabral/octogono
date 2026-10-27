@@ -11186,9 +11186,9 @@ async function testarJxJ() {
       if (vb.adversarioEscolheu !== true || vb.minhaAcao !== null) throw new Error("vista de B: " + JSON.stringify({ e: vb.adversarioEscolheu, m: vb.minhaAcao }));
       /* fora a lista das PRÓPRIAS opções de B, nada na vista dele pode dizer "pressao" */
       /* v4: a mão dele não muda com a ação aberta (só com a troca resolvida) */
-      const cheia = { golpes: 2, queda: 1, defesa: 2, pressao: 1 }, canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
-      if (!vb.maos || canonMao(vb.maos.a) !== canonMao(cheia) || canonMao(vb.maos.b) !== canonMao(cheia)) throw new Error("a mão mudou com a ação aberta: " + JSON.stringify(vb.maos));
-      const { acoes: _opcoesDeB, maos: _maos, ...resto } = vb;
+      const canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
+      if (!vb.maos || !vb.maoCheia || canonMao(vb.maos.a) !== canonMao(vb.maoCheia.a) || canonMao(vb.maos.b) !== canonMao(vb.maoCheia.b)) throw new Error("a mão mudou com a ação aberta: " + JSON.stringify(vb.maos));
+      const { acoes: _opcoesDeB, maos: _maos, maoCheia: _cheia, ...resto } = vb;
       if (/pressao/.test(JSON.stringify(resto))) throw new Error("a ação de A vazou pra B");
       /* v3: a tendência dele só conta troca resolvida, nunca a aberta */
       if (!vb.tendencia || vb.tendencia.n !== 0 || vb.tendencia.cont.some((x) => x !== 0) || vb.tendencia.ultima !== null) throw new Error("a tendência contou a ação aberta: " + JSON.stringify(vb.tendencia));
@@ -11869,7 +11869,7 @@ async function testarJxJ() {
       const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
       const v0 = await ok(u1, "luta", { lutaId: lid });
       const canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));   // (o jsonb reordena as chaves)
-      if (!v0.maos || canonMao(v0.maos.a) !== canonMao({ golpes: 2, queda: 1, defesa: 2, pressao: 1 }) || canonMao(v0.maos.b) !== canonMao(v0.maos.a)) throw new Error("mão inicial: " + JSON.stringify(v0.maos));
+      if (!v0.maos || canonMao(v0.maos.a) !== canonMao({ golpes: 2, queda: 2, defesa: 4, pressao: 1 }) || canonMao(v0.maos.b) !== canonMao(v0.maos.a) || canonMao(v0.maoCheia.a) !== canonMao(v0.maos.a)) throw new Error("mão inicial: " + JSON.stringify([v0.maos, v0.maoCheia]));
       const curta = { golpes: 1, queda: 1, defesa: 0, pressao: 0 };
       await q("update jxj_lutas set estado = jsonb_set(estado, '{mao}', $2::jsonb) where id = $1", [lid, JSON.stringify({ a: curta, b: curta })]);
       const va = await ok(u1, "luta", { lutaId: lid }), vb = await ok(u2, "luta", { lutaId: lid });
@@ -12468,10 +12468,10 @@ async function testarJxJMotor() {
   /* lutador "neutro": tudo 50, sem mecânica (pra medir só o ciclo) */
   const neutro = { estilo: "striker", categoria: "middleweight", atr: Object.fromEntries(A.ATRIBUTOS.map((k) => [k, 50])), mec: {} };
   const EST = await import(require("url").pathToFileURL(path.join(RAIZ, "api", "_jxj-estrategia.js")).href);
-  await conf("configuração da estratégia (v4): famílias na ordem do motor, mão padrão 2/1/2/1, ação padrão pela ordem, filtro e sorteio só nas famílias com carta; sem mão (v3) nada muda", () => {
+  await conf("configuração da estratégia (v4): famílias na ordem do motor, mão padrão 2/2/4/1 (medida), ação padrão pela ordem, filtro e sorteio só nas famílias com carta; sem mão (v3) nada muda", () => {
     if (EST.FAMILIAS_MAO.join() !== F.join()) throw new Error("ordem das famílias");
     const m = EST.maoCheia();
-    if (JSON.stringify(m) !== JSON.stringify({ golpes: 2, queda: 1, defesa: 2, pressao: 1 }) || EST.cartasNaMao(m) !== 6) throw new Error("mão " + JSON.stringify(m));
+    if (JSON.stringify(m) !== JSON.stringify({ golpes: 2, queda: 2, defesa: 4, pressao: 1 }) || EST.cartasNaMao(m) !== 9) throw new Error("mão " + JSON.stringify(m));
     m.golpes = 0; if (EST.ESTRATEGIA.mao.golpes !== 2) throw new Error("maoCheia devolveu a configuração, não uma cópia");
     const e = { mao: { a: { golpes: 1, queda: 0, defesa: 0, pressao: 1 }, b: EST.maoCheia() } };
     if (EST.acaoPadrao(e, "a") !== "pressao" || EST.acaoPadrao(e, "b") !== "defesa" || EST.acaoPadrao({}, "a") !== "defesa") throw new Error("ação padrão");
@@ -12489,11 +12489,12 @@ async function testarJxJMotor() {
     let e = M.novaLuta(pA, pB);
     if (e.v !== 4 || JSON.stringify(e.mao) !== JSON.stringify({ a: EST.maoCheia(), b: EST.maoCheia() })) throw new Error("mão inicial " + JSON.stringify(e.mao));
     e = M.resolverTroca(e, P, { a: "golpes", b: "defesa" }, "m1").estado;
-    if (e.mao.a.golpes !== 1 || e.mao.b.defesa !== 1) throw new Error("não gastou: " + JSON.stringify(e.mao));
+    const cheia = EST.maoCheia();
+    if (e.mao.a.golpes !== cheia.golpes - 1 || e.mao.b.defesa !== cheia.defesa - 1) throw new Error("não gastou: " + JSON.stringify(e.mao));
     /* no chão, Queda é finalização/raspar: gasta a mesma carta */
     const chao = { ...M.novaLuta(pA, pB), pos: "cima_a" };
     const r2 = M.resolverTroca(chao, P, { a: "queda", b: "pressao" }, "m2").estado;
-    if (r2.mao.a.queda !== 0 || r2.mao.b.pressao !== 0) throw new Error("no chão não gastou: " + JSON.stringify(r2.mao));
+    if (r2.mao.a.queda !== cheia.queda - 1 || r2.mao.b.pressao !== cheia.pressao - 1) throw new Error("no chão não gastou: " + JSON.stringify(r2.mao));
     for (const ac of [{ a: "queda", b: "golpes" }, { a: "defesa", b: "pressao" }, { a: "pressao", b: "queda" }]) { if (e.fim) break; e = M.resolverTroca(e, P, ac, "m3" + e.troca).estado; }
     if (!e.fim && (e.round !== 2 || JSON.stringify(e.mao) !== JSON.stringify({ a: EST.maoCheia(), b: EST.maoCheia() }))) throw new Error("round 2 sem a mão cheia: " + JSON.stringify(e.mao));
     const v3 = M.novaLuta(pA, pB); delete v3.mao; v3.v = 3;
@@ -12510,32 +12511,32 @@ async function testarJxJMotor() {
     const r2 = M.resolverTroca(e2, P, { a: "golpes", b: null }, "s2");
     if (r2.estado.b.ultima !== "golpes" || r2.estado.mao.b.golpes !== 0 || r2.estado.b.ausentesSeguidas !== 1 || !r2.eventos.some((ev) => ev.tipo === "ausente" && ev.quem === "b")) throw new Error("padrão sem Defesa nem Pressão: " + JSON.stringify(r2.estado.b));
     const r3 = M.resolverTroca(M.novaLuta(pA, pB), P, { a: null, b: "queda" }, "s3");
-    if (r3.estado.a.ultima !== "defesa" || r3.estado.mao.a.defesa !== 1) throw new Error("padrão com Defesa");
+    if (r3.estado.a.ultima !== "defesa" || r3.estado.mao.a.defesa !== EST.maoCheia().defesa - 1) throw new Error("padrão com Defesa");
   });
-  await conf("carta guardada vira energia no fim do round (0,5 por carta, até o máximo), com o evento guardou; no último round não sobra nada estranho", () => {
+  await conf("carta guardada vira energia no fim do round (energiaPorCartaGuardada por carta, até o máximo), com o evento guardou; no último round não sobra nada estranho", () => {
     const pA = perfil("counter"), pB = perfil("counter"), P = { a: pA, b: pB };
     let e = M.novaLuta(pA, pB); e.troca = M.FORMATO.trocasPorRound;
     e.a.energia = 1; e.b.energia = M.energiaMax(pB);
     e.mao.a = { golpes: 1, queda: 1, defesa: 2, pressao: 0 };   // 4 cartas, gasta 1: guarda 3
     const r = M.resolverTroca(e, P, { a: "defesa", b: "defesa" }, "g1");
     const ga = r.eventos.find((ev) => ev.tipo === "guardou" && ev.quem === "a"), gb = r.eventos.find((ev) => ev.tipo === "guardou" && ev.quem === "b");
-    if (r.estado.fim || !ga || ga.cartas !== 3 || Math.abs(ga.energia - 1.5) > 1e-9) throw new Error("guardou a: " + JSON.stringify(ga));
+    if (r.estado.fim || !ga || ga.cartas !== 3 || Math.abs(ga.energia - 3 * EST.ESTRATEGIA.energiaPorCartaGuardada) > 1e-9) throw new Error("guardou a: " + JSON.stringify(ga));
     if (!gb || gb.energia !== 0 || r.estado.b.energia > M.energiaMax(pB) + 1e-9) throw new Error("energia passou do máximo: " + JSON.stringify(gb));
     for (const ev of [ga, gb]) { const t = M.textoEvento(ev, { a: "Ana", b: "Bia" }); if (!t || problemasDeTexto(t).length) throw new Error("texto: " + t); }
     const f = M.novaLuta(pA, pB); f.round = M.FORMATO.rounds; f.troca = M.FORMATO.trocasPorRound; f.pontos = [{ a: 0, b: 0 }, { a: 0, b: 0 }, { a: 5, b: 0 }]; f.cartoes = [{ a: 10, b: 9 }, { a: 9, b: 10 }];
     const fim = M.resolverTroca(f, P, { a: "defesa", b: "defesa" }, "g2");
     if (!fim.estado.fim || fim.eventos.some((ev) => ev.tipo === "guardou")) throw new Error("último round: " + JSON.stringify(fim.estado.fim));
   });
-  await conf("informação vale (v4): quem conta as cartas dele vence o jogador de estilo mais do que quem joga só a mistura; trocas em que ele só tem uma família: no máximo 15%", () => {
-    const r = BAL.medirMao(150);
-    console.log(cinza(`         óbvias ${f1(r.obvias)}% | contador x estilo ${f1(r.contadorContraEstilo)}% | racional x estilo ${f1(r.racionalContraEstilo)}%`));
+  await conf("informação vale (v4): quem lê o estilo dele e conta as cartas vence o jogador de estilo mais do que quem lê sem contar; trocas em que ele só tem uma família: no máximo 15%", () => {
+    const r = BAL.medirMao(300);
+    console.log(cinza(`         óbvias ${f1(r.obvias)}% | lê o estilo e conta as cartas ${f1(r.contaCartas)}% | lê sem contar ${f1(r.ignoraMao)}% | a mão vale ${f1(r.valorDaMao)} pontos`));
     if (r.obvias > 15) throw new Error("trocas óbvias demais: " + f1(r.obvias));
-    if (!(r.contadorContraEstilo > r.racionalContraEstilo)) throw new Error("contar cartas não ajudou");
+    if (!(r.valorDaMao > 0)) throw new Error("contar cartas não ajudou: " + f1(r.valorDaMao));
   });
   await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
     const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
     const ac = M.acoesDisponiveis(e, "a", pA, "sem");
-    if (ac.find((x) => x.familia === "queda").restam !== 0 || ac.find((x) => x.familia === "golpes").restam !== 2) throw new Error(JSON.stringify(ac.map((x) => [x.familia, x.restam])));
+    if (ac.find((x) => x.familia === "queda").restam !== 0 || ac.find((x) => x.familia === "golpes").restam !== EST.maoCheia().golpes) throw new Error(JSON.stringify(ac.map((x) => [x.familia, x.restam])));
     const v3 = { ...e }; delete v3.mao;
     if (M.acoesDisponiveis(v3, "a", pA, "sem").some((x) => x.restam !== null)) throw new Error("v3 com restam");
     if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo " + M.FORMATO.prazoMs);
@@ -12787,7 +12788,8 @@ async function testarJxJMotor() {
     if (ruins.length) throw new Error(ruins.join("; "));
   });
   await conf("leitura decide (v3, vantagem 22 desde a fase 3): quem acerta a leitura em metade das trocas vence 71%+ de quem joga no estilo; quem acerta sempre, 85,5%+ (com a vantagem antiga, 15: 68,7% e 84,4%)", () => {
-    const meia = BAL.leituraOraculo(0.5, 150, "t"), sempre = BAL.leituraOraculo(1, 100, "t");
+    /* v4: amostra maior (600 e 400 por estilo): com 150, o ruído (cerca de 2 pontos) já tirava da faixa um valor que, medido com mais lutas, ficava acima */
+    const meia = BAL.leituraOraculo(0.5, 600, "t"), sempre = BAL.leituraOraculo(1, 400, "t");
     console.log(cinza(`         acerto 0,5: ${f1(meia)}%   acerto 1: ${f1(sempre)}%`));
     if (meia < 71 || sempre < 85.5) throw new Error("acertar a leitura vale pouco");
   });
@@ -13849,10 +13851,10 @@ async function testarJxJTelas() {
         const dica = nos.find((n) => tem(n, "jxj-dica-mao"));
         if (!dica || !/só tem Defesa e Pressão/.test(String(dica.innerHTML))) throw new Error("dica da primeira luta: " + (dica && dica.innerHTML));
         semLixoV3(htmlDe(nos), "mão à vista");
-        await mexer((e) => { e.mao = { a: { golpes: 2, queda: 1, defesa: 2, pressao: 1 }, b: { golpes: 2, queda: 1, defesa: 2, pressao: 1 } }; });
+        await mexer((e) => { e.mao = { a: { golpes: 2, queda: 2, defesa: 4, pressao: 1 }, b: { golpes: 2, queda: 2, defesa: 4, pressao: 1 } }; });
         m = await abrir(`luta/${lid}`); nos = desde(m);
         const d2 = nos.find((n) => tem(n, "jxj-dica-mao"));
-        if (!d2 || !/Cada round você tem 6 ações/.test(String(d2.innerHTML))) throw new Error("dica do começo do round: " + (d2 && d2.innerHTML));
+        if (!d2 || !/Cada round você tem 9 ações/.test(String(d2.innerHTML))) throw new Error("dica do começo do round: " + (d2 && d2.innerHTML));
         await mexer((e) => { delete e.mao; });
         m = await abrir(`luta/${lid}`); nos = desde(m);
         if (nos.some((n) => tem(n, "sem-carta") || tem(n, "jxj-dica-mao")) || /jxj-mao"/.test(htmlDe(nos))) throw new Error("luta sem mão mostrou mão");

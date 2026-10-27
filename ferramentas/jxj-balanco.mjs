@@ -478,16 +478,32 @@ export function contador(pEu, pEle) {
     return F[ganho.indexOf(Math.max(...ganho))];
   };
 }
-/* Mão à vista (v4): quantas trocas ficam óbvias (ele só tem uma família) e
-   quanto vale contar as cartas, contra o jogador de estilo, no espelho de
-   cada estilo no nível 1. */
+/* Quem lê o estilo dele (v4): sabe os pesos do estilo do adversário e joga
+   a melhor resposta. Com contaCartas, a crença só fica com as famílias que
+   ele ainda tem na mão; sem, ignora a mão dele. A diferença entre os dois é
+   o quanto vale contar as cartas (a informação da mão à vista). */
+export function leitorDeEstilo(pEu, pEle, estiloEle, contaCartas = true) {
+  const base = racional(pEu, pEle);
+  return (e, l, p, r) => {
+    if (!e.mao || M.momentoDoLado(e, l)) return base(e, l, p, r);
+    const o = l === "a" ? "b" : "a", pos = posDoLado(e, l), mx = misturas(pEu, pEle)[pos];
+    const w = PESOS_ESTILO[estiloEle][M.papel(e, o)], t = w.reduce((x, y) => x + y, 0);
+    const crenca = contaCartas ? EST.filtrarPelaMao(w.map((x) => x / t), e, o) : w.map((x) => x / t);
+    const ganho = F.map((f, i) => (EST.temCarta(e, l, f) ? mx.m[i].reduce((s, v, j) => s + v * crenca[j], 0) : -Infinity));
+    return F[ganho.indexOf(Math.max(...ganho))];
+  };
+}
+/* Mão à vista (v4): quanto vale contar as cartas (quem lê o estilo e conta
+   contra quem lê o estilo e ignora a mão dele, os dois contra o jogador de
+   estilo, espelho no nível 1) e quantas trocas ficam óbvias (ele só tem uma
+   família). */
 export function medirMao(n = 200) {
   let obv = 0, tot = 0;
-  const v = { contador: [0, 0], racional: [0, 0] };
+  const v = { conta: [0, 0], ignora: [0, 0] };
   for (const s of ESTS) {
     const p = perfilTipico(s, 1);
-    for (const [nome, estr] of [["contador", contador(p, p)], ["racional", racional(p, p)]]) {
-      const t = confronto(p, p, estr, heuristica(s), n, `mao${nome}${s}`);
+    for (const [nome, estr] of [["conta", leitorDeEstilo(p, p, s, true)], ["ignora", leitorDeEstilo(p, p, s, false)]]) {
+      const t = confronto(p, p, estr, heuristica(s), n, `mao${s}`);
       v[nome][0] += t.vX; v[nome][1] += t.vX + t.vO;
     }
     const ra = racional(p, p);
@@ -500,7 +516,8 @@ export function medirMao(n = 200) {
       }
     }
   }
-  return { obvias: 100 * obv / tot, contadorContraEstilo: 100 * v.contador[0] / v.contador[1], racionalContraEstilo: 100 * v.racional[0] / v.racional[1] };
+  const conta = 100 * v.conta[0] / v.conta[1], ignora = 100 * v.ignora[0] / v.ignora[1];
+  return { obvias: 100 * obv / tot, contaCartas: conta, ignoraMao: ignora, valorDaMao: conta - ignora };
 }
 export const HUMANOS_MODELO = {
   acaso: () => aleatoria(),
@@ -597,7 +614,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else if (cmd === "mao") {
     const r = medirMao(N || 300);
     console.log(`trocas em que ele só tem uma família: ${f1(r.obvias)}%`);
-    console.log(`contador de cartas contra o jogador de estilo: ${f1(r.contadorContraEstilo)}% (só a mistura: ${f1(r.racionalContraEstilo)}%)`);
+    console.log(`quem lê o estilo dele e conta as cartas: ${f1(r.contaCartas)}% contra o jogador de estilo; lendo sem contar: ${f1(r.ignoraMao)}% (a mão vale ${f1(r.valorDaMao)} pontos)`);
   } else if (cmd === "momentos") {
     const r = medirMomentos(N || 120);
     console.log(`lutas com grogue ${f1(r.comGrogue)}%, com finalização encaixada ${f1(r.comEncaixe)}%`);

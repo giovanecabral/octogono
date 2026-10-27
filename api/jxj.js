@@ -296,6 +296,8 @@ function vistaDaLuta(d, uid) {
     papel: lado && estado ? MOTOR.papel(estado, lado) : null,
     /* v4: as duas mãos são públicas (contagem por família); luta v3, null */
     maos: estado && estado.mao ? estado.mao : null,
+    /* a mão cheia de cada um (a do começo de todo round) */
+    maoCheia: estado && estado.mao ? { a: EST.maoCheia(), b: EST.maoCheia() } : null,
     /* troca resolvida: o que cada um usou (variante) e os eventos em forma
        de dado (tipo, quem) pra animação e som na tela, além do texto */
     trocas: (d.trocas || []).map((t) => {

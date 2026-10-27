@@ -11,10 +11,21 @@
    Este arquivo não importa o motor (o motor importa ele). */
 export const FAMILIAS_MAO = ["golpes", "queda", "defesa", "pressao"];
 export const ESTRATEGIA = {
-  /* a mão de cada round: 6 cartas pra 4 trocas */
-  mao: { golpes: 2, queda: 1, defesa: 2, pressao: 1 },
-  /* energia por carta guardada no fim do round (até o máximo) */
-  energiaPorCartaGuardada: 0.5,
+  /* a mão de cada round: 9 cartas pra 4 trocas. Na prática, o ataque é
+     contado (2 Golpes, 2 Quedas, 1 Pressão) e a Defesa dá pra todas as
+     trocas. O ponto de partida era 6 (2/1/2/1); medido em 2026-10-27
+     (ferramentas/jxj-balanco.mjs matriz e mao, 1.200 lutas por dupla): com
+     1 Queda o chão some (finalização 1,3%, grappler 27,5% contra o
+     striker); 2/2/2/1 deu finalização 18,6% e wrestler 43,9%; 2/2/3/1
+     deixou o wrestler do nível 30 em 39% a 40%; 2/2/4/1 deixa estilos de
+     45,7% a 55,7% (nível 1) e de 42,6% a 57,4% (nível 30), nocaute 26,4%,
+     finalização 14,1%, decisão 57,3%, e contar as cartas dele rende 3
+     pontos */
+  mao: { golpes: 2, queda: 2, defesa: 4, pressao: 1 },
+  /* energia por carta guardada no fim do round (até o máximo). Medido:
+     0,5 deixava o wrestler do nível 30 em 39% contra o counter; 0,25 põe
+     toda dupla do nível 30 entre 41% e 59% */
+  energiaPorCartaGuardada: 0.25,
   /* prazo estourado: a primeira família com carta nesta ordem */
   ordemPadrao: ["defesa", "pressao", "golpes", "queda"],
   prazos: { acaoMs: 12000 },

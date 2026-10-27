@@ -8574,9 +8574,9 @@ function jxjMao(maos,l){
    round explica a mão; depois, avisa quando ele só tem uma ou duas famílias */
 function jxjDicaMao(v,eu,ele){
   const c=v.nomes[eu]&&v.nomes[eu].cartel;
-  if(!v.maos||!v.maos[eu]||!v.maos[ele]||!Array.isArray(c)||c.some(x=>x>0))return "";
-  const soma=m=>JXJ_FAMILIAS.reduce((s,f)=>s+(m[f]||0),0);
-  if(soma(v.maos[eu])>=6&&soma(v.maos[ele])>=6)return "Cada round você tem 6 ações. A que você usar sai da mão; a mão dele aparece no placar.";
+  if(!v.maos||!v.maos[eu]||!v.maos[ele]||!v.maoCheia||!Array.isArray(c)||c.some(x=>x>0))return "";
+  const soma=m=>JXJ_FAMILIAS.reduce((s,f)=>s+(m[f]||0),0),cheia=x=>JXJ_FAMILIAS.every(f=>v.maos[x][f]===v.maoCheia[x][f]);
+  if(cheia(eu)&&cheia(ele))return `Cada round você tem ${soma(v.maoCheia[eu])} ações. A que você usar sai da mão; a mão dele aparece no placar.`;
   const tem=JXJ_FAMILIAS.filter(f=>v.maos[ele][f]>0).map(f=>JXJ_FAMILIA_TXT[f]);
   if(tem.length&&tem.length<=2)return `Ele só tem ${tem.join(" e ")} neste round.`;
   return "";
