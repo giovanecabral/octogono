@@ -13232,6 +13232,7 @@ async function testarJxJBot() {
   const falhas = [], conf = confJxJ(falhas);
   const T = await carregarBalancoJxJ();
   const BOT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot.js")).href);
+  const EST = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-estrategia.js")).href);
   const M = T.MOTOR, A = T.ARVORES, F = M.FAMILIAS;
   const LIM = { pele: 6, porte: 3, cabelo: 9, corCabelo: 7, barba: 6, orelha: 2, nariz: 2, cicatriz: 4, tatuagem: 7, entrada: 7, prajiad: 2, corEntrada: 8 };
 
@@ -13323,15 +13324,17 @@ async function testarJxJBot() {
       for (let t = 1; t <= 6 && !e.fim; t++) {
         const hist = BOT.historicoDasTrocas(trocas, "b"), rec = BOT.acoesDoBot(trocas, "b");
         const dP = BOT.distribuicaoDoBot(e, "b", puro, hist, rec), dC = BOT.distribuicaoDoBot(e, "b", comum, hist, rec);
-        const pj = BOT.pesosDaPersonalidade(e, "b", comum, hist), tj = pj.reduce((a, b) => a + b, 0), jeito = pj.map((x) => x / tj);
+        /* v4: o jeito puro também só joga carta que tem (a mão filtra) */
+        const pj = BOT.pesosDaPersonalidade(e, "b", comum, hist), tj = pj.reduce((a, b) => a + b, 0), jeito = EST.filtrarPelaMao(pj.map((x) => x / tj), e, "b");
         const repetiu = rec.length >= 3 && rec.slice(-3).every((x) => x === rec[rec.length - 1]);
         if (!M.momentoDoLado(e, "b") && e.b.energia > 1.5 && !repetiu) {
           if (t <= BOT.TROCAS_PURAS && !igual(dP, jeito)) throw new Error(`${pers} troca ${t}: puro ${dP.map((x) => x.toFixed(2))} x jeito ${jeito.map((x) => x.toFixed(2))}`);
-          if (t <= BOT.TROCAS_PURAS && igual(dP, dC)) throw new Error(`${pers} troca ${t}: o começo puro ficou igual à luta comum`);
+          /* (v4: se a mão deixa o jeito uniforme entre as cartas que restam, puro e comum coincidem de verdade) */
+          if (t <= BOT.TROCAS_PURAS && igual(dP, dC) && !igual(jeito, EST.filtrarPelaMao([1, 1, 1, 1], e, "b"))) throw new Error(`${pers} troca ${t}: o começo puro ficou igual à luta comum`);
           if (t > BOT.TROCAS_PURAS && !igual(dP, dC)) throw new Error(`${pers} troca ${t}: depois das puras ficou diferente da comum`);
           conferidas++;
         }
-        const aB = BOT.acaoDoBot({ estado: e, semente: "p" + pers, trocas, dados: puro, lado: "b" }), aH = F[t % 4];
+        const aB = BOT.acaoDoBot({ estado: e, semente: "p" + pers, trocas, dados: puro, lado: "b" }), aH = EST.familiaNaMao(e, "a", F[t % 4], () => 0);
         const r = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: aH, b: aB }, "p" + pers);
         trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
         e = r.estado;
@@ -13398,6 +13401,30 @@ async function testarJxJBot() {
       if (d.pers !== pers || JSON.stringify(d.roda) !== JSON.stringify(b.roda)) throw new Error("dados da luta sem o jeito: " + JSON.stringify({ pers: d.pers, roda: d.roda }));
     }
   });
+  await conf("mão (v4): o bot nunca escolhe família sem carta, em toda personalidade e habilidade, inclusive no momento decisivo (o óbvio pode ter acabado)", () => {
+    const pH = T.perfilTipico("striker", 4), ruins = [];
+    for (const pers of BOT.PERSONALIDADES_IDS) for (const s of [0, 0.5, 1]) {
+      const rating = BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
+      const bot = BOT.montarBot({ nivel: 4, categoria: "middleweight", rating, semente: `mao${pers}${s}`, pers });
+      const dados = BOT.dadosDaLuta(bot, pH);
+      for (let luta = 0; luta < 40; luta++) {
+        let e = M.novaLuta(pH, bot.perfil), h = 17 + luta; const trocas = [];
+        while (!e.fim) {
+          if (luta % 4 === 0) { e = JSON.parse(JSON.stringify(e)); e.b.grogue = false; e.a.grogue = e.pos === "pe"; e.mao.b.golpes = 0; }   // força o óbvio (golpear o grogue) sem carta
+          h = (h * 1103515245 + 12345) % 2147483648;
+          const aH = EST.familiaNaMao(e, "a", F[h % 4], () => (h % 97) / 97);
+          const aB = BOT.acaoDoBot({ estado: e, semente: `mao${pers}${s}${luta}`, trocas, dados, lado: "b" });
+          if (!EST.temCarta(e, "b", aB)) { ruins.push(`${pers} s=${s}: ${aB} sem carta (${JSON.stringify(e.mao.b)})`); break; }
+          const dist = BOT.distribuicaoDoBot(e, "b", dados, BOT.historicoDasTrocas(trocas, "b"), []);
+          if (F.some((f, i) => dist[i] > 0 && !EST.temCarta(e, "b", f))) { ruins.push(`${pers} s=${s}: distribuição com peso sem carta`); break; }
+          const r = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: aH, b: aB }, `mao${pers}${s}${luta}`);
+          trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
+          e = r.estado;
+        }
+      }
+    }
+    if (ruins.length) throw new Error(ruins.slice(0, 4).join(" | "));
+  });
   await conf("cada jeito aparece nas escolhas, em toda habilidade (lutas contra um jogador que sorteia): Provocador golpeia ou pressiona 60%+ em pé e golpeia mais depois de apanhar; Paciente defende 35%+ em pé e ataca quando o adversário cansa; Observador responde à última ação do adversário (ou, no bot forte, ao hábito dele) com a que ganha dela 70%+; Inquieto vai pra próxima casa da roda 60%+ (55%+ no bot forte, que pula uma casa quando a próxima rende pouco) e pra próxima ou a seguinte 75%+; nenhum repete a mesma ação 4 vezes seguidas", () => {
     const pH = T.perfilTipico("striker", 4), ruins = [], linhas = [];
     for (const pers of BOT.PERSONALIDADES_IDS) for (const s of [0, 0.5, 1]) {
@@ -13410,27 +13437,30 @@ async function testarJxJBot() {
         const trocas = [], seq = [];
         while (!e.fim && n++ < 40) {
           h = (h * 1103515245 + 12345) % 2147483648;
-          const aH = F[h % 4];
+          const aH = EST.familiaNaMao(e, "a", F[h % 4], () => (h % 89) / 89);
           const aB = BOT.acaoDoBot({ estado: e, semente: `j${pers}${s}${luta}`, trocas, dados, lado: "b" });
           const mom = M.momentoDoLado(e, "b"), pe = e.pos === "pe", cansado = e.b.energia <= 1.5;
+          /* v4: só conta o jeito quando a mão deixa ele aparecer (a ação dele tem carta) */
+          const tem = (...fs) => fs.some((f) => EST.temCarta(e, "b", f));
           if (!mom && !cansado) {
-            if (pers === "agressivo" && pe) { conta("ataca", aB === "golpes" || aB === "pressao"); conta(e.b.atingido ? "golpesApanhou" : "golpesNormal", aB === "golpes"); }
+            if (pers === "agressivo" && pe) { if (tem("golpes", "pressao")) conta("ataca", aB === "golpes" || aB === "pressao"); if (tem("golpes")) conta(e.b.atingido ? "golpesApanhou" : "golpesNormal", aB === "golpes"); }
             if (pers === "defensivo" && pe) {
               const pts = e.pontos[e.round - 1];
-              if (e.a.energia > 3 && pts.b - pts.a < 6) conta("defende", aB === "defesa");
-              if (e.a.energia <= 3) conta("atacaCansado", aB === "golpes" || aB === "queda");
+              if (e.a.energia > 3 && pts.b - pts.a < 6 && tem("defesa")) conta("defende", aB === "defesa");
+              if (e.a.energia <= 3 && tem("golpes", "queda")) conta("atacaCansado", aB === "golpes" || aB === "queda");
             }
             if (pers === "leitor" && e.a.ultima) {
               const pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
               const h = BOT.historicoDasTrocas(trocas, "b")[e.pos === "pe" ? "pe" : e.pos === "cima_a" ? "cima_b" : "cima_a"];
               const habito = h.some((x) => x >= 1) && h.reduce((a, b) => a + b, 0) >= 2 ? F[h.indexOf(Math.max(...h))] : null;
               const ganhaDe = (alvo) => alvo && M.quemLeu(pap, { a: alvo, b: aB }) === "b";
-              if (F.some((f) => M.quemLeu(pap, { a: e.a.ultima, b: f }) === "b")) conta("responde", ganhaDe(e.a.ultima) || ganhaDe(habito));
+              if (F.some((f) => EST.temCarta(e, "b", f) && M.quemLeu(pap, { a: e.a.ultima, b: f }) === "b")) conta("responde", ganhaDe(e.a.ultima) || ganhaDe(habito));
             }
             if (pers === "caotico" && e.b.ultima) {
               const i = bot.roda.indexOf(e.b.ultima);
-              conta("roda", aB === bot.roda[(i + 1) % 4]);
-              conta("rodaOuPulo", aB === bot.roda[(i + 1) % 4] || aB === bot.roda[(i + 2) % 4]);
+              const prox = bot.roda[(i + 1) % 4], seg = bot.roda[(i + 2) % 4];
+              if (tem(prox)) conta("roda", aB === prox);
+              if (tem(prox, seg)) conta("rodaOuPulo", aB === prox || aB === seg);
             }
           }
           seq.push(aB);

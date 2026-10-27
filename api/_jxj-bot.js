@@ -26,6 +26,7 @@
  * Números medidos no LEIA-ME, seção "Bots do Online".
  */
 import { createHash } from "node:crypto";
+import { filtrarPelaMao, temCarta, acaoPadrao } from "./_jxj-estrategia.js";
 import * as MOTOR from "./_jxj-motor.js";
 import * as ARV from "./_jxj-arvores.js";
 
@@ -89,9 +90,10 @@ export const PESOS_ESTILO = {
 /* ---------- valor de estado e equilíbrio de uma troca ---------- */
 /* chance de A vencer dali, regressão logística treinada pela ferramenta de
    balanço (treinarValor); motor mudou, a suíte jxjbot mostra os pesos novos */
-export const PESOS_VALOR = [-0.051177711574587816, 0.5015817671420097, 0.9909430117068747, 0.337069565246341,
-  0.11348007506058293, 0.04915116537192604, 0.23631167597479932, 0.0015231662868500826, 0.2970019064480512,
-  0.06976117435655224, 0.30053565286038486, 0.24657070525301655, -0.07666164197683842, 0.3251670373181852, 0.11240037514661033];
+export const PESOS_VALOR = [-0.015089243258749635, 0.498930389359647, 1.064789967813739, 0.3292530123888245,
+  0.1542124429593739, 0.06773151934160636, 0.24627627628499632, 0.044186005387975257, 0.2641616625456737,
+  0.054311271536133625, 0.2880529699950991, 0.3204707603902888, -0.10012107124107986, 0.32609320566833366,
+  0.12021929242381225];
 function feat(e, pA, pB) {
   const rd = e.round - 1, pts = e.pontos[rd] || { a: 0, b: 0 };
   const cards = e.cartoes.reduce((s, c) => s + (c.a - c.b), 0);
@@ -376,7 +378,8 @@ export function distribuicaoDoBot(e, lado, d, hist, recentes = []) {
     p = p.slice(); p[i] = 0;
     p = p.some((x) => x > 0) ? normalizar(p) : F.map((_, j) => (j === i ? 0 : 1 / 3));
   }
-  return p;
+  /* v4: só as famílias com carta na mão (sem mão, a mesma distribuição) */
+  return filtrarPelaMao(p, e, lado);
 }
 
 /* ---------- montar o bot ---------- */
@@ -461,6 +464,11 @@ export function historicoDasTrocas(trocas, ladoBot = "b") {
    personalidades (sem d.pers) segue o jogo de antes, sorteio a sorteio. */
 export function decidir(e, lado, d, hist, r, recentes = []) {
   if (d.pers && PERSONALIDADES[d.pers]) return amostra(distribuicaoDoBot(e, lado, d, hist, recentes), r);
+  /* bot sem jeito (lutas antigas): v4 respeita a mão sem sorteio a mais */
+  const f = decidirSemJeito(e, lado, d, hist, r);
+  return temCarta(e, lado, f) ? f : acaoPadrao(e, lado);
+}
+function decidirSemJeito(e, lado, d, hist, r) {
   if (e[lado].energia <= 1.5 && r() < 0.5) return "defesa";
   const x = r();
   if (x < d.pol.erro) return F[Math.floor(r() * 4)];
