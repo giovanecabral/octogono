@@ -12496,6 +12496,12 @@ async function testarJxJMotor() {
     const fim = M.resolverTroca(f, P, { a: "defesa", b: "defesa" }, "g2");
     if (!fim.estado.fim || fim.eventos.some((ev) => ev.tipo === "guardou")) throw new Error("último round: " + JSON.stringify(fim.estado.fim));
   });
+  await conf("informação vale (v4): quem conta as cartas dele vence o jogador de estilo mais do que quem joga só a mistura; trocas em que ele só tem uma família: no máximo 15%", () => {
+    const r = BAL.medirMao(150);
+    console.log(cinza(`         óbvias ${f1(r.obvias)}% | contador x estilo ${f1(r.contadorContraEstilo)}% | racional x estilo ${f1(r.racionalContraEstilo)}%`));
+    if (r.obvias > 15) throw new Error("trocas óbvias demais: " + f1(r.obvias));
+    if (!(r.contadorContraEstilo > r.racionalContraEstilo)) throw new Error("contar cartas não ajudou");
+  });
   await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
     const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
     const ac = M.acoesDisponiveis(e, "a", pA, "sem");

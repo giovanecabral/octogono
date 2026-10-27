@@ -12,6 +12,7 @@
      node ferramentas/jxj-balanco.mjs leitura    # quanto vale acertar a leitura (motor v3, 2026-10-20)
      node ferramentas/jxj-balanco.mjs momentos   # grogue e encaixe: frequência, misturas e quanto valem
      node ferramentas/jxj-balanco.mjs personalidades  # bots com personalidade: quem lê o jeito vence mais?
+     node ferramentas/jxj-balanco.mjs mao        # mão à vista (v4): trocas óbvias e quanto vale contar cartas
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -30,6 +31,9 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const M = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
 const A = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
 const BOT = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-bot.js")).href);
+/* v4: a mão à vista. Toda ação de estratégia passa por EST.familiaNaMao
+   (família sem carta vira uma das que têm, sorteada pelo gerador dela). */
+const EST = await import(pathToFileURL(path.join(RAIZ, "api", "_jxj-estrategia.js")).href);
 const F = M.FAMILIAS, ESTS = A.ESTILOS_IDS;
 export { M as MOTOR, A as ARVORES, BOT };
 
@@ -88,7 +92,11 @@ export function treinarValor(n = 3000) {
     const sa = ESTS[i % 4], sb = ESTS[Math.floor(i / 4) % 4], pA = perfis[sa], pB = perfis[sb];
     const ea = pol(sa), eb = pol(sb), rr = lcg(i * 7919 + 13);
     let e = M.novaLuta(pA, pB); const est = []; let k = 0;
-    while (!e.fim && k++ < 100) { est.push(feat(e, pA, pB)); e = M.resolverTroca(e, { a: pA, b: pB }, { a: ea(e, "a", pA, rr), b: eb(e, "b", pB, rr) }, `v${i}`).estado; }
+    while (!e.fim && k++ < 100) {
+      est.push(feat(e, pA, pB));
+      const fa = EST.familiaNaMao(e, "a", ea(e, "a", pA, rr), rr), fb = EST.familiaNaMao(e, "b", eb(e, "b", pB, rr), rr);
+      e = M.resolverTroca(e, { a: pA, b: pB }, { a: fa, b: fb }, `v${i}`).estado;
+    }
     const y = e.fim.vencedor === "a" ? 1 : e.fim.vencedor === "b" ? 0 : 0.5;
     for (const f of est) { X.push(f); Y.push(y); }
   }
@@ -401,9 +409,10 @@ export function leituraOraculo(acerto, n = 300, sal = "") {
       const r = lcg(i * 104729 + s.length * 7 + 1), sem = `or${sal}${s}${i}`;
       let e = M.novaLuta(p, p), k = 0;
       while (!e.fim && k++ < 100) {
-        const aO = eO(e, "b", p, r), pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
-        const ganham = F.filter((f) => M.quemLeu(pap, { a: f, b: aO }) === "a");
-        const aX = ganham.length && r() < acerto ? ganham[Math.floor(r() * ganham.length)] : F[Math.floor(r() * 4)];
+        const aO = EST.familiaNaMao(e, "b", eO(e, "b", p, r), r), pap = { a: M.papel(e, "a"), b: M.papel(e, "b") };
+        /* v4: quem lê só acerta com o que tem na mão */
+        const ganham = F.filter((f) => EST.temCarta(e, "a", f) && M.quemLeu(pap, { a: f, b: aO }) === "a"), disp = EST.familiasComCarta(e, "a");
+        const aX = ganham.length && r() < acerto ? ganham[Math.floor(r() * ganham.length)] : disp[Math.floor(r() * disp.length)];
         e = M.resolverTroca(e, { a: p, b: p }, { a: aX, b: aO }, sem).estado;
       }
       if (e.fim.vencedor === "a") v++; else if (e.fim.vencedor === "b") d++;
@@ -423,7 +432,7 @@ export function medirMomentos(n = 120) {
       let e = M.novaLuta(pA, pB), g = false, en = false, k = 0;
       while (!e.fim && k++ < 100) {
         const mom = M.momentoDoLado(e, "a") || M.momentoDoLado(e, "b");
-        const res = M.resolverTroca(e, { a: pA, b: pB }, { a: eA(e, "a", pA, r), b: eB(e, "b", pB, r) }, `mm${s}${o}${i}`);
+        const res = M.resolverTroca(e, { a: pA, b: pB }, { a: EST.familiaNaMao(e, "a", eA(e, "a", pA, r), r), b: EST.familiaNaMao(e, "b", eB(e, "b", pB, r), r) }, `mm${s}${o}${i}`);
         for (const ev of res.eventos) { if (ev.tipo === "grogue") g = true; if (ev.tipo === "encaixou") en = true; }
         const fin = !!res.estado.fim && ["KO", "TKO", "FIN"].includes(res.estado.fim.metodo);
         if (fin) { c.fins++; if (mom) c.finsMomento++; }
@@ -448,13 +457,50 @@ export function lutaContraBot(pH, estrH, bot, dados, semente) {
   const rEst = lcg(h);
   let e = M.novaLuta(pH, bot.perfil), n = 0;
   while (!e.fim && n++ < 100) {
-    const aH = estrH(e, "a", pH, rEst, { trocas, dados });
+    const aH = EST.familiaNaMao(e, "a", estrH(e, "a", pH, rEst, { trocas, dados }), rEst);
     const aB = BOT.acaoDoBot({ estado: e, semente, trocas, dados, lado: "b" });
     const r = M.resolverTroca(e, perfis, { a: aH, b: aB }, semente);
     trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
     e = r.estado;
   }
   return e;
+}
+/* Quem conta as cartas (v4): fora do momento decisivo, a mistura de
+   equilíbrio dele restrita às famílias que ele ainda tem é a crença, e a
+   jogada é a melhor resposta entre as famílias que eu tenho. */
+export function contador(pEu, pEle) {
+  const base = racional(pEu, pEle);
+  return (e, l, p, r) => {
+    if (!e.mao || M.momentoDoLado(e, l)) return base(e, l, p, r);
+    const o = l === "a" ? "b" : "a", pos = posDoLado(e, l), mx = misturas(pEu, pEle)[pos];
+    const crenca = EST.filtrarPelaMao(mx.b, e, o);
+    const ganho = F.map((f, i) => (EST.temCarta(e, l, f) ? mx.m[i].reduce((s, v, j) => s + v * crenca[j], 0) : -Infinity));
+    return F[ganho.indexOf(Math.max(...ganho))];
+  };
+}
+/* Mão à vista (v4): quantas trocas ficam óbvias (ele só tem uma família) e
+   quanto vale contar as cartas, contra o jogador de estilo, no espelho de
+   cada estilo no nível 1. */
+export function medirMao(n = 200) {
+  let obv = 0, tot = 0;
+  const v = { contador: [0, 0], racional: [0, 0] };
+  for (const s of ESTS) {
+    const p = perfilTipico(s, 1);
+    for (const [nome, estr] of [["contador", contador(p, p)], ["racional", racional(p, p)]]) {
+      const t = confronto(p, p, estr, heuristica(s), n, `mao${nome}${s}`);
+      v[nome][0] += t.vX; v[nome][1] += t.vX + t.vO;
+    }
+    const ra = racional(p, p);
+    for (let i = 0; i < n; i++) {
+      let e = M.novaLuta(p, p); const r = lcg(i * 31 + 7);
+      while (!e.fim) {
+        tot++; if (EST.familiasComCarta(e, "b").length === 1) obv++;
+        const fa = EST.familiaNaMao(e, "a", ra(e, "a", p, r), r), fb = EST.familiaNaMao(e, "b", ra(e, "b", p, r), r);
+        e = M.resolverTroca(e, { a: p, b: p }, { a: fa, b: fb }, `ob${s}${i}`).estado;
+      }
+    }
+  }
+  return { obvias: 100 * obv / tot, contadorContraEstilo: 100 * v.contador[0] / v.contador[1], racionalContraEstilo: 100 * v.racional[0] / v.racional[1] };
 }
 export const HUMANOS_MODELO = {
   acaso: () => aleatoria(),
@@ -464,6 +510,7 @@ export const HUMANOS_MODELO = {
   adaptativo: (pH, pB) => adaptativa(pH, pB),
   explorador: (pH, pB) => explorador(pH, pB),
   conhecedor: (pH, pB) => conhecedor(pH, pB),
+  contador: (pH, pB) => contador(pH, pB),
 };
 /* Vitórias (%) do humano-modelo contra o bot de habilidade s. Cada par: um
    humano de build típica (estilo em rodízio) e um bot montado como no
@@ -547,6 +594,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else if (cmd === "leitura") {
     console.log(`vantagem da leitura: em pé ${M.K.vantagem}, no chão ${M.K.vantagemChao} (vitórias de quem vê a ação do outro e acerta a leitura com essa chance, contra o jogador de estilo):`);
     for (const ac of [0, 0.35, 0.5, 1]) console.log(`  acerto ${String(ac).padEnd(5)} ${f1(leituraOraculo(ac, N || 300))}%`);
+  } else if (cmd === "mao") {
+    const r = medirMao(N || 300);
+    console.log(`trocas em que ele só tem uma família: ${f1(r.obvias)}%`);
+    console.log(`contador de cartas contra o jogador de estilo: ${f1(r.contadorContraEstilo)}% (só a mistura: ${f1(r.racionalContraEstilo)}%)`);
   } else if (cmd === "momentos") {
     const r = medirMomentos(N || 120);
     console.log(`lutas com grogue ${f1(r.comGrogue)}%, com finalização encaixada ${f1(r.comEncaixe)}%`);
@@ -557,6 +608,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log("  " + s.padEnd(9) + Object.keys(BOT.ESTADO_MOMENTO).map((ch) => `${ch} ${misturaDoMomento(p, p, ch).a.map((x) => Math.round(100 * x)).join("/")}`).join("  "));
     }
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos|mao] [n]");
   }
 }
