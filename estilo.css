@@ -1972,3 +1972,16 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-anel.livre .jxj-relogio{font-size:16px;letter-spacing:.08em;text-transform:uppercase}
 .jxj-selo-treino{background:var(--ouro);color:#16120a}
 .jxj-selo-treino .ico{color:#16120a}
+/* treino: o balão em cima da mão, a seta na carta certa, as cartas fora do roteiro e o fim */
+.jxj-treino-balao{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 auto 8px;max-width:680px;padding:10px 14px;background:rgba(212,160,23,.12);border:1px solid rgba(212,160,23,.55);color:var(--osso)}
+.jxj-treino-balao > .ico{width:20px;height:20px;color:var(--ouro);flex:none}
+.jxj-treino-balao p{margin:0;flex:1;min-width:200px;font-size:15px;line-height:1.4}
+.jxj-treino-balao .botao{flex:none}
+.jxj-treino-seta{position:absolute;left:50%;top:-34px;transform:translateX(-50%);z-index:8;color:var(--ouro);animation:jxjTreinoSeta 1s ease-in-out infinite}
+.jxj-treino-seta .ico{width:26px;height:26px}
+@keyframes jxjTreinoSeta{0%,100%{translate:0 0}50%{translate:0 8px}}
+.jxj-na-mao.fora-do-treino .jxj-carta{filter:grayscale(.8) brightness(.45)}
+.jxj-treino-lista{margin:12px 0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--osso-2);font-size:15px}
+.jxj-treino-lista b{color:var(--osso)}
+@media (max-width:720px){.jxj-treino-balao{padding:8px 10px}.jxj-treino-balao p{font-size:13px;min-width:0}.jxj-treino-seta{top:-28px}.jxj-treino-seta .ico{width:20px;height:20px}}
+@media (prefers-reduced-motion:reduce){.jxj-treino-seta{animation:none}}

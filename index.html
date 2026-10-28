@@ -8644,7 +8644,7 @@ function jxjVoarCarta(origem,idDestino){
    outro) e vira, a cada passo, uma vista igual à do servidor, desenhada
    pela mesma tela da luta. Nada vai pro servidor. Os números (custo, finta
    de 1,5 e metade com a iniciativa) são os do jogo. */
-const JXJ_TREINO_PRAZOS={sinal:5000,acao:12000};
+let JXJ_TREINO_PRAZOS={sinal:5000,acao:12000};   // null: sem relógio na lição 5 (testes)
 const JXJ_TREINO_FINTA=1.5;
 const JXJ_TREINO_VENCE={golpes:"pressao",pressao:"defesa",defesa:"queda",queda:"golpes"};
 const JXJ_TREINADOR={nome:"Treinador",estilo:"counter",nivel:1,cartel:[0,0,0],rating:1500,treino:true,rosto:null};
@@ -8738,7 +8738,8 @@ function jxjTreinoJogar(st,fam,tipo){
 /* a vista do treino: o mesmo formato da vista do servidor (vistaDaLuta) */
 function jxjTreinoVista(st,lut,def){
   const agora=Date.now(),usa=jxjTreinoUsaPostura(st.i),L=JXJ_TREINO[Math.min(st.i,JXJ_TREINO.length-1)];
-  const prazoSinal=new Date(agora+(st.etapa==="sinal"?JXJ_TREINO_PRAZOS.sinal:0)),prazo=new Date(prazoSinal.getTime()+JXJ_TREINO_PRAZOS.acao);
+  const P=JXJ_TREINO_PRAZOS||{sinal:5000,acao:12000};
+  const prazoSinal=new Date(agora+(st.etapa==="sinal"?P.sinal:0)),prazo=new Date(prazoSinal.getTime()+P.acao);
   const lado=l=>({energia:st.energia[l],energiaMax:10,dano:Math.round(st.dano[l]),ausentes:0,total:{},grogue:false,cansado:st.energia[l]<=2});
   const rd=st.round-1,p=st.pontos[rd]||{a:0,b:0};
   const fintaDe=f=>usa&&st.etapa==="acao"?(f===st.meuSinal?0:JXJ_TREINO_FINTA*(st.iniciativa==="a"?0.5:1)):null;
@@ -8756,6 +8757,101 @@ function jxjTreinoVista(st,lut,def){
       ciclo:def.acoes.ciclo.pe[f],resumo:"",custo:def.acoes.custo.pe[f],restam:st.mao.a[f],finta:fintaDe(f),dica:null,duelo:null})),
     papel:"pe",maos:{a:st.mao.a,b:st.mao.b},maoCheia:{a:jxjTreinoMaoCheia(def,st.estilo),b:jxjTreinoMaoCheia(def,JXJ_TREINADOR.estilo)},
     trocas:st.trocas};
+}
+/* A tela do treino (#/jxj/treino[/<id do lutador>]): as falas no balão,
+   uma por vez; as cartas só depois da última fala; depois da jogada, a
+   revelação e a explicação; na lição 5, o relógio de verdade (prazo
+   estourado joga a Defesa). O fim grava jxj:treino no navegador. */
+const jxjTreinoFeito=()=>{ try{ return localStorage.getItem("jxj:treino")==="1"; }catch(e){ return false; } };
+function jxjTreinoPadrao(st,tipo){
+  const L=JXJ_TREINO[st.i];
+  const certa=tipo==="sinal"?L.postura:L.acao;
+  if(certa)return certa;
+  return ["defesa","pressao","golpes","queda"].find(f=>st.mao.a[f]>0)||"defesa";
+}
+async function jxjTelaTreino(id){
+  const c=jxjTela({titulo:"Treino",fundo:"octogono-luz",voltar:()=>irPara("jxj"),nav:null,classe:"tela-jxj-luta"});
+  const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
+  let def,est;
+  try{ def=await jxjDef(); est=await jxj("estado"); }catch(e){ return jxjErro(area,e,()=>jxjTelaTreino(id)); }
+  const lutadores=(est&&est.lutadores)||[];
+  const lut=lutadores.find(l=>String(l.id)===String(id))||lutadores.find(l=>l.id===est.principalEfetivo)||lutadores[0]||{nome:"Você",estilo:"striker",cartel:[0,0,0]};
+  const tk=JXJ_TOKEN;
+  let st=jxjTreinoNovo(lut,def),fase="fala",fala=0,depois="",revelacao=null,prazo=null,timer=null,tick=null,roundVisto=1;
+  const relogio=()=>{
+    clearInterval(tick); if(!prazo)return;
+    tick=setInterval(()=>{ if(tk!==JXJ_TOKEN||!prazo){ clearInterval(tick); return; }
+      const alvo=document.getElementById("jxj-relogio"),anel=document.getElementById("jxj-anel");
+      const resta=Math.max(0,prazo.ate-Date.now());
+      if(alvo){ alvo.textContent=jxjSeg(resta)+"s"; alvo.classList.toggle("urgente",resta<=5000); }
+      if(anel&&anel.style)anel.style.setProperty("--p",String(Math.max(0,Math.min(1,resta/prazo.total))));
+    },250);
+  };
+  const armarPrazo=()=>{
+    clearTimeout(timer); prazo=null;
+    if(st.fim||st.i!==4||fase!=="jogar"||!JXJ_TREINO_PRAZOS)return;
+    const tipo=st.etapa==="sinal"?"sinal":"acao",total=JXJ_TREINO_PRAZOS[tipo];
+    prazo={ate:Date.now()+total,total};
+    timer=setTimeout(()=>{ if(tk!==JXJ_TOKEN||fase!=="jogar")return; jogar(jxjTreinoPadrao(st,tipo),tipo); },total);
+    relogio();
+  };
+  const jogar=(fam,tipo="acao")=>{
+    if(tk!==JXJ_TOKEN||fase!=="jogar")return;
+    const antes=st,novo=jxjTreinoJogar(st,fam,tipo);
+    if(novo===antes)return;   // carta fora do roteiro: nada muda
+    clearTimeout(timer); prazo=null;
+    st=novo;
+    if(tipo==="sinal"){ desenhar(); armarPrazo(); return; }
+    const t=st.trocas[st.trocas.length-1],L=JXJ_TREINO[st.i-1];
+    revelacao={t,desde:Date.now(),animou:false};
+    depois=L.depois||(()=>{
+      const leu=(t.ev||[]).find(x=>x.tipo==="leu"),fintou=(t.ev||[]).some(x=>x.tipo==="finta"&&x.quem==="b");
+      const g=def.acoes.familias.pe;
+      return (leu?(leu.quem==="a"?`Você leu: ${g[t.acaoA]} ganha de ${g[t.acaoB]}.`:`Ele leu: ${g[t.acaoB]} ganha de ${g[t.acaoA]}.`):"Ninguém leu o outro.")
+        +(fintou?" Ele mostrou Guarda alta e fez Pressão: ele fintou. No Online, a tendência dele mostra quanto ele finta.":"");
+    })();
+    fase="depois";
+    jxjEfeitos([t],{eu:"a",ele:"b"},tk);
+    desenhar();
+  };
+  const fim=()=>{
+    try{ localStorage.setItem("jxj:treino","1"); }catch(e){}
+    clearTimeout(timer); clearInterval(tick);
+    area.innerHTML="";
+    const sec=el("section","jxj-treino-fim jxj-resultado vit entra");
+    sec.innerHTML=`<p class="jxj-rotulo">${ICONE("check")} Treino</p><h2 class="jxj-resultado-titulo">Treino feito</h2>
+      <ul class="jxj-treino-lista">
+        <li><b>Mão:</b> cada round você tem as cartas do seu estilo; a que você joga sai da mão.</li>
+        <li><b>Ciclo:</b> cada carta ganha de uma e perde pra outra.</li>
+        <li><b>Postura:</b> antes da ação cada um mostra uma, e ela pode ser finta.</li>
+        <li><b>Finta:</b> outra ação que não a sua postura custa energia.</li>
+        <li><b>Iniciativa:</b> quem vence a troca finta pela metade.</li>
+      </ul><p class="jxj-meta">${jxjEsc(depois)}</p>`;
+    const a=el("div","jxj-acoes");
+    if(lut.id){ const arv=el("button","botao",`${ICONE("arvore")}<span>Montar a árvore</span>`); arv.type="button"; arv.onclick=()=>{ SOM.toque(); irPara("jxj","lutador/"+lut.id+"/arvore"); }; a.appendChild(arv); }
+    const bus=el("button","botao botao-sec",`${ICONE("espadas")}<span>Buscar adversário</span>`); bus.type="button"; bus.onclick=()=>{ SOM.toque(); irPara("jxj","fila"); };
+    const rev=el("button","botao botao-sec",`${ICONE("reenviar")}<span>Rever o treino</span>`); rev.type="button"; rev.onclick=()=>{ SOM.toque(); irPara("jxj","treino"+(lut.id?"/"+lut.id:""),{substituir:true}); };
+    a.append(bus,rev); sec.appendChild(a); area.appendChild(sec);
+  };
+  const desenhar=()=>{
+    if(tk!==JXJ_TOKEN)return;
+    area.innerHTML="";
+    const L=JXJ_TREINO[Math.min(st.i,JXJ_TREINO.length-1)];
+    let balao,certa=null,travado=false;
+    if(fase==="depois"){ balao={texto:jxjEsc(depois),botao:st.fim?"Terminar":"Continuar",onclick:()=>{ if(st.fim){ fase="fim"; return fim(); } fase="fala"; fala=0; revelacao=null; desenhar(); }}; travado=true; }
+    else if(st.etapa==="acao"&&jxjTreinoUsaPostura(st.i)){ balao={texto:jxjEsc(L.fala2)}; certa=L.acao; }
+    else if(fala<L.fala.length-1){ balao={texto:jxjEsc(L.fala[fala]),botao:"Continuar",onclick:()=>{ fala++; desenhar(); }}; travado=true; }
+    else { balao={texto:jxjEsc(L.fala[fala])}; certa=st.etapa==="sinal"?L.postura:L.acao; }
+    const jogando=!travado;
+    if(jogando&&fase!=="jogar"){ fase="jogar"; }
+    const v=jxjTreinoVista(st,lut,def);
+    const revelar=revelacao&&fase==="depois"?jxjRevelar(revelacao.t,!revelacao.animou):null;
+    if(revelacao)revelacao.animou=true;
+    const maoNova=st.round!==roundVisto; roundVisto=st.round;
+    jxjDesenharCombate(area,v,{eu:"a",ele:"b"},jogar,{nova:!!revelar,maoNova,revelar,treino:{certa,travado,balao}});
+    if(jogando)armarPrazo();
+  };
+  desenhar();
 }
 /* a mão por extenso ("3 Golpes, 2 Quedas, 3 Defesas, 1 Pressão"); família sem carta fica de fora */
 const JXJ_FAMILIA_PLURAL={golpes:["Golpe","Golpes"],queda:["Queda","Quedas"],defesa:["Defesa","Defesas"],pressao:["Pressão","Pressões"]};
@@ -9038,7 +9134,21 @@ function jxjMesa(v,{eu,ele},revelar,{soltou=false}={}){
   mesa.append(coluna(eu),el("span","jxj-mesa-vs",""),coluna(ele));
   return mesa;
 }
-function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false}={}){
+/* o treino guiado (Parte 2) passa {certa, travado, balao:{texto, botao, onclick}}:
+   o balão em cima da mão, as cartas fora do roteiro desligadas e a seta na certa */
+function jxjTreinoBalao(treino){
+  const b=el("div","jxj-treino-balao entra");
+  b.setAttribute&&b.setAttribute("role","status");
+  b.innerHTML=`${ICONE("info")}<p>${treino.balao.texto}</p>`;
+  if(treino.balao.botao){ const c=el("button","botao jxj-treino-continuar",`<span>${treino.balao.botao}</span>${ICONE("seta-dir")}`); c.type="button"; c.onclick=()=>{ SOM.toque(); treino.balao.onclick(); }; b.appendChild(c); }
+  return b;
+}
+function jxjTreinoMarcar(b,f,treino){
+  if(!treino)return;
+  if(treino.travado||(treino.certa&&f!==treino.certa)){ b.disabled=true; b.className+=" fora-do-treino"; }
+  else if(treino.certa)b.insertAdjacentHTML?b.insertAdjacentHTML("afterbegin",`<span class="jxj-treino-seta">${ICONE("chevron-baixo")}</span>`):(b.innerHTML=`<span class="jxj-treino-seta">${ICONE("chevron-baixo")}</span>`+b.innerHTML);
+}
+function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,treino=null}={}){
   const F=v.formato,e=v.estado,nomes=v.nomes;
   const tela=el("div","jxj-combate");
   /* placar */
@@ -9116,13 +9226,15 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     }else{
       if(jxjPrimeiraLuta(v,eu))zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>Ele vê a sua postura antes de escolher. Fazer outra ação depois é finta e gasta energia.</span>`));
       /* cartas (2026-10-28): a postura é mostrar uma carta; ela continua na mão */
+      if(treino&&treino.balao)zona.appendChild(jxjTreinoBalao(treino));
       const g=el("div","jxj-mao-luta jxj-mao-postura"+(maoNova?" mao-nova":""));
       for(const f of JXJ_FAMILIAS){
         const a=(v.acoes||[]).find(x=>x.familia===f);
         if(!a||a.restam===0)continue;
         const b=el("button","jxj-postura jxj-na-mao",jxjCarta(a,{postura:true}));
         b.type="button"; b.title=`Mostrar ${JXJ_POSTURAS[f]}: ele vê antes de escolher`;
-        b.onclick=()=>{ SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(x=>{x.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-postura-eu"); enviar(f,"sinal"); };
+        b.onclick=()=>{ if(b.disabled)return; SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(x=>{x.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-postura-eu"); enviar(f,"sinal"); };
+        jxjTreinoMarcar(b,f,treino);
         g.appendChild(b);
       }
       zona.appendChild(g);
@@ -9144,6 +9256,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     }
     const dicaMao=jxjDicaMao(v,eu,ele);
     if(dicaMao)zona.appendChild(el("p","jxj-dica-mao",`${ICONE("info")}<span>${dicaMao}</span>`));
+    if(treino&&treino.balao)zona.appendChild(jxjTreinoBalao(treino));
     const g=el("div","jxj-mao-luta"+(maoNova?" mao-nova":"")+(momDec?" no-momento":""));
     for(const a of v.acoes){
       const semCarta=a.restam===0;
@@ -9163,7 +9276,8 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
       const soltar=()=>{ clearTimeout(segura); setTimeout(()=>b.classList.remove("segurando"),1800); };
       b.onpointerup=soltar; b.onpointercancel=soltar; b.onpointerleave=soltar;
       b.oncontextmenu=ev=>{ if(ev&&ev.preventDefault)ev.preventDefault(); };
-      b.onclick=()=>{ if(segurou){ segurou=false; return; } SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(x=>{x.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-acao-eu"); enviar(a.familia); };
+      b.onclick=()=>{ if(segurou){ segurou=false; return; } if(b.disabled)return; SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(x=>{x.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-acao-eu"); enviar(a.familia); };
+      if(!semCarta&&!semEnergia)jxjTreinoMarcar(b,a.familia,treino);
       g.appendChild(b);
     }
     zona.appendChild(g);
@@ -9576,7 +9690,7 @@ function screenJxJ(param){
   const publicas={ranking:jxjTelaRanking,perfil:jxjTelaPerfil,hall:jxjTelaHall,torneios:jxjTelaTorneios,torneio:jxjTelaTorneio,temporada:jxjTelaTemporada,replay:jxjTelaReplay};
   if(!sub)return jxjTelaEntrada();
   if(publicas[sub])return publicas[sub](id);
-  const conta={criar:jxjTelaCriar,lutador:jxjTelaLutador,lutadores:jxjTelaLutadores,fila:jxjTelaFila,luta:jxjTelaLuta};
+  const conta={criar:jxjTelaCriar,lutador:jxjTelaLutador,lutadores:jxjTelaLutadores,fila:jxjTelaFila,luta:jxjTelaLuta,treino:jxjTelaTreino};
   if(!conta[sub])return screen404();
   return comConta({tipo:"jxj",param:String(param)},()=>conta[sub](id));
 }

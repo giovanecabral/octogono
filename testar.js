@@ -14101,6 +14101,72 @@ async function testarJxJTelas() {
       }
       semLixoV3T(htmlDe(desde(m)), "vista do treino");
     });
+    await conf("treino na tela (2026-10-28): balão com as falas e Continuar; nas guiadas só a carta certa ligada, com a seta; clique duplo faz uma troca; a revelação e a explicação; a 5 livre; o fim grava a marca; nenhuma ação de luta vai pro servidor; recarregar volta ao começo; sem lixo", async () => {
+      await db.query("delete from jxj_limites");
+      const acoesServidor = [], fetchAntes = env.sandbox.fetch;
+      env.sandbox.fetch = async (u, op) => { try { acoesServidor.push(JSON.parse(op.body).acao); } catch (e) {} return fetchAntes(u, op); };
+      vm.runInContext("JXJ_TREINO_PRAZOS=null", env.sandbox);   // sem relógio aqui (no DOM falso o timer dispara na hora); o prazo é o próximo teste
+      try {
+        let m = await abrir("treino");
+        const ultimo = (cls) => desde(m).filter((n) => tem(n, cls)).pop();
+        const balao = () => String((ultimo("jxj-treino-balao") || {}).innerHTML || "");
+        const continuar = async () => { const b = desde(m).filter((n) => tem(n, "jxj-treino-continuar")).pop(); if (!b) throw new Error("sem Continuar: " + balao().slice(0, 200)); await b.onclick(); await assentar(10); };
+        const cartas = () => { const ns = desde(m), i = ns.map((n) => tem(n, "jxj-mao-luta")).lastIndexOf(true); return ns.slice(i).filter((n) => tem(n, "jxj-na-mao")); };
+        const famDe = (b) => (String(b.innerHTML).match(/jxj-carta f-([a-z]+)/) || [])[1];
+        if (!/Treino rápido: 5 trocas/.test(balao())) throw new Error("balão do começo: " + balao().slice(0, 200));
+        if (cartas().some((b) => !b.disabled)) throw new Error("carta ligada antes de terminar as falas");
+        const jogar = async (fam, vezes = 1) => {
+          const cs = cartas(), ligadas = cs.filter((b) => !b.disabled);
+          if (ligadas.length !== 1 || famDe(ligadas[0]) !== fam) throw new Error(`só a carta certa (${fam}) ligada: ${ligadas.map(famDe).join(",")}`);
+          if (!/jxj-treino-seta/.test(String(ligadas[0].innerHTML))) throw new Error("sem a seta na carta certa");
+          if (cs.filter((b) => b.disabled).some((b) => !tem(b, "fora-do-treino"))) throw new Error("carta errada sem a marca");
+          for (let k = 0; k < vezes; k++) ligadas[0].onclick();
+          await assentar(10);
+        };
+        const roteiro = [[null, "golpes"], [null, "defesa"], ["defesa", "defesa"], ["pressao", "queda"]];
+        for (const [i, [post, acao]] of roteiro.entries()) {
+          while (desde(m).filter((n) => tem(n, "jxj-treino-continuar")).length && !cartas().some((b) => !b.disabled)) await continuar();
+          if (post) { await jogar(post); }
+          await jogar(acao, i === 0 ? 2 : 1);
+          const cols = desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join(" ");
+          if (!/jxj-revelada/.test(cols)) throw new Error(`lição ${i + 1}: sem a revelação`);
+          if (i === 0 && (desde(m).filter((n) => tem(n, "jxj-ultima")).length < 1)) throw new Error("sem o lance");
+          if (i === 3 && !/jxj-carimbo-finta/.test(cols)) throw new Error("lição 4: sem o carimbo da finta");
+          await continuar();
+        }
+        /* a 5: livre */
+        while (!cartas().some((b) => !b.disabled)) await continuar();
+        const livres = cartas().filter((b) => !b.disabled);
+        if (livres.length < 3) throw new Error("lição 5 não é livre: " + livres.length);
+        livres.find((b) => famDe(b) === "golpes").onclick(); await assentar(10);
+        const acaoLivre = cartas().filter((b) => !b.disabled);
+        if (acaoLivre.length < 3) throw new Error("ação da lição 5 não é livre");
+        acaoLivre.find((b) => famDe(b) === "golpes").onclick(); await assentar(10);
+        await continuar();
+        const fim = ultimo("jxj-treino-fim");
+        if (!fim || !/Treino feito/.test(htmlDe(desde(m)))) throw new Error("sem o fim do treino");
+        if (vm.runInContext(`localStorage.getItem("jxj:treino")`, env.sandbox) !== "1") throw new Error("o fim não gravou a marca");
+        const proibidas = acoesServidor.filter((a) => !["definicoes", "estado"].includes(a));
+        if (proibidas.length) throw new Error("o treino chamou o servidor: " + proibidas.join(","));
+        semLixoV3T(htmlDe(desde(m)), "treino");
+        /* recarregar no meio volta ao começo */
+        m = await abrir("treino");
+        if (!/Treino rápido: 5 trocas/.test(balao())) throw new Error("recarregar não voltou ao começo");
+      } finally { env.sandbox.fetch = fetchAntes; vm.runInContext("JXJ_TREINO_PRAZOS={sinal:5000,acao:12000}", env.sandbox); }
+    });
+    await conf("treino com o prazo estourado na lição 5 (2026-10-28): postura e ação padrão, o treino termina igual", async () => {
+      vm.runInContext(`localStorage.removeItem("jxj:treino")`, env.sandbox);
+      const m = await abrir("treino");
+      const continuar = async () => { const b = desde(m).filter((n) => tem(n, "jxj-treino-continuar")).pop(); if (b) { await b.onclick(); await assentar(10); } return !!b; };
+      const certa = () => { const ns = desde(m), i = ns.map((n) => tem(n, "jxj-mao-luta")).lastIndexOf(true); return ns.slice(i).filter((n) => tem(n, "jxj-na-mao") && !n.disabled); };
+      for (let passos = 0; passos < 40 && !desde(m).some((n) => tem(n, "jxj-treino-fim")); passos++) {
+        const cs = certa();
+        if (cs.length === 1) { cs[0].onclick(); await assentar(10); continue; }
+        if (!(await continuar())) await assentar(30);   // na 5, o relógio (que no DOM falso dispara na hora) joga sozinho
+      }
+      if (!desde(m).some((n) => tem(n, "jxj-treino-fim"))) throw new Error("o treino não terminou com o prazo estourado");
+      if (vm.runInContext(`localStorage.getItem("jxj:treino")`, env.sandbox) !== "1") throw new Error("sem a marca");
+    });
     await conf("fila sem tela antes (2026-10-20): abrir a busca já entra na fila com a última diferença de rating (padrão 400); os 4 botões ficam na busca e trocar grava no banco sem perder a espera", async () => {
       await db.query("delete from jxj_fila");
       const m = await abrir("fila");
@@ -14134,7 +14200,19 @@ async function testarJxJTelas() {
     await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
     const par = await api(u1, "fila");
     await api(u1, "confirmar", { lutaId: par.luta.id }); await api(u2, "confirmar", { lutaId: par.luta.id });
-    const lid = par.luta.id;
+    let lid = par.luta.id;
+    /* a luta de apoio pode acabar no meio dos testes (nocaute ou as 12 trocas, pelo sorteio): os testes que
+       precisam dela em andamento pedem uma viva, que é outra luta entre as mesmas duas contas quando ela acabou */
+    const lutaViva = async () => {
+      await db.query("delete from jxj_limites");
+      const v = await api(u1, "luta", { lutaId: lid });
+      if (v.status === "andamento") return lid;
+      await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
+      const p2 = await api(u1, "fila");
+      await api(u1, "confirmar", { lutaId: p2.luta.id }); await api(u2, "confirmar", { lutaId: p2.luta.id });
+      lid = p2.luta.id;
+      return lid;
+    };
     /* a mão do round (variantes) vem do servidor; a tela mostra o que ele mandou */
     const maoU1 = (await api(u1, "luta", { lutaId: lid })).acoes;
     const golpesU1 = maoU1.find((a) => a.familia === "golpes");
@@ -14357,6 +14435,7 @@ async function testarJxJTelas() {
       } finally { await gravar(t.eventos); }
     });
     await conf("etapas na tela (fase 2): no sinal, só as posturas (das famílias com carta), sem as ações, e tocar uma manda o sinal; na ação, os dois sinais, o custo da finta nos botões que não são o seu sinal e a dica da primeira luta; sem energia, a finta desligada; a tendência conta as fintas", async () => {
+      await lutaViva();
       const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
       const resolver = async (fa, fb) => {
         for (const [u, f] of [[u1, fa], [u2, fb]]) { const v = await api(u, "luta", { lutaId: lid }); if (!v.minhaAcao) await api(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, f) }); }
@@ -14403,6 +14482,7 @@ async function testarJxJTelas() {
       if (!/jxj-finta-lance/.test(lance)) throw new Error("o lance não marca a finta dele");
     });
     await conf("iniciativa na tela (fase 3): a ficha diz quem tem (você ou ele) no lugar do trilho do momento; com ela, o custo da finta nos botões é a metade e a primeira luta ganha a dica; sem ninguém, nada; luta v3 continua com o trilho do momento", async () => {
+      await lutaViva();
       const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
       let vs = await api(u1, "luta", { lutaId: lid });
       if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
@@ -14439,6 +14519,7 @@ async function testarJxJTelas() {
       if (!temMomento || temFicha) throw new Error("luta v3: " + JSON.stringify({ temMomento, temFicha }));
     });
     await conf("cartas (2026-10-28): cada ação é uma carta da cor da família, com a gema do custo, o grupo, o nome, as cópias que restam e a regra; na postura, a carta diz a postura; sem carta, o contorno; sem energia, o cadeado", async () => {
+      await lutaViva();
       const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
       let vs = await api(u1, "luta", { lutaId: lid });
       if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
@@ -14472,6 +14553,7 @@ async function testarJxJTelas() {
       await mexer((e) => { e[eu].energia = 8; e.mao[eu] = { ...vs.maoCheia[eu] }; });
     });
     await conf("mesa (cartas 2026-10-28): a postura dele de costas até a revelação e de frente depois; a ação dele nunca antes de ele jogar; a minha postura e a minha ação de frente nas minhas vagas", async () => {
+      await lutaViva();
       /* as duas colunas da mesa (o DOM falso não junta os filhos no innerHTML da seção) */
       const mesaHtml = (nos) => nos.filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
       let vs = null;
@@ -14501,6 +14583,7 @@ async function testarJxJTelas() {
       await api(u2, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEle });
     });
     await conf("revelação (cartas 2026-10-28): a troca que acabou aparece nas vagas de ação com as duas cartas jogadas, a que leu com brilho, o carimbo FINTA e a animação só no primeiro desenho; um redesenho no meio (ele mostrou a postura nova) não reinicia nem apaga; depois do tempo, a mesa volta pra troca nova", async () => {
+      await lutaViva();
       const colunas = (m) => desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
       /* a tela consulta a cada volta do relógio falso: zera o limite depois de esperar (como em abrir) */
       const esperarAte = async (m, f, ms = 8000) => { for (const ate = Date.now() + ms; Date.now() < ate && !f(colunas(m));) await assentar(40); await db.query("delete from jxj_limites"); return colunas(m); };
@@ -14545,6 +14628,7 @@ async function testarJxJTelas() {
       } finally { vm.runInContext("JXJ_REVELACAO_MS=2600;window.matchMedia=globalThis.__mmAntes", env.sandbox); }
     });
     await conf("voo da carta (cartas 2026-10-28): tocar a carta duas vezes manda uma ação só; sem medida de tela (DOM falso), o envio segue", async () => {
+      await lutaViva();
       await db.query("delete from jxj_limites");
       let vs = await api(u1, "luta", { lutaId: lid });
       if (vs.status !== "andamento") throw new Error("a luta acabou antes");
@@ -14560,6 +14644,7 @@ async function testarJxJTelas() {
       if (n + nTroca !== 1) throw new Error(`ações gravadas: ${n} abertas, ${nTroca} resolvidas`);
     });
     await conf("luta v3 na tela de cartas (2026-10-28): sem mesa de postura, as ações em cartas, o trilho do momento na faixa; os duelos na gaveta; as posturas reveladas só na mesa (sem a faixa de texto repetida)", async () => {
+      await lutaViva();
       await db.query("delete from jxj_limites");
       const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
       /* troca limpa: se a minha ação já foi, ele joga e a troca resolve */
