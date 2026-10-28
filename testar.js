@@ -13776,7 +13776,10 @@ async function testarJxJTelas() {
         if (!pendentes && i > 6) { env.drenar(); await new Promise((r) => setTimeout(r, 2)); if (!pendentes) break; }
       }
     };
-    const abrir = async (param) => { const m = env.todos.length; UI.irPara("jxj", param); await assentar(); return m; };
+    /* cada tela abre com o limite de chamadas zerado: o DOM falso dispara o
+       timer da luta a cada volta do assentar, e a soma das telas passava do
+       teto de 600 por conta (os limites são testados na suíte jxj) */
+    const abrir = async (param) => { await db.query("delete from jxj_limites"); const m = env.todos.length; UI.irPara("jxj", param); await assentar(); return m; };
     const htmlDe = (nos) => nos.map((n) => String(n.innerHTML || "") + " " + String(n.textContent || "")).join("\n");
     const conf = async (nome, fn) => {
       try { await fn(); console.log(verde("  ok    ") + nome); }
@@ -13853,7 +13856,16 @@ async function testarJxJTelas() {
     /* a mão do round (variantes) vem do servidor; a tela mostra o que ele mandou */
     const maoU1 = (await api(u1, "luta", { lutaId: lid })).acoes;
     const golpesU1 = maoU1.find((a) => a.familia === "golpes");
+    /* fase 2: cada troca começa na etapa do sinal (só as posturas na tela);
+       os testes dos botões de ação mostram as duas posturas antes */
+    const revelar = async (fa = "defesa", fb = "defesa") => {
+      for (const [u, f] of [[u1, fa], [u2, fb]]) {
+        const v = await api(u, "luta", { lutaId: lid });
+        if (v.status === "andamento" && v.etapa === "sinal" && !v.meuSinal && !v.minhaAcao) await api(u, "sinal", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, f) });
+      }
+    };
     await conf("luta (revamp de 2026-10-20): placar com vida e energia, relógio em anel, ciclo dos 4 em pé, gaveta do histórico; as 4 ações da mão do round com nome, grupo, custo e a linha curta do servidor, e a frase inteira com o ciclo guardada no botão; escolher manda a ação pro servidor, que guarda escondida", async () => {
+      await revelar("golpes", "defesa");
       const m = await abrir(`luta/${lid}`);
       const nos = desde(m);
       const acoes = nos.filter((n) => tem(n, "jxj-acao"));
@@ -13936,6 +13948,7 @@ async function testarJxJTelas() {
       const vs = await api(u1, "luta", { lutaId: lid });
       if (vs.status !== "andamento" || vs.minhaAcao) throw new Error("estado inesperado da luta: " + vs.status + " " + vs.minhaAcao);
       const eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      await revelar();
       let m = await abrir(`luta/${lid}`), nos = desde(m);
       const du = nos.filter((n) => tem(n, "jxj-duelos")).pop();
       if (!du) throw new Error("sem os duelos");
@@ -14013,6 +14026,7 @@ async function testarJxJTelas() {
       const vs = await api(u1, "luta", { lutaId: lid }), eu = vs.lado, ele = eu === "a" ? "b" : "a";
       if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
       const original = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0].estado.mao;
+      await revelar();
       try {
         await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.mao[eu] = { golpes: 1, queda: 0, defesa: 2, pressao: 1 }; e.mao[ele] = { golpes: 0, queda: 0, defesa: 1, pressao: 1 }; });
         let m = await abrir(`luta/${lid}`), nos = desde(m);
@@ -14048,6 +14062,50 @@ async function testarJxJTelas() {
         const linha = /<p class="jxj-narracao-troca">([^]*?)<\/p>/.exec(h);
         if (!linha || /<img/.test(linha[1]) || !linha[1].includes("&lt;img")) throw new Error("linha da narração: " + (linha ? linha[1] : h.replace(/\s+/g, " ").slice(0, 300)));
       } finally { await gravar(t.eventos); }
+    });
+    await conf("etapas na tela (fase 2): no sinal, só as posturas (das famílias com carta), sem as ações, e tocar uma manda o sinal; na ação, os dois sinais, o custo da finta nos botões que não são o seu sinal e a dica da primeira luta; sem energia, a finta desligada; a tendência conta as fintas", async () => {
+      const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
+      const resolver = async (fa, fb) => {
+        for (const [u, f] of [[u1, fa], [u2, fb]]) { const v = await api(u, "luta", { lutaId: lid }); if (!v.minhaAcao) await api(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, f) }); }
+      };
+      let vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+      if (vs.etapa !== "sinal" || vs.meuSinal || vs.minhaAcao) { await resolver("defesa", "defesa"); vs = await api(u1, "luta", { lutaId: lid }); }
+      const eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.mao[eu] = { golpes: 2, queda: 2, defesa: 4, pressao: 1 }; e.mao[ele] = { golpes: 2, queda: 2, defesa: 4, pressao: 0 }; });
+      let m = await abrir(`luta/${lid}`), nos = desde(m);
+      const post = nos.filter((n) => tem(n, "jxj-postura"));
+      if (!nos.some((n) => tem(n, "jxj-posturas")) || nos.some((n) => tem(n, "jxj-acao"))) throw new Error("etapa do sinal: posturas sem ações");
+      const hp = htmlDe(post);
+      if (post.length !== 4 || !/Peso na frente/.test(hp) || !/Base baixa/.test(hp) || !/Guarda alta/.test(hp) || !/Avançando/.test(hp)) throw new Error("posturas: " + post.length + " " + hp.replace(/\s+/g, " ").slice(0, 300));
+      semLixoV3(htmlDe(nos), "etapa do sinal");
+      await post.find((n) => /Guarda alta/.test(String(n.innerHTML))).onclick(); await assentar(15);
+      const gravado = (await db.query("select familia from jxj_sinais where luta_id = $1 and lado = $2 and round = $3 and troca = $4", [lid, eu, vs.round, vs.troca])).rows[0];
+      if (!gravado || gravado.familia !== "defesa") throw new Error("o toque na postura não mandou o sinal: " + JSON.stringify(gravado));
+      if (!/Você mostrou <b>Guarda alta<\/b>/.test(htmlDe(desde(m)))) throw new Error("sem a espera depois do sinal");
+      await api(u2, "sinal", { lutaId: lid, round: vs.round, troca: vs.troca, familia: "golpes" });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const sinais = nos.find((n) => tem(n, "jxj-sinais"));
+      if (!sinais || !/Guarda alta/.test(String(sinais.innerHTML)) || !/Peso na frente/.test(String(sinais.innerHTML))) throw new Error("sinais: " + (sinais && sinais.innerHTML));
+      const botoes = nos.filter((n) => tem(n, "jxj-acao"));
+      const comFinta = botoes.filter((b) => /jxj-finta/.test(String(b.innerHTML)));
+      if (botoes.length !== 4 || comFinta.length !== 3 || comFinta.some((b) => /icones\.svg#escudo"/.test(String(b.innerHTML))) || comFinta.some((b) => b.disabled)) throw new Error("finta nos 3 botões que não são o sinal: " + botoes.map((b) => /jxj-finta/.test(String(b.innerHTML))).join(","));
+      const dica = nos.find((n) => tem(n, "jxj-dica-sinal"));
+      if (!dica || !/Ele mostrou Peso na frente\. Pode ser verdade ou finta\./.test(String(dica.innerHTML))) throw new Error("dica da primeira luta: " + (dica && dica.innerHTML));
+      semLixoV3(htmlDe(nos), "etapa da ação");
+      await mexer((e) => { e[eu].energia = 1; e[ele].energia = 8; });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const b2 = nos.filter((n) => tem(n, "jxj-acao"));
+      if (b2.filter((b) => /jxj-finta/.test(String(b.innerHTML))).some((b) => !b.disabled) || b2.filter((b) => !/jxj-finta/.test(String(b.innerHTML))).some((b) => b.disabled)) throw new Error("sem energia: " + b2.map((b) => [/jxj-finta/.test(String(b.innerHTML)), b.disabled].join(":")).join(" "));
+      await resolver("defesa", "queda");   // ele mostrou Peso na frente e fez Queda: finta
+      const v2 = await api(u1, "luta", { lutaId: lid });
+      if (v2.status !== "andamento") throw new Error("a luta acabou na troca da finta");
+      if (v2.tendencia.fintas !== 1) throw new Error("fintas na vista: " + JSON.stringify(v2.tendencia));
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const td = nos.filter((n) => tem(n, "jxj-tendencia")).pop();
+      if (!td || !new RegExp(`fintou 1 de ${v2.tendencia.sinais}`).test(String(td.innerHTML))) throw new Error("tendência sem as fintas: " + (td && td.innerHTML));
+      const lance = String(nos.filter((n) => tem(n, "jxj-lance")).pop().innerHTML);
+      if (!/jxj-finta-lance/.test(lance)) throw new Error("o lance não marca a finta dele");
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,
@@ -14123,7 +14181,8 @@ async function testarJxJTelas() {
       const nb = (await db.query("select nomes from jxj_lutas where id = $1", [L.id])).rows[0].nomes.b;
       if (!nb.alcunha || !h.includes(`<small class="jxj-alcunha">${nb.alcunha}</small>`)) throw new Error("o placar não mostra a alcunha do bot: " + JSON.stringify(nb));
       if (/agressivo|defensivo|leitor|caotico/.test(h)) throw new Error("a tela conta o jeito do bot");
-      if (!desde(m3).some((n) => tem(n, "jxj-acao"))) throw new Error("a luta contra o bot não mostra as ações");
+      /* fase 2: a troca começa na etapa do sinal, e o bot já mostrou a postura dele */
+      if (!desde(m3).some((n) => tem(n, "jxj-postura")) || !/ele já mostrou/.test(htmlDe(desde(m3)))) throw new Error("a luta contra o bot não mostra as posturas");
       semLixo(h, "luta contra bot");
       await api(uo, "filaSair");
     });
