@@ -14157,7 +14157,8 @@ async function testarJxJTelas() {
       const meu = MOTOR.VARIANTE_POR_ID[eu === "a" ? t0.varA : t0.varB].rotulo, dele = MOTOR.VARIANTE_POR_ID[eu === "a" ? t0.varB : t0.varA].rotulo;
       if (meu !== golpesU1.rotulo || !h.includes(meu) || !h.includes(dele) || !t0.eventos.every((x) => h.includes(x.replace(/&/g, "&amp;"))))
         throw new Error("painel: " + h.replace(/\s+/g, " ").slice(0, 300));
-      if (!tem(ult, "nova")) throw new Error("o painel da troca nova não anima");
+      /* cartas (2026-10-28): o fim da revelação redesenha a tela; a animação vale no primeiro desenho da troca nova */
+      if (!desde(m).filter((n) => tem(n, "jxj-ultima")).some((n) => tem(n, "nova"))) throw new Error("o painel da troca nova não anima");
       /* dano de cada lado no lance: a soma dos golpes do outro (o mesmo número do texto) */
       const levou = (l) => (t0.ev || []).filter((x) => x.quem && x.quem !== l && typeof x.dano === "number").reduce((s, x) => s + x.dano, 0);
       const caiu = (l) => (t0.ev || []).some((x) => x.tipo === "knockdown" && x.quem && x.quem !== l);
@@ -14446,6 +14447,65 @@ async function testarJxJTelas() {
       if (/id="jxj-vaga-acao-ele"[^>]*>\s*<span class="jxj-(verso|carta)/.test(h)) throw new Error("ação dele na mesa antes de ele jogar (depois da minha)");
       semLixoV3(htmlDe(desde(m)), "mesa");
       await api(u2, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEle });
+    });
+    await conf("revelação (cartas 2026-10-28): a troca que acabou aparece nas vagas de ação com as duas cartas jogadas, a que leu com brilho, o carimbo FINTA e a animação só no primeiro desenho; um redesenho no meio (ele mostrou a postura nova) não reinicia nem apaga; depois do tempo, a mesa volta pra troca nova", async () => {
+      const colunas = (m) => desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
+      /* a tela consulta a cada volta do relógio falso: zera o limite depois de esperar (como em abrir) */
+      const esperarAte = async (m, f, ms = 8000) => { for (const ate = Date.now() + ms; Date.now() < ate && !f(colunas(m));) await assentar(40); await db.query("delete from jxj_limites"); return colunas(m); };
+      await db.query("delete from jxj_limites");
+      /* com menos movimento (o padrão do DOM falso), a revelação aparece sem animar */
+      if (vm.runInContext(`jxjRevelar({acaoA:"golpes",acaoB:"queda",ev:[{tipo:"finta",quem:"a"}]},true).a`, env.sandbox).includes("anima")) throw new Error("com menos movimento, a revelação anima");
+      /* aqui, com movimento: o primeiro desenho anima, o redesenho não */
+      vm.runInContext(`globalThis.__mmAntes=window.matchMedia;window.matchMedia=(q)=>({matches:!/reduce/.test(q)});JXJ_REVELACAO_MS=60000`, env.sandbox);
+      try {
+        let vs = await api(u1, "luta", { lutaId: lid });
+        if (vs.status !== "andamento") throw new Error("a luta acabou antes");
+        const eu = vs.lado;
+        const v2 = await api(u2, "luta", { lutaId: lid });
+        if (!v2.meuSinal && !v2.minhaAcao) await api(u2, "sinal", { lutaId: lid, round: vs.round, troca: vs.troca, familia: naMao(v2, "golpes") });
+        if (!vs.meuSinal && !vs.minhaAcao) await api(u1, "sinal", { lutaId: lid, round: vs.round, troca: vs.troca, familia: naMao(vs, "defesa") });
+        const m = await abrir(`luta/${lid}`);
+        const v2b = await api(u2, "luta", { lutaId: lid });
+        if (!v2b.minhaAcao) { const finta = (v2b.acoes || []).find((a) => a.finta > 0 && a.restam > 0 && v2b.estado[v2b.lado].energia >= a.finta); await api(u2, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: finta ? finta.familia : naMao(v2b, "golpes") }); }
+        const vsb = await api(u1, "luta", { lutaId: lid });
+        if (!vsb.minhaAcao) await api(u1, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: naMao(vsb, "defesa") });
+        let h = await esperarAte(m, (x) => /jxj-revelada/.test(x));
+        const vr = await api(u1, "luta", { lutaId: lid });
+        const t = vr.trocas[vr.trocas.length - 1];
+        const famEu = eu === "a" ? t.acaoA : t.acaoB, famEle = eu === "a" ? t.acaoB : t.acaoA;
+        if (!new RegExp(`id="jxj-vaga-acao-eu"[\\s\\S]*?f-${famEu}`).test(h) || !new RegExp(`id="jxj-vaga-acao-ele"[\\s\\S]*?f-${famEle}`).test(h)) throw new Error("as cartas da troca na mesa: " + h.replace(/\s+/g, " ").slice(0, 400));
+        const leu = (t.ev || []).find((x) => x.tipo === "leu");
+        if (leu && !/class="jxj-revelada venceu/.test(h)) throw new Error("quem leu sem brilho");
+        if ((t.ev || []).some((x) => x.tipo === "finta") && !/jxj-carimbo-finta/.test(h)) throw new Error("finta sem carimbo");
+        /* a animação vale no primeiro desenho da revelação (no DOM falso o redesenho do fim vem logo depois) */
+        if (!desde(m).filter((n) => tem(n, "jxj-mesa-lado")).some((n) => /vira aberta anima/.test(String(n.innerHTML)))) throw new Error("a primeira vez não anima");
+        if (vr.status === "andamento") {
+          await api(u2, "sinal", { lutaId: lid, round: vr.round, troca: vr.troca, familia: naMao(await api(u2, "luta", { lutaId: lid }), "defesa") });
+          h = await esperarAte(m, (x) => /ele já mostrou/.test(x));
+          if (!/ele já mostrou/.test(h)) throw new Error("a tela não redesenhou com a postura nova dele");
+          if (!/jxj-revelada/.test(h) || /vira aberta anima/.test(h)) throw new Error("o redesenho no meio reiniciou ou apagou a revelação");
+          vm.runInContext("JXJ_REVELACAO_MS=0", env.sandbox);
+          await api(u1, "sinal", { lutaId: lid, round: vr.round, troca: vr.troca, familia: naMao(vr, "defesa") });
+          h = await esperarAte(m, (x) => /você mostrou/.test(x) || /jxj-vaga-acao-eu/.test(x) && !/jxj-revelada/.test(x));
+          if (/jxj-revelada/.test(h)) throw new Error("a revelação ficou depois do tempo");
+        }
+        semLixoV3(htmlDe(desde(m)), "revelação");
+      } finally { vm.runInContext("JXJ_REVELACAO_MS=2600;window.matchMedia=globalThis.__mmAntes", env.sandbox); }
+    });
+    await conf("voo da carta (cartas 2026-10-28): tocar a carta duas vezes manda uma ação só; sem medida de tela (DOM falso), o envio segue", async () => {
+      await db.query("delete from jxj_limites");
+      let vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes");
+      for (const u of [u1, u2]) { const v = await api(u, "luta", { lutaId: lid }); if (v.etapa === "sinal" && !v.meuSinal && !v.minhaAcao) await api(u, "sinal", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, "defesa") }); }
+      vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.minhaAcao) throw new Error("a troca já tem a minha ação");
+      const m = await abrir(`luta/${lid}`);
+      const carta = desde(m).filter((n) => tem(n, "jxj-acao") && !n.disabled)[0];
+      if (!carta) throw new Error("sem carta pra tocar");
+      carta.onclick(); carta.onclick(); await assentar(20);
+      const n = (await db.query("select count(*)::int as n from jxj_acoes where luta_id = $1 and round = $2 and troca = $3 and lado = $4", [lid, vs.round, vs.troca, vs.lado])).rows[0].n;
+      const nTroca = (await db.query("select count(*)::int as n from jxj_trocas where luta_id = $1 and round = $2 and troca = $3", [lid, vs.round, vs.troca])).rows[0].n;
+      if (n + nTroca !== 1) throw new Error(`ações gravadas: ${n} abertas, ${nTroca} resolvidas`);
     });
     await conf("ficha no cartão do estilo (fase 4): no passo do estilo, cada cartão diz a mão do round daquele estilo (das definições)", async () => {
       const def = await api(null, "definicoes");

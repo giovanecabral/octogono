@@ -1898,3 +1898,29 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-mesa .jxj-carta-regra,.jxj-mesa .jxj-carta-topo small{display:none}
   .jxj-rotulo-mesa{font-size:10px;letter-spacing:.08em}
 }
+/* a revelação: as duas cartas viram juntas, brilho, tremida, número e carimbo */
+.vira{position:relative;display:block;width:var(--w,118px);height:calc(var(--w,118px) * 1.44);perspective:900px}
+.vira .gira{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateY(180deg)}
+.vira .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.vira .face.frente{transform:rotateY(180deg)}
+.vira.anima .gira{animation:jxjCartaVira .55s var(--ease-soco) .35s both}
+@keyframes jxjCartaVira{from{transform:rotateY(0)}to{transform:rotateY(180deg)}}
+.jxj-revelada{position:relative;display:block}
+.jxj-revelada.venceu{filter:drop-shadow(0 0 18px rgba(212,160,23,.9))}
+.jxj-revelada.perdeu .vira{filter:brightness(.55) grayscale(.4)}
+.jxj-revelada.perdeu .vira.anima{animation:jxjCartaApanha .5s 1s}
+@keyframes jxjCartaApanha{0%,100%{transform:none}25%{transform:translateX(-8px) rotate(-3deg)}50%{transform:translateX(6px) rotate(2deg)}75%{transform:translateX(-3px)}}
+.jxj-carimbo-finta{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) rotate(-12deg);z-index:4;background:#0b0b0d;color:var(--sangue-vivo);border:2px solid var(--sangue-vivo);font-family:var(--f-titulo);font-size:18px;letter-spacing:.06em;padding:2px 10px;pointer-events:none}
+.jxj-carimbo-finta.anima{animation:jxjCarimbo .35s var(--ease-soco) 1s both}
+@keyframes jxjCarimbo{from{transform:translate(-50%,-50%) rotate(-12deg) scale(2.2);opacity:0}to{transform:translate(-50%,-50%) rotate(-12deg) scale(1);opacity:1}}
+.jxj-pop{position:absolute;left:50%;top:6px;transform:translateX(-50%);z-index:5;font-family:var(--f-titulo);font-size:26px;color:var(--ganho);text-shadow:0 2px 8px #000;pointer-events:none}
+.jxj-pop.dano{color:var(--sangue-vivo)}
+.jxj-pop.anima{animation:jxjCartaSobe 1.4s var(--ease-soco) 1s both}
+@keyframes jxjCartaSobe{0%{translate:0 10px;opacity:0}20%{translate:0 0;opacity:1}100%{translate:0 -46px;opacity:0}}
+.jxj-verso.cai{animation:jxjCartaCai .38s var(--ease-soco)}
+@keyframes jxjCartaCai{from{translate:0 -60px;opacity:0}to{translate:0 0;opacity:1}}
+.jxj-voando{position:fixed;z-index:100;pointer-events:none;transform-origin:top left;transition:left .45s var(--ease-soco),top .45s var(--ease-soco),transform .45s var(--ease-soco)}
+.jxj-iniciativa.muda{animation:jxjIniPulsa .8s var(--ease-soco)}
+@keyframes jxjIniPulsa{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
+@media (max-width:720px){.jxj-mesa .vira{--w:84px!important}.jxj-carimbo-finta{font-size:13px;padding:1px 6px}.jxj-pop{font-size:20px}}
+@media (prefers-reduced-motion:reduce){.vira .gira,.jxj-revelada .vira,.jxj-carimbo-finta,.jxj-pop,.jxj-voando,.jxj-iniciativa,.jxj-verso.cai{animation:none!important;transition:none!important}}

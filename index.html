@@ -8603,7 +8603,40 @@ function jxjCartaDaTroca(fam,varId,papel,tam="mesa"){
 function jxjVerso(tam="mesa"){
   return `<span class="jxj-verso corte" style="--w:${JXJ_TAM_CARTA[tam]||118}px"><span class="jxj-verso-oct oct"><span class="oct"></span></span></span>`;
 }
-function jxjVoarCarta(origem,idDestino){}   // Task 4 do plano: o voo da carta até a vaga da mesa
+/* A troca que acabou, nas vagas de ação ({a, b}): as duas cartas jogadas
+   viram juntas (só no primeiro desenho: anima), a de quem leu brilha, a
+   outra apanha; o dano sobe da carta de quem apanhou; carimbo na finta. */
+let JXJ_REVELACAO_MS=2600;
+function jxjRevelar(t,animar){
+  if(!t||!t.acaoA||!t.acaoB)return null;
+  const ev=t.ev||[],leu=ev.find(x=>x.tipo==="leu");
+  const levou=l=>ev.filter(x=>x.quem&&x.quem!==l&&typeof x.dano==="number").reduce((s,x)=>s+x.dano,0);
+  const anima=animar&&!reduceMotion()?" anima":"";
+  const lado=l=>{
+    const fam=l==="a"?t.acaoA:t.acaoB,vr=l==="a"?t.varA:t.varB;
+    const res=leu?(leu.quem===l?" venceu":" perdeu"):"",d=levou(l);
+    return `<span class="jxj-revelada${res}"><span class="vira aberta${anima}" style="--w:${JXJ_TAM_CARTA.mesa}px"><span class="gira"><span class="face verso">${jxjVerso("mesa")}</span><span class="face frente">${jxjCartaDaTroca(fam,vr,null,"mesa")}</span></span></span>`
+      +(ev.some(x=>x.tipo==="finta"&&x.quem===l)?`<span class="jxj-carimbo-finta${anima}">FINTA</span>`:"")
+      +(d?`<span class="jxj-pop dano${anima}">−${jxjNum(d)}</span>`:"")+`</span>`;
+  };
+  return {a:lado("a"),b:lado("b")};
+}
+/* A carta tocada voa da mão até a vaga da mesa (um clone por cima, que some
+   sozinho). Sem medida de tela ou com menos movimento, nada: o envio segue. */
+function jxjVoarCarta(origem,idDestino){
+  try{
+    if(reduceMotion()||!origem||!origem.querySelector)return;
+    const carta=origem.querySelector(".jxj-carta"),destino=document.getElementById(idDestino);
+    if(!carta||!destino||!carta.getBoundingClientRect||!destino.getBoundingClientRect)return;
+    const a=carta.getBoundingClientRect(),b=destino.getBoundingClientRect();
+    if(!a.width||!b.width)return;
+    const v=document.createElement("div"); v.className="jxj-voando"; v.innerHTML=carta.outerHTML;
+    Object.assign(v.style,{left:a.left+"px",top:a.top+"px",width:a.width+"px"});
+    document.body.appendChild(v);
+    requestAnimationFrame(()=>{ Object.assign(v.style,{left:b.left+"px",top:b.top+"px",transform:`scale(${b.width/a.width})`}); });
+    setTimeout(()=>{ if(v.remove)v.remove(); },500);
+  }catch(e){}
+}
 /* a mão por extenso ("3 Golpes, 2 Quedas, 3 Defesas, 1 Pressão"); família sem carta fica de fora */
 const JXJ_FAMILIA_PLURAL={golpes:["Golpe","Golpes"],queda:["Queda","Quedas"],defesa:["Defesa","Defesas"],pressao:["Pressão","Pressões"]};
 function jxjMaoTexto(m){
@@ -8634,6 +8667,9 @@ async function jxjTelaLuta(id){
   /* o que esta tela já mostrou: troca resolvida nova toca som e anima uma
      vez só (redesenhar pela assinatura não repete o efeito) */
   let trocasVistas=null,roundVisto=null,statusVisto=null;
+  /* cartas (2026-10-28): a troca que acabou fica na mesa por JXJ_REVELACAO_MS
+     e anima só no primeiro desenho; a carta dele cai de costas uma vez */
+  let revelacao=null,fimRevelacao=null,escolheuVisto=false;
   const tick=setInterval(()=>{
     if(tk!==JXJ_TOKEN){ clearInterval(tick); return; }
     const alvo=document.getElementById("jxj-relogio");
@@ -8669,6 +8705,17 @@ async function jxjTelaLuta(id){
     const comecou=vista.status==="andamento"&&statusVisto!=="andamento"&&!todas.length;
     const acabouAgora=vista.status==="encerrada"&&statusVisto==="andamento";
     trocasVistas=todas.length; roundVisto=vista.status==="andamento"?vista.round:roundVisto; statusVisto=vista.status;
+    if(novas.length)revelacao={i:todas.length-1,desde:Date.now(),animou:false};
+    let revelar=null;
+    if(revelacao&&vista.status==="andamento"&&Date.now()-revelacao.desde<JXJ_REVELACAO_MS){
+      revelar=jxjRevelar(todas[revelacao.i],!revelacao.animou);
+      revelacao.animou=true;
+      /* um redesenho só, no fim da revelação (armado uma vez: redesenhar no meio não rearma) */
+      if(!revelacao.fim){ clearTimeout(fimRevelacao); revelacao.fim=true;
+        fimRevelacao=setTimeout(()=>{ if(tk===JXJ_TOKEN&&vista&&vista.status==="andamento")desenhar(); },Math.max(0,JXJ_REVELACAO_MS-(Date.now()-revelacao.desde))+20); }
+    }
+    const soltou=vista.status==="andamento"&&!!vista.adversarioEscolheu&&!escolheuVisto;
+    escolheuVisto=vista.status==="andamento"&&!!vista.adversarioEscolheu;
     area.innerHTML="";
     const aviso=el("p","jxj-aviso"); aviso.id="jxj-aviso"; aviso.hidden=true; area.appendChild(aviso);
     if(vista.status==="cancelada"){
@@ -8681,7 +8728,7 @@ async function jxjTelaLuta(id){
       jxjDesenharCombate(area,vista,lados(),async(fam,tipo="acao")=>{
         if(enviando)return; enviando=true;
         try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,familia:fam}); }finally{ enviando=false; }
-      },{nova:novas.length>0,maoNova});
+      },{nova:novas.length>0,maoNova,revelar,soltou});
       if(comecou)SOM.sinoInicio();
       return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova});
     }
@@ -8840,7 +8887,7 @@ function jxjPlacarRound(p,eu,ele){
    na revelação; a ação dele só de costas quando a vista diz que ele
    escolheu (regra da fase 2) e nunca de frente antes da revelação.
    revelar ({a, b}: o HTML da troca que acabou) ocupa as vagas de ação. */
-function jxjMesa(v,{eu,ele},revelar){
+function jxjMesa(v,{eu,ele},revelar,{soltou=false}={}){
   const mesa=el("section","jxj-mesa"+(v.etapa?" com-postura":""));
   const acaoDe=f=>(v.acoes||[]).find(x=>x.familia===f)||{familia:f};
   const papelDele=v.papel==="cima"?"baixo":v.papel==="baixo"?"cima":"pe";
@@ -8862,7 +8909,7 @@ function jxjMesa(v,{eu,ele},revelar){
     let acao=null;
     if(revelar)acao=revelar[l];
     else if(souEu&&v.minhaAcao)acao=jxjCarta(acaoDe(v.minhaAcao),{tam:"mesa"});
-    else if(!souEu&&v.adversarioEscolheu)acao=jxjVerso("mesa");
+    else if(!souEu&&v.adversarioEscolheu)acao=soltou&&!reduceMotion()?jxjVerso("mesa").replace('class="jxj-verso corte"','class="jxj-verso corte cai"'):jxjVerso("mesa");
     const c=el("div","jxj-mesa-lado "+(souEu?"eu":"ele"));
     c.innerHTML=(v.etapa?`<span class="jxj-mesa-slot postura"><span class="jxj-rotulo-mesa">${rotP}</span>${vaga(souEu?"jxj-vaga-postura-eu":"jxj-vaga-postura-ele",souEu&&v.etapa==="sinal"?"toque numa carta":"","postura",post)}</span>`:"")
       +`<span class="jxj-mesa-slot acao"><span class="jxj-rotulo-mesa">${souEu?"sua ação":"ação dele"}</span>${vaga(souEu?"jxj-vaga-acao-eu":"jxj-vaga-acao-ele","","mesa",acao)}</span>`;
@@ -8871,7 +8918,7 @@ function jxjMesa(v,{eu,ele},revelar){
   mesa.append(coluna(eu),el("span","jxj-mesa-vs",""),coluna(ele));
   return mesa;
 }
-function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null}={}){
+function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false}={}){
   const F=v.formato,e=v.estado,nomes=v.nomes;
   const tela=el("div","jxj-combate");
   /* placar */
@@ -8898,7 +8945,8 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
   /* faixa: posição, momento (v3) ou iniciativa (v4, fase 3), cartões */
   const mom=e.momento*(eu==="a"?1:-1);
   const ini=v.maos?e.iniciativa:null;
-  const fichaIni=ini?`<span class="jxj-iniciativa ${ini===eu?"eu":"ele"}" title="Quem venceu a última troca do round. Com ela, a finta custa metade.">${ICONE("bandeira")}Iniciativa: ${ini===eu?"você":"ele"}</span>`:"";
+  const ultIni=(v.trocas||[]).length?(v.trocas[v.trocas.length-1].ev||[]).some(x=>x.tipo==="iniciativa"):false;
+  const fichaIni=ini?`<span class="jxj-iniciativa ${ini===eu?"eu":"ele"}${nova&&ultIni?" muda":""}" title="Quem venceu a última troca do round. Com ela, a finta custa metade.">${ICONE("bandeira")}Iniciativa: ${ini===eu?"você":"ele"}</span>`:"";
   const faixa=el("div","jxj-faixa-combate");
   faixa.innerHTML=`<span class="jxj-posicao" id="jxj-posicao">${jxjPosicaoTxt(v)}</span>
     ${v.maos?fichaIni:`<span class="jxj-momento" role="img" aria-label="Momento ${mom>0?"a seu favor":mom<0?"a favor do adversário":"neutro"}"><span class="jxj-momento-trilho"><i style="left:${50+mom*12}%"></i></span></span>`}
@@ -8906,7 +8954,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     ${(e.cartoes||[]).length?`<span class="jxj-cartoes">${e.cartoes.map((c,i)=>`R${i+1} <b>${c[eu]}-${c[ele]}</b>`).join(" ")}</span>`:""}`;
   tela.appendChild(faixa);
   /* cartas (2026-10-28): a mesa, entre a faixa e o lance (luta v3 sem mão: sem mesa) */
-  if(v.maos)tela.appendChild(jxjMesa(v,{eu,ele},revelar));
+  if(v.maos)tela.appendChild(jxjMesa(v,{eu,ele},revelar,{soltou}));
   if(v.duelos)tela.appendChild(jxjDuelos(v.duelos));
   /* o lance: a troca que acabou de ser resolvida */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
