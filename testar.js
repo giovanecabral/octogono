@@ -13605,6 +13605,27 @@ async function testarJxJBot() {
     }
     console.log(cinza("         fintas do bot forte: " + Object.entries(taxas).map(([p, x]) => `${p} ${(100 * x).toFixed(0)}%`).join(" | ")));
     if (!(taxas.agressivo > taxas.defensivo + 0.1)) throw new Error("Provocador não finta mais que o Paciente: " + JSON.stringify(taxas));
+    /* o blefe cresce com a habilidade: o bot fraco joga quase ao acaso, e
+       blefar uma jogada ao acaso só gastava energia (o Inquieto fraco perdia
+       62% do jogador de estilo). Postura do jogador fora (null): a ação do
+       bot é a pretendida, então ação diferente da postura é a isca */
+    const iscaPorS = {};
+    for (const sk of [0, 0.5, 1]) {
+      const rating = BOT.RATING_BOT.min + sk * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
+      const bot = BOT.montarBot({ nivel: 4, categoria: "middleweight", rating, semente: "isca" + sk, pers: "agressivo" }), dados = BOT.dadosDaLuta(bot, pH);
+      let isca = 0, total = 0;
+      for (let luta = 0; luta < 40; luta++) {
+        const e = { ...M.novaLuta(pH, bot.perfil) };
+        for (let t = 0; t < 4; t++) {
+          const sem = `isca${sk}:${luta}:${t}`, sB = BOT.sinalDoBot({ estado: e, semente: sem, trocas: [], dados, lado: "b" });
+          if (BOT.acaoDoBot({ estado: e, semente: sem, trocas: [], dados, lado: "b", sinais: { a: null, b: sB } }) !== sB) isca++;
+          total++;
+        }
+      }
+      iscaPorS[sk] = isca / total;
+    }
+    console.log(cinza("         isca do Provocador por habilidade: " + Object.entries(iscaPorS).map(([k, x]) => `s=${k} ${(100 * x).toFixed(0)}%`).join(" | ")));
+    if (iscaPorS[0] !== 0 || !(iscaPorS[0.5] < iscaPorS[1]) || iscaPorS[1] < 0.3) throw new Error("o blefe não cresce com a habilidade: " + JSON.stringify(iscaPorS));
   });
   await conf("mão (v4): o bot nunca escolhe família sem carta, em toda personalidade e habilidade, inclusive no momento decisivo (o óbvio pode ter acabado)", () => {
     const pH = T.perfilTipico("striker", 4), ruins = [];
@@ -13699,7 +13720,13 @@ async function testarJxJBot() {
       ganhos.push(ganho);
       linhas.push(`${pers.padEnd(9)} estilo ${est.map((x) => x.toFixed(1)).join("/")} explorador ${exp.map((x) => x.toFixed(1)).join("/")} ganho ${ganho.toFixed(1)} força ${est.map((x) => Math.round(rat(x))).join("/")} (FORCA_BOT ${BOT.FORCA_BOT[pers].join("/")})`);
       if (est[1] < 45 || est[1] > 58) ruins.push(`${pers}: estilo contra o bot médio ${est[1].toFixed(1)}%`);
-      if (Math.min(est[0], est[2]) < 43 || Math.max(est[0], est[2]) > 61) ruins.push(`${pers}: estilo nas pontas ${est[0].toFixed(1)}/${est[2].toFixed(1)}`);
+      /* Paciente: o dono pediu pra não mexer nele (PENDENCIAS 47). Com os
+         sinais da fase 2 (quase nunca blefa e lê a postura do jogador), o
+         forte vence 57% a 58% do jogador de estilo (42,3% a 43,1% pro
+         jogador, medido em 2026-10-28): piso de 42 só pra ele até o dono
+         decidir; o rating dele já é a força medida (FORCA_BOT) */
+      const piso = pers === "defensivo" ? 42 : 43;
+      if (Math.min(est[0], est[2]) < piso || Math.max(est[0], est[2]) > 61) ruins.push(`${pers}: estilo nas pontas ${est[0].toFixed(1)}/${est[2].toFixed(1)}`);
       if (ganho < 7) ruins.push(`${pers}: quem lê ganha só ${ganho.toFixed(1)} pontos`);
       SS.forEach((s, i) => { if (Math.abs(rat(est[i]) - BOT.FORCA_BOT[pers][i]) > 60) ruins.push(`${pers} s=${s}: força medida ${Math.round(rat(est[i]))}, FORCA_BOT ${BOT.FORCA_BOT[pers][i]}`); });
       const media = (v) => v.reduce((a, b) => a + b, 0) / v.length;

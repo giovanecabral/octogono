@@ -172,6 +172,30 @@ histórico, o Inquieto roda as posturas.
 Meta do custo da finta: o sinal acerta a ação de 60% a 75% das vezes no
 equilíbrio medido.
 
+**Decisões de desenho da fase 2 (aprovadas pelo dono com o plano, em
+2026-10-27; mudam o texto acima onde ele diz outra coisa):**
+
+1. **Um prazo por troca.** A troca tem um prazo só, de 17 s
+   (`sinalMs` 5000 + `acaoMs` 12000); a etapa do sinal acaba em
+   `prazo − acaoMs`. Sem prazo novo gravado e sem função de passagem de
+   etapa: a etapa sai do prazo e dos sinais gravados.
+2. **Ação na etapa do sinal é compromisso honesto.** Ela vira o sinal
+   (gravado depois da ação) e não dá pra fintar depois; quem já mostrou
+   outra postura ouve "Espere ele mostrar a postura pra fintar.".
+3. **"Ele já escolheu" só conta ação mandada depois da revelação**
+   (comparação estrita: o compromisso que provocou a revelação não
+   conta). Senão o compromisso antecipado entregaria que o sinal é
+   honesto.
+4. **Tabela separada.** `jxj_sinais` e `jxj_sinais_abertos(lid)`;
+   `jxj_luta` não foi redefinida. O servidor faz uma leitura a mais por
+   consulta da luta v4.
+
+Feito também: quem mostrou a postura e não mandou ação faz a família do
+próprio sinal (sem finta), e conta como ausente igual. O modelo de blefe
+medido é a isca (postura cuja resposta óbvia perde pra ação pretendida),
+com três respostas (ignora, confia, desconfia): com blefe ao acaso, blefar
+nunca compensava e o equilíbrio saía 100% honesto.
+
 ## 8. Fase 3: iniciativa
 
 - Quem leva mais pontos numa troca ganha a iniciativa pra troca seguinte.

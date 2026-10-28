@@ -5296,6 +5296,128 @@ gravar (também por chamada direta), prazo vencido sem Defesa nem Pressão
 usa Golpes. `jxjtelas`: mão no placar, botão sem carta, dicas da primeira
 luta, luta sem mão não quebra.
 
+## Online: estratégia por informação, fase 2: sinais e blefe (2026-10-28)
+
+Plano: `docs/superpowers/plans/2026-10-27-online-estrategia-fase2.md`
+(as 4 decisões de desenho aprovadas pelo dono estão também na spec, seção
+7). Vai pro ar junto com as outras fases.
+
+### Regras
+
+- Cada troca tem duas etapas num prazo só de 17 s: **sinal** (5 s) e
+  **ação** (12 s). `FORMATO.prazoMs` é a soma; a etapa do sinal acaba em
+  `prazo − acaoMs` (`ESTRATEGIA.prazos`).
+- **Sinal:** uma postura por família, só de família com carta, uma vez por
+  troca: Peso na frente (Golpes), Base baixa (Queda), Guarda alta
+  (Defesa), Avançando (Pressão) (`POSTURAS` em `api/_jxj-estrategia.js`).
+- **Revelação:** quando os dois mandaram ou a etapa do sinal acabou; quem
+  não mandou mostra a postura da ação padrão. Antes disso a vista só diz
+  `adversarioSinalizou`.
+- **Ação:** igual à própria postura, sem custo. Outra, **finta**: custa
+  1,5 de energia (`custoFinta`), cobrada na resolução. Sem energia, o
+  servidor recusa ("Sem energia pra fintar.") e o botão fica apagado.
+- Ação mandada na etapa do sinal é **compromisso honesto**: vira o sinal
+  (gravado depois da ação) e não dá mais pra fintar.
+- **"Ele já escolheu"** só conta ação mandada depois da revelação, com
+  comparação estrita: o compromisso que provocou a revelação não acende
+  (senão o outro saberia que o sinal foi honesto).
+- Quem mostrou a postura e não mandou ação faz a família do próprio sinal
+  (sem finta) e conta como ausente igual.
+- O motor recebe `sinais: {a, b}` e grava os eventos `sinais` (só dado) e
+  `finta` ("Kayo Brasa mostrou Guarda alta e fez Queda."). A luta refeita
+  pela semente usa os sinais do evento.
+- Banco (no mesmo `supabase_jxj_estrategia.sql`, só aditivo): tabela
+  `jxj_sinais`, `jxj_enviar_sinal` (participante, troca aberta, etapa do
+  sinal pelo prazo, uma vez) e `jxj_sinais_abertos`. `jxj_luta` não mudou.
+  Sem a migração (`PGRST202`): a ação `sinal` responde 503 e a luta segue
+  como na fase 1. Luta do v3 (sem mão): sem sinais.
+
+### O custo da finta (medido)
+
+`node ferramentas/jxj-balanco.mjs sinais`: 9 estratégias (isca com chance
+0, 0,3 ou 0,6; resposta à postura dele: ignora, confia ou desconfia) no
+espelho dos 4 estilos, equilíbrio por fictitious play. Honestidade é a
+chance de a postura ser a ação, na mistura de equilíbrio.
+
+| custo da finta | honestidade no equilíbrio |
+|---|---|
+| 0,5 | 62,0% |
+| 1,0 | 67,6% |
+| **1,5** | **71,4% (120 lutas por casa) e 67,5% (200)** |
+| 2,5 | 80,7% |
+
+Ficou 1,5 (meta 60% a 75%). Isca é a postura cuja resposta óbvia perde pra
+ação pretendida ("mostro Guarda alta, ele vem pressionar, eu acerto o
+golpe"). O modelo do plano (blefe ao acaso e "confia") dava 100% honesto
+em qualquer custo: blefar ao acaso nunca compensava.
+
+Os confrontos puros balançam muito (honesto que ignora contra quem
+desconfia: 95 a 5; isca contra quem confia: cerca de 72 a 28), e nenhuma
+estratégia pura domina: o equilíbrio mistura. É o que a fase quer: ler o
+outro decide mais que a sorte.
+
+### Bots
+
+Cada jeito tem um hábito de postura (`sinal` em `PERSONALIDADES`):
+Provocador isca 0,45 (blefa muito), Paciente 0,05 (quase nunca),
+Observador 0,15 (e lê a postura do jogador: confia 0,6, desconfia 0,3),
+Inquieto 0,3. O plano da postura sai da semente (`sinal:`, `sinalDoBot`),
+então o bot já mostrou a postura quando a troca começa; o bot nunca finta
+sem energia e responde à postura do jogador (vezes a habilidade), nunca à
+ação. **O blefe cresce com a habilidade** (isca vezes a habilidade): o
+bot fraco joga quase ao acaso, e blefar uma jogada ao acaso só gastava
+energia (o Inquieto fraco perdia 62% do jogador de estilo); o fraco também
+é o mais fácil de ler, bom pra quem está aprendendo.
+
+`FORCA_BOT` medida de novo pelo caminho do servidor com os sinais (o
+jogador modelo mostra a ação ou, 30% das vezes, uma isca; 2 sementes,
+1.920 lutas por casa): Provocador 1499/1502/1494, Paciente 1508/1539/1548,
+Observador 1477/1492/1498, Inquieto 1478/1473/1476. O Paciente subiu cerca
+de 30 (quase nunca blefa e lê a postura honesta do jogador); o Provocador e
+o Inquieto fracos subiram 35 a 40 e ficaram parelhos com os fortes (contra
+quem não lê a postura, o blefe do forte só custa energia; com gente que lê,
+deve valer mais: conferir com jogo real em `ferramentas/bots-por-jeito.sql`).
+
+Quem lê o jeito (o explorador da ferramenta) também lê o hábito de blefe:
+confia na postura de quem quase nunca blefa e ignora a de quem blefa.
+Desconfiar foi medido e piorou quem lê (contra o Provocador, de
+70,6/68,6/61,6 pra 61,7/58,6/54,1: troca a jogada boa por uma resposta à
+isca e paga a finta). Ganho de quem lê, na suíte `jxjbot`: Provocador
+17,8, Paciente 15,8, Observador 12,1, Inquieto 14,2 (média 15,0; era 11,4
+antes de ler o blefe).
+
+**Paciente forte:** vence 57% a 58% do jogador de estilo (a faixa pede até
+57%). O dono pediu pra não mexer no Paciente (PENDENCIAS 47), então ele
+ficou como está e o teste aceita 42% pro jogador só nele, até o dono
+decidir. O rating dele já é a força medida.
+
+### Tela
+
+- Etapa do sinal: só as posturas (das famílias com carta) e o relógio do
+  sinal; no celular, as 4 numa linha, pra caber sem rolar nos 5 s. Depois
+  de mostrar: "Você mostrou Guarda alta. Esperando a postura dele." O
+  rótulo diz "ele já mostrou" quando ele mostrou.
+- Etapa da ação: a faixa com as duas posturas; botão que não é a sua
+  postura leva "−1,5 finta" e, sem energia, fica apagado e desligado.
+- O lance marca "finta" do lado que fintou; a tendência dele diz "fintou
+  X de Y".
+- Primeira luta: "Ele vê a sua postura antes de escolher. Fazer outra ação
+  depois é finta e gasta energia." no sinal e "Ele mostrou Peso na frente.
+  Pode ser verdade ou finta." na ação.
+
+### Testes
+
+`jxjmotor`: sinais no motor, finta cobrada, ausente segue a própria
+postura, a luta refeita igual, equilíbrio do blefe entre 60% e 75%.
+`jxjbot`: postura do bot pela semente, o bot nunca finta sem energia e só
+lê a postura. `jxj`: banco (sinal uma vez, só na etapa, permissões), luta
+com as etapas (postura escondida até os dois, finta, sem energia,
+compromisso honesto, tendência, refeita igual), o compromisso que revela
+não acende "ele já escolheu", sem a migração (503 e fase 1), o rollback
+apaga `jxj_sinais`. `jxjtelas`: as etapas na tela (a suíte zera o limite
+de chamadas a cada tela aberta: o DOM falso dispara o timer da luta a cada
+volta e a soma passava do teto de 600).
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

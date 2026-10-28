@@ -1862,4 +1862,10 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-dica-sinal{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}
 .jxj-dica-sinal svg{width:14px;height:14px;flex:none}
 .jxj-tendencia span.jxj-fintas{color:var(--osso-2);border-bottom-color:transparent}
-@media (max-width:720px){.jxj-posturas{grid-template-columns:1fr 1fr;gap:8px}.jxj-postura{padding:10px 12px}}
+/* celular: as 4 numa linha, pra caber sem rolar nos 5 s do sinal */
+@media (max-width:720px){.jxj-posturas{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .jxj-postura{align-items:center;text-align:center;gap:2px;padding:8px 4px;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+  .jxj-postura .ico{width:22px;height:22px}
+  .jxj-postura b{font-size:12px;letter-spacing:.03em;line-height:1.15}
+  .jxj-postura small{font-size:11px}
+  .jxj-postura .longo{display:none}}

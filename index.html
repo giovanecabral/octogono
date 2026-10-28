@@ -8875,7 +8875,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
       for(const f of JXJ_FAMILIAS){
         const a=(v.acoes||[]).find(x=>x.familia===f);
         if(!a||a.restam===0)continue;
-        const b=el("button","jxj-postura",`${ICONE(JXJ_ICONE_ACAO[f]||"luta")}<b>${JXJ_POSTURAS[f]}</b><small>mostra que vai de ${a.grupo||JXJ_FAMILIA_TXT[f]}</small>`);
+        const b=el("button","jxj-postura",`${ICONE(JXJ_ICONE_ACAO[f]||"luta")}<b>${JXJ_POSTURAS[f]}</b><small><span class="longo">mostra que vai de </span>${a.grupo||JXJ_FAMILIA_TXT[f]}</small>`);
         b.type="button";
         b.onclick=()=>{ SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(x=>{x.disabled=true;}); enviar(f,"sinal"); };
         g.appendChild(b);

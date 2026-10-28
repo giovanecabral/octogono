@@ -2505,9 +2505,13 @@ vista, sinais e blefe, iniciativa, ficha. Branch `online-estrategia`.
 1. Fase 0 e Fase 1 (mão à vista): FEITAS na branch. Mão medida em 2/2/4/1
    (o ponto de partida 2/1/2/1 matava o chão); dois nós do wrestler
    recalibrados com a mão.
-2. Fase 2 (sinais e blefe), Fase 3 (iniciativa), Fase 4 (ficha): falta
-   planejar e fazer.
-3. Do dono, antes do deploy (depois das 4 fases): backup e
-   `supabase_jxj_estrategia.sql` (versão de balanceamento 3; a fase 2 vai
-   acrescentar os sinais nesse mesmo arquivo). Deploy só com "deploya".
+2. Fase 2 (sinais e blefe): FEITA na branch (2026-10-28). Plano
+   `docs/superpowers/plans/2026-10-27-online-estrategia-fase2.md`; custo
+   da finta 1,5 medido; `FORCA_BOT` medida de novo com os sinais; tela
+   das etapas conferida em duas janelas (computador e celular).
+3. Fase 3 (iniciativa) e Fase 4 (ficha): falta planejar e fazer.
+4. Do dono, antes do deploy (depois das 4 fases): backup e
+   `supabase_jxj_estrategia.sql` (versão de balanceamento 3 e, da fase 2,
+   a tabela `jxj_sinais` com as funções `jxj_enviar_sinal` e
+   `jxj_sinais_abertos`). Deploy só com "deploya".
 

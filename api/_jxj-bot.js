@@ -256,18 +256,25 @@ export const INCLINACAO = AJUSTE.inclinacao;
 export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
 /* Força medida de cada jeito em rating (1500 = quem joga no peso do estilo),
    na habilidade 0, 0,5 e 1 (`node ferramentas/jxj-balanco.mjs
-   personalidades`; medida de novo com o motor v4 (mão à vista) em 2026-10-27:
-   2.880 lutas por casa, 2 sementes, 12 pares, níveis 1, 10 e 30). É o
+   personalidades`; medida de novo com o motor v4 e os sinais da fase 2 em
+   2026-10-28, pelo caminho do servidor: o bot mostra postura e lê a do
+   jogador, e o jogador mostra a ação ou, 30% das vezes, uma isca, perto
+   da honestidade do equilíbrio; 1.920 lutas por casa, 2 sementes, 8
+   pares, níveis 1, 10 e 30. Com os sinais, o Paciente subiu cerca de 30
+   pontos: quase nunca blefa e lê a postura honesta do jogador. Com o
+   blefe crescendo com a habilidade, o Provocador e o Inquieto fracos
+   subiram 35 a 40 e ficaram parelhos com os fortes: contra quem não lê a
+   postura, o blefe do forte só custa energia). É o
    rating com que o bot entra no Glicko e aparece na tela: o bot de rating R
    joga como alguém de rating R, e quem vence o bot não ganha rating de
    graça. A faixa RATING_BOT continua escolhendo a habilidade do bot pelo
    rating do jogador. Mexeu no jeito, no motor ou na INCLINACAO: medir de
    novo e copiar aqui (a suíte jxjbot confere com folga de 40 pontos). */
 export const FORCA_BOT = {
-  agressivo: [1471, 1492, 1513],
-  defensivo: [1485, 1492, 1521],
-  leitor: [1442, 1469, 1503],
-  caotico: [1455, 1476, 1494],
+  agressivo: [1499, 1502, 1494],
+  defensivo: [1508, 1539, 1548],
+  leitor: [1477, 1492, 1498],
+  caotico: [1478, 1473, 1476],
 };
 export function forcaDoBot(pers, s) {
   const f = FORCA_BOT[pers];
@@ -532,12 +539,15 @@ function iscasDe(e, l, pretendida) {
 }
 /* O plano do bot pro sinal (fase 2): a pretendida (a mesma escolha de
    decidir, com sorteio próprio) e o sinal (ela ou, com a chance de isca do
-   jeito, uma isca). Só estado, trocas e semente: a mesma chamada dá o mesmo. */
+   jeito vezes a habilidade, uma isca). Só estado, trocas e semente: a mesma chamada dá o mesmo. */
 function planoDoSinal({ estado, semente, trocas, dados, lado = "b" }) {
   const r = gerador(`sinal:${semente}:${estado.round}:${estado.troca}`);
   const pretendida = decidir(estado, lado, dados, historicoDasTrocas(trocas, lado), r, acoesDoBot(trocas, lado));
-  const sp = (PERSONALIDADES[dados.pers] || {}).sinal || { isca: 0.15 };
-  if (r() >= sp.isca) return { pretendida, sinal: pretendida };
+  /* o blefe cresce com a habilidade: o bot fraco joga quase ao acaso, e
+     blefar uma jogada ao acaso só gasta energia (medido: o Inquieto fraco
+     perdia 62% do jogador de estilo); o fraco também é o mais fácil de ler */
+  const sp = (PERSONALIDADES[dados.pers] || {}).sinal || { isca: 0.15 }, s = Number(dados.s) || 0;
+  if (r() >= sp.isca * s) return { pretendida, sinal: pretendida };
   const is = iscasDe(estado, lado, pretendida);
   return { pretendida, sinal: is.length ? is[Math.floor(r() * is.length)] : pretendida };
 }

@@ -451,17 +451,40 @@ export function medirMomentos(n = 120) {
 /* ---------- bots do Online (2026-10-19) ---------- */
 /* Luta contra bot pelo caminho do servidor: o humano-modelo é o lado a; o
    bot (lado b) escolhe com BOT.acaoDoBot, que só lê o estado, as trocas
-   gravadas e a semente. Devolve o estado final. */
-export function lutaContraBot(pH, estrH, bot, dados, semente) {
+   gravadas, a semente e (fase 2) os dois sinais revelados. Devolve o
+   estado final. Fase 2: o bot mostra a postura de sinalDoBot; o humano
+   mostra a ação que vai fazer ou, com chance blefeH, uma isca (0,3: perto
+   da honestidade do equilíbrio, 71%), nunca sem energia pra fintar, e não
+   lê o sinal do bot (o que ele lê é o jeito, nos modelos que leem).
+   blefeH null: luta sem sinais (fase 1). */
+export function lutaContraBot(pH, estrH, bot, dados, semente, { blefeH = 0.3 } = {}) {
   const perfis = { a: pH, b: bot.perfil }, trocas = [];
   let h = 7; for (const ch of String(semente)) h = (h * 31 + ch.charCodeAt(0)) % 2147483647;
   const rEst = lcg(h);
   let e = M.novaLuta(pH, bot.perfil), n = 0;
   while (!e.fim && n++ < 100) {
     const aH = EST.familiaNaMao(e, "a", estrH(e, "a", pH, rEst, { trocas, dados }), rEst);
-    const aB = BOT.acaoDoBot({ estado: e, semente, trocas, dados, lado: "b" });
-    const r = M.resolverTroca(e, perfis, { a: aH, b: aB }, semente);
-    trocas.push({ round: e.round, troca: e.troca, acao_a: aH, acao_b: aB, eventos: r.eventos });
+    let sinais = null;
+    if (blefeH != null && e.mao) {
+      let sH = aH;
+      if (rEst() < blefeH && e.a.energia >= EST.ESTRATEGIA.custoFinta) { const is = iscas(e, "a", aH); if (is.length) sH = is[Math.floor(rEst() * is.length)]; }
+      sinais = { a: sH, b: BOT.sinalDoBot({ estado: e, semente, trocas, dados, lado: "b" }) };
+    }
+    const aB = BOT.acaoDoBot({ estado: e, semente, trocas, dados, lado: "b", sinais });
+    /* quem lê o jeito também lê o hábito de blefe do bot (leSinal) e
+       responde à postura dele; a resposta diferente da própria postura é
+       finta, só com energia */
+    let aF = aH;
+    if (sinais && estrH.leSinal) {
+      const modo = estrH.leSinal(trocas);
+      if (modo !== "ignora") {
+        const alvos = modo === "confia" ? [sinais.b] : F.filter((x) => EST.temCarta(e, "b", x) && iscas(e, "b", x).includes(sinais.b));
+        const op = [...new Set(alvos.flatMap((al) => respostas(e, "a", al)))];
+        if (op.length && !op.includes(aH)) { const x = op[Math.floor(rEst() * op.length)]; if (x === sinais.a || e.a.energia >= EST.ESTRATEGIA.custoFinta) aF = x; }
+      }
+    }
+    const r = M.resolverTroca(e, perfis, sinais ? { a: aF, b: aB, sinais } : { a: aF, b: aB }, semente);
+    trocas.push({ round: e.round, troca: e.troca, acao_a: aF, acao_b: aB, eventos: r.eventos });
     e = r.estado;
   }
   return e;
@@ -589,14 +612,28 @@ export function medirSinais(n = 150) {
   const usadas = opcoes.map((x, i) => [x, eq[i]]).filter(([, w]) => w > 0.1).map(([x, w]) => `blefe ${x.blefe} ${x.resposta}: ${(100 * w).toFixed(0)}%`);
   return { honestidade, usadas, matriz: m, opcoes, eq };
 }
+/* Fase 2: o hábito de blefe do bot, contado nas trocas da luta (quantas
+   vezes a ação dele não foi a postura). Quase nunca blefa: confia (joga
+   contra a postura). Blefa: ignora a postura e fica com a jogada que já lê
+   o jeito; desconfiar (jogar contra a ação que a isca esconde) foi medido e
+   piorou quem lê: contra o Provocador, de 70,6/68,6/61,6 pra
+   61,7/58,6/54,1 (troca a jogada boa por uma resposta à isca e paga a
+   finta). */
+function leituraDoSinal(trocas) {
+  const com = trocas.filter((t) => (t.eventos || []).some((ev) => ev.tipo === "sinais"));
+  if (com.length < 3) return "ignora";
+  const taxa = com.filter((t) => t.eventos.some((ev) => ev.tipo === "finta" && ev.quem === "b")).length / com.length;
+  return taxa <= 0.1 ? "confia" : "ignora";
+}
+const lendoSinal = (f) => Object.assign(f, { leSinal: leituraDoSinal });
 export const HUMANOS_MODELO = {
   acaso: () => aleatoria(),
   spam: () => spam("golpes"),
   estilo: (pH, pB, est) => heuristica(est),
   racional: (pH, pB) => racional(pH, pB),
   adaptativo: (pH, pB) => adaptativa(pH, pB),
-  explorador: (pH, pB) => explorador(pH, pB),
-  conhecedor: (pH, pB) => conhecedor(pH, pB),
+  explorador: (pH, pB) => lendoSinal(explorador(pH, pB)),
+  conhecedor: (pH, pB) => lendoSinal(conhecedor(pH, pB)),
   contador: (pH, pB) => contador(pH, pB),
 };
 /* Vitórias (%) do humano-modelo contra o bot de habilidade s. Cada par: um
@@ -605,7 +642,7 @@ export const HUMANOS_MODELO = {
 /* pers: força a personalidade do bot (null = a sorteada; "nenhuma" = bot de
    antes das personalidades). A chave do resultado ganha ":pers" quando pers
    vem. */
-export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "", pers = null, puro = 0 } = {}) {
+export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0.25, 0.5, 0.75, 1], humanos = Object.keys(HUMANOS_MODELO), sal = "", pers = null, puro = 0, blefeH = 0.3 } = {}) {
   const res = {};
   for (const nivel of niveis) for (let i = 0; i < pares; i++) {
     const sH = ESTS[i % ESTS.length], pH = perfilTipico(sH, nivel);
@@ -617,7 +654,7 @@ export function medirBots({ n = 100, pares = 8, niveis = [1, 10, 30], ss = [0, 0
       for (const hu of humanos) {
         let v = 0, d = 0;
         for (let k = 0; k < n; k++) {
-          const fim = lutaContraBot(pH, HUMANOS_MODELO[hu](pH, bot.perfil, sH), bot, dados, `lb${sal}:${nivel}:${i}:${s}:${hu}:${k}`).fim;
+          const fim = lutaContraBot(pH, HUMANOS_MODELO[hu](pH, bot.perfil, sH), bot, dados, `lb${sal}:${nivel}:${i}:${s}:${hu}:${k}`, { blefeH }).fim;
           if (fim.vencedor === "a") v++; else if (fim.vencedor === "b") d++;
         }
         (res[hu + ":" + s + (pers ? ":" + pers : "")] ||= []).push(100 * v / Math.max(1, v + d));

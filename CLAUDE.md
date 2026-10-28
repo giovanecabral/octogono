@@ -143,6 +143,20 @@ metade). Regras do revamp que valem daqui pra frente:
   (sinais e blefe, iniciativa, ficha) vão pro ar junto com esta.
   Estratégia de simulação que pede família sem carta passa por
   `familiaNaMao`; bot filtra por `filtrarPelaMao`.
+  **Fase 2 (sinais e blefe):** cada troca tem a etapa do sinal (5 s, só
+  postura) e a da ação (12 s), num prazo só de 17 s; ação diferente da
+  própria postura é finta e custa 1,5 de energia (`custoFinta`, medido:
+  equilíbrio com o sinal honesto de 67% a 71%, meta 60% a 75%). Ação na
+  etapa do sinal é compromisso honesto; "ele já escolheu" só conta ação
+  depois da revelação. Sinal em `jxj_sinais` (mesmo
+  `supabase_jxj_estrategia.sql`); sem a migração, `PGRST202` e luta da
+  fase 1. Refazer a luta pela semente usa os sinais do evento `sinais`.
+  O bot sinaliza pela semente (`sinalDoBot`) e lê só a postura do
+  jogador, nunca a ação; o blefe dele cresce com a habilidade. A
+  ferramenta mede o bot pelo caminho do servidor com os sinais
+  (`lutaContraBot`, jogador modelo com 30% de isca). O Paciente forte
+  passou 1 ponto da faixa e ficou como está (pedido do dono): o teste
+  aceita 42% só pra ele até o dono decidir.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
