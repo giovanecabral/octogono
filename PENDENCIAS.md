@@ -2529,9 +2529,12 @@ luta com cara de cartas de verdade. Spec
 `docs/superpowers/specs/2026-10-28-online-cartas-tutorial-design.md`,
 branch `online-cartas`.
 
-1. Parte 1 (a tela da luta em cartas): FEITA na branch. Plano
-   `docs/superpowers/plans/2026-10-28-online-cartas-parte1.md`. Só tela;
-   pode ir pro ar sozinha quando o dono mandar (sem SQL).
+1. Parte 1 (a tela da luta em cartas): NO AR desde 2026-10-28 (o dono
+   jogou local e mandou o deploy). Plano
+   `docs/superpowers/plans/2026-10-28-online-cartas-parte1.md`. `master`
+   em `0e14190` (avanço direto, a mesma árvore da bateria verde), push e
+   `vercel --prod`; `index.html` e `estilo.css` servidos iguais ao git;
+   docs, testes e `.gitignore` dão 404. Sem SQL.
 2. Parte 2 (o treino guiado de 5 trocas, obrigatório na primeira vez):
    falta planejar e fazer.
 
