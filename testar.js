@@ -14328,8 +14328,9 @@ async function testarJxJTelas() {
       if (!/Você mostrou <b>Guarda alta<\/b>/.test(htmlDe(desde(m)))) throw new Error("sem a espera depois do sinal");
       await api(u2, "sinal", { lutaId: lid, round: vs.round, troca: vs.troca, familia: "golpes" });
       m = await abrir(`luta/${lid}`); nos = desde(m);
-      const sinais = nos.find((n) => tem(n, "jxj-sinais"));
-      if (!sinais || !/Guarda alta/.test(String(sinais.innerHTML)) || !/Peso na frente/.test(String(sinais.innerHTML))) throw new Error("sinais: " + (sinais && sinais.innerHTML));
+      /* cartas (2026-10-28): as posturas reveladas ficam na mesa */
+      const mesaTxt = nos.filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join(" ");
+      if (!/você mostrou <b>Guarda alta<\/b>/.test(mesaTxt) || !/ele mostrou <b>Peso na frente<\/b>/.test(mesaTxt)) throw new Error("sinais na mesa: " + mesaTxt.replace(/\s+/g, " ").slice(0, 300));
       const botoes = nos.filter((n) => tem(n, "jxj-acao"));
       const comFinta = botoes.filter((b) => /jxj-finta/.test(String(b.innerHTML)));
       if (botoes.length !== 4 || comFinta.length !== 3 || comFinta.some((b) => /icones\.svg#escudo"/.test(String(b.innerHTML))) || comFinta.some((b) => b.disabled)) throw new Error("finta nos 3 botões que não são o sinal: " + botoes.map((b) => /jxj-finta/.test(String(b.innerHTML))).join(","));
@@ -14506,6 +14507,32 @@ async function testarJxJTelas() {
       const n = (await db.query("select count(*)::int as n from jxj_acoes where luta_id = $1 and round = $2 and troca = $3 and lado = $4", [lid, vs.round, vs.troca, vs.lado])).rows[0].n;
       const nTroca = (await db.query("select count(*)::int as n from jxj_trocas where luta_id = $1 and round = $2 and troca = $3", [lid, vs.round, vs.troca])).rows[0].n;
       if (n + nTroca !== 1) throw new Error(`ações gravadas: ${n} abertas, ${nTroca} resolvidas`);
+    });
+    await conf("luta v3 na tela de cartas (2026-10-28): sem mesa de postura, as ações em cartas, o trilho do momento na faixa; os duelos na gaveta; as posturas reveladas só na mesa (sem a faixa de texto repetida)", async () => {
+      await db.query("delete from jxj_limites");
+      const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
+      /* troca limpa: se a minha ação já foi, ele joga e a troca resolve */
+      for (let k = 0; k < 2; k++) {
+        const vs = await api(u1, "luta", { lutaId: lid });
+        if (vs.status !== "andamento") throw new Error("a luta acabou antes");
+        if (!vs.minhaAcao) break;
+        const v2 = await api(u2, "luta", { lutaId: lid });
+        if (!v2.minhaAcao) await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: naMao(v2, "defesa") });
+      }
+      let guardado = null;
+      await mexer((e) => { guardado = { mao: e.mao, v: e.v, iniciativa: e.iniciativa }; delete e.mao; delete e.iniciativa; e.v = 3; });
+      let m, nos;
+      try { m = await abrir(`luta/${lid}`); nos = desde(m); }
+      finally { await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.iniciativa = guardado.iniciativa; }); }
+      const h = htmlDe(nos);
+      if (/jxj-vaga-postura/.test(h) || nos.some((n) => tem(n, "jxj-mesa"))) throw new Error("luta v3 com mesa");
+      if (!nos.some((n) => tem(n, "jxj-acao")) || !/class="jxj-momento"/.test(h)) throw new Error("luta v3: cartas e trilho do momento");
+      semLixoV3(h, "luta v3");
+      const m2 = await abrir(`luta/${lid}`), nos2 = desde(m2);
+      const gav = nos2.find((n) => n.tagName === "details" && tem(n, "jxj-gaveta"));
+      const duelos = nos2.find((n) => tem(n, "jxj-duelos"));
+      if (!gav || !duelos || !nos2.slice(nos2.indexOf(gav)).includes(duelos)) throw new Error("os duelos fora da gaveta");
+      if (nos2.some((n) => tem(n, "jxj-sinais"))) throw new Error("a faixa de texto das posturas voltou (a mesa já mostra)");
     });
     await conf("ficha no cartão do estilo (fase 4): no passo do estilo, cada cartão diz a mão do round daquele estilo (das definições)", async () => {
       const def = await api(null, "definicoes");

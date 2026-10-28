@@ -1924,3 +1924,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 @keyframes jxjIniPulsa{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
 @media (max-width:720px){.jxj-mesa .vira{--w:84px!important}.jxj-carimbo-finta{font-size:13px;padding:1px 6px}.jxj-pop{font-size:20px}}
 @media (prefers-reduced-motion:reduce){.vira .gira,.jxj-revelada .vira,.jxj-carimbo-finta,.jxj-pop,.jxj-voando,.jxj-iniciativa,.jxj-verso.cai{animation:none!important;transition:none!important}}
+/* o lance: a borda diz quem leu */
+.jxj-ultima.jxj-lance{border-left:3px solid var(--cinza)}
+.jxj-ultima.jxj-lance.leu-eu{border-left-color:var(--ganho)}
+.jxj-ultima.jxj-lance.leu-ele{border-left-color:var(--sangue-vivo)}
+.jxj-gaveta .jxj-duelos{margin:10px 0}

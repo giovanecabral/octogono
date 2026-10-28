@@ -8954,8 +8954,9 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     ${(e.cartoes||[]).length?`<span class="jxj-cartoes">${e.cartoes.map((c,i)=>`R${i+1} <b>${c[eu]}-${c[ele]}</b>`).join(" ")}</span>`:""}`;
   tela.appendChild(faixa);
   /* cartas (2026-10-28): a mesa, entre a faixa e o lance (luta v3 sem mão: sem mesa) */
+  /* o momento decisivo (grogue, finalização encaixada) avisa antes da mesa */
+  if(v.momentoDecisivo)tela.appendChild(jxjFaixaMomento(v.momentoDecisivo));
   if(v.maos)tela.appendChild(jxjMesa(v,{eu,ele},revelar,{soltou}));
-  if(v.duelos)tela.appendChild(jxjDuelos(v.duelos));
   /* o lance: a troca que acabou de ser resolvida */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
   if(ult){
@@ -8967,7 +8968,8 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     const kd=l=>(ult.ev||[]).some(x=>x.tipo==="knockdown"&&x.quem&&x.quem!==l);
     const marca=l=>(kd(l)?`<em class="jxj-dano kd">caiu</em>`:levou(l)?`<em class="jxj-dano">−${jxjNum(levou(l))}</em>`:"")
       +((ult.ev||[]).some(x=>x.tipo==="finta"&&x.quem===l)?`<em class="jxj-finta-lance">finta</em>`:"");
-    const sec=el("section","jxj-ultima jxj-lance"+(nova?" nova":""));
+    const leuL=(ult.ev||[]).find(x=>x.tipo==="leu");
+    const sec=el("section","jxj-ultima jxj-lance"+(nova?" nova":"")+(leuL?(leuL.quem===eu?" leu-eu":" leu-ele"):""));
     sec.innerHTML=`<div class="jxj-duelo">
         <span class="eu">${ICONE(JXJ_ICONE_ACAO[famEu]||"luta")}<b>${jxjEsc(nomeVar(meu,famEu))}</b>${marca(eu)}</span>
         <i>contra</i>
@@ -8984,7 +8986,6 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     zona.appendChild(el("p","jxj-espera",`${ICONE("check")}<span>Ação enviada: <b>${rot}</b>. ${v.adversarioEscolheu?"O adversário também escolheu. Resolvendo.":"Esperando o adversário."}</span>`));
   }else if(v.etapa==="sinal"){
     /* fase 2: primeiro a postura (o sinal); as ações só depois que os dois mostram */
-    if(v.momentoDecisivo)zona.appendChild(jxjFaixaMomento(v.momentoDecisivo));
     const topo=el("div","jxj-zona-topo");
     topo.appendChild(el("p","jxj-rotulo",`${maoNova?`Round ${v.round}: ações novas · `:""}Mostre uma postura${v.adversarioSinalizou?" · ele já mostrou":""}`));
     const tend=jxjTendencia(v.tendencia);
@@ -9010,7 +9011,6 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     /* momento decisivo: a faixa vem antes de tudo e o ciclo sai (a dica de
        cada botão já diz o que ganha e o que perde naquela troca) */
     const momDec=v.momentoDecisivo;
-    if(momDec)zona.appendChild(jxjFaixaMomento(momDec));
     const topo=el("div","jxj-zona-topo");
     topo.appendChild(el("p","jxj-rotulo",maoNova?`Round ${v.round}: ações novas${v.adversarioEscolheu?" · ele já escolheu":""}`:`Sua ação${v.adversarioEscolheu?" · ele já escolheu":""}`));
     /* cartas (2026-10-28): o ciclo dos 4 ícones saiu; cada carta diz quem ela ganha e de quem perde */
@@ -9019,7 +9019,6 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     zona.appendChild(topo);
     /* fase 2: as duas posturas, reveladas */
     if(v.sinais){
-      zona.appendChild(el("p","jxj-sinais",`<span class="eu">${ICONE(JXJ_ICONE_ACAO[v.sinais[eu]]||"luta")}Você mostrou <b>${JXJ_POSTURAS[v.sinais[eu]]}</b></span><span class="ele">${ICONE(JXJ_ICONE_ACAO[v.sinais[ele]]||"luta")}Ele mostrou <b>${JXJ_POSTURAS[v.sinais[ele]]}</b></span>`));
       if(jxjPrimeiraLuta(v,eu))zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>Ele mostrou ${JXJ_POSTURAS[v.sinais[ele]]}. Pode ser verdade ou finta.</span>`));
       if(jxjPrimeiraLuta(v,eu)&&e.iniciativa===eu)zona.appendChild(el("p","jxj-dica-iniciativa",`${ICONE("bandeira")}<span>Com a iniciativa, a finta custa metade.</span>`));
     }
@@ -9053,7 +9052,9 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
   /* histórico: gaveta fechada, com tudo dentro */
   const todas=[...(v.trocas||[])].reverse();
   const gav=el("details","jxj-log jxj-gaveta");
-  gav.innerHTML=`<summary>${ICONE("lista")}<span>O que aconteceu</span><small>${todas.length?`${todas.length} ${todas.length===1?"troca":"trocas"}`:"nada ainda"}</small></summary>`;
+  gav.innerHTML=`<summary>${ICONE("lista")}<span>O que aconteceu${v.duelos?" e duelos":""}</span><small>${todas.length?`${todas.length} ${todas.length===1?"troca":"trocas"}`:"nada ainda"}</small></summary>`;
+  /* cartas (2026-10-28): os duelos de atributo moram na gaveta */
+  if(v.duelos)gav.appendChild(jxjDuelos(v.duelos));
   const ol=el("ol","jxj-log-lista");
   if(!todas.length)ol.appendChild(el("li","",`<b></b><span>A primeira troca ainda não foi resolvida.</span>`));
   for(const t of todas)ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(jxjEsc).join(" ")||"Nada mudou."}</span>`));
