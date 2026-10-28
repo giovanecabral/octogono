@@ -8107,7 +8107,8 @@ async function jxjTelaCriar(passo){
       const barras=Object.entries(e.base).map(([k,v])=>`<li><span>${def.atributos[k]}</span>${jxjBarra(v,92)}<b>${v}</b></li>`).join("");
       const ramos=e.ramos.map(r=>def.ramos[r].nome).join(", ");
       /* fase 4: a mão do round muda com o estilo */
-      const mao=e.mao?`<small class="jxj-estilo-mao">Mão por round: ${jxjMaoTexto(e.mao)}</small>`:"";
+      const mao=(e.mao?`<small class="jxj-estilo-mao">Mão por round: ${jxjMaoTexto(e.mao)}</small>`:"")
+        +(e.bonusDefesaQueLe>0?`<small class="jxj-estilo-mao">Defender e acertar a leitura vale ${String(e.bonusDefesaQueLe).replace(".",",")} ponto a mais com os juízes.</small>`:"");
       const b=el("button","jxj-estilo"+(JXJ_NOVO.estilo===id?" on":""),
         `<b class="jxj-estilo-nome">${e.nome}</b><span class="jxj-estilo-resumo">${e.resumo}</span><ul class="jxj-atr">${barras}</ul>${mao}<small>Ramos: ${ramos}</small>`);
       b.type="button"; if(b.setAttribute)b.setAttribute("aria-pressed",String(JXJ_NOVO.estilo===id));

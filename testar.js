@@ -14390,7 +14390,11 @@ async function testarJxJTelas() {
         const h = String(c.innerHTML);
         if (!/Mão por round/.test(h)) throw new Error(`${id}: sem a mão`);
         for (const [f, n] of Object.entries(e.mao)) if (n > 0 && !h.includes(`${n} ${nome[f][n === 1 ? 0 : 1]}`)) throw new Error(`${id}: falta "${n} ${nome[f][n === 1 ? 0 : 1]}" em ${h.replace(/\s+/g, " ").slice(0, 300)}`);
+        /* o bônus da Defesa que lê (counter) aparece só no estilo que tem */
+        const bonus = /Defender e acertar a leitura vale/.test(h);
+        if (bonus !== (e.bonusDefesaQueLe > 0)) throw new Error(`${id}: bônus da Defesa que lê ${bonus ? "sobrando" : "faltando"} (${e.bonusDefesaQueLe})`);
       }
+      if (!(def.estilos.counter.bonusDefesaQueLe > 0)) throw new Error("as definições não mandam o bônus do counter");
       semLixoV3(htmlDe(desde(m2)), "passo do estilo");
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {

@@ -455,7 +455,8 @@ function definicoes(ativo) {
     ativo,
     versaoBalanceamento: ARV.VERSAO_BALANCEAMENTO,
     /* fase 4: a mão de cada estilo (a tela mostra no cartão do estilo) */
-    estilos: Object.fromEntries(Object.entries(ARV.ESTILOS).map(([id, e]) => [id, { nome: e.nome, resumo: e.resumo, base: e.base, mec: e.mec || {}, ramos: e.ramos, mao: EST.maoCheia(id) }])),
+    estilos: Object.fromEntries(Object.entries(ARV.ESTILOS).map(([id, e]) => [id, { nome: e.nome, resumo: e.resumo, base: e.base, mec: e.mec || {}, ramos: e.ramos, mao: EST.maoCheia(id),
+      bonusDefesaQueLe: EST.ESTRATEGIA.bonusDefesaQueLe[id] || 0 }])),
     categorias: Object.fromEntries(Object.entries(ARV.CATEGORIAS).map(([id, c]) => [id, { nome: c.nome, ajuste: c.ajuste }])),
     categoriasLancamento: ARV.CATEGORIAS_LANCAMENTO,
     atributos: ARV.NOME_ATRIBUTO,
