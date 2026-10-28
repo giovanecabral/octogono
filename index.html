@@ -8659,7 +8659,8 @@ function jxjVoarCarta(origem,idDestino){
 let JXJ_TREINO_PRAZOS={sinal:5000,acao:12000};   // null: sem relógio na lição 5 (testes)
 const JXJ_TREINO_FINTA=1.5;
 const JXJ_TREINO_VENCE={golpes:"pressao",pressao:"defesa",defesa:"queda",queda:"golpes"};
-const JXJ_TREINADOR={nome:"Treinador",estilo:"counter",nivel:1,cartel:[0,0,0],rating:1500,treino:true,rosto:null};
+/* wrestler: 3 Quedas (ele joga Queda nas lições 2 e 3, Golpes na 4) */
+const JXJ_TREINADOR={nome:"Treinador",estilo:"wrestler",nivel:1,cartel:[0,0,0],rating:1500,treino:true,rosto:null};
 const JXJ_TREINO=[
   {postura:null,acao:"golpes",ele:{postura:null,acao:"pressao"},
     fala:["Treino rápido: 5 trocas. Aqui ninguém perde nada.",
@@ -8727,7 +8728,8 @@ function jxjTreinoJogar(st,fam,tipo){
   const x=JSON.parse(JSON.stringify(st));
   /* energia: o custo da ação e, se fintou, a finta (metade com a iniciativa) */
   const custo=l=>{ const f=l==="a"?fam:dele,c=Number(def.acoes.custo.pe[f])||0,finta=sinais&&sinais[l]!==f?JXJ_TREINO_FINTA*(x.iniciativa===l?0.5:1):0; return c+finta; };
-  for(const l of ["a","b"])x.energia[l]=Math.max(0,Math.min(10,Math.round((x.energia[l]-custo(l))*100)/100));
+  /* o treinador não cansa (o roteiro dele gastaria tudo e ele apareceria sem gás) */
+  x.energia.a=Math.max(0,Math.min(10,Math.round((x.energia.a-custo("a"))*100)/100));
   x.mao.a[fam]--; if(x.mao.b[dele]>0)x.mao.b[dele]--;
   const r=jxjTreinoResolver(x,def,fam,dele,sinais);
   const rd=x.round-1; x.pontos[rd].a+=r.pts.a; x.pontos[rd].b+=r.pts.b;
@@ -8864,6 +8866,7 @@ async function jxjTelaTreino(id){
     const jogando=!travado;
     if(jogando&&fase!=="jogar"){ fase="jogar"; }
     const v=jxjTreinoVista(st,lut,def);
+    if(travado)v.semRelogio=true;   // o relógio só corre com a carta na mão (lição 5)
     const revelar=revelacao&&fase==="depois"?jxjRevelar(revelacao.t,!revelacao.animou):null;
     if(revelacao)revelacao.animou=true;
     const maoNova=st.round!==roundVisto; roundVisto=st.round;

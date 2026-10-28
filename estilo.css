@@ -1944,7 +1944,7 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 /* a mão fica presa no fim da tela (cartas, 2026-10-28): nos 5 s da postura
    não dá pra rolar atrás das cartas; o que está em cima passa por baixo */
 .jxj-combate .jxj-zona-acao{position:sticky;bottom:0;z-index:20;padding-top:16px;padding-bottom:env(safe-area-inset-bottom,0px);
-  background:linear-gradient(180deg,rgba(7,8,11,0),rgba(7,8,11,.94) 20%,rgba(7,8,11,.98))}
+  background:linear-gradient(180deg,rgba(7,8,11,0),rgba(7,8,11,.98) 16px,#07080B)}   /* quase opaca: o que passa por baixo não se mistura com os rótulos */
 .jxj-combate .jxj-zona-acao .jxj-mao-luta{padding-bottom:24px;min-height:0}   /* as pontas do leque descem 12 px */
 @media (max-width:720px){.jxj-combate .jxj-zona-acao{padding-top:10px}.jxj-combate .jxj-zona-acao .jxj-mao-luta{padding:10px 0 20px}
   .jxj-combate .jxj-zona-acao .jxj-dica-sinal,.jxj-combate .jxj-zona-acao .jxj-dica-mao,.jxj-combate .jxj-zona-acao .jxj-dica-iniciativa{font-size:12px;margin:0}}
