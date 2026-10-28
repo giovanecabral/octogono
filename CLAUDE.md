@@ -140,8 +140,8 @@ metade). Regras do revamp que valem daqui pra frente:
   versão: mudar número sobe `VERSAO_MOTOR`. Luta v3 (estado sem `mao`)
   segue as regras de antes. `VERSAO_BALANCEAMENTO` 3 com
   `supabase_jxj_estrategia.sql` (o dono roda antes do deploy). Fases 2 a 4
-  (sinais e blefe, iniciativa, ficha) vão pro ar junto com esta; as 4
-  estão prontas na branch desde 2026-10-28.
+  (sinais e blefe, iniciativa, ficha) foram pro ar junto com esta, em
+  2026-10-28 (`ec9a379`).
   Estratégia de simulação que pede família sem carta passa por
   `familiaNaMao`; bot filtra por `filtrarPelaMao`.
   **Fase 2 (sinais e blefe):** cada troca tem a etapa do sinal (5 s, só

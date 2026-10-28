@@ -2514,8 +2514,12 @@ vista, sinais e blefe, iniciativa, ficha. Branch `online-estrategia`.
    O momento saiu do v4; a mão de cada estilo foi medida (o ponto de
    partida da spec travava o counter); `FORCA_BOT` e `PESOS_VALOR` medidos
    de novo. Nenhuma das duas tem SQL próprio.
-4. Do dono, antes do deploy (depois das 4 fases): backup e
-   `supabase_jxj_estrategia.sql` (versão de balanceamento 3 e, da fase 2,
-   a tabela `jxj_sinais` com as funções `jxj_enviar_sinal` e
-   `jxj_sinais_abertos`). Deploy só com "deploya".
+4. NO AR desde 2026-10-28: o dono rodou o `supabase_jxj_estrategia.sql`
+   (disse versão de balanceamento 3) e mandou o deploy; `master` em
+   `ec9a379` (avanço direto da branch, a mesma árvore da bateria verde),
+   push e `vercel --prod`. Conferido: `definicoes` com versão 3 e a mão de
+   cada estilo; `index.html` e `estilo.css` servidos iguais ao git; SQL,
+   docs e ferramentas dão 404. Falta o dono confirmar as outras duas
+   colunas da consulta de conferência (`tabela_sinais` true, `funcoes`
+   2): sem elas o jogo roda sem a etapa da postura.
 
