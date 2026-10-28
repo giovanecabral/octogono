@@ -23,13 +23,25 @@ export const ESTRATEGIA = {
      pontos */
   mao: { golpes: 2, queda: 2, defesa: 4, pressao: 1 },
   /* a ficha muda a luta (fase 4): cada estilo troca uma carta da mão
-     padrão. Ponto de partida da spec, adaptado à mão de 9 */
+     padrão. Medido em 2026-10-28 (matriz no nível 1 e no 30, 600 lutas por
+     dupla; LEIA-ME, fase 4). O ponto de partida da spec (counter sem
+     Pressão, grappler com 3 Quedas) não fechou: sem Pressão ninguém pune a
+     Defesa do counter (espelho 100%, empate 8%, nocaute 17,6%) e o
+     grappler com 3 Quedas passava de 60% contra o wrestler no nível 30.
+     Striker troca uma Defesa por um Golpe, wrestler uma Defesa por uma
+     Queda, grappler um Golpe por uma Defesa (a guarda), counter uma Queda
+     por uma Defesa */
   maoPorEstilo: {
     striker: { golpes: 3, queda: 2, defesa: 3, pressao: 1 },
     wrestler: { golpes: 2, queda: 3, defesa: 3, pressao: 1 },
-    grappler: { golpes: 1, queda: 3, defesa: 4, pressao: 1 },
-    counter: { golpes: 2, queda: 2, defesa: 5, pressao: 0 },
+    grappler: { golpes: 1, queda: 2, defesa: 5, pressao: 1 },
+    counter: { golpes: 2, queda: 1, defesa: 5, pressao: 1 },
   },
+  /* pontos de juiz a mais pra quem defende e acerta a leitura (a Defesa
+     que pega a queda ou a finalização dele), por estilo (fase 4). Medido:
+     sem ele o counter perdia do wrestler (41% a 45%); 2 pontos já viravam
+     pra 56%; 0,5 deixa toda dupla na faixa nos dois níveis */
+  bonusDefesaQueLe: { counter: 0.5 },
   /* energia por carta guardada no fim do round (até o máximo). Medido:
      0,5 deixava o wrestler do nível 30 em 39% contra o counter; 0,25 põe
      toda dupla do nível 30 entre 41% e 59% */

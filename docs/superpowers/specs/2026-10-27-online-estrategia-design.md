@@ -206,6 +206,25 @@ nunca compensava e o equilíbrio saía 100% honesto.
 - O momento sai do motor v4 (e da tela).
 - Tela: uma ficha discreta "Iniciativa: você" ou "Iniciativa: ele".
 
+**Decisões de desenho da fase 3 (tomadas na execução, 2026-10-28; o dono
+mandou seguir até o SQL):**
+
+1. Quem venceu a troca é quem levou mais pontos de juiz nela (folga de
+   0,01); pontos de ausência contam. A iniciativa vale na troca seguinte.
+2. O momento sai, mas os juízes continuam dando o ponto do lance
+   (`bonusMomento`): sem ele, sair da grade ou levantar valeria zero.
+3. Os dois nós do momento mudaram de efeito no v4: "Manutenção de
+   iniciativa" (`retencaoMomento`) segura a iniciativa de quem perdeu a
+   troca com essa chance; "Controle de ritmo" (`ritmo`) tira essa fração
+   do custo da finta.
+4. Com a finta mais barata, o bot e o jogador modelo blefam mais, na
+   proporção do custo (com a iniciativa, o dobro, até sempre).
+5. Medido: a iniciativa muda em 43% das trocas; quem tem finta em 44% das
+   trocas e quem não tem, em 27%. A honestidade do sinal no equilíbrio
+   passou a ser contada nas lutas (66,1%; a fórmula 1 − blefe não via o
+   blefe dobrado). Sem o momento, a leitura em metade das trocas caiu de
+   71,3% pra 69,5% (a faixa do teste foi pra 69%).
+
 ## 9. Fase 4: a ficha muda a luta
 
 Cada estilo troca uma carta da mão padrão (total 6), ponto de partida da
@@ -226,6 +245,18 @@ round (e o counter, que não tem) só sai de baixo raspando (Queda) até o
 round acabar. Isso é estratégia (guardar a Pressão), mas pode prender
 demais; se a medição mostrar, a saída é uma carta de Pressão a mais por
 baixo ou o counter manter 1 Pressão.
+
+**Decisões de desenho da fase 4 (medidas na execução, 2026-10-28):** a
+mão padrão já era de 9 cartas (2/2/4/1), então cada estilo troca uma
+carta dessa. O ponto de partida acima não fechou: o counter sem Pressão
+deixa a Defesa dele sem punição (espelho 100%, empate 8%, nocaute 17,6%)
+e o grappler com 3 Quedas passava de 60% contra o wrestler no nível 30.
+Ficou: striker 3/2/3/1 (uma Defesa vira Golpe), wrestler 2/3/3/1 (uma
+Defesa vira Queda), grappler 1/2/5/1 (um Golpe vira Defesa, a guarda),
+counter 2/1/5/1 (uma Queda vira Defesa) com 0,5 ponto de juiz ao defender
+e acertar a leitura (`bonusDefesaQueLe`; 2 pontos já levavam o counter a
+56% contra o wrestler). Custo da finta igual pra todos (a medição não
+pediu outro).
 
 ## 10. Medição (cada fase, contra o motor v3)
 

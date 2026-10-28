@@ -956,6 +956,9 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
   if (!estado.fim && !ausente.a && !ausente.b) {
     const leu = quemLeu(papeis, ctx.acoes);
     if (leu) registrar(ctx, "leu", leu, { fam: ctx.acoes[leu], vs: ctx.acoes[outro(leu)] });
+    /* v4, fase 4: o estilo que ganha pontos ao defender e acertar a leitura (counter) */
+    const bonusLe = leu && estado.mao && ctx.acoes[leu] === "defesa" ? ESTRATEGIA.bonusDefesaQueLe[perfis[leu].estilo] || 0 : 0;
+    if (bonusLe) pontuar(ctx, leu, bonusLe);
   }
   /* ausência repetida: a troca vai pro adversário na pontuação */
   for (const l of ["a", "b"]) if (estado[l].ausentesSeguidas >= 2) pontuar(ctx, outro(l), K.bonusAusencia);

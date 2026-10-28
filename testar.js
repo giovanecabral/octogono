@@ -12678,6 +12678,26 @@ async function testarJxJMotor() {
       if (!e.fim && JSON.stringify(e.mao) !== JSON.stringify(cheias)) throw new Error(`round 2 ${sa} x ${sb}: ${JSON.stringify(e.mao)}`);
     }
   });
+  await conf("bônus da Defesa que lê (fase 4): o counter que defende e pega a queda ganha bonusDefesaQueLe pontos de juiz a mais; outro estilo, outra ação ou luta v3, nada", () => {
+    const b = EST.ESTRATEGIA.bonusDefesaQueLe.counter;
+    if (!(b > 0)) throw new Error("sem bônus do counter: " + b);
+    const base = perfil("counter"), outroEst = { ...base, estilo: "striker" }, pO = perfil("wrestler");
+    let achou = 0;
+    for (let s = 0; s < 40; s++) {
+      const r1 = M.resolverTroca(M.novaLuta(base, pO), { a: base, b: pO }, { a: "defesa", b: "queda" }, "bq" + s);
+      const r2 = M.resolverTroca(M.novaLuta(outroEst, pO), { a: outroEst, b: pO }, { a: "defesa", b: "queda" }, "bq" + s);
+      if (r1.estado.fim || r2.estado.fim || !r1.eventos.some((ev) => ev.tipo === "leu" && ev.quem === "a")) continue;
+      achou++;
+      const d = r1.estado.pontos[0].a - r2.estado.pontos[0].a;
+      if (Math.abs(d - b) > 1e-9 || r1.estado.pontos[0].b !== r2.estado.pontos[0].b) throw new Error(`bônus ${d}, esperado ${b}`);
+      const g1 = M.resolverTroca(M.novaLuta(base, pO), { a: base, b: pO }, { a: "golpes", b: "pressao" }, "bq" + s), g2 = M.resolverTroca(M.novaLuta(outroEst, pO), { a: outroEst, b: pO }, { a: "golpes", b: "pressao" }, "bq" + s);
+      if (g1.estado.pontos[0].a !== g2.estado.pontos[0].a) throw new Error("bônus fora da Defesa");
+      const v3 = M.novaLuta(base, pO); delete v3.mao; delete v3.iniciativa; v3.v = 3;
+      const v3b = M.novaLuta(outroEst, pO); delete v3b.mao; delete v3b.iniciativa; v3b.v = 3;
+      if (M.resolverTroca(v3, { a: base, b: pO }, { a: "defesa", b: "queda" }, "bq" + s).estado.pontos[0].a !== M.resolverTroca(v3b, { a: outroEst, b: pO }, { a: "defesa", b: "queda" }, "bq" + s).estado.pontos[0].a) throw new Error("bônus na luta v3");
+    }
+    if (achou < 5) throw new Error("poucas trocas com a leitura da Defesa: " + achou);
+  });
   await conf("ação sem carta vira a ação padrão (evento semCarta, a luta não trava); prazo perdido usa Defesa ou, sem Defesa, Pressão, Golpes, Queda; a ausência conta igual", () => {
     const pA = perfil("striker"), pB = perfil("wrestler"), P = { a: pA, b: pB };
     const e = M.novaLuta(pA, pB); e.mao.a = { golpes: 0, queda: 1, defesa: 0, pressao: 1 };
@@ -13110,11 +13130,14 @@ async function testarJxJMotor() {
       if (JSON.stringify(r) !== JSON.stringify(esperado)) throw new Error(`"${t}" contra "${f}": ${JSON.stringify(r)}, esperava ${JSON.stringify(esperado)}`);
     }
   });
-  await conf("variantes equilibradas: espelho com a variante sempre na mão, média dos 4 estilos e de duas amostras (3200 lutas), toda variante entre 48% e 52,5% (faixa do dono, fase 3; era 44% a 56%)", () => {
-    const r1 = BAL.valorDasVariantes(400, ESTS, "a"), r2 = BAL.valorDasVariantes(400, ESTS, "b");
+  await conf("variantes equilibradas: espelho com a variante sempre na mão, média dos 4 estilos e de quatro amostras (6400 lutas), toda variante entre 48% e 52,5% (faixa do dono, fase 3; era 44% a 56%)", () => {
+    /* 4 amostras desde a fase 4 (2026-10-28): com 2, o quadril deu 47,7% e,
+       em três amostras novas de 3200, 50,2, 50,1 e 48,0 (ruído de cerca de
+       1 ponto em 30 variantes; as variantes estão fora do escopo da spec) */
+    const rs = ["a", "b", "c", "d"].map((sal) => BAL.valorDasVariantes(400, ESTS, sal));
     const linhas = [], ruins = [];
-    for (const id of Object.keys(r1)) {
-      const v = (r1[id].pct + r2[id].pct) / 2;
+    for (const id of Object.keys(rs[0])) {
+      const v = rs.reduce((t, r) => t + r[id].pct, 0) / rs.length;
       linhas.push(`${id} ${f1(v)}`);
       if (v < 48 || v > 52.5) ruins.push(`${id} ${f1(v)}%`);
     }

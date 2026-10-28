@@ -89,11 +89,13 @@ export const PESOS_ESTILO = {
 
 /* ---------- valor de estado e equilíbrio de uma troca ---------- */
 /* chance de A vencer dali, regressão logística treinada pela ferramenta de
-   balanço (treinarValor); motor mudou, a suíte jxjbot mostra os pesos novos */
-export const PESOS_VALOR = [0.012954323843748228, 0.4899610855247158, 1.030375415226416, 0.37568804291811037,
-  0.20929666730864424, 0.07399015025592788, 0.18732294479364298, 0.018189476288175237, 0.23262299161287478,
-  0.04976513292270944, 0.28167767553641976, 0.06953377690899398, -0.13664996785910755, 0.30184715362267833,
-  0.14776486372824946];
+   balanço (treinarValor); motor mudou, a suíte jxjbot mostra os pesos novos.
+   Fases 3 e 4 (2026-10-28): o momento saiu do v4 e o peso dele (o 11º)
+   ficou zero; a mão é a do estilo */
+export const PESOS_VALOR = [0.031425404799761, 0.5918588399484996, 1.0542824680456562, 0.38639159822473046,
+  0.21135464361012873, 0.13621011538069236, 0.19683780916371724, 0.03713412867025435, 0.2937949152526991,
+  0.0666867862033202, 0, 0.0747146306681021, -0.05914398285521694, 0.3397166618639492,
+  0.14190108041058455];
 function feat(e, pA, pB) {
   const rd = e.round - 1, pts = e.pontos[rd] || { a: 0, b: 0 };
   const cards = e.cartoes.reduce((s, c) => s + (c.a - c.b), 0);

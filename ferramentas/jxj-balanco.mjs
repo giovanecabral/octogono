@@ -14,6 +14,8 @@
      node ferramentas/jxj-balanco.mjs personalidades  # bots com personalidade: quem lê o jeito vence mais?
      node ferramentas/jxj-balanco.mjs mao        # mão à vista (v4): trocas óbvias e quanto vale contar cartas
      node ferramentas/jxj-balanco.mjs sinais     # sinais e blefe (fase 2): honestidade do sinal no equilíbrio
+     node ferramentas/jxj-balanco.mjs iniciativa # iniciativa (fase 3): quanto muda, quanto se finta com ela, valor dos 2 nós com sinais
+     node ferramentas/jxj-balanco.mjs presos     # mão por estilo (fase 4): por baixo sem a Pressão (levantar), por estilo
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -624,6 +626,71 @@ export function medirSinais(n = 150) {
   const usadas = opcoes.map((x, i) => [x, eq[i]]).filter(([, w]) => w > 0.1).map(([x, w]) => `blefe ${x.blefe} ${x.resposta}: ${(100 * w).toFixed(0)}%`);
   return { honestidade, usadas, matriz: m, opcoes, eq };
 }
+/* Fase 3: a iniciativa na luta com sinais (espelho dos 4 estilos, nível 1,
+   os dois lados no equilíbrio da fase 2: blefe 0,3 e ignora o sinal dele).
+   Quantas trocas mudam a iniciativa, quanto quem tem e quem não tem finta,
+   e quanto valem, jogando com sinais, os dois nós que passaram pra finta e
+   pra iniciativa (a medida dos nós da jxjarvore é sem sinais e não vê). */
+export function medirIniciativa(n = 300) {
+  const c = { trocas: 0, mudou: 0, segurou: 0, comIni: 0, fintaComIni: 0, semIni: 0, fintaSemIni: 0 };
+  const estr = (p) => comSinal(racional(p, p), { blefe: 0.3 });
+  for (const s of ESTS) {
+    const p = perfilTipico(s, 1), P = { a: p, b: p };
+    for (let i = 0; i < n; i++) {
+      const eA = estr(p), eB = estr(p), r = lcg(i * 131 + 17);
+      let e = M.novaLuta(p, p), k = 0;
+      while (!e.fim && k++ < 100) {
+        const sinais = { a: eA.sinal(e, "a", p, r), b: eB.sinal(e, "b", p, r) };
+        const ac = { a: EST.familiaNaMao(e, "a", eA.acao(e, "a", p, r, sinais), r), b: EST.familiaNaMao(e, "b", eB.acao(e, "b", p, r, sinais), r), sinais };
+        const ini = e.iniciativa, res = M.resolverTroca(e, P, ac, `ini${s}${i}`);
+        c.trocas++;
+        for (const ev of res.eventos) if (ev.tipo === "iniciativa") { if (ev.segurou) c.segurou++; else c.mudou++; }
+        for (const l of ["a", "b"]) {
+          const fintou = res.eventos.some((ev) => ev.tipo === "finta" && ev.quem === l);
+          if (ini === l) { c.comIni++; if (fintou) c.fintaComIni++; } else { c.semIni++; if (fintou) c.fintaSemIni++; }
+        }
+        e = res.estado;
+      }
+    }
+  }
+  /* os dois nós, com sinais: como valorDoNo, mas os dois lados no equilíbrio da fase 2 */
+  const nos = {};
+  for (const id of ["controle_ritmo", "iniciativa"]) {
+    const no = A.NOS[id], ramo = A.RAMOS[no.ramo], t = no.tier - 1;
+    const pre = {}; let falta = A.PEDIDO_POR_TIER[t];
+    for (let k = 0; k < t && falta > 0; k++) { const q = Math.min(3, falta); pre[ramo.nos[k].id] = q; falta -= q; }
+    const pCom = A.perfilDeCombate({ estilo: no.estilo, categoria: "middleweight", build: { ...pre, [id]: 3 } });
+    const pSem = A.perfilDeCombate({ estilo: no.estilo, categoria: "middleweight", build: pre });
+    let soma = 0;
+    for (const o of ESTS) {
+      const pO = perfilTipico(o, 1);
+      const eX = () => comSinal(racional(pSem, pO), { blefe: 0.3 }), eO = () => comSinal(racional(pO, pSem), { blefe: 0.3 });
+      soma += confronto(pCom, pO, eX(), eO(), n, `nsi${id}${o}`).pct - confronto(pSem, pO, eX(), eO(), n, `nsi${id}${o}`).pct;
+    }
+    nos[id] = soma / ESTS.length;
+  }
+  const pc = (x, t) => 100 * x / Math.max(1, t);
+  return { mudou: pc(c.mudou, c.trocas), segurou: pc(c.segurou, c.trocas), fintaComIni: pc(c.fintaComIni, c.comIni), fintaSemIni: pc(c.fintaSemIni, c.semIni), comIni: pc(c.comIni, 2 * c.trocas), nos };
+}
+/* Fase 4: quem fica por baixo sem a carta de Pressão (levantar) no round.
+   Jogo racional, todas as duplas no nível 1. Por estilo: das trocas por
+   baixo, quantas sem Pressão na mão (só sai raspando) */
+export function medirPresos(n = 200) {
+  const c = Object.fromEntries(ESTS.map((s) => [s, { baixo: 0, semP: 0 }]));
+  for (const sa of ESTS) for (const sb of ESTS) {
+    const pA = perfilTipico(sa, 1), pB = perfilTipico(sb, 1), P = { a: pA, b: pB }, ra = racional(pA, pB), rb = racional(pB, pA);
+    for (let i = 0; i < n; i++) {
+      const r = lcg(i * 53 + 11);
+      let e = M.novaLuta(pA, pB), k = 0;
+      while (!e.fim && k++ < 100) {
+        for (const [l, s] of [["a", sa], ["b", sb]]) if (M.papel(e, l) === "baixo") { c[s].baixo++; if (!EST.temCarta(e, l, "pressao")) c[s].semP++; }
+        const fa = EST.familiaNaMao(e, "a", ra(e, "a", pA, r), r), fb = EST.familiaNaMao(e, "b", rb(e, "b", pB, r), r);
+        e = M.resolverTroca(e, P, { a: fa, b: fb }, `pr${sa}${sb}${i}`).estado;
+      }
+    }
+  }
+  return Object.fromEntries(ESTS.map((s) => [s, { baixo: c[s].baixo, semPressao: 100 * c[s].semP / Math.max(1, c[s].baixo) }]));
+}
 /* Fase 2: o hábito de blefe do bot, contado nas trocas da luta (quantas
    vezes a ação dele não foi a postura). Quase nunca blefa: confia (joga
    contra a postura). Blefa: ignora a postura e fica com a jogada que já lê
@@ -738,6 +805,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const r = medirSinais(N || 200);
     console.log(`custo da finta ${EST.ESTRATEGIA.custoFinta}: o sinal acerta a ação ${f1(r.honestidade)}% das vezes no equilíbrio`);
     for (const u of r.usadas) console.log("  " + u);
+  } else if (cmd === "presos") {
+    const r = medirPresos(N || 200);
+    console.log("por baixo sem a carta de Pressão (levantar), em % das trocas por baixo de cada estilo:");
+    for (const s of ESTS) console.log("  " + s.padEnd(9) + `${f1(r[s].semPressao)}% de ${r[s].baixo} trocas por baixo`);
+  } else if (cmd === "iniciativa") {
+    const r = medirIniciativa(N || 300);
+    console.log(`a iniciativa muda em ${f1(r.mudou)}% das trocas (o nó da manutenção segura em ${f1(r.segurou)}%); cada lado tem a iniciativa em ${f1(r.comIni)}% das trocas`);
+    console.log(`quem tem a iniciativa finta em ${f1(r.fintaComIni)}% das trocas; quem não tem, em ${f1(r.fintaSemIni)}%`);
+    console.log("valor dos nós com sinais (nível 3, contra os 4 estilos):", Object.entries(r.nos).map(([k, v]) => `${k} ${f1(v)}`).join(", "));
   } else if (cmd === "momentos") {
     const r = medirMomentos(N || 120);
     console.log(`lutas com grogue ${f1(r.comGrogue)}%, com finalização encaixada ${f1(r.comEncaixe)}%`);
@@ -748,6 +824,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log("  " + s.padEnd(9) + Object.keys(BOT.ESTADO_MOMENTO).map((ch) => `${ch} ${misturaDoMomento(p, p, ch).a.map((x) => Math.round(100 * x)).join("/")}`).join("  "));
     }
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos|mao|sinais] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos|mao|sinais|iniciativa|presos] [n]");
   }
 }
