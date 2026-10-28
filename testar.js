@@ -13428,7 +13428,8 @@ async function testarJxJBot() {
   await conf("escolha cega: acaoDoBot só recebe estado, trocas resolvidas, semente e os dados do bot; a mesma troca dá a mesma ação (duas resoluções gravam igual) e trocas diferentes variam", () => {
     const fonte = BOT.acaoDoBot.toString();
     const params = fonte.slice(fonte.indexOf("{") + 1, fonte.indexOf("}")).split(",").map((x) => x.trim().split("=")[0].trim());
-    if (JSON.stringify(params) !== JSON.stringify(["estado", "semente", "trocas", "dados", "lado"])) throw new Error("parâmetros: " + params.join(","));
+    /* fase 2: sinais = os dois sinais já revelados (públicos pros dois); a ação do jogador continua de fora */
+    if (JSON.stringify(params) !== JSON.stringify(["estado", "semente", "trocas", "dados", "lado", "sinais"])) throw new Error("parâmetros: " + params.join(","));
     const pH = T.perfilTipico("striker", 3), bot = BOT.montarBot({ nivel: 3, categoria: "middleweight", rating: 1560, semente: "cega" });
     const dados = BOT.dadosDaLuta(bot, pH);
     if (/"mx"|"pol"|"build"/.test(JSON.stringify(BOT.vitrine(bot)))) throw new Error("a vitrine leva dado escondido do bot");
@@ -13462,6 +13463,30 @@ async function testarJxJBot() {
       const d = BOT.dadosDaLuta(b, pH);
       if (d.pers !== pers || JSON.stringify(d.roda) !== JSON.stringify(b.roda)) throw new Error("dados da luta sem o jeito: " + JSON.stringify({ pers: d.pers, roda: d.roda }));
     }
+  });
+  await conf("sinal do bot (fase 2): o sinal sai só do estado, das trocas e da semente (a mesma chamada dá o mesmo); é de família com carta; cada jeito blefa no seu ritmo (Provocador mais que Paciente); com sinais, o bot só finta com energia", () => {
+    const pH = T.perfilTipico("striker", 4), taxas = {};
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const bot = BOT.montarBot({ nivel: 4, categoria: "middleweight", rating: 1560, semente: "sn" + pers, pers }), dados = BOT.dadosDaLuta(bot, pH);
+      let fintas = 0, total = 0;
+      for (let luta = 0; luta < 60; luta++) {
+        let e = M.novaLuta(pH, bot.perfil); const trocas = [];
+        while (!e.fim) {
+          const sem = `sn${pers}${luta}`, sB = BOT.sinalDoBot({ estado: e, semente: sem, trocas, dados, lado: "b" });
+          if (sB !== BOT.sinalDoBot({ estado: e, semente: sem, trocas, dados, lado: "b" }) || !EST.temCarta(e, "b", sB)) throw new Error(`${pers}: sinal ${sB}`);
+          const disp = EST.familiasComCarta(e, "a"), sH = disp[luta % disp.length];
+          const aB = BOT.acaoDoBot({ estado: e, semente: sem, trocas, dados, lado: "b", sinais: { a: sH, b: sB } });
+          if (!EST.temCarta(e, "b", aB)) throw new Error(`${pers}: ação sem carta`);
+          if (aB !== sB && e.b.energia < EST.ESTRATEGIA.custoFinta) throw new Error(`${pers}: fintou sem energia`);
+          total++; if (aB !== sB) fintas++;
+          const r = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: sH, b: aB, sinais: { a: sH, b: sB } }, sem);
+          trocas.push({ round: e.round, troca: e.troca, acao_a: sH, acao_b: aB, eventos: r.eventos }); e = r.estado;
+        }
+      }
+      taxas[pers] = fintas / total;
+    }
+    console.log(cinza("         fintas do bot forte: " + Object.entries(taxas).map(([p, x]) => `${p} ${(100 * x).toFixed(0)}%`).join(" | ")));
+    if (!(taxas.agressivo > taxas.defensivo + 0.1)) throw new Error("Provocador não finta mais que o Paciente: " + JSON.stringify(taxas));
   });
   await conf("mão (v4): o bot nunca escolhe família sem carta, em toda personalidade e habilidade, inclusive no momento decisivo (o óbvio pode ter acabado)", () => {
     const pH = T.perfilTipico("striker", 4), ruins = [];

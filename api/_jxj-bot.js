@@ -26,7 +26,7 @@
  * Números medidos no LEIA-ME, seção "Bots do Online".
  */
 import { createHash } from "node:crypto";
-import { filtrarPelaMao, temCarta, acaoPadrao } from "./_jxj-estrategia.js";
+import { filtrarPelaMao, temCarta, acaoPadrao, FAMILIAS_MAO, ESTRATEGIA } from "./_jxj-estrategia.js";
 import * as MOTOR from "./_jxj-motor.js";
 import * as ARV from "./_jxj-arvores.js";
 
@@ -205,13 +205,16 @@ export function misturasDosMomentos(pA, pB, n = N_MISTURA) {
    a tela vê só a alcunha). Pedido do dono, 2026-10-20: "ensino pós-luta",
    o jeito que o bot jogou e como puni-lo, numa frase. */
 export const PERSONALIDADES = {
-  agressivo: { alcunha: "o Provocador", estilo: "striker",
+  /* sinal (fase 2): isca = chance de mostrar uma postura que esconde a
+     ação; confia e desconfia = chance (vezes a habilidade) de responder ao
+     sinal do jogador como verdade ou como isca */
+  agressivo: { alcunha: "o Provocador", estilo: "striker", sinal: { isca: 0.45, confia: 0.3, desconfia: 0.1 },
     licao: "O Provocador golpeia e pressiona quase sempre, e mais ainda depois de apanhar: a queda pune ele." },
-  defensivo: { alcunha: "o Paciente",
+  defensivo: { alcunha: "o Paciente", sinal: { isca: 0.05, confia: 0.3, desconfia: 0.1 },
     licao: "O Paciente defende a maior parte das trocas e ataca quando você cansa: pressione na grade e guarde energia." },
-  leitor: { alcunha: "o Observador",
+  leitor: { alcunha: "o Observador", sinal: { isca: 0.15, confia: 0.6, desconfia: 0.3 },
     licao: "O Observador responde à sua última ação com a que ganha dela: jogue a que ganha dessa resposta." },
-  caotico: { alcunha: "o Inquieto",
+  caotico: { alcunha: "o Inquieto", sinal: { isca: 0.3, confia: 0.2, desconfia: 0.2 },
     licao: "O Inquieto anda numa roda fixa das 4 ações e nunca repete a anterior: descubra a ordem e responda à próxima." },
 };
 export const PERSONALIDADES_IDS = Object.keys(PERSONALIDADES);
@@ -490,7 +493,52 @@ function decidirSemJeito(e, lado, d, hist, r) {
    nunca entra. O sorteio é próprio de cada troca: chamar de novo dá a mesma
    ação (duas resoluções ao mesmo tempo gravam a mesma coisa). */
 export const acoesDoBot = (trocas, lado = "b") => (trocas || []).map((t) => (lado === "a" ? t.acao_a : t.acao_b)).filter((f) => F.includes(f));
-export function acaoDoBot({ estado, semente, trocas, dados, lado = "b" }) {
+export function acaoDoBot({ estado, semente, trocas, dados, lado = "b", sinais = null }) {
   const r = gerador(`acao:${semente}:${estado.round}:${estado.troca}`);
-  return decidir(estado, lado, dados, historicoDasTrocas(trocas, lado), r, acoesDoBot(trocas, lado));
+  if (!sinais) return decidir(estado, lado, dados, historicoDasTrocas(trocas, lado), r, acoesDoBot(trocas, lado));
+  /* fase 2: com os dois sinais revelados. A base é o plano do sinal (a
+     pretendida, que difere do sinal quando ele mostrou isca); com a chance
+     do jeito (vezes a habilidade), responde ao sinal do jogador como verdade
+     ou como isca. Nunca finta sem energia: aí joga o próprio sinal. A ação
+     que o jogador mandou nesta troca nunca entra. */
+  const o = lado === "a" ? "b" : "a", plano = planoDoSinal({ estado, semente, trocas, dados, lado });
+  const sp = (PERSONALIDADES[dados.pers] || {}).sinal || { confia: 0.3, desconfia: 0.1 }, s = Number(dados.s) || 0;
+  let f = plano.pretendida;
+  const x = r();
+  if (sinais[o] && x < sp.confia * s) {
+    const op = respostasA(estado, lado, [sinais[o]]);
+    if (op.length) f = op[Math.floor(r() * op.length)];
+  } else if (sinais[o] && x < (sp.confia + sp.desconfia) * s) {
+    const escondidas = FAMILIAS_MAO.filter((z) => temCarta(estado, o, z) && iscasDe(estado, o, z).includes(sinais[o]));
+    const op = respostasA(estado, lado, escondidas);
+    if (op.length) f = op[Math.floor(r() * op.length)];
+  }
+  if (!temCarta(estado, lado, f)) f = plano.sinal;
+  if (f !== sinais[lado] && estado[lado].energia < ESTRATEGIA.custoFinta) f = sinais[lado];
+  return f;
 }
+/* quem ganha a troca de leitura entre a família fl de l e fo de o */
+const quemGanha = (e, l, fl, o, fo) => MOTOR.quemLeu({ [l]: MOTOR.papel(e, l), [o]: MOTOR.papel(e, o) }, { [l]: fl, [o]: fo });
+/* famílias de l (com carta) que ganham de alguma das famílias alvo de o */
+function respostasA(e, l, alvos) {
+  const o = l === "a" ? "b" : "a";
+  return FAMILIAS_MAO.filter((x) => temCarta(e, l, x) && alvos.some((al) => quemGanha(e, l, x, o, al) === l));
+}
+/* posturas de l que são isca pra pretendida: a resposta óbvia de o a elas perde pra pretendida */
+function iscasDe(e, l, pretendida) {
+  const o = l === "a" ? "b" : "a";
+  return FAMILIAS_MAO.filter((sg) => sg !== pretendida && temCarta(e, l, sg)
+    && FAMILIAS_MAO.some((ro) => temCarta(e, o, ro) && quemGanha(e, o, ro, l, sg) === o && quemGanha(e, l, pretendida, o, ro) === l));
+}
+/* O plano do bot pro sinal (fase 2): a pretendida (a mesma escolha de
+   decidir, com sorteio próprio) e o sinal (ela ou, com a chance de isca do
+   jeito, uma isca). Só estado, trocas e semente: a mesma chamada dá o mesmo. */
+function planoDoSinal({ estado, semente, trocas, dados, lado = "b" }) {
+  const r = gerador(`sinal:${semente}:${estado.round}:${estado.troca}`);
+  const pretendida = decidir(estado, lado, dados, historicoDasTrocas(trocas, lado), r, acoesDoBot(trocas, lado));
+  const sp = (PERSONALIDADES[dados.pers] || {}).sinal || { isca: 0.15 };
+  if (r() >= sp.isca) return { pretendida, sinal: pretendida };
+  const is = iscasDe(estado, lado, pretendida);
+  return { pretendida, sinal: is.length ? is[Math.floor(r() * is.length)] : pretendida };
+}
+export function sinalDoBot(arg) { return planoDoSinal(arg).sinal; }
