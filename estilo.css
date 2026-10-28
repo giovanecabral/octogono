@@ -1967,3 +1967,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-combate .jxj-na-mao .jxj-carta{--w:126px!important}
   .jxj-combate .jxj-na-mao .jxj-carta-vazia{width:126px;height:181px}
 }
+/* treino: o relógio livre e o selo do Treinador */
+.jxj-anel.livre{background:conic-gradient(var(--ouro) 0 100%,rgba(255,255,255,.1) 100% 100%)}
+.jxj-anel.livre .jxj-relogio{font-size:16px;letter-spacing:.08em;text-transform:uppercase}
+.jxj-selo-treino{background:var(--ouro);color:#16120a}
+.jxj-selo-treino .ico{color:#16120a}

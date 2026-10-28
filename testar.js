@@ -14018,6 +14018,12 @@ async function testarJxJTelas() {
     };
     const botao = (nos, txt) => nos.filter((n) => n.tagName === "button" && String(n.innerHTML).includes(txt)).pop();
 
+    const semLixoV3T = (h, onde) => {   // como o semLixoV3 (definido mais abaixo), já no começo da suíte
+      const lixo = h.match(/undefined|NaN|\[object Object\]/);
+      if (lixo) throw new Error(`${onde}: "${lixo[0]}" em ${h.slice(Math.max(0, lixo.index - 80), lixo.index + 30).replace(/\s+/g, " ")}`);
+      const p = problemasDeTexto(h.replace(/<[^>]*>/g, " "));
+      if (p.length) throw new Error(`${onde}: ${p.join(", ")}`);
+    };
     await conf("entrada sem lutador: apresentação e o botão Criar meu lutador", async () => {
       const m = await abrir("");
       if (!botao(desde(m), "Criar meu lutador")) throw new Error("sem Criar meu lutador: " + htmlDe(desde(m)).replace(/\s+/g, " ").slice(0, 200));
@@ -14049,6 +14055,51 @@ async function testarJxJTelas() {
       await no.onclick(); await assentar(10);
       const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
       if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
+    });
+    await conf("treino, o roteiro (2026-10-28): a mão do estilo; nas 4 guiadas só a carta certa joga; a lição 4 cobra a finta pela metade (iniciativa) e derruba; a troca 4 fecha o round 1 com o cartão; a 5 começa em pé, com a mão cheia e sem iniciativa; a vista passa pela tela sem lixo", async () => {
+      await vm.runInContext("jxjDef()", env.sandbox);
+      const m = env.todos.length;
+      const r = JSON.parse(vm.runInContext(`(() => {
+        const def = JXJ_DEF, out = {}, F = ["golpes", "queda", "defesa", "pressao"];
+        for (const estilo of Object.keys(def.estilos)) {
+          const lut = { id: 1, nome: "Aluno", estilo, rosto: null, cartel: [0, 0, 0] };
+          let st = jxjTreinoNovo(lut, def);
+          const o = { mao: { ...st.mao.a }, passos: [] };
+          for (let i = 0; i < 4; i++) {
+            const L = JXJ_TREINO[st.i];
+            const certa = st.etapa === "sinal" ? L.postura : L.acao, tipo = st.etapa === "sinal" ? "sinal" : "acao";
+            const errada = F.find((f) => f !== certa && st.mao.a[f] > 0);
+            const igual = JSON.stringify(jxjTreinoJogar(st, errada, tipo)) === JSON.stringify(st);
+            const antes = st.energia.a;
+            if (st.etapa === "sinal") st = jxjTreinoJogar(st, L.postura, "sinal");
+            const ini = st.iniciativa;
+            st = jxjTreinoJogar(st, L.acao, "acao");
+            o.passos.push({ igual, i: st.i, round: st.round, pos: st.pos, ini, gasto: Math.round((antes - st.energia.a) * 100) / 100, trocas: st.trocas.length });
+          }
+          o.cartoes = st.cartoes;
+          o.depois = { i: st.i, round: st.round, troca: st.troca, pos: st.pos, ini: st.iniciativa, mao: { ...st.mao.a }, etapa: st.etapa };
+          o.cheia = JXJ_DEF.estilos[estilo].mao;
+          const v = jxjTreinoVista(st, lut, def);
+          o.treino = !!(v.nomes.b && v.nomes.b.treino);
+          const area = document.createElement("div");
+          jxjDesenharCombate(area, v, { eu: "a", ele: "b" }, () => {}, {});
+          out[estilo] = o;
+        }
+        return JSON.stringify(out);
+      })()`, env.sandbox));
+      const custo = vm.runInContext("JXJ_DEF.acoes.custo.pe", env.sandbox);
+      for (const [estilo, o] of Object.entries(r)) {
+        if (JSON.stringify(o.mao) !== JSON.stringify(o.cheia)) throw new Error(`${estilo}: mão ${JSON.stringify(o.mao)}`);
+        if (o.passos.some((p) => !p.igual)) throw new Error(`${estilo}: carta errada mudou o treino`);
+        if (o.passos.map((p) => p.i).join() !== "1,2,3,4" || o.passos.map((p) => p.trocas).join() !== "1,2,3,4") throw new Error(`${estilo}: passos ${JSON.stringify(o.passos)}`);
+        const p4 = o.passos[3];
+        if (p4.ini !== "a" || Math.abs(p4.gasto - (custo.queda + 0.75)) > 1e-9) throw new Error(`${estilo}: finta da lição 4 (${p4.gasto}, iniciativa ${p4.ini})`);
+        if (o.cartoes.length !== 1 || o.cartoes[0].a !== 10 || o.cartoes[0].b !== 9) throw new Error(`${estilo}: cartão ${JSON.stringify(o.cartoes)}`);
+        const d = o.depois;
+        if (d.i !== 4 || d.round !== 2 || d.troca !== 1 || d.pos !== "pe" || d.ini !== null || JSON.stringify(d.mao) !== JSON.stringify(o.cheia) || d.etapa !== "sinal") throw new Error(`${estilo}: lição 5 ${JSON.stringify(d)}`);
+        if (!o.treino) throw new Error("o treinador sem a marca de treino");
+      }
+      semLixoV3T(htmlDe(desde(m)), "vista do treino");
     });
     await conf("fila sem tela antes (2026-10-20): abrir a busca já entra na fila com a última diferença de rating (padrão 400); os 4 botões ficam na busca e trocar grava no banco sem perder a espera", async () => {
       await db.query("delete from jxj_fila");
@@ -14676,7 +14727,9 @@ async function testarJxJTelas() {
       const est = (await db.query("select estado from jxj_lutas where id = $1", [r.rows[0].id])).rows[0].estado;
       const rounds = (est.cartoes || []).length;
       if ((h.match(/class="jxj-cartao-round corte/g) || []).length !== rounds) throw new Error(`cartinhas de round: ${(h.match(/class="jxj-cartao-round corte/g) || []).length} de ${rounds}`);
-      if (["KO", "TKO", "FIN"].includes(r.rows[0].resultado.metodo) && !/jxj-resultado-carta/.test(h)) throw new Error("sem a carta que decidiu (" + r.rows[0].resultado.metodo + ")");
+      /* a carta que decidiu é um filho da seção (o DOM falso não junta filhos no innerHTML): pela classe do nó e pelo conteúdo dele */
+      const decidiu = nos.filter((n) => tem(n, "jxj-resultado-carta"));
+      if (["KO", "TKO", "FIN"].includes(r.rows[0].resultado.metodo) && (!decidiu.length || !/jxj-carta f-/.test(String(decidiu[0].innerHTML)))) throw new Error("sem a carta que decidiu (" + r.rows[0].resultado.metodo + ")");
       semLixoV3(h, "resultado");
     });
     await conf("grátis sem a luta grátis: o painel troca Buscar adversário por Lutar contra bot (2 hoje); a fila mostra o mesmo botão; chamar abre a luta; sem lutas no dia, o botão fica desligado com o aviso", async () => {

@@ -8571,7 +8571,7 @@ const JXJ_FAMILIAS=["golpes","queda","defesa","pressao"];
 /* sinais e blefe (fase 2, 2026-10-27): a postura que cada família mostra */
 const JXJ_POSTURAS={golpes:"Peso na frente",queda:"Base baixa",defesa:"Guarda alta",pressao:"Avançando"};
 /* primeira luta: o cartel estava vazio quando a luta começou */
-const jxjPrimeiraLuta=(v,eu)=>{ const c=v.nomes[eu]&&v.nomes[eu].cartel; return Array.isArray(c)&&!c.some(x=>x>0); };
+const jxjPrimeiraLuta=(v,eu)=>{ if(v.treino)return false; const c=v.nomes[eu]&&v.nomes[eu].cartel; return Array.isArray(c)&&!c.some(x=>x>0); };   // o treino tem o próprio balão
 /* o tamanho da etapa em que a troca está (o anel do relógio esvazia nela) */
 function jxjTotalEtapa(v){
   const F=v.formato; if(!v.etapa||!v.prazoSinal)return F.prazoMs;
@@ -8636,6 +8636,126 @@ function jxjVoarCarta(origem,idDestino){
     requestAnimationFrame(()=>{ Object.assign(v.style,{left:b.left+"px",top:b.top+"px",transform:`scale(${b.width/a.width})`}); });
     setTimeout(()=>{ if(v.remove)v.remove(); },500);
   }catch(e){}
+}
+/* ---------- treino guiado (cartas, Parte 2, 2026-10-28) ----------
+   Só na tela: um roteiro de 5 trocas contra o Treinador (fictício). As 4
+   primeiras são o round 1 (guiadas: só a carta certa joga); a 5 é a troca 1
+   do round 2 (livre, com relógio). O estado é puro (jxjTreinoJogar devolve
+   outro) e vira, a cada passo, uma vista igual à do servidor, desenhada
+   pela mesma tela da luta. Nada vai pro servidor. Os números (custo, finta
+   de 1,5 e metade com a iniciativa) são os do jogo. */
+const JXJ_TREINO_PRAZOS={sinal:5000,acao:12000};
+const JXJ_TREINO_FINTA=1.5;
+const JXJ_TREINO_VENCE={golpes:"pressao",pressao:"defesa",defesa:"queda",queda:"golpes"};
+const JXJ_TREINADOR={nome:"Treinador",estilo:"counter",nivel:1,cartel:[0,0,0],rating:1500,treino:true,rosto:null};
+const JXJ_TREINO=[
+  {postura:null,acao:"golpes",ele:{postura:null,acao:"pressao"},
+    fala:["Treino rápido: 5 trocas. Aqui ninguém perde nada.",
+      "Estas são as suas cartas neste round. Cada uma ganha de uma e perde pra outra.",
+      "Ele vai de Pressão: Golpes ganha de Pressão. Toque na carta de Golpes."],
+    depois:"O golpe entrou. Você venceu a troca: a iniciativa é sua. Com ela, a finta custa metade."},
+  {postura:null,acao:"defesa",ele:{postura:null,acao:"queda"},
+    fala:["Olhe a mão dele no alto: a Pressão dele acabou neste round.",
+      "Ele vai de Queda: Defesa ganha de Queda. Toque na Defesa."],
+    depois:"Você segurou a queda. A carta que você joga sai da mão até o round acabar."},
+  {postura:"defesa",acao:"defesa",ele:{postura:"queda",acao:"queda"},
+    fala:["Agora a luta de verdade: antes da ação, cada um mostra uma postura. As duas aparecem juntas.",
+      "Mostre Guarda alta."],
+    fala2:"Ele mostrou Base baixa. Pode ser verdade ou finta. Jogue a Defesa.",
+    depois:"Ele foi honesto: mostrou Base baixa e fez Queda. Você leu."},
+  {postura:"pressao",acao:"queda",ele:{postura:"golpes",acao:"golpes"},
+    fala:["Agora a finta. Mostre Avançando."],
+    fala2:"Ele viu Avançando e mostrou Peso na frente: vai de Golpes pra te pegar entrando. Finte: faça Queda. Fazer outra ação que não a sua postura custa energia (metade, com a iniciativa).",
+    depois:"Você fintou e derrubou. Fim do round: os juízes deram o round pra você."},
+  {postura:null,acao:null,ele:{postura:"defesa",acao:"pressao"},
+    fala:["Round novo: a mão volta cheia e a iniciativa some.",
+      "Agora é com você. O relógio volta: mostre uma postura."],
+    fala2:"Ele mostrou Guarda alta. Escolha a ação."},
+];
+const jxjTreinoUsaPostura=i=>i>=2;
+function jxjTreinoMaoCheia(def,estilo){ return {...((def.estilos[estilo]||{}).mao||{golpes:2,queda:2,defesa:4,pressao:1})}; }
+function jxjTreinoNovo(lut,def){
+  return {i:0,etapa:"acao",round:1,troca:1,pos:"pe",iniciativa:null,meuSinal:null,minhaAcao:null,fim:false,
+    mao:{a:jxjTreinoMaoCheia(def,lut.estilo),b:jxjTreinoMaoCheia(def,JXJ_TREINADOR.estilo)},
+    energia:{a:10,b:10},dano:{a:0,b:0},pontos:[{a:0,b:0}],cartoes:[],trocas:[],nome:lut.nome||"Você",estilo:lut.estilo};
+}
+function jxjTreinoCartao(p){
+  const d=p.a-p.b; if(Math.abs(d)<0.01)return{a:10,b:10};
+  return d>0?{a:10,b:9}:{a:9,b:10};
+}
+/* a troca do treino: quem leu pelo ciclo em pé, o que aconteceu, pontos, dano, finta e iniciativa */
+function jxjTreinoResolver(st,def,minha,dele,sinais){
+  const n={a:st.nome,b:JXJ_TREINADOR.nome},ev=[],txt=[],pts={a:0,b:0},num=x=>String(x).replace(".",",");
+  if(sinais)for(const l of ["a","b"]){
+    const f=l==="a"?minha:dele;
+    if(sinais[l]&&sinais[l]!==f){ ev.push({tipo:"finta",quem:l}); txt.push(`${n[l]} mostrou ${JXJ_POSTURAS[sinais[l]]} e fez ${def.acoes.familias.pe[f]}.`); }
+  }
+  const leu=JXJ_TREINO_VENCE[minha]===dele?"a":JXJ_TREINO_VENCE[dele]===minha?"b":null;
+  let pos=st.pos;
+  if(leu){
+    const f=leu==="a"?minha:dele,o=leu==="a"?"b":"a";
+    ev.push({tipo:"leu",quem:leu,fam:f,vs:leu==="a"?dele:minha});
+    if(f==="golpes"){ ev.push({tipo:"golpe",quem:leu,dano:5.3}); pts[leu]+=5.3; txt.push(`${n[leu]} acertou golpes (${num(5.3)} de dano).`); }
+    else if(f==="defesa"){ ev.push({tipo:"quedaDefendida",quem:leu}); pts[leu]+=2; txt.push(`${n[o]} tentou a queda e ${n[leu]} defendeu.`); }
+    else if(f==="queda"){ ev.push({tipo:"queda",quem:leu}); pts[leu]+=4; pos=leu==="a"?"cima_a":"cima_b"; txt.push(`${n[leu]} levou a luta pro chão.`); }
+    else { ev.push({tipo:"grade",quem:leu,dano:3.2}); pts[leu]+=3.2; txt.push(`${n[leu]} encurralou ${n[o]} na grade (${num(3.2)} de dano).`); }
+  }else txt.push("Os dois se estudaram: ninguém leu o outro.");
+  return {ev,txt,pts,pos,leu};
+}
+function jxjTreinoJogar(st,fam,tipo){
+  if(st.fim||!JXJ_TREINO_VENCE[fam]||!(st.mao.a[fam]>0))return st;
+  const L=JXJ_TREINO[st.i];
+  if(tipo==="sinal"){
+    if(st.etapa!=="sinal"||(L.postura&&fam!==L.postura))return st;
+    return {...st,meuSinal:fam,etapa:"acao"};
+  }
+  if(st.etapa!=="acao"||(L.acao&&fam!==L.acao))return st;
+  const def=JXJ_DEF,dele=L.ele.acao,usa=jxjTreinoUsaPostura(st.i);
+  const sinais=usa?{a:st.meuSinal||fam,b:L.ele.postura}:null;
+  const x=JSON.parse(JSON.stringify(st));
+  /* energia: o custo da ação e, se fintou, a finta (metade com a iniciativa) */
+  const custo=l=>{ const f=l==="a"?fam:dele,c=Number(def.acoes.custo.pe[f])||0,finta=sinais&&sinais[l]!==f?JXJ_TREINO_FINTA*(x.iniciativa===l?0.5:1):0; return c+finta; };
+  for(const l of ["a","b"])x.energia[l]=Math.max(0,Math.min(10,Math.round((x.energia[l]-custo(l))*100)/100));
+  x.mao.a[fam]--; if(x.mao.b[dele]>0)x.mao.b[dele]--;
+  const r=jxjTreinoResolver(x,def,fam,dele,sinais);
+  const rd=x.round-1; x.pontos[rd].a+=r.pts.a; x.pontos[rd].b+=r.pts.b;
+  for(const e of r.ev)if(typeof e.dano==="number")x.dano[e.quem==="a"?"b":"a"]+=e.dano;
+  x.pos=r.pos;
+  const d=r.pts.a-r.pts.b;
+  if(Math.abs(d)>0.01){ const v=d>0?"a":"b"; if(x.iniciativa!==v){ x.iniciativa=v; r.ev.push({tipo:"iniciativa",quem:v}); } }
+  if(sinais)r.ev.unshift({tipo:"sinais"});
+  x.trocas.push({round:x.round,troca:x.troca,acaoA:fam,acaoB:dele,varA:null,varB:null,ev:r.ev,eventos:r.txt,narracao:null});
+  x.i++; x.meuSinal=null; x.minhaAcao=null;
+  if(x.troca>=4){
+    x.cartoes.push(jxjTreinoCartao(x.pontos[rd]));
+    x.round++; x.troca=1; x.pos="pe"; x.iniciativa=null; x.pontos.push({a:0,b:0});
+    x.mao={a:jxjTreinoMaoCheia(def,x.estilo),b:jxjTreinoMaoCheia(def,JXJ_TREINADOR.estilo)};
+  }else x.troca++;
+  if(x.i>=JXJ_TREINO.length)x.fim=true;
+  x.etapa=x.fim?null:jxjTreinoUsaPostura(x.i)?"sinal":"acao";
+  return x;
+}
+/* a vista do treino: o mesmo formato da vista do servidor (vistaDaLuta) */
+function jxjTreinoVista(st,lut,def){
+  const agora=Date.now(),usa=jxjTreinoUsaPostura(st.i),L=JXJ_TREINO[Math.min(st.i,JXJ_TREINO.length-1)];
+  const prazoSinal=new Date(agora+(st.etapa==="sinal"?JXJ_TREINO_PRAZOS.sinal:0)),prazo=new Date(prazoSinal.getTime()+JXJ_TREINO_PRAZOS.acao);
+  const lado=l=>({energia:st.energia[l],energiaMax:10,dano:Math.round(st.dano[l]),ausentes:0,total:{},grogue:false,cansado:st.energia[l]<=2});
+  const rd=st.round-1,p=st.pontos[rd]||{a:0,b:0};
+  const fintaDe=f=>usa&&st.etapa==="acao"?(f===st.meuSinal?0:JXJ_TREINO_FINTA*(st.iniciativa==="a"?0.5:1)):null;
+  return {id:"treino",tipo:"treino",treino:true,bot:false,status:st.fim?"encerrada":"andamento",lado:"a",
+    nomes:{a:{nome:lut.nome||"Você",rosto:lut.rosto||null,estilo:lut.estilo,nivel:lut.nivel||1,cartel:lut.cartel||[0,0,0],rating:lut.rating||1500},b:{...JXJ_TREINADOR}},
+    round:st.round,troca:st.troca,agora:new Date(agora).toISOString(),prazo:prazo.toISOString(),prazoSinal:prazoSinal.toISOString(),
+    formato:def.formato,semRelogio:st.i<4,
+    estado:{pos:st.pos,nivelPos:0,momento:0,iniciativa:st.iniciativa,a:lado("a"),b:lado("b"),encaixe:null,pontos:st.pontos,cartoes:st.cartoes},
+    momentoDecisivo:null,duelos:null,tendencia:null,
+    placarRound:{round:st.round,pts:{a:Math.round(p.a*10)/10,b:Math.round(p.b*10)/10},cartao:jxjTreinoCartao(p)},
+    minhaAcao:st.minhaAcao,adversarioEscolheu:false,
+    etapa:usa?st.etapa:null,meuSinal:usa?st.meuSinal:null,adversarioSinalizou:usa?true:null,
+    sinais:usa&&st.etapa==="acao"?{a:st.meuSinal,b:L.ele.postura}:null,
+    acoes:JXJ_FAMILIAS.map(f=>({familia:f,grupo:def.acoes.familias.pe[f],rotulo:def.acoes.rotulos.pe[f],descricao:def.acoes.descricoes.pe[f],
+      ciclo:def.acoes.ciclo.pe[f],resumo:"",custo:def.acoes.custo.pe[f],restam:st.mao.a[f],finta:fintaDe(f),dica:null,duelo:null})),
+    papel:"pe",maos:{a:st.mao.a,b:st.mao.b},maoCheia:{a:jxjTreinoMaoCheia(def,st.estilo),b:jxjTreinoMaoCheia(def,JXJ_TREINADOR.estilo)},
+    trocas:st.trocas};
 }
 /* a mão por extenso ("3 Golpes, 2 Quedas, 3 Defesas, 1 Pressão"); família sem carta fica de fora */
 const JXJ_FAMILIA_PLURAL={golpes:["Golpe","Golpes"],queda:["Queda","Quedas"],defesa:["Defesa","Defesas"],pressao:["Pressão","Pressões"]};
@@ -8928,7 +9048,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     const vida=Math.max(0,Math.min(100,100-Math.round(st.dano))),ener=st.energiaMax?Math.max(0,Math.min(1,st.energia/st.energiaMax)):0;
     const d=el("div","jxj-hud-lado "+(souEu?"eu":"ele")); d.id=souEu?"jxj-card-eu":"jxj-card-ele";
     d.innerHTML=`${jxjRetrato(n,56)}<div class="jxj-hud-info">
-      <b class="jxj-hud-nome"><span>${jxjEsc(n.nome)}</span>${souEu?"<small>você</small>":""}${n.bot?jxjSeloBot():""}</b>
+      <b class="jxj-hud-nome"><span>${jxjEsc(n.nome)}</span>${souEu?"<small>você</small>":""}${n.bot?jxjSeloBot():""}${n.treino?`<span class="jxj-selo-bot jxj-selo-treino">${ICONE("info")}Treino</span>`:""}</b>
       ${n.bot&&n.alcunha?`<small class="jxj-alcunha">${jxjEsc(n.alcunha)}</small>`:""}
       <span class="jxj-vida${vida<=35?" baixa":""}" role="img" aria-label="Vida ${vida} de 100"><i style="width:${vida}%"></i></span>
       <span class="jxj-folego" role="img" aria-label="Energia ${jxjNum(st.energia)} de ${jxjNum(st.energiaMax)}"><i style="width:${Math.round(ener*100)}%"></i></span>
@@ -8938,7 +9058,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     return d;
   };
   const centro=el("div","jxj-hud-centro");
-  centro.innerHTML=`<div class="jxj-anel" id="jxj-anel"><span class="jxj-relogio" id="jxj-relogio">${jxjSeg(jxjTotalEtapa(v))}s</span></div>
+  centro.innerHTML=`<div class="jxj-anel${v.semRelogio?" livre":""}" id="jxj-anel"><span class="jxj-relogio" id="jxj-relogio">${v.semRelogio?"livre":`${jxjSeg(jxjTotalEtapa(v))}s`}</span></div>
     <p class="jxj-round">R${v.round}<small>/${F.rounds}</small> · ${v.troca}<small>/${F.trocasPorRound}</small></p>`;
   hud.append(lado(eu,true),centro,lado(ele,false));
   tela.appendChild(hud);
