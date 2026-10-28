@@ -35,13 +35,13 @@ const SUPABASE_ANON_KEY =
 const ID = /^[1-9]\d{0,14}$/;
 const ACOES_PUBLICAS = new Set(["definicoes", "ranking", "perfil", "historico", "hall", "temporada", "torneios", "torneio", "replay"]);
 const ACOES_CONTA = new Set(["estado", "criar", "build", "respec", "principal", "aposentar", "moldura", "buildPublica",
-  "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "revanche", "narracao", "bot",
+  "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "sinal", "revanche", "narracao", "bot",
   "torneioInscrever", "torneioSair", "torneioSala"]);
 /* limite por conta: [máximo, janela em segundos] (o banco conta, atômico) */
 const LIMITES = {
   criar: [20, 3600], build: [120, 3600], respec: [10, 3600], principal: [10, 3600], aposentar: [5, 3600],
   moldura: [30, 3600], buildPublica: [30, 3600], filaEntrar: [40, 600], filaSair: [60, 600], fila: [400, 600],
-  luta: [600, 600], confirmar: [60, 600], recusar: [60, 600], acao: [200, 600], revanche: [40, 600],
+  luta: [600, 600], confirmar: [60, 600], recusar: [60, 600], acao: [200, 600], sinal: [200, 600], revanche: [40, 600],
   narracao: [40, 3600], torneioInscrever: [20, 3600], torneioSair: [20, 3600], torneioSala: [300, 600], estado: [600, 600],
   bot: [30, 600],
 };
@@ -192,6 +192,36 @@ function efeitosDoFim(d, estado, fim) {
    resolve junto, senão os dois pedidos chamavam a IA da narração ao vivo
    pro mesmo lance (fase 4). Depois do prazo, qualquer pedido resolve; se
    dois resolverem juntos, jxj_gravar_troca grava um só (versao). */
+/* Fase 2 (sinais e blefe): os sinais da troca aberta, {a, b, em: {a, b}}
+   (null = ainda não mandou), ou null se a luta é v3 (sem mão) ou o banco não
+   tem a migração (PGRST202: tudo como na fase 1). Contra bot, o sinal do bot
+   (lado b) sai do estado, das trocas e da semente. */
+async function sinaisDaTroca(d) {
+  const L = d.luta;
+  if (!L.estado || !L.estado.mao || L.status !== "andamento") return null;
+  let lista;
+  try { lista = await rpc("jxj_sinais_abertos", { lid: L.id }); }
+  catch (e) { if (e.codigo === "PGRST202") return null; throw e; }
+  const s = { a: null, b: null, em: { a: null, b: null } };
+  for (const x of lista || []) { s[x.lado] = x.familia; s.em[x.lado] = x.enviado_em; }
+  if (L.bot) s.b = BOT.sinalDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
+  return s;
+}
+const ACAO_MS = EST.ESTRATEGIA.prazos.acaoMs;
+/* etapa da troca aberta: "acao" quando os dois sinalizaram ou a etapa do sinal acabou */
+function etapaDaTroca(L, sn, agora) {
+  if (!sn) return null;
+  return (sn.a && sn.b) || agora > Date.parse(L.prazo) - ACAO_MS ? "acao" : "sinal";
+}
+/* sinais revelados, com a postura padrão pra quem não mandou */
+const sinaisRevelados = (L, sn) => ({ a: sn.a || EST.acaoPadrao(L.estado, "a"), b: sn.b || EST.acaoPadrao(L.estado, "b") });
+/* quando a revelação aconteceu (ms): o último dos dois sinais ou o fim da etapa do sinal */
+function momentoDaRevelacao(L, sn) {
+  const fim = Date.parse(L.prazo) - ACAO_MS;
+  if (sn.a && sn.b && sn.em.a && sn.em.b) return Math.min(fim, Math.max(Date.parse(sn.em.a), Date.parse(sn.em.b)));
+  return fim;
+}
+
 async function processarLuta(lid, uid, { porAcao = false } = {}) {
   let d = null, iaNarrou = false;
   for (let passo = 0; passo < 6; passo++) {
@@ -205,6 +235,8 @@ async function processarLuta(lid, uid, { porAcao = false } = {}) {
       return d;
     }
     if (L.status !== "andamento") return d;
+    const sn = await sinaisDaTroca(d);
+    d.sinais = sn;
     const acoes = { a: null, b: null };
     for (const a of d.acoes || []) acoes[a.lado] = a.familia;
     const vencido = Date.parse(L.prazo) + MOTOR.FORMATO.toleranciaMs < agora;
@@ -213,9 +245,10 @@ async function processarLuta(lid, uid, { porAcao = false } = {}) {
          vence). A ação do bot sai do estado, das trocas resolvidas e da
          semente; a ação do jogador nesta troca não entra. */
       if ((!acoes.a || !porAcao) && !vencido) return d;
-      acoes.b = BOT.acaoDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
+      acoes.b = BOT.acaoDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b", sinais: sn ? sinaisRevelados(L, sn) : null });
     } else if ((!(acoes.a && acoes.b) || !porAcao) && !vencido) return d;
-    const { estado, eventos } = MOTOR.resolverTroca(L.estado, L.perfis, acoes, L.semente);
+    /* fase 2: os sinais revelados (a postura padrão pra quem não mandou) vão pro motor, que cobra a finta */
+    const { estado, eventos } = MOTOR.resolverTroca(L.estado, L.perfis, sn ? { ...acoes, sinais: sinaisRevelados(L, sn) } : acoes, L.semente);
     /* narração ao vivo do destaque (fase 4): gravada com a troca, a mesma pros
        dois; a IA no máximo uma vez por resolução e com prazo curto */
     const narr = await NARR.narracaoDaTroca({ antes: L.estado, depois: estado, eventos, nomes: nomesDaLuta(L), comIA: !iaNarrou,
@@ -239,8 +272,11 @@ const nomesDaLuta = (L) => ({ a: (L.nomes.a || {}).nome || "A", b: (L.nomes.b ||
    está em trocas). cont vem na ordem de MOTOR.FAMILIAS. */
 function tendenciaDoAdversario(trocas, lado, papelDele) {
   const o = outroLado(lado), cont = [0, 0, 0, 0];
-  let ultima = null, n = 0;
+  let ultima = null, n = 0, sinais = 0, fintas = 0;
   for (const t of trocas || []) {
+    /* fase 2: quantas vezes ele mostrou postura e quantas fintou (a luta toda) */
+    if ((t.eventos || []).some((ev) => ev && ev.tipo === "sinais")) sinais++;
+    if ((t.eventos || []).some((ev) => ev && ev.tipo === "finta" && ev.quem === o)) fintas++;
     const fam = o === "a" ? t.acao_a : t.acao_b;
     if (!MOTOR.FAMILIAS.includes(fam)) continue;
     const esc = (t.eventos || []).find((ev) => ev && ev.tipo === "escolha");
@@ -248,12 +284,13 @@ function tendenciaDoAdversario(trocas, lado, papelDele) {
     if (!v || v.papel !== papelDele) continue;
     cont[MOTOR.FAMILIAS.indexOf(fam)]++; n++; ultima = fam;
   }
-  return { papel: papelDele, n, cont, ultima };
+  return { papel: papelDele, n, cont, ultima, sinais, fintas };
 }
 /* O que o jogador vê da luta: nunca a ação do adversário na troca aberta,
    nunca a semente antes do fim, nunca o perfil (build) do adversário. */
 function vistaDaLuta(d, uid) {
   const L = d.luta;
+  const sn = L.status === "andamento" && d.sinais ? d.sinais : null, etapa = sn ? etapaDaTroca(L, sn, Date.parse(d.agora)) : null;
   const lado = L.a_user === uid ? "a" : L.b_user === uid ? "b" : null;
   const nomes = nomesDaLuta(L);
   const acoesAbertas = Object.fromEntries((d.acoes || []).map((a) => [a.lado, a.familia]));
@@ -288,11 +325,30 @@ function vistaDaLuta(d, uid) {
     duelos: andando && L.perfis ? MOTOR.duelos(estado, L.perfis, lado) : null,
     tendencia: andando ? tendenciaDoAdversario(d.trocas, lado, MOTOR.papel(estado, outroLado(lado))) : null,
     minhaAcao: lado ? acoesAbertas[lado] || null : null,
-    /* o bot já tem a ação da troca (sai da semente), só não foi gravada */
-    adversarioEscolheu: lado ? (L.bot && L.status === "andamento" ? true : !!acoesAbertas[outroLado(lado)]) : null,
+    /* o bot já tem a ação da troca (sai da semente), só não foi gravada. Fase
+       2: só conta ação mandada depois da revelação (o compromisso antecipado
+       não pode denunciar que o sinal dele é honesto); na etapa do sinal, não */
+    adversarioEscolheu: lado ? (() => {
+      if (!sn) return L.bot && L.status === "andamento" ? true : !!acoesAbertas[outroLado(lado)];
+      if (etapa !== "acao") return false;
+      if (L.bot) return true;
+      const ac = (d.acoes || []).find((x) => x.lado === outroLado(lado));
+      return !!ac && Date.parse(ac.enviada_em) > momentoDaRevelacao(L, sn);   // estrito: no mesmo ms, foi o compromisso que revelou
+    })() : null,
+    /* fase 2: a etapa da troca (sinal ou ação), o fim da etapa do sinal, o
+       meu sinal, se ele já sinalizou e, só depois da revelação, os dois sinais */
+    etapa,
+    prazoSinal: etapa ? new Date(Date.parse(L.prazo) - ACAO_MS).toISOString() : null,
+    meuSinal: sn && lado ? sn[lado] : null,
+    adversarioSinalizou: sn && lado ? !!sn[outroLado(lado)] : null,
+    sinais: etapa === "acao" ? sinaisRevelados(L, sn) : null,
     /* a mão do round (variantes) sai da semente: o servidor calcula e manda
        só as 4 ações de quem pediu, nunca a semente nem a mão do outro */
-    acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil, L.semente) : null,
+    acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil, L.semente).map((x) => ({
+      ...x,
+      /* fase 2: o custo da finta (0 se é o meu sinal; null antes da revelação) */
+      finta: etapa === "acao" ? (x.familia === sinaisRevelados(L, sn)[lado] ? 0 : EST.ESTRATEGIA.custoFinta) : null,
+    })) : null,
     papel: lado && estado ? MOTOR.papel(estado, lado) : null,
     /* v4: as duas mãos são públicas (contagem por família); luta v3, null */
     maos: estado && estado.mao ? estado.mao : null,
@@ -575,8 +631,39 @@ async function executar(acao, c, uid) {
       /* v4: só ação com carta na mão; recusa antes de gravar (o console não passa daqui) */
       if (L0.status === "andamento" && lado0 && L0.estado && L0.round === round && L0.troca === troca && !EST.temCarta(L0.estado, lado0, c.familia))
         throw new ErroJxJ("Você já usou essa ação neste round.");
+      /* fase 2: na etapa do sinal, só o compromisso honesto (sem sinal ainda,
+         a ação vira o sinal); na da ação, a finta pede energia */
+      const jaEnviou = (d0.acoes || []).some((x) => x.lado === lado0);   // reenvio: o banco responde (idempotente ou "já foi enviada")
+      const sn0 = !jaEnviou && L0.status === "andamento" && L0.round === round && L0.troca === troca ? d0.sinais : null;
+      const etapa0 = sn0 ? etapaDaTroca(L0, sn0, Date.parse(d0.agora)) : null;
+      if (etapa0 === "sinal") {
+        if (sn0[lado0] && sn0[lado0] !== c.familia) throw new ErroJxJ("Espere ele mostrar a postura pra fintar.");
+      } else if (etapa0 === "acao") {
+        const meu = sinaisRevelados(L0, sn0)[lado0];
+        if (meu !== c.familia && L0.estado[lado0].energia < EST.ESTRATEGIA.custoFinta) throw new ErroJxJ("Sem energia pra fintar.");
+      }
       await rpc("jxj_enviar_acao", { uid, lid, round_: round, troca_: troca, familia_: c.familia });
+      /* o sinal do compromisso honesto vai DEPOIS da ação: se ele revela os
+         sinais, a ação fica antes da revelação e não acende "ele já
+         escolheu" (senão o outro saberia que foi honesto). A etapa acabou
+         entre as duas chamadas: a ação vale e a postura é a padrão */
+      if (etapa0 === "sinal" && !sn0[lado0]) {
+        try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: ACAO_MS }); }
+        catch (e) { if (!/etapa do sinal acabou/.test(e.message)) throw e; }
+      }
       return vistaDaLuta(await processarLuta(lid, uid, { porAcao: true }), uid);
+    }
+    case "sinal": {
+      /* fase 2: a postura da troca (uma vez, só na etapa do sinal; o banco confere o prazo) */
+      const lid = idDe(c.lutaId, "luta");
+      if (!MOTOR.FAMILIAS.includes(c.familia)) throw new ErroJxJ("postura inválida");
+      const round = Math.floor(Number(c.round)), troca = Math.floor(Number(c.troca));
+      if (!(round >= 1 && round <= 9 && troca >= 1 && troca <= 9)) throw new ErroJxJ("troca inválida");
+      const d0 = await processarLuta(lid, uid), L0 = d0.luta, lado0 = L0.a_user === uid ? "a" : L0.b_user === uid ? "b" : null;
+      if (L0.status === "andamento" && L0.estado && lado0 && !EST.temCarta(L0.estado, lado0, c.familia)) throw new ErroJxJ("Você já usou essa ação neste round.");
+      try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: ACAO_MS }); }
+      catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("os sinais ainda não foram ligados", 503); throw e; }
+      return vistaDaLuta(await processarLuta(lid, uid), uid);
     }
     case "revanche": {
       const lid = idDe(c.lutaId, "luta");

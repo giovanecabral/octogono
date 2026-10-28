@@ -868,8 +868,10 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     ausente[l] = !ac;
     estado[l].ausentesSeguidas = ac ? 0 : estado[l].ausentesSeguidas + 1;
     /* v4: só vale ação com carta; a sem carta (o servidor recusa antes)
-       vira a ação padrão, pra luta nunca travar */
-    let fam = ac || acaoPadrao(estado, l);
+       vira a ação padrão, pra luta nunca travar. Fase 2: quem mostrou a
+       postura e perdeu o prazo faz a família do próprio sinal (sem finta) */
+    const sinalDele = acoesIn.sinais && acoesIn.sinais[l];
+    let fam = ac || (sinalDele && FAMILIAS.includes(sinalDele) && temCarta(estado, l, sinalDele) ? sinalDele : acaoPadrao(estado, l));
     if (ac && !temCarta(estado, l, ac)) { registrar(ctx, "semCarta", l, { fam: ac }); fam = acaoPadrao(estado, l); }
     ctx.acoes[l] = fam;
     if (!ac) registrar(ctx, "ausente", l, { seguidas: estado[l].ausentesSeguidas });

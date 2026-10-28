@@ -11184,7 +11184,8 @@ async function testarJxJ() {
     await conf("ação oculta: quem não enviou só sabe que o outro escolheu; reenviar a mesma é idempotente; trocar depois de enviar é recusado", async () => {
       await ok(pa, "acao", { lutaId: lid1, round: 1, troca: 1, familia: "pressao" });
       const vb = await ok(pb, "luta", { lutaId: lid1 });
-      if (vb.adversarioEscolheu !== true || vb.minhaAcao !== null) throw new Error("vista de B: " + JSON.stringify({ e: vb.adversarioEscolheu, m: vb.minhaAcao }));
+      /* fase 2: ação na etapa do sinal é compromisso honesto; pra B ela só aparece como "ele já mostrou a postura" (qual, só na revelação) */
+      if (vb.adversarioEscolheu !== false || vb.adversarioSinalizou !== true || vb.minhaAcao !== null) throw new Error("vista de B: " + JSON.stringify({ e: vb.adversarioEscolheu, s: vb.adversarioSinalizou, m: vb.minhaAcao }));
       /* fora a lista das PRÓPRIAS opções de B, nada na vista dele pode dizer "pressao" */
       /* v4: a mão dele não muda com a ação aberta (só com a troca resolvida) */
       const canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
@@ -11887,6 +11888,88 @@ async function testarJxJ() {
       }
       if (exec.some(Boolean)) throw new Error("anon/authenticated executaram: " + JSON.stringify(exec));
     });
+    await conf("sinais na luta (fase 2): etapa do sinal e da ação; o sinal dele só aparece quando os dois mandaram; a ação diferente do próprio sinal é finta e custa energia, sem energia é recusada; a finta aparece na troca e na tendência; ação na etapa do sinal é compromisso honesto; a luta refeita pela semente é a mesma", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      let v1 = await ok(u1, "luta", { lutaId: lid });
+      if (v1.lado !== "a" || v1.etapa !== "sinal" || v1.sinais !== null || v1.meuSinal !== null || !v1.prazoSinal) throw new Error("começo: " + JSON.stringify([v1.lado, v1.etapa, v1.sinais, v1.meuSinal, v1.prazoSinal]));
+      await ok(u1, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });
+      const v2 = await ok(u2, "luta", { lutaId: lid });
+      if (v2.etapa !== "sinal" || v2.sinais !== null || !v2.adversarioSinalizou || v2.meuSinal !== null) throw new Error("sinal dele vazou: " + JSON.stringify([v2.sinais, v2.adversarioSinalizou]));
+      const { acoes: _a2, maos: _m2, maoCheia: _c2, ...resto2 } = v2;
+      if (/defesa/.test(JSON.stringify(resto2))) throw new Error("a postura dele aparece na vista: " + JSON.stringify(resto2).slice(0, 300));
+      await erro(u1, "acao", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /Espere/);   // fintar antes da revelação, não
+      await ok(u2, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "golpes" });
+      v1 = await ok(u1, "luta", { lutaId: lid });
+      if (v1.etapa !== "acao" || !v1.sinais || v1.sinais.b !== "golpes" || v1.sinais.a !== "defesa" || v1.meuSinal !== "defesa") throw new Error("revelação: " + JSON.stringify([v1.etapa, v1.sinais]));
+      if (v1.acoes.find((a) => a.familia === "defesa").finta !== 0 || v1.acoes.find((a) => a.familia === "queda").finta !== EST.ESTRATEGIA.custoFinta) throw new Error("custo de finta na ação: " + JSON.stringify(v1.acoes.map((a) => [a.familia, a.finta])));
+      await ok(u1, "acao", { lutaId: lid, round: 1, troca: 1, familia: "queda" });   // finta: mostrou Defesa, fez Queda
+      /* B também finta (mostrou Golpes, faz Pressão): Queda contra Golpes nocauteia na 1ª troca em ~5% das sementes; contra Pressão, 0 em 20.000 */
+      await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, familia: "pressao" });
+      const v3 = await ok(u2, "luta", { lutaId: lid });
+      const t = v3.trocas.find((x) => x.round === 1 && x.troca === 1);
+      if (!t.eventos.some((e) => /mostrou Guarda alta e fez/.test(e))) throw new Error("finta na troca: " + t.eventos.join(" "));
+      if (v3.status === "andamento" && (v3.tendencia.fintas !== 1 || v3.tendencia.sinais !== 1)) throw new Error("tendência: " + JSON.stringify(v3.tendencia));
+      if (v3.status !== "andamento") throw new Error("a luta acabou na 1ª troca; troque as ações do teste: " + JSON.stringify([v3.status, v3.resultado, t.eventos]));
+      /* sem energia: a finta é recusada */
+      await q("update jxj_lutas set estado = jsonb_set(estado, '{a,energia}', '0.5'::jsonb) where id = $1", [lid]);
+      const ab = await ok(u1, "luta", { lutaId: lid });
+      await ok(u1, "sinal", { lutaId: lid, round: ab.round, troca: ab.troca, familia: "defesa" });
+      await ok(u2, "sinal", { lutaId: lid, round: ab.round, troca: ab.troca, familia: "defesa" });
+      await erro(u1, "acao", { lutaId: lid, round: ab.round, troca: ab.troca, familia: "golpes" }, /energia/);
+      await ok(u1, "acao", { lutaId: lid, round: ab.round, troca: ab.troca, familia: "defesa" });
+      await ok(u2, "acao", { lutaId: lid, round: ab.round, troca: ab.troca, familia: "defesa" });
+      /* ação direto na etapa do sinal: compromisso honesto (sinal = ação) */
+      const ab2 = await ok(u1, "luta", { lutaId: lid });
+      if (ab2.etapa !== "sinal") throw new Error("troca nova sem etapa do sinal");
+      await ok(u1, "acao", { lutaId: lid, round: ab2.round, troca: ab2.troca, familia: "defesa" });
+      const s2 = (await q("select familia from jxj_sinais where luta_id = $1 and round = $2 and troca = $3 and lado = 'a'", [lid, ab2.round, ab2.troca]))[0];
+      if (!s2 || s2.familia !== "defesa") throw new Error("compromisso honesto não gravou o sinal");
+      const vb = await ok(u2, "luta", { lutaId: lid });
+      if (vb.adversarioEscolheu !== false) throw new Error("o compromisso antecipado apareceu como 'ele já escolheu'");
+      /* refeita pela semente: igual */
+      await vencerPrazo(lid); await ok(u2, "luta", { lutaId: lid });
+      const d = (await q("select public.jxj_luta($1::bigint) as d", [lid]))[0].d;
+      let e = MOTOR.novaLuta(d.luta.perfis.a, d.luta.perfis.b);
+      for (const tr of d.trocas) {
+        const sn = tr.eventos.find((x) => x.tipo === "sinais");
+        e = MOTOR.resolverTroca(e, d.luta.perfis, { a: tr.acao_a, b: tr.acao_b, ...(sn ? { sinais: { a: sn.a, b: sn.b } } : {}) }, d.luta.semente).estado;
+        if (tr.round === 1 && tr.troca === 1) e = { ...e, a: { ...e.a, energia: 0.5 } };   // a energia que o teste mexeu no banco
+      }
+      const canon = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((c) => [c, v[c]])) : v));
+      if (canon(e) !== canon(d.luta.estado)) throw new Error("a luta refeita pela semente ficou diferente");
+    });
+    await conf("sinais na luta (fase 2): o compromisso honesto que revela os sinais não acende 'ele já escolheu' (senão o outro sabe que foi honesto)", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      await ok(u1, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "golpes" });
+      await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });   // compromisso honesto; com o sinal de A, revela
+      const v1 = await ok(u1, "luta", { lutaId: lid });
+      if (v1.etapa !== "acao" || !v1.sinais || v1.sinais.b !== "defesa") throw new Error("revelação: " + JSON.stringify([v1.etapa, v1.sinais]));
+      if (v1.adversarioEscolheu !== false) throw new Error("o compromisso antecipado que revelou apareceu como 'ele já escolheu': " + JSON.stringify([await q("select lado, enviada_em from jxj_acoes where luta_id = $1", [lid]), await q("select lado, enviado_em from jxj_sinais where luta_id = $1", [lid])]));
+    });
+    await conf("sinal sem a migração da fase 2: sem etapa de sinal, a ação vale como na fase 1", async () => {
+      const db2 = await B.novoBanco({ estrategia: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const a = "00000000-0000-4000-8000-0000000009d1", b = "00000000-0000-4000-8000-0000000009d2";
+        await B.criarUsuario(db2, a, { pro: true }); await B.criarUsuario(db2, b, { pro: true });
+        const ca = await B.chamar(H, { token: "tok:" + a, acao: "criar", nome: "Sem Sinal Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const cb = await B.chamar(H, { token: "tok:" + b, acao: "criar", nome: "Sem Sinal Dois", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        await B.chamar(H, { token: "tok:" + a, acao: "filaEntrar", lutadorId: ca.json.id }); await B.chamar(H, { token: "tok:" + b, acao: "filaEntrar", lutadorId: cb.json.id });
+        const f = await B.chamar(H, { token: "tok:" + a, acao: "fila" });
+        await B.chamar(H, { token: "tok:" + a, acao: "confirmar", lutaId: f.json.luta.id }); await B.chamar(H, { token: "tok:" + b, acao: "confirmar", lutaId: f.json.luta.id });
+        const v = await B.chamar(H, { token: "tok:" + a, acao: "luta", lutaId: f.json.luta.id });
+        if (v.status !== 200 || v.json.etapa != null || v.json.sinais != null) throw new Error("etapa sem a migração: " + JSON.stringify([v.json.etapa, v.json.sinais]));
+        const r = await B.chamar(H, { token: "tok:" + a, acao: "acao", lutaId: f.json.luta.id, round: 1, troca: 1, familia: "golpes" });
+        if (r.status !== 200) throw new Error("ação sem a migração: " + JSON.stringify(r.json));
+        const sn = await B.chamar(H, { token: "tok:" + a, acao: "sinal", lutaId: f.json.luta.id, round: 1, troca: 1, familia: "golpes" });
+        if (sn.status !== 503) throw new Error("sinal sem a migração: " + sn.status);
+      } finally { globalThis.fetch = fetchAntes; }
+    });
     await conf("mão à vista (v4): a vista manda as duas mãos, iguais pros dois; ação sem carta é recusada (400) sem gravar nada, mesmo por chamada direta; prazo vencido sem Defesa nem Pressão usa Golpes", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       await zerarLimites();
@@ -12292,11 +12375,19 @@ async function testarJxJ() {
       for (let n = 0; n < 40; n++) {
         const v = await ok(u, "luta", { lutaId: lid });
         if (v.status !== "andamento") break;
-        if (!v.bot || v.adversarioEscolheu !== true) throw new Error("vista da luta contra bot: " + JSON.stringify({ bot: v.bot, esc: v.adversarioEscolheu }));
+        /* fase 2: o bot já mostrou a postura; a ação dele só conta como escolhida depois da revelação */
+        if (!v.bot || v.etapa !== "sinal" || v.adversarioSinalizou !== true || v.adversarioEscolheu !== false) throw new Error("vista da luta contra bot: " + JSON.stringify({ bot: v.bot, etapa: v.etapa, sin: v.adversarioSinalizou, esc: v.adversarioEscolheu }));
         if ("licaoBot" in v) throw new Error("a lição do bot apareceu antes do fim da luta");
+        const disp = v.acoes.filter((x) => x.restam > 0).map((x) => x.familia), sinal = disp[n % disp.length];
+        await ok(u, "sinal", { lutaId: lid, round: v.round, troca: v.troca, familia: sinal });
+        const vr = await ok(u, "luta", { lutaId: lid });
+        if (vr.etapa !== "acao" || vr.adversarioEscolheu !== true || !vr.sinais || vr.sinais.a !== sinal) throw new Error("revelação contra bot: " + JSON.stringify({ etapa: vr.etapa, esc: vr.adversarioEscolheu, sinais: vr.sinais }));
         const d = (await q("select public.jxj_luta($1) as d", [lid]))[0].d;
-        previstas.push(BOT.acaoDoBot({ estado: d.luta.estado, semente: d.luta.semente, trocas: d.trocas, dados: d.luta.bot }));
-        await ok(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: F[(n * 3 + 1) % 4] });
+        if (vr.sinais.b !== BOT.sinalDoBot({ estado: d.luta.estado, semente: d.luta.semente, trocas: d.trocas, dados: d.luta.bot, lado: "b" })) throw new Error("o sinal do bot na vista não é o da semente");
+        /* a previsão só usa o que é público (os sinais); a ação do jogador (às vezes finta) não entra */
+        previstas.push(BOT.acaoDoBot({ estado: d.luta.estado, semente: d.luta.semente, trocas: d.trocas, dados: d.luta.bot, sinais: vr.sinais }));
+        const fintar = n % 2 === 1 && d.luta.estado.a.energia >= EST.ESTRATEGIA.custoFinta && disp.some((f) => f !== sinal);
+        await ok(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: fintar ? disp.find((f) => f !== sinal) : sinal });
       }
       const gravadas = (await q("select acao_b from jxj_trocas where luta_id = $1 order by round, troca", [lid])).map((t) => t.acao_b);
       if (!gravadas.length || gravadas.join() !== previstas.join()) throw new Error(`previstas ${previstas.join()} | gravadas ${gravadas.join()}`);
@@ -12579,6 +12670,9 @@ async function testarJxJMotor() {
     const t = M.textoEvento(ev, { a: "Ana", b: "Bia" });
     if (!/Ana mostrou Guarda alta e fez Golpes/.test(t) || problemasDeTexto(t).length) throw new Error("texto: " + t);
     if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.sinalMs + EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo da troca " + M.FORMATO.prazoMs);
+    /* quem mostrou a postura e perdeu o prazo da ação faz a família do sinal (se tem carta), sem finta */
+    const aus = M.resolverTroca(e, P, { a: null, b: "defesa", sinais: { a: "queda", b: "defesa" } }, "f2");
+    if (aus.estado.a.ultima !== "queda" || aus.eventos.some((x) => x.tipo === "finta") || aus.estado.a.ausentesSeguidas !== 1) throw new Error("ausente com sinal: " + JSON.stringify([aus.estado.a.ultima, aus.estado.a.ausentesSeguidas]));
   });
   await conf("blefe tem equilíbrio (v4, fase 2): no equilíbrio entre as estratégias de sinal, o sinal acerta a ação de 60% a 75% das vezes; o equilíbrio mistura 2 ou mais estratégias", () => {
     const r = BAL.medirSinais(120);
