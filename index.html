@@ -8586,7 +8586,7 @@ function jxjMaoTexto(m){
 function jxjMao(maos,l){
   if(!maos||!maos[l])return "";
   const m=maos[l];
-  return `<span class="jxj-mao" role="img" aria-label="Ações que restam no round: ${JXJ_FAMILIAS.map(f=>`${JXJ_FAMILIA_TXT[f]} ${m[f]}`).join(", ")}">${JXJ_FAMILIAS.map(f=>`<i${m[f]?"":` class="vazio"`}>${ICONE(JXJ_ICONE_ACAO[f]||"luta")}${m[f]}</i>`).join("")}</span>`;
+  return `<span class="jxj-mao" role="img" aria-label="Ações que restam no round: ${JXJ_FAMILIAS.map(f=>`${JXJ_FAMILIA_TXT[f]} ${m[f]}`).join(", ")}">${JXJ_FAMILIAS.map(f=>`<i${m[f]?"":` class="zero"`}>${ICONE(JXJ_ICONE_ACAO[f]||"luta")}${m[f]}</i>`).join("")}</span>`;
 }
 /* dica da primeira luta (cartel vazio quando a luta começou): o começo do
    round explica a mão; depois, avisa quando ele só tem uma ou duas famílias */

@@ -1648,7 +1648,10 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-faixa-combate .jxj-cartoes{font-family:var(--f-ui);font-size:14px;letter-spacing:.06em;color:var(--cinza);margin:0}
 .jxj-faixa-combate .jxj-cartoes b{color:var(--osso);font-weight:700}
 .jxj-lance{padding:12px 16px}
-.jxj-lance .jxj-duelo span{flex-direction:row;align-items:center;gap:8px}
+/* com dano e "finta" dos dois lados, as marcas descem pra linha de baixo
+   em vez de espremer o nome letra por letra (fase 2, visto no celular) */
+.jxj-lance .jxj-duelo span{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.jxj-lance .jxj-duelo b{overflow-wrap:normal}
 .jxj-lance .jxj-duelo span.ele{justify-content:flex-end}
 .jxj-lance .jxj-duelo .ico{flex:none;width:22px;height:22px;color:var(--sangue)}
 .jxj-lance .jxj-duelo span.ele .ico{color:var(--osso-2)}
@@ -1834,7 +1837,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-mao{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:12px;color:var(--osso-2)}
 .jxj-mao i{display:inline-flex;align-items:center;gap:2px;font-style:normal;font-variant-numeric:tabular-nums}
 .jxj-mao i .icone,.jxj-mao i svg{width:12px;height:12px}
-.jxj-mao i.vazio{opacity:.35}
+/* "zero", não "vazio": .vazio é o bloco de tela vazia e virava um quadrado tracejado no placar */
+.jxj-mao i.zero{opacity:.35}
 .jxj-restam{font-style:normal;font-weight:700;font-size:12px;min-width:18px;text-align:center;border-radius:9px;padding:0 5px;border:1px solid currentColor;opacity:.85;font-variant-numeric:tabular-nums}
 .jxj-acao.sem-carta{opacity:.38;filter:grayscale(1);cursor:not-allowed}
 .jxj-dica-mao{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}

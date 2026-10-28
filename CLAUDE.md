@@ -140,7 +140,8 @@ metade). Regras do revamp que valem daqui pra frente:
   versão: mudar número sobe `VERSAO_MOTOR`. Luta v3 (estado sem `mao`)
   segue as regras de antes. `VERSAO_BALANCEAMENTO` 3 com
   `supabase_jxj_estrategia.sql` (o dono roda antes do deploy). Fases 2 a 4
-  (sinais e blefe, iniciativa, ficha) vão pro ar junto com esta.
+  (sinais e blefe, iniciativa, ficha) vão pro ar junto com esta; as 4
+  estão prontas na branch desde 2026-10-28.
   Estratégia de simulação que pede família sem carta passa por
   `familiaNaMao`; bot filtra por `filtrarPelaMao`.
   **Fase 2 (sinais e blefe):** cada troca tem a etapa do sinal (5 s, só
@@ -157,6 +158,20 @@ metade). Regras do revamp que valem daqui pra frente:
   (`lutaContraBot`, jogador modelo com 30% de isca). O Paciente forte
   passou 1 ponto da faixa e ficou como está (pedido do dono): o teste
   aceita 42% só pra ele até o dono decidir.
+  **Fase 3 (iniciativa):** quem leva mais pontos de juiz na troca fica com
+  a iniciativa (`estado.iniciativa`) até perder uma troca; some no fim do
+  round; com ela a finta custa metade. `custoFintaDe(estado, lado,
+  perfil)` é o único custo da finta (tela, recusa do servidor, motor,
+  bot). O momento saiu do v4 (a barra e a disputa; o ponto do lance
+  ficou); luta v3 bit a bit igual (impressão digital na `jxjmotor`). Os
+  nós do momento viraram iniciativa (`retencaoMomento`) e finta barata
+  (`ritmo`). Honestidade do sinal contada nas lutas (66%).
+  **Fase 4 (a ficha):** a mão do round é a do estilo
+  (`ESTRATEGIA.maoPorEstilo`: striker 3/2/3/1, wrestler 2/3/3/1, grappler
+  1/2/5/1, counter 2/1/5/1, medidas; counter sem Pressão travava a luta)
+  e o counter ganha 0,5 ponto de juiz ao defender e acertar a leitura
+  (`bonusDefesaQueLe`). `maoCheia(estilo)`; a vista e as definições
+  mandam a mão de cada estilo. Nenhuma das duas fases tem SQL próprio.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

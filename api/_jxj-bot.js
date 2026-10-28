@@ -272,11 +272,15 @@ export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
    graça. A faixa RATING_BOT continua escolhendo a habilidade do bot pelo
    rating do jogador. Mexeu no jeito, no motor ou na INCLINACAO: medir de
    novo e copiar aqui (a suíte jxjbot confere com folga de 40 pontos). */
+/* Fases 3 e 4 (2026-10-28): medida de novo do mesmo jeito (sem o momento,
+   com a iniciativa e a mão do estilo): o Paciente forte caiu de 1548 pra
+   1545 e o Provocador forte de 1494 pra 1474 (com a iniciativa ele blefa
+   mais, e blefe contra quem não lê a postura só custa energia) */
 export const FORCA_BOT = {
-  agressivo: [1499, 1502, 1494],
-  defensivo: [1508, 1539, 1548],
-  leitor: [1477, 1492, 1498],
-  caotico: [1478, 1473, 1476],
+  agressivo: [1492, 1478, 1474],
+  defensivo: [1509, 1517, 1545],
+  leitor: [1481, 1491, 1498],
+  caotico: [1475, 1464, 1482],
 };
 export function forcaDoBot(pers, s) {
   const f = FORCA_BOT[pers];

@@ -11,6 +11,13 @@
 -- Desfazer a fase 2: drop function public.jxj_enviar_sinal(uuid, bigint,
 -- smallint, smallint, text, integer); drop function
 -- public.jxj_sinais_abertos(bigint); drop table jxj_sinais;
+-- Fases 3 (iniciativa) e 4 (a mão do estilo): nada no banco; as duas moram
+-- no estado da luta. Este arquivo é o único SQL das 4 fases.
+--
+-- Conferir depois de rodar (o resultado esperado: 3, true, 2):
+--   select (select valor from jxj_config where chave = 'versao_balanceamento') as versao,
+--          to_regclass('public.jxj_sinais') is not null as tabela_sinais,
+--          (select count(*) from pg_proc where proname in ('jxj_enviar_sinal', 'jxj_sinais_abertos')) as funcoes;
 --
 -- O código e o banco precisam dizer o mesmo número: com o banco em 2 e o
 -- código em 3, a tela promete o respec grátis e o banco cobra as fichas.

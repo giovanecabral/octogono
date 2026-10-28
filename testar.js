@@ -14261,7 +14261,8 @@ async function testarJxJTelas() {
         await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.mao[eu] = { golpes: 1, queda: 0, defesa: 2, pressao: 1 }; e.mao[ele] = { golpes: 0, queda: 0, defesa: 1, pressao: 1 }; });
         let m = await abrir(`luta/${lid}`), nos = desde(m);
         const hEu = String(nos.find((n) => n.id === "jxj-card-eu").innerHTML), hEle = String(nos.find((n) => n.id === "jxj-card-ele").innerHTML);
-        if (!/jxj-mao/.test(hEu) || !/jxj-mao/.test(hEle) || !/class="vazio"[^>]*>.*?0</.test(hEle)) throw new Error("mão no placar: " + hEle.replace(/\s+/g, " ").slice(0, 400));
+        /* a família zerada usa classe própria: "vazio" é o bloco de tela vazia (borda tracejada, 28 px de respiro) e virava um quadrado no placar */
+        if (!/jxj-mao/.test(hEu) || !/jxj-mao/.test(hEle) || !/class="zero"[^>]*>.*?0</.test(hEle) || /class="vazio"/.test(hEle)) throw new Error("mão no placar: " + hEle.replace(/\s+/g, " ").slice(0, 400));
         const bq = nos.filter((n) => tem(n, "jxj-acao")).find((b) => /jxj-restam[^>]*>0</.test(String(b.innerHTML)));
         if (!bq || !tem(bq, "sem-carta") || !bq.disabled) throw new Error("botão sem carta: " + (bq ? bq.className : "nenhum com 0"));
         if (nos.filter((n) => tem(n, "jxj-acao") && tem(n, "sem-carta")).length !== 1) throw new Error("só a Queda está sem carta");

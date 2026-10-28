@@ -5418,6 +5418,148 @@ apaga `jxj_sinais`. `jxjtelas`: as etapas na tela (a suíte zera o limite
 de chamadas a cada tela aberta: o DOM falso dispara o timer da luta a cada
 volta e a soma passava do teto de 600).
 
+## Online: estratégia por informação, fase 3: iniciativa (2026-10-28)
+
+Plano: `docs/superpowers/plans/2026-10-28-online-estrategia-fase3-4.md`
+(decisões de desenho na spec, seção 8). Vai pro ar junto com as outras
+fases.
+
+### Regras
+
+- Quem leva mais pontos de juiz numa troca fica com a **iniciativa** pra
+  troca seguinte (`estado.iniciativa`, "a", "b" ou null). Troca empatada
+  (folga de 0,01) não muda nada; pontos de ausência contam. Uma ficha só;
+  some no fim do round.
+- Com a iniciativa, a **finta custa metade** (`fatorFintaIniciativa` 0,5:
+  0,75 de energia). `custoFintaDe(estado, lado, perfil)` em
+  `api/_jxj-estrategia.js` é o número da tela (`acoes[].finta`), da
+  recusa do servidor, da cobrança no motor e do bot.
+- O evento `iniciativa` (quem, e `segurou` quando o nó segurou) é só dado,
+  sem texto.
+- **O momento saiu do motor v4** (decisão do dono: "a iniciativa
+  substitui"): a barra de -4 a 4 e os pontos de disputa dela. Os juízes
+  continuam dando o ponto do lance (`bonusMomento`, 0,5), senão sair da
+  grade ou levantar valeria zero e a troca empataria. Luta v3 segue igual,
+  bit a bit (impressão digital de 120 lutas na `jxjmotor`).
+- Os dois nós do momento passaram pra iniciativa e pra finta (no v4):
+  "Manutenção de iniciativa" (`retencaoMomento`) segura a iniciativa de
+  quem perdeu a troca com essa chance; "Controle de ritmo" (`ritmo`) tira
+  essa fração do custo da finta (até 35%).
+
+### Medido
+
+`node ferramentas/jxj-balanco.mjs iniciativa` (espelho dos 4 estilos,
+nível 1, os dois lados no equilíbrio da fase 2):
+
+- a iniciativa muda em 43% das trocas; cada lado tem em 32,5% delas;
+- quem tem a iniciativa finta em 44% das trocas; quem não tem, em 27%;
+- os dois nós valem, jogando com sinais, 1,5 (ritmo) e 1,8 (manutenção)
+  pontos de vitória; na `jxjarvore` (sem sinais, só o atributo do nó),
+  2,7 e 2,5.
+
+Sem o momento, a matriz de estilos ficou de 45,4% a 55,1% no nível 1,
+nocaute 25,1%, finalização 10,8%, decisão 61,6%, empate 2,5%, 9,9 trocas.
+A leitura (quem acerta a leitura em metade das trocas contra o jogador de
+estilo) caiu de 71,3% pra 69,5% e 69,7% (duas sementes): o momento
+ampliava a leitura. A faixa do teste foi pra 69%; no v4 a leitura também
+paga pela iniciativa, que essa medida sem sinais não vê.
+
+A honestidade do sinal no equilíbrio agora é **contada nas lutas** (a
+postura igual à ação), não mais 1 − blefe: com a iniciativa o blefe dobra
+e a fórmula dava 75,3%; contada, 66,1% (meta 60% a 75%).
+
+### Bots
+
+O bot com a finta mais barata blefa mais, na proporção do custo
+(`planoDoSinal`: isca vezes custoFinta / custo dele, até 1); o custo dele
+usa o ritmo da build (`custoFintaDoBot`). Provocador médio: 25% de isca
+sem a iniciativa, 58% com. O jogador modelo da ferramenta faz o mesmo.
+
+### Tela
+
+Na luta v4, a faixa mostra "Iniciativa: você" (dourado) ou "Iniciativa:
+ele" no lugar do trilho do momento; sem ninguém, nada. Luta v3 continua
+com o trilho. O custo da finta nos botões sai com duas casas ("−0,75
+finta"). Primeira luta, com a iniciativa: "Com a iniciativa, a finta
+custa metade.".
+
+### Testes
+
+`jxjmotor`: iniciativa (quem pontua mais, empate, fim do round, custo,
+ritmo, manutenção, v3 sem iniciativa), momento fora do v4 e v3 bit a bit.
+`jxj`: a vista diz quem tem, `acoes[].finta` com metade e a recusa pelo
+custo de cada um. `jxjbot`: com a iniciativa o bot blefa mais e só finta
+com a energia do custo dele. `jxjtelas`: a ficha, a dica, o custo nos
+botões e a luta v3 com o trilho. `JXJ_SO="começo do nome|outro"` roda só
+esses testes nas suítes do Online (pra iterar; a `jxjtelas` depende da
+ordem).
+
+## Online: estratégia por informação, fase 4: a ficha muda a luta (2026-10-28)
+
+Mesmo plano da fase 3 (decisões na spec, seção 9). Vai pro ar junto com
+as outras fases.
+
+### Regras
+
+- A mão do round é a do estilo de cada lado (`ESTRATEGIA.maoPorEstilo`,
+  `maoCheia(estilo)`; estilo desconhecido fica com a padrão): cada estilo
+  troca uma carta da mão padrão (2 Golpes, 2 Quedas, 4 Defesas, 1
+  Pressão).
+
+| Estilo | Mão | Troca |
+|---|---|---|
+| Striker | 3 Golpes, 2 Quedas, 3 Defesas, 1 Pressão | uma Defesa vira Golpe |
+| Wrestler | 2 Golpes, 3 Quedas, 3 Defesas, 1 Pressão | uma Defesa vira Queda |
+| Grappler | 1 Golpe, 2 Quedas, 5 Defesas, 1 Pressão | um Golpe vira Defesa (a guarda) |
+| Counter | 2 Golpes, 1 Queda, 5 Defesas, 1 Pressão | uma Queda vira Defesa |
+
+- O counter ganha 0,5 ponto de juiz quando defende e acerta a leitura (a
+  Defesa que pega a queda ou a finalização dele; `bonusDefesaQueLe`).
+- A vista manda a mão cheia do estilo de cada lado; as definições mandam a
+  mão e o bônus de cada estilo, e o cartão do estilo na criação mostra os
+  dois. O estilo dele já era público (`nomes`), então a mão não entrega
+  nada novo.
+- Sem SQL: a mão mora no estado da luta.
+
+### Medido (por que não o ponto de partida da spec)
+
+12 configurações, matriz no nível 1 e no 30 (600 lutas por dupla):
+
+- **Counter sem Pressão** (2/2/5/0): ninguém pune a Defesa dele (Pressão é
+  o que ganha da Defesa em pé); espelho de counter 100%, empate 8,1%,
+  nocaute 17,6%, e ele perde 42% a 45% dos outros. Com 1 Pressão
+  (2/1/5/1), sem bônus, ainda perdia 41% do wrestler; com 2 pontos de
+  bônus ia a 56% contra o wrestler e 61% contra o grappler; 0,5 deixa toda
+  dupla na faixa.
+- **Grappler com 3 Quedas** (1/3/4/1 ou 2/3/3/1): mais chão e mais
+  finalização; no nível 30 venceu o wrestler de 60,5% a 64,2% em todas as
+  combinações. Com 5 Defesas (1/2/5/1), 57,1%.
+- **Wrestler** com Pressão no lugar de Queda ou de Defesa não mudou o
+  problema do grappler; ficou com a Queda.
+
+Na `jxjmotor` (1.200 lutas por dupla): estilos de 46,4% a 54,0% no nível 1
+e dentro de 40% a 60% no nível 30; nocaute 26,1%, finalização 11,4%,
+decisão 60,4%, empate 2,1%, 9,8 trocas; trocas óbvias 0%; contar as
+cartas vale 3,5 pontos (70,0% contra 66,5%); honestidade do sinal 66,3%.
+Por baixo sem a carta de Pressão (levantar), em % das trocas por baixo:
+striker 2%, counter 3%, wrestler 35%, grappler 47% (o grappler sai de
+baixo raspando, que é o jogo dele).
+
+O teste das variantes passou pra 4 amostras (6.400 lutas): com 2, o
+quadril deu 47,7% (faixa 48%) e, em três amostras novas, 50,2, 50,1 e
+48,0. As variantes estão fora do escopo da spec e não mudaram.
+
+### Bots
+
+`PESOS_VALOR` treinado de novo (o peso do momento ficou zero). `FORCA_BOT`
+medida de novo como na fase 2 (caminho do servidor com sinais, 1.920
+lutas por casa): Provocador 1492/1478/1474, Paciente 1509/1517/1545,
+Observador 1481/1491/1498, Inquieto 1475/1464/1482. O jogador de estilo
+vence o Paciente forte em 43,5% (era 42,3% a 43,1%: voltou pra dentro da
+faixa normal; o teste ainda aceita 42 só pra ele até o dono decidir).
+Ganho de quem lê o jeito: Provocador 16,6, Paciente 17,1, Observador
+14,7, Inquieto 16,5.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai
