@@ -15,3 +15,6 @@ Mapa.png
 mapa.png
 # ferramentas de teste (PGlite): só o package.json vai pro git
 node_modules/
+
+# área de trabalho dos planos e protótipos (superpowers), só local
+.superpowers/
