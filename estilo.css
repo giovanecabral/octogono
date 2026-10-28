@@ -1470,26 +1470,13 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-momento-trilho i{position:absolute;top:-3px;width:6px;height:16px;margin-left:-3px;background:var(--osso);transition:left .4s var(--ease-soco)}
 .jxj-cartoes{color:var(--cinza);font-size:13px;margin:0}
 .jxj-zona-acao{display:flex;flex-direction:column;gap:8px}
-.jxj-acoes-luta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.jxj-acao{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:150px;padding:16px;cursor:pointer;text-align:left;font:inherit;color:var(--osso);
-  background:rgba(17,19,26,.92);border:1px solid var(--linha-forte);transition:border-color .15s,background .15s,transform .15s var(--ease-soco);
-  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
-.jxj-acao .ico{width:30px;height:30px;color:var(--sangue)}
-.jxj-acao b{font-family:var(--f-ui);font-size:19px;letter-spacing:.06em;text-transform:uppercase}
-.jxj-acao small{font-family:var(--f-ui);color:var(--ouro);letter-spacing:.06em}
-.jxj-acao span{color:var(--osso-2);font-size:14px;line-height:1.35}
-.jxj-acao:active{transform:translateY(1px)}
-.jxj-acao:disabled{opacity:.45;cursor:not-allowed}
-.jxj-acao:focus-visible{outline:2px solid var(--osso);outline-offset:2px;background:rgba(215,38,30,.18)}
 .jxj-espera{display:flex;align-items:center;gap:12px;padding:18px;background:rgba(17,19,26,.9);border:1px solid var(--linha-forte);margin:0;font-size:17px}
 .jxj-espera .ico{width:26px;height:26px;color:var(--ganho);flex:none}
 .jxj-log-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .jxj-log-lista li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;color:var(--osso-2);font-size:15px}
 .jxj-log-lista b{font-family:var(--f-ui);letter-spacing:.08em;color:var(--sangue)}
-@media (hover:hover) and (pointer:fine){.jxj-acao:hover:not(:disabled){border-color:var(--sangue);background:rgba(215,38,30,.12)}}
 /* variantes (2026-10-04): o ciclo da família no pé do botão, a troca
    anterior revelada e a mão nova que vira no começo do round */
-.jxj-acao .jxj-ciclo{font-style:normal;font-family:var(--f-ui);font-size:12px;letter-spacing:.06em;color:var(--cinza);margin-top:auto;padding-top:4px;border-top:1px solid var(--linha-forte);align-self:stretch}
 .jxj-ultima{padding:12px 16px;background:rgba(17,19,26,.88);border:1px solid var(--linha-forte);display:flex;flex-direction:column;gap:8px}
 .jxj-ultima .jxj-rotulo{margin:0}
 .jxj-duelo{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px}
@@ -1506,10 +1493,6 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 @keyframes jxjRevela{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 @keyframes jxjEntraEsq{from{opacity:0;transform:translateX(-28px)}}
 @keyframes jxjEntraDir{from{opacity:0;transform:translateX(28px)}}
-.jxj-acoes-luta.mao-nova .jxj-acao{animation:jxjVira .5s var(--ease-soco) both}
-.jxj-acoes-luta.mao-nova .jxj-acao:nth-child(2){animation-delay:.07s}
-.jxj-acoes-luta.mao-nova .jxj-acao:nth-child(3){animation-delay:.14s}
-.jxj-acoes-luta.mao-nova .jxj-acao:nth-child(4){animation-delay:.21s}
 @keyframes jxjVira{from{opacity:0;transform:perspective(600px) rotateY(-70deg)}to{opacity:1;transform:none}}
 /* quem apanhou treme; knockdown treme forte e acende; finalização aperta */
 .jxj-lado.jxj-apanhou{animation:jxjApanha .38s ease}
@@ -1588,11 +1571,7 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-lado{flex-direction:column;align-items:flex-start;padding:10px}
   .jxj-lado .jxj-retrato{width:64px}
   .jxj-relogio{font-size:44px}
-  .jxj-acoes-luta{grid-template-columns:1fr 1fr;gap:8px}
-  .jxj-acao{min-height:120px;padding:12px}
-  .jxj-acao span{font-size:13px}
   .jxj-duelo b{font-size:16px}
-  .jxj-acao .jxj-ciclo{font-size:11px}
   .jxj-hist-linha{grid-template-columns:80px minmax(0,1fr) auto;grid-template-areas:"res adv delta" "ver ver ver"}
   .jxj-hist-ver{grid-column:1 / -1;justify-self:start}
   .jxj-rank-linha{grid-template-columns:34px 44px minmax(0,1fr) 70px}
@@ -1663,31 +1642,9 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-lance .jxj-ultima-txt{font-size:15px;color:var(--osso-2)}
 .jxj-zona-topo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
 .jxj-zona-topo .jxj-rotulo{margin:0}
-.jxj-ciclo-pe{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;font-family:var(--f-ui);font-size:13px;letter-spacing:.06em;color:var(--osso-2)}
-.jxj-ciclo-pe span{display:inline-flex;align-items:center;gap:4px}
-.jxj-ciclo-pe span .ico{width:15px;height:15px;color:var(--sangue)}
-.jxj-ciclo-pe > .ico{width:12px;height:12px;color:var(--cinza)}
-.jxj-ciclo-pe small{margin-left:4px;color:var(--cinza)}
-.jxj-ciclo-pe span.volta{opacity:.45}
-.jxj-acoes-luta{gap:10px}
-.jxj-acao{position:relative;min-height:0;gap:3px;padding:12px 14px}
-.jxj-acao-topo{display:flex;align-items:center;justify-content:space-between;align-self:stretch}
-.jxj-acao .jxj-acao-topo .ico{width:24px;height:24px}
 .jxj-custo{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;font-style:normal;font-family:var(--f-ui);font-weight:700;font-size:14px;
   color:var(--ouro);background:rgba(212,160,23,.12)}
-.jxj-acao .jxj-custo .ico{width:13px;height:13px;color:var(--ouro)}
-.jxj-acao b{margin-top:4px}
-.jxj-acao small{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza)}
-.jxj-acao .jxj-acao-efeito{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:14px;line-height:1.3;color:var(--osso-2)}
-.jxj-acao .jxj-acao-ciclo{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;font-family:var(--f-ui);font-size:12px;letter-spacing:.04em;color:var(--cinza)}
-.jxj-acao .jxj-acao-ciclo .ico{width:12px;height:12px;color:var(--ganho)}
-.jxj-acao .jxj-acao-ciclo .ico + .ico,.jxj-acao .jxj-acao-ciclo .ico:last-of-type{color:var(--sangue-vivo)}
 /* a frase inteira: por cima do próprio botão (o recorte dos cantos corta o que sai dele) */
-.jxj-acao .jxj-acao-bolha{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 14px;
-  background:rgba(11,12,16,.97);color:var(--osso);font-size:13px;line-height:1.35;opacity:0;visibility:hidden;transition:opacity .15s,visibility 0s .15s}
-.jxj-acao .jxj-acao-bolha i{font-style:normal;font-family:var(--f-ui);letter-spacing:.04em;color:var(--cinza)}
-.jxj-acao.segurando .jxj-acao-bolha,.jxj-acao:focus-visible .jxj-acao-bolha{opacity:1;visibility:visible;transition-delay:0s}
-@media (hover:hover) and (pointer:fine){.jxj-acao:hover:not(:disabled) .jxj-acao-bolha{opacity:1;visibility:visible;transition:opacity .15s .5s,visibility 0s .5s}}
 .jxj-gaveta{padding:0;background:rgba(10,11,15,.72);border:1px solid var(--linha-forte)}
 .jxj-gaveta summary{display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;list-style:none;font-family:var(--f-ui);font-weight:700;
   font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--osso-2)}
@@ -1716,11 +1673,6 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-lance .jxj-duelo .ico{width:18px;height:18px}
   .jxj-dano{font-size:19px}
   .jxj-lance .jxj-ultima-txt{font-size:14px}
-  .jxj-ciclo-pe small{flex-basis:100%;margin-left:0}
-  .jxj-acoes-luta{grid-template-columns:1fr 1fr;gap:8px}
-  .jxj-acao{padding:10px 12px}
-  .jxj-acao b{font-size:17px}
-  .jxj-acao .jxj-acao-efeito{font-size:13px}
 }
 @media (prefers-reduced-motion:reduce){
   .jxj-lance.nova .jxj-dano,.jxj-hud-lado.jxj-apanhou,.jxj-hud-lado.jxj-caiu,.jxj-hud-lado.jxj-apertado{animation:none}
@@ -1783,14 +1735,6 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-momento-decisivo.favor > .ico{color:var(--ouro)}
 @keyframes jxjMomento{0%,100%{box-shadow:0 0 0 0 rgba(215,38,30,.0)}50%{box-shadow:0 0 0 6px rgba(215,38,30,.22)}}
 @keyframes jxjMomentoOuro{0%,100%{box-shadow:0 0 0 0 rgba(212,160,23,0)}50%{box-shadow:0 0 0 6px rgba(212,160,23,.2)}}
-.jxj-acoes-luta.no-momento .jxj-acao{border-color:rgba(212,160,23,.45)}
-.jxj-acao.com-dica .jxj-acao-efeito{-webkit-line-clamp:3;color:var(--ouro)}
-.jxj-acao .jxj-acao-bolha i.dica{color:var(--ouro)}
-.jxj-acao-ico{display:inline-flex;align-items:center;gap:4px}
-.jxj-acao-duelo{display:inline-flex;font-style:normal}
-.jxj-acao .jxj-acao-topo .jxj-acao-duelo .ico{width:15px;height:15px}
-.jxj-acao-duelo.bom .ico{color:var(--ganho)}
-.jxj-acao-duelo.ruim .ico{color:var(--sangue-vivo)}
 @media (max-width:720px){
   .jxj-duelos{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;padding:8px 10px 6px}
   .jxj-momento-decisivo{padding:8px 10px;gap:10px}
@@ -1840,29 +1784,16 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 /* "zero", não "vazio": .vazio é o bloco de tela vazia e virava um quadrado tracejado no placar */
 .jxj-mao i.zero{opacity:.35}
 .jxj-restam{font-style:normal;font-weight:700;font-size:12px;min-width:18px;text-align:center;border-radius:9px;padding:0 5px;border:1px solid currentColor;opacity:.85;font-variant-numeric:tabular-nums}
-.jxj-acao.sem-carta{opacity:.38;filter:grayscale(1);cursor:not-allowed}
 .jxj-dica-mao{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}
 .jxj-dica-mao svg{width:14px;height:14px;flex:none}
 /* sinais e blefe (fase 2 do Online, 2026-10-27): as posturas da etapa do
    sinal, as duas reveladas e a marca da finta nos botões e no lance */
-.jxj-posturas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.jxj-postura{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:var(--osso);
-  background:rgba(17,19,26,.92);border:1px solid var(--linha-forte);transition:border-color .15s,background .15s,transform .15s var(--ease-soco);
-  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
-.jxj-postura .ico{width:26px;height:26px;color:var(--ouro)}
-.jxj-postura b{font-family:var(--f-ui);font-size:17px;letter-spacing:.06em;text-transform:uppercase}
-.jxj-postura small{color:var(--osso-2);font-size:13px;line-height:1.3}
-.jxj-postura:active{transform:translateY(1px)}
-.jxj-postura:disabled{opacity:.45;cursor:not-allowed}
-.jxj-postura:focus-visible{outline:2px solid var(--osso);outline-offset:2px;background:rgba(212,160,23,.12)}
-@media (hover:hover) and (pointer:fine){.jxj-postura:hover:not(:disabled){border-color:var(--ouro)}}
 .jxj-sinais{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0;font-family:var(--f-ui);font-size:14px;letter-spacing:.04em;color:var(--osso-2)}
 .jxj-sinais span{display:inline-flex;align-items:center;gap:6px}
 .jxj-sinais .ico{width:16px;height:16px;color:var(--cinza)}
 .jxj-sinais b{color:var(--osso)}
 .jxj-sinais .ele b{color:var(--ouro)}
 .jxj-finta{font-style:normal;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.04em;padding:1px 6px;color:var(--sangue);border:1px solid currentColor;white-space:nowrap}
-.jxj-acao.sem-energia{opacity:.38;cursor:not-allowed}
 .jxj-finta-lance{font-style:normal;font-family:var(--f-ui);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ouro);padding:0 4px;border:1px solid currentColor}
 .jxj-dica-sinal,.jxj-dica-iniciativa{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}
 .jxj-dica-sinal svg,.jxj-dica-iniciativa svg{width:14px;height:14px;flex:none}
@@ -1872,10 +1803,69 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-iniciativa.eu{color:var(--ouro)}
 .jxj-iniciativa.ele{color:var(--cinza)}
 .jxj-tendencia span.jxj-fintas{color:var(--osso-2);border-bottom-color:transparent}
-/* celular: as 4 numa linha, pra caber sem rolar nos 5 s do sinal */
-@media (max-width:720px){.jxj-posturas{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
-  .jxj-postura{align-items:center;text-align:center;gap:2px;padding:8px 4px;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
-  .jxj-postura .ico{width:22px;height:22px}
-  .jxj-postura b{font-size:12px;letter-spacing:.03em;line-height:1.15}
-  .jxj-postura small{font-size:11px}
-  .jxj-postura .longo{display:none}}
+
+/* ---------- Online em cartas (2026-10-28, protótipo aprovado pelo dono) ----------
+   A carta (cor sólida da família, gema do custo, ícone, faixa, regra) e a
+   mão em leque. As regras antigas do botão retangular (.jxj-acao,
+   .jxj-postura) saíram: o papel das classes continua (testes e efeitos),
+   o desenho é este. */
+.corte{clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 10px,100% calc(100% - 10px),calc(100% - 10px) 100%,10px 100%,0 calc(100% - 10px),0 10px)}
+.oct{clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+.jxj-carta{position:relative;display:flex;flex-direction:column;width:var(--w,150px);height:calc(var(--w,150px) * 1.44);padding:calc(var(--w,150px) * .046);color:var(--tinta);text-align:left;font-family:var(--f-texto);box-sizing:border-box}
+.jxj-carta::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-55deg,rgba(0,0,0,.07) 0 2px,transparent 2px 12px);pointer-events:none}
+.jxj-carta.f-golpes{background:#D7261E;--tinta:#fff;--caixa:rgba(60,5,3,.55)}
+.jxj-carta.f-queda{background:#D4A017;--tinta:#16120a;--caixa:rgba(60,42,4,.28)}
+.jxj-carta.f-defesa{background:#E9E4D8;--tinta:#14161c;--caixa:rgba(20,22,28,.12)}
+.jxj-carta.f-pressao{background:#1b1d24;--tinta:var(--osso);--caixa:rgba(215,38,30,.18);box-shadow:inset 0 0 0 2px var(--sangue)}
+.jxj-carta .jxj-carta-topo{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:4px}
+.jxj-carta .jxj-carta-topo small{font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px) * .075);letter-spacing:.14em;text-transform:uppercase;text-align:right;line-height:1.1;color:var(--tinta)}
+.jxj-carta .jxj-gema{flex:none;width:calc(var(--w,150px) * .22);height:calc(var(--w,150px) * .22);background:var(--osso);display:flex;align-items:center;justify-content:center}
+.jxj-carta .jxj-gema-num{width:82%;height:82%;background:#0b0b0d;color:var(--osso);display:flex;align-items:center;justify-content:center;font-family:var(--f-titulo);font-size:calc(var(--w,150px) * .1);clip-path:inherit}
+.jxj-carta .jxj-carta-arte{position:relative;z-index:1;flex:0 0 34%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.28),transparent 62%)}
+.jxj-carta .jxj-carta-arte .ico{width:calc(var(--w,150px) * .34);height:calc(var(--w,150px) * .34);color:var(--tinta)}
+.jxj-carta .jxj-carta-fita{position:relative;z-index:1;margin:2px calc(var(--w,150px) * -.046) 0;background:#0b0b0d;color:var(--osso);display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 3px;white-space:nowrap;overflow:hidden}
+.jxj-carta .jxj-carta-fita b{font-family:var(--f-titulo);font-weight:400;font-size:calc(var(--w,150px) * .108);letter-spacing:.01em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;color:var(--osso)}
+.jxj-carta .jxj-carta-qtd{font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px) * .085);color:var(--ouro)}
+.jxj-carta .jxj-carta-regra{position:relative;z-index:1;flex:1;margin-top:5px;padding:5px 6px;background:var(--caixa);color:var(--tinta);font-size:calc(var(--w,150px) * .074);line-height:1.28;display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.jxj-carta .jxj-carta-efeito{opacity:.82}
+.jxj-carta .jxj-carta-dica{font-weight:600}
+.jxj-carta.apagada{filter:grayscale(.85) brightness(.45)}
+.jxj-carta-vazia{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:150px;height:216px;box-sizing:border-box;border:2px dashed rgba(255,255,255,.18);color:var(--cinza);font-family:var(--f-ui);font-size:13px;letter-spacing:.12em;text-transform:uppercase;text-align:center}
+.jxj-carta-vazia .ico{width:30px;height:30px;opacity:.5}
+.jxj-carta-vazia b{font-weight:700;color:var(--osso-2)}
+.jxj-carta-vazia i{display:none}
+.jxj-carta-tranca{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:7;color:var(--osso)}
+.jxj-carta-tranca .ico{width:34px;height:34px}
+.jxj-verso{display:flex;align-items:center;justify-content:center;width:var(--w,118px);height:calc(var(--w,118px) * 1.44);background:#0b0b0d;box-shadow:inset 0 0 0 2px var(--sangue);background-image:repeating-linear-gradient(-55deg,rgba(215,38,30,.35) 0 4px,transparent 4px 14px)}
+.jxj-verso-oct{width:46%;aspect-ratio:1;background:var(--sangue);display:flex;align-items:center;justify-content:center}
+.jxj-verso-oct span{width:82%;height:82%;background:#0b0b0d}
+/* a mão em leque */
+.jxj-mao-luta{display:flex;justify-content:center;align-items:flex-end;padding:22px 8px 26px;min-height:250px}
+.jxj-na-mao{position:relative;margin:0 6px;padding:0;background:none;border:0;font:inherit;color:inherit;cursor:pointer;transition:transform .25s var(--ease-soco);filter:drop-shadow(0 14px 18px rgba(0,0,0,.55))}
+.jxj-na-mao:nth-child(1){transform:rotate(-6deg) translateY(12px)}
+.jxj-na-mao:nth-child(2){transform:rotate(-2deg) translateY(2px)}
+.jxj-na-mao:nth-child(3){transform:rotate(2deg) translateY(2px)}
+.jxj-na-mao:nth-child(4){transform:rotate(6deg) translateY(12px)}
+.jxj-na-mao:not(:disabled):hover,.jxj-na-mao:not(:disabled):focus-visible{transform:translateY(-26px) rotate(0) scale(1.06);z-index:5}
+.jxj-na-mao:focus-visible{outline:2px solid var(--osso);outline-offset:4px}
+.jxj-na-mao:disabled{cursor:not-allowed}
+.jxj-na-mao .jxj-finta{position:absolute;left:50%;top:-11px;transform:translateX(-50%);z-index:6;background:#0b0b0d;color:var(--sangue-vivo);border:1px solid var(--sangue-vivo);font-family:var(--f-ui);font-weight:800;font-size:12px;letter-spacing:.04em;padding:1px 7px;white-space:nowrap}
+.jxj-na-mao .jxj-acao-bolha{display:none}
+.jxj-na-mao.segurando .jxj-acao-bolha{display:block;position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:220px;z-index:9;background:var(--sup-2);color:var(--osso-2);padding:8px 10px;font-size:13px;line-height:1.35;border:1px solid var(--linha-forte);text-align:left}
+.jxj-na-mao .jxj-acao-bolha i{font-style:normal;font-family:var(--f-ui);letter-spacing:.04em;color:var(--cinza)}
+.jxj-na-mao .jxj-acao-bolha i.dica{color:var(--ouro)}
+@media (hover:hover) and (pointer:fine){.jxj-na-mao:not(:disabled):hover .jxj-acao-bolha{display:block;position:absolute;left:50%;bottom:calc(100% + 34px);transform:translateX(-50%);width:220px;z-index:9;background:var(--sup-2);color:var(--osso-2);padding:8px 10px;font-size:13px;line-height:1.35;border:1px solid var(--linha-forte);text-align:left;pointer-events:none}}
+.jxj-mao-luta.mao-nova .jxj-na-mao{animation:jxjCartaEntra .45s var(--ease-soco) both}
+.jxj-mao-luta.mao-nova .jxj-na-mao:nth-child(2){animation-delay:.06s}
+.jxj-mao-luta.mao-nova .jxj-na-mao:nth-child(3){animation-delay:.12s}
+.jxj-mao-luta.mao-nova .jxj-na-mao:nth-child(4){animation-delay:.18s}
+@keyframes jxjCartaEntra{from{opacity:0;translate:0 40px}to{opacity:1;translate:0 0}}
+@media (max-width:720px){
+  .jxj-mao-luta{padding:16px 0 18px;min-height:0}
+  .jxj-na-mao{margin:0 1px}
+  .jxj-na-mao .jxj-carta{--w:86px!important}
+  .jxj-na-mao .jxj-carta-vazia{width:86px;height:124px;font-size:10px;letter-spacing:.06em}
+  .jxj-na-mao .jxj-carta-efeito,.jxj-na-mao .jxj-carta-topo small{display:none}
+  .jxj-na-mao .jxj-finta{font-size:10px;padding:0 4px}
+}
+@media (prefers-reduced-motion:reduce){.jxj-na-mao,.jxj-mao-luta.mao-nova .jxj-na-mao{transition:none;animation:none}}

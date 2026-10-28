@@ -14105,9 +14105,10 @@ async function testarJxJTelas() {
         const V = MOTOR.VARIANTE_POR_ID[a.variante];
         if (!V || V.papel !== "pe" || V.familia !== a.familia) throw new Error("variante do servidor: " + JSON.stringify(a));
         if (!V.curto || a.resumo !== V.curto) throw new Error("o servidor não mandou a linha curta de " + a.rotulo + ": " + a.resumo);
-        const custo = a.custo < 0 ? `+${String(-a.custo).replace(".", ",")}` : a.custo === 0 ? "0" : `−${String(a.custo).replace(".", ",")}`;
+        /* cartas (2026-10-28): o custo na gema, sem sinal de menos ("+2" quando recupera) */
+        const custo = a.custo < 0 ? `+${String(-a.custo).replace(".", ",")}` : String(a.custo).replace(".", ",");
         if (!acoes.some((b) => { const h = String(b.innerHTML); return h.includes(`<b>${a.rotulo}</b>`) && h.includes(`<small>${a.grupo}</small>`) && h.includes(a.resumo)
-          && h.includes(a.descricao) && h.includes(a.ciclo) && h.includes(custo) && h.includes("jxj-acao-bolha"); }))
+          && h.includes(a.descricao) && h.includes(a.ciclo) && h.includes(`<span class="jxj-gema-num">${custo}</span>`) && h.includes("jxj-acao-bolha"); }))
           throw new Error("botão sem a variante " + a.rotulo + ": " + acoes.map((b) => String(b.innerHTML).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80)).join(" | "));
       }
       const hud = nos.filter((n) => tem(n, "jxj-hud")).pop();
@@ -14115,9 +14116,9 @@ async function testarJxJTelas() {
       const hHud = htmlDe(nos.filter((n) => n.id === "jxj-card-eu" || n.id === "jxj-card-ele"));
       if ((hHud.match(/class="jxj-vida"[^>]*><i style="width:100%"/g) || []).length !== 2) throw new Error("vida cheia no começo: " + hHud.replace(/\s+/g, " ").slice(0, 300));
       if (!htmlDe(nos.filter((n) => tem(n, "jxj-hud-centro"))).includes('id="jxj-anel"')) throw new Error("sem o relógio em anel");
-      const ciclo = nos.filter((n) => tem(n, "jxj-ciclo-pe")).pop();
-      const ordem = ciclo ? (String(ciclo.innerHTML).match(/<\/svg>([^<]+)<\/span>/g) || []).map((x) => x.replace(/<[^>]+>/g, "")) : [];
-      if (JSON.stringify(ordem) !== JSON.stringify(["Golpes", "Pressão", "Defesa", "Queda", "Golpes"])) throw new Error("ciclo em pé: " + JSON.stringify(ordem));
+      /* cartas (2026-10-28): o ciclo dos 4 ícones saiu; cada carta diz quem ela ganha e de quem perde */
+      if (nos.some((n) => tem(n, "jxj-ciclo-pe"))) throw new Error("o ciclo dos 4 ícones voltou (cada carta já diz quem ganha de quem)");
+      for (const b of acoes) if (!/Ganha de [^.]+\. Perde pra [^.]+\./.test(String(b.innerHTML))) throw new Error("carta sem o ciclo dela");
       if (!nos.some((n) => n.tagName === "details" && tem(n, "jxj-gaveta"))) throw new Error("sem a gaveta do histórico");
       const golpes = acoes.find((a) => String(a.innerHTML).includes(`<b>${golpesU1.rotulo}</b>`));
       await golpes.onclick(); await assentar(15);
@@ -14138,6 +14139,7 @@ async function testarJxJTelas() {
     });
     await conf("troca resolvida: o painel da troca anterior mostra as duas variantes e o que aconteceu; som toca uma vez (redesenhar sem troca nova não repete)", async () => {
       vm.runInContext(`globalThis.__som=[];for(const k of Object.keys(SOM)){const f=SOM[k];SOM[k]=function(){globalThis.__som.push(k);return f.apply(this,arguments);};}`, env.sandbox);
+      await db.query("delete from jxj_limites");   // a tela aberta no teste anterior consulta a cada volta do relógio falso (como em abrir)
       const m = env.todos.length;
       const v2 = await api(u2, "luta", { lutaId: lid });
       await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: "defesa" });
@@ -14267,7 +14269,7 @@ async function testarJxJTelas() {
         const hEu = String(nos.find((n) => n.id === "jxj-card-eu").innerHTML), hEle = String(nos.find((n) => n.id === "jxj-card-ele").innerHTML);
         /* a família zerada usa classe própria: "vazio" é o bloco de tela vazia (borda tracejada, 28 px de respiro) e virava um quadrado no placar */
         if (!/jxj-mao/.test(hEu) || !/jxj-mao/.test(hEle) || !/class="zero"[^>]*>.*?0</.test(hEle) || /class="vazio"/.test(hEle)) throw new Error("mão no placar: " + hEle.replace(/\s+/g, " ").slice(0, 400));
-        const bq = nos.filter((n) => tem(n, "jxj-acao")).find((b) => /jxj-restam[^>]*>0</.test(String(b.innerHTML)));
+        const bq = nos.filter((n) => tem(n, "jxj-acao")).find((b) => /jxj-carta-vazia/.test(String(b.innerHTML)));
         if (!bq || !tem(bq, "sem-carta") || !bq.disabled) throw new Error("botão sem carta: " + (bq ? bq.className : "nenhum com 0"));
         if (nos.filter((n) => tem(n, "jxj-acao") && tem(n, "sem-carta")).length !== 1) throw new Error("só a Queda está sem carta");
         const dica = nos.find((n) => tem(n, "jxj-dica-mao"));
@@ -14312,7 +14314,7 @@ async function testarJxJTelas() {
       await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.iniciativa = null; e.mao[eu] = { golpes: 2, queda: 2, defesa: 4, pressao: 1 }; e.mao[ele] = { golpes: 2, queda: 2, defesa: 4, pressao: 0 }; });
       let m = await abrir(`luta/${lid}`), nos = desde(m);
       const post = nos.filter((n) => tem(n, "jxj-postura"));
-      if (!nos.some((n) => tem(n, "jxj-posturas")) || nos.some((n) => tem(n, "jxj-acao"))) throw new Error("etapa do sinal: posturas sem ações");
+      if (!nos.some((n) => tem(n, "jxj-mao-luta")) || nos.some((n) => tem(n, "jxj-acao"))) throw new Error("etapa do sinal: cartas de postura sem ações");
       const hp = htmlDe(post);
       if (post.length !== 4 || !/Peso na frente/.test(hp) || !/Base baixa/.test(hp) || !/Guarda alta/.test(hp) || !/Avançando/.test(hp)) throw new Error("posturas: " + post.length + " " + hp.replace(/\s+/g, " ").slice(0, 300));
       semLixoV3(htmlDe(nos), "etapa do sinal");
@@ -14379,6 +14381,39 @@ async function testarJxJTelas() {
       const temMomento = /class="jxj-momento"/.test(faixa()), temFicha = !!ficha();
       await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.iniciativa = null; });
       if (!temMomento || temFicha) throw new Error("luta v3: " + JSON.stringify({ temMomento, temFicha }));
+    });
+    await conf("cartas (2026-10-28): cada ação é uma carta da cor da família, com a gema do custo, o grupo, o nome, as cópias que restam e a regra; na postura, a carta diz a postura; sem carta, o contorno; sem energia, o cadeado", async () => {
+      const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
+      let vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+      const eu = vs.lado;
+      if (vs.minhaAcao) throw new Error("a troca já tem a minha ação");
+      await mexer((e) => { e.pos = "pe"; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.iniciativa = null; e[eu].energia = 8; e.mao[eu] = { golpes: 3, queda: 2, defesa: 3, pressao: 0 }; });
+      vs = await api(u1, "luta", { lutaId: lid });
+      let m = await abrir(`luta/${lid}`), nos = desde(m);
+      if (vs.etapa === "sinal" && !vs.meuSinal) {
+        const post = nos.filter((n) => tem(n, "jxj-postura"));
+        if (post.length !== 3) throw new Error("cartas de postura (só as com carta): " + post.length);
+        for (const p of post) if (!/class="jxj-carta f-(golpes|queda|defesa) /.test(String(p.innerHTML)) || !/Mostra que vai de/.test(String(p.innerHTML))) throw new Error("carta de postura: " + String(p.innerHTML).slice(0, 200));
+      }
+      for (const u of [u1, u2]) { const v = await api(u, "luta", { lutaId: lid }); if (v.etapa === "sinal" && !v.meuSinal) await api(u, "sinal", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, "defesa") }); }
+      m = await abrir(`luta/${lid}`); nos = desde(m); vs = await api(u1, "luta", { lutaId: lid });
+      const cartas = nos.filter((n) => tem(n, "jxj-acao"));
+      if (cartas.length !== 4) throw new Error("4 cartas na mão: " + cartas.length);
+      for (const a of vs.acoes) {
+        const b = cartas.find((x) => String(x.innerHTML).includes(`f-${a.familia}`));
+        if (!b) throw new Error("sem a carta de " + a.familia);
+        const h = String(b.innerHTML);
+        if (a.restam === 0) { if (!tem(b, "sem-carta") || !b.disabled || !/jxj-carta-vazia/.test(h)) throw new Error("sem carta: " + h.slice(0, 160)); continue; }
+        if (!h.includes(`<span class="jxj-carta-qtd">×${a.restam}</span>`)) throw new Error(`${a.familia}: cópias ×${a.restam}`);
+        if (!h.includes(`<small>${a.grupo}</small>`) || !h.includes(`<b>${a.rotulo}</b>`)) throw new Error(`${a.familia}: grupo e nome`);
+      }
+      await mexer((e) => { e[eu].energia = 0.5; });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const trancadas = nos.filter((n) => tem(n, "jxj-acao") && tem(n, "sem-energia"));
+      if (!trancadas.length || trancadas.some((b) => !b.disabled || !/icones\.svg#cadeado/.test(String(b.innerHTML)))) throw new Error("sem energia: cadeado e desligada");
+      semLixoV3(htmlDe(nos), "cartas");
+      await mexer((e) => { e[eu].energia = 8; e.mao[eu] = { ...vs.maoCheia[eu] }; });
     });
     await conf("ficha no cartão do estilo (fase 4): no passo do estilo, cada cartão diz a mão do round daquele estilo (das definições)", async () => {
       const def = await api(null, "definicoes");

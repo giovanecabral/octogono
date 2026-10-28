@@ -8578,6 +8578,32 @@ function jxjTotalEtapa(v){
   const acao=Date.parse(v.prazo)-Date.parse(v.prazoSinal);
   return Math.max(1,v.etapa==="sinal"?F.prazoMs-acao:acao);
 }
+/* Carta do Online (2026-10-28, protótipo aprovado pelo dono): cor sólida da
+   família, gema em octógono com o custo, ícone grande, faixa com o nome e
+   as cópias, caixa de regra. Uma só pra mão, mesa e treino. */
+const JXJ_TAM_CARTA={mao:150,mesa:118,postura:84};
+const jxjNum2=x=>String(Math.round(Number(x||0)*100)/100).replace(".",",");
+const jxjCustoTxt=c=>c<0?`+${jxjNum2(-c)}`:jxjNum2(c);
+function jxjCarta(a,{tam="mao",postura=false,estado=""}={}){
+  const f=a.familia,w=JXJ_TAM_CARTA[tam]||150;
+  const grupo=a.grupo||JXJ_FAMILIA_TXT[f];
+  const regra=postura?`Mostra que vai de ${grupo}`
+    :a.dica?`<span class="jxj-carta-dica">${a.dica}</span>`
+    :`${a.ciclo?`<span class="jxj-carta-ciclo">${a.ciclo}</span>`:""}${a.resumo?`<span class="jxj-carta-efeito">${a.resumo}</span>`:""}`;
+  const qtd=a.restam!=null&&!postura?`<span class="jxj-carta-qtd">×${a.restam}</span>`:"";
+  const custo=a.custo!=null?`<span class="jxj-gema oct" aria-label="${a.custo<0?`recupera ${jxjNum2(-a.custo)} de energia`:`gasta ${jxjNum2(a.custo)} de energia`}"><span class="jxj-gema-num">${jxjCustoTxt(a.custo)}</span></span>`:"";
+  return `<span class="jxj-carta f-${f} corte${estado?" "+estado:""}" style="--w:${w}px"><span class="jxj-carta-topo">${custo}<small>${grupo}</small></span><span class="jxj-carta-arte">${ICONE(JXJ_ICONE_ACAO[f]||"luta")}</span><span class="jxj-carta-fita"><b>${postura?JXJ_POSTURAS[f]:a.rotulo}</b>${qtd}</span><span class="jxj-carta-regra">${regra}</span></span>`;
+}
+/* a carta jogada numa troca já resolvida (família e variante gravadas) */
+function jxjCartaDaTroca(fam,varId,papel,tam="mesa"){
+  const A=JXJ_DEF.acoes,x=varId&&A.variantes&&A.variantes[varId];
+  const pp=x?x.papel:(papel||"pe");
+  return jxjCarta({familia:fam,rotulo:x?x.rotulo:((A.rotulos[pp]||{})[fam]||JXJ_FAMILIA_TXT[fam]),grupo:(A.familias[pp]||{})[fam],ciclo:(A.ciclo[pp]||{})[fam]},{tam});
+}
+function jxjVerso(tam="mesa"){
+  return `<span class="jxj-verso corte" style="--w:${JXJ_TAM_CARTA[tam]||118}px"><span class="jxj-verso-oct oct"><span class="oct"></span></span></span>`;
+}
+function jxjVoarCarta(origem,idDestino){}   // Task 4 do plano: o voo da carta até a vaga da mesa
 /* a mão por extenso ("3 Golpes, 2 Quedas, 3 Defesas, 1 Pressão"); família sem carta fica de fora */
 const JXJ_FAMILIA_PLURAL={golpes:["Golpe","Golpes"],queda:["Queda","Quedas"],defesa:["Defesa","Defesas"],pressao:["Pressão","Pressões"]};
 function jxjMaoTexto(m){
@@ -8881,38 +8907,26 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
       zona.appendChild(el("p","jxj-espera",`${ICONE(JXJ_ICONE_ACAO[v.meuSinal]||"luta")}<span>Você mostrou <b>${JXJ_POSTURAS[v.meuSinal]}</b>. ${v.adversarioSinalizou?"Ele também mostrou. Revelando.":"Esperando a postura dele."}</span>`));
     }else{
       if(jxjPrimeiraLuta(v,eu))zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>Ele vê a sua postura antes de escolher. Fazer outra ação depois é finta e gasta energia.</span>`));
-      const g=el("div","jxj-posturas");
+      /* cartas (2026-10-28): a postura é mostrar uma carta; ela continua na mão */
+      const g=el("div","jxj-mao-luta jxj-mao-postura"+(maoNova?" mao-nova":""));
       for(const f of JXJ_FAMILIAS){
         const a=(v.acoes||[]).find(x=>x.familia===f);
         if(!a||a.restam===0)continue;
-        const b=el("button","jxj-postura",`${ICONE(JXJ_ICONE_ACAO[f]||"luta")}<b>${JXJ_POSTURAS[f]}</b><small><span class="longo">mostra que vai de </span>${a.grupo||JXJ_FAMILIA_TXT[f]}</small>`);
-        b.type="button";
-        b.onclick=()=>{ SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(x=>{x.disabled=true;}); enviar(f,"sinal"); };
+        const b=el("button","jxj-postura jxj-na-mao",jxjCarta(a,{postura:true}));
+        b.type="button"; b.title=`Mostrar ${JXJ_POSTURAS[f]}: ele vê antes de escolher`;
+        b.onclick=()=>{ SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(x=>{x.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-postura-eu"); enviar(f,"sinal"); };
         g.appendChild(b);
       }
       zona.appendChild(g);
     }
   }else{
-    const ciclo=jxjCicloDe(v.acoes);
     /* momento decisivo: a faixa vem antes de tudo e o ciclo sai (a dica de
        cada botão já diz o que ganha e o que perde naquela troca) */
     const momDec=v.momentoDecisivo;
     if(momDec)zona.appendChild(jxjFaixaMomento(momDec));
     const topo=el("div","jxj-zona-topo");
     topo.appendChild(el("p","jxj-rotulo",maoNova?`Round ${v.round}: ações novas${v.adversarioEscolheu?" · ele já escolheu":""}`:`Sua ação${v.adversarioEscolheu?" · ele já escolheu":""}`));
-    /* em pé, os 4 nomes são os mesmos dos dois lados: um ciclo só */
-    if(v.papel==="pe"&&!momDec){
-      const porNome=Object.fromEntries(v.acoes.map(a=>[a.grupo,a]));
-      const ordem=[]; let a=v.acoes.find(x=>x.familia==="golpes");
-      for(let k=0;a&&k<4&&!ordem.includes(a);k++){ ordem.push(a); a=ciclo[a.familia]&&porNome[ciclo[a.familia].ganha]; }
-      if(ordem.length===4){
-        const c=el("p","jxj-ciclo-pe");
-        c.setAttribute&&c.setAttribute("aria-label",`Quem ganha de quem: ${ordem.map(x=>x.grupo).join(" ganha de ")} ganha de ${ordem[0].grupo}`);
-        /* o primeiro de novo no fim, apagado: fecha a volta sem seta solta */
-        c.innerHTML=[...ordem,ordem[0]].map((x,i)=>`<span${i===4?' class="volta"':""}>${ICONE(JXJ_ICONE_ACAO[x.familia]||"luta")}${x.grupo}</span>`).join(ICONE("chevron-dir"))+`<small>cada um vence o próximo</small>`;
-        topo.appendChild(c);
-      }
-    }
+    /* cartas (2026-10-28): o ciclo dos 4 ícones saiu; cada carta diz quem ela ganha e de quem perde */
     const tend=jxjTendencia(v.tendencia);
     if(tend)topo.appendChild(tend);
     zona.appendChild(topo);
@@ -8924,25 +8938,16 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
     }
     const dicaMao=jxjDicaMao(v,eu,ele);
     if(dicaMao)zona.appendChild(el("p","jxj-dica-mao",`${ICONE("info")}<span>${dicaMao}</span>`));
-    const g=el("div","jxj-acoes-luta"+(maoNova?" mao-nova":"")+(momDec?" no-momento":""));
+    const g=el("div","jxj-mao-luta"+(maoNova?" mao-nova":"")+(momDec?" no-momento":""));
     for(const a of v.acoes){
       const semCarta=a.restam===0;
-      const custo=a.custo<0?`+${jxjNum(-a.custo)}`:a.custo===0?"0":`−${jxjNum(a.custo)}`;
       const custoTxt=a.custo<0?`recupera ${jxjNum(-a.custo)} de energia`:a.custo===0?"não gasta energia":`gasta ${jxjNum(a.custo)} de energia`;
-      const cic=ciclo[a.familia];
-      const linhaCiclo=v.papel!=="pe"&&cic&&!a.dica?`<span class="jxj-acao-ciclo">${ICONE("sobe")}${cic.ganha}${ICONE("desce")}${cic.perde}</span>`:"";
-      /* duelo de atributo da ação: seta pra cima se o seu leva vantagem, pra baixo se o dele */
-      const nd=a.duelo&&v.duelos?v.duelos[a.duelo]:0;
-      const marcaDuelo=nd?`<em class="jxj-acao-duelo ${nd>0?"bom":"ruim"}" aria-label="${JXJ_DUELO_NOME[a.duelo]}: ${nd>0?"vantagem sua":"vantagem dele"}">${ICONE(nd>0?"sobe":"desce")}</em>`:"";
-      const restam=a.restam!=null?`<em class="jxj-restam" aria-label="Restam ${a.restam} no round">${a.restam}</em>`:"";
-      /* fase 2: ação diferente da sua postura é finta (custa energia; sem energia, não dá) */
+      /* fase 2: ação diferente da sua postura é finta (custa energia; sem energia, não dá); duas casas: com a iniciativa custa 0,75 */
       const finta=a.finta>0&&!semCarta,semEnergia=finta&&e[eu].energia<a.finta;
-      /* duas casas: com a iniciativa a finta custa 0,75 */
-      const nf=String(Math.round(Number(a.finta||0)*100)/100).replace(".",",");
-      const marcaFinta=finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${nf} de energia">−${nf} finta</em>`:"";
-      const b=el("button","jxj-acao"+(a.dica?" com-dica":"")+(semCarta?" sem-carta":"")+(finta?" finta":"")+(semEnergia?" sem-energia":""),`<span class="jxj-acao-topo"><span class="jxj-acao-ico">${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}${marcaDuelo}</span>${restam}${marcaFinta}<em class="jxj-custo" aria-label="${custoTxt}">${ICONE("energia")}${custo}</em></span>
-        <b>${a.rotulo}</b>${a.grupo&&String(a.grupo).toLowerCase()!==String(a.rotulo).toLowerCase()?`<small>${a.grupo}</small>`:""}<span class="jxj-acao-efeito">${a.dica||a.resumo||a.descricao}</span>${linhaCiclo}
-        <span class="jxj-acao-bolha">${a.dica?`<i class="dica">${a.dica}</i>`:""}${a.descricao}${a.ciclo?` <i>${a.ciclo}</i>`:""}</span>`);
+      const miolo=semCarta?`<span class="jxj-carta-vazia corte">${ICONE(JXJ_ICONE_ACAO[a.familia]||"luta")}<b>${a.grupo}</b><small>acabou no round</small><i class="f-${a.familia}"></i></span>`
+        :jxjCarta(a,{estado:semEnergia?"apagada":""});
+      const b=el("button","jxj-acao jxj-na-mao"+(a.dica?" com-dica":"")+(semCarta?" sem-carta":"")+(finta?" finta":"")+(semEnergia?" sem-energia":""),
+        `${finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${jxjNum2(a.finta)} de energia">−${jxjNum2(a.finta)} finta</em>`:""}${miolo}${semEnergia?`<span class="jxj-carta-tranca">${ICONE("cadeado")}</span>`:""}<span class="jxj-acao-bolha">${a.dica?`<i class="dica">${a.dica}</i>`:""}${a.descricao}${a.ciclo?` <i>${a.ciclo}</i>`:""}</span>`);
       b.type="button"; b.title=`${a.dica?a.dica+" ":""}${a.descricao}${a.ciclo?" "+a.ciclo:""} (${custoTxt})`;
       if(semCarta){ b.disabled=true; b.title="Você já usou essa ação neste round."; }
       else if(semEnergia){ b.disabled=true; b.title="Sem energia pra fintar."; }
@@ -8952,7 +8957,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
       const soltar=()=>{ clearTimeout(segura); setTimeout(()=>b.classList.remove("segurando"),1800); };
       b.onpointerup=soltar; b.onpointercancel=soltar; b.onpointerleave=soltar;
       b.oncontextmenu=ev=>{ if(ev&&ev.preventDefault)ev.preventDefault(); };
-      b.onclick=()=>{ if(segurou){ segurou=false; return; } SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(x=>{x.disabled=true;}); enviar(a.familia); };
+      b.onclick=()=>{ if(segurou){ segurou=false; return; } SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(x=>{x.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-acao-eu"); enviar(a.familia); };
       g.appendChild(b);
     }
     zona.appendChild(g);
