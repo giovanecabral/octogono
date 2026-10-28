@@ -355,7 +355,7 @@ function vistaDaLuta(d, uid) {
     /* v4: as duas mãos são públicas (contagem por família); luta v3, null */
     maos: estado && estado.mao ? estado.mao : null,
     /* a mão cheia de cada um (a do começo de todo round) */
-    maoCheia: estado && estado.mao ? { a: EST.maoCheia(), b: EST.maoCheia() } : null,
+    maoCheia: estado && estado.mao ? { a: EST.maoCheia(L.perfis && L.perfis.a && L.perfis.a.estilo), b: EST.maoCheia(L.perfis && L.perfis.b && L.perfis.b.estilo) } : null,   // fase 4: a do estilo
     /* troca resolvida: o que cada um usou (variante) e os eventos em forma
        de dado (tipo, quem) pra animação e som na tela, além do texto */
     trocas: (d.trocas || []).map((t) => {
@@ -454,7 +454,8 @@ function definicoes(ativo) {
   return {
     ativo,
     versaoBalanceamento: ARV.VERSAO_BALANCEAMENTO,
-    estilos: Object.fromEntries(Object.entries(ARV.ESTILOS).map(([id, e]) => [id, { nome: e.nome, resumo: e.resumo, base: e.base, mec: e.mec || {}, ramos: e.ramos }])),
+    /* fase 4: a mão de cada estilo (a tela mostra no cartão do estilo) */
+    estilos: Object.fromEntries(Object.entries(ARV.ESTILOS).map(([id, e]) => [id, { nome: e.nome, resumo: e.resumo, base: e.base, mec: e.mec || {}, ramos: e.ramos, mao: EST.maoCheia(id) }])),
     categorias: Object.fromEntries(Object.entries(ARV.CATEGORIAS).map(([id, c]) => [id, { nome: c.nome, ajuste: c.ajuste }])),
     categoriasLancamento: ARV.CATEGORIAS_LANCAMENTO,
     atributos: ARV.NOME_ATRIBUTO,

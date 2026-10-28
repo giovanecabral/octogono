@@ -292,7 +292,7 @@ export function novaLuta(perfilA, perfilB) {
     v: VERSAO_MOTOR, round: 1, troca: 1, pos: "pe", nivelPos: 0, momento: 0, paradoChao: 0, encaixe: null,
     a: ladoNovo(perfilA), b: ladoNovo(perfilB), pontos: [{ a: 0, b: 0 }], cartoes: [], fim: null,
     /* v4: a mão de cada lado no round (contagem por família, pública) */
-    mao: { a: maoCheia(), b: maoCheia() },
+    mao: { a: maoCheia(perfilA.estilo), b: maoCheia(perfilB.estilo) },   // fase 4: a do estilo
     /* v4, fase 3: quem venceu a última troca do round ("a", "b" ou null) */
     iniciativa: null,
   };
@@ -854,7 +854,7 @@ function fecharRound(estado, perfis) {
     if (sobra) guardou[l] = { cartas: sobra, energia: Math.round((e[l].energia - semCartas) * 100) / 100 };
     e[l].travado = false; e[l].grogue = false;
   }
-  if (e.mao) e.mao = { a: maoCheia(), b: maoCheia() };
+  if (e.mao) e.mao = { a: maoCheia(perfis.a.estilo), b: maoCheia(perfis.b.estilo) };
   e.pontos.push({ a: 0, b: 0 });
   return guardou;
 }

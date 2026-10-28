@@ -22,6 +22,14 @@ export const ESTRATEGIA = {
      finalização 14,1%, decisão 57,3%, e contar as cartas dele rende 3
      pontos */
   mao: { golpes: 2, queda: 2, defesa: 4, pressao: 1 },
+  /* a ficha muda a luta (fase 4): cada estilo troca uma carta da mão
+     padrão. Ponto de partida da spec, adaptado à mão de 9 */
+  maoPorEstilo: {
+    striker: { golpes: 3, queda: 2, defesa: 3, pressao: 1 },
+    wrestler: { golpes: 2, queda: 3, defesa: 3, pressao: 1 },
+    grappler: { golpes: 1, queda: 3, defesa: 4, pressao: 1 },
+    counter: { golpes: 2, queda: 2, defesa: 5, pressao: 0 },
+  },
   /* energia por carta guardada no fim do round (até o máximo). Medido:
      0,5 deixava o wrestler do nível 30 em 39% contra o counter; 0,25 põe
      toda dupla do nível 30 entre 41% e 59% */
@@ -38,7 +46,8 @@ export const ESTRATEGIA = {
 };
 /* a postura de cada família: o sinal que o lutador mostra (fase 2) */
 export const POSTURAS = { golpes: "Peso na frente", queda: "Base baixa", defesa: "Guarda alta", pressao: "Avançando" };
-export const maoCheia = () => ({ ...ESTRATEGIA.mao });
+/* a mão do começo de todo round: a do estilo (fase 4) ou, sem estilo conhecido, a padrão */
+export const maoCheia = (estilo) => ({ ...(Object.hasOwn(ESTRATEGIA.maoPorEstilo, estilo || "") ? ESTRATEGIA.maoPorEstilo[estilo] : ESTRATEGIA.mao) });
 export const cartasNaMao = (mao) => FAMILIAS_MAO.reduce((s, f) => s + (mao[f] || 0), 0);
 export const temCarta = (estado, lado, fam) => !estado.mao || (estado.mao[lado][fam] || 0) > 0;
 export const familiasComCarta = (estado, lado) => FAMILIAS_MAO.filter((f) => temCarta(estado, lado, f));

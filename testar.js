@@ -11941,6 +11941,20 @@ async function testarJxJ() {
       const canon = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((c) => [c, v[c]])) : v));
       if (canon(e) !== canon(d.luta.estado)) throw new Error("a luta refeita pela semente ficou diferente");
     });
+    await conf("mão por estilo na luta (fase 4): a vista manda a mão cheia do estilo de cada lado; as definições mandam a mão de cada estilo", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = await parear(u1, (await criar(u1, { estilo: "counter" })).id, u2, (await criar(u2, { estilo: "wrestler" })).id);
+      const v = await ok(u1, "luta", { lutaId: lid });
+      const canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
+      const est = { a: v.nomes.a.estilo, b: v.nomes.b.estilo };
+      if (est.a === est.b) throw new Error("estilos iguais no teste: " + JSON.stringify(est));
+      for (const l of ["a", "b"]) {
+        if (canonMao(v.maoCheia[l]) !== canonMao(EST.maoCheia(est[l])) || canonMao(v.maos[l]) !== canonMao(EST.maoCheia(est[l]))) throw new Error(`${l} (${est[l]}): ${JSON.stringify([v.maos[l], v.maoCheia[l]])}`);
+      }
+      const def = await ok(null, "definicoes");
+      for (const s of Object.keys(def.estilos)) if (canonMao(def.estilos[s].mao || {}) !== canonMao(EST.maoCheia(s))) throw new Error(`definições, ${s}: ${JSON.stringify(def.estilos[s].mao)}`);
+    });
     await conf("iniciativa na luta (fase 3): a vista diz quem tem; com ela a finta custa metade (acoes[].finta) e o servidor recusa pelo custo de cada um (sem a iniciativa, a mesma energia não dá)", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       await zerarLimites();
@@ -11996,7 +12010,8 @@ async function testarJxJ() {
       const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
       const v0 = await ok(u1, "luta", { lutaId: lid });
       const canonMao = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));   // (o jsonb reordena as chaves)
-      if (!v0.maos || canonMao(v0.maos.a) !== canonMao({ golpes: 2, queda: 2, defesa: 4, pressao: 1 }) || canonMao(v0.maos.b) !== canonMao(v0.maos.a) || canonMao(v0.maoCheia.a) !== canonMao(v0.maos.a)) throw new Error("mão inicial: " + JSON.stringify([v0.maos, v0.maoCheia]));
+      /* fase 4: a mão do estilo (os dois aqui são striker) */
+      if (!v0.maos || canonMao(v0.maos.a) !== canonMao(EST.maoCheia("striker")) || canonMao(v0.maos.b) !== canonMao(v0.maos.a) || canonMao(v0.maoCheia.a) !== canonMao(v0.maos.a)) throw new Error("mão inicial: " + JSON.stringify([v0.maos, v0.maoCheia]));
       const curta = { golpes: 1, queda: 1, defesa: 0, pressao: 0 };
       await q("update jxj_lutas set estado = jsonb_set(estado, '{mao}', $2::jsonb) where id = $1", [lid, JSON.stringify({ a: curta, b: curta })]);
       const va = await ok(u1, "luta", { lutaId: lid }), vb = await ok(u2, "luta", { lutaId: lid });
@@ -12626,19 +12641,42 @@ async function testarJxJMotor() {
   await conf("mão (v4): a luta nova começa com a mão cheia nos dois lados; cada ação gasta a carta da família em qualquer posição; a mão volta cheia no round seguinte; luta v3 (sem mão) resolve como antes", () => {
     const pA = perfil("striker"), pB = perfil("grappler"), P = { a: pA, b: pB };
     let e = M.novaLuta(pA, pB);
-    if (e.v !== 4 || JSON.stringify(e.mao) !== JSON.stringify({ a: EST.maoCheia(), b: EST.maoCheia() })) throw new Error("mão inicial " + JSON.stringify(e.mao));
+    /* fase 4: a mão cheia é a do estilo de cada lado */
+    const cheias = { a: EST.maoCheia("striker"), b: EST.maoCheia("grappler") };
+    if (e.v !== 4 || JSON.stringify(e.mao) !== JSON.stringify(cheias)) throw new Error("mão inicial " + JSON.stringify(e.mao));
     e = M.resolverTroca(e, P, { a: "golpes", b: "defesa" }, "m1").estado;
-    const cheia = EST.maoCheia();
-    if (e.mao.a.golpes !== cheia.golpes - 1 || e.mao.b.defesa !== cheia.defesa - 1) throw new Error("não gastou: " + JSON.stringify(e.mao));
+    if (e.mao.a.golpes !== cheias.a.golpes - 1 || e.mao.b.defesa !== cheias.b.defesa - 1) throw new Error("não gastou: " + JSON.stringify(e.mao));
     /* no chão, Queda é finalização/raspar: gasta a mesma carta */
     const chao = { ...M.novaLuta(pA, pB), pos: "cima_a" };
     const r2 = M.resolverTroca(chao, P, { a: "queda", b: "pressao" }, "m2").estado;
-    if (r2.mao.a.queda !== cheia.queda - 1 || r2.mao.b.pressao !== cheia.pressao - 1) throw new Error("no chão não gastou: " + JSON.stringify(r2.mao));
+    if (r2.mao.a.queda !== cheias.a.queda - 1 || r2.mao.b.pressao !== Math.max(0, cheias.b.pressao - 1)) throw new Error("no chão não gastou: " + JSON.stringify(r2.mao));
     for (const ac of [{ a: "queda", b: "golpes" }, { a: "defesa", b: "pressao" }, { a: "pressao", b: "queda" }]) { if (e.fim) break; e = M.resolverTroca(e, P, ac, "m3" + e.troca).estado; }
-    if (!e.fim && (e.round !== 2 || JSON.stringify(e.mao) !== JSON.stringify({ a: EST.maoCheia(), b: EST.maoCheia() }))) throw new Error("round 2 sem a mão cheia: " + JSON.stringify(e.mao));
+    if (!e.fim && (e.round !== 2 || JSON.stringify(e.mao) !== JSON.stringify(cheias))) throw new Error("round 2 sem a mão cheia: " + JSON.stringify(e.mao));
     const v3 = M.novaLuta(pA, pB); delete v3.mao; v3.v = 3;
     const r3 = M.resolverTroca(v3, P, { a: "golpes", b: "golpes" }, "m4");
     if ("mao" in r3.estado || r3.eventos.some((ev) => ev.tipo === "semCarta" || ev.tipo === "guardou")) throw new Error("v3 ganhou mão");
+  });
+  await conf("mão por estilo (fase 4): cada estilo troca uma carta da mão padrão (soma igual, duas famílias mudam 1); estilo desconhecido fica com a padrão; a luta nova e a volta do round usam a mão do estilo de cada lado", () => {
+    const base = EST.maoCheia(), soma = EST.cartasNaMao(base);
+    if (Object.keys(EST.ESTRATEGIA.maoPorEstilo || {}).sort().join() !== ESTS.slice().sort().join()) throw new Error("maoPorEstilo sem os 4 estilos");
+    const vistas = new Set();
+    for (const s of ESTS) {
+      const m = EST.maoCheia(s), dif = F.map((f) => m[f] - base[f]);
+      if (EST.cartasNaMao(m) !== soma || dif.filter((x) => x !== 0).length !== 2 || dif.some((x) => Math.abs(x) > 1) || F.some((f) => m[f] < 0)) throw new Error(`${s}: ${JSON.stringify(m)}`);
+      vistas.add(JSON.stringify(m));
+      m.golpes = 99; if (EST.maoCheia(s).golpes === 99) throw new Error("maoCheia devolveu a configuração do estilo");
+    }
+    if (vistas.size !== 4) throw new Error("estilos com a mesma mão");
+    if (JSON.stringify(EST.maoCheia("ninja")) !== JSON.stringify(base) || JSON.stringify(EST.maoCheia()) !== JSON.stringify(base)) throw new Error("estilo desconhecido");
+    for (const [sa, sb] of [["counter", "wrestler"], ["grappler", "striker"]]) {
+      const pA = perfil(sa), pB = perfil(sb), P = { a: pA, b: pB };
+      let e = M.novaLuta(pA, pB);
+      const cheias = { a: EST.maoCheia(sa), b: EST.maoCheia(sb) };
+      if (JSON.stringify(e.mao) !== JSON.stringify(cheias)) throw new Error(`luta nova ${sa} x ${sb}: ${JSON.stringify(e.mao)}`);
+      e.troca = M.FORMATO.trocasPorRound;
+      e = M.resolverTroca(e, P, { a: "defesa", b: "defesa" }, "pe" + sa).estado;
+      if (!e.fim && JSON.stringify(e.mao) !== JSON.stringify(cheias)) throw new Error(`round 2 ${sa} x ${sb}: ${JSON.stringify(e.mao)}`);
+    }
   });
   await conf("ação sem carta vira a ação padrão (evento semCarta, a luta não trava); prazo perdido usa Defesa ou, sem Defesa, Pressão, Golpes, Queda; a ausência conta igual", () => {
     const pA = perfil("striker"), pB = perfil("wrestler"), P = { a: pA, b: pB };
@@ -12654,7 +12692,7 @@ async function testarJxJMotor() {
     const r4 = M.resolverTroca(e4, P, { a: "golpes", b: "golpes" }, "s4");
     if (r4.estado.a.ultima !== "defesa" || Object.values(r4.estado.mao.a).some((x) => x < 0)) throw new Error("mão vazia: " + JSON.stringify(r4.estado.mao.a));
     const r3 = M.resolverTroca(M.novaLuta(pA, pB), P, { a: null, b: "queda" }, "s3");
-    if (r3.estado.a.ultima !== "defesa" || r3.estado.mao.a.defesa !== EST.maoCheia().defesa - 1) throw new Error("padrão com Defesa");
+    if (r3.estado.a.ultima !== "defesa" || r3.estado.mao.a.defesa !== EST.maoCheia("striker").defesa - 1) throw new Error("padrão com Defesa");
   });
   await conf("carta guardada vira energia no fim do round (energiaPorCartaGuardada por carta, até o máximo), com o evento guardou; no último round não sobra nada estranho", () => {
     const pA = perfil("counter"), pB = perfil("counter"), P = { a: pA, b: pB };
@@ -12779,7 +12817,7 @@ async function testarJxJMotor() {
   await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
     const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
     const ac = M.acoesDisponiveis(e, "a", pA, "sem");
-    if (ac.find((x) => x.familia === "queda").restam !== 0 || ac.find((x) => x.familia === "golpes").restam !== EST.maoCheia().golpes) throw new Error(JSON.stringify(ac.map((x) => [x.familia, x.restam])));
+    if (ac.find((x) => x.familia === "queda").restam !== 0 || ac.find((x) => x.familia === "golpes").restam !== EST.maoCheia("striker").golpes) throw new Error(JSON.stringify(ac.map((x) => [x.familia, x.restam])));
     const v3 = { ...e }; delete v3.mao;
     if (M.acoesDisponiveis(v3, "a", pA, "sem").some((x) => x.restam !== null)) throw new Error("v3 com restam");
     if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.sinalMs + EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo " + M.FORMATO.prazoMs);
