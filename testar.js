@@ -14268,7 +14268,10 @@ async function testarJxJTelas() {
         let m = await abrir(`luta/${lid}`), nos = desde(m);
         const hEu = String(nos.find((n) => n.id === "jxj-card-eu").innerHTML), hEle = String(nos.find((n) => n.id === "jxj-card-ele").innerHTML);
         /* a família zerada usa classe própria: "vazio" é o bloco de tela vazia (borda tracejada, 28 px de respiro) e virava um quadrado no placar */
-        if (!/jxj-mao/.test(hEu) || !/jxj-mao/.test(hEle) || !/class="zero"[^>]*>.*?0</.test(hEle) || /class="vazio"/.test(hEle)) throw new Error("mão no placar: " + hEle.replace(/\s+/g, " ").slice(0, 400));
+        if (!/jxj-mao/.test(hEu) || !/jxj-mao/.test(hEle) || !/class="jxj-mini corte f-[a-z]+ zero">.*?0</.test(hEle) || /class="vazio"/.test(hEle)) throw new Error("mão no placar: " + hEle.replace(/\s+/g, " ").slice(0, 400));
+        /* cartas (2026-10-28): a mão dele em 4 cartinhas da cor da família */
+        const minis = (hEle.match(/<i class="jxj-mini corte f-(golpes|queda|defesa|pressao)( zero)?">/g) || []);
+        if (minis.length !== 4) throw new Error("mão dele em 4 cartinhas: " + minis.length);
         const bq = nos.filter((n) => tem(n, "jxj-acao")).find((b) => /jxj-carta-vazia/.test(String(b.innerHTML)));
         if (!bq || !tem(bq, "sem-carta") || !bq.disabled) throw new Error("botão sem carta: " + (bq ? bq.className : "nenhum com 0"));
         if (nos.filter((n) => tem(n, "jxj-acao") && tem(n, "sem-carta")).length !== 1) throw new Error("só a Queda está sem carta");
