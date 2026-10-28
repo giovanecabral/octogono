@@ -13312,7 +13312,11 @@ async function testarJxJArvore() {
   await conf("cada nó vale alguma coisa (medido): no nível 3, contra os 4 estilos, entre 0,5 e 6,5 pontos de vitória", () => {
     const linhas = [], ruins = [];
     for (const id of Object.keys(A.NOS)) {
-      const v = BAL.valorDoNo(id, 400);
+      /* fora da faixa com 400, mede de novo com 1.000 (fase 4, 2026-10-28: o
+         dominio deu 0,47 com 400 e 0,90 com 1.000; mexer no efeito dele não
+         movia o número de 400, que era ruído) */
+      let v = BAL.valorDoNo(id, 400);
+      if (v < 0.5 || v > 6.5) { const v2 = BAL.valorDoNo(id, 1000); linhas.push(`(${id} ${v.toFixed(2)} com 400)`); v = v2; }
       linhas.push(`${id} ${v.toFixed(1)}`);
       if (v < 0.5 || v > 6.5) ruins.push(`${id} ${v.toFixed(2)}`);
     }
