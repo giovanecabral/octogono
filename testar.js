@@ -14153,6 +14153,9 @@ async function testarJxJTelas() {
       if (vs.status !== "andamento" || vs.minhaAcao) throw new Error("estado inesperado da luta: " + vs.status + " " + vs.minhaAcao);
       const eu = vs.lado, ele = eu === "a" ? "b" : "a";
       await revelar();
+      /* sem momento decisivo no começo (fase 4: a mão do estilo muda o caminho da luta de apoio) */
+      { const r0 = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0].estado; r0.pos = "pe"; r0.nivelPos = 0; r0.encaixe = null; r0.a.grogue = false; r0.b.grogue = false;
+        await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r0)]); }
       let m = await abrir(`luta/${lid}`), nos = desde(m);
       const du = nos.filter((n) => tem(n, "jxj-duelos")).pop();
       if (!du) throw new Error("sem os duelos");
@@ -14242,7 +14245,8 @@ async function testarJxJTelas() {
         const dica = nos.find((n) => tem(n, "jxj-dica-mao"));
         if (!dica || !/só tem Defesa e Pressão/.test(String(dica.innerHTML))) throw new Error("dica da primeira luta: " + (dica && dica.innerHTML));
         semLixoV3(htmlDe(nos), "mão à vista");
-        await mexer((e) => { e.mao = { a: { golpes: 2, queda: 2, defesa: 4, pressao: 1 }, b: { golpes: 2, queda: 2, defesa: 4, pressao: 1 } }; });
+        /* fase 4: a mão cheia é a do estilo de cada um */
+        await mexer((e) => { e.mao = { a: { ...vs.maoCheia.a }, b: { ...vs.maoCheia.b } }; });
         m = await abrir(`luta/${lid}`); nos = desde(m);
         const d2 = nos.find((n) => tem(n, "jxj-dica-mao"));
         if (!d2 || !/Cada round você tem 9 ações/.test(String(d2.innerHTML))) throw new Error("dica do começo do round: " + (d2 && d2.innerHTML));
@@ -14347,6 +14351,24 @@ async function testarJxJTelas() {
       const temMomento = /class="jxj-momento"/.test(faixa()), temFicha = !!ficha();
       await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.iniciativa = null; });
       if (!temMomento || temFicha) throw new Error("luta v3: " + JSON.stringify({ temMomento, temFicha }));
+    });
+    await conf("ficha no cartão do estilo (fase 4): no passo do estilo, cada cartão diz a mão do round daquele estilo (das definições)", async () => {
+      const def = await api(null, "definicoes");
+      let m = await abrir("criar/2");
+      const cat = desde(m).filter((n) => tem(n, "jxj-opcao"))[0];
+      if (!cat) throw new Error("sem categoria no passo 2");
+      const m2 = env.todos.length; await cat.onclick(); await assentar();
+      const cartoes = desde(m2).filter((n) => tem(n, "jxj-estilo"));
+      if (cartoes.length !== 4) throw new Error("cartões de estilo: " + cartoes.length);
+      const nome = { golpes: ["Golpe", "Golpes"], queda: ["Queda", "Quedas"], defesa: ["Defesa", "Defesas"], pressao: ["Pressão", "Pressões"] };
+      for (const [id, e] of Object.entries(def.estilos)) {
+        const c = cartoes.find((n) => String(n.innerHTML).includes(`>${e.nome}<`));
+        if (!c) throw new Error("sem o cartão do " + id);
+        const h = String(c.innerHTML);
+        if (!/Mão por round/.test(h)) throw new Error(`${id}: sem a mão`);
+        for (const [f, n] of Object.entries(e.mao)) if (n > 0 && !h.includes(`${n} ${nome[f][n === 1 ? 0 : 1]}`)) throw new Error(`${id}: falta "${n} ${nome[f][n === 1 ? 0 : 1]}" em ${h.replace(/\s+/g, " ").slice(0, 300)}`);
+      }
+      semLixoV3(htmlDe(desde(m2)), "passo do estilo");
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,
