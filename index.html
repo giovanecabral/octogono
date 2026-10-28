@@ -7925,11 +7925,19 @@ function jxjPainel(area,def,est){
       catch(e){ irPara("jxj","fila"); }
     };
   }
+  /* treino guiado (2026-10-28): enquanto for obrigatório, buscar e lutar contra bot levam a ele */
+  if(jxjPrecisaTreino(est)){
+    const praTreino=()=>{ SOM.toque(); irPara("jxj","treino/"+principal.id); };
+    if(buscar&&!buscar.disabled)buscar.onclick=praTreino;
+    if(botAgora)botAgora.onclick=praTreino;
+  }
+  const treinoB=el("button","botao botao-sec",`${ICONE("info")}<span>Treino</span>`); treinoB.type="button";
+  treinoB.onclick=()=>{ SOM.toque(); irPara("jxj","treino/"+principal.id); };
   const arv=el("button","botao botao-sec",`${ICONE("arvore")}<span>Árvore${principal.pontosLivres?` (${principal.pontosLivres} pontos)`:""}</span>`); arv.type="button";
   arv.onclick=()=>{SOM.toque();irPara("jxj","lutador/"+principal.id+"/arvore");};
   const slots=el("button","botao botao-sec",`${ICONE("grupo")}<span>Lutadores</span>`); slots.type="button";
   slots.onclick=()=>{SOM.toque();irPara("jxj","lutadores");};
-  acoes.append(buscar,...(botAgora?[botAgora]:[]),arv,slots);
+  acoes.append(buscar,...(botAgora?[botAgora]:[]),treinoB,arv,slots);
   hero.querySelector(".jxj-principal-info").appendChild(acoes);
   if(soBot||botAgora)hero.querySelector(".jxj-principal-info").appendChild(msgBot);
   if(!podeFila)hero.querySelector(".jxj-principal-info").appendChild(el("p","jxj-nota",
@@ -8135,7 +8143,9 @@ async function jxjTelaCriar(passo){
     try{
       const res=await jxj("criar",{nome:String(JXJ_NOVO.nome).trim(),rosto:JXJ_NOVO.rosto||cfgPadrao(),categoria:JXJ_NOVO.categoria,estilo:JXJ_NOVO.estilo});
       JXJ_NOVO.nome="";JXJ_NOVO.rosto=null;JXJ_NOVO.categoria=null;JXJ_NOVO.estilo=null;
-      irPara("jxj","lutador/"+res.id+"/arvore",{substituir:true});
+      /* treino guiado (2026-10-28): quem ainda não lutou vai pro treino; senão, a árvore */
+      let est2=null; try{ est2=await jxj("estado"); }catch(e){}
+      irPara("jxj",est2?jxjRotaDepoisDeCriar(est2,res.id):"lutador/"+res.id+"/arvore",{substituir:true});
     }catch(e){ msg.textContent=e.erro||"Não deu pra criar agora."; msg.hidden=false; ok.disabled=false; }
   };
   c.appendChild(el("div","jxj-acoes")).appendChild(ok);
@@ -8436,6 +8446,8 @@ async function jxjTelaFila(){
   let def,est;
   try{ def=await jxjDef(); est=await jxj("estado"); }catch(e){ return jxjErro(area,e,jxjTelaFila); }
   if(est.luta&&["confirmacao","andamento"].includes(est.luta.status))return irPara("jxj","luta/"+est.luta.id,{substituir:true});
+  /* treino guiado (2026-10-28): quem ainda não lutou faz o treino antes de entrar na fila */
+  if(jxjPrecisaTreino(est))return irPara("jxj","treino",{substituir:true});
   const usaveis=est.lutadores.filter(l=>l.utilizavel);
   area.innerHTML="";
   if(!usaveis.length){ area.appendChild(vazio("usuario","Nenhum lutador ativo","Crie um lutador ou escolha o do slot 1 como principal.")); return; }
@@ -8763,6 +8775,13 @@ function jxjTreinoVista(st,lut,def){
    revelação e a explicação; na lição 5, o relógio de verdade (prazo
    estourado joga a Defesa). O fim grava jxj:treino no navegador. */
 const jxjTreinoFeito=()=>{ try{ return localStorage.getItem("jxj:treino")==="1"; }catch(e){ return false; } };
+/* obrigatório pra quem ainda não lutou: nenhuma luta no cartel de nenhum
+   lutador da conta e sem a marca (sem localStorage, manda até a 1ª luta) */
+function jxjPrecisaTreino(est){
+  if(jxjTreinoFeito())return false;
+  return !((est&&est.lutadores)||[]).some(l=>jxjCartel(l).total>0);
+}
+const jxjRotaDepoisDeCriar=(est,id)=>jxjPrecisaTreino(est)?"treino/"+id:"lutador/"+id+"/arvore";
 function jxjTreinoPadrao(st,tipo){
   const L=JXJ_TREINO[st.i];
   const certa=tipo==="sinal"?L.postura:L.acao;

@@ -14167,6 +14167,36 @@ async function testarJxJTelas() {
       if (!desde(m).some((n) => tem(n, "jxj-treino-fim"))) throw new Error("o treino não terminou com o prazo estourado");
       if (vm.runInContext(`localStorage.getItem("jxj:treino")`, env.sandbox) !== "1") throw new Error("sem a marca");
     });
+    await conf("treino obrigatório (2026-10-28): conta sem luta e sem a marca vai pro treino ao buscar, ao abrir a busca e depois de criar; com a marca ou com luta, não; sem localStorage, continua mandando e o treino abre; o botão Treino abre o treino", async () => {
+      await db.query("delete from jxj_limites");
+      vm.runInContext(`localStorage.removeItem("jxj:treino")`, env.sandbox);
+      const noTreino = (m) => desde(m).some((n) => tem(n, "jxj-treino-balao"));
+      let m = await abrir("");
+      const busca = desde(m).filter((n) => n.tagName === "button" && /Buscar adversário/.test(String(n.innerHTML))).pop();
+      if (!busca) throw new Error("sem o botão de buscar");
+      let m2 = env.todos.length; busca.onclick(); await assentar();
+      if (!noTreino(m2)) throw new Error("buscar não levou ao treino");
+      m = await abrir("fila");
+      if (!noTreino(m) || desde(m).some((n) => /Procurando adversário/.test(String(n.innerHTML || n.textContent || "")))) throw new Error("a busca não mandou pro treino");
+      m = await abrir("");
+      const treinoBtn = desde(m).filter((n) => n.tagName === "button" && /Treino/.test(String(n.innerHTML))).pop();
+      if (!treinoBtn) throw new Error("sem o botão Treino no painel");
+      m2 = env.todos.length; treinoBtn.onclick(); await assentar();
+      if (!noTreino(m2)) throw new Error("o botão Treino não abriu o treino");
+      const r = JSON.parse(vm.runInContext(`JSON.stringify([jxjPrecisaTreino({lutadores:[{cartel:[0,0,0]}]}), jxjPrecisaTreino({lutadores:[{cartel:[0,0,0]},{cartel:[1,0,0]}]}),
+        jxjRotaDepoisDeCriar({lutadores:[{cartel:[0,0,0]}]}, 7), jxjRotaDepoisDeCriar({lutadores:[{cartel:[0,1,0]}]}, 7)])`, env.sandbox));
+      if (JSON.stringify(r) !== JSON.stringify([true, false, "treino/7", "lutador/7/arvore"])) throw new Error("regra: " + JSON.stringify(r));
+      /* sem localStorage (navegador que bloqueia): continua mandando, e o treino abre */
+      const lsAntes = env.sandbox.localStorage;
+      env.sandbox.localStorage = { getItem: () => { throw new Error("bloqueado"); }, setItem: () => { throw new Error("bloqueado"); }, removeItem: () => {} };
+      try { m = await abrir("fila"); if (!noTreino(m)) throw new Error("sem localStorage, a busca não mandou pro treino"); semLixoV3T(htmlDe(desde(m)), "treino sem localStorage"); }
+      finally { env.sandbox.localStorage = lsAntes; }
+      /* com a marca: a busca abre normal */
+      vm.runInContext(`localStorage.setItem("jxj:treino","1")`, env.sandbox);
+      m = await abrir("fila");
+      if (noTreino(m)) throw new Error("com a marca, a busca ainda manda pro treino");
+      await api(u1, "filaSair");
+    });
     await conf("fila sem tela antes (2026-10-20): abrir a busca já entra na fila com a última diferença de rating (padrão 400); os 4 botões ficam na busca e trocar grava no banco sem perder a espera", async () => {
       await db.query("delete from jxj_fila");
       const m = await abrir("fila");
@@ -14693,7 +14723,7 @@ async function testarJxJTelas() {
       semLixoV3(htmlDe(desde(m2)), "passo do estilo");
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
-      const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,
+      const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", "treino", `perfil/${l1}`, `lutador/${l1}/perfil`,
         `lutador/${l1}/arvore`, `lutador/${l1}/historico`, `lutador/${l1}/aparencia`, `lutador/${l1}/gerenciar`, `luta/${lid}`];
       const ruins = [];
       for (const r of rotas) {
