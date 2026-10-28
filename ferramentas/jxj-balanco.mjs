@@ -13,6 +13,7 @@
      node ferramentas/jxj-balanco.mjs momentos   # grogue e encaixe: frequência, misturas e quanto valem
      node ferramentas/jxj-balanco.mjs personalidades  # bots com personalidade: quem lê o jeito vence mais?
      node ferramentas/jxj-balanco.mjs mao        # mão à vista (v4): trocas óbvias e quanto vale contar cartas
+     node ferramentas/jxj-balanco.mjs sinais     # sinais e blefe (fase 2): honestidade do sinal no equilíbrio
 
    Como o "jogo racional" é medido: o valor de um estado é a chance de A
    vencer dali (regressão logística treinada em lutas simuladas, treinarValor).
@@ -519,6 +520,75 @@ export function medirMao(n = 200) {
   const conta = 100 * v.conta[0] / v.conta[1], ignora = 100 * v.ignora[0] / v.ignora[1];
   return { obvias: 100 * obv / tot, contaCartas: conta, ignoraMao: ignora, valorDaMao: conta - ignora };
 }
+/* Fase 2: estratégia em duas etapas, com os níveis de leitura de gente.
+   A pretendida sai de base. Sinal: honesto (a pretendida) ou, com chance
+   blefe, a isca: uma postura cuja resposta óbvia perde pra pretendida
+   ("mostro Guarda alta, ele vem pressionar, eu acerto o golpe"). Ação:
+   "ignora" faz a pretendida; "confia" joga o que ganha do sinal dele;
+   "desconfia" supõe que o sinal é isca e joga o que ganha da ação que a
+   isca esconde. Sem resposta possível com as cartas que tem, a pretendida. */
+const quemGanha = (e, l, fl, o, fo) => M.quemLeu({ [l]: M.papel(e, l), [o]: M.papel(e, o) }, { [l]: fl, [o]: fo });
+function respostas(e, l, alvo) {   // famílias minhas (com carta) que ganham da família alvo dele
+  const o = l === "a" ? "b" : "a";
+  return F.filter((x) => EST.temCarta(e, l, x) && quemGanha(e, l, x, o, alvo) === l);
+}
+function iscas(e, l, pretendida) {   // posturas minhas cuja resposta dele perde pra pretendida
+  const o = l === "a" ? "b" : "a";
+  return F.filter((sg) => sg !== pretendida && EST.temCarta(e, l, sg)
+    && F.some((ro) => EST.temCarta(e, o, ro) && quemGanha(e, o, ro, l, sg) === o && quemGanha(e, l, pretendida, o, ro) === l));
+}
+export function comSinal(base, { blefe = 0, resposta = "ignora" } = {}) {
+  const pretendida = new Map();
+  return {
+    sinal(e, l, p, r) {
+      const f = EST.familiaNaMao(e, l, base(e, l, p, r), r);
+      pretendida.set(l, f);
+      if (r() >= blefe) return f;
+      const is = iscas(e, l, f);
+      return is.length ? is[Math.floor(r() * is.length)] : f;
+    },
+    acao(e, l, p, r, sinais) {
+      const f = pretendida.get(l), o = l === "a" ? "b" : "a";
+      if (!sinais || !sinais[o] || resposta === "ignora") return f;
+      let alvos = [sinais[o]];
+      if (resposta === "desconfia") alvos = F.filter((x) => EST.temCarta(e, o, x) && iscas(e, o, x).includes(sinais[o]));
+      const op = [...new Set(alvos.flatMap((al) => respostas(e, l, al)))];
+      return op.length ? op[Math.floor(r() * op.length)] : f;
+    },
+  };
+}
+/* Equilíbrio de k estratégias numa matriz de vitórias da linha (fictitious play). */
+function equilibrioN(m, it = 20000) {
+  const k = m.length, ca = new Array(k).fill(1), cb = new Array(k).fill(1);
+  const norm = (c) => { const t = c.reduce((a, b) => a + b, 0); return c.map((x) => x / t); };
+  for (let t = 0; t < it; t++) {
+    const pa = norm(ca), pb = norm(cb);
+    const ua = m.map((l) => l.reduce((s, v, j) => s + v * pb[j], 0)), ub = m[0].map((_, j) => m.reduce((s, l, i) => s + l[j] * pa[i], 0));
+    ca[ua.indexOf(Math.max(...ua))]++; cb[ub.indexOf(Math.min(...ub))]++;
+  }
+  return norm(ca);
+}
+/* O blefe no equilíbrio (fase 2): 9 estratégias (isca com chance 0, 0,3 e
+   0,6; resposta ao sinal dele: ignora, confia, desconfia) no espelho dos 4
+   estilos, nível 1. A
+   honestidade é a chance de o sinal ser a ação, na mistura de equilíbrio. */
+export function medirSinais(n = 150) {
+  const opcoes = [];
+  for (const blefe of [0, 0.3, 0.6]) for (const resposta of ["ignora", "confia", "desconfia"]) opcoes.push({ blefe, resposta });
+  const m = opcoes.map(() => opcoes.map(() => 0));
+  for (const s of ESTS) {
+    const p = perfilTipico(s, 1);
+    opcoes.forEach((x, i) => opcoes.forEach((y, j) => {
+      if (j < i) return;
+      const t = confronto(p, p, comSinal(racional(p, p), x), comSinal(racional(p, p), y), n, `sn${s}${i}x${j}`);
+      m[i][j] += t.pct / ESTS.length; if (i !== j) m[j][i] += (100 - t.pct) / ESTS.length;
+    }));
+  }
+  const eq = equilibrioN(m);
+  const honestidade = 100 * eq.reduce((s, w, i) => s + w * (1 - opcoes[i].blefe), 0);
+  const usadas = opcoes.map((x, i) => [x, eq[i]]).filter(([, w]) => w > 0.1).map(([x, w]) => `blefe ${x.blefe} ${x.resposta}: ${(100 * w).toFixed(0)}%`);
+  return { honestidade, usadas, matriz: m, opcoes, eq };
+}
 export const HUMANOS_MODELO = {
   acaso: () => aleatoria(),
   spam: () => spam("golpes"),
@@ -615,6 +685,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const r = medirMao(N || 300);
     console.log(`trocas em que ele só tem uma família: ${f1(r.obvias)}%`);
     console.log(`quem lê o estilo dele e conta as cartas: ${f1(r.contaCartas)}% contra o jogador de estilo; lendo sem contar: ${f1(r.ignoraMao)}% (a mão vale ${f1(r.valorDaMao)} pontos)`);
+  } else if (cmd === "sinais") {
+    const r = medirSinais(N || 200);
+    console.log(`custo da finta ${EST.ESTRATEGIA.custoFinta}: o sinal acerta a ação ${f1(r.honestidade)}% das vezes no equilíbrio`);
+    for (const u of r.usadas) console.log("  " + u);
   } else if (cmd === "momentos") {
     const r = medirMomentos(N || 120);
     console.log(`lutas com grogue ${f1(r.comGrogue)}%, com finalização encaixada ${f1(r.comEncaixe)}%`);
@@ -625,6 +699,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log("  " + s.padEnd(9) + Object.keys(BOT.ESTADO_MOMENTO).map((ch) => `${ch} ${misturaDoMomento(p, p, ch).a.map((x) => Math.round(100 * x)).join("/")}`).join("  "));
     }
   } else {
-    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos|mao] [n]");
+    console.log("uso: node ferramentas/jxj-balanco.mjs [matriz|niveis|nos|builds|atributos|variantes|bots|personalidades|leitura|momentos|mao|sinais] [n]");
   }
 }

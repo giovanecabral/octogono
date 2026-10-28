@@ -12556,6 +12556,12 @@ async function testarJxJMotor() {
     if (!/Ana mostrou Guarda alta e fez Golpes/.test(t) || problemasDeTexto(t).length) throw new Error("texto: " + t);
     if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.sinalMs + EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo da troca " + M.FORMATO.prazoMs);
   });
+  await conf("blefe tem equilíbrio (v4, fase 2): no equilíbrio entre as estratégias de sinal, o sinal acerta a ação de 60% a 75% das vezes; o equilíbrio mistura 2 ou mais estratégias", () => {
+    const r = BAL.medirSinais(120);
+    console.log(cinza(`         honestidade no equilíbrio ${f1(r.honestidade)}% (finta ${EST.ESTRATEGIA.custoFinta}) | ${r.usadas.join(" | ")}`));
+    if (r.honestidade < 60 || r.honestidade > 75) throw new Error("honestidade fora da faixa: " + f1(r.honestidade));
+    if (r.usadas.length < 2) throw new Error("equilíbrio puro: " + r.usadas.join(","));
+  });
   await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
     const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
     const ac = M.acoesDisponiveis(e, "a", pA, "sem");
