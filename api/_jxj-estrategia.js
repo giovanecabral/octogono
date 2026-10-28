@@ -28,8 +28,13 @@ export const ESTRATEGIA = {
   energiaPorCartaGuardada: 0.25,
   /* prazo estourado: a primeira família com carta nesta ordem */
   ordemPadrao: ["defesa", "pressao", "golpes", "queda"],
-  prazos: { acaoMs: 12000 },
+  /* custo, em energia, de fazer uma ação diferente do próprio sinal (fase 2) */
+  custoFinta: 1.5,
+  /* a troca: primeiro o sinal, depois a ação (um prazo só, a soma) */
+  prazos: { sinalMs: 5000, acaoMs: 12000 },
 };
+/* a postura de cada família: o sinal que o lutador mostra (fase 2) */
+export const POSTURAS = { golpes: "Peso na frente", queda: "Base baixa", defesa: "Guarda alta", pressao: "Avançando" };
 export const maoCheia = () => ({ ...ESTRATEGIA.mao });
 export const cartasNaMao = (mao) => FAMILIAS_MAO.reduce((s, f) => s + (mao[f] || 0), 0);
 export const temCarta = (estado, lado, fam) => !estado.mao || (estado.mao[lado][fam] || 0) > 0;

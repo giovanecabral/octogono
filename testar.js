@@ -12539,13 +12539,30 @@ async function testarJxJMotor() {
     if (r.obvias > 15) throw new Error("trocas óbvias demais: " + f1(r.obvias));
     if (!(r.valorDaMao > 0)) throw new Error("contar cartas não ajudou: " + f1(r.valorDaMao));
   });
+  await conf("sinais (v4, fase 2): com sinais, ação diferente do próprio sinal é finta (custa custoFinta de energia, evento finta com texto); igual não custa nada; os eventos guardam os dois sinais; sem sinais, nada muda", () => {
+    const pA = perfil("striker"), pB = perfil("counter"), P = { a: pA, b: pB };
+    const e = M.novaLuta(pA, pB);
+    const sem = M.resolverTroca(e, P, { a: "golpes", b: "defesa" }, "f1");
+    const hon = M.resolverTroca(e, P, { a: "golpes", b: "defesa", sinais: { a: "golpes", b: "defesa" } }, "f1");
+    const semSinais = (r) => JSON.stringify(r.eventos.filter((ev) => ev.tipo !== "sinais"));
+    if (JSON.stringify(hon.estado) !== JSON.stringify(sem.estado) || semSinais(hon) !== semSinais(sem) || hon.eventos.some((ev) => ev.tipo === "finta")) throw new Error("sinal honesto mudou a troca");
+    const s = hon.eventos.find((ev) => ev.tipo === "sinais");
+    if (!s || s.a !== "golpes" || s.b !== "defesa" || sem.eventos.some((ev) => ev.tipo === "sinais")) throw new Error("evento sinais: " + JSON.stringify(s));
+    const fin = M.resolverTroca(e, P, { a: "golpes", b: "defesa", sinais: { a: "defesa", b: "defesa" } }, "f1");
+    const ev = fin.eventos.find((x) => x.tipo === "finta");
+    if (!ev || ev.quem !== "a" || ev.sinal !== "defesa" || ev.fam !== "golpes") throw new Error("finta: " + JSON.stringify(ev));
+    if (Math.abs((sem.estado.a.energia - fin.estado.a.energia) - Math.min(EST.ESTRATEGIA.custoFinta, sem.estado.a.energia)) > 1e-9) throw new Error("custo da finta: " + sem.estado.a.energia + " / " + fin.estado.a.energia);
+    const t = M.textoEvento(ev, { a: "Ana", b: "Bia" });
+    if (!/Ana mostrou Guarda alta e fez Golpes/.test(t) || problemasDeTexto(t).length) throw new Error("texto: " + t);
+    if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.sinalMs + EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo da troca " + M.FORMATO.prazoMs);
+  });
   await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
     const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
     const ac = M.acoesDisponiveis(e, "a", pA, "sem");
     if (ac.find((x) => x.familia === "queda").restam !== 0 || ac.find((x) => x.familia === "golpes").restam !== EST.maoCheia().golpes) throw new Error(JSON.stringify(ac.map((x) => [x.familia, x.restam])));
     const v3 = { ...e }; delete v3.mao;
     if (M.acoesDisponiveis(v3, "a", pA, "sem").some((x) => x.restam !== null)) throw new Error("v3 com restam");
-    if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo " + M.FORMATO.prazoMs);
+    if (M.FORMATO.prazoMs !== EST.ESTRATEGIA.prazos.sinalMs + EST.ESTRATEGIA.prazos.acaoMs) throw new Error("prazo " + M.FORMATO.prazoMs);
   });
 
   await conf("determinismo: mesma semente e mesmas escolhas dão a mesma luta; semente diferente dá outra; o estado recebido não muda", () => {
@@ -12599,6 +12616,7 @@ async function testarJxJMotor() {
             vistas.add(ev.va); vistas.add(ev.vb);
             continue;
           }
+          if (ev.tipo === "sinais") continue;   // fase 2: registro dos dois sinais (sem texto)
           if (ev.tipo === "leu") {   // registro de quem leu o outro (v3, a tela usa): sem texto, sempre pelo ciclo
             if (ev.quem !== M.quemLeu(pap, real) || ev.fam !== real[ev.quem] || ev.vs !== real[ev.quem === "a" ? "b" : "a"]) throw new Error("leu fora do ciclo: " + JSON.stringify({ ev, pap, real }));
             continue;

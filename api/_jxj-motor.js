@@ -10,12 +10,13 @@
    Quem chama: api/jxj.js (o servidor decide) e testar.js (simulação em
    massa). O navegador nunca roda isto pra decidir nada. */
 import { createHash } from "node:crypto";
-import { ESTRATEGIA, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao } from "./_jxj-estrategia.js";
+import { ESTRATEGIA, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao } from "./_jxj-estrategia.js";
 
 export const VERSAO_MOTOR = 4;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20); 4: mão à vista (2026-10-27)
 /* Formato (ajustado pela suíte jxjmotor; valores finais no LEIA-ME). O
-   prazo da ação vem da configuração da estratégia (12 s desde o v4). */
-export const FORMATO = { rounds: 3, trocasPorRound: 4, prazoMs: ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000 };
+   prazo da troca vem da configuração da estratégia: o sinal (5 s) e a ação
+   (12 s), um prazo só (fase 2). */
+export const FORMATO = { rounds: 3, trocasPorRound: 4, prazoMs: ESTRATEGIA.prazos.sinalMs + ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000 };
 export const FAMILIAS = ["golpes", "queda", "defesa", "pressao"];
 export const AUSENCIAS_WO = 3;
 
@@ -908,6 +909,17 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     if (ausente[l] && c < 0) continue;
     estado[l].energia = clamp(estado[l].energia - c, 0, energiaMax(perfis[l]));
   }
+  /* v4, fase 2: sinais. Ação diferente do próprio sinal é finta e custa
+     energia (o servidor recusa a finta sem energia antes; aqui, no máximo
+     zera). Os dois sinais ficam nos eventos pra a luta ser refeita. */
+  if (acoesIn.sinais) {
+    const sn = acoesIn.sinais;
+    registrar(ctx, "sinais", null, { a: sn.a, b: sn.b });
+    for (const l of ["a", "b"]) if (sn[l] && sn[l] !== ctx.acoes[l]) {
+      estado[l].energia = Math.max(0, estado[l].energia - ESTRATEGIA.custoFinta);
+      registrar(ctx, "finta", l, { sinal: sn[l], fam: ctx.acoes[l], pp: papeis[l] });
+    }
+  }
   ctx.aj = { a: ajuste(ctx, "a"), b: ajuste(ctx, "b") };
   if (estado.pos === "pe") estado.paradoChao = 0;
   const momentoAntes = estado.momento;
@@ -966,6 +978,8 @@ export function textoEvento(ev, nomes) {
   const fr = V ? V.frase : null, deDefesa = V && V.familia === "defesa";
   switch (ev.tipo) {
     case "escolha": return "";
+    case "sinais": return "";
+    case "finta": return `${q} mostrou ${POSTURAS[ev.sinal]} e fez ${(FAMILIA_NOME[ev.pp] || FAMILIA_NOME.pe)[ev.fam]}.`;
     case "semCarta": return `${q} já tinha usado essa ação no round e fez a ação padrão.`;
     case "guardou": return ev.energia > 0
       ? `${q} guardou ${ev.cartas} ${ev.cartas === 1 ? "ação" : "ações"} e recuperou ${num(ev.energia)} de energia.`
@@ -1043,9 +1057,17 @@ export function simularLuta(perfilA, perfilB, estrA, estrB, semente, opcoes = nu
   const rEst = mulberry32(createHash("sha256").update(`estr:${semente}`).digest().readUInt32LE(0));
   let n = 0;
   while (!estado.fim && n++ < 100) {
-    const acoes = { a: estrA(estado, "a", perfilA, rEst), b: estrB(estado, "b", perfilB, rEst) };
+    /* estratégia em função: como antes (sem sinais); em objeto (fase 2): sinal e depois ação */
+    const sa = typeof estrA === "function" ? null : estrA.sinal(estado, "a", perfilA, rEst);
+    const sb = typeof estrB === "function" ? null : estrB.sinal(estado, "b", perfilB, rEst);
+    const sinais = sa || sb ? { a: sa, b: sb } : null;
+    const acoes = {
+      a: typeof estrA === "function" ? estrA(estado, "a", perfilA, rEst) : estrA.acao(estado, "a", perfilA, rEst, sinais),
+      b: typeof estrB === "function" ? estrB(estado, "b", perfilB, rEst) : estrB.acao(estado, "b", perfilB, rEst, sinais),
+    };
     /* v4 (só simulação): estratégia que pede família sem carta joga uma das que têm */
     for (const l of ["a", "b"]) if (acoes[l]) acoes[l] = familiaNaMao(estado, l, acoes[l], rEst);
+    if (sinais) { for (const l of ["a", "b"]) if (!sinais[l]) sinais[l] = acoes[l]; acoes.sinais = sinais; }
     estado = resolverTroca(estado, perfis, acoes, semente, opcoes).estado;
   }
   return estado;
