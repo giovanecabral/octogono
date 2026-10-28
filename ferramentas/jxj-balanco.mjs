@@ -467,7 +467,8 @@ export function lutaContraBot(pH, estrH, bot, dados, semente, { blefeH = 0.3 } =
     let sinais = null;
     if (blefeH != null && e.mao) {
       let sH = aH;
-      if (rEst() < blefeH && e.a.energia >= EST.ESTRATEGIA.custoFinta) { const is = iscas(e, "a", aH); if (is.length) sH = is[Math.floor(rEst() * is.length)]; }
+      const custoH = EST.custoFintaDe(e, "a", pH);
+      if (rEst() < Math.min(1, blefeH * EST.ESTRATEGIA.custoFinta / custoH) && e.a.energia >= custoH) { const is = iscas(e, "a", aH); if (is.length) sH = is[Math.floor(rEst() * is.length)]; }
       sinais = { a: sH, b: BOT.sinalDoBot({ estado: e, semente, trocas, dados, lado: "b" }) };
     }
     const aB = BOT.acaoDoBot({ estado: e, semente, trocas, dados, lado: "b", sinais });
@@ -480,7 +481,7 @@ export function lutaContraBot(pH, estrH, bot, dados, semente, { blefeH = 0.3 } =
       if (modo !== "ignora") {
         const alvos = modo === "confia" ? [sinais.b] : F.filter((x) => EST.temCarta(e, "b", x) && iscas(e, "b", x).includes(sinais.b));
         const op = [...new Set(alvos.flatMap((al) => respostas(e, "a", al)))];
-        if (op.length && !op.includes(aH)) { const x = op[Math.floor(rEst() * op.length)]; if (x === sinais.a || e.a.energia >= EST.ESTRATEGIA.custoFinta) aF = x; }
+        if (op.length && !op.includes(aH)) { const x = op[Math.floor(rEst() * op.length)]; if (x === sinais.a || e.a.energia >= EST.custoFintaDe(e, "a", pH)) aF = x; }
       }
     }
     const r = M.resolverTroca(e, perfis, sinais ? { a: aF, b: aB, sinais } : { a: aF, b: aB }, semente);
@@ -566,7 +567,8 @@ export function comSinal(base, { blefe = 0, resposta = "ignora" } = {}) {
     sinal(e, l, p, r) {
       const f = EST.familiaNaMao(e, l, base(e, l, p, r), r);
       pretendida.set(l, f);
-      if (r() >= blefe) return f;
+      /* fase 3: finta mais barata (iniciativa, ritmo), mais isca, na proporção do custo (como o bot) */
+      if (r() >= Math.min(1, blefe * EST.ESTRATEGIA.custoFinta / EST.custoFintaDe(e, l, p))) return f;
       const is = iscas(e, l, f);
       return is.length ? is[Math.floor(r() * is.length)] : f;
     },

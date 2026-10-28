@@ -85,9 +85,11 @@ export const MECANICAS = {
   chuteCorpo: { teto: 0.9, desc: "energia que o golpe acertado tira do adversário" },
   antiPressao: { teto: 0.35, desc: "chance de sair da pressão na grade" },
   variedade: { teto: 0.6, desc: "corta a leitura do adversário sobre o seu padrão" },
-  ritmo: { teto: 0.35, desc: "chance de ganhar momento extra quando vence a troca" },
+  /* ritmo e retencaoMomento: no motor v4 (fase 3, 2026-10-28) o momento saiu e
+     as duas passaram pra finta e pra iniciativa; luta v3 segue com o momento */
+  ritmo: { teto: 0.35, desc: "custo da finta a menos" },
   golpesNaPressao: { teto: 0.40, desc: "chance de acertar golpes enquanto pressiona" },
-  retencaoMomento: { teto: 0.6, desc: "o momento demora mais pra cair" },
+  retencaoMomento: { teto: 0.6, desc: "chance de manter a iniciativa quando perde a troca" },
   eficienciaOfensiva: { teto: 0.9, desc: "energia a menos pra pressionar" },
   cadeia: { teto: 0.30, desc: "segunda tentativa de queda quando a primeira falha" },
   timingQueda: { teto: 12, desc: "pontos a mais na queda contra golpes e pressão" },
@@ -134,9 +136,9 @@ export const RAMOS = {
     n("variedade", "Variedade de ataques", "O adversário lê menos o seu padrão.", [{ m: "variedade", v: 0.171 }, { a: "golpe", v: 1.1 }]),
   ]},
   pressao: { estilo: "striker", nome: "Pressão", nos: [
-    n("controle_ritmo", "Controle de ritmo", "Vencer a troca pode render momento extra, e a defesa melhora.", [{ m: "ritmo", v: 0.219 }, { a: "defesa", v: 1.4 }]),
+    n("controle_ritmo", "Controle de ritmo", "A finta gasta menos energia, e a defesa melhora.", [{ m: "ritmo", v: 0.219 }, { a: "defesa", v: 1.4 }]),
     n("combinacoes_pressao", "Combinações sob pressão", "Acerta golpes enquanto pressiona na grade, e acerta mais em pé.", [{ m: "golpesNaPressao", v: 0.246 }, { a: "golpe", v: 1.1 }]),
-    n("iniciativa", "Manutenção de iniciativa", "O momento demora mais pra cair, e acerta mais em pé.", [{ m: "retencaoMomento", v: 0.513 }, { a: "golpe", v: 1.1 }]),
+    n("iniciativa", "Manutenção de iniciativa", "Pode manter a iniciativa mesmo perdendo a troca, e acerta mais em pé.", [{ m: "retencaoMomento", v: 0.513 }, { a: "golpe", v: 1.1 }]),
     n("eficiencia_ofensiva", "Eficiência de energia ofensiva", "Pressionar gasta menos energia, e a defesa melhora.", [{ m: "eficienciaOfensiva", v: 0.68 }, { a: "defesa", v: 1.1 }]),
   ]},
   quedas: { estilo: "wrestler", nome: "Quedas", nos: [

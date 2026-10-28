@@ -30,6 +30,9 @@ export const ESTRATEGIA = {
   ordemPadrao: ["defesa", "pressao", "golpes", "queda"],
   /* custo, em energia, de fazer uma ação diferente do próprio sinal (fase 2) */
   custoFinta: 1.5,
+  /* com a iniciativa (quem venceu a última troca do round), a finta custa
+     isto do custo (fase 3) */
+  fatorFintaIniciativa: 0.5,
   /* a troca: primeiro o sinal, depois a ação (um prazo só, a soma) */
   prazos: { sinalMs: 5000, acaoMs: 12000 },
 };
@@ -39,6 +42,16 @@ export const maoCheia = () => ({ ...ESTRATEGIA.mao });
 export const cartasNaMao = (mao) => FAMILIAS_MAO.reduce((s, f) => s + (mao[f] || 0), 0);
 export const temCarta = (estado, lado, fam) => !estado.mao || (estado.mao[lado][fam] || 0) > 0;
 export const familiasComCarta = (estado, lado) => FAMILIAS_MAO.filter((f) => temCarta(estado, lado, f));
+/* Custo da finta do lado nesta troca: metade com a iniciativa (fase 3) e,
+   no v4, a fração do nó "Controle de ritmo" (mecânica ritmo) a menos. Luta
+   sem mão (v3) não tem iniciativa: o custo cheio. A tela, o servidor, o
+   motor e o bot usam este número. */
+export function custoFintaDe(estado, lado, perfil) {
+  if (!estado.mao) return ESTRATEGIA.custoFinta;
+  const ini = estado.iniciativa === lado ? ESTRATEGIA.fatorFintaIniciativa : 1;
+  const ritmo = (perfil && perfil.mec && perfil.mec.ritmo) || 0;
+  return Math.round(ESTRATEGIA.custoFinta * ini * (1 - ritmo) * 100) / 100;
+}
 export function acaoPadrao(estado, lado) {
   if (!estado.mao) return "defesa";
   return ESTRATEGIA.ordemPadrao.find((f) => temCarta(estado, lado, f)) || "defesa";

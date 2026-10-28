@@ -10,7 +10,7 @@
    Quem chama: api/jxj.js (o servidor decide) e testar.js (simulação em
    massa). O navegador nunca roda isto pra decidir nada. */
 import { createHash } from "node:crypto";
-import { ESTRATEGIA, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao } from "./_jxj-estrategia.js";
+import { ESTRATEGIA, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao, custoFintaDe } from "./_jxj-estrategia.js";
 
 export const VERSAO_MOTOR = 4;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20); 4: mão à vista (2026-10-27)
 /* Formato (ajustado pela suíte jxjmotor; valores finais no LEIA-ME). O
@@ -293,6 +293,8 @@ export function novaLuta(perfilA, perfilB) {
     a: ladoNovo(perfilA), b: ladoNovo(perfilB), pontos: [{ a: 0, b: 0 }], cartoes: [], fim: null,
     /* v4: a mão de cada lado no round (contagem por família, pública) */
     mao: { a: maoCheia(), b: maoCheia() },
+    /* v4, fase 3: quem venceu a última troca do round ("a", "b" ou null) */
+    iniciativa: null,
   };
 }
 /* Papel de cada lado na posição atual: "pe", "cima" ou "baixo". */
@@ -403,10 +405,11 @@ const sig = (x) => 1 / (1 + Math.exp(-x / K.esc));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const outro = (l) => (l === "a" ? "b" : "a");
 
-/* Ajuste de disputa do lado: momento, cansaço, aproveitamento e leitura. */
+/* Ajuste de disputa do lado: momento (só v3; no v4 a iniciativa substitui),
+   cansaço, aproveitamento e leitura. */
 function ajuste(ctx, lado) {
   const e = ctx.estado, s = e[lado], o = e[outro(lado)], m = ctx.perfis[lado].mec, mo = ctx.perfis[outro(lado)].mec;
-  let v = (lado === "a" ? 1 : -1) * e.momento * K.momentoPts;
+  let v = e.mao ? 0 : (lado === "a" ? 1 : -1) * e.momento * K.momentoPts;
   if (s.energia <= K.cansacoLimite) v -= (K.cansacoLimite + 1 - s.energia) * K.cansacoPts;
   if (o.energia <= 3 && m.aproveitamento) v += m.aproveitamento;
   /* leitura: o adversário repetiu a ação da troca anterior */
@@ -431,8 +434,12 @@ const disputa = (ctx, x, y) => ctx.r() < sig(x - y);
 /* ---------- dano, nocaute, finalização ---------- */
 function registrar(ctx, tipo, quem, extra = {}) { ctx.eventos.push({ tipo, quem, ...extra }); }
 function pontuar(ctx, lado, pts) { ctx.estado.pontos[ctx.estado.round - 1][lado] += pts; }
+/* Quem ganhou o lance. v3: mexe no momento e pontua. v4 (fase 3): o
+   momento saiu; os juízes continuam dando o ponto do lance (sem ele, sair
+   da grade ou levantar valeria zero e a troca empataria). */
 function moverMomento(ctx, lado, n) {
   const e = ctx.estado, sinal = lado === "a" ? 1 : -1;
+  if (e.mao) { pontuar(ctx, lado, K.bonusMomento * n); return; }
   e.momento = clamp(e.momento + sinal * n, -K.momentoMax, K.momentoMax);
   ctx.momentoMexeu = true;
   pontuar(ctx, lado, K.bonusMomento * n);
@@ -837,6 +844,8 @@ function fecharRound(estado, perfis) {
   }
   e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null;
   e.momento = Math.trunc(e.momento / 2);
+  /* v4, fase 3: a iniciativa some no fim do round */
+  if (e.mao) e.iniciativa = null;
   for (const l of ["a", "b"]) {
     const max = energiaMax(perfis[l]), base = e[l].energia + K.recuperacaoRound + (perfis[l].atr.cardio - 50) / 12;
     /* v4: cada carta guardada vira energia (até o máximo); a mão volta cheia logo abaixo */
@@ -862,6 +871,8 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
   const ctx = { estado, perfis, eventos: [], r: geradorDaTroca(semente, estado.round, estado.troca),
     acoes: {}, aj: {}, momentoMexeu: false, recuperacaoCortada: {}, var: {}, mod: {} };
   const ausente = {};
+  /* v4, fase 3: os pontos do round antes da troca (quem levar mais nela fica com a iniciativa) */
+  const pontosAntes = { ...estado.pontos[estado.round - 1] };
   for (const l of ["a", "b"]) {
     const ac = acoesIn[l];
     if (ac && !FAMILIAS.includes(ac)) throw new Error("ação inválida");
@@ -918,7 +929,8 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     const sn = acoesIn.sinais;
     registrar(ctx, "sinais", null, { a: sn.a, b: sn.b });
     for (const l of ["a", "b"]) if (sn[l] && sn[l] !== ctx.acoes[l]) {
-      estado[l].energia = Math.max(0, estado[l].energia - ESTRATEGIA.custoFinta);
+      /* fase 3: com a iniciativa (a de antes desta troca), metade */
+      estado[l].energia = Math.max(0, estado[l].energia - custoFintaDe(estado, l, perfis[l]));
       registrar(ctx, "finta", l, { sinal: sn[l], fam: ctx.acoes[l], pp: papeis[l] });
     }
   }
@@ -952,11 +964,23 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     estado[l].ultima = ctx.acoes[l];
     estado[l].travado = estado[l].travado && !ctx.eventos.some((ev) => ev.quem === l && /queda|pressao/.test(ev.tipo));
   }
-  /* momento parado volta 1 pro centro, a não ser que a retenção segure */
-  if (!ctx.momentoMexeu && estado.momento === momentoAntes && estado.momento !== 0) {
+  /* momento parado volta 1 pro centro, a não ser que a retenção segure (só v3) */
+  if (!estado.mao && !ctx.momentoMexeu && estado.momento === momentoAntes && estado.momento !== 0) {
     const dono = estado.momento > 0 ? "a" : "b";
     const ret = perfis[dono].mec.retencaoMomento || 0;
     if (ctx.r() >= ret) estado.momento -= Math.sign(estado.momento);
+  }
+  /* v4, fase 3: quem levou mais pontos na troca fica com a iniciativa;
+     empate não muda nada. O nó "Manutenção de iniciativa" (retencaoMomento)
+     segura a de quem tinha e perdeu, com essa chance */
+  if (estado.mao && !estado.fim) {
+    const rd = estado.round - 1, ga = estado.pontos[rd].a - pontosAntes.a, gb = estado.pontos[rd].b - pontosAntes.b;
+    const venc = Math.abs(ga - gb) <= 0.01 ? null : ga > gb ? "a" : "b", tinha = estado.iniciativa;
+    if (venc && venc !== tinha) {
+      const ret = tinha ? perfis[tinha].mec.retencaoMomento || 0 : 0;
+      if (ret && ctx.r() < ret) registrar(ctx, "iniciativa", tinha, { segurou: true });
+      else { estado.iniciativa = venc; registrar(ctx, "iniciativa", venc); }
+    }
   }
   if (!estado.fim) {
     if (estado.troca >= FORMATO.trocasPorRound) {
@@ -981,6 +1005,7 @@ export function textoEvento(ev, nomes) {
   switch (ev.tipo) {
     case "escolha": return "";
     case "sinais": return "";
+    case "iniciativa": return "";
     case "finta": return `${q} mostrou ${POSTURAS[ev.sinal]} e fez ${(FAMILIA_NOME[ev.pp] || FAMILIA_NOME.pe)[ev.fam]}.`;
     case "semCarta": return `${q} já tinha usado essa ação no round e fez a ação padrão.`;
     case "guardou": return ev.energia > 0

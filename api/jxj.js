@@ -307,6 +307,8 @@ function vistaDaLuta(d, uid) {
     formato: MOTOR.FORMATO,
     estado: estado ? {
       pos: estado.pos, nivelPos: estado.nivelPos, momento: estado.momento,
+      /* v4, fase 3: quem venceu a última troca do round (finta pela metade) */
+      iniciativa: estado.mao ? estado.iniciativa || null : null,
       a: ladoVisto(estado.a, "a"), b: ladoVisto(estado.b, "b"),
       encaixe: estado.encaixe && estado.pos !== "pe" ? { quem: estado.encaixe.quem } : null,
       pontos: estado.pontos, cartoes: estado.cartoes,
@@ -346,8 +348,8 @@ function vistaDaLuta(d, uid) {
        só as 4 ações de quem pediu, nunca a semente nem a mão do outro */
     acoes: lado && estado && L.status === "andamento" ? MOTOR.acoesDisponiveis(estado, lado, meuPerfil, L.semente).map((x) => ({
       ...x,
-      /* fase 2: o custo da finta (0 se é o meu sinal; null antes da revelação) */
-      finta: etapa === "acao" ? (x.familia === sinaisRevelados(L, sn)[lado] ? 0 : EST.ESTRATEGIA.custoFinta) : null,
+      /* fase 2: o custo da finta (0 se é o meu sinal; null antes da revelação); fase 3: metade com a iniciativa */
+      finta: etapa === "acao" ? (x.familia === sinaisRevelados(L, sn)[lado] ? 0 : EST.custoFintaDe(estado, lado, meuPerfil)) : null,
     })) : null,
     papel: lado && estado ? MOTOR.papel(estado, lado) : null,
     /* v4: as duas mãos são públicas (contagem por família); luta v3, null */
@@ -640,7 +642,7 @@ async function executar(acao, c, uid) {
         if (sn0[lado0] && sn0[lado0] !== c.familia) throw new ErroJxJ("Espere ele mostrar a postura pra fintar.");
       } else if (etapa0 === "acao") {
         const meu = sinaisRevelados(L0, sn0)[lado0];
-        if (meu !== c.familia && L0.estado[lado0].energia < EST.ESTRATEGIA.custoFinta) throw new ErroJxJ("Sem energia pra fintar.");
+        if (meu !== c.familia && L0.estado[lado0].energia < EST.custoFintaDe(L0.estado, lado0, L0.perfis && L0.perfis[lado0])) throw new ErroJxJ("Sem energia pra fintar.");
       }
       await rpc("jxj_enviar_acao", { uid, lid, round_: round, troca_: troca, familia_: c.familia });
       /* o sinal do compromisso honesto vai DEPOIS da ação: se ele revela os

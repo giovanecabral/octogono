@@ -10976,6 +10976,7 @@ async function testarJxJ() {
   const url = require("url"), crypto = require("crypto");
   const falhas = [];
   const conf = async (nome, fn) => {
+    if (process.env.JXJ_SO && !process.env.JXJ_SO.split("|").some((t) => nome.startsWith(t))) return;   // como em confJxJ
     try { await fn(); console.log(verde("  ok    ") + nome); }
     catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
   };
@@ -11940,6 +11941,25 @@ async function testarJxJ() {
       const canon = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((c) => [c, v[c]])) : v));
       if (canon(e) !== canon(d.luta.estado)) throw new Error("a luta refeita pela semente ficou diferente");
     });
+    await conf("iniciativa na luta (fase 3): a vista diz quem tem; com ela a finta custa metade (acoes[].finta) e o servidor recusa pelo custo de cada um (sem a iniciativa, a mesma energia não dá)", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      const cheio = EST.ESTRATEGIA.custoFinta, meio = cheio * EST.ESTRATEGIA.fatorFintaIniciativa;
+      /* A com a iniciativa; os dois com energia entre a metade e o custo cheio */
+      await q("update jxj_lutas set estado = jsonb_set(jsonb_set(jsonb_set(estado, '{iniciativa}', '\"a\"'::jsonb), '{a,energia}', '1.0'::jsonb), '{b,energia}', '1.0'::jsonb) where id = $1", [lid]);
+      await ok(u1, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });
+      await ok(u2, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });
+      const v1 = await ok(u1, "luta", { lutaId: lid }), v2 = await ok(u2, "luta", { lutaId: lid });
+      if (v1.estado.iniciativa !== "a" || v2.estado.iniciativa !== "a") throw new Error("iniciativa na vista: " + JSON.stringify([v1.estado.iniciativa, v2.estado.iniciativa]));
+      const fa = v1.acoes.find((a) => a.familia === "pressao").finta, fb = v2.acoes.find((a) => a.familia === "pressao").finta;
+      if (fa !== meio || fb !== cheio) throw new Error(`custo da finta na vista: A ${fa} (esperado ${meio}), B ${fb} (esperado ${cheio})`);
+      await erro(u2, "acao", { lutaId: lid, round: 1, troca: 1, familia: "pressao" }, /energia/);
+      await ok(u1, "acao", { lutaId: lid, round: 1, troca: 1, familia: "pressao" });
+      await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });
+      const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 1", [lid]))[0];
+      if (!t || !t.eventos.some((ev) => ev.tipo === "finta" && ev.quem === "a")) throw new Error("a finta com a iniciativa não foi resolvida");
+    });
     await conf("sinais na luta (fase 2): o compromisso honesto que revela os sinais não acende 'ele já escolheu' (senão o outro sabe que foi honesto)", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       await zerarLimites();
@@ -12569,6 +12589,8 @@ async function carregarBalancoJxJ() {
 }
 function confJxJ(falhas) {
   return async (nome, fn) => {
+    /* JXJ_SO="trecho|outro" roda só os testes cujo nome começa com um dos trechos (pra iterar; a bateria não usa) */
+    if (process.env.JXJ_SO && !process.env.JXJ_SO.split("|").some((t) => nome.startsWith(t))) return;
     try { await fn(); console.log(verde("  ok    ") + nome); }
     catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
   };
@@ -12680,6 +12702,80 @@ async function testarJxJMotor() {
     if (r.honestidade < 60 || r.honestidade > 75) throw new Error("honestidade fora da faixa: " + f1(r.honestidade));
     if (r.usadas.length < 2) throw new Error("equilíbrio puro: " + r.usadas.join(","));
   });
+  await conf("iniciativa (v4, fase 3): quem leva mais pontos na troca fica com ela (evento iniciativa); troca empatada não muda; some no fim do round; com ela a finta custa metade (custoFintaDe e a cobrança do motor); o nó do ritmo barateia a finta; o da manutenção segura a iniciativa de quem perdeu", () => {
+    const pA = perfil("wrestler"), pB = perfil("grappler"), P = { a: pA, b: pB };
+    if (pA.mec.retencaoMomento || pB.mec.retencaoMomento) throw new Error("perfil do teste com retenção");
+    if (EST.ESTRATEGIA.fatorFintaIniciativa !== 0.5) throw new Error("fator " + EST.ESTRATEGIA.fatorFintaIniciativa);
+    if (M.novaLuta(pA, pB).iniciativa !== null) throw new Error("luta nova com iniciativa");
+    let r = 7; const rnd = () => (r = (r * 1103515245 + 12345) % 2147483648) / 2147483648;
+    let trocas = 0, mudou = 0, empates = 0;
+    for (let i = 0; i < 150; i++) {
+      let e = M.novaLuta(pA, pB), k = 0;
+      while (!e.fim && k++ < 100) {
+        const antes = e, rd = e.round - 1;
+        const res = M.resolverTroca(e, P, { a: F[Math.floor(rnd() * 4)], b: F[Math.floor(rnd() * 4)] }, `ini${i}`);
+        e = res.estado; trocas++;
+        const pa = e.pontos[rd].a - antes.pontos[rd].a, pb = e.pontos[rd].b - antes.pontos[rd].b;
+        const esperado = Math.abs(pa - pb) <= 0.01 ? antes.iniciativa : pa > pb ? "a" : "b";
+        if (Math.abs(pa - pb) <= 0.01) empates++;
+        const ev = res.eventos.filter((x) => x.tipo === "iniciativa");
+        if (e.round !== antes.round || e.fim) { if (!e.fim && e.iniciativa !== null) throw new Error("iniciativa passou pro round seguinte"); continue; }
+        if (e.iniciativa !== esperado) throw new Error(`troca ${antes.round}.${antes.troca}: pontos ${pa}/${pb}, iniciativa ${antes.iniciativa} virou ${e.iniciativa}, esperado ${esperado}`);
+        if ((esperado !== antes.iniciativa) !== (ev.length === 1 && ev[0].quem === esperado)) throw new Error("evento iniciativa: " + JSON.stringify(ev));
+        if (esperado !== antes.iniciativa) mudou++;
+        if (ev.length && M.textoEvento(ev[0], { a: "Ana", b: "Bia" }) !== "") throw new Error("evento iniciativa com texto");
+      }
+    }
+    if (mudou < trocas * 0.2 || empates < 1) throw new Error(`iniciativa quase parada: ${mudou} mudanças e ${empates} empates em ${trocas} trocas`);
+    /* custo da finta */
+    const e = M.novaLuta(pA, pB); e.iniciativa = "a";
+    const cheio = EST.ESTRATEGIA.custoFinta;
+    if (EST.custoFintaDe(e, "a", pA) !== cheio * 0.5 || EST.custoFintaDe(e, "b", pB) !== cheio) throw new Error("custoFintaDe " + EST.custoFintaDe(e, "a", pA) + "/" + EST.custoFintaDe(e, "b", pB));
+    const sem = M.resolverTroca(e, P, { a: "golpes", b: "defesa" }, "fi1"), fin = M.resolverTroca(e, P, { a: "golpes", b: "defesa", sinais: { a: "defesa", b: "golpes" } }, "fi1");
+    const gastoA = sem.estado.a.energia - fin.estado.a.energia, gastoB = sem.estado.b.energia - fin.estado.b.energia;
+    if (Math.abs(gastoA - cheio * 0.5) > 1e-9 || Math.abs(gastoB - Math.min(cheio, sem.estado.b.energia)) > 1e-9) throw new Error(`finta cobrada ${gastoA} (com a iniciativa) e ${gastoB} (sem)`);
+    const comRitmo = { ...pA, mec: { ...pA.mec, ritmo: 0.2 } };
+    if (Math.abs(EST.custoFintaDe(e, "a", comRitmo) - cheio * 0.5 * 0.8) > 1e-9 || Math.abs(EST.custoFintaDe(e, "b", comRitmo) - cheio * 0.8) > 1e-9) throw new Error("ritmo não barateou a finta");
+    /* manutenção de iniciativa: com chance 1, quem tinha e perdeu a troca segura */
+    let achou = false;
+    for (let s = 0; s < 400 && !achou; s++) {
+      const x = M.novaLuta(pA, pB); x.iniciativa = "a";
+      const base = M.resolverTroca(x, P, { a: "pressao", b: "golpes" }, "seg" + s);
+      if (base.estado.fim || base.estado.iniciativa !== "b") continue;
+      achou = true;
+      const seg = M.resolverTroca(x, { a: { ...pA, mec: { ...pA.mec, retencaoMomento: 1 } }, b: pB }, { a: "pressao", b: "golpes" }, "seg" + s);
+      const ev = seg.eventos.find((y) => y.tipo === "iniciativa");
+      if (seg.estado.iniciativa !== "a" || !ev || ev.quem !== "a" || !ev.segurou) throw new Error("retenção não segurou: " + JSON.stringify([seg.estado.iniciativa, ev]));
+    }
+    if (!achou) throw new Error("nenhuma troca perdida por quem tinha a iniciativa");
+    /* sem mão (v3): nada de iniciativa nem desconto */
+    const v3 = M.novaLuta(pA, pB); delete v3.mao; delete v3.iniciativa; v3.v = 3;
+    if ("iniciativa" in M.resolverTroca(v3, P, { a: "golpes", b: "pressao" }, "fi3").estado || EST.custoFintaDe(v3, "a", pA) !== cheio) throw new Error("v3 ganhou iniciativa");
+  });
+  await conf("momento fora do v4 (fase 3): em lutas v4 o momento fica 0 e não pesa na disputa; luta v3 (sem mão) resolve bit a bit como antes da fase 3 (impressão digital de 120 lutas)", () => {
+    const pA = perfil("striker", 10), pB = perfil("counter", 10);
+    for (let i = 0; i < 120; i++) {
+      const fim = M.simularLuta(pA, pB, BAL.aleatoria(), BAL.aleatoria(), "mom" + i);
+      if (fim.momento !== 0) throw new Error("momento " + fim.momento);
+    }
+    const h = crypto.createHash("sha256");
+    for (const [sa, sb] of [["striker", "grappler"], ["counter", "wrestler"], ["striker", "striker"]]) {
+      const qA = BAL.perfilTipico(sa, 10), qB = BAL.perfilTipico(sb, 10), Q = { a: qA, b: qB };
+      for (let i = 0; i < 40; i++) {
+        let s = i * 977 + 3; const r = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+        let e = M.novaLuta(qA, qB); delete e.mao; delete e.iniciativa; e.v = 3;
+        let k = 0;
+        while (!e.fim && k++ < 100) {
+          const ac = { a: r() < 0.08 ? null : F[Math.floor(r() * 4)], b: r() < 0.08 ? null : F[Math.floor(r() * 4)] };
+          const res = M.resolverTroca(e, Q, ac, `g3${sa}${sb}${i}`);
+          h.update(JSON.stringify(res));
+          e = res.estado;
+        }
+      }
+    }
+    const dig = h.digest("hex");
+    if (dig !== "c0172431b376f89e1fe6d2d515fb2cf325f63052edb4bda3c9aec7c47b97114b") throw new Error("luta v3 mudou: " + dig);
+  });
   await conf("acoesDisponiveis manda quantas cartas restam de cada família (null sem mão); o prazo da ação vem da configuração", () => {
     const pA = perfil("striker"), e = M.novaLuta(pA, pA); e.mao.a.queda = 0;
     const ac = M.acoesDisponiveis(e, "a", pA, "sem");
@@ -12741,6 +12837,7 @@ async function testarJxJMotor() {
             continue;
           }
           if (ev.tipo === "sinais") continue;   // fase 2: registro dos dois sinais (sem texto)
+          if (ev.tipo === "iniciativa") { if (ev.quem !== "a" && ev.quem !== "b") throw new Error("iniciativa sem dono"); continue; }   // fase 3: registro (sem texto)
           if (ev.tipo === "leu") {   // registro de quem leu o outro (v3, a tela usa): sem texto, sempre pelo ciclo
             if (ev.quem !== M.quemLeu(pap, real) || ev.fam !== real[ev.quem] || ev.vs !== real[ev.quem === "a" ? "b" : "a"]) throw new Error("leu fora do ciclo: " + JSON.stringify({ ev, pap, real }));
             continue;
@@ -12935,11 +13032,16 @@ async function testarJxJMotor() {
     }
     if (ruins.length) throw new Error(ruins.join("; "));
   });
-  await conf("leitura decide (v3, vantagem 22 desde a fase 3): quem acerta a leitura em metade das trocas vence 71%+ de quem joga no estilo; quem acerta sempre, 85,5%+ (com a vantagem antiga, 15: 68,7% e 84,4%)", () => {
+  await conf("leitura decide (v3, vantagem 22 desde a fase 3): quem acerta a leitura em metade das trocas vence 69%+ de quem joga no estilo (71%+ até a fase 3 tirar o momento); quem acerta sempre, 85,5%+ (com a vantagem antiga, 15: 68,7% e 84,4%)", () => {
     /* v4: amostra maior (600 e 400 por estilo): com 150, o ruído (cerca de 2 pontos) já tirava da faixa um valor que, medido com mais lutas, ficava acima */
     const meia = BAL.leituraOraculo(0.5, 600, "t"), sempre = BAL.leituraOraculo(1, 400, "t");
     console.log(cinza(`         acerto 0,5: ${f1(meia)}%   acerto 1: ${f1(sempre)}%`));
-    if (meia < 71 || sempre < 85.5) throw new Error("acertar a leitura vale pouco");
+    /* v4 (fase 3, 2026-10-28): o momento saiu (decisão do dono) e com ele
+       uns 1,7 pontos da leitura em metade das trocas (quem lia ganhava
+       momento, e o momento dava pontos de disputa): 71,3% virou 69,5% e
+       69,7% (duas sementes). No v4 a leitura também paga pela iniciativa
+       (finta pela metade), que esta medida, sem sinais, não vê */
+    if (meia < 69 || sempre < 85.5) throw new Error("acertar a leitura vale pouco");
   });
   /* 1.200 lutas por dupla (fase 3): com 600, o ruído da amostra (cerca de 2
      pontos) já tirava da faixa apertada de 45% a 57% uma dupla que, medida
@@ -12997,7 +13099,8 @@ async function testarJxJMotor() {
     const ruins = [], linhas = [];
     for (const s of ESTS) for (const f of F) {
       const p = perfil(s);
-      const t = BAL.confronto(p, p, BAL.spam(f), BAL.adaptativa(p, p), 400, `spam${s}${f}`);
+      /* 800 por dupla (fase 3): com 400, o striker só de golpes deu 51,0%, e com 800 em três sementes, 48,1, 49,5 e 48,6 */
+      const t = BAL.confronto(p, p, BAL.spam(f), BAL.adaptativa(p, p), 800, `spam${s}${f}`);
       linhas.push(`${s.slice(0, 3)}/${f.slice(0, 3)} ${f1(t.pct)}`);
       if (t.pct > 50) ruins.push(`${s} só ${f}: ${f1(t.pct)}%`);
     }
@@ -13595,7 +13698,7 @@ async function testarJxJBot() {
           const disp = EST.familiasComCarta(e, "a"), sH = disp[luta % disp.length];
           const aB = BOT.acaoDoBot({ estado: e, semente: sem, trocas, dados, lado: "b", sinais: { a: sH, b: sB } });
           if (!EST.temCarta(e, "b", aB)) throw new Error(`${pers}: ação sem carta`);
-          if (aB !== sB && e.b.energia < EST.ESTRATEGIA.custoFinta) throw new Error(`${pers}: fintou sem energia`);
+          if (aB !== sB && e.b.energia < EST.custoFintaDe(e, "b", bot.perfil)) throw new Error(`${pers}: fintou sem energia`);   // fase 3: com a iniciativa e o ritmo
           total++; if (aB !== sB) fintas++;
           const r = M.resolverTroca(e, { a: pH, b: bot.perfil }, { a: sH, b: aB, sinais: { a: sH, b: sB } }, sem);
           trocas.push({ round: e.round, troca: e.troca, acao_a: sH, acao_b: aB, eventos: r.eventos }); e = r.estado;
@@ -13626,6 +13729,41 @@ async function testarJxJBot() {
     }
     console.log(cinza("         isca do Provocador por habilidade: " + Object.entries(iscaPorS).map(([k, x]) => `s=${k} ${(100 * x).toFixed(0)}%`).join(" | ")));
     if (iscaPorS[0] !== 0 || !(iscaPorS[0.5] < iscaPorS[1]) || iscaPorS[1] < 0.3) throw new Error("o blefe não cresce com a habilidade: " + JSON.stringify(iscaPorS));
+  });
+  await conf("iniciativa (fase 3): com a iniciativa o bot blefa mais (a finta sai mais barata) e só finta com a energia do custo dele (custoFintaDe, com o ritmo da build)", () => {
+    const pH = T.perfilTipico("striker", 4);
+    const rating = BOT.RATING_BOT.min + 0.5 * (BOT.RATING_BOT.max - BOT.RATING_BOT.min);
+    const bot = BOT.montarBot({ nivel: 4, categoria: "middleweight", rating, semente: "ini", pers: "agressivo" }), dados = BOT.dadosDaLuta(bot, pH);
+    const taxa = (ini) => {
+      let isca = 0, total = 0;
+      for (let luta = 0; luta < 60; luta++) {
+        const e = { ...M.novaLuta(pH, bot.perfil), iniciativa: ini };
+        for (let t = 0; t < 4; t++) {
+          const sem = `ini:${luta}:${t}`, sB = BOT.sinalDoBot({ estado: e, semente: sem, trocas: [], dados, lado: "b" });
+          if (BOT.acaoDoBot({ estado: e, semente: sem, trocas: [], dados, lado: "b", sinais: { a: null, b: sB } }) !== sB) isca++;
+          total++;
+        }
+      }
+      return isca / total;
+    };
+    const sem = taxa(null), com = taxa("b");
+    console.log(cinza(`         isca do Provocador médio: sem a iniciativa ${(100 * sem).toFixed(0)}%, com ${(100 * com).toFixed(0)}%`));
+    if (!(com > sem + 0.08)) throw new Error(`com a iniciativa não blefa mais: ${sem} / ${com}`);
+    /* energia logo abaixo do custo cheio dele: sem a iniciativa não finta; com ela, finta às vezes */
+    const fintas = (ini) => {
+      let n = 0;
+      for (let luta = 0; luta < 60; luta++) {
+        const e = { ...M.novaLuta(pH, bot.perfil), iniciativa: ini };
+        e.b = { ...e.b, energia: EST.custoFintaDe({ ...e, iniciativa: null }, "b", bot.perfil) - 0.01 };
+        for (let t = 0; t < 4; t++) {
+          const s2 = `inie:${luta}:${t}`, sB = BOT.sinalDoBot({ estado: e, semente: s2, trocas: [], dados, lado: "b" });
+          const aB = BOT.acaoDoBot({ estado: e, semente: s2, trocas: [], dados, lado: "b", sinais: { a: "golpes", b: sB } });
+          if (aB !== sB) { if (e.b.energia < EST.custoFintaDe(e, "b", bot.perfil)) throw new Error("fintou sem energia pro custo dele"); n++; }
+        }
+      }
+      return n;
+    };
+    if (fintas("a") !== 0 || fintas("b") < 1) throw new Error("finta pela energia: " + fintas("a") + " / " + fintas("b"));
   });
   await conf("mão (v4): o bot nunca escolhe família sem carta, em toda personalidade e habilidade, inclusive no momento decisivo (o óbvio pode ter acabado)", () => {
     const pH = T.perfilTipico("striker", 4), ruins = [];

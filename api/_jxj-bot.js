@@ -26,7 +26,7 @@
  * Números medidos no LEIA-ME, seção "Bots do Online".
  */
 import { createHash } from "node:crypto";
-import { filtrarPelaMao, temCarta, acaoPadrao, FAMILIAS_MAO, ESTRATEGIA } from "./_jxj-estrategia.js";
+import { filtrarPelaMao, temCarta, acaoPadrao, FAMILIAS_MAO, ESTRATEGIA, custoFintaDe } from "./_jxj-estrategia.js";
 import * as MOTOR from "./_jxj-motor.js";
 import * as ARV from "./_jxj-arvores.js";
 
@@ -521,8 +521,14 @@ export function acaoDoBot({ estado, semente, trocas, dados, lado = "b", sinais =
     if (op.length) f = op[Math.floor(r() * op.length)];
   }
   if (!temCarta(estado, lado, f)) f = plano.sinal;
-  if (f !== sinais[lado] && estado[lado].energia < ESTRATEGIA.custoFinta) f = sinais[lado];
+  if (f !== sinais[lado] && estado[lado].energia < custoFintaDoBot(estado, lado, dados)) f = sinais[lado];
   return f;
+}
+/* Custo da finta do bot (fase 3): o mesmo de todo mundo (custoFintaDe), com
+   a iniciativa e o ritmo da build dele (a mecânica não depende da categoria) */
+function custoFintaDoBot(estado, lado, dados) {
+  const mec = ARV.perfilDeCombate({ estilo: dados.estilo, categoria: "middleweight", build: dados.build || {} }).mec;
+  return custoFintaDe(estado, lado, { mec });
 }
 /* quem ganha a troca de leitura entre a família fl de l e fo de o */
 const quemGanha = (e, l, fl, o, fo) => MOTOR.quemLeu({ [l]: MOTOR.papel(e, l), [o]: MOTOR.papel(e, o) }, { [l]: fl, [o]: fo });
@@ -547,7 +553,9 @@ function planoDoSinal({ estado, semente, trocas, dados, lado = "b" }) {
      blefar uma jogada ao acaso só gasta energia (medido: o Inquieto fraco
      perdia 62% do jogador de estilo); o fraco também é o mais fácil de ler */
   const sp = (PERSONALIDADES[dados.pers] || {}).sinal || { isca: 0.15 }, s = Number(dados.s) || 0;
-  if (r() >= sp.isca * s) return { pretendida, sinal: pretendida };
+  /* fase 3: finta mais barata (iniciativa, ritmo), mais isca, na proporção do custo (até sempre) */
+  const barata = ESTRATEGIA.custoFinta / Math.max(0.01, custoFintaDoBot(estado, lado, dados));
+  if (r() >= Math.min(1, sp.isca * s * barata)) return { pretendida, sinal: pretendida };
   const is = iscasDe(estado, lado, pretendida);
   return { pretendida, sinal: is.length ? is[Math.floor(r() * is.length)] : pretendida };
 }
