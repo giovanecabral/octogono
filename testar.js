@@ -14668,6 +14668,17 @@ async function testarJxJTelas() {
       const riv = cards.find((n) => String(n.innerHTML).includes("Rivais"));
       if (!riv || /Bot /.test(String(riv.innerHTML))) throw new Error("rivais: " + (riv && String(riv.innerHTML).replace(/\s+/g, " ").slice(0, 200)));
     });
+    await conf("resultado em cartas (2026-10-28): os cartões dos rounds em cartinhas com quem levou; nocaute, finalização e W.O. mostram a carta que decidiu", async () => {
+      await db.query("delete from jxj_limites");
+      const r = await db.query("select id, resultado from jxj_lutas where status = 'encerrada' order by id desc limit 1");
+      if (!r.rows.length) throw new Error("sem luta encerrada pra abrir");
+      const m = await abrir(`luta/${r.rows[0].id}`), nos = desde(m), h = htmlDe(nos);
+      const est = (await db.query("select estado from jxj_lutas where id = $1", [r.rows[0].id])).rows[0].estado;
+      const rounds = (est.cartoes || []).length;
+      if ((h.match(/class="jxj-cartao-round corte/g) || []).length !== rounds) throw new Error(`cartinhas de round: ${(h.match(/class="jxj-cartao-round corte/g) || []).length} de ${rounds}`);
+      if (["KO", "TKO", "FIN"].includes(r.rows[0].resultado.metodo) && !/jxj-resultado-carta/.test(h)) throw new Error("sem a carta que decidiu (" + r.rows[0].resultado.metodo + ")");
+      semLixoV3(h, "resultado");
+    });
     await conf("grátis sem a luta grátis: o painel troca Buscar adversário por Lutar contra bot (2 hoje); a fila mostra o mesmo botão; chamar abre a luta; sem lutas no dia, o botão fica desligado com o aviso", async () => {
       await db.query("update assinaturas set pro = false where user_id = $1", [u1]); UI.setMeuPro(false);
       try {

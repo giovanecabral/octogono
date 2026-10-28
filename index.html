@@ -9114,6 +9114,13 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   cab.innerHTML=`<p class="jxj-rotulo">${jxjMetodo(r.metodo)}${r.round?` · round ${r.round}`:""}</p>
     <h2 class="jxj-resultado-titulo">${titulo}</h2>
     <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${v.nomes[ele].bot&&v.nomes[ele].alcunha?`, ${jxjEsc(v.nomes[ele].alcunha)}`:""}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
+  /* cartas (2026-10-28): nocaute e finalização mostram a carta que decidiu */
+  const ultD=(v.trocas||[])[(v.trocas||[]).length-1];
+  if(ultD&&r.vencedor&&["KO","TKO","FIN"].includes(r.metodo)){
+    const famV=r.vencedor==="a"?ultD.acaoA:ultD.acaoB,varV=r.vencedor==="a"?ultD.varA:ultD.varB;
+    if(famV){ cab.classList.add("com-carta");
+      cab.appendChild(el("div","jxj-resultado-carta",`<span class="jxj-revelada venceu">${jxjCartaDaTroca(famV,varV,null,"mesa")}</span><small>a carta que decidiu</small>`)); }
+  }
   area.appendChild(cab);
   /* a linha da narração ao vivo do último lance (nocaute, finalização ou o
      fim do último round): a tela de combate dá lugar ao resultado antes de
@@ -9134,7 +9141,9 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
     ${conq.length?`<p class="jxj-nota">Conquista nova: ${conq.map(jxjEsc).join(", ")}.</p>`:""}`;
   if(!espectador)g.appendChild(ganhos);
   const cart=el("section","painel-n jxj-card");
-  cart.innerHTML=`<p class="jxj-rotulo">${ICONE("lista")} Cartões</p>${(v.estado&&v.estado.cartoes||[]).map((c,i)=>`<p>Round ${i+1}: ${c[eu]} a ${c[ele]}</p>`).join("")||"<p class=\"jxj-nota\">A luta terminou antes do fim do primeiro round.</p>"}`;
+  /* cartas (2026-10-28): um cartão por round, da cor de quem levou */
+  const cartoesR=(v.estado&&v.estado.cartoes||[]);
+  cart.innerHTML=`<p class="jxj-rotulo">${ICONE("lista")} Cartões</p>${cartoesR.length?`<div class="jxj-cartoes-rounds">${cartoesR.map((c,i)=>`<span class="jxj-cartao-round corte ${c[eu]>c[ele]?"meu":c[eu]<c[ele]?"dele":"empate"}" role="img" aria-label="Round ${i+1}: ${c[eu]} a ${c[ele]}"><small>R${i+1}</small><b>${c[eu]}-${c[ele]}</b></span>`).join("")}</div>`:"<p class=\"jxj-nota\">A luta terminou antes do fim do primeiro round.</p>"}`;
   g.appendChild(cart);
   const nar=el("section","painel-n jxj-card jxj-narracao");
   nar.innerHTML=`<p class="jxj-rotulo">${ICONE("microfone")} Narração</p>`;
