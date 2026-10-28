@@ -172,6 +172,17 @@ metade). Regras do revamp que valem daqui pra frente:
   e o counter ganha 0,5 ponto de juiz ao defender e acertar a leitura
   (`bonusDefesaQueLe`). `maoCheia(estilo)`; a vista e as definições
   mandam a mão de cada estilo. Nenhuma das duas fases tem SQL próprio.
+- **Online em cartas (2026-10-28, branch `online-cartas`; spec
+  `docs/superpowers/specs/2026-10-28-online-cartas-tutorial-design.md`).**
+  A tela da luta é um jogo de cartas: `jxjCarta` (uma só pra mão, mesa,
+  resultado e o treino da Parte 2), a mão em leque presa no fim da tela,
+  a mesa (`jxjMesa`) e a revelação (`jxjRevelar`, `JXJ_REVELACAO_MS`). A
+  mesa nunca mostra a ação dele antes da revelação (teste com vazamento).
+  Classes que os testes usam continuam (`jxj-acao`, `jxj-postura`,
+  `jxj-ultima`, `jxj-mao`, `zero`); keyframes novos têm nome próprio
+  (`jxjCarta*`), porque `jxjVira`/`jxjApanha`/`jxjCai` são dos efeitos de
+  antes. O DOM falso tem "reduzir movimento" ligado e não serializa
+  filhos no `innerHTML`: teste novo de mesa lê as colunas.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

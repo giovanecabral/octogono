@@ -2522,3 +2522,16 @@ vista, sinais e blefe, iniciativa, ficha. Branch `online-estrategia`.
    docs e ferramentas dão 404. Consulta de conferência no banco de
    produção (o dono rodou): 3, true, 2.
 
+## 49. Online em cartas e treino guiado (2026-10-28)
+
+Pedido do dono: a primeira vez pode ser confusa (um treino prático) e a
+luta com cara de cartas de verdade. Spec
+`docs/superpowers/specs/2026-10-28-online-cartas-tutorial-design.md`,
+branch `online-cartas`.
+
+1. Parte 1 (a tela da luta em cartas): FEITA na branch. Plano
+   `docs/superpowers/plans/2026-10-28-online-cartas-parte1.md`. Só tela;
+   pode ir pro ar sozinha quando o dono mandar (sem SQL).
+2. Parte 2 (o treino guiado de 5 trocas, obrigatório na primeira vez):
+   falta planejar e fazer.
+

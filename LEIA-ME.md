@@ -5560,6 +5560,67 @@ faixa normal; o teste ainda aceita 42 só pra ele até o dono decidir).
 Ganho de quem lê o jeito: Provocador 16,6, Paciente 17,1, Observador
 14,7, Inquieto 16,5.
 
+## Online em cartas, Parte 1: a tela da luta (2026-10-28)
+
+Pedido do dono: a luta do Online e contra bot com cara de "cartas mesmo",
+"menos cara de vibecodado e mais cara de jogo de verdade". Desenho
+aprovado no protótipo do navegador (spec
+`docs/superpowers/specs/2026-10-28-online-cartas-tutorial-design.md`;
+plano `docs/superpowers/plans/2026-10-28-online-cartas-parte1.md`).
+Servidor, banco, motor e regras não mudaram: só `index.html` e
+`estilo.css`.
+
+### As peças
+
+- **A carta** (`jxjCarta`): cor sólida da família (Golpes vermelho, Queda
+  ouro, Defesa osso, Pressão preto com borda vermelha), listras finas,
+  canto recortado, gema em octógono com o custo de energia (`+2` quando
+  recupera), o grupo, o ícone grande, a faixa preta com o nome (o da
+  variante; no chão, o da posição) e as cópias que restam ("×3") e a caixa
+  de regra ("Ganha de X. Perde pra Y." e a linha curta da variante; no
+  momento decisivo, a dica). Na etapa da postura, a mesma carta diz a
+  postura ("Peso na frente", "Mostra que vai de Golpes"). Estados: finta
+  ("−1,5 finta", duas casas), sem energia (apagada, cadeado), acabou no
+  round (contorno tracejado).
+- **A mão em leque** (`.jxj-mao-luta`): as cartas sobem ao passar o mouse
+  ou tocar; toque longo mostra a frase inteira. A área da mão fica presa
+  no fim da tela (no checklist, no celular, ela ficava abaixo da dobra e
+  o jogador teria de rolar nos 5 s da postura).
+- **O placar**: a mão de cada um em cartinhas da cor da família (classe
+  `zero` na zerada).
+- **A mesa** (`jxjMesa`): um octógono com a vaga da postura e a da ação de
+  cada lado. A postura dele aparece de costas quando ele já mostrou e de
+  frente na revelação dos sinais; a ação dele só de costas quando a vista
+  diz que ele escolheu (regra da fase 2), nunca de frente antes da
+  revelação. No celular, postura e ação lado a lado em cada coluna.
+- **A revelação** (`jxjRevelar`, `JXJ_REVELACAO_MS` 2,6 s): a troca que
+  acabou fica nas vagas de ação; as duas cartas viram juntas, a de quem
+  leu brilha, a outra apanha, o dano sobe da carta, a finta ganha o
+  carimbo. Anima só no primeiro desenho; um timer só redesenha no fim
+  (redesenhar no meio não reinicia). A carta tocada voa até a vaga
+  (`jxjVoarCarta`); a dele cai de costas uma vez; a ficha da iniciativa
+  pulsa quando muda. Com "reduzir movimento", nada se move.
+- Saíram: o ciclo dos 4 ícones (cada carta diz quem ganha de quem), a
+  faixa de texto das posturas (a mesa mostra), as setas de duelo por
+  carta e as regras CSS do botão retangular. Os duelos de atributo foram
+  pra gaveta. O momento decisivo avisa antes da mesa; a borda do lance diz
+  quem leu.
+- **O resultado**: um cartão por round, da cor de quem levou; nocaute e
+  finalização mostram a carta que decidiu.
+
+### Testes
+
+`jxjtelas`: cartas (gema, grupo, nome, cópias, regra, postura, sem
+carta, sem energia), mão dele em cartinhas, mesa (a postura dele de
+costas, a ação dele nunca antes de ele jogar), revelação (as cartas, o
+brilho, o carimbo, anima só uma vez, o redesenho no meio, o fim, sem
+movimento), clique duplo manda uma ação só, luta v3, duelos na gaveta,
+resultado em cartas. No DOM falso o "reduzir movimento" vem ligado: o
+teste da revelação liga o movimento só durante ele. Os testes que esperam
+a tela consultar zeram `jxj_limites` (a tela consulta a cada volta do
+relógio falso). Checklist em duas janelas (computador e celular, gente e
+bot): 14 de 14, sem erro de página, a mão visível sem rolar.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai
