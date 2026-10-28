@@ -14418,6 +14418,35 @@ async function testarJxJTelas() {
       semLixoV3(htmlDe(nos), "cartas");
       await mexer((e) => { e[eu].energia = 8; e.mao[eu] = { ...vs.maoCheia[eu] }; });
     });
+    await conf("mesa (cartas 2026-10-28): a postura dele de costas até a revelação e de frente depois; a ação dele nunca antes de ele jogar; a minha postura e a minha ação de frente nas minhas vagas", async () => {
+      /* as duas colunas da mesa (o DOM falso não junta os filhos no innerHTML da seção) */
+      const mesaHtml = (nos) => nos.filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
+      let vs = null;
+      for (let k = 0; k < 3; k++) {
+        vs = await api(u1, "luta", { lutaId: lid });
+        if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+        const v2 = await api(u2, "luta", { lutaId: lid });
+        if (vs.etapa === "sinal" && !vs.meuSinal && !vs.minhaAcao && !v2.meuSinal && !v2.minhaAcao) break;
+        for (const [u, v] of [[u1, vs], [u2, v2]]) if (!v.minhaAcao) await api(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, "defesa") });
+      }
+      const famDele = (h) => (h.match(/id="jxj-vaga-(?:postura|acao)-ele"[\s\S]*?(f-(?:golpes|queda|defesa|pressao))/) || [])[1];
+      const v2 = await api(u2, "luta", { lutaId: lid });
+      const fEle = naMao(v2, "golpes"), fEu = naMao(vs, "defesa");
+      await api(u2, "sinal", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEle });
+      let m = await abrir(`luta/${lid}`), h = mesaHtml(desde(m));
+      if (!h || !/id="jxj-vaga-postura-ele"[^>]*>\s*<span class="jxj-verso/.test(h)) throw new Error("a postura dele não está de costas: " + h.replace(/\s+/g, " ").slice(0, 300));
+      if (famDele(h)) throw new Error("a mesa mostra a família dele antes da revelação: " + famDele(h));
+      await api(u1, "sinal", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEu });
+      m = await abrir(`luta/${lid}`); h = mesaHtml(desde(m));
+      if (!new RegExp(`id="jxj-vaga-postura-ele"[\\s\\S]*?f-${fEle}`).test(h) || !new RegExp(`id="jxj-vaga-postura-eu"[\\s\\S]*?f-${fEu}`).test(h)) throw new Error("posturas reveladas: " + h.replace(/\s+/g, " ").slice(0, 300));
+      if (/id="jxj-vaga-acao-ele"[^>]*>\s*<span class="jxj-(verso|carta)/.test(h)) throw new Error("ação dele na mesa antes de ele jogar");
+      await api(u1, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEu });
+      m = await abrir(`luta/${lid}`); h = mesaHtml(desde(m));
+      if (!new RegExp(`id="jxj-vaga-acao-eu"[^>]*>\\s*<span class="jxj-carta f-${fEu}`).test(h)) throw new Error("a minha ação não foi pra minha vaga: " + h.replace(/\s+/g, " ").slice(0, 400));
+      if (/id="jxj-vaga-acao-ele"[^>]*>\s*<span class="jxj-(verso|carta)/.test(h)) throw new Error("ação dele na mesa antes de ele jogar (depois da minha)");
+      semLixoV3(htmlDe(desde(m)), "mesa");
+      await api(u2, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEle });
+    });
     await conf("ficha no cartão do estilo (fase 4): no passo do estilo, cada cartão diz a mão do round daquele estilo (das definições)", async () => {
       const def = await api(null, "definicoes");
       let m = await abrir("criar/2");

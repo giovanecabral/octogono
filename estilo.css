@@ -1878,3 +1878,23 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-mao-mini .jxj-mini .ico{width:16px;height:16px;color:var(--tinta)}
 .jxj-mao-mini .jxj-mini.zero{opacity:.28;filter:grayscale(1)}
 @media (max-width:720px){.jxj-mao-mini .jxj-mini{width:26px;height:36px;font-size:11px}.jxj-mao-mini .jxj-mini .ico{width:11px;height:11px}.jxj-mao.jxj-mao-mini{gap:3px}}
+/* a mesa: o octógono e as vagas de postura e de ação de cada lado */
+.jxj-mesa{position:relative;display:grid;grid-template-columns:1fr 40px 1fr;align-items:center;justify-items:center;padding:22px 12px;min-height:290px;background:radial-gradient(ellipse at 50% 50%,rgba(215,38,30,.14),transparent 62%)}
+.jxj-mesa::before{content:"";position:absolute;left:50%;top:50%;width:min(540px,94%);height:min(290px,92%);transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.06);clip-path:polygon(25% 0,75% 0,100% 30%,100% 70%,75% 100%,25% 100%,0 70%,0 30%);background:rgba(255,255,255,.015)}
+.jxj-mesa-lado{position:relative;z-index:1;display:flex;align-items:center;gap:14px}
+.jxj-mesa-lado.ele{flex-direction:row-reverse}
+.jxj-mesa-slot{display:flex;flex-direction:column;align-items:center;gap:8px}
+.jxj-rotulo-mesa{min-height:16px;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--cinza);text-align:center}
+.jxj-rotulo-mesa b{color:var(--osso)}
+.jxj-vaga{display:flex;align-items:center;justify-content:center;text-align:center;box-sizing:border-box;padding:6px;width:var(--w);height:calc(var(--w) * 1.44);border:2px dashed rgba(255,255,255,.14)}
+.jxj-vaga.cheia{border:0;padding:0;width:auto;height:auto;filter:drop-shadow(0 14px 18px rgba(0,0,0,.6))}
+.jxj-vaga small{font-family:var(--f-ui);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
+@media (max-width:720px){
+  .jxj-mesa{grid-template-columns:1fr 8px 1fr;padding:14px 2px;min-height:0}
+  .jxj-mesa::before{width:96%;height:94%}
+  .jxj-mesa-lado,.jxj-mesa-lado.ele{flex-direction:column-reverse;gap:8px}
+  .jxj-mesa .acao .jxj-carta,.jxj-mesa .acao .jxj-verso,.jxj-mesa .acao .jxj-vaga{--w:84px!important}
+  .jxj-mesa .postura .jxj-carta,.jxj-mesa .postura .jxj-verso,.jxj-mesa .postura .jxj-vaga{--w:60px!important}
+  .jxj-mesa .jxj-carta-regra,.jxj-mesa .jxj-carta-topo small{display:none}
+  .jxj-rotulo-mesa{font-size:10px;letter-spacing:.08em}
+}

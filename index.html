@@ -8835,7 +8835,43 @@ function jxjPlacarRound(p,eu,ele){
   const txt=`${frase} · ${n(meu)} a ${n(dele)}${dez8}`;
   return `<span class="jxj-placar-round ${classe}" role="img" aria-label="Round ${p.round}: ${txt}"><span class="jxj-placar-trilho"><i style="width:${parte}%"></i></span><small>${txt}</small></span>`;
 }
-function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}){
+/* A mesa (cartas, 2026-10-28): de cada lado, a vaga da postura e a da
+   ação. A postura dele aparece de costas quando ele já mostrou e de frente
+   na revelação; a ação dele só de costas quando a vista diz que ele
+   escolheu (regra da fase 2) e nunca de frente antes da revelação.
+   revelar ({a, b}: o HTML da troca que acabou) ocupa as vagas de ação. */
+function jxjMesa(v,{eu,ele},revelar){
+  const mesa=el("section","jxj-mesa"+(v.etapa?" com-postura":""));
+  const acaoDe=f=>(v.acoes||[]).find(x=>x.familia===f)||{familia:f};
+  const papelDele=v.papel==="cima"?"baixo":v.papel==="baixo"?"cima":"pe";
+  const vaga=(id,txt,tam,html)=>html?`<span class="jxj-vaga cheia" id="${id}">${html}</span>`
+    :`<span class="jxj-vaga" id="${id}" style="--w:${JXJ_TAM_CARTA[tam]}px">${txt?`<small>${txt}</small>`:""}</span>`;
+  const coluna=l=>{
+    const souEu=l===eu;
+    let rotP="",post=null;
+    if(v.etapa==="sinal"){
+      if(souEu&&v.meuSinal){ post=jxjCarta(acaoDe(v.meuSinal),{tam:"postura",postura:true}); rotP=`você mostrou <b>${JXJ_POSTURAS[v.meuSinal]}</b>`; }
+      else if(!souEu&&v.adversarioSinalizou){ post=jxjVerso("postura"); rotP="ele já mostrou"; }
+      else rotP=souEu?"sua postura":"postura dele";
+    }else if(v.etapa&&v.sinais&&v.sinais[l]){
+      const f=v.sinais[l];
+      post=souEu?jxjCarta(acaoDe(f),{tam:"postura",postura:true})
+        :jxjCarta({familia:f,grupo:(JXJ_DEF.acoes.familias[papelDele]||{})[f]},{tam:"postura",postura:true});
+      rotP=`${souEu?"você":"ele"} mostrou <b>${JXJ_POSTURAS[f]}</b>`;
+    }
+    let acao=null;
+    if(revelar)acao=revelar[l];
+    else if(souEu&&v.minhaAcao)acao=jxjCarta(acaoDe(v.minhaAcao),{tam:"mesa"});
+    else if(!souEu&&v.adversarioEscolheu)acao=jxjVerso("mesa");
+    const c=el("div","jxj-mesa-lado "+(souEu?"eu":"ele"));
+    c.innerHTML=(v.etapa?`<span class="jxj-mesa-slot postura"><span class="jxj-rotulo-mesa">${rotP}</span>${vaga(souEu?"jxj-vaga-postura-eu":"jxj-vaga-postura-ele",souEu&&v.etapa==="sinal"?"toque numa carta":"","postura",post)}</span>`:"")
+      +`<span class="jxj-mesa-slot acao"><span class="jxj-rotulo-mesa">${souEu?"sua ação":"ação dele"}</span>${vaga(souEu?"jxj-vaga-acao-eu":"jxj-vaga-acao-ele","","mesa",acao)}</span>`;
+    return c;
+  };
+  mesa.append(coluna(eu),el("span","jxj-mesa-vs",""),coluna(ele));
+  return mesa;
+}
+function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null}={}){
   const F=v.formato,e=v.estado,nomes=v.nomes;
   const tela=el("div","jxj-combate");
   /* placar */
@@ -8869,6 +8905,8 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false}={}
     ${jxjPlacarRound(v.placarRound,eu,ele)}
     ${(e.cartoes||[]).length?`<span class="jxj-cartoes">${e.cartoes.map((c,i)=>`R${i+1} <b>${c[eu]}-${c[ele]}</b>`).join(" ")}</span>`:""}`;
   tela.appendChild(faixa);
+  /* cartas (2026-10-28): a mesa, entre a faixa e o lance (luta v3 sem mão: sem mesa) */
+  if(v.maos)tela.appendChild(jxjMesa(v,{eu,ele},revelar));
   if(v.duelos)tela.appendChild(jxjDuelos(v.duelos));
   /* o lance: a troca que acabou de ser resolvida */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
