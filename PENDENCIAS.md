@@ -2519,7 +2519,6 @@ vista, sinais e blefe, iniciativa, ficha. Branch `online-estrategia`.
    `ec9a379` (avanço direto da branch, a mesma árvore da bateria verde),
    push e `vercel --prod`. Conferido: `definicoes` com versão 3 e a mão de
    cada estilo; `index.html` e `estilo.css` servidos iguais ao git; SQL,
-   docs e ferramentas dão 404. Falta o dono confirmar as outras duas
-   colunas da consulta de conferência (`tabela_sinais` true, `funcoes`
-   2): sem elas o jogo roda sem a etapa da postura.
+   docs e ferramentas dão 404. Consulta de conferência no banco de
+   produção (o dono rodou): 3, true, 2.
 
