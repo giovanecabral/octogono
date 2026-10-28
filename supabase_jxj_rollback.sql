@@ -55,5 +55,5 @@ end $$;
 drop table if exists
   jxj_narracao_uso, jxj_log, jxj_limites, jxj_fichas, jxj_conquistas, jxj_titulos, jxj_confrontos,
   jxj_inscricoes, jxj_torneios, jxj_classificacao, jxj_temporadas, jxj_rating_hist,
-  jxj_trocas, jxj_acoes, jxj_lutas, jxj_fila, jxj_lutadores, jxj_contas, jxj_config
+  jxj_sinais, jxj_trocas, jxj_acoes, jxj_lutas, jxj_fila, jxj_lutadores, jxj_contas, jxj_config
 cascade;

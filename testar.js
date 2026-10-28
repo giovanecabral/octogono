@@ -10988,6 +10988,7 @@ async function testarJxJ() {
   const db = await B.novoBanco();
   const { SUPABASE_URL } = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
   const MOTOR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-motor.js")).href);
+  const EST = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-estrategia.js")).href);
   const ARV = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
   const NARR = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-narracao.js")).href);
   const REG = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-regras.js")).href);
@@ -11863,6 +11864,29 @@ async function testarJxJ() {
       const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 4", [lid]))[0];
       return t ? t.eventos.filter((ev) => ev.tipo === "narracao") : null;
     };
+    await conf("sinais no banco (fase 2): só quem luta sinaliza, uma vez por troca, só na etapa do sinal; a leitura devolve os sinais da troca aberta; anon e authenticated não executam", async () => {
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
+      await zerarLimites();
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      const acao = EST.ESTRATEGIA.prazos.acaoMs;
+      const r1 = (await q("select public.jxj_enviar_sinal($1, $2, 1::smallint, 1::smallint, 'golpes', $3) as r", [u1, lid, acao]))[0].r;
+      const r2 = (await q("select public.jxj_enviar_sinal($1, $2, 1::smallint, 1::smallint, 'defesa', $3) as r", [u1, lid, acao]))[0].r;
+      if (!r1.gravou || r2.gravou) throw new Error("sinal duas vezes: " + JSON.stringify([r1, r2]));
+      let deu = false; try { await q("select public.jxj_enviar_sinal($1, $2, 1::smallint, 1::smallint, 'golpes', $3)", [u3, lid, acao]); } catch { deu = true; }
+      if (!deu) throw new Error("quem não luta sinalizou");
+      const ab = (await q("select public.jxj_sinais_abertos($1) as r", [lid]))[0].r;
+      if (ab.length !== 1 || ab[0].familia !== "golpes") throw new Error("abertos: " + JSON.stringify(ab));
+      await q("update jxj_lutas set prazo = now() + interval '5 seconds' where id = $1", [lid]);   // etapa do sinal já acabou (faltam menos que acaoMs)
+      deu = false; try { await q("select public.jxj_enviar_sinal($1, $2, 1::smallint, 1::smallint, 'golpes', $3)", [u2, lid, acao]); } catch { deu = true; }
+      if (!deu) throw new Error("sinalizou fora da etapa");
+      const exec = [];
+      for (const papel of ["authenticated", "anon"]) {
+        await db.exec(`set role ${papel};`);
+        for (const f of ["select public.jxj_sinais_abertos(1)", "select public.jxj_enviar_sinal(gen_random_uuid(), 1, 1::smallint, 1::smallint, 'golpes', 12000)"]) { let ex = true; try { await db.query(f); } catch { ex = false; } exec.push(ex); }
+        await db.exec("reset role;");
+      }
+      if (exec.some(Boolean)) throw new Error("anon/authenticated executaram: " + JSON.stringify(exec));
+    });
     await conf("mão à vista (v4): a vista manda as duas mãos, iguais pros dois; ação sem carta é recusada (400) sem gravar nada, mesmo por chamada direta; prazo vencido sem Defesa nem Pressão usa Golpes", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
       await zerarLimites();
