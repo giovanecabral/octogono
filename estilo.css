@@ -1859,8 +1859,13 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-finta{font-style:normal;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.04em;padding:1px 6px;color:var(--sangue);border:1px solid currentColor;white-space:nowrap}
 .jxj-acao.sem-energia{opacity:.38;cursor:not-allowed}
 .jxj-finta-lance{font-style:normal;font-family:var(--f-ui);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ouro);padding:0 4px;border:1px solid currentColor}
-.jxj-dica-sinal{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}
-.jxj-dica-sinal svg{width:14px;height:14px;flex:none}
+.jxj-dica-sinal,.jxj-dica-iniciativa{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--osso-2);margin:4px 0}
+.jxj-dica-sinal svg,.jxj-dica-iniciativa svg{width:14px;height:14px;flex:none}
+/* fase 3: quem tem a iniciativa (no lugar do trilho do momento, na luta v4) */
+.jxj-iniciativa{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid currentColor}
+.jxj-iniciativa .ico{width:13px;height:13px;color:inherit}
+.jxj-iniciativa.eu{color:var(--ouro)}
+.jxj-iniciativa.ele{color:var(--cinza)}
 .jxj-tendencia span.jxj-fintas{color:var(--osso-2);border-bottom-color:transparent}
 /* celular: as 4 numa linha, pra caber sem rolar nos 5 s do sinal */
 @media (max-width:720px){.jxj-posturas{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}

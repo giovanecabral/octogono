@@ -563,7 +563,13 @@ function iscas(e, l, pretendida) {   // posturas minhas cuja resposta dele perde
 }
 export function comSinal(base, { blefe = 0, resposta = "ignora" } = {}) {
   const pretendida = new Map();
+  /* conta, nas lutas desta estratégia, quantas vezes a ação foi a postura
+     (a honestidade real: com a iniciativa o blefe muda, e sem isca possível
+     o sinal é honesto mesmo com blefe) */
+  const conta = { sinais: 0, honestos: 0 };
+  const fim = (l, sinais, f) => { conta.sinais++; if (sinais && sinais[l] === f) conta.honestos++; return f; };
   return {
+    conta,
     sinal(e, l, p, r) {
       const f = EST.familiaNaMao(e, l, base(e, l, p, r), r);
       pretendida.set(l, f);
@@ -574,11 +580,11 @@ export function comSinal(base, { blefe = 0, resposta = "ignora" } = {}) {
     },
     acao(e, l, p, r, sinais) {
       const f = pretendida.get(l), o = l === "a" ? "b" : "a";
-      if (!sinais || !sinais[o] || resposta === "ignora") return f;
+      if (!sinais || !sinais[o] || resposta === "ignora") return fim(l, sinais, f);
       let alvos = [sinais[o]];
       if (resposta === "desconfia") alvos = F.filter((x) => EST.temCarta(e, o, x) && iscas(e, o, x).includes(sinais[o]));
       const op = [...new Set(alvos.flatMap((al) => respostas(e, l, al)))];
-      return op.length ? op[Math.floor(r() * op.length)] : f;
+      return fim(l, sinais, op.length ? op[Math.floor(r() * op.length)] : f);
     },
   };
 }
@@ -600,17 +606,21 @@ function equilibrioN(m, it = 20000) {
 export function medirSinais(n = 150) {
   const opcoes = [];
   for (const blefe of [0, 0.3, 0.6]) for (const resposta of ["ignora", "confia", "desconfia"]) opcoes.push({ blefe, resposta });
-  const m = opcoes.map(() => opcoes.map(() => 0));
+  const m = opcoes.map(() => opcoes.map(() => 0)), hon = opcoes.map(() => ({ sinais: 0, honestos: 0 }));
+  const somar = (i, c) => { hon[i].sinais += c.sinais; hon[i].honestos += c.honestos; };
   for (const s of ESTS) {
     const p = perfilTipico(s, 1);
     opcoes.forEach((x, i) => opcoes.forEach((y, j) => {
       if (j < i) return;
-      const t = confronto(p, p, comSinal(racional(p, p), x), comSinal(racional(p, p), y), n, `sn${s}${i}x${j}`);
+      const ex = comSinal(racional(p, p), x), eo = comSinal(racional(p, p), y);
+      const t = confronto(p, p, ex, eo, n, `sn${s}${i}x${j}`);
       m[i][j] += t.pct / ESTS.length; if (i !== j) m[j][i] += (100 - t.pct) / ESTS.length;
+      somar(i, ex.conta); somar(j, eo.conta);
     }));
   }
   const eq = equilibrioN(m);
-  const honestidade = 100 * eq.reduce((s, w, i) => s + w * (1 - opcoes[i].blefe), 0);
+  /* fase 3: a honestidade contada nas lutas de cada estratégia (antes: 1 - blefe) */
+  const honestidade = 100 * eq.reduce((s, w, i) => s + w * hon[i].honestos / Math.max(1, hon[i].sinais), 0);
   const usadas = opcoes.map((x, i) => [x, eq[i]]).filter(([, w]) => w > 0.1).map(([x, w]) => `blefe ${x.blefe} ${x.resposta}: ${(100 * w).toFixed(0)}%`);
   return { honestidade, usadas, matriz: m, opcoes, eq };
 }

@@ -13947,6 +13947,7 @@ async function testarJxJTelas() {
     const abrir = async (param) => { await db.query("delete from jxj_limites"); const m = env.todos.length; UI.irPara("jxj", param); await assentar(); return m; };
     const htmlDe = (nos) => nos.map((n) => String(n.innerHTML || "") + " " + String(n.textContent || "")).join("\n");
     const conf = async (nome, fn) => {
+      if (process.env.JXJ_SO && !process.env.JXJ_SO.split("|").some((t) => nome.startsWith(t))) return;   // como em confJxJ
       try { await fn(); console.log(verde("  ok    ") + nome); }
       catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
     };
@@ -14237,7 +14238,8 @@ async function testarJxJTelas() {
       if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
       if (vs.etapa !== "sinal" || vs.meuSinal || vs.minhaAcao) { await resolver("defesa", "defesa"); vs = await api(u1, "luta", { lutaId: lid }); }
       const eu = vs.lado, ele = eu === "a" ? "b" : "a";
-      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.mao[eu] = { golpes: 2, queda: 2, defesa: 4, pressao: 1 }; e.mao[ele] = { golpes: 2, queda: 2, defesa: 4, pressao: 0 }; });
+      /* fase 3: sem iniciativa (com ela a finta custa metade e o teste da energia mudaria) */
+      await mexer((e) => { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.iniciativa = null; e.mao[eu] = { golpes: 2, queda: 2, defesa: 4, pressao: 1 }; e.mao[ele] = { golpes: 2, queda: 2, defesa: 4, pressao: 0 }; });
       let m = await abrir(`luta/${lid}`), nos = desde(m);
       const post = nos.filter((n) => tem(n, "jxj-postura"));
       if (!nos.some((n) => tem(n, "jxj-posturas")) || nos.some((n) => tem(n, "jxj-acao"))) throw new Error("etapa do sinal: posturas sem ações");
@@ -14258,7 +14260,7 @@ async function testarJxJTelas() {
       const dica = nos.find((n) => tem(n, "jxj-dica-sinal"));
       if (!dica || !/Ele mostrou Peso na frente\. Pode ser verdade ou finta\./.test(String(dica.innerHTML))) throw new Error("dica da primeira luta: " + (dica && dica.innerHTML));
       semLixoV3(htmlDe(nos), "etapa da ação");
-      await mexer((e) => { e[eu].energia = 1; e[ele].energia = 8; });
+      await mexer((e) => { e[eu].energia = 1; e[ele].energia = 8; e.iniciativa = null; });
       m = await abrir(`luta/${lid}`); nos = desde(m);
       const b2 = nos.filter((n) => tem(n, "jxj-acao"));
       if (b2.filter((b) => /jxj-finta/.test(String(b.innerHTML))).some((b) => !b.disabled) || b2.filter((b) => !/jxj-finta/.test(String(b.innerHTML))).some((b) => b.disabled)) throw new Error("sem energia: " + b2.map((b) => [/jxj-finta/.test(String(b.innerHTML)), b.disabled].join(":")).join(" "));
@@ -14271,6 +14273,42 @@ async function testarJxJTelas() {
       if (!td || !new RegExp(`fintou 1 de ${v2.tendencia.sinais}`).test(String(td.innerHTML))) throw new Error("tendência sem as fintas: " + (td && td.innerHTML));
       const lance = String(nos.filter((n) => tem(n, "jxj-lance")).pop().innerHTML);
       if (!/jxj-finta-lance/.test(lance)) throw new Error("o lance não marca a finta dele");
+    });
+    await conf("iniciativa na tela (fase 3): a ficha diz quem tem (você ou ele) no lugar do trilho do momento; com ela, o custo da finta nos botões é a metade e a primeira luta ganha a dica; sem ninguém, nada; luta v3 continua com o trilho do momento", async () => {
+      const mexer = async (fn) => { const r = (await db.query("select estado from jxj_lutas where id = $1", [lid])).rows[0]; fn(r.estado); await db.query("update jxj_lutas set estado = $2::jsonb where id = $1", [lid, JSON.stringify(r.estado)]); };
+      let vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+      const eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      if (vs.minhaAcao) throw new Error("a troca já tem a minha ação");
+      await mexer((e) => { e.pos = "pe"; e.encaixe = null; e.a.grogue = false; e.b.grogue = false; e.iniciativa = eu; e[eu].energia = 8; });
+      if (vs.etapa === "sinal") for (const u of [u1, u2]) { const v = await api(u, "luta", { lutaId: lid }); if (!v.meuSinal) await api(u, "sinal", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, "defesa") }); }
+      let m = await abrir(`luta/${lid}`), nos = desde(m);
+      /* a ficha e o trilho moram no innerHTML da faixa (o DOM falso não desmonta innerHTML em nós) */
+      const faixa = () => String((nos.filter((n) => tem(n, "jxj-faixa-combate")).pop() || {}).innerHTML || "");
+      const ficha = () => { const m2 = faixa().match(/<span class="jxj-iniciativa (eu|ele)"[^>]*>(.*?)<\/span>/); return m2 ? { quem: m2[1], txt: m2[2] } : null; };
+      if (!faixa()) throw new Error("sem a faixa do combate");
+      let f = ficha();
+      if (!f || f.quem !== "eu" || !/Iniciativa: você/.test(f.txt)) throw new Error("ficha com a iniciativa: " + faixa().slice(0, 400));
+      if (/class="jxj-momento"/.test(faixa())) throw new Error("luta v4 ainda mostra o trilho do momento");
+      const fintas = nos.filter((n) => tem(n, "jxj-acao")).map((b) => String(b.innerHTML)).filter((h) => /jxj-finta/.test(h));
+      if (!fintas.length || fintas.some((h) => !/0,75 finta/.test(h))) throw new Error("custo da finta com a iniciativa nos botões: " + fintas.map((h) => (h.match(/[0-9,]+ finta/) || [""])[0]).join(" "));
+      const dica = nos.find((n) => tem(n, "jxj-dica-iniciativa"));
+      if (!dica || !/Com a iniciativa, a finta custa metade\./.test(String(dica.innerHTML))) throw new Error("dica da iniciativa na primeira luta: " + (dica && dica.innerHTML));
+      semLixoV3(htmlDe(nos), "iniciativa");
+      await mexer((e) => { e.iniciativa = ele; });
+      m = await abrir(`luta/${lid}`); nos = desde(m); f = ficha();
+      if (!f || f.quem !== "ele" || !/Iniciativa: ele/.test(f.txt) || nos.some((n) => tem(n, "jxj-dica-iniciativa"))) throw new Error("ficha com a iniciativa dele: " + faixa().slice(0, 400));
+      if (nos.filter((n) => tem(n, "jxj-acao")).map((b) => String(b.innerHTML)).filter((h) => /jxj-finta/.test(h)).some((h) => !/1,5 finta/.test(h))) throw new Error("sem a iniciativa, a finta custa o cheio");
+      await mexer((e) => { e.iniciativa = null; });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      if (ficha()) throw new Error("ficha sem ninguém com a iniciativa");
+      /* luta v3 (sem mão): o trilho do momento como antes */
+      let guardado = null;
+      await mexer((e) => { guardado = { mao: e.mao, v: e.v }; delete e.mao; delete e.iniciativa; e.v = 3; });
+      m = await abrir(`luta/${lid}`); nos = desde(m);
+      const temMomento = /class="jxj-momento"/.test(faixa()), temFicha = !!ficha();
+      await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.iniciativa = null; });
+      if (!temMomento || temFicha) throw new Error("luta v3: " + JSON.stringify({ temMomento, temFicha }));
     });
     await conf("todas as rotas do JxJ abrem sem 'undefined', 'NaN', '[object Object]', emoji nem travessão", async () => {
       const rotas = ["", "ranking", "temporada", "torneios", "hall", "lutadores", "fila", "criar", `perfil/${l1}`, `lutador/${l1}/perfil`,
