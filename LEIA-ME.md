@@ -5621,6 +5621,66 @@ a tela consultar zeram `jxj_limites` (a tela consulta a cada volta do
 relógio falso). Checklist em duas janelas (computador e celular, gente e
 bot): 14 de 14, sem erro de página, a mão visível sem rolar.
 
+## Online em cartas, Parte 2: o treino guiado (2026-10-28)
+
+Pedido do dono: "a primeira vez do jogador pode ser meio confusa"; ao
+criar o lutador ele joga uma luta em que aprende, com animações e
+explicações breves. Plano `docs/superpowers/plans/2026-10-28-online-cartas-parte2.md`.
+Só na tela (`index.html`), sem SQL e sem servidor.
+
+### Quando
+
+Obrigatório pra quem ainda não lutou (`jxjPrecisaTreino`: nenhuma luta
+no cartel de nenhum lutador da conta e sem a marca `jxj:treino` no
+navegador). Criar o lutador, "Buscar adversário", "Lutar contra bot" e a
+busca (`#/jxj/fila`) levam ao treino. Feito o treino (ou a primeira luta
+de verdade), nunca mais. Sem `localStorage`, continua mandando até a
+primeira luta. Botão "Treino" no painel pra rever.
+
+### Como roda
+
+`#/jxj/treino[/<lutador>]` (`jxjTelaTreino`). O roteiro (`JXJ_TREINO`)
+monta, a cada passo, uma vista no formato do servidor (`jxjTreinoVista`)
+e desenha com a mesma tela da luta em cartas; o estado é puro
+(`jxjTreinoNovo`, `jxjTreinoJogar`). Nada de luta vai pro servidor (só
+`definicoes` e `estado`, leitura). O adversário é o "Treinador", fictício,
+estilo wrestler, com o selo "Treino"; ele não cansa.
+
+### O roteiro (4 trocas no round 1, 1 no round 2)
+
+1. A mão e o ciclo: ele vai de Pressão; Golpes ganha de Pressão.
+2. A mão dele e a iniciativa: a Pressão dele acabou; ele vai de Queda;
+   Defesa ganha de Queda.
+3. A postura: as duas aparecem juntas; ele mostra Base baixa e é honesto.
+4. A finta: você mostra Avançando, ele mostra Peso na frente e vai de
+   Golpes, você finta com Queda (0,75 de energia com a iniciativa) e
+   derruba; os juízes dão o round 1 (10 a 9).
+5. A sua vez: round novo (a mão volta cheia, a iniciativa some), relógio de
+   verdade (5 s e 12 s; prazo estourado joga a Defesa), carta livre; ele
+   mostra Guarda alta e faz Pressão (blefa). O resultado sai do ciclo.
+
+Diferenças do roteiro da spec (decididas na execução): o round tem 4
+trocas, então a lição 5 é o round 2 e ensina a volta da mão (sai "no chão
+as cartas mudam de nome"); a frase da lição 2 diz que a Pressão dele
+acabou (ele ainda usa Golpes na 4).
+
+Nas guiadas: as falas num balão, uma por vez ("Continuar"), só a carta
+certa ligada, com uma seta; a jogada mostra a revelação da Parte 1 e a
+explicação. O relógio mostra "livre" até a carta da lição 5. Fim: o que
+aprendeu, o que aconteceu na lição 5, a marca gravada e os botões "Montar
+a árvore", "Buscar adversário" e "Rever o treino".
+
+### Testes
+
+`jxjtelas`: o roteiro com cada estilo (só a certa joga, finta pela
+metade, round fechado, lição 5 em pé e com a mão cheia), o treino inteiro
+pela tela (balão, seta, clique duplo, revelação, lição 5 livre, fim, a
+marca, nenhuma ação de luta no servidor, recarregar volta ao começo), o
+prazo estourado na 5 e o obrigatório (buscar, a busca, o botão Treino, a
+regra, sem `localStorage`, com a marca). Os testes de tela que precisam
+da luta de apoio em andamento pedem uma viva (`lutaViva`): ela podia
+acabar pelo sorteio. Checklist em duas janelas: 16 de 16.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

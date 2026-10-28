@@ -183,6 +183,12 @@ metade). Regras do revamp que valem daqui pra frente:
   (`jxjCarta*`), porque `jxjVira`/`jxjApanha`/`jxjCai` são dos efeitos de
   antes. O DOM falso tem "reduzir movimento" ligado e não serializa
   filhos no `innerHTML`: teste novo de mesa lê as colunas.
+- **Treino guiado do Online (2026-10-28, Parte 2 das cartas).** Só na
+  tela: `JXJ_TREINO` + `jxjTreinoVista` desenhado pela mesma
+  `jxjDesenharCombate`; obrigatório enquanto `jxjPrecisaTreino` (nenhuma
+  luta na conta e sem `jxj:treino`). Mexeu na vista do servidor ou na
+  tela da luta: a vista do treino tem o mesmo formato e precisa
+  acompanhar (teste "treino, o roteiro" passa a vista pela tela).
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
