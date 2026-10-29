@@ -8992,6 +8992,8 @@ async function jxjTelaLuta(id){
      chega velha e não vale. Uma cadeia de consulta só: cada envio agendava
      outra e a soma passava do limite do servidor. */
   let escolha=null,envios=0;
+  /* cena do fim (2026-10-29): a última vista em andamento, pra mostrar a troca que acabou a luta antes do resultado */
+  let ultimaAndamento=null,cenaFim=null;
   const tick=setInterval(()=>{
     if(tk!==JXJ_TOKEN){ clearInterval(tick); return; }
     const alvo=document.getElementById("jxj-relogio");
@@ -9051,6 +9053,7 @@ async function jxjTelaLuta(id){
     }
     const soltou=vista.status==="andamento"&&!!vista.adversarioEscolheu&&!escolheuVisto;
     escolheuVisto=vista.status==="andamento"&&!!vista.adversarioEscolheu;
+    if(cenaFim==="tela")return;   // a cena do fim está na tela: espera o "Ver o resultado"
     area.innerHTML="";
     const aviso=el("p","jxj-aviso"); aviso.id="jxj-aviso"; aviso.hidden=true; area.appendChild(aviso);
     if(vista.status==="cancelada"){
@@ -9069,8 +9072,27 @@ async function jxjTelaLuta(id){
         if(reduceMotion())pousar(); else setTimeout(pousar,JXJ_VOO_MS);
         try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,familia:fam}); }finally{ escolha=null; enviando=false; }
       },{nova:novas.length>0,maoNova,revelar,soltou,danoAntes});
+      ultimaAndamento=vista;
       if(comecou)SOM.sinoInicio();
       return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes});
+    }
+    /* a luta acabou com a tela aberta: a troca final na mesa, a barra e a cena;
+       W.O. e anulada (sem troca final de luta) vão direto pro resultado */
+    const met=(vista.resultado||{}).metodo,ultT=todas[todas.length-1];
+    if(acabouAgora&&ultimaAndamento&&ultT&&!cenaFim&&met!=="WO"&&met!=="ANULADA"){
+      cenaFim="tela";
+      const antes=jxjDanoAntes(vista.estado,ultT);
+      const vf={...ultimaAndamento,status:"andamento",estado:vista.estado,trocas:todas,minhaAcao:null,meuSinal:null,etapa:null,sinais:null,
+        adversarioEscolheu:false,adversarioSinalizou:false,momentoDecisivo:null};
+      jxjDesenharCombate(area,vf,lados(),()=>{},{nova:true,revelar:jxjRevelar(ultT,true),danoAntes:antes,final:true});
+      const dur=jxjEfeitos([ultT],lados(),tk,{antes})||0;
+      jxjCenaFim(area,vista,lados(),()=>{
+        if(tk!==JXJ_TOKEN)return;
+        cenaFim="visto"; desenhar();
+        const r=vista.resultado||{};
+        if(vista.lado&&r.metodo!=="ANULADA"){ if(!r.vencedor)SOM.evento(); else if(r.vencedor===vista.lado)SOM.vitoria(); else SOM.derrota(); }
+      },{espera:dur+500});
+      return;
     }
     jxjDesenharResultado(area,vista,lados(),ciclo);
     if(acabouAgora)jxjEfeitos(novas,lados(),tk,{fim:vista});
@@ -9287,7 +9309,7 @@ function jxjTreinoMarcar(b,f,treino){
   if(treino.travado||(treino.certa&&f!==treino.certa)){ b.disabled=true; b.className+=" fora-do-treino"; }
   else if(treino.certa)b.insertAdjacentHTML?b.insertAdjacentHTML("afterbegin",`<span class="jxj-treino-seta">${ICONE("chevron-baixo")}</span>`):(b.innerHTML=`<span class="jxj-treino-seta">${ICONE("chevron-baixo")}</span>`+b.innerHTML);
 }
-function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,treino=null,danoAntes=null}={}){
+function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,treino=null,danoAntes=null,final=false}={}){
   const F=v.formato,e=v.estado,nomes=v.nomes;
   const tela=el("div","jxj-combate"); tela.id="jxj-combate";
   /* placar */
@@ -9356,9 +9378,10 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
       <p class="jxj-ultima-txt">${(ult.eventos||[]).map(jxjEsc).join(" ")||"Nada mudou."}</p>`;
     tela.appendChild(sec);
   }
-  /* ações */
+  /* ações (a troca que acabou a luta, na cena do fim, vem sem a mão) */
   const zona=el("section","jxj-zona-acao");
-  if(v.minhaAcao){
+  if(final){}
+  else if(v.minhaAcao){
     const rot=(v.acoes.find(a=>a.familia===v.minhaAcao)||{}).rotulo||v.minhaAcao;
     zona.appendChild(el("p","jxj-espera",`${ICONE("check")}<span>Ação enviada: <b>${rot}</b>. ${v.adversarioEscolheu?"O adversário também escolheu. Resolvendo.":"Esperando o adversário."}</span>`));
   }else if(v.etapa==="sinal"){
@@ -9442,6 +9465,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
   gav.appendChild(ol);
   tela.appendChild(gav);
   area.appendChild(tela);
+  return tela;
 }
 /* Som e animação da troca que acabou de ser resolvida (2026-10-04), a partir
    dos eventos em forma de dado da vista (tipo, quem). Um efeito por vez, com
@@ -9484,9 +9508,21 @@ function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null}={}
     else if(e.tipo==="encaixou"||e.tipo==="emendou")depois(()=>{ SOM.quaseFinalizacao(); anima(card(alvo),"jxj-apertado"); },600);
     else if(e.tipo==="escapou")depois(()=>SOM.evento());
     else if(e.tipo==="bloqueou")depois(()=>SOM.golpeLeve());
-    else if(e.tipo==="fim"&&(e.metodo==="KO"||e.metodo==="TKO"))depois(()=>{ SOM.nocaute();
-      if(!reduceMotion()){ document.body.classList.add("ko"); setTimeout(()=>document.body.classList.remove("ko"),440); } },1200);
-    else if(e.tipo==="fim"&&e.metodo==="FIN")depois(()=>SOM.finalizacao(),1200);
+    /* a troca que acaba a luta (cena do fim, 2026-10-29): no nocaute a barra
+       desce inteira, com o clarão e o retrato apagando; na finalização, ele
+       é apertado e bate três vezes */
+    else if(e.tipo==="fim"&&(e.metodo==="KO"||e.metodo==="TKO")){
+      const perd=e.quem==="a"?"b":"a",resto=dano?jxjVida(dano[perd]):0;
+      depois(()=>{ SOM.nocaute();
+        if(dano){ jxjClarao(); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte"); jxjFagulhas(card(perd)); anima(card(perd),"jxj-nocauteado");
+          jxjPintarVida(perd,0,{ko:true}); jxjPopVida(card(perd),resto,true); }
+        else if(!reduceMotion()){ document.body.classList.add("ko"); setTimeout(()=>document.body.classList.remove("ko"),440); } },1200);
+    }
+    else if(e.tipo==="fim"&&e.metodo==="FIN"){
+      const perd=e.quem==="a"?"b":"a";
+      if(dano){ depois(()=>{ SOM.quaseFinalizacao(); anima(card(perd),"jxj-batendo"); },620); depois(()=>SOM.golpeLeve(),620); depois(()=>SOM.golpeLeve(),620); depois(()=>SOM.golpeLeve(),500); }
+      depois(()=>SOM.finalizacao(),1200);
+    }
   }
   if(fechouRound){ depois(()=>SOM.sinoFim(),900); depois(()=>SOM.sinoInicio(),200); }
   if(fim){
@@ -9494,6 +9530,59 @@ function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null}={}
     if(r.metodo==="DEC"||r.metodo==="EMPATE")depois(()=>SOM.sinoFim(),900);
     if(fim.lado&&r.metodo!=="ANULADA")depois(()=>!r.vencedor?SOM.evento():r.vencedor===fim.lado?SOM.vitoria():SOM.derrota());
   }
+  return t;
+}
+/* fagulhas saindo do placar de quem caiu (nocaute) */
+function jxjFagulhas(no){
+  if(reduceMotion()||!no||!no.getBoundingClientRect||!document.body||!document.body.appendChild)return;
+  const r=no.getBoundingClientRect();
+  if(!r.width)return;
+  for(let i=0;i<22;i++){
+    const f=document.createElement("span"); f.className="jxj-fagulha";
+    const ang=Math.random()*Math.PI*2,dist=60+Math.random()*140;
+    Object.assign(f.style,{left:(r.left+r.width/2)+"px",top:(r.top+r.height/2)+"px"});
+    document.body.appendChild(f);
+    const a=f.animate?f.animate([{transform:"translate(0,0) scale(1)",opacity:1},{transform:`translate(${Math.cos(ang)*dist}px,${Math.sin(ang)*dist+40}px) scale(.2)`,opacity:0}],{duration:700+Math.random()*500,easing:"cubic-bezier(.2,.8,.2,1)"}):null;
+    if(a)a.onfinish=()=>f.remove(); else setTimeout(()=>f.remove(),1200);
+  }
+}
+/* A cena do fim (2026-10-29, pedido do dono: "uma animação que dê bastante
+   emoção"): depois da troca que acabou a luta, a palavra do método, quem
+   venceu e com o quê, e a narração da troca (IA ou molde, a mesma que já
+   existia: nenhuma chamada nova). Nada passa sozinho: "Ver o resultado". */
+function jxjCenaFim(alvo,v,{eu,ele},aoSeguir,{espera=0}={}){
+  const r=v.resultado||{},ult=(v.trocas||[])[(v.trocas||[]).length-1]||{};
+  const ko=r.metodo==="KO"||r.metodo==="TKO",fin=r.metodo==="FIN";
+  const palavra=r.metodo==="EMPATE"?"Empate":ko||fin?jxjMetodo(r.metodo):"Decisão";
+  const nome=l=>jxjEsc(((v.nomes||{})[l]||{}).nome||"");
+  const idV=r.vencedor==="a"?ult.varA:r.vencedor==="b"?ult.varB:null;
+  const V=idV&&JXJ_DEF.acoes.variantes?JXJ_DEF.acoes.variantes[idV]:null;
+  const quem=!r.vencedor?"Os juízes deram empate"
+    :!(ko||fin)?`${nome(r.vencedor)} venceu por decisão`
+    :V&&V.familia==="defesa"?`${nome(r.vencedor)} venceu no contra-ataque`
+    :V&&V.frase?`${nome(r.vencedor)} venceu com ${jxjEsc(V.frase)}`:`${nome(r.vencedor)} venceu`;
+  const faixa=ko||fin?`Round ${r.round} · troca ${r.troca}`:`Fim do round ${r.round||((v.formato||{}).rounds||3)}`;
+  const narra=ult.narracao&&ult.narracao.texto?ult.narracao.texto:((ult.eventos||[]).slice(-1)[0]||"");
+  const cena=el("div","jxj-fim "+(ko?"ko":fin?"fin":"dec"));
+  if(cena.setAttribute){ cena.setAttribute("role","dialog"); cena.setAttribute("aria-label",palavra); }
+  cena.innerHTML=`<div class="jxj-fim-veu"></div>${ko||fin?`<div class="jxj-fim-raios"></div>`:""}
+    <p class="jxj-fim-palavra" aria-label="${palavra}">${[...palavra.toUpperCase()].map((c,i)=>`<span style="--i:${i}">${c===" "?"&nbsp;":c}</span>`).join("")}</p>
+    <p class="jxj-fim-faixa">${faixa}</p>
+    <p class="jxj-fim-quem">${quem}</p>
+    ${narra?`<p class="jxj-fim-narra"><small>narração</small><span>${jxjEsc(narra)}</span></p>`:""}`;
+  const b=el("button","botao jxj-fim-seguir",`<span>Ver o resultado</span>${ICONE("seta-dir")}`); b.type="button";
+  let foi=false;
+  b.onclick=()=>{ if(foi)return; foi=true; SOM.toque(); aoSeguir(); };
+  cena.appendChild(b);
+  const mostrar=()=>{
+    alvo.appendChild(cena);
+    if(!ko&&!fin)SOM.sinoFim();
+    /* a narração digitada (sem movimento, inteira) */
+    const sp=narra&&!reduceMotion()&&cena.querySelector?cena.querySelector(".jxj-fim-narra span"):null;
+    if(sp&&sp.textContent!==undefined){ let i=0; sp.textContent=""; const passo=()=>{ if(!sp.isConnected)return; sp.textContent=narra.slice(0,++i); if(i<narra.length)setTimeout(passo,24); }; setTimeout(passo,1700); }
+  };
+  if(espera>0)setTimeout(mostrar,espera); else mostrar();
+  return cena;
 }
 async function jxjConferirSemente(semente,compromisso){
   try{

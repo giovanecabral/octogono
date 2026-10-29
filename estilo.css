@@ -2045,3 +2045,41 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 @keyframes jxjClarao{0%{opacity:.9}100%{opacity:0}}
 @media (max-width:720px){.jxj-golpe-tag{font-size:14px;padding:3px 7px}.jxj-pop-vida{font-size:24px}.jxj-pop-vida.grande{font-size:34px}.jxj-vida{height:12px}}
 @media (prefers-reduced-motion:reduce){.jxj-vida .atual,.jxj-vida .rastro{transition:none}.jxj-vida[data-nivel="critico"] .atual,.jxj-pop-vida,.jxj-golpe-tag,.jxj-selo-kd,.jxj-combate.jxj-tremor,.jxj-combate.jxj-tremor-forte{animation:none}body.jxj-clarao::after{display:none}}
+
+/* ---------- a cena do fim (2026-10-29) ---------- */
+.jxj-hud-lado.jxj-nocauteado .jxj-retrato{animation:jxjApagou 1.1s cubic-bezier(.5,0,.75,0) forwards;transform-origin:50% 100%}
+@keyframes jxjApagou{0%{transform:none}10%{transform:translateX(-10px) rotate(-6deg) scale(1.12)}100%{transform:translateY(22px) rotate(-78deg) scale(.92);filter:grayscale(1) brightness(.35)}}
+.jxj-hud-lado.jxj-batendo .jxj-retrato{animation:jxjAperto .62s ease-in-out 3}
+@keyframes jxjAperto{0%,100%{transform:none}50%{transform:scaleX(.9) scaleY(.96);box-shadow:0 0 0 3px var(--ouro)}}
+.jxj-fagulha{position:fixed;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#ffb43d;box-shadow:0 0 10px #ff7a1a;z-index:210;pointer-events:none}
+.jxj-fim{position:fixed;inset:0;z-index:150;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;
+  padding:calc(24px + env(safe-area-inset-top,0px)) 20px calc(24px + env(safe-area-inset-bottom,0px));overflow:hidden}
+.jxj-fim>*{position:relative}
+.jxj-fim .jxj-fim-veu{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(7,8,11,.55),rgba(7,8,11,.94) 70%);animation:jxjFimVeu .6s ease both}
+@keyframes jxjFimVeu{from{opacity:0}to{opacity:1}}
+.jxj-fim .jxj-fim-raios{position:absolute;left:50%;top:44%;width:1500px;height:1500px;margin:-750px 0 0 -750px;opacity:0;
+  background:repeating-conic-gradient(from 0deg,rgba(215,38,30,.34) 0 6deg,transparent 6deg 18deg);
+  -webkit-mask:radial-gradient(circle,#000 0 12%,transparent 55%);mask:radial-gradient(circle,#000 0 12%,transparent 55%);
+  animation:jxjFimRaios 9s linear infinite,jxjFimVeu .5s ease-out forwards}
+.jxj-fim.fin .jxj-fim-raios{background:repeating-conic-gradient(from 0deg,rgba(212,160,23,.32) 0 6deg,transparent 6deg 18deg)}
+@keyframes jxjFimRaios{to{transform:rotate(360deg)}}
+.jxj-fim-palavra{margin:0;display:flex;justify-content:center;flex-wrap:wrap;font-family:var(--f-titulo);font-size:clamp(52px,12vw,124px);line-height:.9;color:#fff;
+  text-shadow:0 6px 0 #6b0f0b,0 0 40px rgba(232,54,45,.65)}
+.jxj-fim.fin .jxj-fim-palavra{text-shadow:0 6px 0 #6b4f06,0 0 40px rgba(212,160,23,.6)}
+.jxj-fim.dec .jxj-fim-palavra{font-size:clamp(46px,9vw,92px);text-shadow:0 5px 0 #23262f}
+.jxj-fim-palavra span{display:inline-block;opacity:0;animation:jxjFimLetra .42s cubic-bezier(.2,1.4,.4,1) forwards;animation-delay:calc(var(--i) * 55ms + 120ms)}
+@keyframes jxjFimLetra{from{opacity:0;transform:scale(3) translateY(-20px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+.jxj-fim-faixa{margin:0;background:var(--sangue);color:#fff;font-family:var(--f-ui);font-weight:800;font-size:15px;letter-spacing:.2em;text-transform:uppercase;padding:5px 18px;
+  opacity:0;transform:scaleX(0);animation:jxjFimFaixa .45s var(--ease-soco) .75s forwards}
+.jxj-fim.fin .jxj-fim-faixa{background:var(--ouro);color:#16120a}
+.jxj-fim.dec .jxj-fim-faixa{background:var(--osso);color:#0b0b0d}
+@keyframes jxjFimFaixa{to{opacity:1;transform:none}}
+.jxj-fim-quem{margin:0;font-family:var(--f-titulo);font-size:clamp(20px,4vw,28px);text-transform:uppercase;opacity:0;animation:jxjFimVeu .5s ease 1.15s forwards}
+.jxj-fim-narra{margin:0;max-width:540px;font-size:15px;color:var(--osso-2);line-height:1.45;min-height:2.6em;opacity:0;animation:jxjFimVeu .4s ease 1.6s forwards}
+.jxj-fim-narra small{display:block;font-family:var(--f-ui);font-weight:700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--cinza);margin-bottom:4px}
+.jxj-fim-seguir{opacity:0;animation:jxjFimVeu .4s ease 2.6s forwards}
+@media (prefers-reduced-motion:reduce){
+  .jxj-hud-lado.jxj-nocauteado .jxj-retrato{animation:none;filter:grayscale(1) brightness(.4)}
+  .jxj-hud-lado.jxj-batendo .jxj-retrato,.jxj-fim .jxj-fim-raios{animation:none;opacity:1}
+  .jxj-fim .jxj-fim-veu,.jxj-fim-palavra span,.jxj-fim-faixa,.jxj-fim-quem,.jxj-fim-narra,.jxj-fim-seguir{animation:none;opacity:1;transform:none;filter:none}
+}

@@ -14712,6 +14712,73 @@ async function testarJxJTelas() {
       if (cards.length > 1 && barra(cards[cards.length - 1]) !== String(V(depois))) throw new Error(`redesenho depois da animação: barra ${barra(cards[cards.length - 1])}, esperava ${V(depois)}`);
       if (/class="jxj-pop dano/.test(env.todos.slice(m2).map((n) => String(n.innerHTML)).join(""))) throw new Error("a carta da mesa ainda mostra o número");
     });
+    await conf("cena do fim (2026-10-29): a palavra, a faixa, quem venceu e com o quê, a narração e Ver o resultado (nocaute, nocaute técnico, contra-ataque, finalização, decisão, empate); a luta que acaba com a tela aberta mostra a troca final e a cena antes do resultado; aberta de novo e W.O. vão direto pro resultado", async () => {
+      await vm.runInContext("jxjDef()", env.sandbox);
+      const idDe = (rot) => Object.keys(MOTOR.VARIANTE_POR_ID).find((k) => MOTOR.VARIANTE_POR_ID[k].rotulo === rot);
+      const fr = (rot) => MOTOR.VARIANTE_POR_ID[idDe(rot)].frase;
+      const casos = [
+        [{ round: 2, troca: 3, vencedor: "a", metodo: "KO" }, { varA: idDe("Cruzado"), varB: idDe("Pressionar na grade"), narracao: { texto: "O cruzado entrou no queixo.", fonte: "molde" } }, "Nocaute", `Rafa Lima venceu com ${fr("Cruzado")}`, "Round 2 · troca 3", "O cruzado entrou no queixo."],
+        [{ round: 3, troca: 1, vencedor: "b", metodo: "TKO" }, { varA: idDe("Levantar"), varB: idDe("Cotoveladas") }, "Nocaute técnico", `Bot Jatobá venceu com ${fr("Cotoveladas")}`, "Round 3 · troca 1", "Bot Jatobá venceu por nocaute técnico."],
+        [{ round: 1, troca: 4, vencedor: "b", metodo: "KO" }, { varA: idDe("Cruzado"), varB: idDe("Esquiva e contra-ataque") }, "Nocaute", "Bot Jatobá venceu no contra-ataque", "Round 1 · troca 4", "Bot Jatobá venceu por nocaute."],
+        [{ round: 3, troca: 2, vencedor: "a", metodo: "FIN" }, { varA: idDe("Mata-leão"), varB: idDe("Levantar") }, "Finalização", `Rafa Lima venceu com ${fr("Mata-leão")}`, "Round 3 · troca 2", "Rafa Lima venceu por finalização."],
+        [{ round: 3, troca: 4, vencedor: "a", metodo: "DEC" }, { varA: idDe("Cruzado"), varB: idDe("Cruzado") }, "Decisão", "Rafa Lima venceu por decisão", "Fim do round 3", "Rafa Lima venceu por decisão."],
+        [{ round: 3, troca: 4, vencedor: null, metodo: "EMPATE" }, { varA: idDe("Cruzado"), varB: idDe("Cruzado") }, "Empate", "Os juízes deram empate", "Fim do round 3", "A luta terminou empatada."],
+      ];
+      for (const [r, t, palavra, quem, faixa, narra] of casos) {
+        const v = { resultado: r, nomes: { a: { nome: "Rafa Lima" }, b: { nome: "Bot Jatobá", bot: true } }, formato: { rounds: 3 },
+          trocas: [{ round: r.round, troca: r.troca, acaoA: "golpes", acaoB: "pressao", ...t, ev: [{ tipo: "fim", quem: r.vencedor, metodo: r.metodo }], eventos: [narra] }] };
+        const m = env.todos.length;
+        vm.runInContext(`globalThis.__seguiu=0;globalThis.__area=el("div","teste");jxjCenaFim(globalThis.__area,${JSON.stringify(v)},{eu:"a",ele:"b"},()=>{globalThis.__seguiu++;},{espera:0})`, env.sandbox);
+        env.drenar(); env.drenar();
+        const no = env.todos.slice(m).filter((n) => tem(n, "jxj-fim")).pop();
+        const h = no ? String(no.innerHTML) : "";
+        if (!no || !h.includes(`aria-label="${palavra}"`) || !h.includes(faixa) || !h.includes(quem) || !h.includes(narra)) throw new Error(`${r.metodo}: ` + h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 300));
+        semLixoV3T(h, "cena " + r.metodo);
+        const b = env.todos.slice(m).filter((n) => tem(n, "jxj-fim-seguir")).pop();
+        if (!b || !/Ver o resultado/.test(String(b.innerHTML))) throw new Error(r.metodo + ": sem Ver o resultado");
+        b.onclick();
+        if (env.sandbox.__seguiu !== 1) throw new Error(r.metodo + ": Ver o resultado não seguiu");
+      }
+      /* a luta acaba com a tela aberta */
+      const acabar = async (metodo) => {
+        const vs = await api(u1, "luta", { lutaId: lid }), eu = vs.lado, ele = eu === "a" ? "b" : "a";
+        const L = (await db.query("select estado, round, troca, versao from jxj_lutas where id = $1", [lid])).rows[0];
+        const fim = { vencedor: eu, metodo, round: L.round, troca: L.troca };
+        const est = { ...L.estado, fim };
+        const ev = [{ tipo: "escolha", va: eu === "a" ? "cruzado" : "grade", vb: eu === "a" ? "grade" : "cruzado" }];
+        if (metodo === "KO") { est[ele] = { ...est[ele], dano: est[ele].dano + 8 }; ev.push({ tipo: "golpe", quem: eu, dano: 8, v: "cruzado" }); }
+        ev.push({ tipo: "fim", quem: eu, metodo, ...(metodo === "KO" ? { v: "cruzado" } : {}) });
+        const ef = (l) => ({ resultado: l === eu ? "vitoria" : "derrota", xp: 0, nivel: 1, fichas: 0, conquistas: [] });
+        await db.query("select public.jxj_gravar_troca($1::bigint, $2::int, $3::smallint, $4::smallint, $5, $6, $7::jsonb, $8::jsonb, $9::int, $10::jsonb, $11::jsonb)",
+          [lid, L.versao, L.round, L.troca, eu === "a" ? "golpes" : "pressao", eu === "a" ? "pressao" : "golpes", JSON.stringify(ev), JSON.stringify(est), 17000, JSON.stringify(fim), JSON.stringify({ a: ef("a"), b: ef("b") })]);
+      };
+      const novaLuta = async () => { await db.query("update jxj_lutas set status = 'cancelada' where id = $1 and status = 'andamento'", [lid]); await db.query("update jxj_contas set luta_aberta_id = null"); await lutaViva(); };
+      await novaLuta();
+      await abrir(`luta/${lid}`);
+      const m2 = env.todos.length;
+      await acabar("KO");
+      for (const ate = Date.now() + 8000; Date.now() < ate && !env.todos.slice(m2).some((n) => tem(n, "jxj-fim"));) await assentar(40);
+      await db.query("delete from jxj_limites");
+      const nos = env.todos.slice(m2);
+      const fimNo = nos.filter((n) => tem(n, "jxj-fim")).pop();
+      if (!fimNo || !/aria-label="Nocaute"/.test(String(fimNo.innerHTML))) throw new Error("a luta acabou sem a cena do nocaute: " + (fimNo ? fimNo.innerHTML : "sem cena").slice(0, 200));
+      if (!nos.some((n) => tem(n, "jxj-mesa"))) throw new Error("a cena sem a mesa da troca final");
+      if (nos.some((n) => tem(n, "jxj-resultado"))) throw new Error("o resultado apareceu antes de Ver o resultado");
+      if (nos.some((n) => tem(n, "jxj-postura") || tem(n, "jxj-acao"))) throw new Error("a troca final mostra a mão");
+      const seguir = nos.filter((n) => tem(n, "jxj-fim-seguir")).pop();
+      seguir.onclick(); await assentar(10);
+      if (!env.todos.slice(m2).some((n) => tem(n, "jxj-resultado"))) throw new Error("Ver o resultado não abriu o resultado");
+      const m3 = await abrir(`luta/${lid}`);
+      if (desde(m3).some((n) => tem(n, "jxj-fim")) || !desde(m3).some((n) => tem(n, "jxj-resultado"))) throw new Error("a luta encerrada aberta de novo não foi direto pro resultado");
+      /* W.O.: direto pro resultado, sem cena */
+      await novaLuta();
+      await abrir(`luta/${lid}`);
+      const m4 = env.todos.length;
+      await acabar("WO");
+      for (const ate = Date.now() + 8000; Date.now() < ate && !env.todos.slice(m4).some((n) => tem(n, "jxj-resultado"));) await assentar(40);
+      await db.query("delete from jxj_limites");
+      if (env.todos.slice(m4).some((n) => tem(n, "jxj-fim")) || !env.todos.slice(m4).some((n) => tem(n, "jxj-resultado"))) throw new Error("W.O. não foi direto pro resultado");
+    });
     await conf("carta jogada (2026-10-29, achado jogando): fica na vaga enquanto o servidor responde; resposta velha da consulta não apaga a carta; postura recusada volta pra mão; a tela consulta numa cadeia só (cada carta jogada abria outra e a soma passava do limite)", async () => {
       await lutaViva();
       for (let k = 0; k < 3; k++) {
