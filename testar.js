@@ -14277,6 +14277,9 @@ async function testarJxJTelas() {
        precisam dela em andamento pedem uma viva, que é outra luta entre as mesmas duas contas quando ela acabou */
     const lutaViva = async () => {
       await db.query("delete from jxj_limites");
+      /* a luta de apoio parada entre um teste e outro soma ausências (3 trocas de 17 s dão W.O.):
+         renova o prazo antes de olhar (2026-10-29, a suíte ficou mais longa e ela acabava no meio do teste seguinte) */
+      await db.query("update jxj_lutas set prazo = now() + interval '60 seconds' where id = $1 and status = 'andamento'", [lid]);
       const v = await api(u1, "luta", { lutaId: lid });
       if (v.status === "andamento") return lid;
       await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
@@ -14692,6 +14695,7 @@ async function testarJxJTelas() {
       const m = await abrir(`luta/${lid}`);
       const vs = await api(u1, "luta", { lutaId: lid }), eu = vs.lado, ele = eu === "a" ? "b" : "a";
       const L = (await db.query("select estado, round, troca from jxj_lutas where id = $1", [lid])).rows[0];
+      if (desde(m).some((n) => tem(n, "jxj-abandonar"))) throw new Error("botão Abandonar numa luta entre gente");
       const est = L.estado, antes = est[ele].dano, depois = Math.round((antes + 6) * 10) / 10;
       est[ele].dano = depois; est.troca = L.troca + 1;
       const acao = (l) => (l === eu ? "golpes" : "pressao"), vari = (l) => (l === eu ? "cruzado" : "cortar");
@@ -15054,6 +15058,39 @@ async function testarJxJTelas() {
       if (!ult || !/Contra Bot /.test(String(ult.innerHTML))) throw new Error("último resultado: " + (ult && String(ult.innerHTML).replace(/\s+/g, " ").slice(0, 200)));
       const riv = cards.find((n) => String(n.innerHTML).includes("Rivais"));
       if (!riv || /Bot /.test(String(riv.innerHTML))) throw new Error("rivais: " + (riv && String(riv.innerHTML).replace(/\s+/g, " ").slice(0, 200)));
+    });
+    await conf("abandonar na tela (2026-10-29): só contra bot; tocar abre a confirmação sem chamar o servidor; Voltar pra luta fecha; Abandonar chama uma vez (clique duplo também) e mostra o resultado com 'Você abandonou a luta.', sem a cena do fim", async () => {
+      await db.query("delete from jxj_limites");
+      await api(u1, "filaEntrar", { lutadorId: l1 });
+      await db.query("update jxj_fila set entrou_em = now() - interval '31 seconds' where user_id = $1", [u1]);
+      await api(u1, "bot", { lutadorId: l1 });
+      const lb = await lutaBotDe(u1);
+      if ((await api(u1, "luta", { lutaId: lb.id })).status !== "andamento") throw new Error("a luta contra o bot não começou");
+      const m = await abrir(`luta/${lb.id}`);
+      const ab = desde(m).filter((n) => n.tagName === "button" && tem(n, "jxj-abandonar")).pop();
+      if (!ab || !/Abandonar/.test(String(ab.innerHTML))) throw new Error("sem o botão Abandonar na luta contra bot");
+      const chamadas = [], fAntes = env.sandbox.fetch;
+      env.sandbox.fetch = async (u, op) => { const c = JSON.parse(op.body); if (c.acao === "abandonar") chamadas.push(c); return fAntes(u, op); };
+      try {
+        const m2 = env.todos.length;
+        ab.onclick();
+        const conf1 = desde(m).filter((n) => tem(n, "jxj-confirma")).pop();
+        const h = conf1 ? String(conf1.innerHTML) : "";
+        if (!conf1 || conf1.hidden || !/Abandonar a luta\?/.test(h) || !/Você perde por W\.O\. O rating cai como numa derrota, e a luta não dá XP nem fichas\./.test(h)) throw new Error("a confirmação não abriu: " + h.slice(0, 200));
+        if (chamadas.length) throw new Error("tocar em Abandonar já chamou o servidor");
+        const nao = desde(m).filter((n) => n.tagName === "button" && /Voltar pra luta/.test(String(n.innerHTML))).pop();
+        nao.onclick();
+        if (!conf1.hidden || chamadas.length) throw new Error("Voltar pra luta não fechou ou chamou o servidor");
+        ab.onclick();
+        const sim = desde(m).filter((n) => n.tagName === "button" && tem(n, "jxj-confirma-sim")).pop();
+        sim.onclick(); sim.onclick();
+        for (const ate = Date.now() + 8000; Date.now() < ate && !env.todos.slice(m2).some((n) => tem(n, "jxj-resultado"));) await assentar(20);
+        await db.query("delete from jxj_limites");
+        if (chamadas.length !== 1) throw new Error(`abandonar chamado ${chamadas.length} vezes`);
+        const res = env.todos.slice(m2).filter((n) => tem(n, "jxj-resultado")).pop();
+        if (!res || !/Você abandonou a luta\./.test(String(res.innerHTML))) throw new Error("resultado sem o abandono: " + (res ? String(res.innerHTML).slice(0, 200) : "sem resultado"));
+        if (env.todos.slice(m2).some((n) => tem(n, "jxj-fim"))) throw new Error("abandono com a cena do fim");
+      } finally { env.sandbox.fetch = fAntes; }
     });
     await conf("resultado em cartas (2026-10-28): os cartões dos rounds em cartinhas com quem levou; nocaute, finalização e W.O. mostram a carta que decidiu", async () => {
       await db.query("delete from jxj_limites");
