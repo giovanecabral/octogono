@@ -2536,7 +2536,9 @@ branch `online-cartas`.
    `vercel --prod`; `index.html` e `estilo.css` servidos iguais ao git;
    docs, testes e `.gitignore` dão 404. Sem SQL.
 2. Parte 2 (o treino guiado de 5 trocas, obrigatório na primeira vez):
-   FEITA na branch (2026-10-28). Plano
-   `docs/superpowers/plans/2026-10-28-online-cartas-parte2.md`. Só tela,
-   sem SQL; vai pro ar quando o dono mandar.
+   NO AR desde 2026-10-28 ("deploya" do dono). Plano
+   `docs/superpowers/plans/2026-10-28-online-cartas-parte2.md`. `master`
+   em `8a04f67` (avanço direto, a mesma árvore da bateria verde), push e
+   `vercel --prod`; `index.html` e `estilo.css` servidos iguais ao git.
+   Sem SQL.
 
