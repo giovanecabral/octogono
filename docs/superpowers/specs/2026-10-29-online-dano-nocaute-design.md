@@ -131,6 +131,11 @@ redesenho no meio mostra os valores finais sem animar de novo):
    existe pisca.
 4. Os outros efeitos de hoje continuam (queda, encaixe, sino do round).
 
+Os números: o lance e o registro continuam com o dano do motor ("6,1 de
+dano"); o "−N" que sobe da barra e a faixa estão na escala da barra (como
+no protótipo: "9,6 de dano, 24 na barra"). A carta da mesa deixa de mostrar
+o número; a faixa ocupa o lugar.
+
 Mais de uma troca nova de uma vez (a tela ficou parada): só a última anima;
 as outras já entram nos valores de partida.
 
