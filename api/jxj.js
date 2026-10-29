@@ -35,7 +35,7 @@ const SUPABASE_ANON_KEY =
 const ID = /^[1-9]\d{0,14}$/;
 const ACOES_PUBLICAS = new Set(["definicoes", "ranking", "perfil", "historico", "hall", "temporada", "torneios", "torneio", "replay"]);
 const ACOES_CONTA = new Set(["estado", "criar", "build", "respec", "principal", "aposentar", "moldura", "buildPublica",
-  "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "sinal", "revanche", "narracao", "bot",
+  "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "sinal", "revanche", "narracao", "bot", "abandonar",
   "torneioInscrever", "torneioSair", "torneioSala"]);
 /* limite por conta: [máximo, janela em segundos] (o banco conta, atômico) */
 const LIMITES = {
@@ -43,7 +43,7 @@ const LIMITES = {
   moldura: [30, 3600], buildPublica: [30, 3600], filaEntrar: [40, 600], filaSair: [60, 600], fila: [400, 600],
   luta: [600, 600], confirmar: [60, 600], recusar: [60, 600], acao: [200, 600], sinal: [200, 600], revanche: [40, 600],
   narracao: [40, 3600], torneioInscrever: [20, 3600], torneioSair: [20, 3600], torneioSala: [300, 600], estado: [600, 600],
-  bot: [30, 600],
+  bot: [30, 600], abandonar: [20, 600],
 };
 
 class ErroJxJ extends Error { constructor(msg, status = 400) { super(msg); this.status = status; } }
@@ -465,8 +465,8 @@ function definicoes(ativo) {
     mecanicas: Object.fromEntries(Object.entries(ARV.MECANICAS).map(([k, m]) => [k, { desc: m.desc, teto: m.teto }])),
     arvore: { nivelMaxNo: ARV.NIVEL_MAX_NO, pontosPorRamoMax: ARV.PONTOS_POR_RAMO_MAX, pedidoPorTier: ARV.PEDIDO_POR_TIER,
       custoProprio: ARV.CUSTO_PROPRIO, custoHibrido: ARV.CUSTO_HIBRIDO, tiersHibridos: ARV.TIERS_HIBRIDOS, tetoBonus: ARV.TETO_BONUS, atributoMax: ARV.ATRIBUTO_MAX },
-    acoes: { rotulos: MOTOR.ROTULOS, descricoes: MOTOR.DESCRICOES, custo: MOTOR.CUSTO, familias: MOTOR.FAMILIA_NOME, ciclo: MOTOR.CICLO,
-      variantes: Object.fromEntries(Object.entries(MOTOR.VARIANTE_POR_ID).map(([id, v]) => [id, { rotulo: v.rotulo, desc: v.desc, papel: v.papel, familia: v.familia }])) },
+    acoes: { rotulos: MOTOR.ROTULOS, descricoes: MOTOR.DESCRICOES, custo: MOTOR.CUSTO, familias: MOTOR.FAMILIA_NOME, ciclo: MOTOR.CICLO, vence: MOTOR.VENCE_LISTA,
+      variantes: Object.fromEntries(Object.entries(MOTOR.VARIANTE_POR_ID).map(([id, v]) => [id, { rotulo: v.rotulo, desc: v.desc, papel: v.papel, familia: v.familia, frase: v.frase }])) },
     formato: MOTOR.FORMATO,
     regras: { nivelMax: REG.NIVEL_MAX, slotsFree: REG.SLOTS_FREE, slotsPro: REG.SLOTS_PRO, trocaPrincipalHoras: REG.TROCA_PRINCIPAL_HORAS,
       custoRespec: REG.CUSTO_RESPEC, tetoFichasDia: REG.TETO_FICHAS_DIA, parRating24h: REG.PAR_RATING_24H, ausencia: REG.REGRA_AUSENCIA,
@@ -668,6 +668,24 @@ async function executar(acao, c, uid) {
       try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: ACAO_MS }); }
       catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("os sinais ainda não foram ligados", 503); throw e; }
       return vistaDaLuta(await processarLuta(lid, uid), uid);
+    }
+    case "abandonar": {
+      /* 2026-10-29, pedido do dono: só contra bot. Derrota por W.O. na hora,
+         gravada como o W.O. por ausência (jxj_gravar_troca, sem SQL novo).
+         A troca andou no meio: lê de novo; a luta acabou: vale o fim gravado. */
+      const lid = idDe(c.lutaId, "luta");
+      for (let tentativa = 0; tentativa < 3; tentativa++) {
+        const d = await processarLuta(lid, uid), L = d.luta;
+        if (!L.bot) throw new ErroJxJ("Abandonar só existe na luta contra bot.");
+        if (L.status !== "andamento" || L.a_user !== uid) return vistaDaLuta(d, uid);
+        const fim = { vencedor: "b", metodo: "WO", round: L.round, troca: L.troca, abandono: true };
+        const estado = { ...L.estado, fim };
+        const eventos = [{ tipo: "abandono", quem: "a" }, { tipo: "fim", quem: "b", metodo: "WO", abandono: true }];
+        const r = await rpc("jxj_gravar_troca", { lid, versao_: L.versao, round_: L.round, troca_: L.troca, acao_a_: null, acao_b_: null,
+          eventos_: eventos, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs, fim_: fim, efeitos_: efeitosDoFim(d, estado, fim) });
+        if (r && r.gravou) return vistaDaLuta(await processarLuta(lid, uid), uid);
+      }
+      throw new ErroJxJ("A luta mudou no meio. Tente de novo.", 409);
     }
     case "revanche": {
       const lid = idDe(c.lutaId, "luta");

@@ -12496,6 +12496,48 @@ async function testarJxJ() {
       if (L.status !== "encerrada" || L.resultado.metodo !== "WO" || L.resultado.vencedor !== "b" || L.efeitos.a.resultado !== "derrota") throw new Error(JSON.stringify(L.resultado));
       if ((await q("select luta_aberta_id from jxj_contas where user_id = $1", [u]))[0].luta_aberta_id !== null) throw new Error("a conta ficou presa na luta");
     });
+    await conf("abandonar (2026-10-29): contra bot, derrota por W.O. na hora (rating como derrota, XP 0, fichas 0, wos + 1, resultado com abandono); o segundo pedido não muda nada; contra gente, 400; quem não está na luta, 404", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      const lid = await botDoPro(u, l);
+      const antes = (await q("select rating, xp, derrotas, wos from jxj_lutadores where id = $1", [l]))[0];
+      const outro = await novoUsuario({ pro: true });
+      await erro(outro, "abandonar", { lutaId: lid }, /não encontrada/, 404);
+      const v = await ok(u, "abandonar", { lutaId: lid });
+      if (v.status !== "encerrada" || !v.resultado || v.resultado.metodo !== "WO" || v.resultado.vencedor !== "b" || v.resultado.abandono !== true) throw new Error("vista: " + JSON.stringify([v.status, v.resultado]));
+      const ef = v.efeitos && v.efeitos.a;
+      if (!ef || ef.resultado !== "derrota" || ef.xp !== 0 || ef.fichas !== 0) throw new Error("efeitos: " + JSON.stringify(ef));
+      const depois = (await q("select rating, xp, derrotas, wos from jxj_lutadores where id = $1", [l]))[0];
+      if (depois.derrotas !== antes.derrotas + 1 || depois.wos !== antes.wos + 1 || depois.xp !== antes.xp || !(depois.rating < antes.rating)) throw new Error("lutador: " + JSON.stringify([antes, depois]));
+      const t = await q("select eventos from jxj_trocas where luta_id = $1 order by round desc, troca desc limit 1", [lid]);
+      if (!t[0].eventos.some((e) => e.tipo === "abandono" && e.quem === "a")) throw new Error("sem o evento do abandono");
+      const v2 = await ok(u, "abandonar", { lutaId: lid });
+      const depois2 = (await q("select derrotas from jxj_lutadores where id = $1", [l]))[0];
+      if (v2.status !== "encerrada" || depois2.derrotas !== depois.derrotas) throw new Error("o segundo pedido mudou algo");
+      if (!v2.trocas.some((x) => (x.eventos || []).some((s) => /abandonou a luta/.test(s)))) throw new Error("texto do abandono no registro: " + JSON.stringify(v2.trocas.slice(-1)));
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const lg = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      await erro(u1, "abandonar", { lutaId: lg }, /só existe na luta contra bot/);
+      if ((await ok(u1, "luta", { lutaId: lg })).status !== "andamento") throw new Error("a luta entre gente mudou");
+      /* abandonar no mesmo instante em que a ação resolve a troca: um fim só */
+      await zerarLimites();
+      const u3 = await novoUsuario({ pro: true }), l3 = (await criar(u3)).id;
+      const lb = await botDoPro(u3, l3);
+      const vb = await ok(u3, "luta", { lutaId: lb });
+      await Promise.all([api(u3, "acao", { lutaId: lb, round: vb.round, troca: vb.troca, familia: "defesa" }), api(u3, "abandonar", { lutaId: lb })]);
+      const vf = await ok(u3, "abandonar", { lutaId: lb });
+      const fins = (await q("select eventos from jxj_trocas where luta_id = $1", [lb])).flatMap((x) => x.eventos).filter((e) => e.tipo === "fim");
+      const l3d = (await q("select derrotas, vitorias from jxj_lutadores where id = $1", [l3]))[0];
+      if (vf.status !== "encerrada" || fins.length !== 1 || l3d.derrotas + l3d.vitorias !== 1) throw new Error("abandono junto com a troca: " + JSON.stringify([vf.status, fins, l3d]));
+    });
+    await conf("definições (2026-10-29): acoes.vence igual ao ciclo do motor nos três papéis e a frase de cada variante", async () => {
+      const d = await ok(null, "definicoes");
+      for (const p of ["pe", "cima", "baixo"]) {
+        const motor = [...(MOTOR.VENCE_LISTA || {})[p] || []].sort().join(","), tela = [...((d.acoes.vence || {})[p] || [])].sort().join(",");
+        if (motor !== tela || !tela) throw new Error(`vence.${p}: "${tela}" x "${motor}"`);
+      }
+      for (const [id, x] of Object.entries(d.acoes.variantes)) if (!x.frase || x.frase !== MOTOR.VARIANTE_POR_ID[id].frase) throw new Error("frase de " + id);
+    });
     await conf("a conta dos bots não chama bot; lutador de outra conta é recusado; o contador do Online conta luta contra bot como uma pessoa e não conta a largada", async () => {
       await zerarLimites();
       const lb = (await criar(contaBots)).id;

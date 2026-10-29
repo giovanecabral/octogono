@@ -83,6 +83,8 @@ const VENCE = {
   cima: new Set(["golpes>pressao", "queda>pressao", "queda>golpes", "defesa>queda", "pressao>defesa", "pressao>golpes"]),
   baixo: new Set(["queda>golpes", "queda>pressao", "defesa>queda", "pressao>defesa", "pressao>pressao"]),
 };
+/* o mesmo ciclo em listas, pras definições (a tabela "Quem ganha de quem" da tela, 2026-10-29) */
+export const VENCE_LISTA = Object.fromEntries(Object.entries(VENCE).map(([p, s]) => [p, [...s]]));
 /* Quem leu o outro nesta troca: "a", "b" ou null (par neutro ou espelho). */
 export function quemLeu(papeis, acoes) {
   const { a, b } = acoes;
@@ -1050,6 +1052,7 @@ export function textoEvento(ev, nomes) {
     case "juizLevantou": return `Os dois ficaram parados no chão e o juiz levantou a luta.`;
     case "subFalhou": return fr ? `${q} tentou ${fr} e ${o} escapou.` : `${q} tentou a finalização e ${o} escapou.`;
     case "ausente": return `${nomes[ev.quem]} não escolheu a tempo (${ev.seguidas}ª seguida).`;
+    case "abandono": return `${q} abandonou a luta.`;
     case "fim": {
       const com = fr && !deDefesa ? ` com ${fr}` : "";
       return ev.metodo === "KO" ? (deDefesa ? `${q} venceu por nocaute no contra-ataque.` : `${q} venceu por nocaute${com}.`)
