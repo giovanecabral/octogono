@@ -1985,3 +1985,25 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-treino-lista b{color:var(--osso)}
 @media (max-width:720px){.jxj-treino-balao{padding:8px 10px}.jxj-treino-balao p{font-size:13px;min-width:0}.jxj-treino-seta{top:-28px}.jxj-treino-seta .ico{width:20px;height:20px}}
 @media (prefers-reduced-motion:reduce){.jxj-treino-seta{animation:none}}
+
+/* ---------- quem ganha de quem (2026-10-29) ---------- */
+.jxj-mesa-area{display:grid;grid-template-columns:minmax(0,1fr) 250px;align-items:stretch}
+.jxj-ciclo{display:flex;flex-direction:column;gap:7px;padding:14px 14px;border-left:1px solid rgba(255,255,255,.07);background:rgba(17,19,26,.55)}
+.jxj-ciclo-titulo{margin:0 0 2px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.jxj-ciclo-titulo b{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--osso)}
+.jxj-ciclo-titulo small{font-family:var(--f-ui);font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ouro)}
+.jxj-ciclo-linha{margin:0;display:grid;grid-template-columns:auto 1fr;gap:7px;align-items:center;padding:2px;transition:outline-color .3s}
+.jxj-ciclo-linha.agora{outline:2px solid var(--ouro);outline-offset:1px}
+.jxj-ciclo-vence{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.jxj-ciclo-vence i{font-style:normal;font-family:var(--f-ui);font-weight:800;font-size:11px;letter-spacing:.04em;color:var(--ganho)}
+.jxj-ciclo-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;font-family:var(--f-ui);font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;color:var(--tinta);
+  clip-path:polygon(5px 0,calc(100% - 5px) 0,100% 5px,100% calc(100% - 5px),calc(100% - 5px) 100%,5px 100%,0 calc(100% - 5px),0 5px)}
+.jxj-ciclo-chip .ico{font-size:13px}
+.jxj-ciclo-chip.f-golpes{background:#D7261E;--tinta:#fff}.jxj-ciclo-chip.f-queda{background:#D4A017;--tinta:#16120a}
+.jxj-ciclo-chip.f-defesa{background:#E9E4D8;--tinta:#14161c}.jxj-ciclo-chip.f-pressao{background:#1b1d24;--tinta:var(--osso);box-shadow:inset 0 0 0 2px var(--sangue)}
+@media (max-width:720px){
+  .jxj-mesa-area{grid-template-columns:1fr}
+  .jxj-ciclo{order:-1;border-left:0;border-bottom:1px solid rgba(255,255,255,.07);padding:10px 8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 8px}
+  .jxj-ciclo-titulo{grid-column:1/-1}
+  .jxj-ciclo-chip{font-size:10.5px;padding:2px 5px}
+}

@@ -14654,6 +14654,30 @@ async function testarJxJTelas() {
       semLixoV3(htmlDe(desde(m)), "mesa");
       await api(u2, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEle });
     });
+    await conf("tabela do ciclo (2026-10-29): uma linha por carta, as que ela vence pelo vence das definições, com os nomes do papel dele e a jogada marcada; o treino usa o mesmo ciclo em pé; a luta aberta mostra a tabela", async () => {
+      await vm.runInContext("jxjDef()", env.sandbox);
+      const D = vm.runInContext("JXJ_DEF.acoes", env.sandbox);
+      const FAMS = ["golpes", "queda", "defesa", "pressao"];
+      for (const papel of ["pe", "cima", "baixo"]) {
+        const dele = papel === "cima" ? "baixo" : papel === "baixo" ? "cima" : "pe";
+        const h = String(vm.runInContext(`jxjCiclo(${JSON.stringify(papel)},"queda").innerHTML`, env.sandbox));
+        const linhas = [...h.matchAll(/<p class="jxj-ciclo-linha( agora)?" data-f="(\w+)" data-vs="([\w,]*)">([\s\S]*?)<\/p>/g)];
+        if (linhas.length !== 4) throw new Error(`${papel}: ${linhas.length} linhas`);
+        for (const [, agora, f, vs, miolo] of linhas) {
+          const esperado = FAMS.filter((x) => D.vence[papel].includes(`${f}>${x}`)).join(",");
+          if (vs !== esperado) throw new Error(`${papel}/${f}: vence "${vs}", o motor diz "${esperado}"`);
+          if (!miolo.includes(D.familias[papel][f])) throw new Error(`${papel}/${f}: sem o nome da carta`);
+          for (const x of vs ? vs.split(",") : []) if (!miolo.includes(D.familias[dele][x])) throw new Error(`${papel}/${f}: sem o nome ${D.familias[dele][x]}`);
+          if (!!agora !== (f === "queda")) throw new Error(`${papel}/${f}: marca da jogada errada`);
+        }
+        semLixoV3T(h, "tabela " + papel);
+      }
+      const treino = vm.runInContext("JSON.stringify(Object.entries(JXJ_TREINO_VENCE).map(([a,b])=>a+'>'+b).sort())", env.sandbox);
+      if (treino !== JSON.stringify([...D.vence.pe].sort())) throw new Error("o treino tem outro ciclo: " + treino);
+      await lutaViva();
+      const m = await abrir(`luta/${lid}`);
+      if (!desde(m).some((n) => tem(n, "jxj-ciclo"))) throw new Error("a luta aberta sem a tabela");
+    });
     await conf("carta jogada (2026-10-29, achado jogando): fica na vaga enquanto o servidor responde; resposta velha da consulta não apaga a carta; postura recusada volta pra mão; a tela consulta numa cadeia só (cada carta jogada abria outra e a soma passava do limite)", async () => {
       await lutaViva();
       for (let k = 0; k < 3; k++) {

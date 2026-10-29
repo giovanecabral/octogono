@@ -9148,6 +9148,21 @@ function jxjPlacarRound(p,eu,ele){
    na revelação; a ação dele só de costas quando a vista diz que ele
    escolheu (regra da fase 2) e nunca de frente antes da revelação.
    revelar ({a, b}: o HTML da troca que acabou) ocupa as vagas de ação. */
+/* Quem ganha de quem (2026-10-29, pedido do dono): uma linha por carta sua,
+   no papel atual, com as cartas dele que ela vence. O ciclo vem das
+   definições (tirado do motor). destaque: a família que você jogou. */
+function jxjCiclo(papel,destaque){
+  const vence=(JXJ_DEF.acoes.vence||{})[papel]||[],dele=papel==="cima"?"baixo":papel==="baixo"?"cima":"pe";
+  const nomes=JXJ_DEF.acoes.familias||{};
+  const chip=(f,p)=>`<span class="jxj-ciclo-chip f-${f}">${ICONE(JXJ_ICONE_ACAO[f]||"luta")}${(nomes[p]||{})[f]||f}</span>`;
+  const titulo={pe:"Em pé",cima:"Você por cima",baixo:"Você por baixo"}[papel]||"";
+  const a=el("aside","jxj-ciclo");
+  a.innerHTML=`<p class="jxj-ciclo-titulo"><b>Quem ganha de quem</b><small>${titulo}</small></p>`+JXJ_FAMILIAS.map(f=>{
+    const vs=JXJ_FAMILIAS.filter(h=>vence.includes(`${f}>${h}`));
+    return `<p class="jxj-ciclo-linha${destaque===f?" agora":""}" data-f="${f}" data-vs="${vs.join(",")}">${chip(f,papel)}<span class="jxj-ciclo-vence"><i>ganha de</i>${vs.length?vs.map(h=>chip(h,dele)).join(""):"<i>ninguém</i>"}</span></p>`;
+  }).join("");
+  return a;
+}
 function jxjMesa(v,{eu,ele},revelar,{soltou=false}={}){
   const mesa=el("section","jxj-mesa"+(v.etapa?" com-postura":""));
   const acaoDe=f=>(v.acoes||[]).find(x=>x.familia===f)||{familia:f};
@@ -9231,7 +9246,14 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
   /* cartas (2026-10-28): a mesa, entre a faixa e o lance (luta v3 sem mão: sem mesa) */
   /* o momento decisivo (grogue, finalização encaixada) avisa antes da mesa */
   if(v.momentoDecisivo)tela.appendChild(jxjFaixaMomento(v.momentoDecisivo));
-  if(v.maos)tela.appendChild(jxjMesa(v,{eu,ele},revelar,{soltou}));
+  if(v.maos){
+    /* a mesa e, ao lado (no celular, antes), a tabela de quem ganha de quem */
+    const ultM=(v.trocas||[])[(v.trocas||[]).length-1];
+    const jogada=revelar&&ultM?(eu==="a"?ultM.acaoA:ultM.acaoB):null;
+    const areaMesa=el("div","jxj-mesa-area");
+    areaMesa.append(jxjMesa(v,{eu,ele},revelar,{soltou}),jxjCiclo(v.papel||"pe",jogada));
+    tela.appendChild(areaMesa);
+  }
   /* o lance: a troca que acabou de ser resolvida */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
   if(ult){
