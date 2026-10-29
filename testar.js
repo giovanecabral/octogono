@@ -14680,6 +14680,11 @@ async function testarJxJTelas() {
       await lutaViva();
       const m = await abrir(`luta/${lid}`);
       if (!desde(m).some((n) => tem(n, "jxj-ciclo"))) throw new Error("a luta aberta sem a tabela");
+      /* celular: a mesma tabela, compacta, no topo da zona da mão */
+      const comp = desde(m).filter((n) => tem(n, "jxj-ciclo") && tem(n, "compacto")).pop();
+      const cheia = desde(m).filter((n) => tem(n, "jxj-ciclo") && !tem(n, "compacto")).pop();
+      const vsDe = (n) => [...String(n.innerHTML).matchAll(/data-f="(\w+)" data-vs="([\w,]*)"/g)].map((x) => x[1] + ">" + x[2]).join(" ");
+      if (!comp || !cheia || vsDe(comp) !== vsDe(cheia)) throw new Error("tabela compacta: " + (comp ? vsDe(comp) : "ausente") + " x " + (cheia ? vsDe(cheia) : "ausente"));
     });
     await conf("barra nova (2026-10-29): jxjVida na escala 2,5 com piso 4 e 0 no nocaute; a troca nova desenha a barra com o dano de antes e anima até o de depois, com a faixa do golpe; o redesenho seguinte já vem no valor final e não anima de novo", async () => {
       const V = (d, n) => vm.runInContext(`jxjVida(${d},${n ? "true" : "false"})`, env.sandbox);

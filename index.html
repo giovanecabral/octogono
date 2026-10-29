@@ -9257,15 +9257,17 @@ function jxjPlacarRound(p,eu,ele){
 /* Quem ganha de quem (2026-10-29, pedido do dono): uma linha por carta sua,
    no papel atual, com as cartas dele que ela vence. O ciclo vem das
    definições (tirado do motor). destaque: a família que você jogou. */
-function jxjCiclo(papel,destaque){
+function jxjCiclo(papel,destaque,compacto=false){
   const vence=(JXJ_DEF.acoes.vence||{})[papel]||[],dele=papel==="cima"?"baixo":papel==="baixo"?"cima":"pe";
   const nomes=JXJ_DEF.acoes.familias||{};
-  const chip=(f,p)=>`<span class="jxj-ciclo-chip f-${f}">${ICONE(JXJ_ICONE_ACAO[f]||"luta")}${(nomes[p]||{})[f]||f}</span>`;
+  /* no celular a tabela vira uma faixa presa em cima da mão (compacto): só os ícones, nas cores das cartas */
+  const chip=(f,p)=>{ const n=(nomes[p]||{})[f]||f; return `<span class="jxj-ciclo-chip f-${f}" title="${n}">${ICONE(JXJ_ICONE_ACAO[f]||"luta")}<b>${n}</b></span>`; };
   const titulo={pe:"Em pé",cima:"Você por cima",baixo:"Você por baixo"}[papel]||"";
-  const a=el("aside","jxj-ciclo");
+  const a=el("aside","jxj-ciclo"+(compacto?" compacto":""));
+  if(compacto&&a.setAttribute)a.setAttribute("aria-label",`Quem ganha de quem, ${titulo.toLowerCase()}`);
   a.innerHTML=`<p class="jxj-ciclo-titulo"><b>Quem ganha de quem</b><small>${titulo}</small></p>`+JXJ_FAMILIAS.map(f=>{
     const vs=JXJ_FAMILIAS.filter(h=>vence.includes(`${f}>${h}`));
-    return `<p class="jxj-ciclo-linha${destaque===f?" agora":""}" data-f="${f}" data-vs="${vs.join(",")}">${chip(f,papel)}<span class="jxj-ciclo-vence"><i>ganha de</i>${vs.length?vs.map(h=>chip(h,dele)).join(""):"<i>ninguém</i>"}</span></p>`;
+    return `<p class="jxj-ciclo-linha${destaque===f?" agora":""}" data-f="${f}" data-vs="${vs.join(",")}">${chip(f,papel)}<span class="jxj-ciclo-vence"><i class="ganha">ganha de</i><span class="seta">${ICONE("chevron-dir")}</span>${vs.length?vs.map(h=>chip(h,dele)).join(""):"<i>ninguém</i>"}</span></p>`;
   }).join("");
   return a;
 }
@@ -9414,6 +9416,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     const tend=jxjTendencia(v.tendencia);
     if(tend)topo.appendChild(tend);
     zona.appendChild(topo);
+    if(v.maos)zona.appendChild(jxjCiclo(v.papel||"pe",null,true));
     if(v.meuSinal){
       zona.appendChild(el("p","jxj-espera",`${ICONE(JXJ_ICONE_ACAO[v.meuSinal]||"luta")}<span>Você mostrou <b>${JXJ_POSTURAS[v.meuSinal]}</b>. ${v.adversarioSinalizou?"Ele também mostrou. Revelando.":"Esperando a postura dele."}</span>`));
     }else{
@@ -9442,6 +9445,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
     const tend=jxjTendencia(v.tendencia);
     if(tend)topo.appendChild(tend);
     zona.appendChild(topo);
+    if(v.maos)zona.appendChild(jxjCiclo(v.papel||"pe",null,true));
     /* fase 2: as duas posturas, reveladas */
     if(v.sinais){
       if(jxjPrimeiraLuta(v,eu))zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>Ele mostrou ${JXJ_POSTURAS[v.sinais[ele]]}. Pode ser verdade ou finta.</span>`));
