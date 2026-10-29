@@ -5704,6 +5704,77 @@ regra, sem `localStorage`, com a marca). Os testes de tela que precisam
 da luta de apoio em andamento pedem uma viva (`lutaViva`): ela podia
 acabar pelo sorteio. Checklist em duas janelas: 16 de 16.
 
+## Online: o dano que aparece, a cena do fim, a tabela do ciclo e o abandono (2026-10-29)
+
+Pedido do dono, jogando as cartas: "a barra de vida mal diminui e de
+repente aparece vitória ou derrota", "quando vai ser nocaute ... uma
+animação que dê bastante emoção", "uma tabela que fique com a sequência de
+qual movimento ganha de qual" e "coloque a abandonar apenas em lutas com
+bots". Spec `docs/superpowers/specs/2026-10-29-online-dano-nocaute-design.md`,
+plano `docs/superpowers/plans/2026-10-29-online-dano-nocaute.md`, desenho
+aprovado no protótipo do navegador.
+
+### Por que a barra mal descia
+
+4.000 lutas simuladas: no nocaute o perdedor tem dano 11 (mediana; p10 5,
+p90 26) e a barra de 100 menos o dano ainda estava em 89%. O golpe que
+entra tira 4,8 (mediana) e só 32% das trocas têm dano. O nocaute é um
+sorteio que cresce com o dano (`(dano/100 + 0,3)^1,6`), não o fim da
+barra. E a troca que acabava a luta nem passava pela tela: o status virava
+`encerrada` e a tela pulava pro resultado.
+
+### O que mudou (só na tela, mais duas coisas nas definições e a ação nova)
+
+- **A barra** (`jxjVida`): 2,5 vezes o dano (`JXJ_ESCALA_VIDA`), piso de
+  4 enquanto ninguém caiu, 0 no nocaute. Só desenho: o motor, os textos e
+  o lance continuam com o dano do motor ("6,1 de dano"); o "−N" e a faixa
+  estão na escala da barra. Camadas: a atual (na hora), o pedaço que pisca
+  e o rastro (0,5 s depois); amarela abaixo de 50, vermelha pulsando abaixo
+  de 25.
+- **A troca resolvida** (`jxjEfeitos` com `antes`): o primeiro desenho
+  da troca nova parte do dano de antes dela (`jxjDanoAntes`: o dano final
+  menos os golpes e 5 por knockdown); depois da virada (900 ms), golpe a
+  golpe a cada 450 ms, a barra desce, o "−N" sobe, a faixa "entrou
+  Cruzado −24" entra em cima da carta dele, o retrato treme e o som (pesado
+  com 6,5 de dano ou mais). Knockdown: clarão, tremor forte, selo. `jxjPintarVida`
+  só desce: o redesenho no meio já vem no valor final e o passo atrasado
+  não faz a barra subir de novo. A carta da mesa deixou o número.
+- **A cena do fim** (`jxjCenaFim`): a luta que acaba com a tela aberta
+  mostra antes a troca final (a mesa, sem a mão) e então nocaute (a barra
+  inteira de uma vez, fagulhas, o retrato apagando), finalização (ele
+  bate três vezes) ou decisão (o sino), com a palavra letra por letra,
+  quem venceu e com o quê (a `frase` da variante, que as definições
+  passaram a mandar) e a narração ao vivo que já existia (nenhuma chamada
+  de IA nova). "Ver o resultado" abre o resultado; nada passa sozinho.
+  W.O., anulada e luta aberta já encerrada vão direto pro resultado.
+- **Quem ganha de quem** (`jxjCiclo`): o ciclo vem das definições
+  (`acoes.vence`, do `VENCE` do motor, fonte única; o treino tem a
+  cópia conferida num teste). Computador: coluna ao lado da mesa, uma linha
+  por carta, muda com a posição, a jogada marcada. Celular: uma faixa só
+  de ícones em cima da mão (antes da mesa, ela empurrava a revelação pra
+  baixo da mão fixa).
+- **Abandonar** (só contra bot): ação `abandonar` grava o W.O. pela
+  `jxj_gravar_troca` (sem SQL), com `abandono: true` no resultado e o
+  evento "Fulano abandonou a luta."; contra gente, 400. Na tela, o botão
+  embaixo do round e a confirmação na própria tela.
+- **Uma tela de luta por vez**: `jxjTelaLuta` pega o token antes de esperar
+  as definições (pego depois, duas aberturas seguidas ficavam com o mesmo
+  token e as duas consultavam).
+
+### Testes
+
+`jxj`: abandonar (resultado, rating, XP, fichas, `wos`, o segundo pedido,
+contra gente, quem não está na luta, junto com a troca); definições (`vence`
+e `frase`). `jxjtelas`: tabela (três papéis, a compacta igual à cheia, o
+treino), barra (`jxjVida`, `jxjDanoAntes`, a troca nova pela tela),
+cena do fim (seis finais pela função; nocaute, reabrir e W.O. pela tela),
+abandonar na tela. A luta de apoio da `jxjtelas` renova o prazo antes de
+ser usada (a suíte ficou mais longa e ela acabava por W.O. no meio do
+teste seguinte). Checklist no Chrome (computador e celular, contra bot,
+trocas gravadas no banco local com a página aberta): golpe, knockdown,
+nocaute, finalização, decisão, a tabela no chão, o abandono; sem erro de
+página.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

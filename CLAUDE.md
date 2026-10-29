@@ -194,6 +194,15 @@ metade). Regras do revamp que valem daqui pra frente:
   luta na conta e sem `jxj:treino`). Mexeu na vista do servidor ou na
   tela da luta: a vista do treino tem o mesmo formato e precisa
   acompanhar (teste "treino, o roteiro" passa a vista pela tela).
+- **Dano, cena do fim, ciclo e abandono (2026-10-29).** A barra é
+  `jxjVida` (2,5 vezes o dano, piso 4, 0 no nocaute; só desenho, os textos
+  seguem com o dano do motor). A troca nova parte do dano de antes
+  (`jxjDanoAntes`) e anima em `jxjEfeitos` com `antes`; `jxjPintarVida`
+  só desce. A luta que acaba com a tela aberta mostra a troca final e
+  `jxjCenaFim` antes do resultado (W.O., anulada e reabrir: direto). O
+  ciclo da tabela vem das definições (`acoes.vence`); no celular, a faixa
+  compacta em cima da mão. `abandonar` só contra bot, gravado pela
+  `jxj_gravar_troca` (sem SQL).
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

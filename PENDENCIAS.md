@@ -2542,3 +2542,11 @@ branch `online-cartas`.
    `vercel --prod`; `index.html` e `estilo.css` servidos iguais ao git.
    Sem SQL.
 
+## 50. Dano que aparece, cena do fim, tabela do ciclo e abandono contra bot (2026-10-29)
+
+Pedido do dono depois de jogar as cartas. Spec
+`docs/superpowers/specs/2026-10-29-online-dano-nocaute-design.md`, plano
+`docs/superpowers/plans/2026-10-29-online-dano-nocaute.md`, branch
+`online-dano`. Sem SQL. Deploy autorizado pelo dono ("faz o deploy aí")
+depois da bateria verde.
+
