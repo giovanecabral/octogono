@@ -183,6 +183,11 @@ metade). Regras do revamp que valem daqui pra frente:
   (`jxjCarta*`), porque `jxjVira`/`jxjApanha`/`jxjCai` são dos efeitos de
   antes. O DOM falso tem "reduzir movimento" ligado e não serializa
   filhos no `innerHTML`: teste novo de mesa lê as colunas.
+  **A tela da luta consulta numa cadeia só** (`ciclo` cancela o timer
+  antes de agendar; 2026-10-29): cada envio abria outra, a resposta velha
+  apagava a carta jogada e a soma passava do limite do servidor. Consulta
+  que saiu antes de um envio não vale; a carta jogada fica na vaga até a
+  resposta (`escolha`), e envio recusado a devolve pra mão.
 - **Treino guiado do Online (2026-10-28, Parte 2 das cartas).** Só na
   tela: `JXJ_TREINO` + `jxjTreinoVista` desenhado pela mesma
   `jxjDesenharCombate`; obrigatório enquanto `jxjPrecisaTreino` (nenhuma

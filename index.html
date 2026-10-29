@@ -8635,6 +8635,7 @@ function jxjRevelar(t,animar){
 }
 /* A carta tocada voa da mão até a vaga da mesa (um clone por cima, que some
    sozinho). Sem medida de tela ou com menos movimento, nada: o envio segue. */
+const JXJ_VOO_MS=500;
 function jxjVoarCarta(origem,idDestino){
   try{
     if(reduceMotion()||!origem||!origem.querySelector)return;
@@ -8646,7 +8647,7 @@ function jxjVoarCarta(origem,idDestino){
     Object.assign(v.style,{left:a.left+"px",top:a.top+"px",width:a.width+"px"});
     document.body.appendChild(v);
     requestAnimationFrame(()=>{ Object.assign(v.style,{left:b.left+"px",top:b.top+"px",transform:`scale(${b.width/a.width})`}); });
-    setTimeout(()=>{ if(v.remove)v.remove(); },500);
+    setTimeout(()=>{ if(v.remove)v.remove(); },JXJ_VOO_MS);
   }catch(e){}
 }
 /* ---------- treino guiado (cartas, Parte 2, 2026-10-28) ----------
@@ -8908,6 +8909,12 @@ async function jxjTelaLuta(id){
   /* cartas (2026-10-28): a troca que acabou fica na mesa por JXJ_REVELACAO_MS
      e anima só no primeiro desenho; a carta dele cai de costas uma vez */
   let revelacao=null,fimRevelacao=null,escolheuVisto=false;
+  /* carta jogada (2026-10-29, achado jogando): a escolha fica na vaga até o
+     servidor responder (a carta voa 500 ms e a resposta em produção demora
+     mais). Consulta que saiu antes de uma carta jogada, ou durante o envio,
+     chega velha e não vale. Uma cadeia de consulta só: cada envio agendava
+     outra e a soma passava do limite do servidor. */
+  let escolha=null,envios=0;
   const tick=setInterval(()=>{
     if(tk!==JXJ_TOKEN){ clearInterval(tick); return; }
     const alvo=document.getElementById("jxj-relogio");
@@ -8916,24 +8923,35 @@ async function jxjTelaLuta(id){
       if(anel&&anel.style&&vista&&vista.formato){ anel.style.setProperty("--p",String(Math.max(0,Math.min(1,relogio()/jxjTotalEtapa(vista))))); anel.classList.toggle("urgente",s<=5); } }
   },250);
   const ciclo=async(acao=null,extra={})=>{
-    if(tk!==JXJ_TOKEN)return;
+    if(tk!==JXJ_TOKEN)return false;
+    const envio=!!acao&&acao!=="luta",meu=envio?++envios:envios;
+    let deuCerto=true;
     try{
-      vista=await jxj(acao||"luta",{lutaId:id,...extra});
-      if(tk!==JXJ_TOKEN)return;
+      const r=await jxj(acao||"luta",{lutaId:id,...extra});
+      if(tk!==JXJ_TOKEN)return false;
+      if(envio||(meu===envios&&!enviando)){
+      vista=r;
       const ass=[vista.status,vista.round,vista.troca,vista.minhaAcao,vista.adversarioEscolheu,(vista.trocas||[]).length,vista.confirmado&&vista.confirmado.a,vista.confirmado&&vista.confirmado.b,!!vista.narracao,JSON.stringify(vista.revanche||null),
         vista.etapa,vista.meuSinal,vista.adversarioSinalizou,JSON.stringify(vista.sinais||null)].join("|");
+      if(envio)escolha=null;
       if(ass!==assinatura){ assinatura=ass; desenhar(); }
       relogio=vista.status==="confirmacao"?jxjRelogio(Date.parse(vista.confirmacaoAte)-Date.parse(vista.agora))
         :vista.status==="andamento"?jxjRelogio(Date.parse(vista.etapa==="sinal"&&vista.prazoSinal?vista.prazoSinal:vista.prazo)-Date.parse(vista.agora)):null;
+      }
     }catch(e){
-      if(tk!==JXJ_TOKEN)return;
+      if(tk!==JXJ_TOKEN)return false;
       if(!vista)return jxjErro(area,e,()=>ciclo());
+      deuCerto=false;
+      /* envio recusado: a carta volta pra mão, pra escolher de novo */
+      if(envio){ escolha=null; assinatura=""; desenhar(); }
       const av=document.getElementById("jxj-aviso"); if(av){ av.textContent=e.erro||"Reconectando"; av.hidden=false; }
     }
-    if(tk!==JXJ_TOKEN)return;
+    if(tk!==JXJ_TOKEN)return false;
+    clearTimeout(JXJ_TIMER);
     const espera=!vista?3000:vista.status==="andamento"?1200:vista.status==="confirmacao"?1500:(vista.status==="encerrada"&&vista.revanche&&!vista.revanche.luta&&Date.parse(vista.revanche.ate)>Date.parse(vista.agora))?2000:null;
     if(vista&&vista.status==="encerrada"&&vista.revanche&&vista.revanche.luta)return irPara("jxj","luta/"+vista.revanche.luta,{substituir:true});
     if(espera)JXJ_TIMER=setTimeout(()=>ciclo(),espera);
+    return deuCerto;
   };
   const lados=()=>{ const eu=vista.lado,ele=eu==="a"?"b":"a"; return{eu,ele}; };
   const desenhar=()=>{
@@ -8963,9 +8981,14 @@ async function jxjTelaLuta(id){
     }
     if(vista.status==="confirmacao")return jxjDesenharConfirmacao(area,vista,lados(),ciclo);
     if(vista.status==="andamento"){
-      jxjDesenharCombate(area,vista,lados(),async(fam,tipo="acao")=>{
+      const vd=escolha?{...vista,[escolha.tipo==="sinal"?"meuSinal":"minhaAcao"]:escolha.fam}:vista;
+      jxjDesenharCombate(area,vd,lados(),async(fam,tipo="acao")=>{
         if(enviando)return; enviando=true;
-        try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,familia:fam}); }finally{ enviando=false; }
+        escolha={tipo,fam};
+        /* a carta pousa na vaga quando o voo acaba (sem movimento, na hora) */
+        const pousar=()=>{ if(tk===JXJ_TOKEN&&escolha&&escolha.fam===fam&&vista&&vista.status==="andamento")desenhar(); };
+        if(reduceMotion())pousar(); else setTimeout(pousar,JXJ_VOO_MS);
+        try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,familia:fam}); }finally{ escolha=null; enviando=false; }
       },{nova:novas.length>0,maoNova,revelar,soltou});
       if(comecou)SOM.sinoInicio();
       return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova});

@@ -5621,6 +5621,29 @@ a tela consultar zeram `jxj_limites` (a tela consulta a cada volta do
 relógio falso). Checklist em duas janelas (computador e celular, gente e
 bot): 14 de 14, sem erro de página, a mão visível sem rolar.
 
+### A carta que sumia (2026-10-29, achado jogando)
+
+O dono jogou em produção: a carta voava até a vaga, sumia e, quando
+voltava, às vezes era Guarda alta (a postura padrão). Reproduzido no
+Chrome local com 700 ms de atraso por pedido. Duas causas:
+
+- **A vaga esperava o servidor.** O voo dura 500 ms (`JXJ_VOO_MS`) e a
+  resposta em produção demora mais. Agora a escolha fica na vaga até a
+  resposta (`escolha` em `jxjTelaLuta`; sem movimento, na hora). Envio
+  recusado devolve a carta pra mão (antes as cartas ficavam desligadas
+  até o fim da etapa, e a postura caía na padrão).
+- **Uma cadeia de consulta por carta jogada.** Cada envio agendava outra
+  consulta e nenhuma era cancelada: depois de 4 trocas, 26 consultas em
+  6 s (o certo é 3). Resposta velha chegava depois da nova e apagava a
+  carta, e numa luta inteira a soma passava do limite do servidor (600
+  por 10 min): a tela congelava. Vinha desde o lançamento do Online; com
+  postura e ação por troca, dobrou. Agora `ciclo` cancela o timer antes
+  de agendar e a consulta que saiu antes de um envio (ou durante) não vale.
+
+Teste na `jxjtelas` ("carta jogada"): relógio com cancelamento e fetch
+com portas; cada uma das quatro correções tirada sozinha reprova.
+Depois, no Chrome com o atraso: a carta voa e fica, e 3 consultas em 6 s.
+
 ## Online em cartas, Parte 2: o treino guiado (2026-10-28)
 
 Pedido do dono: "a primeira vez do jogador pode ser meio confusa"; ao

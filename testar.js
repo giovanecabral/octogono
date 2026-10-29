@@ -14612,6 +14612,60 @@ async function testarJxJTelas() {
       semLixoV3(htmlDe(desde(m)), "mesa");
       await api(u2, "acao", { lutaId: lid, round: vs.round, troca: vs.troca, familia: fEle });
     });
+    await conf("carta jogada (2026-10-29, achado jogando): fica na vaga enquanto o servidor responde; resposta velha da consulta não apaga a carta; postura recusada volta pra mão; a tela consulta numa cadeia só (cada carta jogada abria outra e a soma passava do limite)", async () => {
+      await lutaViva();
+      for (let k = 0; k < 3; k++) {
+        const a = await api(u1, "luta", { lutaId: lid }), b = await api(u2, "luta", { lutaId: lid });
+        if (a.etapa === "sinal" && !a.meuSinal && !a.minhaAcao && !b.minhaAcao) break;
+        for (const [u, v] of [[u1, a], [u2, b]]) if (!v.minhaAcao) await api(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: naMao(v, "defesa") });
+      }
+      await db.query("update jxj_lutas set prazo = now() + interval '60 seconds' where id = $1", [lid]);   // a etapa da postura com folga (o assentar da tela consulta o banco a cada volta e leva segundos)
+      const m = await abrir(`luta/${lid}`);
+      /* relógio com cancelamento (o do DOM falso não cancela) e o fetch com portas */
+      const agenda = new Map(); let nId = 100000;
+      const stAntes = env.sandbox.setTimeout, ctAntes = env.sandbox.clearTimeout, fAntes = env.sandbox.fetch;
+      const porta = () => { let abrir; const p = new Promise((r) => { abrir = r; }); return { p, abrir }; };
+      const dormir = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 5)); };
+      let portaConsulta = null, portaSinal = null, recusarSinal = false;
+      env.sandbox.setTimeout = (fn, ms) => { const id = ++nId; agenda.set(id, { fn, ms }); return id; };
+      env.sandbox.clearTimeout = (id) => { agenda.delete(id); };
+      env.sandbox.fetch = async (u, op) => {
+        const corpo = JSON.parse(op.body);
+        if (corpo.acao === "luta" && portaConsulta) { const p = portaConsulta.p, r = await fAntes(u, op); await p; return r; }   // o servidor responde já; a resposta chega depois
+        if (corpo.acao === "sinal" && recusarSinal) return { ok: false, status: 400, json: async () => ({ erro: "A etapa da postura acabou." }) };
+        if (corpo.acao === "sinal" && portaSinal) await portaSinal.p;   // o servidor ainda não gravou
+        return fAntes(u, op);
+      };
+      const vagaEu = () => { const h = desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n"); return (h.match(/id="jxj-vaga-postura-eu"[^>]*>\s*<span class="jxj-carta (f-\w+)/) || [])[1] || null; };
+      const posturas = () => desde(m).filter((n) => tem(n, "jxj-postura"));
+      const ativas = () => { const t = posturas(); const ult = t.slice(-4); return ult.filter((b) => !b.disabled); };
+      const consultas = () => [...agenda.values()].filter((x) => x.ms === 1200).length;
+      try {
+        /* 1. postura recusada: a carta volta pra mão e dá pra escolher de novo */
+        recusarSinal = true;
+        let b = ativas()[0];
+        if (!b) { const v = await api(u1, "luta", { lutaId: lid }); throw new Error("sem carta de postura na mão: " + JSON.stringify([v.status, v.etapa, v.meuSinal, v.minhaAcao, posturas().length, posturas().map((x) => !!x.disabled)])); }
+        b.onclick(); await dormir();
+        recusarSinal = false;
+        if (vagaEu()) throw new Error("postura recusada ficou na vaga: " + vagaEu());
+        if (!ativas().length) throw new Error("postura recusada: as cartas da mão ficaram desligadas");
+        /* 2. o servidor demora: a carta já fica na vaga */
+        portaSinal = porta();
+        b = ativas()[0]; const fam = (String(b.innerHTML).match(/jxj-carta (f-\w+)/) || [])[1];
+        /* uma consulta sai antes da carta e a resposta dela chega depois */
+        portaConsulta = porta();
+        env.drenar(); await dormir();
+        b.onclick(); await dormir();
+        if (vagaEu() !== fam) throw new Error(`enquanto o servidor responde, a vaga mostra ${vagaEu()} (esperava ${fam})`);
+        portaSinal.abrir(); portaSinal = null; await dormir();
+        if (vagaEu() !== fam) throw new Error(`depois da resposta, a vaga mostra ${vagaEu()} (esperava ${fam})`);
+        /* 3. a resposta velha da consulta chega: a carta continua */
+        const pc = portaConsulta; portaConsulta = null; pc.abrir(); await dormir();
+        if (vagaEu() !== fam) throw new Error(`a resposta velha da consulta apagou a carta (vaga: ${vagaEu()})`);
+        /* 4. uma cadeia de consulta só */
+        if (consultas() !== 1) throw new Error(`${consultas()} consultas agendadas (esperava 1)`);
+      } finally { env.sandbox.setTimeout = stAntes; env.sandbox.clearTimeout = ctAntes; env.sandbox.fetch = fAntes; }
+    });
     await conf("revelação (cartas 2026-10-28): a troca que acabou aparece nas vagas de ação com as duas cartas jogadas, a que leu com brilho, o carimbo FINTA e a animação só no primeiro desenho; um redesenho no meio (ele mostrou a postura nova) não reinicia nem apaga; depois do tempo, a mesa volta pra troca nova", async () => {
       await lutaViva();
       const colunas = (m) => desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
