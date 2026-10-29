@@ -14315,7 +14315,7 @@ async function testarJxJTelas() {
       const hud = nos.filter((n) => tem(n, "jxj-hud")).pop();
       if (!hud || !nos.some((n) => n.id === "jxj-card-eu") || !nos.some((n) => n.id === "jxj-card-ele")) throw new Error("sem o placar dos dois lados");
       const hHud = htmlDe(nos.filter((n) => n.id === "jxj-card-eu" || n.id === "jxj-card-ele"));
-      if ((hHud.match(/class="jxj-vida"[^>]*><i style="width:100%"/g) || []).length !== 2) throw new Error("vida cheia no começo: " + hHud.replace(/\s+/g, " ").slice(0, 300));
+      if ((hHud.match(/id="jxj-vida-[ab]"[^>]*--vida:100%/g) || []).length !== 2) throw new Error("vida cheia no começo: " + hHud.replace(/\s+/g, " ").slice(0, 300));
       if (!htmlDe(nos.filter((n) => tem(n, "jxj-hud-centro"))).includes('id="jxj-anel"')) throw new Error("sem o relógio em anel");
       /* cartas (2026-10-28): o ciclo dos 4 ícones saiu; cada carta diz quem ela ganha e de quem perde */
       if (nos.some((n) => tem(n, "jxj-ciclo-pe"))) throw new Error("o ciclo dos 4 ícones voltou (cada carta já diz quem ganha de quem)");
@@ -14677,6 +14677,40 @@ async function testarJxJTelas() {
       await lutaViva();
       const m = await abrir(`luta/${lid}`);
       if (!desde(m).some((n) => tem(n, "jxj-ciclo"))) throw new Error("a luta aberta sem a tabela");
+    });
+    await conf("barra nova (2026-10-29): jxjVida na escala 2,5 com piso 4 e 0 no nocaute; a troca nova desenha a barra com o dano de antes e anima até o de depois, com a faixa do golpe; o redesenho seguinte já vem no valor final e não anima de novo", async () => {
+      const V = (d, n) => vm.runInContext(`jxjVida(${d},${n ? "true" : "false"})`, env.sandbox);
+      for (const [d, n, e] of [[0, false, 100], [10, false, 75], [4.8, false, 88], [60, false, 4], [60, true, 0], [11, true, 0]])
+        if (V(d, n) !== e) throw new Error(`jxjVida(${d},${n}) = ${V(d, n)}, esperava ${e}`);
+      /* o dano de antes da troca: o dano final menos os golpes e 5 por knockdown (várias trocas novas de uma vez: parte da penúltima) */
+      const da = JSON.parse(vm.runInContext(`JSON.stringify(jxjDanoAntes({a:{dano:20},b:{dano:17.4}},{ev:[{tipo:"golpe",quem:"a",dano:6.2},{tipo:"knockdown",quem:"a"},{tipo:"bloqueou",quem:"b"},{tipo:"contra",quem:"b",dano:3}]}))`, env.sandbox));
+      if (Math.abs(da.a - 17) > 1e-9 || Math.abs(da.b - 6.2) > 1e-9) throw new Error("jxjDanoAntes: " + JSON.stringify(da));
+      /* luta nova (a de apoio pode estar no fim do round) */
+      await db.query("update jxj_lutas set status = 'cancelada' where id = $1 and status = 'andamento'", [lid]);
+      await db.query("update jxj_contas set luta_aberta_id = null");
+      await lutaViva();
+      const m = await abrir(`luta/${lid}`);
+      const vs = await api(u1, "luta", { lutaId: lid }), eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      const L = (await db.query("select estado, round, troca from jxj_lutas where id = $1", [lid])).rows[0];
+      const est = L.estado, antes = est[ele].dano, depois = Math.round((antes + 6) * 10) / 10;
+      est[ele].dano = depois; est.troca = L.troca + 1;
+      const acao = (l) => (l === eu ? "golpes" : "pressao"), vari = (l) => (l === eu ? "cruzado" : "cortar");
+      await db.query("insert into jxj_trocas (luta_id, round, troca, acao_a, acao_b, eventos) values ($1, $2, $3, $4, $5, $6)",
+        [lid, L.round, L.troca, acao("a"), acao("b"), JSON.stringify([{ tipo: "escolha", va: vari("a"), vb: vari("b") }, { tipo: "golpe", quem: eu, dano: 6, v: "cruzado" }])]);
+      await db.query("update jxj_lutas set estado = $2, troca = $3, versao = versao + 1, prazo = now() + interval '60 seconds' where id = $1", [lid, JSON.stringify(est), L.troca + 1]);
+      env.sandbox.document.getElementById(`jxj-vida-${ele}`).dataset.vida = "x";
+      const m2 = env.todos.length;
+      for (const ate = Date.now() + 8000; Date.now() < ate && !env.todos.slice(m2).some((n) => tem(n, "jxj-golpe-tag"));) await assentar(40);
+      await db.query("delete from jxj_limites");
+      const cards = env.todos.slice(m2).filter((n) => n.id === "jxj-card-ele").map((n) => String(n.innerHTML));
+      const barra = (h) => (h.match(new RegExp(`id="jxj-vida-${ele}"[^>]*--vida:(\\d+)%`)) || [])[1];
+      if (!cards.length || barra(cards[0]) !== String(V(antes))) throw new Error(`primeiro desenho da troca nova: barra ${cards.length ? barra(cards[0]) : "sem placar"}, esperava ${V(antes)}`);
+      const final = env.sandbox.document.getElementById(`jxj-vida-${ele}`).dataset.vida;
+      if (final !== String(V(depois))) throw new Error(`depois da animação a barra está em ${final}, esperava ${V(depois)}`);
+      const tags = env.todos.slice(m2).filter((n) => tem(n, "jxj-golpe-tag"));
+      if (tags.length !== 1 || !String(tags[0].innerHTML).includes("Cruzado") || !String(tags[0].innerHTML).includes(`−${V(antes) - V(depois)}`)) throw new Error("faixa do golpe: " + tags.map((n) => n.innerHTML).join(" | "));
+      if (cards.length > 1 && barra(cards[cards.length - 1]) !== String(V(depois))) throw new Error(`redesenho depois da animação: barra ${barra(cards[cards.length - 1])}, esperava ${V(depois)}`);
+      if (/class="jxj-pop dano/.test(env.todos.slice(m2).map((n) => String(n.innerHTML)).join(""))) throw new Error("a carta da mesa ainda mostra o número");
     });
     await conf("carta jogada (2026-10-29, achado jogando): fica na vaga enquanto o servidor responde; resposta velha da consulta não apaga a carta; postura recusada volta pra mão; a tela consulta numa cadeia só (cada carta jogada abria outra e a soma passava do limite)", async () => {
       await lutaViva();

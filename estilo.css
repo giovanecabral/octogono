@@ -1600,12 +1600,25 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-hud-nome span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jxj-hud-nome small{flex:none;font-size:11px;letter-spacing:.14em;color:var(--sangue-vivo)}
 .jxj-hud-nome .jxj-selo-bot{flex:none;margin-left:0}
-.jxj-vida{display:block;height:12px;background:rgba(255,255,255,.08);overflow:hidden}
-.jxj-vida i{display:block;height:100%;background:linear-gradient(90deg,#249A5B,var(--ganho));transition:width .5s var(--ease-soco)}
-.jxj-vida.baixa i{background:linear-gradient(90deg,var(--sangue-escuro),var(--sangue-vivo))}
+/* barra de vida (2026-10-29): a atual, o pedaço perdido que pisca e o rastro que desce depois; marcas de 10 em 10 */
+.jxj-vida{display:block;position:relative;height:14px;background:rgba(255,255,255,.07);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);--vida:100%;--rastro:100%}
+.jxj-vida i{position:absolute;top:0;bottom:0;left:0;display:block}
+.jxj-vida .rastro{width:var(--rastro);background:linear-gradient(180deg,#ff8a3d,var(--sangue-vivo));transition:width .7s cubic-bezier(.4,0,.2,1)}
+.jxj-vida .atual{width:var(--vida);background:linear-gradient(180deg,#5be39a,var(--ganho) 55%,#1f9a58);transition:width .12s linear}
+.jxj-vida.ko .atual{transition:width .95s cubic-bezier(.65,0,.35,1)}
+.jxj-vida.ko .rastro{transition:width .5s ease-in}
+.jxj-vida[data-nivel="meio"] .atual{background:linear-gradient(180deg,#ffd257,var(--ouro) 55%,#a57c0c)}
+.jxj-vida[data-nivel="critico"] .atual{background:linear-gradient(180deg,#ff6a5c,var(--sangue-vivo) 55%,#a5160f);animation:jxjVidaCritica .9s ease-in-out infinite}
+@keyframes jxjVidaCritica{50%{filter:brightness(1.45)}}
+.jxj-vida .flash{left:var(--flash-de,0);width:var(--flash-w,0);background:#fff;opacity:0}
+.jxj-vida.pisca .flash{animation:jxjVidaPedaco .42s ease-out}
+@keyframes jxjVidaPedaco{0%{opacity:1}100%{opacity:0}}
+.jxj-vida::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 2px),rgba(7,8,11,.55) calc(10% - 2px) 10%);pointer-events:none}
+.jxj-hud-lado.ele .jxj-vida{transform:scaleX(-1)}
+.jxj-vida-num{font-weight:inherit}
 .jxj-folego{display:block;height:5px;background:rgba(255,255,255,.06);overflow:hidden}
 .jxj-folego i{display:block;height:100%;background:var(--ouro);transition:width .5s var(--ease-soco)}
-.jxj-hud-lado.ele .jxj-vida i,.jxj-hud-lado.ele .jxj-folego i{margin-left:auto}
+.jxj-hud-lado.ele .jxj-folego i{margin-left:auto}
 .jxj-hud-num{display:flex;gap:12px;font-family:var(--f-ui);font-size:13px;letter-spacing:.06em;color:var(--osso-2)}
 .jxj-hud-lado.ele .jxj-hud-num{justify-content:flex-end}
 .jxj-hud-num i{display:inline-flex;align-items:center;gap:4px;font-style:normal}
@@ -2007,3 +2020,28 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
   .jxj-ciclo-titulo{grid-column:1/-1}
   .jxj-ciclo-chip{font-size:10.5px;padding:2px 5px}
 }
+
+/* ---------- o golpe que entrou (2026-10-29) ---------- */
+.jxj-hud-lado{position:relative}
+.jxj-pop-vida{position:absolute;left:50%;top:14px;z-index:7;font-family:var(--f-titulo);font-size:30px;color:var(--sangue-vivo);text-shadow:0 2px 0 #000,0 0 14px rgba(232,54,45,.7);pointer-events:none;animation:jxjPopVida 1.3s var(--ease-soco) forwards}
+.jxj-pop-vida.grande{font-size:44px}
+@keyframes jxjPopVida{0%{transform:translate(-50%,12px) scale(.5);opacity:0}18%{transform:translate(-50%,0) scale(1.25);opacity:1}32%{transform:translate(-50%,0) scale(1)}100%{transform:translate(-50%,-46px);opacity:0}}
+.jxj-mesa-lado{position:relative}
+.jxj-golpe-tag{position:absolute;top:-6px;z-index:8;display:flex;align-items:center;gap:7px;padding:4px 11px 4px 9px;background:#0b0b0d;border-left:4px solid var(--sangue-vivo);
+  font-family:var(--f-titulo);font-size:18px;text-transform:uppercase;white-space:nowrap;pointer-events:none;box-shadow:0 8px 20px rgba(0,0,0,.6);animation:jxjGolpeTag 1.9s var(--ease-soco) forwards}
+.jxj-golpe-tag.ele{right:0}.jxj-golpe-tag.eu{left:0;animation-name:jxjGolpeTagEu}
+.jxj-golpe-tag small{font-family:var(--f-ui);font-weight:700;font-size:11px;letter-spacing:.16em;color:var(--cinza)}
+.jxj-golpe-tag em{font-style:normal;color:var(--sangue-vivo)}
+@keyframes jxjGolpeTag{0%{opacity:0;transform:translateX(-60px) skewX(-12deg)}12%{opacity:1;transform:translateX(6px) skewX(-6deg)}20%{transform:none}80%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-8px)}}
+@keyframes jxjGolpeTagEu{0%{opacity:0;transform:translateX(60px) skewX(12deg)}12%{opacity:1;transform:translateX(-6px) skewX(6deg)}20%{transform:none}80%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-8px)}}
+.jxj-selo-kd{position:absolute;left:50%;top:40%;z-index:8;font-family:var(--f-titulo);font-size:24px;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:var(--sangue);padding:2px 12px;
+  box-shadow:0 0 0 2px #0b0b0d,0 10px 24px rgba(0,0,0,.7);pointer-events:none;animation:jxjSeloKD 1.6s var(--ease-soco) forwards}
+@keyframes jxjSeloKD{0%{opacity:0;transform:translate(-50%,-50%) rotate(-8deg) scale(2.4)}14%{opacity:1;transform:translate(-50%,-50%) rotate(-8deg) scale(.92)}22%{transform:translate(-50%,-50%) rotate(-8deg) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) rotate(-8deg)}}
+.jxj-combate.jxj-tremor{animation:jxjTremor .38s}
+.jxj-combate.jxj-tremor-forte{animation:jxjTremorForte .7s}
+@keyframes jxjTremor{0%,100%{transform:none}20%{transform:translate(-4px,2px)}40%{transform:translate(4px,-2px)}60%{transform:translate(-2px,1px)}80%{transform:translate(2px,0)}}
+@keyframes jxjTremorForte{0%,100%{transform:none}10%{transform:translate(-12px,6px) rotate(-.6deg)}20%{transform:translate(11px,-7px) rotate(.5deg)}30%{transform:translate(-9px,4px)}45%{transform:translate(7px,-3px)}60%{transform:translate(-4px,2px)}80%{transform:translate(2px,-1px)}}
+body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:#fff;pointer-events:none;animation:jxjClarao .5s ease-out forwards}
+@keyframes jxjClarao{0%{opacity:.9}100%{opacity:0}}
+@media (max-width:720px){.jxj-golpe-tag{font-size:14px;padding:3px 7px}.jxj-pop-vida{font-size:24px}.jxj-pop-vida.grande{font-size:34px}.jxj-vida{height:12px}}
+@media (prefers-reduced-motion:reduce){.jxj-vida .atual,.jxj-vida .rastro{transition:none}.jxj-vida[data-nivel="critico"] .atual,.jxj-pop-vida,.jxj-golpe-tag,.jxj-selo-kd,.jxj-combate.jxj-tremor,.jxj-combate.jxj-tremor-forte{animation:none}body.jxj-clarao::after{display:none}}
