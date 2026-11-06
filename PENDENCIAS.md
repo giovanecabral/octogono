@@ -2494,6 +2494,11 @@ Falta, do dono:
 3. Decidir as propostas da fase 6 e autorizar (se quiser) umas 20
    chamadas reais pra medir o pedido novo do fim de round.
 
+Fechado em 2026-11-05 (item 51): 1 conferido em 2026-10-23; 2 feito (o
+dono rodou, teto 3000 conferido); 3 adiado: as propostas (a) e (b)
+esperam lutas de jogadores de verdade, e as 20 chamadas pagas viraram uma
+consulta só de leitura (`fonte` de cada `narracao`).
+
 
 ## 48. Online com estratégia por informação (2026-10-27)
 
@@ -2550,3 +2555,38 @@ Pedido do dono depois de jogar as cartas. Spec
 `online-dano`. Sem SQL. Deploy autorizado pelo dono ("faz o deploy aí")
 depois da bateria verde.
 
+
+## 51. Lançamento por anúncio (2026-11-05)
+
+O Discord está vazio, então o lançamento vem de anúncio pago no X/Twitter.
+Os primeiros dias, com pouco dinheiro, servem de teste pequeno.
+
+Feito pelo dono:
+- Limite de e-mail resolvido (era o Resend grátis, 100 por dia).
+- OpenRouter recarregado, com limite.
+- Pagamento real do Pro de ponta a ponta (Pix): Pro ativo, `dias` 30,
+  uma linha `ATIVACAO` e uma de pagamento, e 30 dias de novo 5 minutos
+  depois (uma ativação só).
+- Teto da narração do Online em 3000 (`narracao_ia_dia`). Uso até aqui:
+  16 chamadas no mês inteiro (o máximo foi 10, em 2026-10-29), ou seja,
+  quase ninguém lutou no Online ainda.
+
+Conferido sem o dono: os deploys antigos que serviam
+`PLANO-LANCAMENTO.md` e `ESTADO-ATUAL.md` não existem mais (o mais antigo
+é de 2026-10-05, depois do `.vercelignore`); os endereços `*.vercel.app`
+pedem login da Vercel (`ssoProtection`); os dois arquivos dão 404 no site.
+
+Decisões:
+- Vercel Pro fica pra depois (primeiro investimento, o dono quer ver
+  retorno antes). Com isso, os eventos do funil do Vercel Analytics
+  provavelmente não gravam. Alternativa oferecida: o funil numa tabela do
+  Supabase (migração nova, só com aprovação).
+- Paciente forte: voltou pra dentro da faixa (43,5% depois das fases 3
+  e 4); o piso de 42 no teste fica, porque está a 0,5 ponto do limite.
+- Variantes (a) e (b): adiadas até ter lutas de jogadores de verdade.
+
+Falta, do dono:
+1. Jogar em produção o `be265cd` (barra, cena do fim, tabela, abandono).
+2. Depois de 2 ou 3 dias de anúncio, rodar
+   `ferramentas/online-estrategia-metricas.sql` e as consultas da
+   narração (`fonte` por `destaque`, e `jxj_narracao_uso` contra o teto).
