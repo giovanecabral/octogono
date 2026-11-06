@@ -5775,6 +5775,26 @@ trocas gravadas no banco local com a página aberta): golpe, knockdown,
 nocaute, finalização, decisão, a tabela no chão, o abandono; sem erro de
 página.
 
+### Jogando em produção (2026-11-06)
+
+Duas lutas contra bot na conta do dono (vitória por decisão e um
+abandono) confirmaram a barra, a faixa do golpe, a cena DECISÃO, a tabela
+e o abandono. Três detalhes corrigidos:
+
+- **Nome em minúscula travava a narração da IA.** O lutador se chama
+  "cabral". O filtro `nomesInventados` comparava com diferença de
+  maiúscula: quando a IA escrevia "Cabral", virava nome inventado e a
+  narração caía no molde. O mesmo acontecia com a exigência de citar um
+  dos nomes (`validarNarracaoTroca`) e o nome de quem venceu na narração
+  do fim. Agora as três comparam sem diferença de maiúscula (`citaNome`).
+  Suíte `jxj`.
+- **Frase começando em minúscula** ("cabral levou o round 3"):
+  `jxjFrase` põe maiúscula no começo de cada frase na tela (lance,
+  registro, cena do fim, resultado, narração do fim); o nome no meio da
+  frase fica como o jogador escreveu. Suíte `jxjtelas`.
+- **"Contar como foi" depois do abandono:** saiu; a narração diz que a
+  luta acabou no abandono.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

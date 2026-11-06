@@ -95,9 +95,16 @@ const PALAVRAS_LIVRES = new Set(["Round", "O", "A", "Os", "As", "No", "Na", "Nos
   "Logo", "Então", "Assim", "Mesmo", "Ainda", "Também", "Só", "Já", "Mas", "E", "Quando", "Que", "Agora", "Até", "Por", "Pelo",
   "Pela", "Para", "Pra", "Entre", "Contra", "Sobre", "Ele", "Ela", "Ambos", "Cada", "Outra", "Outro", "Mais", "Nenhum", "Nenhuma",
   "Primeiro", "Segundo", "Terceiro", "Quarto", "Quinto", "Foi", "Tudo", "Isso", "Este", "Esta", "Esse", "Essa", "Seu", "Sua", "Dois"]);
+/* o texto cita o nome? Sem diferença de maiúscula, pelo mesmo motivo do
+   nomesInventados (a narração do fim usa pra conferir quem venceu) */
+export function citaNome(texto, nome) {
+  return String(texto).toLowerCase().includes(String(nome).toLowerCase());
+}
 export function nomesInventados(texto, nomes) {
-  const permitidos = new Set([...String(nomes.a).split(/\s+/), ...String(nomes.b).split(/\s+/)]);
-  return (String(texto).match(/[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+/g) || []).filter((w) => !permitidos.has(w) && !PALAVRAS_LIVRES.has(w));
+  /* sem diferença de maiúscula (2026-11-06): o lutador "cabral" virava nome
+     inventado sempre que a IA escrevia "Cabral", e a narração caía no molde */
+  const permitidos = new Set([...String(nomes.a).split(/\s+/), ...String(nomes.b).split(/\s+/)].map((w) => w.toLowerCase()));
+  return (String(texto).match(/[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+/g) || []).filter((w) => !permitidos.has(w.toLowerCase()) && !PALAVRAS_LIVRES.has(w));
 }
 /* palavra de resultado só passa se o mesmo radical está nos fatos: a IA
    escreveu "encaixou o triângulo, vencendo por decisão" numa luta que
@@ -127,7 +134,7 @@ export function validarNarracaoTroca(texto, fatos, nomes, d = null) {
   const numeros = semNomes.match(/\d+(?:[.,]\d+)?/g) || [];
   if (numeros.some((n) => !fatos.includes(n))) return null;
   if (nomesInventados(t, nomes).length) return null;
-  if (!t.includes(nomes.a) && !t.includes(nomes.b)) return null;
+  if (!citaNome(t, nomes.a) && !citaNome(t, nomes.b)) return null;
   return t;
 }
 

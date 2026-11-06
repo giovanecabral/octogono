@@ -7721,6 +7721,10 @@ async function jxj(acao,dados={}){
 }
 async function jxjDef(){ if(!JXJ_DEF)JXJ_DEF=await jxj("definicoes"); return JXJ_DEF; }
 const jxjEsc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/* frase com maiúscula no começo (2026-11-06, jogando em produção): o
+   lutador "cabral" abria a frase em minúscula ("cabral levou o round 3").
+   Só a primeira letra de cada frase; o nome no meio fica como foi escrito. */
+const jxjFrase=s=>String(s==null?"":s).replace(/(^|\.\s+)([a-záéíóúâêôãõç])/g,(m,a,c)=>a+c.toUpperCase());
 const jxjEstilo=id=>(JXJ_DEF&&JXJ_DEF.estilos[id]&&JXJ_DEF.estilos[id].nome)||id;
 const jxjCategoria=id=>(JXJ_DEF&&JXJ_DEF.categorias[id]&&JXJ_DEF.categorias[id].nome)||nomeDivisao(id)||id;
 const jxjMetodo=m=>({KO:"Nocaute",TKO:"Nocaute técnico",FIN:"Finalização",DEC:"Decisão",EMPATE:"Empate",WO:"W.O.",ANULADA:"Anulada"}[m]||m);
@@ -9398,9 +9402,9 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
         <span class="eu">${ICONE(JXJ_ICONE_ACAO[famEu]||"luta")}<b>${jxjEsc(nomeVar(meu,famEu))}</b>${marca(eu)}</span>
         <i>contra</i>
         <span class="ele">${marca(ele)}<b>${jxjEsc(nomeVar(dele,famEle))}</b>${ICONE(JXJ_ICONE_ACAO[famEle]||"luta")}</span></div>
-      ${ult.narracao&&ult.narracao.texto?`<p class="jxj-narracao-troca">${jxjEsc(ult.narracao.texto)}</p>`:""}
+      ${ult.narracao&&ult.narracao.texto?`<p class="jxj-narracao-troca">${jxjEsc(jxjFrase(ult.narracao.texto))}</p>`:""}
       ${jxjPorque(ult,eu)}
-      <p class="jxj-ultima-txt">${(ult.eventos||[]).map(jxjEsc).join(" ")||"Nada mudou."}</p>`;
+      <p class="jxj-ultima-txt">${(ult.eventos||[]).map(x=>jxjEsc(jxjFrase(x))).join(" ")||"Nada mudou."}</p>`;
     tela.appendChild(sec);
   }
   /* ações (a troca que acabou a luta, na cena do fim, vem sem a mão) */
@@ -9488,7 +9492,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
   if(v.duelos)gav.appendChild(jxjDuelos(v.duelos));
   const ol=el("ol","jxj-log-lista");
   if(!todas.length)ol.appendChild(el("li","",`<b></b><span>A primeira troca ainda não foi resolvida.</span>`));
-  for(const t of todas)ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(jxjEsc).join(" ")||"Nada mudou."}</span>`));
+  for(const t of todas)ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(x=>jxjEsc(jxjFrase(x))).join(" ")||"Nada mudou."}</span>`));
   gav.appendChild(ol);
   tela.appendChild(gav);
   area.appendChild(tela);
@@ -9584,10 +9588,10 @@ function jxjCenaFim(alvo,v,{eu,ele},aoSeguir,{espera=0}={}){
   const nome=l=>jxjEsc(((v.nomes||{})[l]||{}).nome||"");
   const idV=r.vencedor==="a"?ult.varA:r.vencedor==="b"?ult.varB:null;
   const V=idV&&JXJ_DEF.acoes.variantes?JXJ_DEF.acoes.variantes[idV]:null;
-  const quem=!r.vencedor?"Os juízes deram empate"
+  const quem=jxjFrase(!r.vencedor?"Os juízes deram empate"
     :!(ko||fin)?`${nome(r.vencedor)} venceu por decisão`
     :V&&V.familia==="defesa"?`${nome(r.vencedor)} venceu no contra-ataque`
-    :V&&V.frase?`${nome(r.vencedor)} venceu com ${jxjEsc(V.frase)}`:`${nome(r.vencedor)} venceu`;
+    :V&&V.frase?`${nome(r.vencedor)} venceu com ${jxjEsc(V.frase)}`:`${nome(r.vencedor)} venceu`);
   const faixa=ko||fin?`Round ${r.round} · troca ${r.troca}`:`Fim do round ${r.round||((v.formato||{}).rounds||3)}`;
   const narra=ult.narracao&&ult.narracao.texto?ult.narracao.texto:((ult.eventos||[]).slice(-1)[0]||"");
   const cena=el("div","jxj-fim "+(ko?"ko":fin?"fin":"dec"));
@@ -9596,7 +9600,7 @@ function jxjCenaFim(alvo,v,{eu,ele},aoSeguir,{espera=0}={}){
     <p class="jxj-fim-palavra" aria-label="${palavra}">${[...palavra.toUpperCase()].map((c,i)=>`<span style="--i:${i}">${c===" "?"&nbsp;":c}</span>`).join("")}</p>
     <p class="jxj-fim-faixa">${faixa}</p>
     <p class="jxj-fim-quem">${quem}</p>
-    ${narra?`<p class="jxj-fim-narra"><small>narração</small><span>${jxjEsc(narra)}</span></p>`:""}`;
+    ${narra?`<p class="jxj-fim-narra"><small>narração</small><span>${jxjEsc(jxjFrase(narra))}</span></p>`:""}`;
   const b=el("button","botao jxj-fim-seguir",`<span>Ver o resultado</span>${ICONE("seta-dir")}`); b.type="button";
   let foi=false;
   b.onclick=()=>{ if(foi)return; foi=true; SOM.toque(); aoSeguir(); };
@@ -9627,7 +9631,7 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   const metodoTxt=r.abandono?(r.vencedor===eu?"Ele abandonou a luta.":"Você abandonou a luta."):jxjMetodo(r.metodo);
   cab.innerHTML=`<p class="jxj-rotulo">${metodoTxt}${r.round?` · round ${r.round}`:""}</p>
     <h2 class="jxj-resultado-titulo">${titulo}</h2>
-    <p class="jxj-meta">${jxjEsc(v.nomes[eu].nome)} contra ${jxjEsc(v.nomes[ele].nome)}${v.nomes[ele].bot&&v.nomes[ele].alcunha?`, ${jxjEsc(v.nomes[ele].alcunha)}`:""}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
+    <p class="jxj-meta">${jxjEsc(jxjFrase(v.nomes[eu].nome))} contra ${jxjEsc(v.nomes[ele].nome)}${v.nomes[ele].bot&&v.nomes[ele].alcunha?`, ${jxjEsc(v.nomes[ele].alcunha)}`:""}${r.placar?` · ${r.placar[eu]} a ${r.placar[ele]} nos cartões`:""}</p>`;
   /* cartas (2026-10-28): nocaute e finalização mostram a carta que decidiu */
   const ultD=(v.trocas||[])[(v.trocas||[]).length-1];
   if(ultD&&r.vencedor&&["KO","TKO","FIN"].includes(r.metodo)){
@@ -9640,7 +9644,7 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
      fim do último round): a tela de combate dá lugar ao resultado antes de
      mostrá-la, então ela aparece aqui */
   const ultT=(v.trocas||[])[(v.trocas||[]).length-1];
-  if(ultT&&ultT.narracao&&ultT.narracao.texto)area.appendChild(el("p","jxj-narracao-troca jxj-narracao-fim",jxjEsc(ultT.narracao.texto)));
+  if(ultT&&ultT.narracao&&ultT.narracao.texto)area.appendChild(el("p","jxj-narracao-troca jxj-narracao-fim",jxjEsc(jxjFrase(ultT.narracao.texto))));
   /* luta contra bot: o jeito que ele jogou e como puni-lo (só aqui, depois do fim) */
   if(v.licaoBot)area.appendChild(el("p","jxj-licao",`${ICONE("alvo")}<span>${jxjEsc(v.licaoBot)}</span>`));
   const g=el("div","jxj-grade");
@@ -9661,13 +9665,15 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   g.appendChild(cart);
   const nar=el("section","painel-n jxj-card jxj-narracao");
   nar.innerHTML=`<p class="jxj-rotulo">${ICONE("microfone")} Narração</p>`;
-  if(v.narracao)nar.appendChild(el("p","",jxjEsc(v.narracao)));
+  if(v.narracao)nar.appendChild(el("p","",jxjEsc(jxjFrase(v.narracao))));
   else if(espectador)nar.appendChild(el("p","jxj-nota","Quem lutou ainda não pediu a narração."));   // o servidor só gera pra quem lutou
+  /* abandono (2026-11-06): não há luta pra contar, e a IA narraria o vazio */
+  else if(r.abandono)nar.appendChild(el("p","jxj-nota","A luta acabou no abandono, sem narração."));
   else{ const b=el("button","botao botao-sec","Contar como foi"); b.type="button";
     /* "gerando" = a outra conta já pediu e a narração está saindo: espera e pergunta de novo */
     b.onclick=async()=>{ SOM.toque(); b.disabled=true;
       try{ for(let k=0;k<6;k++){ const n=await jxj("narracao",{lutaId:v.id});
-          if(n.narracao){ b.replaceWith(el("p","",jxjEsc(n.narracao))); return; }
+          if(n.narracao){ b.replaceWith(el("p","",jxjEsc(jxjFrase(n.narracao)))); return; }
           b.textContent="Preparando a narração"; await new Promise(ok=>setTimeout(ok,2500)); }
         b.textContent="Tentar de novo"; b.disabled=false; }
       catch(e){ b.textContent="Tentar de novo"; b.disabled=false; } };
@@ -9699,7 +9705,7 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   const log=el("section","painel-n jxj-log");
   log.appendChild(el("p","jxj-rotulo",`${ICONE("lista")} Troca a troca`));
   const ol=el("ol","jxj-log-lista");
-  for(const t of v.trocas||[])ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(jxjEsc).join(" ")||"Nada mudou."}</span>`));
+  for(const t of v.trocas||[])ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${t.eventos.map(x=>jxjEsc(jxjFrase(x))).join(" ")||"Nada mudou."}</span>`));
   log.appendChild(ol); area.appendChild(log);
 }
 /* replay público de luta encerrada (#/jxj/replay/<id>) */

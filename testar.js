@@ -12164,6 +12164,17 @@ async function testarJxJ() {
       if (dv([{ a: 10, b: 9 }, { a: 10, b: 9 }], { a: 8, b: 10 }).tipo !== "virada") throw new Error("de 18 a 20 pra 28 a 28 é virada (empatou)");
       if (dv([{ a: 9, b: 10 }, { a: 10, b: 9 }], { a: 10, b: 8 }).tipo !== "fimRound") throw new Error("quem estava empatado e passou na frente não virou nada");
     });
+    await conf("narração com nome em minúscula (2026-11-06, jogando em produção): a IA que escreve Cabral pro lutador cabral passa no filtro; nome inventado continua recusado", async () => {
+      const nm = { a: "cabral", b: "Bot Basalto" }, fr = "cabral acertou o jab (3,1 de dano). Bot Basalto errou a queda. round 1", dr = { tipo: "fimRound", quem: "a", round: 1 };
+      if (NARR.nomesInventados("Cabral acertou o jab em Bot Basalto.", nm).length) throw new Error("Cabral virou nome inventado: " + NARR.nomesInventados("Cabral acertou o jab em Bot Basalto.", nm));
+      if (NARR.validarNarracaoTroca("Cabral acertou o jab e Bot Basalto errou a queda no fim do round.", fr, nm, dr) === null) throw new Error("recusou Cabral pro lutador cabral");
+      if (NARR.validarNarracaoTroca("Cabral acertou o jab e Carla errou a queda no fim do round.", fr, nm, dr) !== null) throw new Error("passou o nome inventado Carla");
+      /* a frase precisa citar um dos dois, e a do fim, quem venceu: também sem diferença de maiúscula */
+      if (NARR.validarNarracaoTroca("Cabral acertou o jab no fim do round.", fr, nm, dr) === null) throw new Error("recusou a frase que só cita Cabral");
+      if (!NARR.citaNome("Cabral venceu por decisão.", "cabral") || NARR.citaNome("Bot Basalto venceu por decisão.", "cabral")) throw new Error("citaNome");
+      if (NARR.nomesInventados("Silva viu tudo.", { a: "carla silva", b: "Bot Basalto" }).length) throw new Error("o sobrenome em minúscula virou nome inventado");
+      if (NARR.nomesInventados("Bia viu tudo.", { a: "carla", b: "Bot Basalto" }).join() !== "Bia") throw new Error("Bia passou");
+    });
     await conf("segurança: narração de luta alheia é recusada antes de consultar ou gerar (sem reserva, sem cota, sem IA); quem lutou recebe", async () => {
       const { u1, lid } = await lutaPorWO();
       const u3 = await novoUsuario({ pro: true });
@@ -15096,6 +15107,32 @@ async function testarJxJTelas() {
         if (!res || !/Você abandonou a luta\./.test(String(res.innerHTML))) throw new Error("resultado sem o abandono: " + (res ? String(res.innerHTML).slice(0, 200) : "sem resultado"));
         if (env.todos.slice(m2).some((n) => tem(n, "jxj-fim"))) throw new Error("abandono com a cena do fim");
       } finally { env.sandbox.fetch = fAntes; }
+    });
+    await conf("nome em minúscula (2026-11-06, jogando em produção): a frase começa com maiúscula na cena do fim, no resultado e no registro, e o nome no meio da frase fica como o jogador escreveu; luta abandonada não oferece Contar como foi", async () => {
+      await vm.runInContext("jxjDef()", env.sandbox);
+      const F = (s) => vm.runInContext(`jxjFrase(${JSON.stringify(s)})`, env.sandbox);
+      for (const [de, para] of [["cabral levou o round 3, 10 a 9. cabral venceu por decisão.", "Cabral levou o round 3, 10 a 9. Cabral venceu por decisão."],
+        ["Bot Basalto acertou o jab em cabral.", "Bot Basalto acertou o jab em cabral."], ["érico caiu. ele levantou.", "Érico caiu. Ele levantou."], ["", ""]])
+        if (F(de) !== para) throw new Error(`jxjFrase("${de}") deu "${F(de)}"`);
+      const narra = "cabral levou o round 3, 10 a 9. cabral venceu por decisão.";
+      const v = { id: 999999, lado: "a", status: "encerrada", resultado: { vencedor: "a", metodo: "DEC", round: 3, placar: { a: 29, b: 28 } },
+        nomes: { a: { nome: "cabral" }, b: { nome: "Bot Basalto", bot: true, alcunha: "o Inquieto" } }, formato: { rounds: 3 }, estado: { cartoes: [{ a: 10, b: 9 }, { a: 9, b: 10 }, { a: 10, b: 9 }] },
+        trocas: [{ round: 3, troca: 4, acaoA: "golpes", acaoB: "pressao", eventos: ["cabral acertou o jab.", narra], narracao: { texto: narra, fonte: "molde" } }] };
+      let m = env.todos.length;
+      vm.runInContext(`jxjCenaFim(el("div","teste"),${JSON.stringify(v)},{eu:"a",ele:"b"},()=>{},{espera:0})`, env.sandbox);
+      env.drenar();
+      const cena = String((env.todos.slice(m).filter((n) => tem(n, "jxj-fim")).pop() || {}).innerHTML || "");
+      if (!cena.includes("Cabral venceu por decisão") || !cena.includes("Cabral levou o round 3, 10 a 9. Cabral venceu por decisão.")) throw new Error("cena: " + cena.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 300));
+      const resultado = (vista) => { const k = env.todos.length; vm.runInContext(`jxjDesenharResultado(el("div","teste"),${JSON.stringify(vista)},{eu:"a",ele:"b"},()=>{})`, env.sandbox); env.drenar(); return env.todos.slice(k); };
+      let nos = resultado(v);
+      const h = htmlDe(nos);
+      for (const txt of ["Cabral contra Bot Basalto, o Inquieto", "Cabral levou o round 3, 10 a 9. Cabral venceu por decisão.", "Cabral acertou o jab."])
+        if (!h.includes(txt)) throw new Error("resultado sem: " + txt);
+      if (!nos.some((n) => n.tagName === "button" && /Contar como foi/.test(String(n.innerHTML)))) throw new Error("luta normal sem Contar como foi");
+      semLixoV3T(h, "resultado com nome em minúscula");
+      nos = resultado({ ...v, resultado: { vencedor: "b", metodo: "WO", round: 1, abandono: true }, estado: { cartoes: [] }, trocas: [] });
+      if (nos.some((n) => n.tagName === "button" && /Contar como foi/.test(String(n.innerHTML)))) throw new Error("luta abandonada oferece Contar como foi");
+      if (!htmlDe(nos).includes("Você abandonou a luta.")) throw new Error("resultado do abandono sem o texto");
     });
     await conf("resultado em cartas (2026-10-28): os cartões dos rounds em cartinhas com quem levou; nocaute, finalização e W.O. mostram a carta que decidiu", async () => {
       await db.query("delete from jxj_limites");

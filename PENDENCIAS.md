@@ -2585,8 +2585,16 @@ Decisões:
   e 4); o piso de 42 no teste fica, porque está a 0,5 ponto do limite.
 - Variantes (a) e (b): adiadas até ter lutas de jogadores de verdade.
 
+Jogado em produção em 2026-11-06 (duas lutas contra bot na conta do
+dono, pelo Chrome dele): barra, faixa do golpe, cena DECISÃO, tabela e
+abandono certos, sem erro de página. Nocaute, finalização e o celular não
+saíram nessas lutas (conferidos no local antes do deploy). Três detalhes
+corrigidos (LEIA-ME, "Jogando em produção"): nome em minúscula travava a
+narração da IA, frase começando em minúscula, "Contar como foi" depois do
+abandono.
+
 Falta, do dono:
-1. Jogar em produção o `be265cd` (barra, cena do fim, tabela, abandono).
+1. Conferir a narração da IA depois do deploy dos detalhes.
 2. Depois de 2 ou 3 dias de anúncio, rodar
    `ferramentas/online-estrategia-metricas.sql` e as consultas da
    narração (`fonte` por `destaque`, e `jxj_narracao_uso` contra o teto).

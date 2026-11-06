@@ -439,7 +439,7 @@ Responda só com o texto, sem aspas.` },
     if (t.length < 40 || t.length > 900) return null;
     if (MOTOR.golpesForaDosFatos(t, fatos).length) return null;   // golpe com nome só se está nos fatos
     if (/[!?]/.test(t)) return null;
-    if (r.vencedor && !t.includes(n[r.vencedor])) return null;
+    if (r.vencedor && !NARR.citaNome(t, n[r.vencedor])) return null;
     /* nome próprio que não é dos dois lutadores = invenção (inclusive no
        começo da frase; a mesma conta da narração ao vivo) */
     if (NARR.nomesInventados(t, n).length) return null;
