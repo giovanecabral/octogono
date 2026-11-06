@@ -100,6 +100,14 @@ async function lutasContraGente(uid) {
   try { return await rpc("jxj_lutas_contra_gente", { uid }); }
   catch { return null; }
 }
+/* luta grátis por dia (supabase_jxj_gratis_pesos.sql, 2026-11-06): devolve
+   a luta grátis gasta num dia anterior. true = a regra por dia está ligada;
+   sem a migração (PGRST202) ou com erro, false e a luta grátis continua uma
+   por conta, como antes. */
+async function renovarGratis(uid) {
+  try { return (await rpc("jxj_gratis_renovar", { uid })) === true; }
+  catch { return false; }
+}
 async function botInfo(uid) {
   try { return await rpc("jxj_bot_info", { uid, limite_free: REG.BOT_FREE_DIA }); }
   catch { return null; }
@@ -517,7 +525,9 @@ async function executar(acao, c, uid) {
 
     /* conta */
     case "estado": {
+      const porDia = await renovarGratis(uid);
       const est = await rpc("jxj_estado", { uid });
+      est.gratisPorDia = porDia;
       if (est.luta && est.luta.id) {
         const d = await processarLuta(est.luta.id, uid);
         est.luta = { id: d.luta.id, status: d.luta.status, tipo: d.luta.tipo };
@@ -594,6 +604,7 @@ async function executar(acao, c, uid) {
          Sem a migração supabase_jxj_raio.sql no banco, a fila de antes
          (até 400, crescendo com a espera) e a tela avisa. */
       const lid = idDe(c.lutadorId, "lutador");
+      await renovarGratis(uid);
       const raio = c.raio == null ? REG.RAIO_PADRAO : Number(c.raio);
       if (!REG.RAIOS.includes(raio)) throw new ErroJxJ("diferença de rating inválida");
       try { return await rpc("jxj_fila_entrar_raio", { uid, lid, raio_: raio }); }
@@ -722,6 +733,7 @@ async function executar(acao, c, uid) {
          de uma luta por conta; aqui só se monta o bot com o nível, a
          categoria e o rating do lutador. */
       const lid = idDe(c.lutadorId, "lutador");
+      await renovarGratis(uid);
       const est = await rpc("jxj_estado", { uid });
       const l = (est.lutadores || []).find((x) => x.id === lid);
       if (!l) throw new ErroJxJ("lutador não encontrado", 404);

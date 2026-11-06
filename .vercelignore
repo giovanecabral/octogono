@@ -24,6 +24,7 @@ supabase_jxj_bot.sql
 supabase_jxj_motor3.sql
 supabase_jxj_fase5.sql
 supabase_jxj_estrategia.sql
+supabase_jxj_gratis_pesos.sql
 # área de trabalho dos planos (superpowers), só local
 .superpowers
 audio/bruto

@@ -1867,6 +1867,7 @@ const BENEFICIOS_PRO=[
   {ic:"microfone",t:"Coletiva antes da luta",d:"Provoque o adversário na coletiva. A reação dele muda o hype e a pressão da luta seguinte."},
   {ic:"jornal",t:"Entrevista depois da luta",d:"O repórter pergunta sobre o que aconteceu; sua resposta muda fã, seguidor e patrocínio."},
   {ic:"luta",t:"Modo Rival",d:"Escolha um nome e crie um rival que volta ao longo da carreira, com histórico e revanches."},
+  {ic:"espadas",t:"Online sem limite",d:"Fila contra gente e lutas contra bot sem limite, revanche, torneios com cinturão e até 3 lutadores. Nenhuma vantagem de atributo."},
   {ic:"cards",t:"Cards exclusivos",d:"Corte de canto e selo no card de resultado e no card de momento."},
 ];
 function montarBeneficiosPro(container){
@@ -7875,12 +7876,12 @@ function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=n
   const R=def.regras;
   const bots=jxjBotLigado(est);
   planos.innerHTML=`<div class="jxj-plano"><b>Plano grátis</b><ul>
-      <li>${R.slotsFree} lutador</li><li>1 luta competitiva grátis</li>${bots?`<li>${R.botFreeDia} lutas por dia contra bot</li>`:""}<li>Ranking, perfis, torneios e Hall abertos pra ver</li></ul></div>
+      <li>${R.slotsFree} lutador</li><li>${est&&est.gratisPorDia?"1 luta por dia contra gente":"1 luta competitiva grátis"}</li>${bots?`<li>${R.botFreeDia} lutas por dia contra bot</li>`:""}<li>Ranking, perfis, torneios e Hall abertos pra ver</li></ul></div>
     <div class="jxj-plano jxj-plano-pro"><b>Pro</b><ul>
       <li>${R.slotsPro} lutadores, cada um com rating e cartel próprios</li><li>${bots?"Fila, lutas contra bot, revanche e torneios":"Fila, revanche e torneios"} sem limite de acesso</li>
       <li>Nenhuma vantagem de atributo: o Pro libera acesso, não vitória</li></ul></div>`;
   area.appendChild(planos);
-  if(est&&!est.pro&&est.lutaGratisUsada)area.appendChild(el("p","jxj-nota","A luta grátis desta conta já foi usada."));
+  if(est&&!est.pro&&est.lutaGratisUsada)area.appendChild(el("p","jxj-nota",est.gratisPorDia?"A luta de hoje contra gente já foi usada. Amanhã tem outra.":"A luta grátis desta conta já foi usada."));
 }
 function jxjPainel(area,def,est){
   const principal=est.lutadores.find(l=>l.id===est.principalEfetivo)||est.lutadores[0];
@@ -7946,9 +7947,9 @@ function jxjPainel(area,def,est){
   if(soBot||botAgora)hero.querySelector(".jxj-principal-info").appendChild(msgBot);
   if(!podeFila)hero.querySelector(".jxj-principal-info").appendChild(el("p","jxj-nota",
     !principal.utilizavel?"Este lutador está num slot extra e o Pro venceu. Escolha o lutador do slot 1 como principal ou renove o Pro."
-    :soBot?(est.bot.restantes?`A luta grátis contra gente já foi usada. No plano grátis você tem ${def.regras.botFreeDia} lutas por dia contra bot, com o seu nível e o seu rating. O Pro libera a fila, a revanche e os torneios.`
-      :`As ${def.regras.botFreeDia} lutas contra bot de hoje já foram usadas. O limite volta à meia-noite. O Pro libera a fila, a revanche e os torneios.`)
-    :"A luta grátis já foi usada. O Pro libera a fila, a revanche e os torneios."));
+    :soBot?(est.bot.restantes?`${est.gratisPorDia?"A luta de hoje contra gente já foi usada; amanhã tem outra.":"A luta grátis contra gente já foi usada."} No plano grátis você tem ${def.regras.botFreeDia} lutas por dia contra bot, com o seu nível e o seu rating. O Pro libera a fila sem limite, a revanche e os torneios.`
+      :`As ${def.regras.botFreeDia} lutas contra bot de hoje já foram usadas. O limite volta à meia-noite. O Pro libera a fila sem limite, a revanche e os torneios.`)
+    :`${est.gratisPorDia?"A luta de hoje contra gente já foi usada; amanhã tem outra.":"A luta grátis já foi usada."} O Pro libera a fila sem limite, a revanche e os torneios.`));
   if(!podeFila&&!est.pro)hero.querySelector(".jxj-principal-info").appendChild(bloqueioPro(el("button","botao botao-sec","Fila do Pro")));
   area.appendChild(hero);
 
@@ -8097,7 +8098,7 @@ async function jxjTelaCriar(passo){
   }
   if(n===2){
     const c=montarPasso(2,4,{titulo:"Categoria de peso",fundo:"lona",voltar});
-    c.appendChild(el("p","tela-sub","A fila só junta lutadores da mesma categoria. A categoria mexe pouco nos atributos e não muda depois."));
+    c.appendChild(el("p","tela-sub","A categoria mexe pouco nos atributos e não muda depois. Na fila, o mesmo peso vem primeiro."));
     const g=el("div","jxj-opcoes");
     (def.categoriasLancamento||[]).forEach(id=>{
       const cat=def.categorias[id]; if(!cat)return;
@@ -8456,7 +8457,13 @@ async function jxjTelaFila(){
   area.innerHTML="";
   if(!usaveis.length){ area.appendChild(vazio("usuario","Nenhum lutador ativo","Crie um lutador ou escolha o do slot 1 como principal.")); return; }
   if(!est.pro&&est.lutaGratisUsada){
-    area.appendChild(vazio("cadeado","A luta grátis já foi usada","No plano grátis o modo Online tem uma luta contra gente. O Pro libera a fila, a revanche e os torneios."));
+    area.appendChild(est.gratisPorDia
+      ?vazio("cadeado","A luta de hoje contra gente já foi usada","No plano grátis é uma luta contra gente por dia: amanhã tem outra.")
+      :vazio("cadeado","A luta grátis já foi usada","No plano grátis o modo Online tem uma luta contra gente."));
+    /* o que tem do outro lado do cadeado (2026-11-06, pedido do dono: o Pro mais atraente) */
+    area.appendChild(el("section","painel-n jxj-card jxj-pro-libera",`<p class="jxj-rotulo">${ICONE("coroa")} O que o Pro libera no Online</p>
+      <ul><li>Fila contra gente sem limite</li><li>Lutas contra bot sem limite</li><li>Revanche na hora, com o mesmo adversário</li><li>Torneios com cinturão da categoria</li><li>Até ${def.regras.slotsPro||3} lutadores</li></ul>
+      <p class="jxj-nota">Nenhuma vantagem de atributo: o Pro libera acesso, não vitória.</p>`));
     /* bot direto, sem fila: o limite do dia vem do servidor */
     if(jxjBotLigado(est)){
       const l=usaveis.find(x=>x.id===est.principalEfetivo)||usaveis[0];
@@ -8501,7 +8508,7 @@ async function jxjTelaFila(){
   let semFiltro=false;
   const atualizarFaixa=()=>{ const r=Math.round(lutador.rating);
     faixa.textContent=semFiltro?"O filtro de diferença ainda não está ligado no servidor: vale o padrão, até 400 pontos, crescendo com a espera."
-      :raio>=2000?"Qualquer adversário da categoria serve.":`Adversários de ${r-raio} a ${r+raio}, se o raio dele também aceitar você.`; };
+      :raio>=2000?"Qualquer diferença de rating serve.":`Adversários de ${r-raio} a ${r+raio}, se o raio dele também aceitar você.`; };
   const marcar=()=>gr.querySelectorAll(".jxj-raio").forEach(x=>{ const on=Number(x.dataset.raio)===raio; x.classList.toggle("on",on); if(x.setAttribute)x.setAttribute("aria-pressed",String(on)); });
   const msg=el("p","jxj-erro"); msg.hidden=true;
   RAIOS.forEach(r=>{
@@ -8518,7 +8525,7 @@ async function jxjTelaFila(){
     gr.appendChild(b);
   });
   secRaio.append(gr,faixa); box.appendChild(secRaio); atualizarFaixa();
-  box.appendChild(el("p","jxj-nota",`Mesma categoria, rating parecido; a faixa cresce com a espera. ${podeBot
+  box.appendChild(el("p","jxj-nota",`Rating parecido e o mesmo peso primeiro; a faixa cresce com a espera. ${podeBot
     ?`Se só você estiver na fila, ou se ninguém aparecer em ${ESPERA_BOT} segundos, dá pra lutar contra um bot, sempre marcado como bot.`
     :"Ninguém é inventado: se não houver adversário agora, a busca continua."}`));
   const regras=el("details","jxj-regras-busca");
@@ -11042,6 +11049,10 @@ function screenDivisao(name){
     grid.innerHTML="";
     const fora=[];
     DIVISOES.forEach(d=>{
+      /* divisões femininas fora da carreira nova (2026-11-06, pedido do dono:
+         o boneco não tem versão feminina). Ficam em DIVISOES pra save, link
+         de desafio e ranking antigos continuarem abrindo. */
+      if(d.f)return;
       /* divisão pequena demais no dataset inteiro nunca foi jogável */
       if(ROSTER.filter(f=>f.division===d.id).length<MIN_LUTADORES)return;
       const pool=poolDivisao(d.id);

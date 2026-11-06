@@ -36,7 +36,7 @@ grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
 `;
 
-export async function novoBanco({ jxj = true, raio = true, movimento = true, bot = true, motor3 = true, fase5 = true, estrategia = true } = {}) {
+export async function novoBanco({ jxj = true, raio = true, movimento = true, bot = true, motor3 = true, fase5 = true, estrategia = true, gratisPesos = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB_SUPABASE);
   await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_schema.sql"), "utf8"));
@@ -57,6 +57,8 @@ export async function novoBanco({ jxj = true, raio = true, movimento = true, bot
     if (fase5 && bot && raio && movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_fase5.sql"), "utf8"));
     /* estratégia (2026-10-27): versão de balanceamento 3 (motor v4) */
     if (estrategia && fase5 && bot && raio && movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_estrategia.sql"), "utf8"));
+    /* pesos diferentes na fila e a luta grátis por dia (2026-11-06) */
+    if (gratisPesos && estrategia && fase5 && bot && raio && movimento) await db.exec(fs.readFileSync(path.join(RAIZ, "supabase_jxj_gratis_pesos.sql"), "utf8"));
   }
   await db.exec(GRANTS_SUPABASE);
   return db;

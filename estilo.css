@@ -2103,3 +2103,6 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .jxj-confirma-caixa h3{margin:0 0 8px;font-family:var(--f-titulo);font-size:24px;text-transform:uppercase;font-weight:400}
 .jxj-confirma-caixa p{margin:0 0 10px;font-size:14px;color:var(--osso-2);line-height:1.45}
 .jxj-confirma-acoes{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:360px;width:100%}
+
+/* Online grátis: o que o Pro libera (2026-11-06) */
+.jxj-pro-libera ul{margin:.35rem 0 .5rem;padding-left:1.1rem;display:grid;gap:.25rem}

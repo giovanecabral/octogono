@@ -5795,6 +5795,43 @@ e o abandono. Três detalhes corrigidos:
 - **"Contar como foi" depois do abandono:** saiu; a narração diz que a
   luta acabou no abandono.
 
+## Grátis mais generoso, Online na página do Pro e pesos misturados (2026-11-06)
+
+Pedido do dono antes do anúncio pago: deixar o Pro mais atraente pra quem
+ainda não pagou, juntar pesos diferentes no Online e tirar as divisões
+femininas da carreira (o boneco não tem versão feminina).
+
+- **Página do Pro:** os benefícios eram todos da carreira. Entrou "Online
+  sem limite" (fila e bot sem limite, revanche, torneios, 3 lutadores, sem
+  vantagem de atributo).
+- **Cadeado do Online:** quem gastou a luta contra gente vê o que o Pro
+  libera, item por item, em vez de só "a luta grátis já foi usada".
+- **Bot grátis:** 5 lutas por dia (eram 2, uns 10 minutos de jogo).
+  `BOT_FREE_DIA`, sem SQL.
+- **Luta contra gente grátis: uma por dia** (era uma na vida da conta).
+  `supabase_jxj_gratis_pesos.sql`: coluna `luta_gratis_em`, gatilho que
+  grava quando a luta grátis é gasta e `jxj_gratis_renovar(uid)`, que o
+  servidor chama antes do estado, da entrada na fila e do bot. Gasta num
+  dia anterior (São Paulo) ou antes da migração (sem data): volta. O
+  estado manda `gratisPorDia` e a tela só fala "por dia" quando ele vem.
+- **Pesos misturados:** a mesma migração refaz `jxj_fila_parear` sem a
+  igualdade de categoria; na ordem, o mesmo peso vem antes da diferença de
+  rating. Medido antes (400 lutas por estilo, nível 1, jogo racional): o
+  mais pesado vence de 49,7% a 51,7% na média (por estilo, de 44% a 57%),
+  nocaute de 30% a 33%. Ranking da temporada, torneio e o bot continuam
+  no peso do lutador.
+- **Divisões femininas:** saem da escolha da carreira nova. `DIVISOES`
+  continua com as quatro, pra save, link de desafio e ranking antigos.
+
+Sem a migração, o servidor segue como antes (`PGRST202`): luta grátis uma
+por conta, fila só da mesma categoria. O bot de 5 por dia vale de qualquer
+jeito. Testes: `jxj` (5 por dia, luta grátis por dia com o gatilho, pesos
+com o mesmo peso primeiro, banco sem a migração), `jxjtelas` (painel e
+fila do grátis, o quadro do Pro, a página do Pro) e `interface` (sem
+divisão feminina, a lista com elas). O teste da oferta do bot com gente na
+fila usava alguém de outra categoria pra não formar par; agora usa outra
+versão de balanceamento.
+
 ## Bots do Online (2026-10-19)
 
 **Pedido do dono:** "para o online funcionar bem sem muitos players vai

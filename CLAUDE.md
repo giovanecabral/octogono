@@ -30,6 +30,7 @@ supabase_jxj_movimento.sql  Quarta (contador de quem está na fila e lutando). S
 supabase_jxj_bot.sql  Quinta (lutas contra bot, 2026-10-19). Roda depois das quatro, com aprovação do dono.
 supabase_jxj_motor3.sql  Sexta (motor v3, 2026-10-20): só a versão de balanceamento 2 em jxj_config. O dono roda ANTES do deploy.
 supabase_jxj_fase5.sql  Sétima (2026-10-21): torneio só com lutas contra gente e nível na fila. Depois da sexta, com aprovação do dono.
+supabase_jxj_gratis_pesos.sql  Nona (2026-11-06): pesos diferentes na fila e a luta grátis contra gente por dia. Depois de todas, com aprovação do dono.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
@@ -203,6 +204,17 @@ metade). Regras do revamp que valem daqui pra frente:
   ciclo da tabela vem das definições (`acoes.vence`); no celular, a faixa
   compacta em cima da mão. `abandonar` só contra bot, gravado pela
   `jxj_gravar_troca` (sem SQL).
+- **Grátis e pesos (2026-11-06, `supabase_jxj_gratis_pesos.sql`).** A fila
+  junta qualquer peso, com o mesmo peso primeiro (`jxj_fila_parear`;
+  medido: o mais pesado vence de 49,7% a 51,7%); ranking, torneio e bot
+  continuam por categoria. A luta grátis contra gente é uma por dia (dia
+  de São Paulo): o gatilho grava `luta_gratis_em` e o servidor chama
+  `jxj_gratis_renovar` antes do estado, da fila e do bot; `gratisPorDia`
+  diz pra tela se a regra está ligada (sem a migração, `PGRST202`, tudo
+  como antes). Bot grátis: `BOT_FREE_DIA` 5. Teste que precisa de alguém
+  na fila sem formar par usa outra versão de balanceamento, não outra
+  categoria. A carreira nova não oferece divisão feminina (o boneco não
+  tem versão feminina); `DIVISOES` continua com elas pra save e link.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

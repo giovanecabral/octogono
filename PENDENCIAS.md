@@ -2595,6 +2595,18 @@ abandono.
 
 Falta, do dono:
 1. Conferir a narração da IA depois do deploy dos detalhes.
+
+## 52. Grátis, Pro e pesos (2026-11-06)
+
+Pedido do dono: Pro mais atraente, pesos diferentes no Online, sem
+divisão feminina na carreira. Escolhas dele: bot grátis 5 por dia, luta
+contra gente grátis uma por dia, qualquer peso com o mesmo peso primeiro.
+Branch `gratis-pesos`. LEIA-ME "Grátis mais generoso".
+
+Falta, do dono, nesta ordem:
+1. Backup e rodar `supabase_jxj_gratis_pesos.sql`.
+2. A conferência do fim do arquivo (true, true, true).
+3. Liberar o deploy.
 2. Depois de 2 ou 3 dias de anúncio, rodar
    `ferramentas/online-estrategia-metricas.sql` e as consultas da
    narração (`fonte` por `destaque`, e `jxj_narracao_uso` contra o teto).

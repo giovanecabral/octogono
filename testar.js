@@ -262,6 +262,11 @@ async function testarInterface(divEscolhida = 3, modo = "normal") {
     }
     const divs = env.todos.slice(marca).filter(n => (n.className || "").startsWith("div-c") && n.onclick);
     if (!divs.length) throw new Error("nenhuma carta de divisão foi montada");
+    /* 2026-11-06 (pedido do dono): sem divisão feminina na carreira nova (o
+       boneco não tem versão feminina); a lista continua com elas pra save e
+       link antigos */
+    if (divs.some(n => (n.className || "").split(" ").includes("fem"))) throw new Error("divisão feminina na escolha da carreira");
+    if (!vm.runInContext("DIVISOES.filter(d=>d.f).length===4&&poolDivisao('w_strawweight').length>0", env.sandbox)) throw new Error("as divisões femininas sumiram da lista (save e link antigos)");
     /* 11 divisões no normal; no lenda mosca e as três femininas não têm 40
        lendas e saem de propósito, sobram 7. */
     const min = modo === "lenda" ? 6 : 8;
@@ -12467,22 +12472,76 @@ async function testarJxJ() {
       if ("puro" in B2) throw new Error("a segunda luta contra bot veio com o começo puro");
       await lutarBot(lid2, u);
     });
-    await conf("grátis que já usou a luta grátis: bot direto, sem fila, 2 por dia (a 3ª é recusada sem criar luta); a fila de gente continua fechada; na virada do dia em São Paulo o limite volta", async () => {
+    await conf("grátis que já usou a luta grátis: bot direto, sem fila, 5 por dia desde 2026-11-06 (a 6ª é recusada sem criar luta); a fila de gente continua fechada; na virada do dia em São Paulo o limite volta", async () => {
       await zerarLimites();
+      const N = REG.BOT_FREE_DIA;
+      if (N !== 5) throw new Error("o grátis tem " + N + " lutas contra bot por dia (pedido do dono: 5)");
       const u = await novoUsuario(), l = (await criar(u)).id;
       await q("update jxj_contas set luta_gratis_usada = true where user_id = $1", [u]);
-      for (let k = 0; k < 2; k++) {
+      for (let k = 0; k < N; k++) {
         const e = await ok(u, "estado");
-        if (e.bot.restantes !== 2 - k || e.bot.limite !== 2 || e.bot.disponivel !== true) throw new Error("antes da luta " + (k + 1) + ": " + JSON.stringify(e.bot));
+        if (e.bot.restantes !== N - k || e.bot.limite !== N || e.bot.disponivel !== true) throw new Error("antes da luta " + (k + 1) + ": " + JSON.stringify(e.bot));
         const v = await lutarBot((await ok(u, "bot", { lutadorId: l })).luta, u);
         if (v.status !== "encerrada") throw new Error("a luta contra bot não acabou");
       }
-      await erro(u, "bot", { lutadorId: l }, /2 lutas contra bot de hoje já foram usadas/);
+      await erro(u, "bot", { lutadorId: l }, new RegExp(`${N} lutas contra bot de hoje já foram usadas`));
       if ((await ok(u, "estado")).bot.restantes !== 0) throw new Error("restantes depois do limite");
-      if ((await q("select count(*)::int n from jxj_lutas where a_user = $1 and bot is not null", [u]))[0].n !== 2) throw new Error("passou do limite");
+      if ((await q("select count(*)::int n from jxj_lutas where a_user = $1 and bot is not null", [u]))[0].n !== N) throw new Error("passou do limite");
       await erro(u, "filaEntrar", { lutadorId: l }, /luta grátis já foi usada/);
       await q("update jxj_lutas set criada_em = (date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo') - interval '1 minute' where a_user = $1 and bot is not null", [u]);
-      if ((await ok(u, "estado")).bot.restantes !== 2) throw new Error("o limite não voltou no dia seguinte");
+      if ((await ok(u, "estado")).bot.restantes !== N) throw new Error("o limite não voltou no dia seguinte");
+    });
+    await conf("luta grátis por dia (2026-11-06, pedido do dono): o gatilho grava quando foi usada; a de hoje continua usada; a de ontem (São Paulo) volta no estado e na entrada da fila; a usada antes da migração (sem data) volta; o estado diz gratisPorDia", async () => {
+      await zerarLimites();
+      const u = await novoUsuario(), l = (await criar(u)).id;
+      await q("update jxj_contas set luta_gratis_usada = true where user_id = $1", [u]);
+      if (!(await q("select luta_gratis_em from jxj_contas where user_id = $1", [u]))[0].luta_gratis_em) throw new Error("o gatilho não gravou a hora da luta grátis");
+      const e = await ok(u, "estado");
+      if (e.gratisPorDia !== true || e.lutaGratisUsada !== true) throw new Error("hoje: " + JSON.stringify({ porDia: e.gratisPorDia, usada: e.lutaGratisUsada }));
+      await erro(u, "filaEntrar", { lutadorId: l }, /luta grátis já foi usada/);
+      const ontem = "(date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo') - interval '1 minute'";
+      await q(`update jxj_contas set luta_gratis_em = ${ontem} where user_id = $1`, [u]);
+      await ok(u, "filaEntrar", { lutadorId: l });   // a entrada da fila renova sozinha, sem passar pelo estado
+      await ok(u, "filaSair");
+      if ((await ok(u, "estado")).lutaGratisUsada !== false) throw new Error("a de ontem não voltou");
+      await q("update jxj_contas set luta_gratis_usada = true where user_id = $1", [u]);
+      await q("update jxj_contas set luta_gratis_em = null where user_id = $1", [u]);
+      if ((await ok(u, "estado")).lutaGratisUsada !== false) throw new Error("a usada antes da migração não voltou");
+    });
+    await conf("pesos misturados (2026-11-06, pedido do dono): pesos diferentes formam par; com alguém do mesmo peso na fila, ele vem primeiro, mesmo com o rating mais longe", async () => {
+      await zerarLimites();
+      await q("delete from jxj_fila");
+      const novo = async (cat, rating) => { const u = await novoUsuario({ pro: true }), l = (await criar(u, { categoria: cat })).id; await q("update jxj_lutadores set rating = $2 where id = $1", [l, rating]); return { u, l }; };
+      const limpar = async (lid) => { await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]); await q("update jxj_contas set luta_aberta_id = null where luta_aberta_id = $1", [lid]); await q("delete from jxj_fila"); };
+      const leve = await novo("lightweight", 1500), pesado = await novo("heavyweight", 1505), leve2 = await novo("lightweight", 1570);
+      for (const x of [leve, pesado, leve2]) await ok(x.u, "filaEntrar", { lutadorId: x.l });
+      const f = await ok(leve.u, "fila");
+      if (!f.luta) throw new Error("não formou par: " + JSON.stringify(f));
+      const L = (await q("select a_user, b_user from jxj_lutas where id = $1", [f.luta.id]))[0];
+      if (![L.a_user, L.b_user].includes(leve2.u)) throw new Error("pareou com o peso-pesado tendo um peso-leve na fila");
+      await limpar(f.luta.id);
+      const outroLeve = await novo("lightweight", 1500);
+      await ok(pesado.u, "filaEntrar", { lutadorId: pesado.l }); await ok(outroLeve.u, "filaEntrar", { lutadorId: outroLeve.l });
+      const f2 = await ok(pesado.u, "fila");
+      if (!f2.luta) throw new Error("peso-pesado e peso-leve não formaram par: " + JSON.stringify(f2));
+      await limpar(f2.luta.id);
+    });
+    await conf("sem a migração dos pesos e da luta grátis por dia: o estado não diz gratisPorDia, a luta grátis continua uma por conta e pesos diferentes não formam par", async () => {
+      const db2 = await B.novoBanco({ gratisPesos: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const u1 = "00000000-0000-4000-8000-0000000009c1", u2 = "00000000-0000-4000-8000-0000000009c2";
+        await B.criarUsuario(db2, u1, { pro: true }); await B.criarUsuario(db2, u2, { pro: true });
+        const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Peso Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const c2 = await B.chamar(H, { token: "tok:" + u2, acao: "criar", nome: "Sem Peso Dois", rosto: ROSTO, categoria: "heavyweight", estilo: "striker" });
+        const e = await B.chamar(H, { token: "tok:" + u1, acao: "estado" });
+        if (e.status !== 200 || e.json.gratisPorDia !== false) throw new Error("estado sem a migração: " + JSON.stringify(e).slice(0, 200));
+        await B.chamar(H, { token: "tok:" + u1, acao: "filaEntrar", lutadorId: c1.json.id });
+        await B.chamar(H, { token: "tok:" + u2, acao: "filaEntrar", lutadorId: c2.json.id });
+        const f = await B.chamar(H, { token: "tok:" + u1, acao: "fila" });
+        if (f.status !== 200 || f.json.luta) throw new Error("sem a migração, pesos diferentes formaram par: " + JSON.stringify(f).slice(0, 200));
+      } finally { globalThis.fetch = fetchAntes; }
     });
     await conf("grátis com a luta grátis guardada: o bot só pela fila depois de 30 s, conta no limite do dia e a luta grátis continua guardada", async () => {
       await zerarLimites();
@@ -15011,11 +15070,14 @@ async function testarJxJTelas() {
       for (let k = 0; k < 25 && !desde(m).some((n) => tem(n, "jxj-oferta-bot")); k++) await assentar(20);
       const of1 = desde(m).filter((n) => tem(n, "jxj-oferta-bot")).pop();
       if (!of1 || !/Só você na fila agora/.test(String(of1.innerHTML))) throw new Error("sozinho na fila, a oferta do bot não apareceu na hora");
-      /* com mais gente na fila (outra categoria, não forma par): só depois de 30 s */
+      /* com mais gente na fila que não forma par: só depois de 30 s. Desde
+         2026-11-06 a fila junta pesos diferentes, então o outro fica com uma
+         versão de balanceamento que não é a dele (a fila só junta a mesma) */
       const uo = "00000000-0000-4000-8000-0000000000b8";
       await B.criarUsuario(db, uo, { pro: true });
       const lo = (await api(uo, "criar", { nome: "Tela Outro", rosto: ROSTO, categoria: "welterweight", estilo: "counter" })).id;
       await api(uo, "filaEntrar", { lutadorId: lo });
+      await db.query("update jxj_fila set versao = versao + 100 where user_id = $1", [uo]);
       const vivo = () => db.query("update jxj_fila set sinal_em = now() where user_id = $1", [uo]);
       const m2 = await abrir("fila");
       for (let k = 0; k < 4; k++) { await vivo(); await assentar(15); }
@@ -15147,26 +15209,33 @@ async function testarJxJTelas() {
       if (["KO", "TKO", "FIN"].includes(r.rows[0].resultado.metodo) && (!decidiu.length || !/jxj-carta f-/.test(String(decidiu[0].innerHTML)))) throw new Error("sem a carta que decidiu (" + r.rows[0].resultado.metodo + ")");
       semLixoV3(h, "resultado");
     });
-    await conf("grátis sem a luta grátis: o painel troca Buscar adversário por Lutar contra bot (2 hoje); a fila mostra o mesmo botão; chamar abre a luta; sem lutas no dia, o botão fica desligado com o aviso", async () => {
+    await conf("grátis sem a luta grátis: o painel troca Buscar adversário por Lutar contra bot (5 hoje, desde 2026-11-06); a fila mostra o mesmo botão; chamar abre a luta; sem lutas no dia, o botão fica desligado com o aviso", async () => {
       await db.query("update assinaturas set pro = false where user_id = $1", [u1]); UI.setMeuPro(false);
       try {
         await db.query("update jxj_lutas set criada_em = criada_em - interval '2 days' where a_user = $1 and bot is not null", [u1]);
         await db.query("update jxj_contas set luta_gratis_usada = true, luta_aberta_id = null where user_id = $1", [u1]);
         const m = await abrir("");
         const b = botoesBot(desde(m)).pop();
-        if (!b || !String(b.innerHTML).includes("<span>Lutar contra bot (2 hoje)</span>") || b.disabled) throw new Error("painel: " + (b && b.innerHTML));
+        if (!b || !String(b.innerHTML).includes("<span>Lutar contra bot (5 hoje)</span>") || b.disabled) throw new Error("painel: " + (b && b.innerHTML));
         if (botao(desde(m), "Buscar adversário")) throw new Error("o painel ainda mostra Buscar adversário");
         semLixo(htmlDe(desde(m)), "painel do grátis");
+        /* 2026-11-06: a luta contra gente é uma por dia (o banco desta suíte tem a migração) */
+        if (!/A luta de hoje contra gente já foi usada; amanhã tem outra\./.test(htmlDe(desde(m)))) throw new Error("o painel não diz que amanhã tem outra luta contra gente");
         const m2 = await abrir("fila");
         const b2 = botoesBot(desde(m2)).pop();
-        if (!b2 || !String(b2.innerHTML).includes("(2 hoje)")) throw new Error("fila do grátis sem o botão do bot");
+        if (!b2 || !String(b2.innerHTML).includes("(5 hoje)")) throw new Error("fila do grátis sem o botão do bot");
         semLixo(htmlDe(desde(m2)), "fila do grátis");
+        /* 2026-11-06: o cadeado mostra o que o Pro libera, e a página do Pro fala do Online */
+        const h2 = htmlDe(desde(m2));
+        for (const txt of ["A luta de hoje contra gente já foi usada", "amanhã tem outra", "O que o Pro libera no Online", "Fila contra gente sem limite", "Lutas contra bot sem limite", "Torneios com cinturão", "Até 3 lutadores"])
+          if (!h2.includes(txt)) throw new Error("fila do grátis sem: " + txt);
+        if (!vm.runInContext("BENEFICIOS_PRO.some((b)=>b.t==='Online sem limite'&&/sem limite/.test(b.d)&&/torneios/.test(b.d))", env.sandbox)) throw new Error("a página do Pro não fala do Online");
         await b2.onclick(); await assentar();
         const L = await lutaBotDe(u1);
         if (!L) throw new Error("o botão da fila não criou a luta");
         await db.query("update jxj_lutas set status = 'cancelada' where id = $1", [L.id]);
         await db.query("update jxj_contas set luta_aberta_id = null where user_id = $1", [u1]);
-        await db.query("insert into jxj_lutas (tipo, a_id, b_id, a_user, b_user, status, semente, compromisso, nomes, bot) select 'fila', a_id, b_id, a_user, b_user, 'cancelada', 'x', 'x', nomes, bot from jxj_lutas where id = $1", [L.id]);
+        for (let k = 0; k < 4; k++) await db.query("insert into jxj_lutas (tipo, a_id, b_id, a_user, b_user, status, semente, compromisso, nomes, bot) select 'fila', a_id, b_id, a_user, b_user, 'cancelada', 'x', 'x', nomes, bot from jxj_lutas where id = $1", [L.id]);
         const m3 = await abrir("");
         const b3 = botoesBot(desde(m3)).pop();
         if (!b3 || !b3.disabled || !String(b3.innerHTML).includes("(0 hoje)")) throw new Error("sem lutas no dia: " + (b3 && b3.innerHTML));
