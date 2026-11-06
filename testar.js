@@ -5004,11 +5004,13 @@ function testarTelaInicial() {
       const t = ultimoTexto("painel-titulo");
       if (!/Octógono Pro/.test(t || "")) throw new Error("vitrine do Pro não apareceu: " + t);
     });
-    await passo("Plano Pro: mostra os 5 benefícios (Modo Rival incluído) e o carrossel começa em GRÁTIS", () => {
+    await passo("Plano Pro: mostra os 6 benefícios (Modo Rival e, desde 2026-11-06, o Online incluídos) e o carrossel começa em GRÁTIS", () => {
       const beneficios = desdePro("pro-beneficio");
-      if (beneficios.length !== 5) throw new Error(`esperava 5 benefícios, achei ${beneficios.length}`);
+      if (beneficios.length !== 6) throw new Error(`esperava 6 benefícios, achei ${beneficios.length}`);
       if (!beneficios.some(b => (b.innerHTML || "").includes("Modo Rival")))
         throw new Error("Modo Rival não apareceu na lista de benefícios");
+      if (!beneficios.some(b => (b.innerHTML || "").includes("Online sem limite")))
+        throw new Error("o Online não apareceu na lista de benefícios");
       // pro-carrossel-legenda usa .textContent= (texto puro, sem risco de
       // XSS), não .innerHTML — o DOM falso não deriva um do outro, então
       // ultimoTexto() (que lê innerHTML) não serve aqui.
@@ -12553,7 +12555,7 @@ async function testarJxJ() {
       await lutarBot(lid, u);
       if ((await q("select luta_gratis_usada from jxj_contas where user_id = $1", [u]))[0].luta_gratis_usada) throw new Error("gastou a luta grátis");
       if ((await q("select gratis_a from jxj_lutas where id = $1", [lid]))[0].gratis_a) throw new Error("luta contra bot marcada como a luta grátis");
-      if ((await ok(u, "estado")).bot.restantes !== 1) throw new Error("não contou no limite do dia");
+      if ((await ok(u, "estado")).bot.restantes !== REG.BOT_FREE_DIA - 1) throw new Error("não contou no limite do dia");
     });
     await conf("o jogador ausente 3 trocas seguidas perde por W.O. contra o bot (o bot nunca falta) e a conta fica livre", async () => {
       await zerarLimites();

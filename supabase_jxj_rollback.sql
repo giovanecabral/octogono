@@ -1,5 +1,6 @@
 -- supabase_jxj_rollback.sql — desfaz supabase_jxj.sql, supabase_jxj_narracao.sql, supabase_jxj_raio.sql,
--- supabase_jxj_movimento.sql e supabase_jxj_bot.sql (JxJ, inclusive a coluna bot e as lutas contra bot).
+-- supabase_jxj_movimento.sql e supabase_jxj_bot.sql (JxJ, inclusive a coluna bot e as lutas contra bot)
+-- e as migrações depois delas (motor3, fase5, estratégia, grátis e pesos).
 --
 -- APAGA TODOS OS DADOS DO JXJ: lutadores, lutas, ações, rating, temporadas,
 -- torneios, títulos, conquistas, fichas, limites e log do JxJ. Não toca em
@@ -39,6 +40,12 @@ begin
   loop
     raise exception 'existe view fora do JxJ lendo tabela do JxJ: rollback parado, nada foi apagado';
   end loop;
+
+  -- o gatilho da luta grátis por dia (supabase_jxj_gratis_pesos.sql) usa
+  -- uma função jxj_*: sai antes, senão a função não pode ser apagada
+  if to_regclass('public.jxj_contas') is not null then
+    execute 'drop trigger if exists jxj_contas_gratis_em on jxj_contas';
+  end if;
 
   -- funções jxj_* (todas as assinaturas)
   for r in
