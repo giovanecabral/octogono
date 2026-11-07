@@ -11873,6 +11873,18 @@ async function testarJxJ() {
       const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 4", [lid]))[0];
       return t ? t.eventos.filter((ev) => ev.tipo === "narracao") : null;
     };
+    await conf("postura com 8 s (2026-11-07, achado jogando no celular): a etapa do sinal cobre a revelação da troca anterior (2,6 s) e ainda deixa tempo pra escolher; a postura mandada 6,5 s depois do começo da troca vale; depois de 8 s é recusada", async () => {
+      await zerarLimites();
+      if (EST.ESTRATEGIA.prazos.sinalMs !== 8000 || MOTOR.FORMATO.prazoMs !== 20000) throw new Error("prazos: " + JSON.stringify(EST.ESTRATEGIA.prazos));
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      const desde = (ms) => q("update jxj_lutas set prazo = now() + make_interval(secs => $2::double precision / 1000) where id = $1", [lid, MOTOR.FORMATO.prazoMs - ms]);
+      await desde(6500);
+      const v = await ok(u1, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "golpes" });
+      if (v.meuSinal !== "golpes") throw new Error("a postura de 6,5 s não valeu: " + JSON.stringify({ etapa: v.etapa, meuSinal: v.meuSinal }));
+      await desde(8500);
+      await erro(u2, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /etapa do sinal acabou/);
+    });
     await conf("sinais no banco (fase 2): só quem luta sinaliza, uma vez por troca, só na etapa do sinal; a leitura devolve os sinais da troca aberta; anon e authenticated não executam", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
       await zerarLimites();
@@ -14580,6 +14592,33 @@ async function testarJxJTelas() {
         const linha = /<p class="jxj-narracao-troca">([^]*?)<\/p>/.exec(h);
         if (!linha || /<img/.test(linha[1]) || !linha[1].includes("&lt;img")) throw new Error("linha da narração: " + (linha ? linha[1] : h.replace(/\s+/g, " ").slice(0, 300)));
       } finally { await gravar(t.eventos); }
+    });
+    await conf("postura que não chegou (2026-11-07, achado jogando no celular): na etapa da ação, sem o meu sinal, a tela diz que a postura não chegou a tempo e qual ele viu; com o meu sinal, não diz", async () => {
+      await lutaViva();
+      const vs = await api(u1, "luta", { lutaId: lid });
+      if (vs.status !== "andamento") throw new Error("a luta acabou antes: " + vs.status);
+      const eu = vs.lado, ele = eu === "a" ? "b" : "a";
+      const L = (await db.query("select round, troca, prazo from jxj_lutas where id = $1", [lid])).rows[0];
+      const antes = (await db.query("select lado, familia, enviado_em from jxj_sinais where luta_id = $1 and round = $2 and troca = $3", [lid, L.round, L.troca])).rows;
+      try {
+        await db.query("delete from jxj_sinais where luta_id = $1 and round = $2 and troca = $3", [lid, L.round, L.troca]);
+        await db.query("insert into jxj_sinais (luta_id, round, troca, lado, familia) values ($1, $2, $3, $4, 'golpes')", [lid, L.round, L.troca, ele]);
+        await db.query("update jxj_lutas set prazo = now() + interval '10 seconds' where id = $1", [lid]);   // a etapa do sinal acabou
+        const v = await api(u1, "luta", { lutaId: lid });
+        if (v.etapa !== "acao" || v.meuSinal || !v.sinais) throw new Error("cenário: " + JSON.stringify({ etapa: v.etapa, meu: v.meuSinal, sinais: v.sinais }));
+        const padrao = { golpes: "Peso na frente", queda: "Base baixa", defesa: "Guarda alta", pressao: "Avançando" }[v.sinais[eu]];
+        let h = htmlDe(desde(await abrir(`luta/${lid}`)));
+        if (!h.includes(`Sua postura não chegou a tempo: ele viu ${padrao}.`)) throw new Error("sem o aviso da postura que não chegou: " + h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 400));
+        await db.query("insert into jxj_sinais (luta_id, round, troca, lado, familia) values ($1, $2, $3, $4, 'golpes')", [lid, L.round, L.troca, eu]);
+        h = htmlDe(desde(await abrir(`luta/${lid}`)));
+        if (h.includes("não chegou a tempo")) throw new Error("com o meu sinal, a tela diz que a postura não chegou");
+      } finally {
+        /* a troca volta como estava (sinais e prazo): o teste seguinte conta as fintas dela */
+        await db.query("delete from jxj_sinais where luta_id = $1 and round = $2 and troca = $3", [lid, L.round, L.troca]);
+        for (const x of antes) await db.query("insert into jxj_sinais (luta_id, round, troca, lado, familia, enviado_em) values ($1, $2, $3, $4, $5, $6)", [lid, L.round, L.troca, x.lado, x.familia, x.enviado_em]);
+        await db.query("update jxj_lutas set prazo = $2 where id = $1 and status = 'andamento'", [lid, L.prazo]);
+        await lutaViva();
+      }
     });
     await conf("etapas na tela (fase 2): no sinal, só as posturas (das famílias com carta), sem as ações, e tocar uma manda o sinal; na ação, os dois sinais, o custo da finta nos botões que não são o seu sinal e a dica da primeira luta; sem energia, a finta desligada; a tendência conta as fintas", async () => {
       await lutaViva();

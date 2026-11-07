@@ -5795,6 +5795,32 @@ e o abandono. Três detalhes corrigidos:
 - **"Contar como foi" depois do abandono:** saiu; a narração diz que a
   luta acabou no abandono.
 
+## A postura que virava Guarda alta (2026-11-07)
+
+Achado jogando no celular: o dono tocava a carta vermelha, a postura
+aparecia como Guarda alta, e isso em toda troca. Reproduzido na versão
+local, com o servidor de verdade: tocando a postura 3 s depois de a mão
+aparecer, ela chega com 1,8 s de sobra; tocando 5 s depois, o servidor
+responde "a etapa do sinal acabou", vale a postura padrão (Guarda alta,
+`acaoPadrao`) e cada Golpe vira finta (1,5 de energia), até o lutador
+ficar sem gás. A causa: os 5 s da postura começam quando a troca anterior
+acaba, e é justamente quando a tela mostra a revelação (2,6 s, mais os
+golpes na barra desde 2026-10-29). Quem olha a revelação antes de escolher
+perde o prazo.
+
+- `ESTRATEGIA.prazos.sinalMs` de 5000 pra 8000 (a troca vai de 17 s pra
+  20 s). Só tempo: nenhum número da luta muda, a luta refeita pela semente
+  é a mesma e `VERSAO_MOTOR` fica. O banco calcula a etapa com o
+  `acao_ms` que o servidor manda: sem SQL.
+- Na etapa da ação, sem o meu sinal, a tela diz "Sua postura não chegou a
+  tempo: ele viu Guarda alta. Agir diferente dela é finta." Antes, a mesa
+  dizia "você mostrou Guarda alta", como se fosse escolha.
+- O treino usa os mesmos prazos (`JXJ_TREINO_PRAZOS`).
+
+Testes: `jxj` (a postura de 6,5 s vale, a de 8,5 s é recusada; os prazos)
+e `jxjtelas` (o aviso aparece sem o meu sinal e some com ele; a troca volta
+como estava pro teste seguinte, que conta as fintas).
+
 ## Grátis mais generoso, Online na página do Pro e pesos misturados (2026-11-06)
 
 Pedido do dono antes do anúncio pago: deixar o Pro mais atraente pra quem

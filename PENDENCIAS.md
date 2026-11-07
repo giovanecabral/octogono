@@ -2607,6 +2607,15 @@ Falta, do dono, nesta ordem:
 1. Backup e rodar `supabase_jxj_gratis_pesos.sql`.
 2. A conferência do fim do arquivo (true, true, true).
 3. Liberar o deploy.
+
+Feito: o dono rodou (true, true, true) e liberou; no ar em `40b17c8`.
+
+## 53. A postura que virava Guarda alta (2026-11-07)
+
+Achado jogando no celular. Reproduzido no local: a postura tocada 5 s
+depois de a mão aparecer chegava fora do prazo e valia a Guarda alta.
+Etapa do sinal de 5 s pra 8 s e aviso na tela (LEIA-ME "A postura que
+virava Guarda alta"). Sem SQL. Branch `postura-8s`.
 2. Depois de 2 ou 3 dias de anúncio, rodar
    `ferramentas/online-estrategia-metricas.sql` e as consultas da
    narração (`fonte` por `destaque`, e `jxj_narracao_uso` contra o teto).

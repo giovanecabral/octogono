@@ -145,8 +145,11 @@ metade). Regras do revamp que valem daqui pra frente:
   2026-10-28 (`ec9a379`).
   Estratégia de simulação que pede família sem carta passa por
   `familiaNaMao`; bot filtra por `filtrarPelaMao`.
-  **Fase 2 (sinais e blefe):** cada troca tem a etapa do sinal (5 s, só
-  postura) e a da ação (12 s), num prazo só de 17 s; ação diferente da
+  **Fase 2 (sinais e blefe):** cada troca tem a etapa do sinal (8 s desde
+  2026-11-07, só postura; com 5 s a postura chegava depois do prazo no
+  celular, porque o tempo corria junto com a revelação, e virava Guarda
+  alta) e a da ação (12 s), num prazo só de 20 s; sem o meu sinal na etapa
+  da ação, a tela avisa que a postura não chegou e qual ele viu; ação diferente da
   própria postura é finta e custa 1,5 de energia (`custoFinta`, medido:
   equilíbrio com o sinal honesto de 67% a 71%, meta 60% a 75%). Ação na
   etapa do sinal é compromisso honesto; "ele já escolheu" só conta ação

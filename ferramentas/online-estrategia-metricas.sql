@@ -6,8 +6,8 @@
 -- quiser outra). O treino guiado roda só no navegador e não aparece aqui.
 --
 -- Como ler:
---   postura que estourou o tempo: o lado não mostrou a postura nos 5 s.
---     Acima de uns 20%, os 5 s estão curtos (proposta: 7 s).
+--   postura que estourou o tempo: o lado não mostrou a postura no prazo
+--     (8 s desde 2026-11-07; eram 5). Acima de uns 20%, está curto.
 --   finta: a ação foi diferente da postura. No equilíbrio medido, perto
 --     de 30%; muito abaixo, ninguém blefa; muito acima, a postura não diz nada.
 --   ação que estourou o tempo: o lado não escolheu a ação nos 12 s.

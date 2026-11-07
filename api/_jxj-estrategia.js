@@ -53,8 +53,13 @@ export const ESTRATEGIA = {
   /* com a iniciativa (quem venceu a última troca do round), a finta custa
      isto do custo (fase 3) */
   fatorFintaIniciativa: 0.5,
-  /* a troca: primeiro o sinal, depois a ação (um prazo só, a soma) */
-  prazos: { sinalMs: 5000, acaoMs: 12000 },
+  /* a troca: primeiro o sinal, depois a ação (um prazo só, a soma). O
+     sinal foi de 5 s pra 8 s em 2026-11-07 (achado jogando no celular): os
+     5 s corriam junto com a revelação da troca anterior (2,6 s, mais os
+     golpes na barra), a postura chegava depois do prazo, valia a padrão
+     (Guarda alta) e toda outra ação virava finta. Só tempo: não muda
+     nenhum número da luta, então VERSAO_MOTOR fica. */
+  prazos: { sinalMs: 8000, acaoMs: 12000 },
 };
 /* a postura de cada família: o sinal que o lutador mostra (fase 2) */
 export const POSTURAS = { golpes: "Peso na frente", queda: "Base baixa", defesa: "Guarda alta", pressao: "Avançando" };
