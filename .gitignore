@@ -18,3 +18,7 @@ node_modules/
 
 # área de trabalho dos planos e protótipos (superpowers), só local
 .superpowers/
+
+# luta em 3D: as animações vêm do Mixamo (Adobe) e não podem ser redistribuídas
+# como arquivo. Ficam só na pasta local e sobem no deploy (vercel --prod).
+luta3d/mx_lutas.glb

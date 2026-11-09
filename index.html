@@ -7268,6 +7268,8 @@ let ROSTER=null,POOL=null,PCT=null,LADDER=null,RANKING=null;
 let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null,lesaoRng=null,eventoRng=null,dilemaRng=null,rivalRng=null,rareUsed=null,fought=null;
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=false;
 let speed=1,playing=false,playTimer=null;
+/* luta em 3D: a instância, a carga em andamento, o adversário e quem espera um lance (ver ligar3d) */
+let LUTA3D=null,LUTA3D_CARREGANDO=null,LUTA3D_OPP=null,LUTA3D_CORTES=[];
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
    clicar no automático chamava nextFight por cima do dilema, a promessa nunca
    resolvia e a carreira travava de vez. */
@@ -11549,6 +11551,7 @@ let abaHub="painel";
 let CARREIRA_TOKEN=0;
 function pararCarreira(){
   CARREIRA_TOKEN++;
+  desligar3d(false);
   clearTimeout(playTimer);clearTimeout(autoTimer);clearTimeout(entradaTimer);
   auto=false;
   document.documentElement.dataset.noite="0";
@@ -11754,7 +11757,8 @@ function montarNoite(){
   const stage=el("div","stage");stage.id="stage";stage.style.display="none";
   const ctrl=el("div","noite-luta-ctrl");
   const sp=el("button","botao botao-sec",`Velocidade ${speed}x`);sp.id="speedb";sp.onclick=cycleSpeed;
-  ctrl.append(sp);
+  const v3=el("button","botao botao-sec","");v3.id="modo3d";v3.type="button";v3.onclick=()=>{SOM.toque();alternar3d();};
+  ctrl.append(sp,v3);
   const live=el("div","live");live.id="live";
   const escLuta=el("div","escolha-luta");escLuta.id="escolhaLuta";escLuta.style.display="none";
   stage.append(ctrl,live,escLuta);
@@ -12006,6 +12010,7 @@ function atualizarBadgeConquistas(){
 function cycleSpeed(){
   speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
   document.getElementById("speedb").textContent=`Velocidade ${speed}x`;
+  if(LUTA3D)LUTA3D.velocidade(speed);
 }
 function pickOpponent(){
   const center=Math.floor(st.standing*(LADDER.length-1));
@@ -12461,7 +12466,7 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   const narr=narradorDoPlano(A,B);
   const linhaPlano=(round,clock,text)=>{ if(text)log.push({round,clock,kind:"plano",text}); };
   const push=(round,clock,kind,text,ev)=>{
-    log.push({round,clock,kind,text});
+    log.push(comEvento({round,clock,kind,text},ev));
     if(!ev)return;
     if(ev.tipo==="inicio")linhaPlano(round,clock,narr.inicio(planoAtual));
     else if(ev.tipo==="fimRound")linhaPlano(round,clock,narr.fimRound());
@@ -12469,7 +12474,7 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   };
   const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
   const fin=(w,l,round,clock,m)=>{
-    push(round,clock,"fin",`${w.ref.name} vence por ${m.toLowerCase()}`);
+    log.push(comEvento({round,clock,kind:"fin",text:`${w.ref.name} vence por ${m.toLowerCase()}`},{tipo:"fim",quem:w===A?"A":"B",metodo:m}));
     linhaPlano(round,clock,narr.fim(w===A,m));
     return{winner:w.ref.name,loser:l.ref.name,method:m,round,clock,cards:null,log,knockdowns:kds()};
   };
@@ -12479,12 +12484,13 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
 
   const montarDecisao=()=>{
     const w=scores.sa>scores.sb?A:scores.sb>scores.sa?B:(rngL()<.5?A:B),l=w===A?B:A;
-    log.push({round:rounds,clock:"0:00",kind:"fin",
-      text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa,scores.sb)}-${Math.min(scores.sa,scores.sb)}.`});
+    log.push(comEvento({round:rounds,clock:"0:00",kind:"fin",
+      text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa,scores.sb)}-${Math.min(scores.sa,scores.sb)}.`},{tipo:"decisao",quem:w===A?"A":"B"}));
     return{winner:w.ref.name,loser:l.ref.name,method:"Decisão",round:rounds,clock:"0:00",
       cards:scores.sa+"-"+scores.sb,log,knockdowns:kds()};
   };
   const encerrar=res=>{
+    desligar3d(false);   // o resultado cobre o palco: devolve a placa de vídeo
     const won0=res.winner===me.name;
     const kd0=res.knockdowns[opp.name]||0,kdt0=res.knockdowns[me.name]||0;
     /* quedas de verdade (takedowns), não nocautes — A/B.takedowns nunca
@@ -12569,7 +12575,7 @@ function resumoDoRound(round,s){
   if(s.kdA||s.kdB)partes.push(`knockdowns ${s.kdB} a ${s.kdA}`);
   const row=el("div","pbp resumo-round",`<span class="clk">${ICONE("grafico")}</span><span>Round ${round}: ${partes.join(", ")}.</span>`);
   play.appendChild(row);
-  row.scrollIntoView({behavior:"smooth",block:"nearest"});
+  rolarNarracao(play,row);
 }
 /* Entrada: 1,5 s de tale of the tape antes do primeiro round, pulável.
    Só no manual e sem prefers-reduced-motion; no automático vai direto. */
@@ -12614,6 +12620,107 @@ function painelNumeros(v){
     <span class="num-barra"><i style="width:${a+b?Math.round(100*a/(a+b)):0}%"></i></span></div>`;
   return `<div class="painel-cab">${ICONE("grafico")}Na luta</div>${lin("golpes","Golpes significativos",v.golpes)}${lin("quedas","Quedas",v.quedas)}${lin("kd","Knockdowns",v.kd)}`;
 }
+/* Luta em 3D (2026-11-09, ideia trazida pelo dono: "personagens 3d que lutam
+   de verdade"). Os módulos moram em luta3d/ e só carregam quando a luta abre
+   em 3D. O motor não sabe que o 3D existe: cada linha do log leva o evento
+   (ev, propriedade que não vai pro save nem pro JSON) e o diretor transforma
+   a linha num lance; a narração espera o lance acabar. Começa em 3D
+   (decisão do dono) e lembra a escolha em "luta:3d". Fica no texto sem
+   WebGL, no automático, com "reduzir movimento" (até o jogador ligar) e se
+   o arquivo das animações não carregar: ele vem do Mixamo e não vai pro
+   GitHub, só sobe no deploy (vercel --prod). */
+const comEvento=(L,ev)=>{ if(ev)Object.defineProperty(L,"ev",{value:ev,enumerable:false}); return L; };
+const luta3dAtiva=()=>!!(LUTA3D||LUTA3D_CARREGANDO);
+function quer3d(){
+  try{ const v=localStorage.getItem("luta:3d"); if(v==="1")return true; if(v==="0")return false; }catch(e){}
+  return !reduceMotion();
+}
+function aceita3d(){
+  return !auto&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function"&&!!document.getElementById("luta3dCaixa");
+}
+function ligar3d(){
+  const caixa=document.getElementById("luta3dCaixa");
+  if(!caixa||luta3dAtiva())return;
+  caixa.hidden=false;
+  const live=document.getElementById("live"); if(live&&live.classList)live.classList.add("com3d");
+  caixa.innerHTML=`<div class="luta3d-carregando">Montando o octógono</div>`;
+  const tk=CARREIRA_TOKEN;
+  const ref=LUTA3D_CARREGANDO=import("./luta3d/diretor.js")
+    .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(LUTA3D_OPP),som:som3d}))
+    .then(l=>{
+      if(tk!==CARREIRA_TOKEN||LUTA3D_CARREGANDO!==ref){ l.destruir(); return null; }
+      const c=caixa.querySelector(".luta3d-carregando"); if(c)c.remove();
+      LUTA3D=l; LUTA3D_CARREGANDO=null; l.velocidade(speed); pintarBotao3d(); return l;
+    })
+    .catch(e=>{ console.warn("luta em 3D indisponível:",e&&e.message); if(LUTA3D_CARREGANDO===ref)desligar3d(false); return null; });
+  pintarBotao3d();
+}
+function desligar3d(lembrar){
+  if(LUTA3D){ try{ LUTA3D.destruir(); }catch(e){} }
+  LUTA3D=null; LUTA3D_CARREGANDO=null;
+  const cortes=LUTA3D_CORTES; LUTA3D_CORTES=[]; cortes.forEach(f=>f());   // quem esperava um lance segue no texto
+  const caixa=document.getElementById("luta3dCaixa");
+  if(caixa){ caixa.hidden=true; caixa.innerHTML=""; }
+  const live=document.getElementById("live"); if(live&&live.classList)live.classList.remove("com3d");
+  if(lembrar){ try{ localStorage.setItem("luta:3d","0"); }catch(e){} }
+  pintarBotao3d();
+}
+function alternar3d(){
+  if(luta3dAtiva()){ desligar3d(true); return; }
+  try{ localStorage.setItem("luta:3d","1"); }catch(e){}
+  if(aceita3d())ligar3d();
+}
+function pintarBotao3d(){
+  const b=document.getElementById("modo3d");
+  if(!b)return;
+  b.hidden=!aceita3d()&&!luta3dAtiva();
+  b.innerHTML=luta3dAtiva()?`${ICONE("lista")}<span>Ver só o texto</span>`:`${ICONE("camera")}<span>Ver em 3D</span>`;
+}
+/* a próxima linha da narração espera o lance desta. Carregando ainda: espera
+   no máximo 6 s e, sem o palco, a linha passa só no texto. Nenhum lance
+   segura a luta mais de 30 s, e desligar o 3D solta quem estava esperando. */
+function esperarLance3d(L){
+  const corte=new Promise(r=>LUTA3D_CORTES.push(r));
+  const teto=new Promise(r=>setTimeout(r,30000));
+  const pronto=LUTA3D?Promise.resolve(LUTA3D)
+    :LUTA3D_CARREGANDO?Promise.race([LUTA3D_CARREGANDO,new Promise(r=>setTimeout(()=>r(null),6000))]):Promise.resolve(null);
+  const lance=pronto.then(l=>l&&l.lance(L)).catch(()=>{});
+  return Promise.race([lance,corte,teto]);
+}
+/* o corpo 3D do jogador segue o boneco: pele, cor do calção (a cor da
+   entrada), cabelo e barba nas peças que o corpo tem */
+function corpo3d(cfg){
+  const c=normalizarRosto(cfg),cab=CABELO_TIPOS[c.cabelo];
+  return{pele:PELES[c.pele][0],calcao:CORES_ENTRADA[c.corEntrada],corCabelo:CORES_CABELO[c.corCabelo],
+    cabelo:cab==="raspado"?null:/militar|moicano|descolorido/.test(cab)?"buzzed":"repartido",barba:c.barba?"barba":null};
+}
+/* o adversário é um corpo genérico: nada vem da pessoa real (o nome só
+   escolhe variações, igual pra todo mundo que enfrentar ele) */
+function corpoGenerico3d(opp){
+  const h=hashEstavel(String(opp&&opp.name||"")),meu=normalizarRosto(ROSTO||cfgPadrao());
+  return{pele:PELES[h%PELES.length][0],calcao:meu.corEntrada===2?"#D7261E":"#1F3A6E",corCabelo:CORES_CABELO[(h>>3)%3],
+    cabelo:["buzzed","repartido",null][(h>>5)%3],barba:(h>>7)%2?"barba":null};
+}
+/* a linha da narração também passa em cima do palco, como legenda (texto puro:
+   nome de lutador nunca vira HTML) */
+function legenda3d(L){
+  const c=document.getElementById("luta3dCaixa");
+  if(!c||!luta3dAtiva()||!c.querySelector)return;
+  let g=c.querySelector(".luta3d-legenda");
+  if(!g){ g=el("div","luta3d-legenda",""); c.appendChild(g); }
+  g.className="luta3d-legenda"+(L.kind?" "+L.kind:"");
+  g.textContent=String(L.text||"").replace(/<[^>]+>/g,"");
+}
+/* com o 3D a narração rola dentro do painel (a página não sai de cima do palco) */
+function rolarNarracao(play,row){
+  if(luta3dAtiva())play.scrollTop=play.scrollHeight;
+  else row.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+function som3d(tipo,vol=1){
+  const f={leve:()=>SOM.golpeLeve(),pesado:()=>SOM.golpePesado(),queda:()=>SOM.queda(),sinoIni:()=>SOM.sinoInicio(),
+    sinoFim:()=>SOM.sinoFim(),explode:()=>toca("torcidaExplode",.8*vol),sobe:()=>toca("torcidaSobe",.6*vol)}[tipo];
+  if(f)f();
+}
 /* Narração: cabeçalho monta UMA vez por luta (iniciarTelaLuta), o log
    anima em PEDAÇOS (animarTrecho) — desde o item 3 ("escolha na luta"),
    lutar() é um driver round a round que chama animarTrecho() de novo a
@@ -12623,6 +12730,7 @@ function painelNumeros(v){
    escondido. */
 function iniciarTelaLuta(opp,titleFight){
   playing=true;
+  desligar3d(false);
   const live=document.getElementById("live");
   document.getElementById("stage").style.display="";
   live.innerHTML=`<div class="placar">
@@ -12631,10 +12739,14 @@ function iniciarTelaLuta(opp,titleFight){
         titleFight?`<span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}<span class="placar-plano" id="placarPlano" hidden></span></div>
       <div class="placar-lado ele"><b>${opp.name}</b></div>
     </div>
+    <div class="luta3d-caixa" id="luta3dCaixa" hidden></div>
     <div class="luta-grade">
       <div class="play" id="play"></div>
       <aside class="luta-numeros painel-bloco" id="lutaNumeros">${painelNumeros({golpes:[0,0],quedas:[0,0],kd:[0,0]})}</aside>
     </div>`;
+  LUTA3D_OPP=opp;
+  if(quer3d()&&aceita3d())ligar3d();
+  pintarBotao3d();
 }
 function animarTrecho(lines,aoTerminar){
   const play=document.getElementById("play");let i=0;
@@ -12652,15 +12764,21 @@ function animarTrecho(lines,aoTerminar){
     const row=el("div","pbp"+(L.kind?" "+L.kind:""),
       `<span class="clk">${L.kind==="plano"?ICONE("alvo"):L.clock}</span><span>${L.text}</span>`);
     play.appendChild(row);
-    row.scrollIntoView({behavior:"smooth",block:"nearest"});
-    /* o som sai do TIPO da linha e do texto (somDaLinha, fase 6) */
+    rolarNarracao(play,row);
+    legenda3d(L);
+    /* o som sai do TIPO da linha e do texto (somDaLinha, fase 6); no 3D,
+       cada golpe e cada queda tem o seu, então a linha fica quieta */
     const efeito=somDaLinha(L);
-    if(efeito&&SOM[efeito])SOM[efeito]();
+    if(efeito&&SOM[efeito]&&!luta3dAtiva())SOM[efeito]();
     if(L.kind==="fin"&&/ocaute/.test(L.text)&&!reduceMotion()){
       document.body.classList.add("ko");
       setTimeout(()=>document.body.classList.remove("ko"),440);
     }
-    playTimer=setTimeout(step,reduceMotion()?10:tempoDeLeitura(L)/speed);
+    const leitura=reduceMotion()?10:tempoDeLeitura(L)/speed;
+    if(!luta3dAtiva()){playTimer=setTimeout(step,leitura);return;}
+    /* no 3D a próxima linha espera o lance desta acabar (e o tempo de ler) */
+    Promise.all([esperarLance3d(L),new Promise(r=>{playTimer=setTimeout(r,leitura);})])
+      .then(()=>{ if(tk===CARREIRA_TOKEN)step(); });
   };
   step();
 }

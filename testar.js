@@ -15520,6 +15520,118 @@ async function testarRegrasCarreira() {
  * LUTA INTERATIVA NA CARREIRA (2026-10-04, branch local, pedido do dono):
  *     plano antes de cada round, 4 opções que mudam, vale só no round.
  * ================================================================== */
+/* Luta em 3D (2026-11-09). O 3D roda no navegador (WebGL), então aqui
+   entra o que é do jogo: cada linha do log leva o evento que o diretor lê
+   (e ele nunca vai pro save), sem WebGL e no automático a luta fica no
+   texto, desligar o 3D solta a narração que esperava um lance, o corpo do
+   adversário é genérico, o diretor cobre todo evento do motor e o arquivo
+   das animações (Mixamo) fica fora do git. O 3D em si tem o teste de ponta
+   a ponta no Chrome: ferramentas/luta3d-e2e.mjs e luta3d-estresse.mjs. */
+async function testarLuta3d() {
+  console.log("\n" + cinza("luta em 3D: evento em cada linha (fora do save), texto sem WebGL, corte ao desligar, corpo genérico, arquivo do Mixamo fora do git"));
+  const F = lerLutadores();
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const X = sandboxCarreira();
+  iniciarCarreiraTeste(X, F, 31337, "normal");
+  X.run(`globalThis.__linhas=[];(function(){const o=animarTrecho;animarTrecho=function(lines,cb){
+    for(const L of lines)globalThis.__linhas.push({kind:L.kind,text:L.text,ev:L.ev||null,json:JSON.stringify(L)});return o.apply(this,arguments);};})();`);
+  await jogarCarreiraAte(X, 8);
+  const linhas = JSON.parse(X.run("JSON.stringify(__linhas)"));
+  const motor = linhas.filter(L => L.kind !== "plano");
+  await conf("toda linha do motor leva o evento (tipo e quem), e a linha do fim diz o método e quem venceu", () => {
+    if (motor.length < 40) throw new Error("poucas linhas: " + motor.length);
+    const sem = motor.filter(L => !L.ev || !L.ev.tipo);
+    if (sem.length) throw new Error(`${sem.length} linhas sem evento, ex.: ${sem[0].kind} "${sem[0].text}"`);
+    const fins = motor.filter(L => L.kind === "fin");
+    if (fins.length < 8) throw new Error("só " + fins.length + " linhas de fim em 8 lutas");
+    for (const L of fins) {
+      if (!["fim", "decisao"].includes(L.ev.tipo) || !["A", "B"].includes(L.ev.quem)) throw new Error("fim sem tipo ou quem: " + JSON.stringify(L.ev));
+      if (L.ev.tipo === "fim" && !L.text.toLowerCase().includes(L.ev.metodo.toLowerCase())) throw new Error(`método ${L.ev.metodo} e texto "${L.text}" não batem`);
+      const venceu = L.text.replace(/^Vai pros cartões\. /, "").split(" vence por ")[0];
+      const meu = X.run("me.name");
+      if ((L.ev.quem === "A") !== (venceu === meu)) throw new Error(`quem venceu (${venceu}) e o evento (${L.ev.quem}) não batem`);
+    }
+  });
+  await conf("o evento não vai pro JSON da linha nem pro save", () => {
+    const vaza = linhas.filter(L => /"ev"/.test(L.json));
+    if (vaza.length) throw new Error("linha com ev no JSON: " + vaza[0].json);
+    if (/"ev"/.test(X.run("JSON.stringify(st.registro)"))) throw new Error("ev no registro (save)");
+  });
+  await conf("sem WebGL ou no automático o 3D não liga; com WebGL e no manual, liga; a escolha lembrada vence o padrão", () => {
+    if (X.run("aceita3d()||luta3dAtiva()")) throw new Error("ligou sem WebGL");
+    if (X.registro.modo3d && X.registro.modo3d.hidden !== true) throw new Error("botão do 3D aparece sem WebGL");
+    X.sb.window.WebGL2RenderingContext = function () {};
+    if (X.run("auto=true;aceita3d()")) throw new Error("ligou no automático");
+    if (!X.run("auto=false;aceita3d()")) throw new Error("com WebGL e no manual não liga");
+    delete X.sb.window.WebGL2RenderingContext;
+    X.run("localStorage.removeItem('luta:3d')");
+    if (X.run("quer3d()") !== !X.run("reduceMotion()")) throw new Error("padrão não segue o reduzir movimento");
+    if (X.run("localStorage.setItem('luta:3d','1');quer3d()") !== true) throw new Error("não lembrou o 3D");
+    if (X.run("localStorage.setItem('luta:3d','0');quer3d()") !== false) throw new Error("não lembrou o texto");
+  });
+  await conf("desligar o 3D solta a narração que esperava um lance (carregando ou no meio dele) e lembra o texto", async () => {
+    const r = await X.run(`(async()=>{
+      LUTA3D_CARREGANDO=new Promise(()=>{});
+      let solto=0;
+      esperarLance3d({kind:"",text:""}).then(()=>{solto++;});
+      esperarLance3d({kind:"",text:""}).then(()=>{solto++;});
+      alternar3d();
+      for(let i=0;i<8;i++)await Promise.resolve();
+      return {solto,ativa:luta3dAtiva(),lembra:localStorage.getItem("luta:3d")};
+    })()`);
+    if (r.solto !== 2) throw new Error(`${r.solto} de 2 esperas soltas`);
+    if (r.ativa) throw new Error("continuou ativa");
+    if (r.lembra !== "0") throw new Error("não lembrou o texto: " + r.lembra);
+  });
+  await conf("o corpo do jogador segue o boneco; o do adversário é genérico e só varia com o nome", () => {
+    const r = JSON.parse(X.run(`JSON.stringify({
+      careca:corpo3d({...cfgPadrao(),cabelo:0,barba:0,pele:5,corEntrada:3}),
+      cabeludo:corpo3d({...cfgPadrao(),cabelo:6,barba:3}),
+      a1:corpoGenerico3d({name:"Fulano de Tal",slpm:9}),a2:corpoGenerico3d({name:"Fulano de Tal",slpm:1}),
+      nomes:["A","B","C","D","E","F","G","H"].map(n=>corpoGenerico3d({name:"Lutador "+n})),
+      peles:PELES.map(p=>p[0]),entrada:CORES_ENTRADA})`));
+    if (r.careca.cabelo !== null || r.careca.barba !== null) throw new Error("raspado e sem barba ganhou cabelo: " + JSON.stringify(r.careca));
+    if (r.careca.pele !== r.peles[5] || r.careca.calcao !== r.entrada[3]) throw new Error("pele ou calção não seguem o boneco");
+    if (!r.cabeludo.cabelo || r.cabeludo.barba !== "barba") throw new Error("cabelo ou barba sumiram: " + JSON.stringify(r.cabeludo));
+    if (JSON.stringify(r.a1) !== JSON.stringify(r.a2)) throw new Error("o corpo do adversário mudou com a estatística (só o nome escolhe)");
+    if (new Set(r.nomes.map(c => c.pele)).size < 2) throw new Error("adversários todos iguais");
+  });
+  const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+  await conf("o diretor tem lance pra todo evento que o motor manda", () => {
+    const src = lerScript(), i = src.indexOf("function simularRound("), j = src.indexOf("\nfunction ", i + 10);
+    const tipos = new Set([...src.slice(i, j).matchAll(/tipo:"(\w+)"/g)].map(m => m[1]).concat(["fim", "decisao"]));
+    const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map(m => m[1]));
+    const faltam = [...tipos].filter(t => !casos.has(t));
+    if (tipos.size < 10) throw new Error("achei poucos tipos no motor: " + [...tipos]);
+    if (faltam.length) throw new Error("evento sem lance: " + faltam);
+  });
+  await conf("texto do 3D sem travessão (as chamadas na tela e os comentários)", () => {
+    for (const f of ["diretor.js", "palco.js", "lutador.js"]) {
+      const t = fs.readFileSync(path.join(__dirname, "luta3d", f), "utf8");
+      const m = t.match(/[–—]/);
+      if (m) throw new Error(`${f}: travessão perto de "${t.slice(Math.max(0, m.index - 30), m.index + 10)}"`);
+    }
+    const chamadas = [...diretor.matchAll(/chamada\((["`])(.*?)\1/g)].map(m => m[2]);
+    if (chamadas.length < 8) throw new Error("achei poucas chamadas: " + chamadas.length);
+    const ruins = chamadas.filter(c => /[\u{1F300}-\u{1FAFF}←-⇿]/u.test(c));
+    if (ruins.length) throw new Error("emoji ou seta: " + ruins);
+  });
+  await conf("o arquivo das animações (Mixamo) fica fora do git e vai pro deploy", () => {
+    const gi = fs.readFileSync(path.join(__dirname, ".gitignore"), "utf8").split("\n").map(l => l.trim());
+    if (!gi.includes("luta3d/mx_lutas.glb")) throw new Error(".gitignore não tira luta3d/mx_lutas.glb");
+    const vi = fs.readFileSync(path.join(__dirname, ".vercelignore"), "utf8").split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    const tira = vi.filter(l => /^\/?luta3d|\.glb|^\*$/.test(l));
+    if (tira.length) throw new Error(".vercelignore tira o 3D do deploy: " + tira);
+    if (!/carregarBase\(dir\)/.test(diretor) || !/mx_lutas\.glb/.test(fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8")))
+      throw new Error("o 3D não carrega luta3d/mx_lutas.glb");
+  });
+  console.log("\n" + (falhas.length ? vermelho(`luta3d: ${falhas.length} falha(s)`) : verde("luta3d ok")) + "\n");
+  return !falhas.length;
+}
 async function testarLutaInterativa() {
   console.log("\n" + cinza("luta interativa: plano antes de cada round, 4 opções que mudam, vale só no round, automático não abre"));
   const F = lerLutadores();
@@ -15861,6 +15973,7 @@ try {
   else if (cmd === "entrevista") ok = await testarEntrevista();
   else if (cmd === "regras") ok = await testarRegrasCarreira();
   else if (cmd === "lutainterativa") ok = await testarLutaInterativa();
+  else if (cmd === "luta3d") ok = await testarLuta3d();
   else if (cmd === "gapinterativa") ok = testarGapInterativa(Number(div) || 3000);
   else if (cmd === "jxj") ok = await testarJxJ();
   else if (cmd === "jxjmotor") ok = await testarJxJMotor();
@@ -15953,6 +16066,7 @@ try {
         ["personagem", () => testarPersonagem()],
         ["regras", () => testarRegrasCarreira()],
         ["lutainterativa", () => testarLutaInterativa()],
+        ["luta3d", () => testarLuta3d()],
         ["gapinterativa", () => testarGapInterativa()],
         ["jxj", () => testarJxJ()],
         ["jxjmotor", () => testarJxJMotor()],

@@ -72,7 +72,9 @@ api/ai.js           Proxy do OpenRouter. Só é usado depois do deploy.
 api/jxj.js          JxJ (jogador contra jogador). Ver a seção "JxJ".
 api/_jxj-*.js       Motor, árvores, rating e regras do JxJ.
 supabase_jxj.sql    Migração do JxJ (só aditiva); depois dela, supabase_jxj_narracao.sql; _rollback desfaz as duas.
-ferramentas/        Teste do banco (PGlite), servidor local, balanço e E2E do JxJ.
+ferramentas/        Teste do banco (PGlite), servidor local, balanço e E2E do JxJ; E2E e estresse da luta em 3D.
+luta3d/             Luta da carreira em 3D (three.js na pasta vendor/, corpo Quaternius CC0, animações Mixamo).
+                    mx_lutas.glb (as animações) NÃO vai pro git: só sobe no deploy. Ver "Luta em 3D".
 ```
 
 Para jogar localmente: `python3 -m http.server 8000` na pasta e abrir
@@ -6201,6 +6203,85 @@ vitrine contando o jeito, o Observador sem responder e a força errada em
 100 pontos, cada um reprova. Mexeu no jeito, no motor ou na `INCLINACAO`:
 `node ferramentas/jxj-balanco.mjs personalidades`, copiar a força nova em
 `FORCA_BOT` e `node testar.js jxjbot`.
+
+## Luta em 3D (2026-11-09)
+
+Ideia trazida pelo dono (de um amigo): a luta da carreira com "personagens 3d
+que lutam de verdade", bonita e fluida, sem precisar ser realista, rodando em
+cima do motor que já existe. Decisões dele: carreira primeiro (o Online fica
+pra depois), botão pra alternar 3D e texto, liberado pra todo mundo, o
+lutador do jogador com a cara do boneco e o adversário genérico, começa em
+3D, publicar com a bateria verde.
+
+**Como funciona.** O motor não sabe que o 3D existe. `simularRound` já
+mandava o evento de cada linha (`ev`: `tipo` e `quem`, "A" é o jogador) pro
+narrador do plano; agora `rodarLuta` guarda esse evento na própria linha com
+`comEvento` (propriedade não enumerável: não vai pro JSON nem pro save) e a
+linha do fim ganha `{tipo:"fim", metodo}` ou `{tipo:"decisao"}`. Na tela,
+`animarTrecho` entrega cada linha ao diretor (`luta3d/diretor.js`,
+`lance(L)`) e a próxima linha espera o lance acabar e o tempo de leitura de
+sempre. Nada do 3D gasta os geradores da carreira (só `Math.random`, pra
+variar golpe e câmera): a luta é bit a bit a mesma com ou sem ele.
+
+**Quando fica no texto.** Sem WebGL 2, no automático, com "reduzir
+movimento" (até o jogador ligar), se o jogador escolheu texto (`luta:3d` no
+localStorage) e se o arquivo das animações não carregar. Carregando, a
+narração espera no máximo 6 s; nenhum lance segura a luta mais de 30 s;
+desligar o 3D no meio solta quem esperava (`LUTA3D_CORTES`). Sair da
+carreira, começar outra luta ou chegar no resultado desmonta o palco
+(`desligar3d`), e o diretor libera a placa de vídeo (`destruir`).
+
+**Os arquivos.** `luta3d/vendor/`: three.js r169 (MIT, licença no cabeçalho)
+com os imports trocados pra caminho relativo, sem importmap. `palco.js`
+(octógono, luz, plateia, câmera), `lutador.js` (corpo, root motion, IK de
+contato e com polo, pose mais parecida na troca de clipe), `diretor.js` (os
+lances). Corpo e cabelos: Quaternius, CC0. Animações: Mixamo (Adobe),
+convertidas pro esqueleto do corpo e enxugadas (só os 30 clipes usados e os
+quadros que a interpolação não recupera, 0,3 grau: de 6,3 MB pra 1,9 MB).
+A licença do Mixamo deixa usar no jogo mas não redistribuir o arquivo, e o
+GitHub é público: `luta3d/mx_lutas.glb` está no `.gitignore` e só sobe pelo
+`vercel --prod` (o deploy sobe a pasta). O deploy automático do push na
+master sai sem ele; a luta cai no texto até o `vercel --prod` do fluxo. A
+ferramenta que converte (FBX do Mixamo pra GLB) e o protótipo ficaram fora
+do repositório pelo mesmo motivo.
+
+**O que cada evento vira.** `janela`: troca de golpes (até 2 de cada lado,
+alguns defendidos). `queda`: a queda em dupla capturada e a montada.
+`controle`, `gnp`: socos por cima. `sub`: tentativa que não entra, do lado
+de quem tentou (por cima aperta o pescoço; por baixo senta e abraça o
+pescoço, e ele arranca a cabeça). `levantou`: quem está embaixo expulsa
+(primeira ponte que ele segura, mãos no quadril, ponte forte, fuga de
+quadril, pé no quadril, chute). `kd`: knockdown e levanta. `fim`: nocaute em
+câmera lenta, nocaute técnico com a chuva de socos ou finalização.
+`decisao`: vitória nos cartões. Faixas na tela (ROUND, QUEDA!, KNOCKDOWN!,
+NOCAUTE!, o nome da finalização), vinheta, clarão, câmera lenta e o som de
+cada golpe (os arquivos do jogo, pelo `SOM`; a linha não toca o dela no 3D).
+
+**Finalizações.** O Mixamo só tem o mata-leão capturado (o par Strangling e
+Being Strangled); triângulo, chave de braço e guilhotina são montadas por
+IK em cima de deitado de costas (`Laying_Idle`) e ajoelhado (a montada),
+com polo pra cotovelo e joelho. Quem finaliza por cima faz chave de braço
+ou mata-leão; por baixo, triângulo ou guilhotina. O motor não diz qual: o
+3D sorteia, e nada da carreira lê isso.
+
+**Lições que custaram.** O mixer do three só reescreve o osso quando o
+valor muda: sem voltar à saída limpa a cada quadro, os ajustes por código
+acumulavam e o corpo contorcia (só aparece a 60 quadros por segundo; o
+Chrome sem placa de vídeo roda a 6 e esconde o bug, por isso as ferramentas
+usam `--use-angle=metal --enable-gpu`). Em 3x (ou num celular lento) um
+quadro pulava a janela de 0,06 s do soco no chão e o lance nunca acabava:
+o golpe conta assim que passa do instante do impacto. A pose da montada
+saiu do clipe da queda com os ombros girados 35 graus: o diretor endireita
+a cada quadro, senão o cotovelo cruza o corpo.
+
+**Testes.** `node testar.js luta3d` (evento em toda linha e fora do save,
+texto sem WebGL e no automático, corte ao desligar, corpo do boneco e
+adversário genérico, diretor cobrindo todo evento do motor, sem travessão,
+arquivo do Mixamo fora do git e dentro do deploy). No Chrome de verdade:
+`ferramentas/luta3d-e2e.mjs` (uma luta da carreira inteira em 3D, troca pra
+texto e volta, resultado desmonta o palco; `celular` como segundo argumento)
+e `ferramentas/luta3d-estresse.mjs` (muitas lutas do motor em 3x, reprova
+erro e lance preso).
 
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 

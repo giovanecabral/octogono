@@ -1087,6 +1087,42 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 }
 @media (prefers-reduced-motion:reduce){.noite .pbp{animation:none}}
 
+/* luta em 3D (luta3d/, 2026-11-09): o palco fica entre o placar e a narração;
+   com ele ligado, a narração rola dentro do painel pra página não fugir do palco */
+.luta3d-caixa{position:relative;width:100%;aspect-ratio:16/9;max-height:min(58vh,600px);margin:0 0 16px;overflow:hidden;
+  background:#07080B;border:1px solid var(--linha-forte)}
+@media (max-width:700px){.luta3d-caixa{aspect-ratio:4/5;max-height:60vh}}
+.luta3d-palco{position:absolute;inset:0}
+.luta3d-palco canvas{display:block;width:100%;height:100%}
+.luta3d.lenta canvas{filter:saturate(.35) contrast(1.15)}
+.luta3d-carregando{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-ui);font-weight:700;font-size:15px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--cinza)}
+.luta3d-vinheta{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(215,38,30,.75) 100%)}
+.luta3d-vinheta.ativa{animation:luta3dVinheta .55s ease-out}
+@keyframes luta3dVinheta{0%{opacity:var(--forca,1)}100%{opacity:0}}
+.luta3d-flash{position:absolute;inset:0;pointer-events:none;background:#fff;opacity:0}
+.luta3d-flash.ativa{animation:luta3dFlash .5s ease-out}
+@keyframes luta3dFlash{0%{opacity:.95}100%{opacity:0}}
+.luta3d-chamada{position:absolute;left:0;right:0;top:30%;padding:0 16px;text-align:center;pointer-events:none;opacity:0;
+  font-family:var(--f-titulo);font-weight:400;font-size:clamp(34px,7vw,92px);line-height:1;text-transform:uppercase;letter-spacing:.01em;
+  color:#fff;text-shadow:0 4px 0 var(--sangue),0 10px 30px rgba(0,0,0,.7)}
+.luta3d-chamada.pequena{top:18%;font-size:clamp(20px,4vw,44px)}
+.luta3d-chamada.ativa{animation:luta3dChamada 1.9s var(--ease-soco) forwards}
+.luta3d-chamada.pequena.ativa{animation-duration:1.3s}
+@keyframes luta3dChamada{0%{opacity:0;transform:scale(2.2) skewX(-8deg)}12%{opacity:1;transform:scale(.94) skewX(-8deg)}18%{transform:scale(1.04) skewX(-8deg)}
+  24%{transform:scale(1) skewX(-8deg)}80%{opacity:1;transform:scale(1.02) skewX(-8deg)}100%{opacity:0;transform:scale(1.1) skewX(-8deg)}}
+.noite .live.com3d .play{min-height:0;max-height:230px;overflow-y:auto}
+/* no celular, velocidade e 3D/texto dividem a mesma linha */
+@media (max-width:560px){.noite-luta-ctrl .botao{flex:1 1 0;min-height:44px;padding:0 10px;font-size:14px;letter-spacing:.08em}}
+.luta3d-legenda{position:absolute;left:12px;right:12px;bottom:12px;max-width:680px;margin:0 auto;padding:9px 14px;pointer-events:none;
+  background:rgba(7,8,11,.8);border-left:3px solid var(--sangue);font-size:16px;line-height:1.35;color:var(--osso)}
+.luta3d-legenda.big,.luta3d-legenda.kd,.luta3d-legenda.fin{font-family:var(--f-ui);font-weight:700;font-size:19px;letter-spacing:.03em;text-transform:uppercase}
+.luta3d-legenda.plano{border-left-color:var(--ouro)}
+.luta3d-legenda:empty{display:none}
+@media (max-width:560px){.luta3d-legenda{left:8px;right:8px;bottom:8px;padding:7px 10px;font-size:14px}
+  .luta3d-legenda.big,.luta3d-legenda.kd,.luta3d-legenda.fin{font-size:16px}}
+@media (prefers-reduced-motion:reduce){.luta3d-chamada.ativa{animation:none;opacity:1}.luta3d-vinheta.ativa,.luta3d-flash.ativa{animation:none}}
+
 /* resultado e pós-luta */
 .noite #resultado,.noite #posluta{display:none}
 .noite.etapa-resultado #stage{display:none}

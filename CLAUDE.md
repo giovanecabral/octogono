@@ -33,6 +33,8 @@ supabase_jxj_fase5.sql  Sétima (2026-10-21): torneio só com lutas contra gente
 supabase_jxj_gratis_pesos.sql  Nona (2026-11-06): pesos diferentes na fila e a luta grátis contra gente por dia. Depois de todas, com aprovação do dono.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
+luta3d/             Luta da carreira em 3D (2026-11-09): diretor.js, palco.js, lutador.js, three.js em vendor/.
+                    mx_lutas.glb (animações do Mixamo) fica FORA do git e só sobe no vercel --prod.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
 docs/superpowers/   Spec e planos do revamp da interface e do JxJ.
@@ -218,6 +220,20 @@ metade). Regras do revamp que valem daqui pra frente:
   na fila sem formar par usa outra versão de balanceamento, não outra
   categoria. A carreira nova não oferece divisão feminina (o boneco não
   tem versão feminina); `DIVISOES` continua com elas pra save e link.
+- **Luta em 3D da carreira (2026-11-09, `luta3d/`; LEIA-ME "Luta em 3D").**
+  O motor não sabe do 3D: a linha do log leva o evento (`comEvento`,
+  propriedade não enumerável: nunca vai pro JSON nem pro save) e
+  `animarTrecho` espera o lance do diretor. O 3D não gasta os 8 geradores
+  (só `Math.random`). Começa em 3D (decisão do dono), lembra `luta:3d`,
+  fica no texto sem WebGL, no automático e se o GLB faltar. **O GLB das
+  animações vem do Mixamo e não pode ir pro GitHub público**: está no
+  `.gitignore` e só sobe no `vercel --prod` (o deploy do push sai sem ele e
+  a luta cai no texto até o deploy do CLI). Evento novo no motor ganha
+  `case` no diretor (a suíte `luta3d` reprova evento sem lance). Mexeu no
+  diretor: `ferramentas/luta3d-estresse.mjs` (lance preso em 3x já
+  aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
+  (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por
+  segundo e esconde bug de animação).
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os
