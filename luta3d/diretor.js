@@ -8,7 +8,7 @@ import * as THREE from "./vendor/three.module.js";
 import { Palco } from "./palco.js";
 import { carregarBase, Lutador } from "./lutador.js";
 
-/* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), som(tipo, volume) }.
+/* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
    Devolve { lance(linha), velocidade(v), destruir() }. */
 export async function criarLuta3d(raiz, op = {}) {
 const dir = new URL("./", import.meta.url).href;
@@ -19,6 +19,7 @@ const elFlash = document.createElement("div"); elFlash.className = "luta3d-flash
 const elCham = document.createElement("div"); elCham.className = "luta3d-chamada"; elCham.setAttribute("aria-hidden", "true");
 raiz.append(elPalco, elVin, elFlash, elCham);
 const palco = new Palco(elPalco);
+if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
 const A = new Lutador(base, op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" });
 const B = new Lutador(base, op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" });
@@ -116,8 +117,12 @@ function efeitoGolpe(forca) {
   som(forca > 1.15 ? "pesado" : "leve", Math.min(1, 0.55 + 0.3 * forca));
   if (forca > 1.25) { vinheta(forca - 0.6); palco.chute = Math.max(palco.chute, 2.5 * forca); }
 }
-/* som: quem decide (e respeita o mudo) é o jogo */
-function som(tipo, vol = 1) { if (op.som) op.som(tipo, vol); }
+/* som: quem decide (e respeita o mudo) é o jogo. A torcida da arena reage junto. */
+const AGITA = { explode: 1.2, sobe: 0.6, pesado: 0.25, queda: 0.35 };
+function som(tipo, vol = 1) {
+  if (AGITA[tipo]) palco.agitar(AGITA[tipo] * Math.min(1, vol + 0.2));
+  if (op.som) op.som(tipo, vol);
+}
 
 /* ---------- golpes: animação, instante do impacto e distância medidos (mx_lutas) ---------- */
 const GOLPES = {
@@ -856,7 +861,7 @@ async function lance(L) {
     switch (ev.tipo) {
       case "inicio":
         if (montada) await separar({ narra: false });
-        chamada(`ROUND ${L.round}`); som("sinoIni", 0.8);
+        chamada(`ROUND ${L.round}`); som("sinoIni", 0.8); palco.placar({ round: L.round });
         await ajustarDist(1.7, 0.6); await esperar(0.6); break;
       case "janela": await trocacao(ev.a, ev.b); break;
       case "quedaDefendida": await quedaDefendida(atk, def); break;

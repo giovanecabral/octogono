@@ -15600,6 +15600,23 @@ async function testarLuta3d() {
     if (JSON.stringify(r.a1) !== JSON.stringify(r.a2)) throw new Error("o corpo do adversário mudou com a estatística (só o nome escolhe)");
     if (new Set(r.nomes.map(c => c.pele)).size < 2) throw new Error("adversários todos iguais");
   });
+  await conf("Rever luta: guarda as linhas da luta que acabou (com evento) e o botão só aparece no resultado dessa luta, onde o 3D roda", () => {
+    const r = JSON.parse(X.run(`JSON.stringify({ok:!!REPRISE&&REPRISE.n===st.registro[st.registro.length-1].n,
+      linhas:REPRISE?REPRISE.linhas.length:0,todas:REPRISE?REPRISE.linhas.every(L=>L.ev&&L.ev.tipo):false,
+      fim:REPRISE?REPRISE.linhas[REPRISE.linhas.length-1].ev.tipo:null})`));
+    if (!r.ok || r.linhas < 5 || !r.todas) throw new Error("a luta que acabou não ficou guardada pro Rever luta: " + JSON.stringify(r));
+    if (!["fim", "decisao"].includes(r.fim)) throw new Error("a última linha guardada não é o fim: " + r.fim);
+    const botao = () => { delete X.registro.resReverLuta; X.run("mostrarResultado(st.registro[st.registro.length-1],null)"); return !!X.registro.resReverLuta; };
+    if (botao()) throw new Error("botão Rever luta sem WebGL");
+    X.sb.window.WebGL2RenderingContext = function () {};
+    X.run("auto=false;");
+    if (!botao()) throw new Error("com WebGL o resultado da luta que acabou não oferece Rever luta");
+    delete X.registro.resReverLuta;
+    X.run("mostrarResultado(st.registro[st.registro.length-2],null)");
+    if (X.registro.resReverLuta) throw new Error("ofereceu Rever luta no resultado de outra luta (as linhas são da última)");
+    delete X.sb.window.WebGL2RenderingContext;
+    X.run("fecharReprise();fecharReprise();");   // fechar sem nada aberto não quebra
+  });
   const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
   await conf("o diretor tem lance pra todo evento que o motor manda", () => {
     const src = lerScript(), i = src.indexOf("function simularRound("), j = src.indexOf("\nfunction ", i + 10);

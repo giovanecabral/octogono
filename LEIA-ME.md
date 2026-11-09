@@ -6274,12 +6274,37 @@ o golpe conta assim que passa do instante do impacto. A pose da montada
 saiu do clipe da queda com os ombros girados 35 graus: o diretor endireita
 a cada quadro, senão o cotovelo cruza o corpo.
 
+**A arena (mesmo dia, pedido do dono: "background, iluminação, ambiente").**
+`palco.js` monta o octógono numa plataforma de 1,25 m (com saia, escada da
+entrada e um canto vermelho e um azul), chão polido, mesas da beira com as
+telas dos computadores acesas, cadeiras no chão e uma arquibancada em 17
+degraus (`LatheGeometry`) com a torcida: duas `InstancedMesh` (corpo com a
+cor da roupa, cabeça com a cor da pele), cada um virado um pouco diferente,
+corredores a cada 30 graus. A torcida pula quando o diretor toca torcida
+explodindo, subindo, golpe pesado ou queda (`agitar`); parada, não gasta
+nada. Treliça octogonal de luz com refletores e feixes na névoa (shader
+aditivo, fraco de propósito: forte, ele lavava a imagem inteira), faixa de
+LED que corre na parede da primeira fileira, dois telões com o round e os
+nomes (desenhados num canvas, nunca HTML), flashes de celular que piscam
+mais quando a torcida agita. Bloom (brilho das luzes e telões) só em tela
+larga; no celular, sem bloom e com menos pixel.
+
+**Rever luta (mesmo dia, pedido do dono).** No resultado, ao lado do Rever
+narração, a luta que acabou de novo em 3D numa tela própria (`abrirReprise`):
+palco grande, a narração de cada linha na legenda, Fechar (ou Esc) e Ver de
+novo no fim. Usa as linhas guardadas no fim da luta (`REPRISE`); como o
+evento não vai pro save, só a luta desta sessão tem o botão, e só onde o 3D
+roda. A coreografia sai diferente nos detalhes (golpes sorteados), os
+acontecimentos são os mesmos.
+
 **Testes.** `node testar.js luta3d` (evento em toda linha e fora do save,
 texto sem WebGL e no automático, corte ao desligar, corpo do boneco e
-adversário genérico, diretor cobrindo todo evento do motor, sem travessão,
+adversário genérico, Rever luta só no resultado da luta guardada, diretor
+cobrindo todo evento do motor, sem travessão,
 arquivo do Mixamo fora do git e dentro do deploy). No Chrome de verdade:
 `ferramentas/luta3d-e2e.mjs` (uma luta da carreira inteira em 3D, troca pra
-texto e volta, resultado desmonta o palco; `celular` como segundo argumento)
+texto e volta, resultado desmonta o palco, Rever luta abre e fecha;
+`celular` como segundo argumento)
 e `ferramentas/luta3d-estresse.mjs` (muitas lutas do motor em 3x, reprova
 erro e lance preso).
 

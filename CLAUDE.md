@@ -229,7 +229,9 @@ metade). Regras do revamp que valem daqui pra frente:
   animações vem do Mixamo e não pode ir pro GitHub público**: está no
   `.gitignore` e só sobe no `vercel --prod` (o deploy do push sai sem ele e
   a luta cai no texto até o deploy do CLI). Evento novo no motor ganha
-  `case` no diretor (a suíte `luta3d` reprova evento sem lance). Mexeu no
+  `case` no diretor (a suíte `luta3d` reprova evento sem lance). A arena
+  (torcida, treliça, telões, LED) mora em `palco.js`; Rever luta usa as
+  linhas guardadas em `REPRISE` (só a luta da sessão). Mexeu no
   diretor: `ferramentas/luta3d-estresse.mjs` (lance preso em 3x já
   aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
   (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por

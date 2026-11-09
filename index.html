@@ -7270,6 +7270,8 @@ let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=fa
 let speed=1,playing=false,playTimer=null;
 /* luta em 3D: a instância, a carga em andamento, o adversário e quem espera um lance (ver ligar3d) */
 let LUTA3D=null,LUTA3D_CARREGANDO=null,LUTA3D_OPP=null,LUTA3D_CORTES=[];
+/* Rever luta: as linhas (com evento) da última luta desta sessão e a tela aberta (ver abrirReprise) */
+let REPRISE=null,REPRISE_TELA=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
    clicar no automático chamava nextFight por cima do dilema, a promessa nunca
    resolvia e a carreira travava de vez. */
@@ -11551,7 +11553,7 @@ let abaHub="painel";
 let CARREIRA_TOKEN=0;
 function pararCarreira(){
   CARREIRA_TOKEN++;
-  desligar3d(false);
+  desligar3d(false);fecharReprise();
   clearTimeout(playTimer);clearTimeout(autoTimer);clearTimeout(entradaTimer);
   auto=false;
   document.documentElement.dataset.noite="0";
@@ -11705,6 +11707,15 @@ function mostrarResultado(reg,extra){
     <div class="res-como"><b>${reg.metodo}</b> · round ${reg.round} · ${reg.relogio}${reg.cartoes?" · "+reg.cartoes:""}</div>
     <div class="res-contra">contra ${reg.adv}${reg.titulo?` <span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}</div>
     ${nums}`;
+  /* Rever luta (2026-11-09, pedido do dono): a luta que acabou de novo em
+     3D. Só a desta sessão (o evento de cada linha não vai pro save) e só
+     onde o 3D roda. */
+  if(REPRISE&&REPRISE.n===reg.n&&REPRISE.linhas.length&&podeReprise()){
+    const rv=el("button","botao botao-sec res-rever",`${ICONE("play")}<span>Rever luta</span>`);
+    rv.type="button";rv.id="resReverLuta";
+    rv.onclick=()=>{SOM.toque();abrirReprise(REPRISE);};
+    box.append(rv);
+  }
   /* Rever narração (2026-10-05, pedido do dono): a narração da luta que
      acabou, inteira, na própria tela de vitória ou derrota. Mesma fonte e
      mesmo desenho do Cartel (reg.narracao), então funciona também quando
@@ -12490,6 +12501,7 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
       cards:scores.sa+"-"+scores.sb,log,knockdowns:kds()};
   };
   const encerrar=res=>{
+    REPRISE={n:fightNo,linhas:log.filter(L=>L.ev),opp,nomes:{a:me.name,b:opp.name}};   // pro Rever luta
     desligar3d(false);   // o resultado cobre o palco: devolve a placa de vídeo
     const won0=res.winner===me.name;
     const kd0=res.knockdowns[opp.name]||0,kdt0=res.knockdowns[me.name]||0;
@@ -12646,7 +12658,8 @@ function ligar3d(){
   caixa.innerHTML=`<div class="luta3d-carregando">Montando o octógono</div>`;
   const tk=CARREIRA_TOKEN;
   const ref=LUTA3D_CARREGANDO=import("./luta3d/diretor.js")
-    .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(LUTA3D_OPP),som:som3d}))
+    .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(LUTA3D_OPP),
+      nomes:{a:me&&me.name||"",b:LUTA3D_OPP&&LUTA3D_OPP.name||""},som:som3d}))
     .then(l=>{
       if(tk!==CARREIRA_TOKEN||LUTA3D_CARREGANDO!==ref){ l.destruir(); return null; }
       const c=caixa.querySelector(".luta3d-carregando"); if(c)c.remove();
@@ -12700,6 +12713,59 @@ function corpoGenerico3d(opp){
   const h=hashEstavel(String(opp&&opp.name||"")),meu=normalizarRosto(ROSTO||cfgPadrao());
   return{pele:PELES[h%PELES.length][0],calcao:meu.corEntrada===2?"#D7261E":"#1F3A6E",corCabelo:CORES_CABELO[(h>>3)%3],
     cabelo:["buzzed","repartido",null][(h>>5)%3],barba:(h>>7)%2?"barba":null};
+}
+function podeReprise(){
+  return !auto&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function";
+}
+/* tela do Rever luta: o palco grande, a legenda de cada linha, Fechar (ou Esc)
+   e, no fim, Ver de novo. Um diretor novo a cada vez; fechar desmonta tudo e
+   solta o lance que estava rodando. */
+function abrirReprise(R){
+  fecharReprise();
+  const tela=el("div","reprise","");tela.id="reprise";
+  if(tela.setAttribute){tela.setAttribute("role","dialog");tela.setAttribute("aria-label","Rever a luta");}
+  const cab=el("div","reprise-cab",`<b>${ICONE("play")}<span>Rever a luta</span></b>`);
+  const fechar=el("button","botao botao-sec",`${ICONE("fechar")}<span>Fechar</span>`);
+  fechar.type="button";fechar.id="repriseFechar";fechar.onclick=()=>{SOM.toque();fecharReprise();};
+  cab.appendChild(fechar);
+  const caixa=el("div","luta3d-caixa reprise-palco",`<div class="luta3d-carregando">Montando o octógono</div>`);
+  tela.append(cab,caixa);
+  document.body.appendChild(tela);
+  const estado=REPRISE_TELA={tela,inst:null,vivo:true,corte:null};
+  const cancelado=new Promise(r=>{estado.corte=r;});
+  if(document.addEventListener)document.addEventListener("keydown",fecharComEsc);
+  import("./luta3d/diretor.js")
+    .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(R.opp),nomes:R.nomes,som:som3d}))
+    .then(async inst=>{
+      if(!estado.vivo){inst.destruir();return;}
+      estado.inst=inst;
+      const c=caixa.querySelector(".luta3d-carregando"); if(c)c.remove();
+      const leg=el("div","luta3d-legenda","");caixa.appendChild(leg);
+      for(const L of R.linhas){
+        if(!estado.vivo)return;
+        leg.className="luta3d-legenda"+(L.kind?" "+L.kind:"");
+        leg.textContent=String(L.text||"").replace(/<[^>]+>/g,"");
+        await Promise.race([Promise.all([inst.lance(L),new Promise(r=>setTimeout(r,Math.min(2500,tempoDeLeitura(L))))]),cancelado]);
+      }
+      if(!estado.vivo)return;
+      const de=el("button","botao",`${ICONE("reenviar")}<span>Ver de novo</span>`);
+      de.type="button";de.id="repriseDeNovo";de.onclick=()=>{SOM.toque();abrirReprise(R);};
+      cab.insertBefore(de,fechar);
+    })
+    .catch(e=>{
+      console.warn("rever luta:",e&&e.message);
+      if(estado.vivo)caixa.innerHTML=`<div class="luta3d-carregando">Não deu pra montar a luta em 3D</div>`;
+    });
+}
+function fecharComEsc(e){ if(e&&e.key==="Escape")fecharReprise(); }
+function fecharReprise(){
+  const e=REPRISE_TELA;
+  if(!e)return;
+  REPRISE_TELA=null; e.vivo=false;
+  if(e.corte)e.corte();
+  if(e.inst){ try{ e.inst.destruir(); }catch(x){} }
+  if(e.tela&&e.tela.remove)e.tela.remove();
+  if(document.removeEventListener)document.removeEventListener("keydown",fecharComEsc);
 }
 /* a linha da narração também passa em cima do palco, como legenda (texto puro:
    nome de lutador nunca vira HTML) */

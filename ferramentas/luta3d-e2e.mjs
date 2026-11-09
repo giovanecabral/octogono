@@ -107,6 +107,19 @@ const fim = await page.evaluate(() => ({ fim: !playing && noiteEtapa === "result
 conferir(fim.fim, "luta chegou ao resultado");
 conferir(!fim.l3d, "palco desmontado no resultado");
 await page.screenshot({ path: path.join(saida, "resultado.png") });
+// Rever luta: a luta de novo em 3D, numa tela própria
+conferir(await page.evaluate(() => !!document.getElementById("resReverLuta")), "resultado oferece Rever luta");
+await page.evaluate(() => document.getElementById("resReverLuta").click());
+let rev = false;
+for (let g = 0; g < 80 && !rev; g++) { rev = await page.evaluate(() => !!document.querySelector("#reprise canvas") && !!document.querySelector("#reprise .luta3d-legenda")); if (!rev) await esperar(250); }
+conferir(rev, "Rever luta monta o palco e a legenda");
+await esperar(6000);
+await page.screenshot({ path: path.join(saida, "rever.png") });
+const legenda = await page.evaluate(() => (document.querySelector("#reprise .luta3d-legenda") || {}).textContent || "");
+conferir(legenda.length > 3, "Rever luta passa a narração na legenda: " + legenda.slice(0, 60));
+await page.evaluate(() => document.getElementById("repriseFechar").click());
+await esperar(400);
+conferir(await page.evaluate(() => !document.getElementById("reprise") && !REPRISE_TELA), "Fechar desmonta o Rever luta");
 conferir(erros.length === 0, "sem erro na página" + (erros.length ? ": " + erros.slice(0, 3).join(" | ") : ""));
 await browser.close();
 console.log(falhas.length ? `\n${falhas.length} falha(s)` : "\ntudo certo");
