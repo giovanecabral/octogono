@@ -26,6 +26,21 @@ await page.setViewport({ width: 1000, height: 600 });
 await page.goto(URL_JOGO + "#/menu", { waitUntil: "networkidle0" });
 await page.evaluate(async () => { for (let i = 0; i < 100 && (typeof ROSTER === "undefined" || !ROSTER || !ROSTER.length); i++) await new Promise((r) => setTimeout(r, 100)); });
 
+// mola da cabeça em passos grandes (3x num aparelho lento): antes do conserto, um passo de 0,1 s girava a cabeça milhares de graus
+const mola = await page.evaluate(async () => {
+  const m = await import("./luta3d/diretor.js");
+  const div = document.createElement("div"); div.style.cssText = "position:fixed;inset:0"; document.body.appendChild(div);
+  const l = await m.criarLuta3d(div, {}), L = l._dev.A, out = {};
+  for (const dt of [0.05, 0.1, 0.15]) {
+    L.molas.length = 0; L.impacto("Head", new l._dev.THREE.Vector3(1, 0, 0), 0.6); const x = L.molas[0];
+    let pior = 0; for (let i = 0; i < 12; i++) { L.update(dt); pior = Math.max(pior, Math.abs(x.ang)); }
+    out[dt] = Math.round(pior * 180 / Math.PI);
+  }
+  l.destruir(); div.remove(); return out;
+});
+console.log("mola da cabeça (pior ângulo por passo):", JSON.stringify(mola));
+const molaRuim = Object.values(mola).some((g) => g > 45);
+
 const N = Number(lutasArg);
 const resumo = [];
 for (let f = 0; f < N; f++) {
@@ -73,6 +88,7 @@ const lentos = resumo.flatMap((r) => r.lentos), metodos = resumo.map((r) => r.me
 const falhas = [];
 if (erros.length) falhas.push("erros na página: " + erros.slice(0, 5).join(" | "));
 if (lentos.length) falhas.push("lances presos: " + lentos.join(","));
+if (molaRuim) falhas.push("mola da cabeça instável em passo grande: " + JSON.stringify(mola));
 if (!metodos.some((m) => m !== "Decisão")) falhas.push("nenhuma luta terminou antes da decisão");
 console.log(falhas.length ? "FALHA\n" + falhas.join("\n") : "tudo certo");
 process.exit(falhas.length ? 1 : 0);

@@ -61,6 +61,9 @@ function tingirTextura(mapOrig, pele, calcao) {
   const cx = cv.getContext("2d"); cx.drawImage(img, 0, 0);
   const d = cx.getImageData(0, 0, w, h), px = d.data;
   const P = new THREE.Color(pele), C = new THREE.Color(calcao), ref = [0.80, 0.56, 0.42];
+  // pele bem escura: na luz do 3D ela virava preto brilhante (achado do dono); sobe um pouco os médios
+  const lum = 0.3 * P.r + 0.59 * P.g + 0.11 * P.b;
+  if (lum < 0.3) P.lerp(new THREE.Color("#8d5f42"), (0.3 - lum) * 1.4);
   for (let i = 0; i < px.length; i += 4) {
     const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255;
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx === 0 ? 0 : (mx - mn) / mx;
@@ -90,7 +93,7 @@ export class Lutador {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
         o.material = o.material.clone();
-        if (o.material.name === "MI_Superhero_Male" && o.material.map) { o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao); o.material.roughness = 0.7; o.material.envMapIntensity = 0.5; }
+        if (o.material.name === "MI_Superhero_Male" && o.material.map) { o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao); o.material.roughness = 0.8; o.material.envMapIntensity = 0.3; }
         if (o.name === "Eyebrows" && opt.corCabelo) o.material.color = new THREE.Color(opt.corCabelo);
       }
     });
@@ -277,8 +280,12 @@ export class Lutador {
       this.ikDoisOssos(o1, o2, o3, k.alvo(), Math.min(1, k.peso), k.polo ? k.polo() : null);
     }
     // molas de impacto (cabeça, tronco), por cima do clipe
+    // em passos de no máximo 1/120 s: com o passo do quadro (2x, 4x ou celular lento) a mola explodia
+    // e a cabeça girava solta (achado do dono)
+    const nPassos = Math.max(1, Math.ceil(dt * 120)), h = dt / nPassos;
     for (const m of this.molas.slice()) {
-      m.vel += (-m.ang * 240 - m.vel * 15) * dt; m.ang += m.vel * dt;
+      for (let i = 0; i < nPassos; i++) { m.vel += (-m.ang * 240 - m.vel * 15) * h; m.ang += m.vel * h; }
+      m.ang = Math.max(-0.9, Math.min(0.9, m.ang));
       if (Math.abs(m.ang) < 0.0005 && Math.abs(m.vel) < 0.01) { this.molas.splice(this.molas.indexOf(m), 1); continue; }
       this.girarMundo(this.ossos[m.osso], m.eixo, m.ang);
     }

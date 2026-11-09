@@ -1,14 +1,13 @@
 // Palco da luta em 3D: o octógono numa arena de verdade. Plataforma, mesas da
 // beira, arquibancada em degraus com a torcida (que levanta nos momentos
-// fortes), treliça de luz com feixes na névoa, telões com o round e os nomes,
-// faixa de LED e câmera de transmissão.
+// fortes), treliça de luz, telões com o round e os nomes, faixa de LED e câmera
+// de transmissão. Feito pra rodar leve no celular (sem pós-processamento,
+// torcida em poucos triângulos, poucas luzes): o dono achou pesado e brilhante
+// demais com bloom, feixes e 3.800 torcedores.
 import * as THREE from "./vendor/three.module.js";
 import { RoomEnvironment } from "./vendor/RoomEnvironment.js";
 import { mergeGeometries } from "./vendor/BufferGeometryUtils.js";
-import { EffectComposer } from "./vendor/EffectComposer.js";
-import { RenderPass } from "./vendor/RenderPass.js";
-import { UnrealBloomPass } from "./vendor/UnrealBloomPass.js";
-import { OutputPass } from "./vendor/OutputPass.js";
+
 
 const RAIO = 4.6;           // raio do octógono (até o meio da grade), em metros
 export { RAIO };
@@ -77,18 +76,18 @@ function geometriaTorcedor() {
   const pernas = new THREE.BoxGeometry(0.38, 0.16, 0.44); pernas.translate(0, 0.45, 0.16);
   const canelas = new THREE.BoxGeometry(0.34, 0.42, 0.14); canelas.translate(0, 0.21, 0.36);
   const corpo = mergeGeometries([tronco, pernas, canelas]);
-  const cabeca = new THREE.SphereGeometry(0.11, 10, 8); cabeca.scale(1, 1.15, 1); cabeca.translate(0, 1.11, 0.01);
+  const cabeca = new THREE.IcosahedronGeometry(0.11, 0); cabeca.scale(1, 1.15, 1); cabeca.translate(0, 1.11, 0.01);
   return { corpo, cabeca };
 }
 
 export class Palco {
   constructor(alvo) {
     this.alvo = alvo;
-    const r = this.r = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    r.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.5 : 2));   // celular: menos pixel, mais quadro por segundo
+    const r = this.r = new THREE.WebGLRenderer({ antialias: devicePixelRatio < 1.5, powerPreference: "high-performance" });
+    r.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.25 : 1.5));   // menos pixel, mais quadro por segundo
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.9;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
     alvo.appendChild(r.domElement);
 
     const cena = this.cena = new THREE.Scene();
@@ -109,14 +108,6 @@ export class Palco {
     this.chute = 0;   // soco de câmera: fecha o zoom por um instante nos golpes fortes
     this.camAlvo = { pos: new THREE.Vector3(0, 2.4, 7), olhar: new THREE.Vector3(0, 1.1, 0), fov: 38 };
     this.camOlhar = new THREE.Vector3(0, 1.1, 0);
-    // brilho das luzes e dos telões (bloom), só onde a placa aguenta: tela larga
-    if (innerWidth >= 700) {
-      this.composer = new EffectComposer(r);
-      this.composer.addPass(new RenderPass(cena, this.cam));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.42, 0.55, 0.86);
-      this.composer.addPass(this.bloom);
-      this.composer.addPass(new OutputPass());
-    }
     this.redimensionar();
     // o palco mora dentro da tela da luta: muda de tamanho com ela, não só com a janela
     this.obs = typeof ResizeObserver === "function" ? new ResizeObserver(() => this.redimensionar()) : null;
@@ -129,7 +120,6 @@ export class Palco {
       if (o.geometry) o.geometry.dispose();
       for (const m of [].concat(o.material || [])) { for (const v of Object.values(m)) if (v && v.isTexture) v.dispose(); m.dispose(); }
     });
-    if (this.composer) this.composer.dispose();
     this.r.dispose(); this.r.forceContextLoss();
     this.r.domElement.remove();
   }
@@ -139,7 +129,6 @@ export class Palco {
     this.r.setSize(w, h, false);
     this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
     this.retrato = h > w;
-    if (this.composer) { this.composer.setSize(w, h); this.bloom.setSize(Math.round(w / 2), Math.round(h / 2)); }
   }
 
   montarOctogono() {
@@ -167,7 +156,7 @@ export class Palco {
       const a = k * Math.PI / 4, a2 = a + Math.PI / 4;
       const p = new THREE.Vector3(Math.cos(a) * RAIO, 0, Math.sin(a) * RAIO), p2 = new THREE.Vector3(Math.cos(a2) * RAIO, 0, Math.sin(a2) * RAIO);
       const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, altura + 0.1, 12), matCanto[k] || matAcolch);
-      poste.position.copy(p).setY((altura + 0.1) / 2); poste.castShadow = true; cena.add(poste);
+      poste.position.copy(p).setY((altura + 0.1) / 2); cena.add(poste);
       const meio = p.clone().add(p2).multiplyScalar(0.5), larg = p.distanceTo(p2);
       const grade = new THREE.Mesh(new THREE.PlaneGeometry(larg, altura - 0.1), matGrade);
       grade.position.copy(meio).setY(altura / 2 + 0.05); grade.lookAt(0, grade.position.y, 0); cena.add(grade);
@@ -181,50 +170,38 @@ export class Palco {
 
   montarLuz() {
     const cena = this.cena;
-    cena.add(new THREE.HemisphereLight(0x6f7a9c, 0x120d0b, 0.2));
+    cena.add(new THREE.HemisphereLight(0x6f7a9c, 0x120d0b, 0.42));
     // luz principal de cima, branca e forte como a da transmissão; só ela faz sombra
-    const chave = new THREE.SpotLight(0xfff6ea, 300, 24, Math.PI / 4.6, 0.5, 1.5);
+    const chave = new THREE.SpotLight(0xfff6ea, 240, 24, Math.PI / 4.2, 0.55, 1.5);
     chave.position.set(0.6, 9.2, 1.2); chave.target.position.set(0, 0, 0);
     chave.castShadow = true; chave.shadow.mapSize.set(1024, 1024); chave.shadow.bias = -0.0004; chave.shadow.radius = 4;
     chave.shadow.camera.near = 4; chave.shadow.camera.far = 14;
     cena.add(chave, chave.target);
-    // dois refletores de lado: a lona inteira clara, sem buraco de sombra
-    for (const [x, z] of [[-4.5, -3.5], [4.5, 3.5]]) {
-      const s = new THREE.SpotLight(0xfff0e0, 90, 20, Math.PI / 5, 0.6, 1.6); s.position.set(x, 8.4, z); s.target.position.set(0, 0.6, 0); cena.add(s, s.target);
-    }
     // contraluz colorida (vermelho e azul de transmissão)
     const rim1 = new THREE.SpotLight(0xff3a2e, 26, 18, Math.PI / 6, 0.7, 1.5); rim1.position.set(-6, 4.5, -5); rim1.target.position.set(0, 1, 0);
     const rim2 = new THREE.SpotLight(0x4a7dff, 28, 18, Math.PI / 6, 0.7, 1.5); rim2.position.set(6, 4.5, -5); rim2.target.position.set(0, 1, 0);
     // luz de preenchimento que acompanha a câmera: o rosto não some na sombra
     this.preenche = new THREE.DirectionalLight(0xfff1e6, 0.6); cena.add(this.preenche, this.preenche.target);
     cena.add(rim1, rim1.target, rim2, rim2.target);
-    // a arquibancada recebe uma luz baixa e fria, pra plateia aparecer sem roubar a cena
-    const plateia = new THREE.PointLight(0x4a5c98, 85, 60, 1.6); plateia.position.set(0, 14, 0); cena.add(plateia);
 
     // estrutura de luz em cima do octógono: treliça octogonal com refletores apontados pra lona
     const matTrelica = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.5, metalness: 0.6 });
     const matLente = new THREE.MeshBasicMaterial({ color: 0xfff3dc, toneMapped: false });
     const matCorpo = new THREE.MeshStandardMaterial({ color: 0x0d0e11, roughness: 0.5, metalness: 0.4 });
     const RT = 3.4, YT = 8.6;
-    this.feixes = [];
     for (let k = 0; k < 8; k++) {
       const a = k * Math.PI / 4 + Math.PI / 8, a2 = a + Math.PI / 4;
       const p = new THREE.Vector3(Math.cos(a) * RT, YT, Math.sin(a) * RT), p2 = new THREE.Vector3(Math.cos(a2) * RT, YT, Math.sin(a2) * RT);
       const viga = new THREE.Mesh(new THREE.BoxGeometry(p.distanceTo(p2), 0.28, 0.28), matTrelica);
       viga.position.copy(p).add(p2).multiplyScalar(0.5); viga.lookAt(0, YT, 0); viga.rotateY(Math.PI / 2); cena.add(viga);
-      // dois refletores por lado
-      for (const u of [0.3, 0.7]) {
+      // um refletor por lado
+      for (const u of [0.5]) {
         const q = p.clone().lerp(p2, u).setY(YT - 0.3);
         const alvo = q.clone().multiplyScalar(0.25).setY(0);
         const corpo = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.36, 12), matCorpo);
         corpo.position.copy(q); corpo.lookAt(alvo); corpo.rotateX(Math.PI / 2); cena.add(corpo);
         const lente = new THREE.Mesh(new THREE.CircleGeometry(0.15, 16), matLente);
         lente.position.copy(q).addScaledVector(alvo.clone().sub(q).normalize(), 0.19); lente.lookAt(q); lente.rotateY(Math.PI); cena.add(lente);
-        // feixe de luz no ar (névoa da arena)
-        const comp = q.distanceTo(alvo);
-        const feixe = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.85, comp, 24, 1, true), this.materialFeixe());
-        feixe.position.copy(q).lerp(alvo, 0.5); feixe.lookAt(alvo); feixe.rotateX(-Math.PI / 2);
-        cena.add(feixe); this.feixes.push(feixe);
       }
     }
     // cabos subindo pro teto
@@ -232,20 +209,6 @@ export class Palco {
       const a = k * Math.PI / 2 + Math.PI / 4, cabo = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 10, 4), matTrelica);
       cabo.position.set(Math.cos(a) * RT, YT + 5, Math.sin(a) * RT); cena.add(cabo);
     }
-  }
-
-  /* feixe de luz: aditivo, some na ponta e nas bordas (olhando de lado parece névoa iluminada) */
-  materialFeixe() {
-    if (!this.matFeixe) this.matFeixe = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      uniforms: { forca: { value: 0.032 }, cor: { value: new THREE.Color(0xfff1d8) } },
-      vertexShader: `varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-        void main(){ vUv=uv; vec4 mv=modelViewMatrix*vec4(position,1.); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
-      fragmentShader: `uniform float forca; uniform vec3 cor; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-        void main(){ float borda=pow(abs(dot(vN,vV)),1.6); float ao_longo=pow(vUv.y,1.3)*(0.35+0.65*smoothstep(0.,.25,vUv.y));
-          gl_FragColor=vec4(cor*forca*borda*ao_longo,1.); }`,
-    });
-    return this.matFeixe;
   }
 
   montarArena() {
@@ -272,30 +235,31 @@ export class Palco {
       cena.add(mesa);
     }
     // cadeiras no chão da arena (as primeiras fileiras) e a arquibancada em degraus
-    const sobe = (r) => (r < 11.6 ? CHAO : CHAO + 1.45 + (r - 11.6) * 0.66);
-    for (let rr = RAIO + 4.0; rr < 11.0; rr += 0.95) this.fileira(rr, CHAO, 0.62, 0.08);
+    const PASSO = 1.25, FILEIRAS = 11;
+    const sobe = (r) => (r < 11.6 ? CHAO : CHAO + 1.45 + (r - 11.6) * 0.7);
+    for (let rr = RAIO + 4.2; rr < 11.0; rr += 1.3) this.fileira(rr, CHAO, 0.8, 0.12);
     const perfil = [new THREE.Vector2(11.4, CHAO), new THREE.Vector2(11.4, CHAO + 1.45)];
     let r0 = 11.6;
-    for (let i = 0; i < 17; i++) {
+    for (let i = 0; i < FILEIRAS; i++) {
       const y = sobe(r0);
-      perfil.push(new THREE.Vector2(r0, y), new THREE.Vector2(r0 + 0.95, y), new THREE.Vector2(r0 + 0.95, sobe(r0 + 0.95)));
-      this.fileira(r0 + 0.42, y, 0.6, 0.1);
-      r0 += 0.95;
+      perfil.push(new THREE.Vector2(r0, y), new THREE.Vector2(r0 + PASSO, y), new THREE.Vector2(r0 + PASSO, sobe(r0 + PASSO)));
+      this.fileira(r0 + 0.5, y, 0.82, 0.14);
+      r0 += PASSO;
     }
     perfil.push(new THREE.Vector2(r0, sobe(r0) + 3), new THREE.Vector2(r0 + 6, sobe(r0) + 3));
-    const degraus = new THREE.Mesh(new THREE.LatheGeometry(perfil, 96), new THREE.MeshStandardMaterial({ color: 0x0e1015, roughness: 0.9, side: THREE.DoubleSide }));
+    const degraus = new THREE.Mesh(new THREE.LatheGeometry(perfil, 48), new THREE.MeshLambertMaterial({ color: 0x0e1015, side: THREE.DoubleSide }));
     cena.add(degraus);
     // parede da primeira fileira com a faixa de LED que corre
     this.texFaixa = texturaFaixa();
-    const faixa = new THREE.Mesh(new THREE.CylinderGeometry(11.38, 11.38, 0.5, 96, 1, true), new THREE.MeshBasicMaterial({ map: this.texFaixa, side: THREE.BackSide, toneMapped: false }));
+    const faixa = new THREE.Mesh(new THREE.CylinderGeometry(11.38, 11.38, 0.5, 48, 1, true), new THREE.MeshBasicMaterial({ map: this.texFaixa, side: THREE.BackSide, toneMapped: false }));
     faixa.position.y = CHAO + 1.1; cena.add(faixa);
     // luzinhas dos corredores da arquibancada
     const matLuz = new THREE.MeshBasicMaterial({ color: 0x7fa0ff, toneMapped: false });
-    const geoLuz = new THREE.BoxGeometry(0.06, 0.03, 0.06), luzes = new THREE.InstancedMesh(geoLuz, matLuz, 12 * 17);
+    const geoLuz = new THREE.BoxGeometry(0.06, 0.03, 0.06), luzes = new THREE.InstancedMesh(geoLuz, matLuz, 12 * FILEIRAS);
     const m = new THREE.Matrix4(); let n = 0;
     for (let s = 0; s < 12; s++) {
       const a = s * Math.PI / 6;
-      for (let i = 0; i < 17; i++) { const rr = 11.6 + i * 0.95 + 0.1; m.makeTranslation(Math.cos(a) * rr, sobe(11.6 + i * 0.95) + 0.03, Math.sin(a) * rr); luzes.setMatrixAt(n++, m); }
+      for (let i = 0; i < FILEIRAS; i++) { const rr = 11.6 + i * PASSO + 0.1; m.makeTranslation(Math.cos(a) * rr, sobe(11.6 + i * PASSO) + 0.03, Math.sin(a) * rr); luzes.setMatrixAt(n++, m); }
     }
     cena.add(luzes);
     this.montarPlateia();
@@ -313,7 +277,7 @@ export class Palco {
 
   montarPlateia() {
     const { corpo, cabeca } = geometriaTorcedor(), n = this.assentos.length;
-    const matCorpo = new THREE.MeshStandardMaterial({ roughness: 0.92 }), matCabeca = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+    const matCorpo = new THREE.MeshLambertMaterial(), matCabeca = new THREE.MeshLambertMaterial({ flatShading: true });
     this.torcida = { corpo: new THREE.InstancedMesh(corpo, matCorpo, n), cabeca: new THREE.InstancedMesh(cabeca, matCabeca, n), fase: new Float32Array(n), base: [] };
     const ROUPA = [0x0e1014, 0x14171e, 0x1a1d24, 0x22252c, 0x2a0a08, 0x46110d, 0x101c3a, 0x4a4d55, 0x5e5b55, 0x14291e];
     const PELE = [0x9c7a60, 0x8a6244, 0x6e482c, 0x55361f, 0x3a2414, 0xa88a72];
@@ -332,7 +296,7 @@ export class Palco {
     });
     this.cena.add(this.torcida.corpo, this.torcida.cabeca);
     // flash de celular na mão de uma parte da plateia
-    const nf = Math.min(900, n), pos = new Float32Array(nf * 3), fase = new Float32Array(nf);
+    const nf = Math.min(350, n), pos = new Float32Array(nf * 3), fase = new Float32Array(nf);
     for (let i = 0; i < nf; i++) {
       const s = this.assentos[Math.floor(Math.random() * n)].pos;
       pos[i * 3] = s.x * 0.985; pos[i * 3 + 1] = s.y + 1.25; pos[i * 3 + 2] = s.z * 0.985; fase[i] = Math.random() * 100;
@@ -412,7 +376,6 @@ export class Palco {
     this.matPlateia.uniforms.tempo.value = tempo;
     this.matPlateia.uniforms.agita.value = this.agitacao;
     this.texFaixa.offset.x = (tempo * 0.04) % 1;
-    if (this.matFeixe) this.matFeixe.uniforms.forca.value = 0.032 * (0.93 + 0.07 * Math.sin(tempo * 1.7));
     this.animarTorcida(dt, tempo);
     const a = this.camAlvo, s = 1 - Math.exp(-dt * (a.rapido ? 9 : 2.4));
     if (!this.iniciado) { this.iniciado = true; this.cam.position.copy(a.pos); this.camOlhar.copy(a.olhar); }
@@ -429,7 +392,7 @@ export class Palco {
       this.cam.position.x += (Math.random() - 0.5) * this.tremor; this.cam.position.y += (Math.random() - 0.5) * this.tremor;
       this.tremor *= Math.exp(-dt * 9);
     }
-    if (this.composer) this.composer.render(); else this.r.render(this.cena, this.cam);
+    this.r.render(this.cena, this.cam);
   }
 
   /* torcida de pé pulando quando agita; parada, não gasta nada */

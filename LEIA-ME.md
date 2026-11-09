@@ -6282,12 +6282,29 @@ degraus (`LatheGeometry`) com a torcida: duas `InstancedMesh` (corpo com a
 cor da roupa, cabeça com a cor da pele), cada um virado um pouco diferente,
 corredores a cada 30 graus. A torcida pula quando o diretor toca torcida
 explodindo, subindo, golpe pesado ou queda (`agitar`); parada, não gasta
-nada. Treliça octogonal de luz com refletores e feixes na névoa (shader
-aditivo, fraco de propósito: forte, ele lavava a imagem inteira), faixa de
-LED que corre na parede da primeira fileira, dois telões com o round e os
-nomes (desenhados num canvas, nunca HTML), flashes de celular que piscam
-mais quando a torcida agita. Bloom (brilho das luzes e telões) só em tela
-larga; no celular, sem bloom e com menos pixel.
+nada. Treliça octogonal de luz com refletores, faixa de LED que corre na
+parede da primeira fileira, dois telões com o round e os nomes (desenhados
+num canvas, nunca HTML), flashes de celular que piscam mais quando a
+torcida agita.
+
+**Mais leve (mesmo dia, o dono achou pesado e os bonecos brilhando).** A
+primeira arena tinha bloom (pós-processamento), feixes de luz na névoa,
+cinco refletores e 3.800 torcedores com cabeça de 160 triângulos: 605 mil
+triângulos por quadro no celular, e o bloom fazia a pele clara brilhar.
+Agora: sem bloom e sem feixes, três luzes (a principal com sombra e as duas
+contraluzes) mais a de preenchimento, 11 fileiras com lugares mais
+espaçados (cerca de 1.600 torcedores), cabeça de 20 triângulos, material
+Lambert na torcida e nos degraus, sombra PCF simples, densidade de pixel
+1,5 no computador e 1,25 no celular, antialias só em tela comum: 112 mil
+triângulos por quadro (`ferramentas`: medir com `palco.r.info`). A pele mais
+escura virava preto brilhante na luz do 3D: pele mais fosca e os tons muito
+escuros puxados um pouco pros médios (`tingirTextura`).
+
+**Cabeça girando em 2x e 4x (achado do dono).** A mola do impacto (cabeça,
+pescoço, tronco) era integrada com o passo do quadro; em 2x num celular a 20
+quadros (passo de 0,1 s) ela divergia e a cabeça girava milhares de graus.
+Agora ela anda em passos de no máximo 1/120 s e o ângulo tem teto. O
+`luta3d-estresse.mjs` confere a mola com passos de 0,05, 0,1 e 0,15 s.
 
 **Vida dos lutadores (mesmo dia, pedido do dono: "igual é no Online").** A
 barra do Online (`jxj-vida`, pintada por `jxjPintarVida`: só desce, o
