@@ -231,7 +231,10 @@ metade). Regras do revamp que valem daqui pra frente:
   a luta cai no texto até o deploy do CLI). Evento novo no motor ganha
   `case` no diretor (a suíte `luta3d` reprova evento sem lance). A arena
   (torcida, treliça, telões, LED) mora em `palco.js`; Rever luta usa as
-  linhas guardadas em `REPRISE` (só a luta da sessão). Mexeu no
+  linhas guardadas em `REPRISE` (só a luta da sessão). Vida no placar é
+  a barra do Online (`jxjPintarVida`) com `vidaCarreira` (0,6 por dano,
+  medido); vai em `ev.vida`. Postura da montada em `MONTADA` (diretor),
+  escolhida comparando prints: mexeu, compare de novo. Mexeu no
   diretor: `ferramentas/luta3d-estresse.mjs` (lance preso em 3x já
   aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
   (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por

@@ -12476,7 +12476,13 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   let planoAtual=null;
   const narr=narradorDoPlano(A,B);
   const linhaPlano=(round,clock,text)=>{ if(text)log.push({round,clock,kind:"plano",text}); };
+  /* vida dos dois na hora da linha (barra igual à do Online): do maior dano
+     até aqui e dos knockdowns sofridos; nocaute zera quem caiu */
+  let mxA=0,mxB=0;
+  const vidas=(nocauteado=null)=>{ mxA=Math.max(mxA,A.damage);mxB=Math.max(mxB,B.damage);
+    return{A:vidaCarreira(mxA,A.knockdowns,nocauteado===A),B:vidaCarreira(mxB,B.knockdowns,nocauteado===B)}; };
   const push=(round,clock,kind,text,ev)=>{
+    if(ev)ev.vida=vidas();
     log.push(comEvento({round,clock,kind,text},ev));
     if(!ev)return;
     if(ev.tipo==="inicio")linhaPlano(round,clock,narr.inicio(planoAtual));
@@ -12485,7 +12491,8 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   };
   const kds=()=>({[A.ref.name]:A.knockdowns,[B.ref.name]:B.knockdowns});
   const fin=(w,l,round,clock,m)=>{
-    log.push(comEvento({round,clock,kind:"fin",text:`${w.ref.name} vence por ${m.toLowerCase()}`},{tipo:"fim",quem:w===A?"A":"B",metodo:m}));
+    log.push(comEvento({round,clock,kind:"fin",text:`${w.ref.name} vence por ${m.toLowerCase()}`},
+      {tipo:"fim",quem:w===A?"A":"B",metodo:m,vida:vidas(/ocaute/.test(m)?l:null)}));
     linhaPlano(round,clock,narr.fim(w===A,m));
     return{winner:w.ref.name,loser:l.ref.name,method:m,round,clock,cards:null,log,knockdowns:kds()};
   };
@@ -12496,7 +12503,7 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
   const montarDecisao=()=>{
     const w=scores.sa>scores.sb?A:scores.sb>scores.sa?B:(rngL()<.5?A:B),l=w===A?B:A;
     log.push(comEvento({round:rounds,clock:"0:00",kind:"fin",
-      text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa,scores.sb)}-${Math.min(scores.sa,scores.sb)}.`},{tipo:"decisao",quem:w===A?"A":"B"}));
+      text:`Vai pros cartões. ${w.ref.name} vence por decisão, ${Math.max(scores.sa,scores.sb)}-${Math.min(scores.sa,scores.sb)}.`},{tipo:"decisao",quem:w===A?"A":"B",vida:vidas()}));
     return{winner:w.ref.name,loser:l.ref.name,method:"Decisão",round:rounds,clock:"0:00",
       cards:scores.sa+"-"+scores.sb,log,knockdowns:kds()};
   };
@@ -12725,11 +12732,12 @@ function abrirReprise(R){
   const tela=el("div","reprise","");tela.id="reprise";
   if(tela.setAttribute){tela.setAttribute("role","dialog");tela.setAttribute("aria-label","Rever a luta");}
   const cab=el("div","reprise-cab",`<b>${ICONE("play")}<span>Rever a luta</span></b>`);
+  const vidas=el("div","reprise-vidas",`<div class="reprise-lado eu"><span>${escHtml(R.nomes.a)}</span>${barraVida("reu")}</div><div class="reprise-lado ele"><span>${escHtml(R.nomes.b)}</span>${barraVida("rele")}</div>`);
   const fechar=el("button","botao botao-sec",`${ICONE("fechar")}<span>Fechar</span>`);
   fechar.type="button";fechar.id="repriseFechar";fechar.onclick=()=>{SOM.toque();fecharReprise();};
   cab.appendChild(fechar);
   const caixa=el("div","luta3d-caixa reprise-palco",`<div class="luta3d-carregando">Montando o octógono</div>`);
-  tela.append(cab,caixa);
+  tela.append(cab,vidas,caixa);
   document.body.appendChild(tela);
   const estado=REPRISE_TELA={tela,inst:null,vivo:true,corte:null};
   const cancelado=new Promise(r=>{estado.corte=r;});
@@ -12745,6 +12753,7 @@ function abrirReprise(R){
         if(!estado.vivo)return;
         leg.className="luta3d-legenda"+(L.kind?" "+L.kind:"");
         leg.textContent=String(L.text||"").replace(/<[^>]+>/g,"");
+        setTimeout(()=>{ if(estado.vivo)pintarVidas(L,"r"); },atrasoVida3d(L));
         await Promise.race([Promise.all([inst.lance(L),new Promise(r=>setTimeout(r,Math.min(2500,tempoDeLeitura(L))))]),cancelado]);
       }
       if(!estado.vivo)return;
@@ -12767,6 +12776,28 @@ function fecharReprise(){
   if(e.tela&&e.tela.remove)e.tela.remove();
   if(document.removeEventListener)document.removeEventListener("keydown",fecharComEsc);
 }
+/* Vida dos lutadores na luta da carreira (2026-11-09, pedido do dono: "igual
+   é no Online"): a mesma barra (jxj-vida, jxjPintarVida: só desce, o pedaço
+   perdido pisca, o rastro desce depois, verde, amarelo e vermelho), com a
+   escala da carreira. O dano do motor da carreira é outro número: na
+   decisão quem apanhou mais chega perto de 93 (mediana) e no nocaute perto
+   de 81 antes do golpe final (3.000 lutas medidas), então 0,6 por ponto de
+   dano e 5 por knockdown sofrido; piso 4, zero só no nocaute. */
+const VIDA_POR_DANO=0.6;
+function vidaCarreira(dano,kds,nocaute){
+  return nocaute?0:Math.max(4,Math.min(100,Math.round(100-(Number(dano)||0)*VIDA_POR_DANO-5*(kds||0))));
+}
+function barraVida(l,v=100){
+  return `<span class="placar-vida-linha"><span class="jxj-vida placar-vida" id="jxj-vida-${l}" data-vida="${v}" data-nivel="${jxjNivelVida(v)}" role="img" aria-label="Vida ${v} de 100" style="--vida:${v}%;--rastro:${v}%"><i class="rastro"></i><i class="flash"></i><i class="atual"></i></span><span class="placar-vida-num">${ICONE("lesao")}<span id="jxj-vida-num-${l}">${v}</span></span></span>`;
+}
+function pintarVidas(L,pre=""){
+  const v=L&&L.ev&&L.ev.vida;
+  if(!v)return;
+  jxjPintarVida(pre+"eu",v.A,{ko:v.A===0});
+  jxjPintarVida(pre+"ele",v.B,{ko:v.B===0});
+}
+/* no 3D a barra desce quando o golpe entra, não quando a linha aparece */
+const atrasoVida3d=L=>({fim:1500,kd:1300,queda:1400,gnp:1100,controle:900}[L&&L.ev&&L.ev.tipo]||800)/Math.max(.5,Math.min(3,speed));
 /* a linha da narração também passa em cima do palco, como legenda (texto puro:
    nome de lutador nunca vira HTML) */
 function legenda3d(L){
@@ -12800,10 +12831,10 @@ function iniciarTelaLuta(opp,titleFight){
   const live=document.getElementById("live");
   document.getElementById("stage").style.display="";
   live.innerHTML=`<div class="placar">
-      <div class="placar-lado eu"><span class="placar-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:54})}</span><b>${me.name}</b></div>
+      <div class="placar-lado eu"><span class="placar-retrato">${bonecoSVG(ROSTO||cfgPadrao(),{w:54})}</span><div class="placar-nome"><b>${me.name}</b>${barraVida("eu")}</div></div>
       <div class="placar-centro"><span class="rd" id="rdlabel">Round 1</span><span class="placar-sub">${titleFight?5:3} rounds</span>${
         titleFight?`<span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}<span class="placar-plano" id="placarPlano" hidden></span></div>
-      <div class="placar-lado ele"><b>${opp.name}</b></div>
+      <div class="placar-lado ele"><div class="placar-nome"><b>${opp.name}</b>${barraVida("ele")}</div></div>
     </div>
     <div class="luta3d-caixa" id="luta3dCaixa" hidden></div>
     <div class="luta-grade">
@@ -12832,6 +12863,8 @@ function animarTrecho(lines,aoTerminar){
     play.appendChild(row);
     rolarNarracao(play,row);
     legenda3d(L);
+    if(!luta3dAtiva())pintarVidas(L);
+    else setTimeout(()=>{ if(tk===CARREIRA_TOKEN)pintarVidas(L); },atrasoVida3d(L));
     /* o som sai do TIPO da linha e do texto (somDaLinha, fase 6); no 3D,
        cada golpe e cada queda tem o seu, então a linha fica quieta */
     const efeito=somDaLinha(L);

@@ -1112,6 +1112,31 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 @keyframes luta3dChamada{0%{opacity:0;transform:scale(2.2) skewX(-8deg)}12%{opacity:1;transform:scale(.94) skewX(-8deg)}18%{transform:scale(1.04) skewX(-8deg)}
   24%{transform:scale(1) skewX(-8deg)}80%{opacity:1;transform:scale(1.02) skewX(-8deg)}100%{opacity:0;transform:scale(1.1) skewX(-8deg)}}
 .noite .live.com3d .play{min-height:0;max-height:230px;overflow-y:auto}
+/* vida dos lutadores no placar da luta da carreira: a barra do Online (jxj-vida) embaixo do nome */
+.placar-nome{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.placar-lado.ele .placar-nome{align-items:flex-end}
+.placar-vida-linha{display:flex;align-items:center;gap:8px;width:100%;max-width:300px}
+.placar-lado.ele .placar-vida-linha{flex-direction:row-reverse}
+.placar-vida-linha .jxj-vida{flex:1;height:12px}
+.placar-lado.ele .jxj-vida,.reprise-lado.ele .jxj-vida{transform:scaleX(-1)}
+.placar-vida-num{display:inline-flex;align-items:center;gap:4px;font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.04em;
+  color:var(--osso-2);font-variant-numeric:tabular-nums;min-width:44px}
+.placar-lado.ele .placar-vida-num{justify-content:flex-end}
+.placar-vida-num .ico{width:13px;height:13px;color:var(--cinza)}
+.reprise-vidas{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.reprise-lado{display:flex;flex-direction:column;gap:6px;min-width:0;font-family:var(--f-ui);font-weight:700;font-size:15px;letter-spacing:.06em;text-transform:uppercase}
+.reprise-lado span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reprise-lado.ele{align-items:flex-end;text-align:right}
+.reprise-lado .placar-vida-linha{max-width:none}
+.placar-nome b{max-width:100%}
+@media (max-width:560px){
+  .placar-vida-linha .jxj-vida{height:9px;min-width:40px}
+  .placar-vida-num{font-size:12px;min-width:34px}
+  /* o plano do round quebra em duas linhas no meio, pras barras caberem dos lados */
+  .placar-centro{min-width:0;max-width:118px}
+  .placar-plano{display:block;text-align:center;font-size:11px;line-height:1.25;white-space:normal}
+  .placar-plano .ico{display:none}
+}
 /* Rever luta: o palco ocupa a tela inteira, com Fechar e Ver de novo em cima */
 .reprise{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;gap:12px;font-family:var(--f-texto);
   padding:calc(env(safe-area-inset-top,0px) + 14px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);background:rgba(7,8,11,.97)}

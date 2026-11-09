@@ -15556,6 +15556,31 @@ async function testarLuta3d() {
       if ((L.ev.quem === "A") !== (venceu === meu)) throw new Error(`quem venceu (${venceu}) e o evento (${L.ev.quem}) não batem`);
     }
   });
+  await conf("vida igual à do Online: cada linha leva a vida dos dois, ela só desce, piso 4, zero só em quem foi nocauteado, e o placar tem as duas barras", () => {
+    let luta = [], n = 0, kos = 0;
+    for (const L of motor) {
+      const v = L.ev && L.ev.vida;
+      if (!v || typeof v.A !== "number" || typeof v.B !== "number") throw new Error(`linha sem vida: ${L.kind} "${L.text}"`);
+      luta.push({ L, v });
+      if (L.kind !== "fin") continue;
+      n++;
+      for (let i = 1; i < luta.length; i++) for (const k of ["A", "B"])
+        if (luta[i].v[k] > luta[i - 1].v[k]) throw new Error(`luta ${n}: a vida de ${k} subiu (${luta[i - 1].v[k]} -> ${luta[i].v[k]}) em "${luta[i].L.text}"`);
+      const nocaute = L.ev.tipo === "fim" && /ocaute/.test(L.ev.metodo), perdeu = L.ev.quem === "A" ? "B" : "A";
+      for (const { L: x, v } of luta) for (const k of ["A", "B"]) {
+        const zeroCerto = x === L && nocaute && k === perdeu;
+        if (zeroCerto) { if (v[k] !== 0) throw new Error(`luta ${n}: nocaute e a vida de quem caiu ficou ${v[k]}`); continue; }
+        if (v[k] < 4 || v[k] > 100) throw new Error(`luta ${n}: vida ${v[k]} fora de 4 a 100 em "${x.text}"`);
+      }
+      if (nocaute) kos++;
+      luta = [];
+    }
+    if (n < 8) throw new Error("só " + n + " lutas");
+    if (!kos) throw new Error("nenhum nocaute nas lutas do teste: trocar a semente pra regra do zero valer");
+    const placar = X.registro.live ? X.registro.live.innerHTML : "";
+    if (!/id="jxj-vida-eu"/.test(placar) || !/id="jxj-vida-ele"/.test(placar)) throw new Error("placar da luta sem as barras de vida");
+    if (!/class="jxj-vida/.test(placar)) throw new Error("a barra não é a do Online (jxj-vida)");
+  });
   await conf("o evento não vai pro JSON da linha nem pro save", () => {
     const vaza = linhas.filter(L => /"ev"/.test(L.json));
     if (vaza.length) throw new Error("linha com ev no JSON: " + vaza[0].json);

@@ -6289,6 +6289,31 @@ nomes (desenhados num canvas, nunca HTML), flashes de celular que piscam
 mais quando a torcida agita. Bloom (brilho das luzes e telões) só em tela
 larga; no celular, sem bloom e com menos pixel.
 
+**Vida dos lutadores (mesmo dia, pedido do dono: "igual é no Online").** A
+barra do Online (`jxj-vida`, pintada por `jxjPintarVida`: só desce, o
+pedaço perdido pisca, verde, amarelo e vermelho, número ao lado) embaixo do
+nome de cada um no placar da luta e no Rever luta. A escala é da carreira:
+`vidaCarreira` = 100 menos 0,6 por ponto do maior dano até ali menos 5 por
+knockdown sofrido, piso 4, zero só em quem foi nocauteado (finalização não
+zera, igual ao Online). O 0,6 saiu de 3.000 lutas medidas: na decisão quem
+apanhou mais chega perto de 93 de dano (mediana, 148 no p90) e no nocaute
+perto de 81 antes do golpe final. A vida vai no evento de cada linha
+(`ev.vida`, fora do save); no texto a barra desce com a linha, no 3D desce
+quando o golpe entra (`atrasoVida3d`). No celular o plano do round quebra
+em duas linhas no meio do placar, pras barras caberem.
+
+**A montada, revista (mesmo dia, "os braços não ficaram naturais").** A
+primeira guarda seguia o mundo e a cabeça (curvada na pose do clipe), e o
+punho parava na testa: parecia segurar a cabeça. Agora a guarda segue o
+tronco (`MONTADA` no diretor, escolhida comparando quatro posturas de lado
+e de três quartos): tronco em pé com leve inclinação, olhos no rosto de
+quem está embaixo, punhos na altura do queixo, cotovelo nas costelas, cada
+mão com um balanço próprio e o peso passando de um joelho pro outro. O soco
+arma perto do ombro e desce em arco (não atravessa o próprio corpo). Na
+subida pra montada ele apoia as duas mãos no peito de quem caiu, dá um
+pulinho por cima do quadril e só depois levanta a guarda: antes ele
+deslizava de lado com um braço solto no ar.
+
 **Rever luta (mesmo dia, pedido do dono).** No resultado, ao lado do Rever
 narração, a luta que acabou de novo em 3D numa tela própria (`abrirReprise`):
 palco grande, a narração de cada linha na legenda, Fechar (ou Esc) e Ver de
@@ -6299,7 +6324,8 @@ acontecimentos são os mesmos.
 
 **Testes.** `node testar.js luta3d` (evento em toda linha e fora do save,
 texto sem WebGL e no automático, corte ao desligar, corpo do boneco e
-adversário genérico, Rever luta só no resultado da luta guardada, diretor
+adversário genérico, vida que só desce com zero só no nocaute, Rever luta
+só no resultado da luta guardada, diretor
 cobrindo todo evento do motor, sem travessão,
 arquivo do Mixamo fora do git e dentro do deploy). No Chrome de verdade:
 `ferramentas/luta3d-e2e.mjs` (uma luta da carreira inteira em 3D, troca pra

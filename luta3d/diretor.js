@@ -293,8 +293,10 @@ function ctrlBaixo(bot, top) {
   };
 }
 
+/* postura de quem monta (medida em prints de lado, frente e três quartos) */
+const MONTADA = { tronco: 0.0, cabeca: -0.45, frente: 0.26, cima: 0.0, abre: 0.09 };
 function ctrlCima(top, bot, baixo) {
-  const st = { socos: [], peso: 0, ativo: true, enforca: 0, recuo: 0, inclina: 0, t: Math.random() * 6 };
+  const st = { socos: [], peso: 0, ativo: true, enforca: 0, recuo: 0, inclina: 0, apoio: 0, t: Math.random() * 6 };
   const sl = (l) => (l === "l" ? 1 : -1);
   const f = (dt) => {
     st.peso = st.ativo ? Math.min(1, st.peso + dt * 2) : Math.max(0, st.peso - dt * 3);
@@ -302,7 +304,8 @@ function ctrlCima(top, bot, baixo) {
     if (w0 < 0.001) return;
     st.t += dt;
     const fr = fr0(top), esq = esq0(top);
-    let pitch = -0.32 + 0.03 * Math.sin(st.t * 2.2) - 0.45 * st.recuo, twist = 0;
+    // tronco um pouco inclinado sobre quem está embaixo (base de quem monta), respirando
+    let pitch = MONTADA.tronco + 0.03 * Math.sin(st.t * 2.1) - 0.55 * st.recuo, twist = 0;
     const maos = { l: null, r: null };
     for (const s of st.socos.slice()) {
       const k = top.relogio - s.t0, sg = s.lado === "r" ? 1 : -1;
@@ -311,47 +314,62 @@ function ctrlCima(top, bot, baixo) {
       if (k >= 0.13 && !s.desceu) { s.desceu = true; s.aoDescer(); }
       if (k >= 0.23 && !s.bateu) { s.bateu = true; s.aoBater(); }
       let w, de, para;
-      if (k < 0.13) { w = suave(k / 0.13); twist -= 0.22 * sg * w; de = "guarda"; para = "carrega"; }
+      if (k < 0.13) { w = suave(k / 0.13); twist -= 0.18 * sg * w; pitch -= 0.04 * w; de = "guarda"; para = "carrega"; }
       else if (k < 0.23) {
-        w = suave((k - 0.13) / 0.1); twist += sg * (-0.22 + 0.6 * w); pitch += 0.5 * w; de = "carrega"; para = "alvo";
+        w = suave((k - 0.13) / 0.1); twist += sg * (-0.18 + 0.52 * w); pitch += -0.04 + 0.42 * w; de = "carrega"; para = "alvo";
       } else if (k < 0.29) {
-        w = 1; twist += 0.38 * sg; pitch += 0.5; de = para = "alvo";
-      } else if (k < 0.56) { w = suave((k - 0.29) / 0.27); twist += 0.38 * sg * (1 - w); pitch += 0.5 * (1 - w); de = "alvo"; para = "guarda"; }
+        w = 1; twist += 0.34 * sg; pitch += 0.38; de = para = "alvo";
+      } else if (k < 0.56) { w = suave((k - 0.29) / 0.27); twist += 0.34 * sg * (1 - w); pitch += 0.38 * (1 - w); de = "alvo"; para = "guarda"; }
       else { st.socos.splice(st.socos.indexOf(s), 1); continue; }
       maos[s.lado] = { de, para, w, s };
     }
-    pitch += 0.55 * st.enforca + 0.75 * st.inclina;
-    // tronco: em pé, desce e gira com o soco
+    pitch += 0.5 * st.enforca + 0.6 * st.inclina + 0.55 * st.apoio;
     for (const [o, p] of [["spine_01", 0.35], ["spine_02", 0.35], ["spine_03", 0.3]]) top.girarMundo(top.ossos[o], esq, pitch * p * w0);
     // a pose da montada (do clipe da queda) tem os ombros girados e tortos: endireita antes do soco
     top.modelo.updateMatrixWorld(true);
     const dOmb = top.posMundo("upperarm_l").sub(top.posMundo("upperarm_r"));
     const giro = Math.atan2(dOmb.dot(fr), dOmb.dot(esq)), rola = -Math.atan2(dOmb.y, Math.hypot(dOmb.dot(fr), dOmb.dot(esq)));
     top.girarMundo(top.ossos.spine_02, UP, (giro + twist) * 0.5 * w0); top.girarMundo(top.ossos.spine_03, UP, (giro + twist) * 0.5 * w0);
-    top.girarMundo(top.ossos.spine_03, fr, rola * w0);
-    top.girarMundo(top.ossos.Head, esq, -0.3 * w0 * (1 - st.enforca));   // queixo um pouco pra cima: olha o rosto de quem está embaixo
+    // peso passando de um joelho pro outro, devagar
+    top.girarMundo(top.ossos.spine_03, fr, (rola + 0.045 * Math.sin(st.t * 0.8)) * w0);
+    top.girarMundo(top.ossos.Head, esq, MONTADA.cabeca * w0 * (1 - st.enforca));   // olhos no rosto de quem está embaixo
     top.modelo.updateMatrixWorld(true);
-    const pesc = top.posMundo("neck_01"), ombro = (l) => top.posMundo("upperarm_" + l);
+    // a guarda segue o tronco (não o mundo): punho na altura da bochecha, antebraço junto do peito, cotovelo nas costelas
+    const cima = top.posMundo("neck_01").sub(top.posMundo("spine_01")).normalize();
+    const frente = fr.clone().addScaledVector(cima, -fr.dot(cima)).normalize();
+    const queixo = top.posMundo("neck_01").addScaledVector(cima, MONTADA.cima).addScaledVector(frente, MONTADA.frente);
+    const ombro = (l) => top.posMundo("upperarm_" + l);
+    const vai = (l) => (l === "l" ? 0 : 2.1);   // cada mão no seu tempo
     const P = {
-      // na frente do queixo, um punho de cada lado do rosto
-      guarda: (l) => pesc.clone().addScaledVector(fr, 0.2).add(V3(0, 0.08, 0)).addScaledVector(esq, 0.1 * sl(l)),
-      carrega: (l) => P.guarda(l).addScaledVector(fr, -0.05).add(V3(0, 0.05, 0)).addScaledVector(esq, 0.03 * sl(l)),
+      guarda: (l) => queixo.clone().addScaledVector(frente, 0.012 * Math.sin(st.t * 1.7 + vai(l))).addScaledVector(esq, MONTADA.abre * sl(l))
+        .addScaledVector(cima, 0.014 * Math.sin(st.t * 2.3 + vai(l))),
+      // o soco arma perto do ombro (puxa o cotovelo pra trás), não em cima da cabeça
+      carrega: (l) => P.guarda(l).addScaledVector(frente, -0.08).addScaledVector(esq, 0.05 * sl(l)).addScaledVector(cima, -0.02),
       alvo: (l, s) => s.alvo(),
     };
     const POLO = {
-      guarda: (l) => P.guarda(l).add(V3(0, -0.6, 0)).addScaledVector(fr, 0.08).addScaledVector(esq, 0.02 * sl(l)),   // cotovelo embaixo da mão: antebraço em pé
-      alvo: (l) => ombro(l).addScaledVector(esq, 0.4 * sl(l)).addScaledVector(fr, -0.1).add(V3(0, -0.1, 0)),
+      guarda: (l) => P.guarda(l).addScaledVector(cima, -0.55).addScaledVector(frente, 0.02).addScaledVector(esq, 0.06 * sl(l)),
+      carrega: (l) => ombro(l).addScaledVector(cima, -0.3).addScaledVector(frente, -0.25).addScaledVector(esq, 0.22 * sl(l)),
+      alvo: (l) => ombro(l).addScaledVector(esq, 0.35 * sl(l)).addScaledVector(frente, -0.12).addScaledVector(cima, -0.1),
     };
-    const poloDe = (fase, l) => POLO[fase === "alvo" ? "alvo" : "guarda"](l);
     for (const l of ["l", "r"]) {
       const m = maos[l];
       let alvo, polo;
-      if (m) { alvo = P[m.de](l, m.s).lerp(P[m.para](l, m.s), m.w); polo = poloDe(m.de, l).lerp(poloDe(m.para, l), m.w); }
-      else {
+      if (m) {
+        alvo = P[m.de](l, m.s).lerp(P[m.para](l, m.s), m.w);
+        // o punho faz um arco por cima (não atravessa o próprio corpo)
+        if (m.de !== m.para) alvo.addScaledVector(cima, 0.07 * Math.sin(Math.PI * m.w));
+        polo = POLO[m.de](l).lerp(POLO[m.para](l), m.w);
+      } else {
         alvo = P.guarda(l); polo = POLO.guarda(l);
-        if (maos[l === "l" ? "r" : "l"]) alvo.addScaledVector(fr, -0.03);   // a outra mão cola no rosto enquanto esta soca
+        if (maos[l === "l" ? "r" : "l"]) alvo.addScaledVector(frente, -0.035);   // a outra mão cola no rosto enquanto esta soca
       }
       if (st.enforca > 0) alvo.lerp(bot.posMundo("neck_01").add(V3(0, 0.08, 0)).addScaledVector(esq, 0.07 * sl(l)), st.enforca);
+      // subindo na montada: as duas mãos apoiadas no peito de quem caiu, cotovelos pra fora
+      if (st.apoio > 0) {
+        alvo.lerp(bot.posMundo("spine_03").add(V3(0, 0.1, 0)).addScaledVector(esq, 0.16 * sl(l)), st.apoio);
+        polo.lerp(ombro(l).addScaledVector(esq, 0.4 * sl(l)).addScaledVector(cima, -0.1), st.apoio);
+      }
       // jogado pra trás pela ponte: os braços abrem pra se equilibrar
       if (st.recuo > 0) alvo.lerp(ombro(l).addScaledVector(esq, 0.38 * sl(l)).add(V3(0, -0.48, 0)).addScaledVector(fr, 0.2), 0.75 * st.recuo);
       top.ikDoisOssos(top.ossos["upperarm_" + l], top.ossos["lowerarm_" + l], top.ossos["hand_" + l], alvo, w0, polo);
@@ -404,11 +422,17 @@ async function queda(atk, def, { soco = true } = {}) {
   const yawM = Math.atan2(long.x, long.z);
   const pq = atk.posMundo("pelvis").setY(0);
   let dy = yawM - atk.raiz.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-  atk.umaVez("Montada", { fade: 0.55, segurar: true, mover: false });
-  atk.alinhando = { dyaw: dy, dpos: alvoQuadril.sub(pq), pivo: pq.clone(), dur: 0.55, k: 0 };
-  await esperar(0.6);
+  // sobe na montada: mãos no peito dele, um pulinho por cima do quadril, e só depois a guarda
+  atk.umaVez("Montada", { fade: 0.65, segurar: true, mover: false });
+  atk.alinhando = { dyaw: dy, dpos: alvoQuadril.sub(pq), pivo: pq.clone(), dur: 0.7, k: 0 };
   const baixo = ctrlBaixo(def, atk), cima = ctrlCima(atk, def, baixo);
+  cima.st.apoio = 1; baixo.st.livre = false;
   montada = { atk, def, cima, baixo };
+  await animar(0.7, (k) => { baixo.st.ergue = 0.08 * Math.sin(Math.PI * k); });
+  baixo.st.ergue = 0;
+  await esperar(0.15);
+  await animar(0.4, (k) => { cima.st.apoio = 1 - suave(k); });
+  baixo.st.livre = true;
   cam.chaoEixo = V3(-long.z, 0, long.x);
   if (soco) await serieSocos(6);
   else await esperar(0.6);
@@ -914,6 +938,8 @@ laco();
 
 return {
   lance,
+  /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera e o palco */
+  _dev: { A, B, cam, palco, THREE, MONTADA, get montada() { return montada; } },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },
   destruir() {
     vivo = false; cancelAnimationFrame(quadro); clearTimeout(timerCham);
