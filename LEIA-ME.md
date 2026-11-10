@@ -6384,8 +6384,10 @@ roupa").**
   personagens que os jogadores montaram (`jxjLinhas3d` converte os eventos
   do motor do Online: golpe, contra, punição, sujo e grade viram um golpe
   pela força do dano; errou e bloqueou, defesa; queda, puxar guarda,
-  raspagem, levantar, encaixe, knockdown, grogue e o fim). As cartas e o
-  prazo não mudam; troca atrasada anda em 2x. "Só as cartas" desliga.
+  raspagem, levantar, encaixe, knockdown, grogue e o fim). Troca atrasada
+  anda em 2x. "Só as cartas" desliga. Desde 2026-11-10 o 3D fica na tela
+  inteira e as cartas esperam a animação (seção "Online: 3 trocas por round
+  e a luta em tela cheia", abaixo).
 
 **Ajustes depois da etapa final (2026-11-10, pedidos do dono).**
 
@@ -6399,7 +6401,8 @@ roupa").**
 - *Online sem rolar a tela.* O palco não fica mais em cima da mesa: fica
   atrás dela, no lugar do desenho do octógono (`jxj3dPosicionar` mede a
   `.jxj-mesa` a cada desenho e no redimensionar), e os lutadores aparecem
-  entre a sua carta e a dele.
+  entre a sua carta e a dele. Trocado no mesmo dia pela tela cheia (seção
+  abaixo); sem ela (o 3D que não carregou), continua assim.
 - *Roupa de verdade, não pintura.* O tecido do tronco e dos braços passa
   por cima do corpo numa seção elíptica lisa por fatia (`secoes`/
   `embrulhar`), sem marcar barriga e peito; e as peças que o corpo não tem
@@ -6412,7 +6415,11 @@ roupa").**
   devagar, "E O VENCEDOR...", e só então ele levanta a mão de quem venceu;
   quem venceu comemora e quem perdeu lamenta. Nocaute e finalização: o
   árbitro vem e levanta a mão na hora. Nocaute técnico: antes ele entra no
-  meio e acena que acabou (`interrupcao`).
+  meio e acena que acabou (`interrupcao`). Todo fim usa o mesmo quadro (o
+  dono viu, no nocaute, quem venceu na frente de quem perdeu e o árbitro de
+  lado, com os braços cruzando): um lutador de cada lado, o lado sorteado,
+  o árbitro no meio; todo mundo parado e de pé antes (o que estava tocando
+  para), e cada um dá a mão do lado do árbitro.
 - *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
   ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
   ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).
@@ -6436,6 +6443,98 @@ texto e volta, resultado desmonta o palco, Rever luta abre e fecha;
 `celular` como segundo argumento)
 e `ferramentas/luta3d-estresse.mjs` (muitas lutas do motor em 3x, reprova
 erro e lance preso).
+
+## Online: 3 trocas por round e a luta em tela cheia (2026-11-10)
+
+Pedido do dono: o 3D na tela inteira, a barra de vida dele em cima e a sua
+embaixo, sem cobrir nada; enquanto a troca passa no 3D as cartas somem, e
+voltam quando a animação acaba; se o round ficasse comprido, menos trocas
+no mesmo tempo. Escolhas dele: 3 trocas por round e a luta em tela cheia.
+
+**Motor v5.** `FORMATO.trocasPorRound` 3 e `animacaoMs` 7000. A luta
+guarda o número no estado (`tpr`); `trocasDoRound(e)` dá 4 pra luta sem
+`tpr` (criada antes do deploy), que segue igual até o fim. O tempo: o
+servidor grava o prazo da próxima troca com `prazoDaProxima(estado)`, 20 s
+mais 7 s na luta nova (a função do banco já recebia `prazo_ms`: nenhum
+SQL). A etapa do sinal acaba no prazo menos 12 s, então é ela que ganha os
+7 s da animação. Round: 3 trocas de 27 s, 81 s, contra 4 de 20 s, 80 s. A
+vista manda o formato da luta (luta de antes: 4 trocas e janela 0).
+
+**Balanço medido de novo.** Com 3 trocas e os números de antes, wrestler e
+grappler venciam striker e counter de 58% a 64% (a energia sobrava: o round
+gasta uma ação a menos e recuperava o mesmo, e quem vive de queda quedava
+sempre). Os números da luta de 3 trocas, só nela (luta sem `tpr` usa os de
+antes; `kDa(e, nome)` e `regraDaLuta(e, nome)` escolhem):
+`K_POR_TROCAS[3]` com recuperação de energia entre rounds 1,75 (era 4) e
+vantagem da leitura 24 em pé e no chão (era 22: com 22 a leitura em metade
+das trocas dava 67%); `ESTRATEGIA.porTrocas[3]` com 0,15 de energia por
+carta guardada (era 0,25) e o bônus da Defesa que lê do counter 0,7 (era
+0,5; com 1, o counter do nível 30 chegava a 60% contra o wrestler). Tentado
+e descartado: baixar o fator de queda (1,17 pra 1,0 a 1,06) também
+equilibrava os estilos, mas deixava os nós de queda da árvore (Entradas,
+Equilíbrio) abaixo de 0,5.
+
+| Medida (1.200 lutas por dupla) | Resultado |
+|---|---|
+| Estilos, nível 1 | 47,2% a 54,5% |
+| Estilos, nível 30 | até 57,7% (counter x grappler) |
+| Repetir uma ação contra quem se adapta | no máximo 47,5% |
+| Leitura em metade das trocas / sempre | 71,0% / 86,8% |
+| Nós de queda (Equilíbrio, Entradas) | 0,88 e 0,65 |
+| Métodos | KO 21,7%, FIN 7,5%, DEC 68,2%, 7,8 trocas |
+| Honestidade do sinal no equilíbrio | 61,4%, blefe médio 32% |
+
+`VERSAO_BALANCEAMENTO` não sobe: os nós da árvore não mudaram (igual às
+fases 2 a 4). Os pesos do valor do bot (`PESOS_VALOR`) foram treinados de
+novo e a `FORCA_BOT` medida de novo (3.600 lutas por casa).
+
+Testes que mudaram, e por quê:
+- blefe: "o equilíbrio mistura 2 estratégias" virou "o blefe médio do
+  equilíbrio fica entre 15% e 45%". Com 4 trocas o equilíbrio misturava
+  blefe 0, 0,3 e 0,6 (35%, 39% e 27%) com média 0,30; com 3 é quase só o
+  0,3, a mesma média. A honestidade segue na faixa do dono (60% a 75%).
+- evolução, nível 30 contra 20: 2.400 lutas em vez de 600. O grappler mede
+  53,9% com 2.400 nas lutas de 3 e de 4 trocas; com 600 dava 49,8% e
+  50,4%, em cima da linha dos 50%.
+- calibração dos bots por jeito: 1.440 lutas por casa em vez de 720. O
+  Paciente médio deu 44,7% com 720 e de 45,4% a 46,7% com 3.600 (o jeito
+  dele não mudou, pedido do dono).
+
+**A tela.** Com o 3D ligado (`palco` em `jxjDesenharCombate`, classe
+`tela-cheia` na tela e no combate): a barra dele em cima (`jxj-tarja cima`:
+voltar, retrato, nome, vida, energia, mão, relógio e Só as cartas), o palco
+no meio (`jxj-palco`; o 3D atrás dele em posição fixa, `jxj3dPosicionar`) e
+a sua barra embaixo (`jxj-tarja baixo`: vida, energia, mão, posição,
+iniciativa, placar do round, O que aconteceu e Abandonar). No palco, a
+legenda do lance no alto e a mão no pé, com a mesa ao lado das cartas (as
+suas à esquerda, as dele à direita). Enquanto o 3D mostra a troca, a classe
+`assistindo` esconde a mesa e a mão (`jxjAssistindo`: o 3D tem troca na
+fila e o relógio ainda está na janela da animação); elas voltam quando o 3D
+acaba ou a janela passa, o que vier antes. Luta sem janela (de antes) nunca
+esconde. Sem o 3D (Só as cartas, sem WebGL, sem placa de vídeo, 3D que não
+carregou), a tela de cartas de sempre. A cena do fim espera o 3D acabar a
+troca final e o anúncio do árbitro (`fimDo3d`, teto de 40 s; a última
+linha do 3D tem 30 s em vez de 15). Os letreiros do 3D descem pra baixo da
+legenda do lance. Nomes: `palco` e `jxj-barra` já existiam (criador de
+personagem e barrinha de progresso), por isso `tela-cheia` e `jxj-tarja`.
+
+**Treino guiado.** Também com round de 3 trocas: 4 lições em vez de 5 (a
+da mão foi pro "depois" da primeira; o olhar na mão dele, pra fala da
+postura). A finta da lição 3 fecha o round e a 4 é livre, com relógio
+(`JXJ_TREINO_TROCAS`).
+
+**Roupa de entrada no Online.** O primeiro lance tira a roupa de entrada
+dos dois lados (antes, só a do jogador: a bandeira do adversário ficava no
+corpo a luta toda).
+
+**Testes.** `jxjmotor` (3 trocas por round, o prazo da próxima e os
+números só na luta nova), `jxj` (no banco, o prazo da próxima troca soma a
+janela na luta nova e não na de antes; a vista diz 3 e 4), `jxjtelas`
+(estrutura da tela cheia, quando as cartas somem, o treino de 3 trocas) e
+`luta3d` (a roupa dos dois lados). No Chrome, com a placa de vídeo:
+`ferramentas/online-3d-e2e.mjs <pasta das fotos> [cel]` (luta inteira
+contra bot no servidor local: cartas escondidas durante a animação, Só as
+cartas e volta, histórico, cena do fim depois do anúncio).
 
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 

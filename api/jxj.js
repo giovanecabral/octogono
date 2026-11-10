@@ -266,7 +266,7 @@ async function processarLuta(lid, uid, { porAcao = false } = {}) {
     const efeitos = fim ? efeitosDoFim(d, estado, fim) : null;
     await rpc("jxj_gravar_troca", {
       lid, versao_: L.versao, round_: L.round, troca_: L.troca, acao_a_: acoes.a, acao_b_: acoes.b,
-      eventos_: eventos, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs, fim_: fim, efeitos_: efeitos,
+      eventos_: eventos, estado_: estado, prazo_ms: MOTOR.prazoDaProxima(estado), fim_: fim, efeitos_: efeitos,
     });
   }
   return d;
@@ -312,7 +312,8 @@ function vistaDaLuta(d, uid) {
     id: L.id, tipo: L.tipo, bot: !!L.bot, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
     confirmacaoAte: L.confirmacao_ate, confirmado: { a: L.confirmado_a, b: L.confirmado_b },
     round: L.round, troca: L.troca, prazo: L.prazo, agora: d.agora, comRating: L.com_rating,
-    formato: MOTOR.FORMATO,
+    /* desta luta: 3 trocas por round e a animação antes do sinal (luta de antes: 4 e sem animação) */
+    formato: { ...MOTOR.FORMATO, trocasPorRound: MOTOR.trocasDoRound(estado), animacaoMs: estado && estado.tpr ? MOTOR.FORMATO.animacaoMs : 0 },
     estado: estado ? {
       pos: estado.pos, nivelPos: estado.nivelPos, momento: estado.momento,
       /* v4, fase 3: quem venceu a última troca do round (finta pela metade) */
@@ -464,7 +465,8 @@ function definicoes(ativo) {
     versaoBalanceamento: ARV.VERSAO_BALANCEAMENTO,
     /* fase 4: a mão de cada estilo (a tela mostra no cartão do estilo) */
     estilos: Object.fromEntries(Object.entries(ARV.ESTILOS).map(([id, e]) => [id, { nome: e.nome, resumo: e.resumo, base: e.base, mec: e.mec || {}, ramos: e.ramos, mao: EST.maoCheia(id),
-      bonusDefesaQueLe: EST.ESTRATEGIA.bonusDefesaQueLe[id] || 0 }])),
+      /* o de agora: luta nova tem MOTOR.FORMATO.trocasPorRound trocas por round */
+      bonusDefesaQueLe: EST.regraDaLuta({ tpr: MOTOR.FORMATO.trocasPorRound }, "bonusDefesaQueLe")[id] || 0 }])),
     categorias: Object.fromEntries(Object.entries(ARV.CATEGORIAS).map(([id, c]) => [id, { nome: c.nome, ajuste: c.ajuste }])),
     categoriasLancamento: ARV.CATEGORIAS_LANCAMENTO,
     atributos: ARV.NOME_ATRIBUTO,

@@ -60,6 +60,19 @@ export const ESTRATEGIA = {
      (Guarda alta) e toda outra ação virava finta. Só tempo: não muda
      nenhum número da luta, então VERSAO_MOTOR fica. */
   prazos: { sinalMs: 8000, acaoMs: 12000 },
+  /* luta de 3 trocas por round (motor v5, 2026-11-10): com uma troca a
+     menos por round sobra mais carta e mais energia. Medido junto com
+     K_POR_TROCAS do motor (matriz de estilos com 1.200 lutas por dupla,
+     repetir a mesma ação contra quem se adapta, leitura): 0,25 por carta e
+     o bônus de 0,5 deixavam o counter abaixo de 45% contra o wrestler; com
+     1, o counter do nível 30 chegava a 60% contra o wrestler (0,7: 56%).
+     Luta sem tpr (de antes) segue com os números de cima. */
+  porTrocas: { 3: { energiaPorCartaGuardada: 0.15, bonusDefesaQueLe: { counter: 0.7 } } },
+};
+/* o número que vale nesta luta: o de porTrocas pela quantidade de trocas dela, ou o de sempre */
+export const regraDaLuta = (e, nome) => {
+  const x = e && e.tpr ? ESTRATEGIA.porTrocas[e.tpr] : null;
+  return x && Object.hasOwn(x, nome) ? x[nome] : ESTRATEGIA[nome];
 };
 /* a postura de cada família: o sinal que o lutador mostra (fase 2) */
 export const POSTURAS = { golpes: "Peso na frente", queda: "Base baixa", defesa: "Guarda alta", pressao: "Avançando" };

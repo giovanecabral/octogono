@@ -1121,6 +1121,122 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 .jxj-3d-botao{display:inline-flex;align-items:center;gap:6px;margin:0 0 8px;padding:6px 10px;cursor:pointer;font-family:var(--f-ui);font-weight:700;font-size:13px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--osso-2);background:rgba(17,19,26,.8);border:1px solid var(--linha-forte)}
 .jxj-3d-botao .ico{width:14px;height:14px}
+/* ---------- Online em tela cheia com o 3D (2026-11-10, pedido do dono) ----------
+   A barra dele em cima e a sua embaixo, fora do palco; o 3D no buraco do
+   meio, sem nada por cima dos lutadores enquanto a troca passa. A mesa e a
+   mão sobem do pé do palco só quando é hora de escolher (sem .assistindo). */
+.tela-jxj-luta.tela-cheia .tela-cab{visibility:hidden}
+.tela-jxj-luta.tela-cheia .jxj-area{z-index:auto}
+.luta3d-caixa.jxj-3d.fixo{position:fixed;z-index:39}
+.jxj-combate.tela-cheia{position:fixed;inset:0;z-index:40;max-width:none;margin:0;gap:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;pointer-events:none}
+.jxj-combate.tela-cheia>*{pointer-events:auto}
+.jxj-palco{position:relative;min-height:0;pointer-events:none}
+.jxj-palco>*{pointer-events:auto}
+.jxj-tarja{position:relative;display:flex;align-items:center;gap:14px;padding:10px 16px;background:#0B0C10}
+.jxj-tarja.cima{padding-top:calc(10px + env(safe-area-inset-top,0px));padding-right:76px;border-bottom:2px solid var(--sangue)}
+.jxj-tarja.baixo{flex-wrap:wrap;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));border-top:2px solid var(--sangue)}
+.jxj-palco-voltar{flex:none;display:grid;place-items:center;width:40px;height:40px;padding:0;cursor:pointer;color:var(--osso);background:rgba(255,255,255,.04);border:1px solid var(--linha-forte)}
+.jxj-palco-voltar .ico{width:18px;height:18px}
+.jxj-palco-voltar:focus-visible{outline:2px solid var(--sangue);outline-offset:2px}
+.jxj-tarja .jxj-hud-lado,.jxj-tarja .jxj-hud-lado.ele{flex:1 1 320px;min-width:0;flex-direction:row;align-items:center;gap:12px;text-align:left}
+.jxj-tarja .jxj-hud-lado .jxj-retrato{width:48px}
+.jxj-tarja .jxj-hud-lado.ele .jxj-hud-nome{flex-direction:row}
+.jxj-tarja .jxj-hud-lado.ele .jxj-vida{transform:none}
+.jxj-tarja .jxj-hud-lado.ele .jxj-folego i{margin-left:0}
+.jxj-tarja .jxj-hud-lado.ele .jxj-hud-num{justify-content:flex-start}
+.jxj-tarja .jxj-hud-info{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:repeat(4,auto);column-gap:18px;row-gap:4px;align-items:center}
+.jxj-tarja .jxj-hud-info>.jxj-mao{grid-column:2;grid-row:1 / -1}
+.jxj-tarja .jxj-hud-nome{font-size:17px}
+.jxj-tarja .jxj-hud-nome .jxj-alcunha{display:inline;margin:0;font-size:12px;text-transform:none;white-space:nowrap}
+.jxj-tarja .jxj-vida{height:16px}
+.jxj-tarja .jxj-hud-centro{flex:none;gap:3px}
+.jxj-tarja .jxj-anel{width:58px;height:58px}
+.jxj-tarja .jxj-anel::before{inset:5px}
+.jxj-tarja .jxj-anel .jxj-relogio{font-size:22px}
+.jxj-barra-extra{flex:none;display:flex;align-items:center;gap:8px}
+.jxj-tarja .jxj-3d-botao,.jxj-tarja .jxj-abandonar{margin:0}
+.jxj-tarja .jxj-faixa-combate{flex:0 1 400px;min-width:0;justify-content:flex-start;gap:6px 16px;padding:0;background:none;border:0}
+.jxj-tarja.baixo .jxj-hud-lado{flex:1 1 440px}
+/* os letreiros do 3D (ROUND, DECISÃO) descem pra baixo da legenda do lance */
+.luta3d-caixa.jxj-3d.fixo .luta3d-chamada{top:36%}
+.luta3d-caixa.jxj-3d.fixo .luta3d-chamada.pequena{top:30%}
+.jxj-tarja .jxj-gaveta{flex:none;background:rgba(255,255,255,.03)}
+.jxj-tarja .jxj-gaveta summary{padding:8px 12px;font-size:12px}
+.jxj-tarja .jxj-gaveta summary small{display:none}
+.jxj-gaveta-corpo{position:absolute;right:12px;bottom:calc(100% + 8px);z-index:5;width:min(440px,calc(100vw - 24px));max-height:min(60vh,520px);overflow:auto;
+  padding:12px 0 0;background:#0B0C10;border:1px solid var(--linha-forte);box-shadow:0 18px 40px rgba(0,0,0,.6)}
+.jxj-gaveta-corpo .jxj-duelos{margin:0 16px 10px}
+/* o lance da troca que acabou: legenda no alto do palco */
+.jxj-combate.tela-cheia .jxj-lance{position:absolute;top:12px;left:12px;right:12px;z-index:2;max-width:760px;margin:0 auto;padding:10px 14px;gap:4px;
+  background:rgba(7,8,11,.8);border:1px solid rgba(255,255,255,.1)}
+.jxj-combate.tela-cheia .jxj-lance .jxj-duelo b{font-size:17px}
+.jxj-combate.tela-cheia .jxj-lance .jxj-ultima-txt{font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.jxj-combate.tela-cheia .jxj-lance .jxj-porque{margin:0}
+/* a mão: sobe do pé do palco; some enquanto a troca passa no 3D */
+.jxj-combate.tela-cheia .jxj-zona-acao{position:absolute;left:0;right:0;bottom:0;z-index:3;gap:6px;padding:52px 16px 6px;
+  background:linear-gradient(180deg,rgba(7,8,11,0),rgba(7,8,11,.84) 70px,rgba(7,8,11,.95));transition:transform .4s var(--ease-soco),opacity .3s ease}
+.jxj-combate.tela-cheia .jxj-zona-acao>*{width:100%;max-width:1120px;margin-inline:auto}
+.jxj-combate.tela-cheia.assistindo .jxj-zona-acao{transform:translateY(45%);opacity:0;visibility:hidden;pointer-events:none;transition:transform .3s ease,opacity .2s ease,visibility 0s .3s}
+.jxj-combate.tela-cheia .jxj-ciclo.compacto{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:4px 12px;padding:0;border:0;background:none}
+.jxj-combate.tela-cheia .jxj-ciclo.compacto .jxj-ciclo-titulo{display:none}
+.jxj-combate.tela-cheia .jxj-ciclo.compacto .jxj-ciclo-linha{display:flex;gap:3px;align-items:center;padding:1px}
+.jxj-combate.tela-cheia .jxj-ciclo.compacto .jxj-ciclo-chip{padding:3px 6px}
+.jxj-combate.tela-cheia .jxj-ciclo.compacto .jxj-ciclo-chip b,.jxj-combate.tela-cheia .jxj-ciclo.compacto .jxj-ciclo-vence .ganha{display:none}
+.jxj-combate.tela-cheia .jxj-ciclo.compacto .jxj-ciclo-vence .seta{display:inline-flex}
+.jxj-palco-mao{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:end;column-gap:18px}
+.jxj-palco-mao .jxj-mesa{display:contents}
+.jxj-palco-mao .jxj-mesa-vs{display:none}
+.jxj-palco-mao .jxj-mesa-lado,.jxj-palco-mao .jxj-mesa-lado.ele{grid-row:1;flex-direction:row;align-items:flex-end;gap:10px;padding-bottom:20px}
+.jxj-palco-mao .jxj-mesa-lado.eu{grid-column:1;justify-self:end}
+.jxj-palco-mao .jxj-mesa-lado.ele{grid-column:3;justify-self:start;flex-direction:row-reverse}
+.jxj-palco-mao .jxj-mao-luta{grid-column:2;grid-row:1;padding:12px 0 18px;min-height:0}
+.jxj-combate.tela-cheia .jxj-mesa .acao .jxj-carta,.jxj-combate.tela-cheia .jxj-mesa .acao .jxj-verso,.jxj-combate.tela-cheia .jxj-mesa .acao .jxj-vaga,.jxj-combate.tela-cheia .jxj-mesa .vira{--w:84px!important}
+.jxj-combate.tela-cheia .jxj-mesa .postura .jxj-carta,.jxj-combate.tela-cheia .jxj-mesa .postura .jxj-verso,.jxj-combate.tela-cheia .jxj-mesa .postura .jxj-vaga{--w:60px!important}
+.jxj-combate.tela-cheia .jxj-mesa .jxj-carta-regra{display:none}
+.jxj-combate.tela-cheia .jxj-rotulo-mesa{min-height:0;max-width:110px;font-size:10px;letter-spacing:.1em}
+.jxj-combate.tela-cheia .jxj-na-mao .jxj-carta{--w:116px!important}
+.jxj-combate.tela-cheia .jxj-na-mao .jxj-carta-vazia{width:116px;height:167px}
+.jxj-combate.tela-cheia .jxj-espera{padding:10px 14px;font-size:15px}
+@media (max-width:720px){
+  .jxj-tarja{gap:8px;padding:6px 8px}
+  .jxj-tarja.cima{padding-top:calc(6px + env(safe-area-inset-top,0px));padding-right:58px}
+  .jxj-tarja.baixo{row-gap:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+  .jxj-palco-voltar{width:32px;height:32px}
+  .jxj-tarja .jxj-hud-lado,.jxj-tarja .jxj-hud-lado.ele{flex-basis:0;gap:8px}
+  .jxj-tarja.baixo .jxj-hud-lado{flex-basis:100%}
+  .jxj-tarja .jxj-hud-lado .jxj-retrato{width:34px}
+  .jxj-tarja .jxj-hud-info{grid-template-columns:minmax(0,1fr);grid-template-rows:none;row-gap:3px}
+  .jxj-tarja .jxj-hud-info>.jxj-mao{grid-column:auto;grid-row:auto}
+  .jxj-tarja .jxj-mao-mini .jxj-mini{width:22px;height:24px;font-size:10px}
+  .jxj-tarja .jxj-hud-nome{flex-wrap:wrap;row-gap:0;font-size:13px}
+  .jxj-tarja .jxj-hud-nome .jxj-selo-bot{font-size:0;gap:0;padding:2px 3px}
+  .jxj-tarja .jxj-hud-num{display:none}
+  .jxj-tarja .jxj-vida{height:10px}
+  .jxj-tarja .jxj-anel{width:44px;height:44px}
+  .jxj-tarja .jxj-anel::before{inset:4px}
+  .jxj-tarja .jxj-anel .jxj-relogio{font-size:16px}
+  .jxj-tarja .jxj-hud-centro .jxj-round{font-size:10px}
+  .jxj-tarja .jxj-3d-botao span,.jxj-tarja .jxj-abandonar span,.jxj-tarja .jxj-gaveta summary span{display:none}
+  .jxj-tarja .jxj-faixa-combate{flex:1 1 0;min-width:0;gap:3px 10px}
+  .jxj-tarja .jxj-faixa-combate .jxj-posicao{font-size:12px}
+  .jxj-tarja .jxj-placar-round{flex-basis:auto;min-width:120px}
+  .jxj-combate.tela-cheia .jxj-lance{top:8px;left:8px;right:8px;padding:7px 10px}
+  .jxj-combate.tela-cheia .jxj-lance .jxj-duelo b{font-size:13px}
+  .jxj-combate.tela-cheia .jxj-lance .jxj-ultima-txt{font-size:12.5px}
+  .jxj-combate.tela-cheia .jxj-zona-acao{padding:40px 8px 2px;gap:4px}
+  .jxj-palco-mao{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:0}
+  .jxj-palco-mao .jxj-mesa-lado,.jxj-palco-mao .jxj-mesa-lado.ele{padding-bottom:0;gap:6px}
+  .jxj-palco-mao .jxj-mesa-lado.eu{grid-column:1;justify-self:start}
+  .jxj-palco-mao .jxj-mesa-lado.ele{grid-column:2;justify-self:end}
+  .jxj-palco-mao .jxj-mao-luta{grid-column:1 / -1;grid-row:2;padding:6px 0 14px}
+  .jxj-combate.tela-cheia .jxj-mesa .acao .jxj-carta,.jxj-combate.tela-cheia .jxj-mesa .acao .jxj-verso,.jxj-combate.tela-cheia .jxj-mesa .acao .jxj-vaga,.jxj-combate.tela-cheia .jxj-mesa .vira{--w:56px!important}
+  .jxj-combate.tela-cheia .jxj-mesa .postura .jxj-carta,.jxj-combate.tela-cheia .jxj-mesa .postura .jxj-verso,.jxj-combate.tela-cheia .jxj-mesa .postura .jxj-vaga{--w:42px!important}
+  .jxj-combate.tela-cheia .jxj-rotulo-mesa{font-size:8.5px;max-width:64px}
+  .jxj-combate.tela-cheia .jxj-na-mao .jxj-carta{--w:80px!important}
+  .jxj-combate.tela-cheia .jxj-na-mao .jxj-carta-vazia{width:80px;height:115px}
+  .jxj-combate.tela-cheia .jxj-espera{font-size:13px;padding:8px 10px}
+}
+@media (prefers-reduced-motion:reduce){.jxj-combate.tela-cheia .jxj-zona-acao,.jxj-combate.tela-cheia.assistindo .jxj-zona-acao{transition:none}}
 .luta3d-ficha{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;padding:10px 14px;
   background:rgba(7,8,11,.82);border-left:3px solid var(--sangue);font-family:var(--f-ui);color:var(--osso)}
 .luta3d-ficha-nome{font-family:var(--f-titulo);font-size:clamp(18px,2.4vw,26px);line-height:1;text-transform:uppercase}

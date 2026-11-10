@@ -844,26 +844,25 @@ function segurar(L, mao, alvo) { L.ikFixo["hand_" + mao] = { alvo, peso: 1 }; }
 async function cerimonia(venc, perd, { suspense = false } = {}) {
   if (montada) await separar({ narra: false });
   travado = true; ocupadoLance = true;
-  for (const L of [A, B]) { L.ikFixo = {}; L.contatos.length = 0; }
+  for (const L of [A, B]) { L.ikFixo = {}; L.contatos.length = 0; L.molas.length = 0; L.alinhando = null; }
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
-  let pontos;   // onde as mãos se encontram: [lutador, mão dele, mão do árbitro, baixo, alto]
+  // sempre o mesmo quadro (pedido do dono): um lutador de cada lado, o árbitro no meio segurando o punho
+  // dos dois, todos de frente pra câmera; quem caiu já está de pé pro anúncio. O lado de cada um é
+  // sorteado, pra posição não entregar quem venceu.
   flashBranco();
-  if (suspense) {
-    const esq = Math.random() < 0.5 ? A : B, dir = esq === A ? B : A;   // o lado de cada um não entrega o resultado
-    esq.raiz.position.set(-0.72, 0, 0); dir.raiz.position.set(0.72, 0, 0); C.raiz.position.set(0, 0, 0.1);
-    for (const L of [A, B, C]) { L.raiz.rotation.y = 0; L.raiz.position.y = 0; L.estado(PARADO, 0); }
-    pontos = [[esq, "l", "r", V(-0.38, 1.0, 0.16), V(-0.5, 2.05, 0.08)], [dir, "r", "l", V(0.38, 1.0, 0.16), V(0.5, 2.05, 0.08)]];
-    cam.cerCentro = V(0, 0, 0);
-  } else {
-    // quem perdeu fica onde está (no chão, se caiu); quem venceu vem pra frente com o árbitro do lado
-    const p = perd.raiz.position.clone();
-    venc.raiz.position.set(p.x * 0.3, 0, 0.9); venc.raiz.rotation.y = 0;
-    C.raiz.position.set(venc.raiz.position.x + 0.7, 0, 0.98); C.raiz.rotation.y = 0;
-    venc.estado(PARADO, 0); C.estado(PARADO, 0);
-    const x = venc.raiz.position.x;
-    pontos = [[venc, "l", "r", V(x + 0.36, 1.0, 1.08), V(x + 0.28, 2.05, 1.0)]];
-    cam.cerCentro = V(x + 0.34, 0, 0.95);
+  const esq = Math.random() < 0.5 ? A : B, dir = esq === A ? B : A;
+  esq.raiz.position.set(-0.72, 0, 0); dir.raiz.position.set(0.72, 0, 0); C.raiz.position.set(0, 0, 0.1);
+  // tudo que estava tocando para (o nocaute deitado, a finalização, os controles do chão): todos em pé, parados
+  for (const L of [A, B, C]) {
+    L.extras.clear(); L.mixer.stopAllAction(); L.atual = null; L.movendo.clear();
+    L.raiz.rotation.y = 0; L.raiz.position.y = 0; L.estado(PARADO, 0);
   }
+  // de frente pra câmera (+z), a esquerda de cada um fica em +x: quem está à esquerda (x negativo) dá a
+  // mão esquerda e o árbitro segura com a direita; do outro lado, ao contrário. Ninguém cruza o braço.
+  const maoDentro = (L) => (L.raiz.position.x < 0 ? "l" : "r");
+  const maoJuiz = (L) => (L.raiz.position.x < 0 ? "r" : "l");
+  const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, maoDentro(L), maoJuiz(L), V(s * 0.38, 1.0, 0.16), V(s * 0.5, 2.05, 0.08)]; });
+  cam.cerCentro = V(0, 0, 0);
   C.raiz.visible = true; C.ikFixo = {};
   const sobe = { k: 0, quem: null };
   for (const [L, mL, mC, baixo, alto] of pontos) {
@@ -886,7 +885,7 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   // solta: quem venceu comemora, quem perdeu lamenta (se estiver em pé), o árbitro dá um passo
   for (const L of [A, B, C]) L.ikFixo = {};
   venc.umaVez(Math.random() < 0.5 ? "Vitoria_Boxe" : "Comemora", { fade: 0.35, segurar: true, mover: false });
-  if (suspense) perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
+  perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
   const c0 = C.raiz.position.clone(); animar(0.8, (k) => { C.raiz.position.z = c0.z - 0.7 * suave(k); });
   cam.cerFov = 44;
   await esperar(2.2);
@@ -1059,7 +1058,9 @@ async function entrada() {
 const de = (q) => (q === "B" ? [B, A] : [A, B]);
 async function lance(L) {
   const ev = (L && L.ev) || {};
-  if (A.vestido) A.tirarRoupa(0);   // sem entrada (Rever luta, 3D ligado no meio, Online): a roupa já saiu
+  /* sem entrada (Rever luta, 3D ligado no meio, Online): a roupa já saiu. Os
+     dois lados: no Online o adversário também é um jogador com roupa de entrada */
+  for (const L of [A, B]) if (L.vestido) L.tirarRoupa(0);
   const [atk, def] = de(ev.quem);
   ocupadoLance = true;
   try {

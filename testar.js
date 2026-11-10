@@ -11843,8 +11843,9 @@ async function testarJxJ() {
     const usoHoje = async () => (await q("select coalesce((select chamadas from jxj_narracao_uso where dia = (now() at time zone 'America/Sao_Paulo')::date), 0)::int n"))[0].n;
     const esperarAte = async (cond, ms = 3000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 10)); } return true; };
 
-    /* narração ao vivo (2026-10-21, fase 4): uma luta parada na 4ª troca do round 1, depois de 3 trocas de estudo.
+    /* narração ao vivo (2026-10-21, fase 4): uma luta parada na última troca do round 1 (a 3ª desde o motor v5), depois das de estudo.
        v4: a luta de apoio ganha 4 Defesas na mão (MAO_APOIO), pra seguir só com Defesa */
+    const TPR = MOTOR.FORMATO.trocasPorRound;
     const MAO_APOIO = { a: { golpes: 2, queda: 1, defesa: 4, pressao: 1 }, b: { golpes: 2, queda: 1, defesa: 4, pressao: 1 } };
     const lutaNaUltimaTroca = async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
@@ -11853,13 +11854,13 @@ async function testarJxJ() {
       const lid = await parear(u1, l1, u2, l2);
       /* v4: 4 Defesas na mão pra a luta de apoio seguir só com Defesa (estes testes são da narração, não da mão) */
       await q("update jxj_lutas set estado = jsonb_set(estado, '{mao}', $2::jsonb) where id = $1", [lid, JSON.stringify(MAO_APOIO)]);
-      for (let k = 0; k < 3; k++) {
+      for (let k = 0; k < TPR - 1; k++) {
         const v = await ok(u1, "luta", { lutaId: lid });
         await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
         await ok(u2, "acao", { lutaId: lid, round: v.round, troca: v.troca, familia: "defesa" });
       }
       const v = await ok(u1, "luta", { lutaId: lid });
-      if (v.status !== "andamento" || v.troca !== 4) throw new Error("luta de apoio fora da 4ª troca: " + v.status + " " + v.troca);
+      if (v.status !== "andamento" || v.troca !== TPR) throw new Error("luta de apoio fora da última troca do round: " + v.status + " " + v.troca);
       const nomes = (await q("select nomes from jxj_lutas where id = $1", [lid]))[0].nomes;
       return { u1, u2, lid, v, nomes: { a: nomes.a.nome, b: nomes.b.nome } };
     };
@@ -11869,8 +11870,8 @@ async function testarJxJ() {
       await ok(x.u2, "acao", { lutaId: x.lid, round: x.v.round, troca: x.v.troca, familia: "defesa" });
       return Date.now() - t0;
     };
-    const narracaoDaTroca4 = async (lid) => {
-      const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = 4", [lid]))[0];
+    const narracaoDaUltimaTroca = async (lid) => {
+      const t = (await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca = $2", [lid, TPR]))[0];
       return t ? t.eventos.filter((ev) => ev.tipo === "narracao") : null;
     };
     await conf("postura com 8 s (2026-11-07, achado jogando no celular): a etapa do sinal cobre a revelação da troca anterior (2,6 s) e ainda deixa tempo pra escolher; a postura mandada 6,5 s depois do começo da troca vale; depois de 8 s é recusada", async () => {
@@ -11884,6 +11885,31 @@ async function testarJxJ() {
       if (v.meuSinal !== "golpes") throw new Error("a postura de 6,5 s não valeu: " + JSON.stringify({ etapa: v.etapa, meuSinal: v.meuSinal }));
       await desde(8500);
       await erro(u2, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /etapa do sinal acabou/);
+    });
+    await conf("animação antes das cartas (2026-11-10, motor v5): luta nova com 3 trocas por round; a vista manda trocasPorRound 3 e animacaoMs; a troca resolvida deixa o prazo da próxima em prazoMs + animacaoMs (a etapa do sinal ganha a janela); luta de antes (sem tpr) segue com 4 trocas, 20 s e sem janela", async () => {
+      await zerarLimites();
+      const F = MOTOR.FORMATO;
+      if (F.trocasPorRound !== 3 || !(F.animacaoMs > 0)) throw new Error("formato: " + JSON.stringify(F));
+      const jogar = async (u1, u2, lid) => {
+        for (const u of [u1, u2]) await ok(u, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });
+        for (const u of [u1, u2]) await ok(u, "acao", { lutaId: lid, round: 1, troca: 1, familia: "defesa" });
+        const ms = Number((await q("select extract(epoch from (prazo - now())) * 1000 as ms from jxj_lutas where id = $1", [lid]))[0].ms);
+        return { ms, v: await ok(u1, "luta", { lutaId: lid }) };
+      };
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      const v0 = await ok(u1, "luta", { lutaId: lid });
+      if (v0.formato.trocasPorRound !== 3 || v0.formato.animacaoMs !== F.animacaoMs) throw new Error("vista nova: " + JSON.stringify(v0.formato));
+      const r = await jogar(u1, u2, lid);
+      if (r.v.troca !== 2 || r.v.etapa !== "sinal" || Math.abs(r.ms - (F.prazoMs + F.animacaoMs)) > 1500) throw new Error("depois da troca: " + JSON.stringify({ troca: r.v.troca, etapa: r.v.etapa, ms: Math.round(r.ms) }));
+      /* luta criada antes do deploy: o estado não tem tpr */
+      const u3 = await novoUsuario({ pro: true }), u4 = await novoUsuario({ pro: true });
+      const lid2 = await parear(u3, (await criar(u3)).id, u4, (await criar(u4)).id);
+      await q("update jxj_lutas set estado = estado - 'tpr' where id = $1", [lid2]);
+      const v2 = await ok(u3, "luta", { lutaId: lid2 });
+      if (v2.formato.trocasPorRound !== 4 || v2.formato.animacaoMs !== 0) throw new Error("vista de antes: " + JSON.stringify(v2.formato));
+      const r2 = await jogar(u3, u4, lid2);
+      if (r2.v.troca !== 2 || Math.abs(r2.ms - F.prazoMs) > 1500) throw new Error("luta de antes depois da troca: " + JSON.stringify({ troca: r2.v.troca, ms: Math.round(r2.ms) }));
     });
     await conf("sinais no banco (fase 2): só quem luta sinaliza, uma vez por troca, só na etapa do sinal; a leitura devolve os sinais da troca aberta; anon e authenticated não executam", async () => {
       const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
@@ -12047,13 +12073,13 @@ async function testarJxJ() {
     });
     await conf("narração ao vivo (fase 4): troca comum não ganha linha; o fim do round ganha a frase local (sem IA), gravada nos eventos da troca e a mesma na vista dos dois; a luta refeita pela semente não muda", async () => {
       const x = await lutaNaUltimaTroca();
-      const comuns = await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca < 4", [x.lid]);
-      if (comuns.length !== 3 || comuns.some((t) => t.eventos.some((ev) => ev.tipo === "narracao"))) throw new Error("troca comum ganhou narração");
+      const comuns = await q("select eventos from jxj_trocas where luta_id = $1 and round = 1 and troca < $2", [x.lid, TPR]);
+      if (comuns.length !== TPR - 1 || comuns.some((t) => t.eventos.some((ev) => ev.tipo === "narracao"))) throw new Error("troca comum ganhou narração");
       await fecharRound(x);
-      const n = await narracaoDaTroca4(x.lid);
+      const n = await narracaoDaUltimaTroca(x.lid);
       if (!n || n.length !== 1 || n[0].fonte !== "molde" || n[0].destaque !== "fimRound" || !/round 1/.test(n[0].texto)) throw new Error("fim de round: " + JSON.stringify(n));
       const va = await ok(x.u1, "luta", { lutaId: x.lid }), vb = await ok(x.u2, "luta", { lutaId: x.lid });
-      const ta = va.trocas.find((t) => t.round === 1 && t.troca === 4), tb = vb.trocas.find((t) => t.round === 1 && t.troca === 4);
+      const ta = va.trocas.find((t) => t.round === 1 && t.troca === TPR), tb = vb.trocas.find((t) => t.round === 1 && t.troca === TPR);
       if (!ta.narracao || JSON.stringify(ta.narracao) !== JSON.stringify(tb.narracao) || ta.narracao.texto !== n[0].texto) throw new Error("vista da narração: " + JSON.stringify([ta.narracao, tb.narracao]));
       if (ta.ev.some((e) => e.tipo === "narracao") || ta.eventos.some((e) => e === n[0].texto)) throw new Error("a narração entrou nos eventos de fato");
       const d = (await q("select public.jxj_luta($1::bigint) as d", [x.lid]))[0].d;
@@ -12073,11 +12099,11 @@ async function testarJxJ() {
         const corpo = JSON.parse(op.body);
         if (!corpo.reasoning || corpo.reasoning.enabled !== false) throw new Error("pedido sem desligar o raciocínio");
         if (!/sem dizer quem levou o round/.test(corpo.messages[1].content)) throw new Error("pedido do fim de round: " + corpo.messages[1].content);
-        if (reg.chamadas === 1) { const v = await ok(x.u1, "luta", { lutaId: x.lid }); if (v.trocas.length !== 3) throw new Error("a consulta do outro lado resolveu a troca no meio"); }
+        if (reg.chamadas === 1) { const v = await ok(x.u1, "luta", { lutaId: x.lid }); if (v.trocas.length !== TPR - 1) throw new Error("a consulta do outro lado resolveu a troca no meio"); }
         const [a, b] = nomesDoPedido(op); return respostaIA(`${a} e ${b} fecharam o round sem nenhum golpe certo.`);
       }, async (reg) => {
         await fecharRound(x);
-        const n = await narracaoDaTroca4(x.lid);
+        const n = await narracaoDaUltimaTroca(x.lid);
         if (reg.chamadas !== 1 || !n || n[0].fonte !== "ia" || !/^.+ fecharam o round sem nenhum golpe certo\. (.+ levou o round 1, \d+ a \d+\.|O round 1 terminou empatado)/.test(n[0].texto)) throw new Error("IA boa: " + JSON.stringify({ c: reg.chamadas, n }));
         if ((await usoHoje()) !== usoAntes + 1) throw new Error("não gastou 1 do teto do dia");
       });
@@ -12085,18 +12111,18 @@ async function testarJxJ() {
          resolver: a consulta não resolve antes do prazo; depois do prazo, resolve */
       x = await lutaNaUltimaTroca();
       await ok(x.u1, "acao", { lutaId: x.lid, round: x.v.round, troca: x.v.troca, familia: "defesa" });
-      await q("insert into jxj_acoes (luta_id, round, troca, lado, familia) select $1, 1, 4, case when a_user = $2 then 'b' else 'a' end, 'defesa' from jxj_lutas where id = $1", [x.lid, x.u1]);
-      if ((await ok(x.u1, "luta", { lutaId: x.lid })).trocas.length !== 3 || (await ok(x.u2, "luta", { lutaId: x.lid })).trocas.length !== 3) throw new Error("a consulta resolveu a troca antes do prazo");
+      await q("insert into jxj_acoes (luta_id, round, troca, lado, familia) select $1, 1, $3, case when a_user = $2 then 'b' else 'a' end, 'defesa' from jxj_lutas where id = $1", [x.lid, x.u1, TPR]);
+      if ((await ok(x.u1, "luta", { lutaId: x.lid })).trocas.length !== TPR - 1 || (await ok(x.u2, "luta", { lutaId: x.lid })).trocas.length !== TPR - 1) throw new Error("a consulta resolveu a troca antes do prazo");
       await vencerPrazo(x.lid);
       const vv = await ok(x.u2, "luta", { lutaId: x.lid });
-      if (vv.trocas.length !== 4 || vv.trocas[3].acaoA !== "defesa" || vv.trocas[3].acaoB !== "defesa") throw new Error("depois do prazo a consulta não resolveu com as duas ações: " + JSON.stringify(vv.trocas[3]));
+      if (vv.trocas.length !== TPR || vv.trocas[TPR - 1].acaoA !== "defesa" || vv.trocas[TPR - 1].acaoB !== "defesa") throw new Error("depois do prazo a consulta não resolveu com as duas ações: " + JSON.stringify(vv.trocas[TPR - 1]));
       /* 2: inventa golpe; 3: inventa número; 4: diz quem levou; 5: inventa resultado */
       for (const inventado of [(a, b) => `${a} acertou um mata-leão em ${b} no fim do round.`, (a, b) => `${a} e ${b} fecharam o round 7 parados.`,
         (a, b) => `${a} levou o round contra ${b} com a defesa.`, (a, b) => `${a} venceu ${b} por decisão.`]) {
         x = await lutaNaUltimaTroca();
         await comIA(async (reg, op) => respostaIA(inventado(...nomesDoPedido(op))), async (reg) => {
           await fecharRound(x);
-          const n = await narracaoDaTroca4(x.lid);
+          const n = await narracaoDaUltimaTroca(x.lid);
           if (reg.chamadas !== 1 || !n || n[0].fonte !== "molde") throw new Error("IA que inventa passou: " + JSON.stringify(n));
         });
       }
@@ -12105,7 +12131,7 @@ async function testarJxJ() {
       await comIA(async (reg, op) => { const [a, b] = nomesDoPedido(op);
         return { ok: true, status: 200, json: async () => ({ choices: [{ finish_reason: "length", message: { content: `${a} e ${b} fecharam o round sem nenhum golpe` } }] }) }; }, async (reg) => {
         await fecharRound(x);
-        const n = await narracaoDaTroca4(x.lid);
+        const n = await narracaoDaUltimaTroca(x.lid);
         if (reg.chamadas !== 1 || !n || n[0].fonte !== "molde") throw new Error("frase cortada passou: " + JSON.stringify(n));
       });
       /* 4: demora mais que o prazo: a luta não espera */
@@ -12115,7 +12141,7 @@ async function testarJxJ() {
         return respostaIA("tarde demais");
       }, async () => {
         const ms = await fecharRound(x);
-        const n = await narracaoDaTroca4(x.lid);
+        const n = await narracaoDaUltimaTroca(x.lid);
         if (!n || n[0].fonte !== "molde") throw new Error("IA lenta: " + JSON.stringify(n));
         if (ms > NARR.PRAZO_IA_TROCA_MS + 2500) throw new Error(`a luta esperou a IA lenta: ${ms} ms`);
       });
@@ -12123,7 +12149,7 @@ async function testarJxJ() {
       x = await lutaNaUltimaTroca();
       await comIA(async () => ({ ok: false, status: 500, json: async () => ({}) }), async () => {
         await fecharRound(x);
-        const n = await narracaoDaTroca4(x.lid);
+        const n = await narracaoDaUltimaTroca(x.lid);
         if (!n || n[0].fonte !== "molde") throw new Error("IA que falha: " + JSON.stringify(n));
       });
       /* 6: teto zerado: não chama */
@@ -12132,7 +12158,7 @@ async function testarJxJ() {
       try {
         await comIA(async () => respostaIA("não devia chamar"), async (reg) => {
           await fecharRound(x);
-          const n = await narracaoDaTroca4(x.lid);
+          const n = await narracaoDaUltimaTroca(x.lid);
           if (reg.chamadas !== 0 || !n || n[0].fonte !== "molde") throw new Error("teto zerado: " + JSON.stringify({ c: reg.chamadas, n }));
         });
       } finally { await q("update jxj_config set valor = '300'::jsonb where chave = 'narracao_ia_dia'"); }
@@ -12769,18 +12795,31 @@ async function testarJxJMotor() {
     let e = M.novaLuta(pA, pB);
     /* fase 4: a mão cheia é a do estilo de cada lado */
     const cheias = { a: EST.maoCheia("striker"), b: EST.maoCheia("grappler") };
-    if (e.v !== 4 || JSON.stringify(e.mao) !== JSON.stringify(cheias)) throw new Error("mão inicial " + JSON.stringify(e.mao));
+    if (e.v !== M.VERSAO_MOTOR || JSON.stringify(e.mao) !== JSON.stringify(cheias)) throw new Error("mão inicial " + JSON.stringify(e.mao));
     e = M.resolverTroca(e, P, { a: "golpes", b: "defesa" }, "m1").estado;
     if (e.mao.a.golpes !== cheias.a.golpes - 1 || e.mao.b.defesa !== cheias.b.defesa - 1) throw new Error("não gastou: " + JSON.stringify(e.mao));
     /* no chão, Queda é finalização/raspar: gasta a mesma carta */
     const chao = { ...M.novaLuta(pA, pB), pos: "cima_a" };
     const r2 = M.resolverTroca(chao, P, { a: "queda", b: "pressao" }, "m2").estado;
     if (r2.mao.a.queda !== cheias.a.queda - 1 || r2.mao.b.pressao !== Math.max(0, cheias.b.pressao - 1)) throw new Error("no chão não gastou: " + JSON.stringify(r2.mao));
-    for (const ac of [{ a: "queda", b: "golpes" }, { a: "defesa", b: "pressao" }, { a: "pressao", b: "queda" }]) { if (e.fim) break; e = M.resolverTroca(e, P, ac, "m3" + e.troca).estado; }
+    /* o resto do round 1 (3 trocas por round desde o motor v5) */
+    for (const ac of [{ a: "queda", b: "golpes" }, { a: "defesa", b: "pressao" }, { a: "pressao", b: "queda" }].slice(0, M.trocasDoRound(e) - 1)) { if (e.fim) break; e = M.resolverTroca(e, P, ac, "m3" + e.troca).estado; }
     if (!e.fim && (e.round !== 2 || JSON.stringify(e.mao) !== JSON.stringify(cheias))) throw new Error("round 2 sem a mão cheia: " + JSON.stringify(e.mao));
-    const v3 = M.novaLuta(pA, pB); delete v3.mao; v3.v = 3;
+    const v3 = M.novaLuta(pA, pB); delete v3.mao; delete v3.tpr; v3.v = 3;
     const r3 = M.resolverTroca(v3, P, { a: "golpes", b: "golpes" }, "m4");
     if ("mao" in r3.estado || r3.eventos.some((ev) => ev.tipo === "semCarta" || ev.tipo === "guardou")) throw new Error("v3 ganhou mão");
+  });
+  await conf("3 trocas por round (motor v5, 2026-11-10): a luta nova grava tpr 3 e o round 2 começa depois da 3ª troca; luta sem tpr (de antes) segue com 4; o prazo da próxima troca soma a janela da animação só na luta nova; porTrocas e K_POR_TROCAS valem só nela", () => {
+    const pA = perfil("striker"), pB = perfil("counter"), P = { a: pA, b: pB };
+    const e = M.novaLuta(pA, pB), y0 = M.novaLuta(pA, pB); delete y0.tpr;
+    if (e.tpr !== 3 || M.trocasDoRound(e) !== 3 || M.trocasDoRound(y0) !== 4) throw new Error("tpr: " + JSON.stringify([e.tpr, M.trocasDoRound(e), M.trocasDoRound(y0)]));
+    let x = e, y = y0;
+    for (let i = 0; i < 3; i++) { x = M.resolverTroca(x, P, { a: "defesa", b: "defesa" }, "tp" + i).estado; y = M.resolverTroca(y, P, { a: "defesa", b: "defesa" }, "tp" + i).estado; }
+    if (x.fim || y.fim || x.round !== 2 || x.troca !== 1 || y.round !== 1 || y.troca !== 4) throw new Error("rounds: " + JSON.stringify([x.round, x.troca, y.round, y.troca]));
+    if (M.prazoDaProxima(e) !== M.FORMATO.prazoMs + M.FORMATO.animacaoMs || M.prazoDaProxima(y0) !== M.FORMATO.prazoMs || !(M.FORMATO.animacaoMs > 0)) throw new Error("prazo da próxima");
+    for (const k of ["energiaPorCartaGuardada", "bonusDefesaQueLe"]) {
+      if (JSON.stringify(EST.regraDaLuta(e, k)) !== JSON.stringify(EST.ESTRATEGIA.porTrocas[3][k]) || JSON.stringify(EST.regraDaLuta(y0, k)) !== JSON.stringify(EST.ESTRATEGIA[k])) throw new Error("regraDaLuta " + k);
+    }
   });
   await conf("mão por estilo (fase 4): cada estilo troca uma carta da mão padrão (soma igual, duas famílias mudam 1); estilo desconhecido fica com a padrão; a luta nova e a volta do round usam a mão do estilo de cada lado", () => {
     const base = EST.maoCheia(), soma = EST.cartasNaMao(base);
@@ -12805,8 +12844,9 @@ async function testarJxJMotor() {
     }
   });
   await conf("bônus da Defesa que lê (fase 4): o counter que defende e pega a queda ganha bonusDefesaQueLe pontos de juiz a mais; outro estilo, outra ação ou luta v3, nada", () => {
-    const b = EST.ESTRATEGIA.bonusDefesaQueLe.counter;
-    if (!(b > 0)) throw new Error("sem bônus do counter: " + b);
+    /* o bônus desta luta (3 trocas por round desde o motor v5: porTrocas); a luta de antes, sem tpr, usa o de sempre */
+    const b = EST.regraDaLuta(M.novaLuta(perfil("counter"), perfil("wrestler")), "bonusDefesaQueLe").counter, b4 = EST.ESTRATEGIA.bonusDefesaQueLe.counter;
+    if (!(b > 0) || !(b4 > 0)) throw new Error("sem bônus do counter: " + b + " " + b4);
     const base = perfil("counter"), outroEst = { ...base, estilo: "striker" }, pO = perfil("wrestler");
     let achou = 0;
     for (let s = 0; s < 40; s++) {
@@ -12816,10 +12856,13 @@ async function testarJxJMotor() {
       achou++;
       const d = r1.estado.pontos[0].a - r2.estado.pontos[0].a;
       if (Math.abs(d - b) > 1e-9 || r1.estado.pontos[0].b !== r2.estado.pontos[0].b) throw new Error(`bônus ${d}, esperado ${b}`);
+      const sem = (x) => { delete x.tpr; return x; };
+      const d4 = M.resolverTroca(sem(M.novaLuta(base, pO)), { a: base, b: pO }, { a: "defesa", b: "queda" }, "bq" + s).estado.pontos[0].a - M.resolverTroca(sem(M.novaLuta(outroEst, pO)), { a: outroEst, b: pO }, { a: "defesa", b: "queda" }, "bq" + s).estado.pontos[0].a;
+      if (Math.abs(d4 - b4) > 1e-9) throw new Error(`bônus na luta de 4 trocas ${d4}, esperado ${b4}`);
       const g1 = M.resolverTroca(M.novaLuta(base, pO), { a: base, b: pO }, { a: "golpes", b: "pressao" }, "bq" + s), g2 = M.resolverTroca(M.novaLuta(outroEst, pO), { a: outroEst, b: pO }, { a: "golpes", b: "pressao" }, "bq" + s);
       if (g1.estado.pontos[0].a !== g2.estado.pontos[0].a) throw new Error("bônus fora da Defesa");
-      const v3 = M.novaLuta(base, pO); delete v3.mao; delete v3.iniciativa; v3.v = 3;
-      const v3b = M.novaLuta(outroEst, pO); delete v3b.mao; delete v3b.iniciativa; v3b.v = 3;
+      const v3 = M.novaLuta(base, pO); delete v3.mao; delete v3.iniciativa; delete v3.tpr; v3.v = 3;
+      const v3b = M.novaLuta(outroEst, pO); delete v3b.mao; delete v3b.iniciativa; delete v3b.tpr; v3b.v = 3;
       if (M.resolverTroca(v3, { a: base, b: pO }, { a: "defesa", b: "queda" }, "bq" + s).estado.pontos[0].a !== M.resolverTroca(v3b, { a: outroEst, b: pO }, { a: "defesa", b: "queda" }, "bq" + s).estado.pontos[0].a) throw new Error("bônus na luta v3");
     }
     if (achou < 5) throw new Error("poucas trocas com a leitura da Defesa: " + achou);
@@ -12847,7 +12890,7 @@ async function testarJxJMotor() {
     e.mao.a = { golpes: 1, queda: 1, defesa: 2, pressao: 0 };   // 4 cartas, gasta 1: guarda 3
     const r = M.resolverTroca(e, P, { a: "defesa", b: "defesa" }, "g1");
     const ga = r.eventos.find((ev) => ev.tipo === "guardou" && ev.quem === "a"), gb = r.eventos.find((ev) => ev.tipo === "guardou" && ev.quem === "b");
-    if (r.estado.fim || !ga || ga.cartas !== 3 || Math.abs(ga.energia - 3 * EST.ESTRATEGIA.energiaPorCartaGuardada) > 1e-9) throw new Error("guardou a: " + JSON.stringify(ga));
+    if (r.estado.fim || !ga || ga.cartas !== 3 || Math.abs(ga.energia - 3 * EST.regraDaLuta(e, "energiaPorCartaGuardada")) > 1e-9) throw new Error("guardou a: " + JSON.stringify(ga));
     if (!gb || gb.energia !== 0 || r.estado.b.energia > M.energiaMax(pB) + 1e-9) throw new Error("energia passou do máximo: " + JSON.stringify(gb));
     for (const ev of [ga, gb]) { const t = M.textoEvento(ev, { a: "Ana", b: "Bia" }); if (!t || problemasDeTexto(t).length) throw new Error("texto: " + t); }
     const f = M.novaLuta(pA, pB); f.round = M.FORMATO.rounds; f.troca = M.FORMATO.trocasPorRound; f.pontos = [{ a: 0, b: 0 }, { a: 0, b: 0 }, { a: 5, b: 0 }]; f.cartoes = [{ a: 10, b: 9 }, { a: 9, b: 10 }];
@@ -12880,11 +12923,17 @@ async function testarJxJMotor() {
     const aus = M.resolverTroca(e, P, { a: null, b: "defesa", sinais: { a: "queda", b: "defesa" } }, "f2");
     if (aus.estado.a.ultima !== "queda" || aus.eventos.some((x) => x.tipo === "finta") || aus.estado.a.ausentesSeguidas !== 1) throw new Error("ausente com sinal: " + JSON.stringify([aus.estado.a.ultima, aus.estado.a.ausentesSeguidas]));
   });
-  await conf("blefe tem equilíbrio (v4, fase 2): no equilíbrio entre as estratégias de sinal, o sinal acerta a ação de 60% a 75% das vezes; o equilíbrio mistura 2 ou mais estratégias", () => {
+  await conf("blefe tem equilíbrio (v4, fase 2): no equilíbrio entre as estratégias de sinal, o sinal acerta a ação de 60% a 75% das vezes; o blefe médio do equilíbrio fica entre 15% e 45% (nem sempre honesto, nem o blefe máximo)", () => {
+    /* motor v5 (3 trocas por round, 2026-11-10): o equilíbrio virou quase só
+       "blefe 0,3, ignora" (81% com 360 lutas por par). Com 4 trocas era uma
+       mistura de blefe 0, 0,3 e 0,6 com a mesma média (0,30; 35%, 24%+15%
+       e 27%). O que o teste guarda é blefar às vezes ser o certo: a média,
+       não quantas estratégias da grade discreta aparecem. */
     const r = BAL.medirSinais(120);
-    console.log(cinza(`         honestidade no equilíbrio ${f1(r.honestidade)}% (finta ${EST.ESTRATEGIA.custoFinta}) | ${r.usadas.join(" | ")}`));
+    const media = r.eq.reduce((s, w, i) => s + w * r.opcoes[i].blefe, 0);
+    console.log(cinza(`         honestidade no equilíbrio ${f1(r.honestidade)}% (finta ${EST.ESTRATEGIA.custoFinta}) | blefe médio ${f1(100 * media)}% | ${r.usadas.join(" | ")}`));
     if (r.honestidade < 60 || r.honestidade > 75) throw new Error("honestidade fora da faixa: " + f1(r.honestidade));
-    if (r.usadas.length < 2) throw new Error("equilíbrio puro: " + r.usadas.join(","));
+    if (media < 0.15 || media > 0.45) throw new Error("blefe médio fora da faixa: " + f1(100 * media));
   });
   await conf("iniciativa (v4, fase 3): quem leva mais pontos na troca fica com ela (evento iniciativa); troca empatada não muda; some no fim do round; com ela a finta custa metade (custoFintaDe e a cobrança do motor); o nó do ritmo barateia a finta; o da manutenção segura a iniciativa de quem perdeu", () => {
     const pA = perfil("wrestler"), pB = perfil("grappler"), P = { a: pA, b: pB };
@@ -12933,7 +12982,7 @@ async function testarJxJMotor() {
     }
     if (!achou) throw new Error("nenhuma troca perdida por quem tinha a iniciativa");
     /* sem mão (v3): nada de iniciativa nem desconto */
-    const v3 = M.novaLuta(pA, pB); delete v3.mao; delete v3.iniciativa; v3.v = 3;
+    const v3 = M.novaLuta(pA, pB); delete v3.mao; delete v3.iniciativa; delete v3.tpr; v3.v = 3;
     if ("iniciativa" in M.resolverTroca(v3, P, { a: "golpes", b: "pressao" }, "fi3").estado || EST.custoFintaDe(v3, "a", pA) !== cheio) throw new Error("v3 ganhou iniciativa");
   });
   await conf("momento fora do v4 (fase 3): em lutas v4 o momento fica 0 e não pesa na disputa; luta v3 (sem mão) resolve bit a bit como antes da fase 3 (impressão digital de 120 lutas)", () => {
@@ -12947,7 +12996,7 @@ async function testarJxJMotor() {
       const qA = BAL.perfilTipico(sa, 10), qB = BAL.perfilTipico(sb, 10), Q = { a: qA, b: qB };
       for (let i = 0; i < 40; i++) {
         let s = i * 977 + 3; const r = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
-        let e = M.novaLuta(qA, qB); delete e.mao; delete e.iniciativa; e.v = 3;
+        let e = M.novaLuta(qA, qB); delete e.mao; delete e.iniciativa; delete e.tpr; e.v = 3;
         let k = 0;
         while (!e.fim && k++ < 100) {
           const ac = { a: r() < 0.08 ? null : F[Math.floor(r() * 4)], b: r() < 0.08 ? null : F[Math.floor(r() * 4)] };
@@ -13306,7 +13355,9 @@ async function testarJxJMotor() {
   await conf("evolução: nível 30 contra nível 1 do mesmo estilo entre 62% e 85%; nível 30 contra 20 acima de 50%", () => {
     const linhas = [], ruins = [];
     for (const s of ESTS) {
-      const a = BAL.nivelContraNivel(s, 30, 1, 600), b = BAL.nivelContraNivel(s, 30, 20, 600);
+      /* 30 contra 20 com 2.400 (2026-11-10): o grappler mede 53,9% com 2.400 lutas nas lutas de 3 e de 4
+         trocas, e com 600 dava 49,8% e 50,4% (ruído de 2 pontos em cima da linha dos 50%) */
+      const a = BAL.nivelContraNivel(s, 30, 1, 600), b = BAL.nivelContraNivel(s, 30, 20, 2400);
       linhas.push(`${s.slice(0, 3)} 30x1 ${f1(a)}% 30x20 ${f1(b)}%`);
       if (a < 62 || a > 85) ruins.push(`${s} 30x1 ${f1(a)}%`);
       if (b <= 50) ruins.push(`${s} 30x20 ${f1(b)}%`);
@@ -14039,11 +14090,12 @@ async function testarJxJBot() {
     console.log(cinza("         " + linhas.join("\n         ")));
     if (ruins.length) throw new Error(ruins.slice(0, 6).join(" | "));
   });
-  await conf("calibração por jeito (caminho do servidor, níveis 1, 10 e 30, os mesmos da FORCA_BOT): quem joga no peso do estilo vence de 45% a 58% do bot de habilidade média e de 43% a 61% nas pontas; quem lê o jeito durante a luta (explorador) vence 7 pontos ou mais acima, em média 12+; a força medida bate com FORCA_BOT (média do jeito com folga de 35 pontos, cada habilidade com 60: a amostra do teste tem 720 lutas por casa)", () => {
+  await conf("calibração por jeito (caminho do servidor, níveis 1, 10 e 30, os mesmos da FORCA_BOT): quem joga no peso do estilo vence de 45% a 58% do bot de habilidade média e de 43% a 61% nas pontas; quem lê o jeito durante a luta (explorador) vence 7 pontos ou mais acima, em média 12+; a força medida bate com FORCA_BOT (média do jeito com folga de 35 pontos, cada habilidade com 60: a amostra do teste tem 1.440 lutas por casa)", () => {
     const SS = [0, 0.5, 1], ruins = [], linhas = [], ganhos = [];
     const rat = (p) => 1500 - 400 * Math.log10(p / (100 - p));
     for (const pers of BOT.PERSONALIDADES_IDS) {
-      const r = T.medirBots({ n: 30, pares: 8, niveis: [1, 10, 30], ss: SS, humanos: ["estilo", "explorador"], pers, sal: "t" });
+      /* n 60 (2026-11-10, motor v5): com 30 (720 lutas por casa) o Paciente médio deu 44,7%, e com 3.600 lutas, 45,4% a 46,7% */
+      const r = T.medirBots({ n: 60, pares: 8, niveis: [1, 10, 30], ss: SS, humanos: ["estilo", "explorador"], pers, sal: "t" });
       const est = SS.map((s) => r[`estilo:${s}:${pers}`]), exp = SS.map((s) => r[`explorador:${s}:${pers}`]);
       const ganho = exp.reduce((a, x, i) => a + x - est[i], 0) / SS.length;
       ganhos.push(ganho);
@@ -14182,7 +14234,7 @@ async function testarJxJTelas() {
       const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
       if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
     });
-    await conf("treino, o roteiro (2026-10-28): a mão do estilo; nas 4 guiadas só a carta certa joga; a lição 4 cobra a finta pela metade (iniciativa) e derruba; a troca 4 fecha o round 1 com o cartão; a 5 começa em pé, com a mão cheia e sem iniciativa; a vista passa pela tela sem lixo", async () => {
+    await conf("treino, o roteiro (2026-10-28; round de 3 trocas desde 2026-11-10): a mão do estilo; nas 3 guiadas só a carta certa joga; a lição 3 cobra a finta pela metade (iniciativa) e derruba; a troca 3 fecha o round 1 com o cartão; a 4 começa em pé, com a mão cheia e sem iniciativa; a vista passa pela tela sem lixo e diz 3 trocas por round", async () => {
       await vm.runInContext("jxjDef()", env.sandbox);
       const m = env.todos.length;
       const r = JSON.parse(vm.runInContext(`(() => {
@@ -14191,7 +14243,7 @@ async function testarJxJTelas() {
           const lut = { id: 1, nome: "Aluno", estilo, rosto: null, cartel: [0, 0, 0] };
           let st = jxjTreinoNovo(lut, def);
           const o = { mao: { ...st.mao.a }, passos: [] };
-          for (let i = 0; i < 4; i++) {
+          for (let i = 0; i < JXJ_TREINO.length - 1; i++) {
             const L = JXJ_TREINO[st.i];
             const certa = st.etapa === "sinal" ? L.postura : L.acao, tipo = st.etapa === "sinal" ? "sinal" : "acao";
             const errada = F.find((f) => f !== certa && st.mao.a[f] > 0);
@@ -14207,6 +14259,7 @@ async function testarJxJTelas() {
           o.cheia = JXJ_DEF.estilos[estilo].mao;
           const v = jxjTreinoVista(st, lut, def);
           o.treino = !!(v.nomes.b && v.nomes.b.treino);
+          o.tpr = v.formato.trocasPorRound; o.licoes = JXJ_TREINO.length;
           const area = document.createElement("div");
           jxjDesenharCombate(area, v, { eu: "a", ele: "b" }, () => {}, {});
           out[estilo] = o;
@@ -14217,17 +14270,44 @@ async function testarJxJTelas() {
       for (const [estilo, o] of Object.entries(r)) {
         if (JSON.stringify(o.mao) !== JSON.stringify(o.cheia)) throw new Error(`${estilo}: mão ${JSON.stringify(o.mao)}`);
         if (o.passos.some((p) => !p.igual)) throw new Error(`${estilo}: carta errada mudou o treino`);
-        if (o.passos.map((p) => p.i).join() !== "1,2,3,4" || o.passos.map((p) => p.trocas).join() !== "1,2,3,4") throw new Error(`${estilo}: passos ${JSON.stringify(o.passos)}`);
-        const p4 = o.passos[3];
-        if (p4.ini !== "a" || Math.abs(p4.gasto - (custo.queda + 0.75)) > 1e-9) throw new Error(`${estilo}: finta da lição 4 (${p4.gasto}, iniciativa ${p4.ini})`);
+        if (o.licoes !== 4 || o.tpr !== 3) throw new Error(`${estilo}: ${o.licoes} lições, ${o.tpr} trocas por round na vista`);
+        if (o.passos.map((p) => p.i).join() !== "1,2,3" || o.passos.map((p) => p.trocas).join() !== "1,2,3") throw new Error(`${estilo}: passos ${JSON.stringify(o.passos)}`);
+        const p3 = o.passos[2];
+        if (p3.ini !== "a" || Math.abs(p3.gasto - (custo.queda + 0.75)) > 1e-9) throw new Error(`${estilo}: finta da lição 3 (${p3.gasto}, iniciativa ${p3.ini})`);
         if (o.cartoes.length !== 1 || o.cartoes[0].a !== 10 || o.cartoes[0].b !== 9) throw new Error(`${estilo}: cartão ${JSON.stringify(o.cartoes)}`);
         const d = o.depois;
-        if (d.i !== 4 || d.round !== 2 || d.troca !== 1 || d.pos !== "pe" || d.ini !== null || JSON.stringify(d.mao) !== JSON.stringify(o.cheia) || d.etapa !== "sinal") throw new Error(`${estilo}: lição 5 ${JSON.stringify(d)}`);
+        if (d.i !== 3 || d.round !== 2 || d.troca !== 1 || d.pos !== "pe" || d.ini !== null || JSON.stringify(d.mao) !== JSON.stringify(o.cheia) || d.etapa !== "sinal") throw new Error(`${estilo}: lição 4 ${JSON.stringify(d)}`);
         if (!o.treino) throw new Error("o treinador sem a marca de treino");
       }
       semLixoV3T(htmlDe(desde(m)), "vista do treino");
     });
-    await conf("treino na tela (2026-10-28): balão com as falas e Continuar; nas guiadas só a carta certa ligada, com a seta; clique duplo faz uma troca; a revelação e a explicação; a 5 livre; o fim grava a marca; nenhuma ação de luta vai pro servidor; recarregar volta ao começo; sem lixo", async () => {
+    await conf("tela cheia com o 3D (2026-11-10, pedido do dono): a barra dele em cima com o relógio, o palco no meio com a mão e a mesa ao lado das cartas, a sua barra embaixo com a posição e o histórico; sem o palco, a tela de cartas de sempre; as cartas só somem com o 3D atrasado e dentro da janela da animação", async () => {
+      await vm.runInContext("jxjDef()", env.sandbox);
+      const r = JSON.parse(vm.runInContext(`(() => {
+        const def = JXJ_DEF, lut = { id: 1, nome: "Aluno", estilo: "striker", rosto: null, cartel: [1, 0, 0] };
+        const v = jxjTreinoVista(jxjTreinoNovo(lut, def), lut, def); v.semRelogio = false;
+        const cls = (n) => String((n && n.className) || ""), ids = (n) => (n ? n.children.map((x) => x.id || cls(x)) : null);
+        const t = jxjDesenharCombate(document.createElement("div"), v, { eu: "a", ele: "b" }, () => {}, { palco: true });
+        const ach = (lista, c) => lista.find((n) => cls(n).split(" ").includes(c));
+        const cima = ach(t.children, "cima"), meio = ach(t.children, "jxj-palco"), baixo = ach(t.children, "baixo");
+        const zona = meio && ach(meio.children, "jxj-zona-acao"), grade = zona && ach(zona.children, "jxj-palco-mao");
+        const out = { classe: cls(t), filhos: t.children.map(cls), cima: ids(cima), meio: meio ? meio.id : null, grade: grade ? grade.children.map(cls) : null, baixo: ids(baixo) };
+        const t2 = jxjDesenharCombate(document.createElement("div"), v, { eu: "a", ele: "b" }, () => {}, {});
+        out.normal = { classe: cls(t2), filhos: t2.children.map(cls) };
+        const F = { ...def.formato, animacaoMs: 7000 }, base = { status: "andamento", formato: F, etapa: "sinal", prazo: "2026-01-01T00:00:27Z", prazoSinal: "2026-01-01T00:00:15Z" };
+        out.assist = [jxjAssistindo({ pendentes: 1 }, base, 14000), jxjAssistindo({ pendentes: 1 }, base, 7000), jxjAssistindo({ pendentes: 0 }, base, 14000),
+          jxjAssistindo(null, base, 14000), jxjAssistindo({ pendentes: 1 }, { ...base, formato: { ...F, animacaoMs: 0 } }, 14000), jxjAssistindo({ pendentes: 1 }, { ...base, status: "encerrada" }, 14000)];
+        return JSON.stringify(out);
+      })()`, env.sandbox));
+      const tem2 = (lista, x) => (lista || []).some((c) => String(c).split(" ").includes(x));
+      if (!r.classe.split(" ").includes("tela-cheia") || r.filhos.join("|") !== "jxj-tarja cima|jxj-palco|jxj-tarja baixo") throw new Error("tela cheia: " + JSON.stringify([r.classe, r.filhos]));
+      if (!tem2(r.cima, "jxj-card-ele") || tem2(r.cima, "jxj-card-eu") || !tem2(r.cima, "jxj-hud-centro") || !tem2(r.cima, "jxj-barra-extra")) throw new Error("barra de cima: " + JSON.stringify(r.cima));
+      if (r.meio !== "jxj-palco" || !tem2(r.grade, "jxj-mesa") || !tem2(r.grade, "jxj-mao-luta")) throw new Error("palco: " + JSON.stringify([r.meio, r.grade]));
+      if (!tem2(r.baixo, "jxj-card-eu") || !tem2(r.baixo, "jxj-faixa-combate") || !tem2(r.baixo, "jxj-gaveta")) throw new Error("barra de baixo: " + JSON.stringify(r.baixo));
+      if (r.normal.classe.split(" ").includes("tela-cheia") || r.normal.filhos[0] !== "jxj-hud") throw new Error("sem o palco: " + JSON.stringify(r.normal));
+      if (JSON.stringify(r.assist) !== "[true,false,false,false,false,false]") throw new Error("quando as cartas somem: " + JSON.stringify(r.assist));
+    });
+    await conf("treino na tela (2026-10-28): balão com as falas e Continuar; nas guiadas só a carta certa ligada, com a seta; clique duplo faz uma troca; a revelação e a explicação; a última livre; o fim grava a marca; nenhuma ação de luta vai pro servidor; recarregar volta ao começo; sem lixo", async () => {
       await db.query("delete from jxj_limites");
       const acoesServidor = [], fetchAntes = env.sandbox.fetch;
       env.sandbox.fetch = async (u, op) => { try { acoesServidor.push(JSON.parse(op.body).acao); } catch (e) {} return fetchAntes(u, op); };
@@ -14239,7 +14319,7 @@ async function testarJxJTelas() {
         const continuar = async () => { const b = desde(m).filter((n) => tem(n, "jxj-treino-continuar")).pop(); if (!b) throw new Error("sem Continuar: " + balao().slice(0, 200)); await b.onclick(); await assentar(10); };
         const cartas = () => { const ns = desde(m), i = ns.map((n) => tem(n, "jxj-mao-luta")).lastIndexOf(true); return ns.slice(i).filter((n) => tem(n, "jxj-na-mao")); };
         const famDe = (b) => (String(b.innerHTML).match(/jxj-carta f-([a-z]+)/) || [])[1];
-        if (!/Treino rápido: 5 trocas/.test(balao())) throw new Error("balão do começo: " + balao().slice(0, 200));
+        if (!/Treino rápido: 4 trocas/.test(balao())) throw new Error("balão do começo: " + balao().slice(0, 200));
         if (cartas().some((b) => !b.disabled)) throw new Error("carta ligada antes de terminar as falas");
         const jogar = async (fam, vezes = 1) => {
           const cs = cartas(), ligadas = cs.filter((b) => !b.disabled);
@@ -14249,7 +14329,7 @@ async function testarJxJTelas() {
           for (let k = 0; k < vezes; k++) ligadas[0].onclick();
           await assentar(10);
         };
-        const roteiro = [[null, "golpes"], [null, "defesa"], ["defesa", "defesa"], ["pressao", "queda"]];
+        const roteiro = [[null, "golpes"], ["defesa", "defesa"], ["pressao", "queda"]];
         for (const [i, [post, acao]] of roteiro.entries()) {
           while (desde(m).filter((n) => tem(n, "jxj-treino-continuar")).length && !cartas().some((b) => !b.disabled)) await continuar();
           if (post) { await jogar(post); }
@@ -14257,16 +14337,16 @@ async function testarJxJTelas() {
           const cols = desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join(" ");
           if (!/jxj-revelada/.test(cols)) throw new Error(`lição ${i + 1}: sem a revelação`);
           if (i === 0 && (desde(m).filter((n) => tem(n, "jxj-ultima")).length < 1)) throw new Error("sem o lance");
-          if (i === 3 && !/jxj-carimbo-finta/.test(cols)) throw new Error("lição 4: sem o carimbo da finta");
+          if (i === 2 && !/jxj-carimbo-finta/.test(cols)) throw new Error("lição 3: sem o carimbo da finta");
           await continuar();
         }
-        /* a 5: livre */
+        /* a última: livre */
         while (!cartas().some((b) => !b.disabled)) await continuar();
         const livres = cartas().filter((b) => !b.disabled);
-        if (livres.length < 3) throw new Error("lição 5 não é livre: " + livres.length);
+        if (livres.length < 3) throw new Error("a última lição não é livre: " + livres.length);
         livres.find((b) => famDe(b) === "golpes").onclick(); await assentar(10);
         const acaoLivre = cartas().filter((b) => !b.disabled);
-        if (acaoLivre.length < 3) throw new Error("ação da lição 5 não é livre");
+        if (acaoLivre.length < 3) throw new Error("ação da última lição não é livre");
         acaoLivre.find((b) => famDe(b) === "golpes").onclick(); await assentar(10);
         await continuar();
         const fim = ultimo("jxj-treino-fim");
@@ -14277,10 +14357,10 @@ async function testarJxJTelas() {
         semLixoV3T(htmlDe(desde(m)), "treino");
         /* recarregar no meio volta ao começo */
         m = await abrir("treino");
-        if (!/Treino rápido: 5 trocas/.test(balao())) throw new Error("recarregar não voltou ao começo");
+        if (!/Treino rápido: 4 trocas/.test(balao())) throw new Error("recarregar não voltou ao começo");
       } finally { env.sandbox.fetch = fetchAntes; vm.runInContext("JXJ_TREINO_PRAZOS={sinal:5000,acao:12000}", env.sandbox); }
     });
-    await conf("treino com o prazo estourado na lição 5 (2026-10-28): postura e ação padrão, o treino termina igual", async () => {
+    await conf("treino com o prazo estourado na última lição (2026-10-28): postura e ação padrão, o treino termina igual", async () => {
       vm.runInContext(`localStorage.removeItem("jxj:treino")`, env.sandbox);
       const m = await abrir("treino");
       const continuar = async () => { const b = desde(m).filter((n) => tem(n, "jxj-treino-continuar")).pop(); if (b) { await b.onclick(); await assentar(10); } return !!b; };
@@ -14288,7 +14368,7 @@ async function testarJxJTelas() {
       for (let passos = 0; passos < 40 && !desde(m).some((n) => tem(n, "jxj-treino-fim")); passos++) {
         const cs = certa();
         if (cs.length === 1) { cs[0].onclick(); await assentar(10); continue; }
-        if (!(await continuar())) await assentar(30);   // na 5, o relógio (que no DOM falso dispara na hora) joga sozinho
+        if (!(await continuar())) await assentar(30);   // na última, o relógio (que no DOM falso dispara na hora) joga sozinho
       }
       if (!desde(m).some((n) => tem(n, "jxj-treino-fim"))) throw new Error("o treino não terminou com o prazo estourado");
       if (vm.runInContext(`localStorage.getItem("jxj:treino")`, env.sandbox) !== "1") throw new Error("sem a marca");
@@ -14468,7 +14548,7 @@ async function testarJxJTelas() {
     };
     await conf("motor v3 na tela: duelos (4 balanças, só o nível), por quê da troca, etiquetas no placar (grogue, preso, sem gás), faixa do momento decisivo com a dica de cada ação e a tendência dele", async () => {
       const vs = await api(u1, "luta", { lutaId: lid });
-      if (vs.status !== "andamento" || vs.minhaAcao) throw new Error("estado inesperado da luta: " + vs.status + " " + vs.minhaAcao);
+      if (vs.status !== "andamento" || vs.minhaAcao) throw new Error("estado inesperado da luta: " + vs.status + " " + vs.minhaAcao + " | resultado " + JSON.stringify(vs.resultado) + " | trocas " + (vs.trocas || []).map((t) => t.round + "." + t.troca + ":" + t.acaoA + "/" + t.acaoB + ":" + (t.eventos || []).join(" ")).join(" | "));
       const eu = vs.lado, ele = eu === "a" ? "b" : "a";
       await revelar();
       /* sem momento decisivo no começo (fase 4: a mão do estilo muda o caminho da luta de apoio) */
@@ -14698,10 +14778,10 @@ async function testarJxJTelas() {
       if (ficha()) throw new Error("ficha sem ninguém com a iniciativa");
       /* luta v3 (sem mão): o trilho do momento como antes */
       let guardado = null;
-      await mexer((e) => { guardado = { mao: e.mao, v: e.v }; delete e.mao; delete e.iniciativa; e.v = 3; });
+      await mexer((e) => { guardado = { mao: e.mao, v: e.v, tpr: e.tpr }; delete e.mao; delete e.iniciativa; delete e.tpr; e.v = 3; });
       m = await abrir(`luta/${lid}`); nos = desde(m);
       const temMomento = /class="jxj-momento"/.test(faixa()), temFicha = !!ficha();
-      await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.iniciativa = null; });
+      await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.tpr = guardado.tpr; e.iniciativa = null; });
       if (!temMomento || temFicha) throw new Error("luta v3: " + JSON.stringify({ temMomento, temFicha }));
     });
     await conf("cartas (2026-10-28): cada ação é uma carta da cor da família, com a gema do custo, o grupo, o nome, as cópias que restam e a regra; na postura, a carta diz a postura; sem carta, o contorno; sem energia, o cadeado", async () => {
@@ -15027,10 +15107,10 @@ async function testarJxJTelas() {
         if (!v2.minhaAcao) await api(u2, "acao", { lutaId: lid, round: v2.round, troca: v2.troca, familia: naMao(v2, "defesa") });
       }
       let guardado = null;
-      await mexer((e) => { guardado = { mao: e.mao, v: e.v, iniciativa: e.iniciativa }; delete e.mao; delete e.iniciativa; e.v = 3; });
+      await mexer((e) => { guardado = { mao: e.mao, v: e.v, tpr: e.tpr, iniciativa: e.iniciativa }; delete e.mao; delete e.iniciativa; delete e.tpr; e.v = 3; });
       let m, nos;
       try { m = await abrir(`luta/${lid}`); nos = desde(m); }
-      finally { await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.iniciativa = guardado.iniciativa; }); }
+      finally { await mexer((e) => { e.mao = guardado.mao; e.v = guardado.v; e.tpr = guardado.tpr; e.iniciativa = guardado.iniciativa; }); }
       const h = htmlDe(nos);
       if (/jxj-vaga-postura/.test(h) || nos.some((n) => tem(n, "jxj-mesa"))) throw new Error("luta v3 com mesa");
       if (!nos.some((n) => tem(n, "jxj-acao")) || !/class="jxj-momento"/.test(h)) throw new Error("luta v3: cartas e trilho do momento");
@@ -15721,6 +15801,11 @@ async function testarLuta3d() {
     const chamadas = (diretor.match(/await cerimonia\(/g) || []).length;
     if (chamadas < 5) throw new Error("só " + chamadas + " fins chamam a cerimônia");
     if (!/titulo:LUTA3D_TITULO/.test(lerScript())) throw new Error("o jogo não manda a disputa de cinturão pro 3D");
+  });
+  await conf("roupa de entrada sai dos dois lados no primeiro lance sem entrada (2026-11-10: no Online o adversário é outro jogador, e a bandeira dele ficava no corpo a luta toda)", () => {
+    const i = diretor.indexOf("async function lance("), j = diretor.indexOf("switch (ev.tipo)", i);
+    const corpo = diretor.slice(i, j);
+    if (!/for \(const L of \[A, B\]\) if \(L\.vestido\) L\.tirarRoupa\(0\)/.test(corpo)) throw new Error("o lance não tira a roupa dos dois: " + corpo.replace(/\s+/g, " ").slice(0, 200));
   });
   await conf("o diretor tem lance pra todo evento que o motor manda", () => {
     const src = lerScript(), i = src.indexOf("function simularRound("), j = src.indexOf("\nfunction ", i + 10);

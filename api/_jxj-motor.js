@@ -10,13 +10,20 @@
    Quem chama: api/jxj.js (o servidor decide) e testar.js (simulação em
    massa). O navegador nunca roda isto pra decidir nada. */
 import { createHash } from "node:crypto";
-import { ESTRATEGIA, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao, custoFintaDe } from "./_jxj-estrategia.js";
+import { ESTRATEGIA, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao, custoFintaDe, regraDaLuta } from "./_jxj-estrategia.js";
 
-export const VERSAO_MOTOR = 4;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20); 4: mão à vista (2026-10-27)
+export const VERSAO_MOTOR = 5;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20); 4: mão à vista (2026-10-27); 5: 3 trocas por round com a animação antes das cartas (2026-11-10)
 /* Formato (ajustado pela suíte jxjmotor; valores finais no LEIA-ME). O
    prazo da troca vem da configuração da estratégia: o sinal (5 s) e a ação
    (12 s), um prazo só (fase 2). */
-export const FORMATO = { rounds: 3, trocasPorRound: 4, prazoMs: ESTRATEGIA.prazos.sinalMs + ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000 };
+export const FORMATO = { rounds: 3, trocasPorRound: 3, prazoMs: ESTRATEGIA.prazos.sinalMs + ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000, animacaoMs: 7000 };
+/* Trocas por round (2026-11-10, pedido do dono): a troca resolvida passa no 3D antes das cartas
+   voltarem, e o round fica com o mesmo tempo de antes com 3 trocas em vez de 4 (3 × (7 s + 20 s)
+   = 81 s contra 4 × 20 s = 80 s). A luta guarda o número (tpr); luta de antes, sem tpr, segue
+   com 4 até o fim e sem a animação no prazo. */
+export const trocasDoRound = (e) => (e && e.tpr) || 4;
+/* prazo da próxima troca: a animação da troca que acabou de resolver entra antes do sinal */
+export const prazoDaProxima = (e) => FORMATO.prazoMs + (e && e.tpr ? FORMATO.animacaoMs : 0);
 export const FAMILIAS = ["golpes", "queda", "defesa", "pressao"];
 export const AUSENCIAS_WO = 3;
 
@@ -75,6 +82,21 @@ export const K = {
   encaixeBonus: 22,           // bônus da finalização de quem aperta
   encaixeTroca: 12,           // bônus da finalização emendada contra quem defendeu
   encaixeEscape: 12,          // bônus da defesa na disputa pra escapar de quem aperta
+};
+/* Luta de 3 trocas por round (v5, 2026-11-10): estes números no lugar dos
+   de K. Com 3 trocas e os de K, wrestler e grappler venciam striker e
+   counter de 58% a 64%: a energia sobrava (o round gasta uma ação a menos
+   e recuperava o mesmo), e quem vive de queda, que custa mais, quedava
+   sempre. Medidos junto com ESTRATEGIA.porTrocas (1.200 lutas por dupla):
+   toda dupla de 47% a 55% no nível 1 e até 58% no 30, repetir uma ação
+   no máximo 47,5% contra quem se adapta, leitura em metade das trocas
+   71% (a vantagem sobe de 22 pra 24: com 22 dava 67%) e os nós de queda
+   da árvore acima de 0,6. Baixar o fator de queda (1,17) também
+   equilibrava os estilos, mas tirava o valor dos nós de queda. */
+export const K_POR_TROCAS = { 3: { recuperacaoRound: 1.75, vantagem: 24, vantagemChao: 24 } };
+const kDa = (e, nome) => {
+  const x = e && e.tpr ? K_POR_TROCAS[e.tpr] : null;
+  return x && Object.hasOwn(x, nome) ? x[nome] : K[nome];
 };
 /* Quem ganha de quem (o ciclo), por papel: [família de quem ganha, família de quem perde].
    Em pé, os dois têm os mesmos nomes; no chão, por cima x por baixo (CICLO). */
@@ -291,7 +313,7 @@ const ladoNovo = (p) => ({
 });
 export function novaLuta(perfilA, perfilB) {
   return {
-    v: VERSAO_MOTOR, round: 1, troca: 1, pos: "pe", nivelPos: 0, momento: 0, paradoChao: 0, encaixe: null,
+    v: VERSAO_MOTOR, tpr: FORMATO.trocasPorRound, round: 1, troca: 1, pos: "pe", nivelPos: 0, momento: 0, paradoChao: 0, encaixe: null,
     a: ladoNovo(perfilA), b: ladoNovo(perfilB), pontos: [{ a: 0, b: 0 }], cartoes: [], fim: null,
     /* v4: a mão de cada lado no round (contagem por família, pública) */
     mao: { a: maoCheia(perfilA.estilo), b: maoCheia(perfilB.estilo) },   // fase 4: a do estilo
@@ -555,7 +577,7 @@ function levantar(ctx, quem, vari = null) {
    Queda x Pressão são neutros. "Ganhar" é K.vantagem na disputa, nunca
    resultado garantido: atributo e árvore continuam decidindo. */
 function trocaEmPe(ctx, A, B) {
-  const e = ctx.estado, a = ctx.acoes[A], b = ctx.acoes[B], V = K.vantagem, vr = ctx.var, md = ctx.mod;
+  const e = ctx.estado, a = ctx.acoes[A], b = ctx.acoes[B], V = kDa(ctx.estado, "vantagem"), vr = ctx.var, md = ctx.mod;
   /* força da pressão: só quem escolheu Pressão chama isto, então o acerto
      é o da variante de pressão dele */
   const pr = (lado) => (val(ctx, lado, "golpe") + val(ctx, lado, "queda")) / 2 + (ctx.perfis[lado].mec.golpesNaPressao || 0) * 20 + (md[lado].acerto || 0);
@@ -581,7 +603,7 @@ function trocaEmPe(ctx, A, B) {
     const def = outro(atk), m = ctx.perfis[atk].mec;
     e[atk].total.quedasTentadas++;
     const travado = e[atk].travado ? 10 : 0;
-    const p = Math.min(0.95, sig(val(ctx, atk, "queda") + bonus + (md[atk].acerto || 0) - travado - val(ctx, def, "defQueda")) * fator * K.quedaFator);
+    const p = Math.min(0.95, sig(val(ctx, atk, "queda") + bonus + (md[atk].acerto || 0) - travado - val(ctx, def, "defQueda")) * fator * kDa(e, "quedaFator"));
     if (ctx.r() < p) { derrubar(ctx, atk, vr[atk]); return true; }
     if (m.cadeia && ctx.r() < m.cadeia * 2 && ctx.r() < sig(val(ctx, atk, "queda") - val(ctx, def, "defQueda")) * 0.6) {
       registrar(ctx, "cadeia", atk); derrubar(ctx, atk, vr[atk]); return true;
@@ -694,7 +716,7 @@ function trocaEmPe(ctx, A, B) {
    Golpes por baixo só rendem contra quem fica parado segurando.
    "Ganhar" é K.vantagemChao na disputa, nunca resultado garantido. */
 function trocaNoChao(ctx, T, U) {
-  const e = ctx.estado, t = ctx.acoes[T], u = ctx.acoes[U], mt = ctx.perfis[T].mec, mu = ctx.perfis[U].mec, VC = K.vantagemChao;
+  const e = ctx.estado, t = ctx.acoes[T], u = ctx.acoes[U], mt = ctx.perfis[T].mec, mu = ctx.perfis[U].mec, VC = kDa(ctx.estado, "vantagemChao");
   const vr = ctx.var, md = ctx.mod;
   /* cada ajudante só roda pra família dele (escapar: U em Levantar;
      raspar: U em Raspar; gnp: T em Ground and pound; avancar: T em
@@ -839,8 +861,8 @@ function fecharRound(estado, perfis) {
   e.cartoes.push(cartaoDoRound(e.pontos[e.round - 1]));
   if (e.round >= FORMATO.rounds) {
     const ta = e.cartoes.reduce((s, c) => s + c.a, 0), tb = e.cartoes.reduce((s, c) => s + c.b, 0);
-    e.fim = ta === tb ? { vencedor: null, metodo: "EMPATE", round: e.round, troca: FORMATO.trocasPorRound }
-      : { vencedor: ta > tb ? "a" : "b", metodo: "DEC", round: e.round, troca: FORMATO.trocasPorRound };
+    e.fim = ta === tb ? { vencedor: null, metodo: "EMPATE", round: e.round, troca: trocasDoRound(e) }
+      : { vencedor: ta > tb ? "a" : "b", metodo: "DEC", round: e.round, troca: trocasDoRound(e) };
     e.fim.placar = { a: ta, b: tb };
     return guardou;
   }
@@ -849,10 +871,10 @@ function fecharRound(estado, perfis) {
   /* v4, fase 3: a iniciativa some no fim do round */
   if (e.mao) e.iniciativa = null;
   for (const l of ["a", "b"]) {
-    const max = energiaMax(perfis[l]), base = e[l].energia + K.recuperacaoRound + (perfis[l].atr.cardio - 50) / 12;
+    const max = energiaMax(perfis[l]), base = e[l].energia + kDa(e, "recuperacaoRound") + (perfis[l].atr.cardio - 50) / 12;
     /* v4: cada carta guardada vira energia (até o máximo); a mão volta cheia logo abaixo */
     const sobra = e.mao ? cartasNaMao(e.mao[l]) : 0, semCartas = Math.min(max, base);
-    e[l].energia = Math.min(max, base + sobra * ESTRATEGIA.energiaPorCartaGuardada);
+    e[l].energia = Math.min(max, base + sobra * regraDaLuta(e, "energiaPorCartaGuardada"));
     if (sobra) guardou[l] = { cartas: sobra, energia: Math.round((e[l].energia - semCartas) * 100) / 100 };
     e[l].travado = false; e[l].grogue = false;
   }
@@ -959,7 +981,7 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     const leu = quemLeu(papeis, ctx.acoes);
     if (leu) registrar(ctx, "leu", leu, { fam: ctx.acoes[leu], vs: ctx.acoes[outro(leu)] });
     /* v4, fase 4: o estilo que ganha pontos ao defender e acertar a leitura (counter) */
-    const bonusLe = leu && estado.mao && ctx.acoes[leu] === "defesa" ? ESTRATEGIA.bonusDefesaQueLe[perfis[leu].estilo] || 0 : 0;
+    const bonusLe = leu && estado.mao && ctx.acoes[leu] === "defesa" ? regraDaLuta(estado, "bonusDefesaQueLe")[perfis[leu].estilo] || 0 : 0;
     if (bonusLe) pontuar(ctx, leu, bonusLe);
   }
   /* ausência repetida: a troca vai pro adversário na pontuação */
@@ -988,7 +1010,7 @@ export function resolverTroca(estadoIn, perfis, acoesIn, semente, opcoes = null)
     }
   }
   if (!estado.fim) {
-    if (estado.troca >= FORMATO.trocasPorRound) {
+    if (estado.troca >= trocasDoRound(estado)) {
       const guardou = fecharRound(estado, perfis);
       for (const l of ["a", "b"]) if (guardou[l]) registrar(ctx, "guardou", l, guardou[l]);
     }

@@ -75,8 +75,9 @@ export function feat(e, pA, pB) {
   const rd = e.round - 1, pts = e.pontos[rd] || { a: 0, b: 0 };
   const cards = e.cartoes.reduce((s, c) => s + (c.a - c.b), 0);
   const sinal = e.pos === "cima_a" ? 1 : e.pos === "cima_b" ? -1 : 0;
-  const restante = (M.FORMATO.rounds - e.round) * M.FORMATO.trocasPorRound + (M.FORMATO.trocasPorRound - e.troca + 1);
-  const fresco = restante / (M.FORMATO.rounds * M.FORMATO.trocasPorRound);
+  const tpr = M.trocasDoRound(e);
+  const restante = (M.FORMATO.rounds - e.round) * tpr + (tpr - e.troca + 1);
+  const fresco = restante / (M.FORMATO.rounds * tpr);
   const chao = sinal === 0 ? 0 : sinal > 0 ? (pA.atr.chao - pB.atr.defChao) / 10 : (pB.atr.chao - pA.atr.defChao) / 10;
   const cans = (x) => Math.max(0, 3 - x);
   return [1, (pts.a - pts.b) / 10, cards, sinal, sinal * (e.nivelPos || 0), sinal * chao,
@@ -795,7 +796,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       for (const hu of HU) console.log("  " + hu.padEnd(12) + SS.map((s) => f1(r[`${hu}:${s}:${pers}`]).padStart(8)).join(""));
     }
   } else if (cmd === "leitura") {
-    console.log(`vantagem da leitura: em pé ${M.K.vantagem}, no chão ${M.K.vantagemChao} (vitórias de quem vê a ação do outro e acerta a leitura com essa chance, contra o jogador de estilo):`);
+    const kv = { ...M.K, ...(M.K_POR_TROCAS[M.FORMATO.trocasPorRound] || {}) };   // a da luta nova
+    console.log(`vantagem da leitura: em pé ${kv.vantagem}, no chão ${kv.vantagemChao} (vitórias de quem vê a ação do outro e acerta a leitura com essa chance, contra o jogador de estilo):`);
     for (const ac of [0, 0.35, 0.5, 1]) console.log(`  acerto ${String(ac).padEnd(5)} ${f1(leituraOraculo(ac, N || 300))}%`);
   } else if (cmd === "mao") {
     const r = medirMao(N || 300);

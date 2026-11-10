@@ -238,8 +238,8 @@ metade). Regras do revamp que valem daqui pra frente:
   roupa em `entrada()`; Online em 3D por `jxjLinhas3d` (evento novo do motor
   do Online ganha conversão lá). **A vida nunca desce antes do golpe
   encostar** (pedido do dono): diretor avisa por `op.aoGolpe`; no Online o
-  placar segura em `JXJ_3D.mostrado`. Online: o palco fica ATRÁS da mesa
-  (`jxj3dPosicionar`), nunca empurrando as cartas. Fim da luta: árbitro e
+  placar segura em `JXJ_3D.mostrado`. Online: com o 3D, a luta em tela cheia
+  (item abaixo); o palco nunca empurra as cartas (`jxj3dPosicionar`). Fim da luta: árbitro e
   `cerimonia` (suspense na decisão), cinturão em 3D na disputa que o
   jogador ganha. Postura da montada em `MONTADA` (diretor),
   escolhida comparando prints: mexeu, compare de novo. Desempenho: sem
@@ -253,6 +253,17 @@ metade). Regras do revamp que valem daqui pra frente:
   aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
   (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por
   segundo e esconde bug de animação).
+- **Online: 3 trocas por round e tela cheia (2026-11-10, motor v5).** A
+  luta guarda `tpr` (luta sem ele, de antes, segue com 4 e os números de
+  antes); o prazo da próxima troca soma `FORMATO.animacaoMs` (7 s, a etapa
+  do sinal ganha a janela; sem SQL). Números só da luta de 3 trocas em
+  `K_POR_TROCAS` (motor) e `ESTRATEGIA.porTrocas`, lidos por `kDa`/
+  `regraDaLuta`: número novo de luta entra ali, nunca direto no `K`. Com o
+  3D, `jxjDesenharCombate` com `palco` (classe `tela-cheia`, barras
+  `jxj-tarja`) e as cartas somem enquanto o 3D mostra a troca
+  (`jxjAssistindo`). O treino guiado tem round de 3 trocas
+  (`JXJ_TREINO_TROCAS`). Mexeu: `jxjmotor`, `jxjbot`, `jxjarvore`, `jxj`,
+  `jxjtelas` e `ferramentas/online-3d-e2e.mjs`.
 - **Script de navegador (puppeteer) bloqueia `/api/ai`.** `AI_URL` é
   absoluta (`https://octogono.fun/api/ai`): carreira automática no Chrome
   local chama a IA de produção e gasta crédito do dono. `print.mjs` e os

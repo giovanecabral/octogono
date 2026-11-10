@@ -91,17 +91,19 @@ export const PESOS_ESTILO = {
 /* chance de A vencer dali, regressão logística treinada pela ferramenta de
    balanço (treinarValor); motor mudou, a suíte jxjbot mostra os pesos novos.
    Fases 3 e 4 (2026-10-28): o momento saiu do v4 e o peso dele (o 11º)
-   ficou zero; a mão é a do estilo */
-export const PESOS_VALOR = [0.031425404799761, 0.5918588399484996, 1.0542824680456562, 0.38639159822473046,
-  0.21135464361012873, 0.13621011538069236, 0.19683780916371724, 0.03713412867025435, 0.2937949152526991,
-  0.0666867862033202, 0, 0.0747146306681021, -0.05914398285521694, 0.3397166618639492,
-  0.14190108041058455];
+   ficou zero; a mão é a do estilo. Motor v5 (2026-11-10): treinados com 3
+   trocas por round */
+export const PESOS_VALOR = [-0.0679356341463422, 0.6386319337087811, 1.0716803198003368, 0.4397278874205975,
+  0.18052555150602978, 0.0987320591730923, 0.2456281302355408, 0.01739574226448188, 0.31294434687491524,
+  0.046076871644390636, 0, 0.17600968449636756, -0.13016393543616378, 0.3577635994773943,
+  0.18461991445166254];
 function feat(e, pA, pB) {
   const rd = e.round - 1, pts = e.pontos[rd] || { a: 0, b: 0 };
   const cards = e.cartoes.reduce((s, c) => s + (c.a - c.b), 0);
   const sinal = e.pos === "cima_a" ? 1 : e.pos === "cima_b" ? -1 : 0;
-  const restante = (MOTOR.FORMATO.rounds - e.round) * MOTOR.FORMATO.trocasPorRound + (MOTOR.FORMATO.trocasPorRound - e.troca + 1);
-  const fresco = restante / (MOTOR.FORMATO.rounds * MOTOR.FORMATO.trocasPorRound);
+  const tpr = MOTOR.trocasDoRound(e);
+  const restante = (MOTOR.FORMATO.rounds - e.round) * tpr + (tpr - e.troca + 1);
+  const fresco = restante / (MOTOR.FORMATO.rounds * tpr);
   const chao = sinal === 0 ? 0 : sinal > 0 ? (pA.atr.chao - pB.atr.defChao) / 10 : (pB.atr.chao - pA.atr.defChao) / 10;
   const cans = (x) => Math.max(0, 3 - x);
   return [1, (pts.a - pts.b) / 10, cards, sinal, sinal * (e.nivelPos || 0), sinal * chao,
@@ -275,12 +277,15 @@ export const HABITO_LEITOR = AJUSTE.habitoLeitor, PULO_RODA = AJUSTE.puloRoda;
 /* Fases 3 e 4 (2026-10-28): medida de novo do mesmo jeito (sem o momento,
    com a iniciativa e a mão do estilo): o Paciente forte caiu de 1548 pra
    1545 e o Provocador forte de 1494 pra 1474 (com a iniciativa ele blefa
-   mais, e blefe contra quem não lê a postura só custa energia) */
+   mais, e blefe contra quem não lê a postura só custa energia).
+   Motor v5 (2026-11-10, 3 trocas por round): medida de novo com 3.600
+   lutas por casa (medirBots, n 150, sal "p"); o Paciente forte foi de
+   1545 pra 1551 */
 export const FORCA_BOT = {
-  agressivo: [1492, 1478, 1474],
-  defensivo: [1509, 1517, 1545],
-  leitor: [1481, 1491, 1498],
-  caotico: [1475, 1464, 1482],
+  agressivo: [1512, 1497, 1481],
+  defensivo: [1518, 1529, 1551],
+  leitor: [1504, 1504, 1494],
+  caotico: [1476, 1486, 1483],
 };
 export function forcaDoBot(pers, s) {
   const f = FORCA_BOT[pers];
@@ -379,7 +384,7 @@ export function distribuicaoDoBot(e, lado, d, hist, recentes = []) {
     }
     const dh = d.pers === "caotico" && AJUSTE.segueRoda > 0
       ? { ...d, pol: { ...d.pol, segue: Math.max(d.pol.segue, AJUSTE.segueRoda * (Number(d.s) || 0)) } } : d;
-    const nTroca = (e.round - 1) * MOTOR.FORMATO.trocasPorRound + e.troca;
+    const nTroca = (e.round - 1) * MOTOR.trocasDoRound(e) + e.troca;
     const erro = Number(d.puro) > 0 && nTroca <= Number(d.puro) ? 0 : ERRO_PERSONALIDADE;
     jogo = misturar([[erro, distribuicaoDaHabilidade(e, lado, dh, hist)], [1 - erro, jeito]]);
   }
