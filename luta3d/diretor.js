@@ -21,12 +21,14 @@ raiz.append(elPalco, elVin, elFlash, elCham);
 const palco = new Palco(elPalco);
 if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
+/* guarda de luta: o gingado de boxe (pacote 2 do Mixamo, mais vivo que a guarda parada de antes) */
+const GUARDA = "Guarda_Gingando";
 const A = new Lutador(base, op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" });
 const B = new Lutador(base, op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" });
 palco.cena.add(A.raiz, B.raiz);
 A.raiz.position.set(-0.85, 0, 0); B.raiz.position.set(0.85, 0, 0);
-A.estado("Mma_Idle", 0); B.estado("Mma_Idle", 0);   // sem fade: nunca mostra a pose de repouso (braços abertos)
-B.acao("Mma_Idle").time = 2.1;          // os dois não respiram no mesmo compasso
+A.estado(GUARDA, 0); B.estado(GUARDA, 0);   // sem fade: nunca mostra a pose de repouso (braços abertos)
+B.acao(GUARDA).time = 1.4;          // os dois não gingam no mesmo compasso
 const nomeDe = () => "";
 /* ---------- relógio: câmera lenta e parada de impacto afetam a luta, não a câmera ---------- */
 let escala = 1, pausa = 0, tempo = 0;
@@ -57,10 +59,24 @@ async function ajustarDist(d, dur = 0.35) {
 }
 /* quem se desloca dá o passo de luta (pra frente ou pra trás, guarda alta) em vez de deslizar */
 function darPasso(L, delta, dur) {
-  if (Math.hypot(delta.x, delta.z) < 0.07 || L.nomeEstado !== "Mma_Idle" || L.ocupado()) return;
+  if (Math.hypot(delta.x, delta.z) < 0.07 || L.nomeEstado !== GUARDA || L.ocupado()) return;
   const frente = delta.x * Math.sin(L.raiz.rotation.y) + delta.z * Math.cos(L.raiz.rotation.y) > 0;
-  const clip = frente ? "Short_Step_Forward" : "Step_Backward";
+  const clip = frente ? "Short_Step_Forward" : "Passo_Tras";
   L.umaVez(clip, { fade: 0.12, vel: THREE.MathUtils.clamp(L.dur(clip) / Math.max(0.3, dur), 0.9, 2.6), volta: 0.18, mover: false });
+}
+/* nunca um dentro do outro em pé: os passos e golpes andam junto com a animação (root motion) e,
+   somados, às vezes encostavam os dois (achado filmando a troca) */
+function manterDistancia() {
+  if (travado || montada) return;
+  const pa = plano(A.raiz.position), pb = plano(B.raiz.position), d = pa.distanceTo(pb), MIN = 0.8;
+  // parados na guarda, voltam devagar pra distância de luta
+  if (!ocupadoLance && d < 1.4 && d >= MIN) {
+    const u = pb.clone().sub(pa).normalize(), passo = Math.min(1.4 - d, 0.01) / 2;
+    A.raiz.position.addScaledVector(u, -passo); B.raiz.position.addScaledVector(u, passo);
+  }
+  if (d >= MIN) return;
+  const u = d > 1e-4 ? pb.clone().sub(pa).normalize() : new THREE.Vector3(1, 0, 0), falta = (MIN - d) / 2;
+  A.raiz.position.addScaledVector(u, -falta); B.raiz.position.addScaledVector(u, falta);
 }
 function voltarAoCentro(dt) {
   if (travado) return;   // também durante os lances: sem isso a luta encosta na grade e a câmera fica sem espaço
@@ -91,6 +107,12 @@ function dirigir(dt) {
     const f = cam.fin, c = f.centro();
     a.pos.copy(c).addScaledVector(f.lado(), f.dist).setY(f.alt); a.olhar.copy(c); a.fov = 38; a.rapido = true;
   } else if (cam.modo === "livre") { return;
+  } else if (cam.modo === "entrada") {
+    // câmera de entrada: na frente de quem caminha, um pouco de lado, andando de costas com ele
+    const L = cam.entradaAlvo, p = L.posMundo("spine_03"), yaw = L.raiz.rotation.y;
+    const fr = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)), esq = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    a.pos.copy(p).addScaledVector(fr, 2.9).addScaledVector(esq, 0.7).setY(p.y + 0.55); a.olhar.copy(p).add(new THREE.Vector3(0, 0.05, 0)); a.fov = 44; a.rapido = true;
+    return;
   } else if (cam.modo === "ko") {
     const t = cam.koAlvo.posMundo("spine_03"); t.y = Math.max(0.4, t.y * 0.85);
     a.pos.copy(cam.koPos); a.olhar.copy(t); a.fov = 36; a.rapido = true;
@@ -124,23 +146,31 @@ function som(tipo, vol = 1) {
   if (op.som) op.som(tipo, vol);
 }
 
-/* ---------- golpes: animação, instante do impacto e distância medidos (mx_lutas) ---------- */
+/* ---------- golpes: animação, instante do impacto e distância medidos ----------
+   imp: quando a mão (ou o pé) chega mais longe; dist: distância entre as pelves no começo pra
+   que chegue no alvo (o golpe anda junto, root motion). Pacote 2: os golpes de boxe com passo.
+   reacao: a de quem leva; mão esquerda de quem bate vira a cabeça pro outro lado. */
 const GOLPES = {
-  jab:         { clip: "Punching",          imp: 0.55, dist: 0.95, alvo: "cabeca", reacao: "Light_Hit_To_Head",         forca: 0.7, membro: "hand_l", nome: "jab" },
-  jabCorpo:    { clip: "Lead_Jab",          imp: 0.46, dist: 1.32, alvo: "corpo",  reacao: "Hit_To_Body",               forca: 0.8, membro: "hand_l", nome: "jab no corpo" },
-  umDois:      { clip: "Jab_Cross",         imp: 0.62, dist: 1.27, alvo: "cabeca", reacao: "Receive_Punch_To_The_Face", forca: 1.0, membro: "hand_r", nome: "jab e direto", antes: { imp: 0.32, membro: "hand_l" } },
-  direto:      { clip: "Cross_Punch",       imp: 1.05, dist: 1.10, alvo: "cabeca", reacao: "Medium_Hit_To_Head",        forca: 1.1, membro: "hand_r", nome: "direto" },
-  gancho:      { clip: "Hook_Punch",        imp: 1.02, dist: 1.05, alvo: "cabeca", reacao: "Head_Hit",                  forca: 1.4, membro: "hand_r", nome: "cruzado" },
-  upper:       { clip: "Uppercut",          imp: 0.48, dist: 0.84, alvo: "cabeca", reacao: "Receiving_A_Big_Uppercut",  forca: 1.5, membro: "hand_l", nome: "uppercut" },
-  chuteCabeca: { clip: "Mma_Kick",          imp: 0.71, dist: 1.30, alvo: "cabeca", reacao: "Big_Hit_To_Head",           forca: 1.7, membro: "ball_r", nome: "chute alto" },
-  chuteCorpo:  { clip: "Roundhouse_Kick",   imp: 0.92, dist: 1.66, alvo: "corpo",  reacao: "Rib_Hit",                   forca: 1.3, membro: "ball_r", nome: "chute no corpo" },
+  jab:          { clip: "Jab",            imp: 0.47, dist: 1.40, alvo: "cabeca", reacao: "Light_Hit_To_Head",  forca: 0.7, membro: "hand_l", nome: "jab" },
+  direto:       { clip: "Direto",         imp: 0.67, dist: 1.47, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.1, membro: "hand_r", nome: "direto" },
+  umDois:       { clip: "Jab_Direto",     imp: 0.67, dist: 1.31, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.0, membro: "hand_r", nome: "jab e direto", antes: { imp: 0.43, membro: "hand_l" } },
+  cruzadoFrente:{ clip: "Cruzado_Frente", imp: 0.50, dist: 1.00, alvo: "cabeca", reacao: "Reacao_Cabeca_Esq",  forca: 1.1, membro: "hand_l", nome: "cruzado de esquerda" },
+  gancho:       { clip: "Cruzado_Tras",   imp: 0.72, dist: 1.16, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.4, membro: "hand_r", nome: "cruzado" },
+  upper:        { clip: "Upper_Tras",     imp: 0.73, dist: 1.15, alvo: "cabeca", reacao: "Receiving_A_Big_Uppercut", forca: 1.5, membro: "hand_r", nome: "uppercut" },
+  jabCorpo:     { clip: "Cruzado_Corpo",  imp: 1.00, dist: 1.38, alvo: "corpo",  reacao: "Reacao_Corpo",       forca: 0.9, membro: "hand_l", nome: "cruzado no corpo" },
+  chuteBaixo:   { clip: "Chute_Baixo",    imp: 0.60, dist: 1.30, alvo: "perna",  reacao: "Reacao_Lado",        forca: 0.8, membro: "ball_r", nome: "chute baixo" },
+  chuteCabeca:  { clip: "Mma_Kick",       imp: 0.71, dist: 1.30, alvo: "cabeca", reacao: "Big_Hit_To_Head",    forca: 1.7, membro: "ball_r", nome: "chute alto" },
+  chuteCorpo:   { clip: "Roundhouse_Kick",imp: 0.92, dist: 1.66, alvo: "corpo",  reacao: "Rib_Hit",            forca: 1.3, membro: "ball_r", nome: "chute no corpo" },
 };
+/* em que instante da reação o golpe "chega" (medido na velocidade da cabeça do clipe) */
+const REACAO_DE = { Reacao_Cabeca_Esq: 0.06, Reacao_Cabeca_Dir: 0.1, Reacao_Corpo: 0.13, Reacao_Lado: 0.16 };
 /* onde o golpe encosta: rosto (um pouco à frente da cabeça) ou costela */
 function alvoDe(atk, def, alvo) {
   return () => {
     const dir = pelve(atk).sub(pelve(def)).normalize();
     if (alvo === "cabeca") return def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(dir, 0.1);
     if (alvo === "guarda") return def.posMundo("hand_l").lerp(def.posMundo("hand_r"), 0.5).addScaledVector(dir, 0.05);
+    if (alvo === "perna") return def.posMundo("thigh_l").lerp(def.posMundo("calf_l"), 0.55).addScaledVector(dir, 0.08);
     return def.posMundo("spine_02").addScaledVector(dir, 0.15);
   };
 }
@@ -160,21 +190,29 @@ async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarR
   const g = GOLPES[nome];
   await ajustarDist(g.dist, 0.4);
   if (narra) narrar(`${nomeDe(atk)} acerta ${g.nome}.`);
+  // defesa: na cabeça, metade bloqueia e metade esquiva (abaixa e sai pra trás); no corpo e na perna, bloqueia
+  const esquiva = bloqueio && g.alvo === "cabeca" && Math.random() < 0.5;
+  const ondeEstava = def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(pelve(atk).sub(pelve(def)).normalize(), 0.1);
   atk.umaVez(g.clip, { fade: 0.14, volta: 0.35 });
-  atk.contato(g.membro, alvoDe(atk, def, bloqueio ? "guarda" : g.alvo), g.imp);
+  atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo), g.imp);
   if (g.antes && !bloqueio) atk.contato(g.antes.membro, alvoDe(atk, def, "cabeca"), g.antes.imp);
   let t = 0;
   if (g.antes && !bloqueio) { await esperar(g.antes.imp - 0.02); t = g.antes.imp - 0.02; acertar(atk, def, g.antes.membro, 0.6, "cabeca"); def.umaVez("Light_Hit_To_Head", { fade: 0.06, volta: 0.25, peso: 0.7 }); }
   if (bloqueio) {
-    await esperar(Math.max(0, g.imp - 0.32)); t = g.imp - 0.32;
-    def.umaVez("Center_Block", { fade: 0.1, de: 0.25, ate: 1.2, volta: 0.3 });
-    if (narra) narrar(`${nomeDe(def)} defende o ${g.nome}.`);
+    const antes = esquiva ? 0.28 : 0.32;
+    await esperar(Math.max(0, g.imp - antes - t)); t = g.imp - antes;
+    if (esquiva) def.umaVez("Esquiva_Recua", { fade: 0.08, de: 0.04, ate: 0.95, volta: 0.3 });
+    else if (g.alvo === "cabeca") def.umaVez("Center_Block", { fade: 0.1, de: 0.25, ate: 1.2, volta: 0.3 });
+    else def.umaVez("Defesa_Corpo", { fade: 0.1, de: 0.85, ate: 1.6, volta: 0.3, mover: false });
+    if (narra) narrar(`${nomeDe(def)} ${esquiva ? "esquiva do" : "defende o"} ${g.nome}.`);
   }
   await esperar(Math.max(0, g.imp - 0.02 - t));
-  if (bloqueio) { palco.impactoFx(atk.posMundo(g.membro), pelve(def).sub(pelve(atk)).normalize(), 0.3); pararImpacto(0.3); }
+  if (esquiva) { /* passou no vazio: nada encosta */ }
+  else if (bloqueio) { palco.impactoFx(atk.posMundo(g.membro), pelve(def).sub(pelve(atk)).normalize(), 0.3); pararImpacto(0.3); som("leve", 0.4); }
   else {
-    acertar(atk, def, g.membro, g.forca, g.alvo);
-    def.umaVez(reacao || g.reacao, { fade: 0.06, volta: 0.35, segurar: segurarReacao, de: deReacao });
+    acertar(atk, def, g.membro, g.forca, g.alvo === "perna" ? "corpo" : g.alvo);
+    const r = reacao || g.reacao;
+    def.umaVez(r, { fade: 0.06, volta: 0.35, segurar: segurarReacao, de: deReacao || REACAO_DE[r] || 0 });
   }
   await esperar(Math.max(0.35, atk.dur(g.clip) - g.imp - 0.45));
 }
@@ -527,10 +565,10 @@ async function expulsar(texto) {
   def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.35, fade: 0.45, segurar: true });
   cam.modo = "tv";
   await esperar(0.8);
-  atk.estado("Mma_Idle", 0.5);
+  atk.estado(GUARDA, 0.5);
   const tDef = (8.33 - def.acao("Getting_Up").time) / 1.35;
   await esperar(Math.max(0.3, tDef - 0.5));
-  def.estado("Mma_Idle", 0.5);
+  def.estado(GUARDA, 0.5);
   travado = false;
   await ajustarDist(1.7, 0.9);
 }
@@ -549,10 +587,10 @@ async function separar({ narra = true } = {}) {
   def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.3, fade: 0.5, segurar: true });
   cam.modo = "tv";
   await esperar(1.0);
-  atk.estado("Mma_Idle", 0.5);
+  atk.estado(GUARDA, 0.5);
   const tDef = (8.33 - def.acao("Getting_Up").time) / 1.3;
   await esperar(Math.max(0.3, tDef - 0.5));
-  def.estado("Mma_Idle", 0.5);
+  def.estado(GUARDA, 0.5);
   travado = false;
   await ajustarDist(1.7, 0.9);
 }
@@ -744,8 +782,8 @@ async function finalizacao(atk, def, texto, tipo = tipoDeFinalizacao(atk)) {
   cam.modo = "tv";
   await esperar(Math.max(0.3, (8.33 - atk.acao("Getting_Up").time) / 1.35 - 0.4));
   narrar(texto || `${nomeDe(atk)} vence por finalização.`, true);
-  atk.umaVez("Victory", { fade: 0.4, segurar: true }); som("vitoria", 0.9);
-  if (!cena.perdedorDeitado) def.umaVez("Defeated", { fade: 0.8, segurar: true });
+  atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); som("vitoria", 0.9);
+  if (!cena.perdedorDeitado) def.umaVez("Derrota_Boxe", { fade: 0.8, segurar: true, mover: false });
   await esperar(4.2);
 }
 
@@ -777,7 +815,7 @@ async function mataLeao(atk, def, texto) {
   def.extras.delete(fTapa); delete def.ikFixo.hand_l;
   camLenta(true); chamada("FINALIZAÇÃO!"); som("explode", 1); vinheta(1);
   // o árbitro tira: quem estrangulava solta e se afasta
-  atk.estado("Mma_Idle", 0.6);
+  atk.estado(GUARDA, 0.6);
   const a0 = atk.raiz.position.clone(), fora = R(V3(0, 0, -1));
   animar(1.2, (k) => { atk.raiz.position.copy(a0).addScaledVector(fora, 0.8 * suave(k)); });
   escala = 0.45; await esperar(1.0); escala = 1; camLenta(false);
@@ -785,7 +823,7 @@ async function mataLeao(atk, def, texto) {
   cam.modo = "tv";
   narrar(texto || `${nomeDe(atk)} vence por finalização.`, true);
   vida(def, 0);
-  atk.umaVez("Victory", { fade: 0.4, segurar: true }); som("vitoria", 0.9);
+  atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); som("vitoria", 0.9);
   await esperar(4.2);
 }
 
@@ -802,7 +840,10 @@ async function knockdown(atk, def) {
   def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.3, fade: 0.5, segurar: true });
   narrar(`${nomeDe(def)} levantou cambaleando.`, true);
   await esperar(Math.max(0.3, (8.33 - def.acao("Getting_Up").time) / 1.3 - 0.45));
-  def.estado("Mma_Idle", 0.45);
+  // de pé, ainda tonto: balança um pouco antes de levantar a guarda
+  def.umaVez("Tonto", { fade: 0.45, de: 0.4, ate: 1.9, segurar: true, mover: false });
+  await esperar(1.2);
+  def.estado(GUARDA, 0.45);
   travado = false;
   cam.modo = "tv";
   await ajustarDist(1.7, 0.9);
@@ -831,7 +872,7 @@ async function nocaute(atk, def, { combinacao = true, textoFim = null } = {}) {
   cam.modo = "tv";
   narrar(textoFim || `${nomeDe(atk)} vence por nocaute.`, true);
   travado = true;
-  atk.umaVez("Victory", { fade: 0.4, segurar: true }); som("vitoria", 0.9);
+  atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); som("vitoria", 0.9);
   await esperar(4.2);
 }
 
@@ -839,10 +880,10 @@ async function nocaute(atk, def, { combinacao = true, textoFim = null } = {}) {
    Cada linha do log do motor vira um lance. O motor anda de 15 em 15 s; a "janela"
    resume 1 minuto de trocação com quantos golpes cada um acertou. */
 const sorteia = (l) => l[Math.floor(Math.random() * l.length)];
-const EM_PE = ["jab", "jab", "umDois", "direto", "gancho", "jabCorpo", "upper", "chuteCorpo", "chuteCabeca"];
+const EM_PE = ["jab", "jab", "umDois", "direto", "gancho", "cruzadoFrente", "jabCorpo", "upper", "chuteBaixo", "chuteCorpo", "chuteCabeca"];
 async function trocacao(a, b) {
   const nA = a ? Math.min(2, Math.ceil(a / 5)) : 0, nB = b ? Math.min(2, Math.ceil(b / 5)) : 0;
-  if (!nA && !nB) { A.umaVez("Punching", { peso: 0.35, ate: 0.42, fade: 0.15, volta: 0.25, mover: false }); await esperar(1.6); return; }
+  if (!nA && !nB) { A.umaVez("Jab", { peso: 0.35, ate: 0.32, fade: 0.15, volta: 0.25, mover: false }); await esperar(1.6); return; }
   const fila = [];
   for (let i = 0; i < Math.max(nA, nB); i++) { if (i < nA) fila.push([A, B]); if (i < nB) fila.push([B, A]); }
   if (b > a) fila.reverse();
@@ -857,7 +898,7 @@ async function quedaDefendida(atk, def) {
   await ajustarDist(1.25, 0.4);
   atk.umaVez("Double_Leg_Takedown___Attacker", { ate: 0.75, fade: 0.12, volta: 0.35 });
   await esperar(0.25);
-  def.umaVez("Step_Backward", { fade: 0.12, volta: 0.3 });
+  def.umaVez("Passo_Tras", { fade: 0.12, volta: 0.3 });
   await esperar(0.8);
   await ajustarDist(1.7, 0.6);
 }
@@ -868,9 +909,55 @@ function estudar(dt) {
   estudo -= dt; if (estudo > 0) return;
   estudo = 1.4 + Math.random() * 1.8;
   const L = Math.random() < 0.5 ? A : B;
-  if (L.nomeEstado !== "Mma_Idle") return;
-  if (Math.random() < 0.55) L.umaVez("Punching", { peso: 0.3, ate: 0.42, fade: 0.15, volta: 0.25, mover: false });
+  if (L.nomeEstado !== GUARDA) return;
+  // finta de jab, um passo lateral (os dois giram, porque um sempre encara o outro) ou mexe a distância
+  const x = Math.random();
+  if (x < 0.4) L.umaVez("Jab", { peso: 0.35, ate: 0.32, fade: 0.15, volta: 0.25, mover: false });
+  else if (x < 0.75) {
+    // passo lateral: a animação no lugar e o corpo anda de lado (o clipe do Mixamo anda pra frente também,
+    // e os dois acabavam colados); como um sempre encara o outro, os dois giram
+    const esq = Math.random() < 0.5, O = L === A ? B : A;
+    const u = plano(O.raiz.position).sub(plano(L.raiz.position)).normalize(), lado = new THREE.Vector3(-u.z, 0, u.x).multiplyScalar(esq ? 1 : -1);
+    L.umaVez(esq ? "Lateral_Esq" : "Lateral_Dir", { fade: 0.18, volta: 0.25, mover: false });
+    const p0 = L.raiz.position.clone();
+    animar(0.9, (k) => { L.raiz.position.copy(p0).addScaledVector(lado, 0.38 * suave(k)); });
+  }
   else { const d0 = dist(), alvo = Math.min(1.9, Math.max(1.45, d0 + (Math.random() < 0.5 ? -0.15 : 0.15))); ajustarDist(alvo, 0.9); }
+}
+
+/* ---------- entrada (walkout): o jogador sai do corredor com a roupa escolhida, sobe a escada do
+   octógono e, lá dentro, tira a roupa e encara o adversário. Uns 8 s em 1x; pular() vai direto
+   pro fim. O adversário espera no octógono. */
+let cortarEntrada = null;
+async function entrada() {
+  const CHAO = -1.25, corte = new Promise((ok) => { cortarEntrada = ok; });
+  let pulou = false; corte.then(() => { pulou = true; });
+  const espera = (p) => Promise.race([p, corte]);
+  travado = true; ocupadoLance = true;
+  B.raiz.position.set(0, 0, -1.0); B.raiz.rotation.y = 0; B.estado(GUARDA, 0);
+  A.raiz.position.set(-0.32, CHAO, 11.0); A.raiz.rotation.y = Math.PI; A.estado("Caminhada_Marra", 0, 0.85);
+  cam.modo = "entrada"; cam.entradaAlvo = A; palco.iniciado = false;
+  palco.seguidor.intensity = 260; palco.agitar(0.9); som("sobe", 0.7);
+  if (op.nomes && op.nomes.a) chamada(op.nomes.a, { pequena: true });
+  // o andar: a velocidade sai do próprio clipe (quanto o quadril anda por ciclo), sem o pé deslizar
+  const c = A.curva("Caminhada_Marra", A.dur("Caminhada_Marra")), vel = Math.max(0.8, Math.hypot(c[0], c[1]) / A.dur("Caminhada_Marra") * 0.85);
+  const segue = () => { const p = A.posMundo("spine_03"); palco.seguidor.position.set(p.x + 1.5, 8.5, p.z + 3.5); palco.seguidor.target.position.copy(p); };
+  const andar = (z0, z1, y0, y1) => animar(Math.abs(z0 - z1) / vel, (k) => { A.raiz.position.z = z0 + (z1 - z0) * k; A.raiz.position.y = y0 + (y1 - y0) * k; segue(); });
+  await espera(andar(11.0, 7.3, CHAO, CHAO));
+  if (!pulou) await espera(andar(7.3, 5.95, CHAO, 0));   // a escada
+  // dentro do octógono: tira a roupa, levanta a torcida, os dois se encaram
+  palco.seguidor.intensity = 0;
+  if (!pulou) flashBranco();
+  A.raiz.position.set(0, 0, 0.7); A.raiz.rotation.y = Math.PI; A.raiz.position.y = 0;
+  cam.modo = "tv"; palco.iniciado = false;
+  if (pulou) { A.tirarRoupa(0); A.estado(GUARDA, 0); travado = false; ocupadoLance = false; return; }
+  A.umaVez("Soca_Ar", { fade: 0.3, ate: 1.9, segurar: true, mover: false }); A.tirarRoupa(0.9);
+  B.umaVez("Provoca", { fade: 0.3, volta: 0.3, mover: false });
+  palco.agitar(1.2); som("explode", 0.6);
+  await espera(esperar(1.9));
+  A.tirarRoupa(0); A.estado(GUARDA, 0.4);
+  travado = false; ocupadoLance = false;
+  await espera(ajustarDist(1.7, 0.5));
 }
 
 /* ---------- uma linha do log do jogo vira um lance ----------
@@ -879,6 +966,7 @@ function estudar(dt) {
 const de = (q) => (q === "B" ? [B, A] : [A, B]);
 async function lance(L) {
   const ev = (L && L.ev) || {};
+  if (A.vestido) A.tirarRoupa(0);   // sem entrada (Rever luta, 3D ligado no meio, Online): a roupa já saiu
   const [atk, def] = de(ev.quem);
   ocupadoLance = true;
   try {
@@ -904,13 +992,32 @@ async function lance(L) {
           if (montada) await serieSocos(6, true);
           chamada("NOCAUTE TÉCNICO!"); som("explode", 1); await esperar(1.6);
           if (montada) await separar({ narra: false });
-          travado = true; atk.umaVez("Victory", { fade: 0.4, segurar: true }); await esperar(2.5);
+          travado = true; atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); await esperar(2.5);
         }
         break;
+      /* ---- eventos do Online (uma troca vira uns poucos lances) ---- */
+      case "golpe1": {
+        if (montada) await separar({ narra: false });
+        const f = ev.forca || 3, lista = f >= 8 ? ["gancho", "upper", "chuteCabeca", "direto"] : f >= 4 ? ["direto", "umDois", "cruzadoFrente", "chuteBaixo", "chuteCorpo"] : ["jab", "jab", "jabCorpo", "chuteBaixo"];
+        await golpe(atk, def, ev.golpe || sorteia(lista), { bloqueio: !!ev.bloqueio, narra: false }); break;
+      }
+      case "gnp1": if (!montada) await queda(atk, def, { soco: false }); await serieSocos(ev.forte ? 2 : 1, !!ev.forte); break;
+      case "grogue": {   // quem ficou tonto é o "quem" (não quem bateu)
+        const L = ev.quem === "B" ? B : A;
+        if (!montada) { L.umaVez("Tonto", { fade: 0.3, de: 0.4, ate: 1.8, volta: 0.4, mover: false }); await esperar(1.0); }
+        break;
+      }
+      case "estudo": {
+        const L = Math.random() < 0.5 ? A : B;
+        if (!montada) L.umaVez("Jab", { peso: 0.35, ate: 0.32, fade: 0.15, volta: 0.25, mover: false });
+        await esperar(0.9); break;
+      }
+      case "raspou": if (montada) await separar({ narra: false }); await queda(atk, def, { soco: false }); break;
+      case "separa": if (montada) await separar({ narra: false }); break;
       case "decisao":
         if (montada) await separar({ narra: false });
         chamada("DECISÃO"); travado = true;
-        atk.umaVez("Victory", { fade: 0.4, segurar: true }); await esperar(2.5); break;
+        atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); await esperar(2.5); break;
       default: break;
     }
   } finally { ocupadoLance = false; }
@@ -923,10 +1030,24 @@ function mundo(dt) {
   for (const t of tweens.slice()) { t.t += dt; const k = Math.min(1, t.t / t.dur); t.fn(k); if (k >= 1) { tweens.splice(tweens.indexOf(t), 1); t.ok(); } }
   estudar(dt); voltarAoCentro(dt); encarar(dt);
   A.update(dt); B.update(dt);
+  manterDistancia();
+}
+/* qualidade automática: aparelho que não chega a 45 quadros por segundo perde,
+   um degrau a cada 2 s, resolução, depois sombra, depois a torcida (só desce) */
+let medidos = 0, somaMedida = 0, aquecendo = 2;
+function medirQualidade(dtBruto) {
+  if (aquecendo > 0) { aquecendo -= dtBruto; return; }
+  medidos++; somaMedida += dtBruto;
+  if (somaMedida < 2) return;
+  if (medidos / somaMedida < 45) palco.qualidade(palco.nivel + 1);
+  medidos = 0; somaMedida = 0;
 }
 function laco() {
   if (!vivo) return;
-  const dtReal = Math.min(relogioReal.getDelta(), 1 / 20);
+  // até 1/10 s por quadro: num aparelho lento a luta segue no tempo certo (só fica menos fluida);
+  // com 1/20 ela andava em câmera lenta abaixo de 20 quadros por segundo (achado do dono)
+  const dtBruto = relogioReal.getDelta(), dtReal = Math.min(dtBruto, 1 / 10);
+  medirQualidade(Math.min(dtBruto, 0.5));
   let fator = escala; if (pausa > 0) { pausa -= dtReal; fator = 0.04; }
   tempo += dtReal;
   mundo(dtReal * fator * vel);
@@ -938,6 +1059,8 @@ laco();
 
 return {
   lance,
+  entrada,
+  pularEntrada() { if (cortarEntrada) cortarEntrada(); },
   /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera e o palco */
   _dev: { A, B, cam, palco, THREE, MONTADA, get montada() { return montada; } },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },

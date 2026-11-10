@@ -233,12 +233,17 @@ metade). Regras do revamp que valem daqui pra frente:
   (torcida, treliça, telões, LED) mora em `palco.js`; Rever luta usa as
   linhas guardadas em `REPRISE` (só a luta da sessão). Vida no placar é
   a barra do Online (`jxjPintarVida`) com `vidaCarreira` (0,6 por dano,
-  medido); vai em `ev.vida`. Postura da montada em `MONTADA` (diretor),
+  medido); vai em `ev.vida`. Aparência fiel ao boneco em `luta3d/aparencia.js`
+  (opção nova na criação ganha peça lá, senão some no 3D); entrada com a
+  roupa em `entrada()`; Online em 3D por `jxjLinhas3d` (evento novo do motor
+  do Online ganha conversão lá). Postura da montada em `MONTADA` (diretor),
   escolhida comparando prints: mexeu, compare de novo. Desempenho: sem
   pós-processamento (bloom deixava pesado e a pele brilhando), torcida em
   poucos triângulos (~112 mil por quadro; antes 605 mil). Qualquer coisa
   que dependa do passo do quadro tem que aguentar passo de 0,15 s (3x num
-  aparelho lento): a mola da cabeça divergia e girava a cabeça. Mexeu no
+  aparelho lento): a mola da cabeça divergia e girava a cabeça. O passo do
+  mundo vai até 1/10 s × velocidade (com 1/20 a luta ficava em câmera
+  lenta abaixo de 20 quadros); qualidade automática em `palco.qualidade`. Mexeu no
   diretor: `ferramentas/luta3d-estresse.mjs` (lance preso em 3x já
   aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
   (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por

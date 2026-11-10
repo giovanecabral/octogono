@@ -40,7 +40,9 @@ const servidor = spawn(process.execPath, [path.join(RAIZ, "ferramentas", "servid
 const post = async (rota, corpo) => (await fetch(BASE + rota, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) })).json();
 for (let i = 0; i < 100; i++) { try { if ((await fetch(BASE)).ok) break; } catch { /* subindo */ } await esperar(200); }
 
-const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", args: ["--hide-scrollbars"], protocolTimeout: 300000 });
+/* GPU=1: Chrome com a placa de vídeo (o Online em 3D só liga com ela; sem ela a luta fica nas cartas) */
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", protocolTimeout: 300000,
+  args: process.env.GPU ? ["--hide-scrollbars", "--use-angle=metal", "--enable-gpu"] : ["--hide-scrollbars"] });
 async function abrir(uid, vp = { width: 1360, height: 900 }) {
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
@@ -49,7 +51,8 @@ async function abrir(uid, vp = { width: 1360, height: 900 }) {
   page.on("console", (m) => { if (m.type() === "error" && !/supabase|ERR_FAILED|ERR_ABORTED|favicon|insights|Failed to load resource/i.test(m.text())) relatorio.erros.push(`${uid.slice(0, 4)} console: ${m.text().slice(0, 160)}`); });
   await page.setRequestInterception(true);
   page.on("request", (r) => (/supabase\.co|octogono\.fun\/api|draft-ufc\.vercel\.app|vercel/.test(r.url()) ? r.abort() : r.continue()));
-  await page.evaluateOnNewDocument(() => { localStorage.setItem("tutorial:draft", "1"); localStorage.setItem("tutorial:luta", "1"); });
+  /* o treino guiado (obrigatório na primeira luta) já foi feito: o teste é das telas de depois */
+  await page.evaluateOnNewDocument(() => { localStorage.setItem("tutorial:draft", "1"); localStorage.setItem("tutorial:luta", "1"); localStorage.setItem("jxj:treino", "1"); });
   await page.goto(BASE + "#/menu", { waitUntil: "networkidle0" });
   await page.evaluate((uid) => {
     meuAccessToken = async () => "tok:" + uid;

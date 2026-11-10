@@ -5,6 +5,7 @@
 import * as THREE from "./vendor/three.module.js";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import * as SkeletonUtils from "./vendor/SkeletonUtils.js";
+import { geometriaNaCabeca, pecasDoCabelo, pecasDaBarba, pecasDaOrelha, aplicarPorte, pintarPele, infoDoCorpo, montarRoupa } from "./aparencia.js";
 
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const CIMA = new THREE.Vector3(0, 1, 0);
@@ -43,7 +44,12 @@ export async function carregarBase(dir = "./", abrir = null) {
     clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
     curvas[c.name] = { tempos: t.times, xs, zs };
   }
-  return { corpo, clips, curvas, cabelos: { buzzed: cabelos[0], barba: cabelos[1], repartido: cabelos[2] } };
+  // peças de cabelo e barba no espaço do osso da cabeça (aparencia.js) e o corpo em repouso (pra pintar a pele)
+  const malhaDe = (gltf) => { let m = null; gltf.scene.traverse((o) => { if (o.isSkinnedMesh && !m) m = o; }); return m; };
+  const pecas = { curto: geometriaNaCabeca(malhaDe(cabelos[0])), barba: geometriaNaCabeca(malhaDe(cabelos[1])), repartido: geometriaNaCabeca(malhaDe(cabelos[2])) };
+  let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Superhero_Male") corpoPele = o; });
+  const { info, orelha } = infoDoCorpo(corpoPele);
+  return { corpo, clips, curvas, pecas, info, orelha };
 }
 function amostrar(cv, t) {
   const T = cv.tempos, n = T.length;
@@ -54,11 +60,11 @@ function amostrar(cv, t) {
   return [cv.xs[i] + (cv.xs[i + 1] - cv.xs[i]) * k, cv.zs[i] + (cv.zs[i + 1] - cv.zs[i]) * k];
 }
 
-/* ---------- textura: pele e calção ---------- */
-function tingirTextura(mapOrig, pele, calcao) {
-  const img = mapOrig.image, w = img.width, h = img.height;
+/* ---------- textura: pele e calção (e as marcas: cicatriz e tatuagem, em 2048 pra linha sair firme) ---------- */
+function tingirTextura(mapOrig, pele, calcao, marcas = null) {
+  const img = mapOrig.image, esc = marcas ? 2 : 1, w = img.width * esc, h = img.height * esc;
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-  const cx = cv.getContext("2d"); cx.drawImage(img, 0, 0);
+  const cx = cv.getContext("2d"); cx.drawImage(img, 0, 0, w, h);
   const d = cx.getImageData(0, 0, w, h), px = d.data;
   const P = new THREE.Color(pele), C = new THREE.Color(calcao), ref = [0.80, 0.56, 0.42];
   // pele bem escura: na luz do 3D ela virava preto brilhante (achado do dono); sobe um pouco os médios
@@ -75,6 +81,7 @@ function tingirTextura(mapOrig, pele, calcao) {
     }
   }
   cx.putImageData(d, 0, 0);
+  if (marcas) marcas(cx, w, h);
   const t = new THREE.CanvasTexture(cv);
   t.flipY = mapOrig.flipY; t.colorSpace = THREE.SRGBColorSpace; t.wrapS = mapOrig.wrapS; t.wrapT = mapOrig.wrapT; t.anisotropy = 4;
   return t;
@@ -93,11 +100,26 @@ export class Lutador {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
         o.material = o.material.clone();
-        if (o.material.name === "MI_Superhero_Male" && o.material.map) { o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao); o.material.roughness = 0.8; o.material.envMapIntensity = 0.3; }
+        if (o.material.name === "MI_Superhero_Male" && o.material.map) {
+          this.corpo = o;
+          const marcas = (opt.tatuagem && opt.tatuagem !== "nenhuma") || (opt.cicatriz && opt.cicatriz !== "nenhuma") || opt.nariz === "quebrado"
+            ? (c, w, h) => pintarPele(c, w, h, base.info, opt) : null;
+          o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao, marcas); o.material.roughness = 0.8; o.material.envMapIntensity = 0.3;
+        }
         if (o.name === "Eyebrows" && opt.corCabelo) o.material.color = new THREE.Color(opt.corCabelo);
       }
     });
-    for (const nome of [opt.cabelo, opt.barba].filter(Boolean)) this.anexarCabelo(base.cabelos[nome], opt.corCabelo);
+    // cabelo, barba e orelha presos ao osso da cabeça; nomes antigos (buzzed, repartido, barba) continuam valendo
+    const cabelo = { buzzed: "militar", barba: "cheia" }[opt.cabelo] || opt.cabelo;
+    const barba = { barba: "cheia" }[opt.barba] || opt.barba;
+    const pecas = cabelo === "repartido" ? [[base.pecas.repartido, new THREE.MeshStandardMaterial({ color: opt.corCabelo || "#2a1d14", roughness: 0.88, side: THREE.DoubleSide })]]
+      : cabelo ? pecasDoCabelo(base, cabelo, opt.corCabelo || "#2a1d14") : [];
+    if (barba) pecas.push(...pecasDaBarba(base, barba, opt.corCabelo || "#2a1d14"));
+    pecas.push(...pecasDaOrelha(base, opt.orelha, opt.pele || "#c48a64"));
+    for (const [g, mat] of pecas) { const m = new THREE.Mesh(g, mat); m.castShadow = true; this.ossos.Head.add(m); }
+    aplicarPorte(this.ossos, opt.porte);
+    this.roupa = montarRoupa(this, base, opt);
+    this.vestido = this.roupa.entrada.length > 0;
     this.mixer = new THREE.AnimationMixer(this.modelo);
     this.acoes = {}; this.atual = null; this.nomeEstado = null;
     this.movendo = new Map();   // ação -> último ponto da curva de deslocamento
@@ -106,12 +128,18 @@ export class Lutador {
     this.extras = new Set();   // controladores por código (ground and pound, finalização), rodam depois do mixer
     this.interp = {};
   }
-  anexarCabelo(gltf, cor) {
-    let malha = null; gltf.scene.traverse((o) => { if (o.isSkinnedMesh && !malha) malha = o; });
-    if (!malha) return;
-    const m = malha.clone(); m.material = malha.material.clone(); if (cor) m.material.color = new THREE.Color(cor);
-    m.bind(new THREE.Skeleton(malha.skeleton.bones.map((b) => this.ossos[b.name]), malha.skeleton.boneInverses), malha.bindMatrix);
-    m.castShadow = true; m.frustumCulled = false; this.modelo.add(m);
+  /* tira a roupa de entrada (some em dur segundos); com dur 0, na hora */
+  tirarRoupa(dur = 0.6) {
+    if (!this.vestido) return;
+    this.vestido = false;
+    const pecas = this.roupa.entrada, t0 = this.relogio;
+    if (dur <= 0) { for (const m of pecas) m.visible = false; return; }
+    const f = () => {
+      const k = Math.min(1, (this.relogio - t0) / dur);
+      for (const m of pecas) { m.material.opacity = 1 - k; m.visible = k < 1; }
+      if (k >= 1) this.extras.delete(f);
+    };
+    this.extras.add(f);
   }
   acao(nome) { if (!this.acoes[nome]) this.acoes[nome] = this.mixer.clipAction(this.base.clips[nome]); return this.acoes[nome]; }
   dur(nome) { return this.base.clips[nome].duration; }

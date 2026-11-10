@@ -6300,6 +6300,20 @@ triângulos por quadro (`ferramentas`: medir com `palco.r.info`). A pele mais
 escura virava preto brilhante na luz do 3D: pele mais fosca e os tons muito
 escuros puxados um pouco pros médios (`tingirTextura`).
 
+**Câmera lenta em 1x (achado do dono).** O relógio do 3D cortava cada
+quadro em 1/20 s; num aparelho abaixo de 20 quadros por segundo a luta
+andava mais devagar que o tempo real (medido: 0,56 do tempo a 12 quadros).
+Agora o teto é 1/10 s (0,98 do tempo no mesmo teste), e a qualidade se
+ajusta sozinha: abaixo de 45 quadros por segundo, a cada 2 s desce um
+degrau (`palco.qualidade`: menos pixel, depois sem sombra, depois sem
+torcida; só desce). Tudo que depende do passo aguenta 0,3 s (3x a 10
+quadros): mola, janela do soco e o resto. Navegador que desenha WebGL sem a placa
+de vídeo (aceleração de hardware desligada, SwiftShader): o 3D faz uns 3
+quadros por segundo mesmo no mais leve, então a luta começa no texto
+(`semPlacaDeVideo`, lido num canvas de teste) e, se o jogador ligar, um
+aviso diz onde ligar a aceleração no Chrome. A escolha salva do jogador
+vence. O `luta3d-e2e.mjs semplaca` confere no Chrome sem placa.
+
 **Cabeça girando em 2x e 4x (achado do dono).** A mola do impacto (cabeça,
 pescoço, tronco) era integrada com o passo do quadro; em 2x num celular a 20
 quadros (passo de 0,1 s) ela divergia e a cabeça girava milhares de graus.
@@ -6330,6 +6344,48 @@ arma perto do ombro e desce em arco (não atravessa o próprio corpo). Na
 subida pra montada ele apoia as duas mãos no peito de quem caiu, dá um
 pulinho por cima do quadril e só depois levanta a guarda: antes ele
 deslizava de lado com um braço solto no ar.
+
+**Etapa final (2026-11-10, pedido do dono: "movimentos bem mais humanizados",
+"o 3D no online", "personagem fiel ao 2D", "animação deles entrando com a
+roupa").**
+
+- *Personagem fiel ao boneco* (`luta3d/aparencia.js`). O corpo do Quaternius
+  só tem três peças de cabelo; elas são presas só ao osso da cabeça, então
+  viram geometria parada no espaço dele e o resto sai delas: os 9 cabelos
+  (o moicano é a faixa do meio com espetos; black power e cacheado, a casca
+  inflada; trança nagô, dreads e coque, tubos e esfera sobre a cabeça), as
+  6 barbas (a cheia recortada), a orelha couve-flor, o nariz quebrado, as
+  3 cicatrizes e as 6 tatuagens (pintadas na textura da pele, em 2048, pelas
+  regiões do corpo na pose de repouso; a pose não espelha esquerda e
+  direita) e o porte (escala dos ossos do tronco, braço e coxa). Nenhuma
+  opção da criação precisou sair. Conferir com `pp/provador` (fora do repo):
+  cada opção de frente, lado e costas.
+- *Roupa de entrada*: kimono, roupão, capuz e bandeira são uma casca do
+  próprio corpo (os triângulos da região, empurrados pra fora, presos ao
+  mesmo esqueleto), então dobram com a caminhada; mongkol e papakha ficam
+  na cabeça; a prajiad (braçadeira) fica a luta inteira.
+- *Entrada (walkout)*: no lugar da ficha, o jogador sai do corredor (+z, sem
+  torcida no caminho) com a roupa e a cor escolhidas, um canhão de luz o
+  segue, sobe a escada do octógono e, lá dentro, tira a roupa socando o ar
+  enquanto o adversário provoca. Uns 6 s em 1x, com Pular; a ficha (nomes,
+  cartel, dificuldade) fica no canto do palco (`entrada3d`).
+- *Movimentos*: 33 animações novas do Mixamo (pacote de boxe): guarda
+  gingando no lugar da parada, jab, direto, cruzado das duas mãos,
+  uppercut, jab e direto, cruzado no corpo, chute baixo, esquiva (metade das
+  defesas na cabeça abaixa e o golpe passa no vazio), defesa do corpo,
+  passos laterais (os dois giram), reação forte na cabeça pro lado certo da
+  mão que bateu, tonto depois de levantar do knockdown, vitória e derrota de
+  boxe. Instante e alcance de cada golpe medidos (`alcance.html`, fora do
+  repo); a reação começa no quadro em que a cabeça do clipe se mexe
+  (`REACAO_DE`). Os passos que andam junto (root motion) às vezes encostavam
+  os dois: `manterDistancia` nunca deixa menos de 0,8 m em pé.
+- *Online em 3D*: o palco fica em cima da mesa (fora da área que redesenha a
+  cada consulta) e repete cada troca depois da revelação, com os dois
+  personagens que os jogadores montaram (`jxjLinhas3d` converte os eventos
+  do motor do Online: golpe, contra, punição, sujo e grade viram um golpe
+  pela força do dano; errou e bloqueou, defesa; queda, puxar guarda,
+  raspagem, levantar, encaixe, knockdown, grogue e o fim). As cartas e o
+  prazo não mudam; troca atrasada anda em 2x. "Só as cartas" desliga.
 
 **Rever luta (mesmo dia, pedido do dono).** No resultado, ao lado do Rever
 narração, a luta que acabou de novo em 3D numa tela própria (`abrirReprise`):

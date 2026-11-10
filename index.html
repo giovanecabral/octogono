@@ -7712,7 +7712,87 @@ function screen404(){
    ========================================================================= */
 const JXJ_URL="/api/jxj";
 let JXJ_DEF=null,JXJ_TIMER=null,JXJ_TOKEN=0;
-function jxjParar(){ if(JXJ_TIMER){clearTimeout(JXJ_TIMER);JXJ_TIMER=null;} JXJ_TOKEN++; }
+function jxjParar(){ if(JXJ_TIMER){clearTimeout(JXJ_TIMER);JXJ_TIMER=null;} JXJ_TOKEN++; jxj3dParar(); }
+/* Online em 3D (2026-11-10, pedido do dono: "coloca as animações do online"):
+   o palco fica em cima da mesa e repete cada troca depois da revelação, com
+   os dois personagens do jeito que cada jogador montou. As cartas e o prazo
+   de 20 s não mudam: o 3D só mostra o que o servidor já resolveu, numa fila
+   própria (troca atrasada anda em 2x). Mesmas regras de quando aparece que a
+   carreira (quer3d: "luta:3d", sem WebGL ou sem placa de vídeo fica nas cartas). */
+let JXJ_3D=null;
+function jxj3dParar(){
+  const x=JXJ_3D; if(!x)return;
+  JXJ_3D=null; x.vivo=false; if(x.corte)x.corte();
+  if(x.inst){ try{ x.inst.destruir(); }catch(e){} }
+  if(x.caixa){ x.caixa.hidden=true; x.caixa.innerHTML=""; }
+}
+const jxj3dPode=()=>typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function"&&quer3d();
+/* uma troca do Online -> lances do diretor (A é quem joga nesta tela) */
+function jxjLinhas3d(t,eu){
+  const Q=l=>l===eu?"A":"B",outro=l=>l==="a"?"b":"a",DANO=["golpe","contra","punicao","sujo","grade"];
+  const linhas=[],add=ev=>linhas.push(comEvento({round:t.round,kind:"",text:""},ev));
+  let algo=false;
+  for(const e of (t&&t.ev)||[]){
+    const q=e.quem;
+    if(DANO.includes(e.tipo)&&q){ add({tipo:"golpe1",quem:Q(q),forca:e.dano||3}); algo=true; }
+    else if((e.tipo==="gnp"||e.tipo==="baixo")&&q){ add({tipo:"gnp1",quem:Q(q),forte:(e.dano||0)>=6}); algo=true; }
+    else if(e.tipo==="errou"&&q){ add({tipo:"golpe1",quem:Q(q),forca:3,bloqueio:true}); algo=true; }
+    else if(e.tipo==="bloqueou"&&q){ add({tipo:"golpe1",quem:Q(outro(q)),forca:3,bloqueio:true}); algo=true; }
+    else if(e.tipo==="knockdown"&&q){ add({tipo:"kd",quem:Q(q)}); algo=true; }
+    else if((e.tipo==="queda"||e.tipo==="cadeia")&&q){ add({tipo:"queda",quem:Q(q)}); algo=true; }
+    else if(e.tipo==="puxouGuarda"&&q){ add({tipo:"queda",quem:Q(outro(q))}); algo=true; }
+    else if(e.tipo==="quedaDefendida"&&q){ add({tipo:"quedaDefendida",quem:Q(outro(q))}); algo=true; }
+    else if(e.tipo==="raspou"&&q){ add({tipo:"raspou",quem:Q(q)}); algo=true; }
+    else if(e.tipo==="levantou"&&q){ add({tipo:"levantou",quem:Q(q)}); algo=true; }
+    else if(e.tipo==="juizLevantou"){ add({tipo:"separa"}); algo=true; }
+    else if((e.tipo==="encaixou"||e.tipo==="subFalhou")&&q){ add({tipo:"sub",quem:Q(q)}); algo=true; }
+    else if(e.tipo==="grogue"&&q){ add({tipo:"grogue",quem:Q(q)}); }
+    else if(e.tipo==="fim"&&q){
+      const m={KO:"Nocaute",TKO:"Nocaute técnico",FIN:"Finalização"}[e.metodo];
+      if(m)add({tipo:"fim",quem:Q(q),metodo:m}); else if(e.metodo==="DEC")add({tipo:"decisao",quem:Q(q)});
+      algo=true;
+    }
+  }
+  if(!algo)add({tipo:"estudo"});
+  return linhas;
+}
+function jxj3dTrocas(caixa,v,{eu,ele},novas){
+  if(!caixa||!jxj3dPode()||!v||!v.nomes)return;
+  if(!JXJ_3D){
+    const x={vivo:true,caixa,inst:null,corte:null,round:null,pendentes:0};
+    x.cortado=new Promise(r=>{ x.corte=r; });
+    caixa.hidden=false; caixa.innerHTML=`<div class="luta3d-carregando">Montando o octógono</div>`;
+    const nome=l=>(v.nomes[l]&&v.nomes[l].nome)||"";
+    x.fila=import("./luta3d/diretor.js")
+      .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(v.nomes[eu]&&v.nomes[eu].rosto||cfgPadrao()),ele:corpo3d(v.nomes[ele]&&v.nomes[ele].rosto||cfgPadrao()),
+        nomes:{a:nome(eu),b:nome(ele)},som:som3d}))
+      .then(inst=>{
+        if(!x.vivo){ inst.destruir(); return; }
+        x.inst=inst; const c=caixa.querySelector(".luta3d-carregando"); if(c&&c.remove)c.remove();
+      })
+      .catch(e=>{ console.warn("Online em 3D indisponível:",e&&e.message); if(JXJ_3D===x)jxj3dParar(); });
+    JXJ_3D=x;
+  }
+  const x=JXJ_3D,linhas=[];
+  for(const t of novas||[]){
+    if(t.round!==x.round){
+      if(x.round!=null)linhas.push(comEvento({round:x.round,kind:"rd",text:""},{tipo:"fimRound"}));
+      linhas.push(comEvento({round:t.round,kind:"rd",text:""},{tipo:"inicio"}));
+      x.round=t.round;
+    }
+    linhas.push(...jxjLinhas3d(t,eu));
+  }
+  if(!linhas.length)return;
+  x.pendentes++;
+  x.fila=x.fila.then(async()=>{
+    for(const L of linhas){
+      if(!x.vivo||!x.inst)break;
+      x.inst.velocidade(x.pendentes>1?2:1);   // atrasado (troca nova chegou antes de acabar a outra): anda em 2x
+      await Promise.race([x.inst.lance(L).catch(()=>{}),x.cortado,new Promise(r=>setTimeout(r,15000))]);
+    }
+    x.pendentes--;
+  });
+}
 async function jxj(acao,dados={}){
   const token=await meuAccessToken();
   let r,j=null;
@@ -8991,6 +9071,17 @@ async function jxjTelaLuta(id){
      token e as duas consultavam a luta (achado no teste da barra). */
   jxjParar(); const tk=JXJ_TOKEN;
   const c=jxjTela({titulo:"Luta",fundo:"octogono-luz",voltar:()=>irPara("jxj"),nav:null,classe:"tela-jxj-luta"});
+  /* o palco 3D fica fora da área que redesenha a cada consulta (senão a cena reiniciava) */
+  const caixa3d=el("div","luta3d-caixa jxj-3d"); caixa3d.id="jxj3dCaixa"; caixa3d.hidden=true;
+  const botao3d=el("button","jxj-3d-botao",""); botao3d.type="button"; botao3d.id="jxj3dBotao"; botao3d.hidden=true;
+  const pintar3d=()=>{ botao3d.innerHTML=JXJ_3D?`${ICONE("cards")}<span>Só as cartas</span>`:`${ICONE("camera")}<span>Ver em 3D</span>`; };
+  botao3d.onclick=()=>{
+    SOM.toque();
+    if(JXJ_3D){ jxj3dParar(); try{ localStorage.setItem("luta:3d","0"); }catch(e){} }
+    else{ try{ localStorage.setItem("luta:3d","1"); }catch(e){} if(vista&&vista.status==="andamento")jxj3dTrocas(caixa3d,vista,lados(),[]); }
+    pintar3d();
+  };
+  c.appendChild(botao3d); c.appendChild(caixa3d);
   const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
   try{ await jxjDef(); }catch(e){ if(tk!==JXJ_TOKEN)return; return jxjErro(area,e,()=>jxjTelaLuta(id)); }
   if(tk!==JXJ_TOKEN)return;
@@ -9093,6 +9184,7 @@ async function jxjTelaLuta(id){
           try{ await ciclo("abandonar"); }finally{ enviando=false; }
         }:null});
       ultimaAndamento=vista;
+      if(typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function"){ botao3d.hidden=false; jxj3dTrocas(caixa3d,vista,lados(),novas); pintar3d(); }
       if(comecou)SOM.sinoInicio();
       return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes});
     }
@@ -9106,6 +9198,7 @@ async function jxjTelaLuta(id){
         adversarioEscolheu:false,adversarioSinalizou:false,momentoDecisivo:null};
       jxjDesenharCombate(area,vf,lados(),()=>{},{nova:true,revelar:jxjRevelar(ultT,true),danoAntes:antes,final:true});
       const dur=jxjEfeitos([ultT],lados(),tk,{antes})||0;
+      jxj3dTrocas(caixa3d,vista,lados(),novas.length?novas:[ultT]);
       jxjCenaFim(area,vista,lados(),()=>{
         if(tk!==JXJ_TOKEN)return;
         cenaFim="visto"; desenhar();
@@ -12602,6 +12695,7 @@ let entradaTimer=null;
 function aposEntrada(opp,titleFight,seguir){
   const e=document.getElementById("entrada");
   if(auto||reduceMotion()||!e){mostrarNoite("luta");seguir();return;}
+  if(luta3dAtiva()){entrada3d(opp,titleFight,seguir);return;}
   let feito=false;
   const tk=CARREIRA_TOKEN;
   const fim=()=>{ if(feito||tk!==CARREIRA_TOKEN)return; feito=true; clearTimeout(entradaTimer); mostrarNoite("luta"); seguir(); };
@@ -12623,6 +12717,29 @@ function aposEntrada(opp,titleFight,seguir){
   e.appendChild(pular);
   mostrarNoite("entrada");
   entradaTimer=setTimeout(fim,3500);   // dá tempo de ler a ficha; o Pular continua
+}
+/* Entrada em 3D (2026-11-10, pedido do dono): no lugar da ficha, o jogador
+   entra com a roupa escolhida no boneco, sobe no octógono e tira a roupa
+   (uns 8 s, pulável). A ficha (nomes, cartel, dificuldade) fica num canto
+   do palco. Sem o palco em 6 s, ou desligado no meio, a luta segue. */
+async function entrada3d(opp,titleFight,seguir){
+  const tk=CARREIRA_TOKEN;
+  mostrarNoite("luta");
+  let feito=false;
+  const fim=()=>{ if(feito||tk!==CARREIRA_TOKEN)return; feito=true; const f=document.getElementById("luta3dFicha"); if(f&&f.remove)f.remove(); seguir(); };
+  const l=LUTA3D||await Promise.race([LUTA3D_CARREGANDO,new Promise(r=>setTimeout(()=>r(null),6000))]).catch(()=>null);
+  if(!l||tk!==CARREIRA_TOKEN||!l.entrada){fim();return;}
+  const caixa=document.getElementById("luta3dCaixa"),d=dificuldade(opp);
+  const ficha=el("div","luta3d-ficha",`${titleFight?`<span class="placar-cint">${ICONE("coroa")}Cinturão</span>`:""}
+    <span class="luta3d-ficha-nome">${escHtml(me.name)} <small>${st.wins}-${st.losses}</small></span><span class="luta3d-ficha-vs">vs</span>
+    <span class="luta3d-ficha-nome">${escHtml(opp.name)} <small class="entrada-dif d${d.n}">${d.rot}</small></span>`);
+  ficha.id="luta3dFicha";
+  const pular=el("button","botao botao-sec luta3d-pular",`${ICONE("pular")}<span>Pular</span>`);
+  pular.type="button";pular.onclick=()=>{SOM.toque();l.pularEntrada();};
+  ficha.appendChild(pular);
+  if(caixa&&caixa.appendChild)caixa.appendChild(ficha);
+  await Promise.race([l.entrada().catch(()=>{}),new Promise(r=>LUTA3D_CORTES.push(r)),new Promise(r=>setTimeout(r,20000))]);
+  fim();
 }
 /* Números ao lado da narração: atualizados no FIM de cada round narrado
    (o motor já simulou o round inteiro antes da narração começar; mostrar
@@ -12652,7 +12769,25 @@ const comEvento=(L,ev)=>{ if(ev)Object.defineProperty(L,"ev",{value:ev,enumerabl
 const luta3dAtiva=()=>!!(LUTA3D||LUTA3D_CARREGANDO);
 function quer3d(){
   try{ const v=localStorage.getItem("luta:3d"); if(v==="1")return true; if(v==="0")return false; }catch(e){}
-  return !reduceMotion();
+  return !reduceMotion()&&!semPlacaDeVideo();
+}
+/* navegador desenhando WebGL sem a placa de vídeo (aceleração de hardware
+   desligada): o 3D roda a uns 3 quadros por segundo, então começa no texto
+   e, se o jogador ligar, avisa como resolver. Lido uma vez, num canvas de
+   teste que é descartado. */
+let SEM_PLACA=null;
+function semPlacaDeVideo(){
+  if(SEM_PLACA!==null)return SEM_PLACA;
+  SEM_PLACA=false;
+  try{
+    const c=document.createElement("canvas"),gl=c&&c.getContext?c.getContext("webgl2"):null;
+    if(gl){
+      const ext=gl.getExtension("WEBGL_debug_renderer_info");
+      SEM_PLACA=/swiftshader|llvmpipe|software|basic render/i.test(ext?String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)||""):"");
+      const perde=gl.getExtension("WEBGL_lose_context"); if(perde)perde.loseContext();
+    }
+  }catch(e){}
+  return SEM_PLACA;
 }
 function aceita3d(){
   return !auto&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function"&&!!document.getElementById("luta3dCaixa");
@@ -12670,6 +12805,8 @@ function ligar3d(){
     .then(l=>{
       if(tk!==CARREIRA_TOKEN||LUTA3D_CARREGANDO!==ref){ l.destruir(); return null; }
       const c=caixa.querySelector(".luta3d-carregando"); if(c)c.remove();
+      if(semPlacaDeVideo())caixa.appendChild(el("div","luta3d-aviso",
+        "Seu navegador está desenhando sem a placa de vídeo, por isso o 3D fica lento. No Chrome: Configurações, Sistema, Usar aceleração de hardware quando disponível. Ou use Ver só o texto."));
       LUTA3D=l; LUTA3D_CARREGANDO=null; l.velocidade(speed); pintarBotao3d(); return l;
     })
     .catch(e=>{ console.warn("luta em 3D indisponível:",e&&e.message); if(LUTA3D_CARREGANDO===ref)desligar3d(false); return null; });
@@ -12707,19 +12844,22 @@ function esperarLance3d(L){
   const lance=pronto.then(l=>l&&l.lance(L)).catch(()=>{});
   return Promise.race([lance,corte,teto]);
 }
-/* o corpo 3D do jogador segue o boneco: pele, cor do calção (a cor da
-   entrada), cabelo e barba nas peças que o corpo tem */
+/* o corpo 3D do jogador é o boneco: pele, cor do calção (a cor da entrada),
+   os 9 cabelos e a cor, as 6 barbas, orelha, cicatriz, tatuagem e porte
+   (luta3d/aparencia.js monta cada peça pelo nome) */
 function corpo3d(cfg){
-  const c=normalizarRosto(cfg),cab=CABELO_TIPOS[c.cabelo];
+  const c=normalizarRosto(cfg);
   return{pele:PELES[c.pele][0],calcao:CORES_ENTRADA[c.corEntrada],corCabelo:CORES_CABELO[c.corCabelo],
-    cabelo:cab==="raspado"?null:/militar|moicano|descolorido/.test(cab)?"buzzed":"repartido",barba:c.barba?"barba":null};
+    cabelo:CABELO_TIPOS[c.cabelo],barba:BARBAS[c.barba],orelha:ORELHAS[c.orelha],cicatriz:CICATRIZES[c.cicatriz],
+    tatuagem:TATUAGENS[c.tatuagem],porte:PORTES[c.porte],nariz:NARIZES[c.nariz],
+    entrada:ENTRADAS[c.entrada],prajiad:PRAJIADS[c.prajiad],corEntrada:CORES_ENTRADA[c.corEntrada]};
 }
 /* o adversário é um corpo genérico: nada vem da pessoa real (o nome só
    escolhe variações, igual pra todo mundo que enfrentar ele) */
 function corpoGenerico3d(opp){
   const h=hashEstavel(String(opp&&opp.name||"")),meu=normalizarRosto(ROSTO||cfgPadrao());
   return{pele:PELES[h%PELES.length][0],calcao:meu.corEntrada===2?"#D7261E":"#1F3A6E",corCabelo:CORES_CABELO[(h>>3)%3],
-    cabelo:["buzzed","repartido",null][(h>>5)%3],barba:(h>>7)%2?"barba":null};
+    cabelo:CABELO_TIPOS[(h>>5)%CABELO_TIPOS.length],barba:BARBAS[(h>>9)%BARBAS.length],porte:"médio"};
 }
 function podeReprise(){
   return !auto&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function";

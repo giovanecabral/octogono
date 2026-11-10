@@ -18,7 +18,7 @@ const require = createRequire(path.join(process.cwd(), "x.js"));
 const puppeteer = require("puppeteer-core");
 const URL_JOGO = process.env.URL_JOGO || "http://127.0.0.1:8000/";
 const [, , saida = "luta3d-e2e", modo] = process.argv;
-const celular = modo === "celular";
+const celular = modo === "celular", semPlaca = modo === "semplaca";
 fs.mkdirSync(saida, { recursive: true });
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 const falhas = [];
@@ -26,7 +26,8 @@ const conferir = (ok, msg) => { console.log((ok ? "ok    " : "FALHA ") + msg); i
 
 const browser = await puppeteer.launch({
   executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  headless: "new", args: ["--use-angle=metal", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"],
+  headless: "new", protocolTimeout: 600000,
+  args: semPlaca ? ["--disable-gpu", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : ["--use-angle=metal", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"],
 });
 const page = await browser.newPage();
 const erros = [];
@@ -43,7 +44,7 @@ await page.evaluate(async () => {
   atualizarStatusPro = async () => true; if (typeof reconferirPro === "function") reconferirPro = async () => true;
   TUTORIAL_NA_SESSAO.draft = true; TUTORIAL_NA_SESSAO.luta = true;
   DIVISION = "lightweight"; MODO = "normal"; SEED = 424242; RIVAL_ATIVADO = false; RIVAL_NOME_ESCOLHIDO = null;
-  ROSTO = { ...cfgPadrao(), pele: 4, cabelo: 6, barba: 3, corEntrada: 0 };
+  ROSTO = { ...cfgPadrao(), pele: 4, cabelo: 6, barba: 3, corEntrada: 1, entrada: 4, tatuagem: 5, orelha: 1 };
   meuPro = true;
   startDraft("Kayo Brasa");
   let left = TOTAL_WEIGHT * BUDGET_PCT, rem = [...PAIRS];
@@ -70,12 +71,46 @@ await page.evaluate(async () => { document.getElementById("colresp").value = "S�
 await esperar(900);
 await page.evaluate(() => document.getElementById("colseguir").click());
 
+// sem placa de vídeo: começa no texto e, ligando o 3D, avisa como resolver
+if (semPlaca) {
+  await esperar(1500);
+  conferir(await page.evaluate(() => !LUTA3D && !LUTA3D_CARREGANDO && /Ver em 3D/.test(document.getElementById("modo3d").textContent)), "sem placa de vídeo a luta começa no texto");
+  await page.evaluate(() => document.getElementById("modo3d").click());
+  let aviso = false;
+  for (let g = 0; g < 160 && !aviso; g++) { aviso = await page.evaluate(() => !!document.querySelector("#luta3dCaixa .luta3d-aviso")); if (!aviso) await esperar(250); }
+  conferir(aviso, "ligando o 3D sem placa aparece o aviso da aceleração de hardware");
+  await page.screenshot({ path: path.join(saida, "semplaca.png") });
+  conferir(erros.length === 0, "sem erro na página" + (erros.length ? ": " + erros.slice(0, 3).join(" | ") : ""));
+  await browser.close();
+  console.log(falhas.length ? `\n${falhas.length} falha(s)` : "\ntudo certo");
+  process.exit(falhas.length ? 1 : 0);
+}
+// a entrada em 3D: a ficha com Pular aparece no palco e some quando a luta começa
+let ficha = false;
+for (let g = 0; g < 60 && !ficha; g++) { ficha = await page.evaluate(() => !!document.getElementById("luta3dFicha")); if (!ficha) await esperar(250); }
+conferir(ficha, "entrada em 3D com a ficha e o Pular");
+await esperar(2200);
+await page.screenshot({ path: path.join(saida, "entrada.png") });
+let saiu = false;
+for (let g = 0; g < 80 && !saiu; g++) {
+  saiu = await page.evaluate(() => { const e = document.getElementById("escolhaLuta");
+    return !document.getElementById("luta3dFicha") && (document.querySelectorAll("#play .pbp").length > 0 || (!!e && e.style.display !== "none" && !!e.querySelector("button"))); });
+  if (!saiu) await esperar(250);
+}
+conferir(saiu, "depois da entrada vem o plano do round ou a narração");
 // o palco aparece e carrega
 let pronto = false;
 for (let g = 0; g < 120 && !pronto; g++) { pronto = await page.evaluate(() => !!LUTA3D && !!document.querySelector("#luta3dCaixa canvas")); if (!pronto) await esperar(250); }
 conferir(pronto, "palco 3D carregou com canvas");
 conferir(await page.evaluate(() => document.getElementById("luta3dCaixa").hidden === false), "caixa do 3D visível");
 conferir(await page.evaluate(() => /texto/.test(document.getElementById("modo3d").textContent)), "botão oferece ver só o texto");
+// qualidade automática: os três degraus (menos pixel, sem sombra, sem torcida) sem quebrar o palco
+const q = await page.evaluate(async () => {
+  const P = LUTA3D._dev.palco; for (const n of [1, 2, 3]) P.qualidade(n);
+  await new Promise((r) => setTimeout(r, 600));
+  return { nivel: P.nivel, sombra: P.r.shadowMap.enabled, torcida: P.torcida.corpo.visible, px: P.r.getPixelRatio() };
+});
+conferir(q.nivel === 3 && !q.sombra && !q.torcida && q.px === 1, "qualidade automática desce os três degraus: " + JSON.stringify(q));
 
 // escolha do plano do round (quando abrir) e prints durante a luta
 let n = 0, linhasAntes = 0, trocou = false, voltou = false;

@@ -31,7 +31,7 @@ const mola = await page.evaluate(async () => {
   const m = await import("./luta3d/diretor.js");
   const div = document.createElement("div"); div.style.cssText = "position:fixed;inset:0"; document.body.appendChild(div);
   const l = await m.criarLuta3d(div, {}), L = l._dev.A, out = {};
-  for (const dt of [0.05, 0.1, 0.15]) {
+  for (const dt of [0.05, 0.1, 0.15, 0.3]) {
     L.molas.length = 0; L.impacto("Head", new l._dev.THREE.Vector3(1, 0, 0), 0.6); const x = L.molas[0];
     let pior = 0; for (let i = 0; i < 12; i++) { L.update(dt); pior = Math.max(pior, Math.abs(x.ang)); }
     out[dt] = Math.round(pior * 180 / Math.PI);

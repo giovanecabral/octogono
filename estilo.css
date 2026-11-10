@@ -1112,6 +1112,20 @@ html[data-noite="1"] .cfg-btn{z-index:70}
 @keyframes luta3dChamada{0%{opacity:0;transform:scale(2.2) skewX(-8deg)}12%{opacity:1;transform:scale(.94) skewX(-8deg)}18%{transform:scale(1.04) skewX(-8deg)}
   24%{transform:scale(1) skewX(-8deg)}80%{opacity:1;transform:scale(1.02) skewX(-8deg)}100%{opacity:0;transform:scale(1.1) skewX(-8deg)}}
 .noite .live.com3d .play{min-height:0;max-height:230px;overflow-y:auto}
+/* Online em 3D: o palco menor, em cima da mesa (a mão de cartas continua presa embaixo) */
+.luta3d-caixa.jxj-3d{aspect-ratio:auto;height:min(26vh,260px);max-height:none;margin:0 0 12px}
+@media (max-width:700px){.luta3d-caixa.jxj-3d{height:22vh}}
+.jxj-3d-botao{display:inline-flex;align-items:center;gap:6px;margin:0 0 8px;padding:6px 10px;cursor:pointer;font-family:var(--f-ui);font-weight:700;font-size:13px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--osso-2);background:rgba(17,19,26,.8);border:1px solid var(--linha-forte)}
+.jxj-3d-botao .ico{width:14px;height:14px}
+.luta3d-ficha{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;padding:10px 14px;
+  background:rgba(7,8,11,.82);border-left:3px solid var(--sangue);font-family:var(--f-ui);color:var(--osso)}
+.luta3d-ficha-nome{font-family:var(--f-titulo);font-size:clamp(18px,2.4vw,26px);line-height:1;text-transform:uppercase}
+.luta3d-ficha-nome small{font-family:var(--f-ui);font-size:13px;letter-spacing:.08em;color:var(--osso-2);margin-left:6px}
+.luta3d-ficha-vs{font-family:var(--f-titulo);color:var(--sangue);font-size:20px}
+.luta3d-pular{margin-left:auto;min-height:40px;padding:0 14px;font-size:14px}
+.luta3d-aviso{position:absolute;left:12px;right:12px;top:12px;max-width:620px;margin:0 auto;padding:10px 14px;pointer-events:none;
+  background:rgba(7,8,11,.88);border-left:3px solid var(--ouro);font-family:var(--f-texto);font-size:14px;line-height:1.4;color:var(--osso)}
 /* vida dos lutadores no placar da luta da carreira: a barra do Online (jxj-vida) embaixo do nome */
 .placar-nome{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
 .placar-lado.ele .placar-nome{align-items:flex-end}

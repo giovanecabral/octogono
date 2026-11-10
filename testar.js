@@ -15598,6 +15598,21 @@ async function testarLuta3d() {
     if (X.run("localStorage.setItem('luta:3d','1');quer3d()") !== true) throw new Error("não lembrou o 3D");
     if (X.run("localStorage.setItem('luta:3d','0');quer3d()") !== false) throw new Error("não lembrou o texto");
   });
+  await conf("navegador sem placa de vídeo (SwiftShader) começa no texto; com placa, no 3D; a escolha do jogador vence", () => {
+    const criar = X.sb.document.createElement, falso = (nome) => (t) => (t === "canvas"
+      ? { getContext: () => ({ getExtension: (e) => (e === "WEBGL_debug_renderer_info" ? { UNMASKED_RENDERER_WEBGL: 1 } : null), getParameter: () => nome }) } : criar(t));
+    const mm = X.sb.window.matchMedia; X.sb.window.matchMedia = () => ({ matches: false });   // sem "reduzir movimento"
+    X.run("localStorage.removeItem('luta:3d');");
+    X.sb.document.createElement = falso("ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0)), SwiftShader driver)");
+    X.run("SEM_PLACA=null;");
+    if (X.run("quer3d()") !== false || X.run("semPlacaDeVideo()") !== true) throw new Error("sem placa de vídeo começou no 3D");
+    X.sb.document.createElement = falso("ANGLE (Intel, Intel(R) UHD Graphics 620, Direct3D11)");
+    X.run("SEM_PLACA=null;");
+    if (X.run("quer3d()") !== true) throw new Error("com placa (integrada) não começou no 3D");
+    X.sb.document.createElement = falso("SwiftShader"); X.run("SEM_PLACA=null;localStorage.setItem('luta:3d','1');");
+    if (X.run("quer3d()") !== true) throw new Error("o jogador ligou o 3D e foi ignorado");
+    X.sb.document.createElement = criar; X.sb.window.matchMedia = mm; X.run("SEM_PLACA=null;localStorage.removeItem('luta:3d');");
+  });
   await conf("desligar o 3D solta a narração que esperava um lance (carregando ou no meio dele) e lembra o texto", async () => {
     const r = await X.run(`(async()=>{
       LUTA3D_CARREGANDO=new Promise(()=>{});
@@ -15619,9 +15634,9 @@ async function testarLuta3d() {
       a1:corpoGenerico3d({name:"Fulano de Tal",slpm:9}),a2:corpoGenerico3d({name:"Fulano de Tal",slpm:1}),
       nomes:["A","B","C","D","E","F","G","H"].map(n=>corpoGenerico3d({name:"Lutador "+n})),
       peles:PELES.map(p=>p[0]),entrada:CORES_ENTRADA})`));
-    if (r.careca.cabelo !== null || r.careca.barba !== null) throw new Error("raspado e sem barba ganhou cabelo: " + JSON.stringify(r.careca));
+    if (r.careca.cabelo !== "raspado" || r.careca.barba !== "nenhuma") throw new Error("raspado e sem barba virou outra coisa: " + JSON.stringify(r.careca));
     if (r.careca.pele !== r.peles[5] || r.careca.calcao !== r.entrada[3]) throw new Error("pele ou calção não seguem o boneco");
-    if (!r.cabeludo.cabelo || r.cabeludo.barba !== "barba") throw new Error("cabelo ou barba sumiram: " + JSON.stringify(r.cabeludo));
+    if (r.cabeludo.cabelo !== "black power" || r.cabeludo.barba !== "cheia") throw new Error("cabelo ou barba não seguem o boneco: " + JSON.stringify(r.cabeludo));
     if (JSON.stringify(r.a1) !== JSON.stringify(r.a2)) throw new Error("o corpo do adversário mudou com a estatística (só o nome escolhe)");
     if (new Set(r.nomes.map(c => c.pele)).size < 2) throw new Error("adversários todos iguais");
   });
@@ -15642,10 +15657,51 @@ async function testarLuta3d() {
     delete X.sb.window.WebGL2RenderingContext;
     X.run("fecharReprise();fecharReprise();");   // fechar sem nada aberto não quebra
   });
+  await conf("personagem fiel ao boneco: toda opção da criação (cabelo, barba, tatuagem, roupa de entrada) tem peça no 3D, e o corpo leva todos os campos", () => {
+    const ap = fs.readFileSync(path.join(__dirname, "luta3d", "aparencia.js"), "utf8");
+    const L = JSON.parse(X.run("JSON.stringify({c:CABELO_TIPOS,b:BARBAS,t:TATUAGENS,e:ENTRADAS,ci:CICATRIZES})"));
+    const casos = new Set([...ap.matchAll(/case "([^"]+)"/g)].map((m) => m[1]));
+    const tat = new Set([...ap.matchAll(/^\s+"([^"]+)": \[\[/gm)].map((m) => m[1]));
+    const faltam = [...L.c.filter((x) => !casos.has(x) && x !== "militar"), ...L.b.filter((x) => !casos.has(x) && x !== "cheia"),
+      ...L.t.filter((x) => x !== "nenhuma" && !tat.has(x)), ...L.e.filter((x) => x !== "nenhuma" && !new RegExp(`tipo === "${x}"`).test(ap)),
+      ...L.ci.filter((x) => x !== "nenhuma" && !new RegExp(`cicatriz === "${x}"`).test(ap))];
+    if (faltam.length) throw new Error("opção do boneco sem peça no 3D: " + faltam.join(", "));
+    const c = JSON.parse(X.run("JSON.stringify(corpo3d({...cfgPadrao(),cabelo:2,barba:4,orelha:1,nariz:1,cicatriz:3,tatuagem:6,entrada:2,prajiad:1,corEntrada:4,porte:2}))"));
+    const espera = { cabelo: "moicano", barba: "cavanhaque", orelha: "couve-flor", nariz: "quebrado", cicatriz: "olho roxo", tatuagem: "fechado", entrada: "papakha", prajiad: "com", porte: "pesado" };
+    for (const [k, v] of Object.entries(espera)) if (c[k] !== v) throw new Error(`corpo3d.${k} = ${c[k]}, esperado ${v}`);
+  });
+  await conf("Online em 3D: as trocas do motor do Online viram lances (golpe, defesa, queda, raspagem, knockdown, fim), A é quem joga na tela", async () => {
+    const M = await import(require("url").pathToFileURL(path.join(__dirname, "api", "_jxj-motor.js")).href);
+    const ARV = await import(require("url").pathToFileURL(path.join(__dirname, "api", "_jxj-arvores.js")).href);
+    const perfil = (e) => ARV.perfilDeCombate({ estilo: e, categoria: "middleweight", build: {} });
+    const vistos = new Set(); let fins = 0, ladosOk = true;
+    for (let i = 0; i < 40; i++) {
+      const pA = perfil(["striker", "wrestler", "grappler", "counter"][i % 4]), pB = perfil(["grappler", "striker", "counter", "wrestler"][i % 4]), P = { a: pA, b: pB };
+      let e = M.novaLuta(pA, pB), r = i + 1; const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647);
+      for (let n = 0; n < 40 && !e.fim; n++) {
+        const res = M.resolverTroca(e, P, { a: M.FAMILIAS[Math.floor(rnd() * 4)], b: M.FAMILIAS[Math.floor(rnd() * 4)] }, "t3d" + i);
+        X.sb.__t = JSON.stringify({ round: e.round, ev: res.eventos });
+        const eu = i % 2 ? "b" : "a";
+        const ls = JSON.parse(X.run(`JSON.stringify(jxjLinhas3d(JSON.parse(globalThis.__t),${JSON.stringify(eu)}).map(L=>L.ev))`));
+        if (!ls.length) throw new Error("troca sem lance");
+        for (const ev of ls) {
+          vistos.add(ev.tipo);
+          const fim = res.eventos.find((x) => x.tipo === "fim" && x.quem);
+          if (ev.tipo === "fim" || ev.tipo === "decisao") { fins++; if (ev.quem !== (fim.quem === eu ? "A" : "B")) ladosOk = false; }
+        }
+        e = res.estado;
+      }
+    }
+    if (!ladosOk) throw new Error("o vencedor do Online virou o lado errado no 3D");
+    const quer = ["golpe1", "queda", "quedaDefendida", "estudo"];
+    const falta = quer.filter((t) => !vistos.has(t));
+    if (falta.length || fins < 30) throw new Error(`faltou ${falta} (fins ${fins}); vistos ${[...vistos]}`);
+  });
   const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
   await conf("o diretor tem lance pra todo evento que o motor manda", () => {
     const src = lerScript(), i = src.indexOf("function simularRound("), j = src.indexOf("\nfunction ", i + 10);
-    const tipos = new Set([...src.slice(i, j).matchAll(/tipo:"(\w+)"/g)].map(m => m[1]).concat(["fim", "decisao"]));
+    const k = src.indexOf("function jxjLinhas3d("), k2 = src.indexOf("\nfunction ", k + 10);
+    const tipos = new Set([...src.slice(i, j).matchAll(/tipo:"(\w+)"/g), ...src.slice(k, k2).matchAll(/tipo:"(\w+)"/g)].map(m => m[1]).concat(["fim", "decisao"]));
     const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map(m => m[1]));
     const faltam = [...tipos].filter(t => !casos.has(t));
     if (tipos.size < 10) throw new Error("achei poucos tipos no motor: " + [...tipos]);

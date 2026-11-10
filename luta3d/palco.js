@@ -98,7 +98,7 @@ export class Palco {
     cena.environmentIntensity = 0.3;
 
     this.cam = new THREE.PerspectiveCamera(38, 1, 0.1, 120);
-    this.agitacao = 0;
+    this.agitacao = 0; this.nivel = 0;
     this.montarOctogono();
     this.montarLuz();
     this.montarArena();
@@ -109,6 +109,13 @@ export class Palco {
     this.camAlvo = { pos: new THREE.Vector3(0, 2.4, 7), olhar: new THREE.Vector3(0, 1.1, 0), fov: 38 };
     this.camOlhar = new THREE.Vector3(0, 1.1, 0);
     this.redimensionar();
+    // navegador desenhando sem a placa de vídeo (aceleração de hardware desligada): começa no mais leve
+    try {
+      const gl = r.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
+      this.placa = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || "") : "";
+    } catch (e) { this.placa = ""; }
+    this.semPlaca = /swiftshader|llvmpipe|software|basic render/i.test(this.placa);
+    if (this.semPlaca) for (const n of [1, 2, 3]) this.qualidade(n);
     // o palco mora dentro da tela da luta: muda de tamanho com ela, não só com a janela
     this.obs = typeof ResizeObserver === "function" ? new ResizeObserver(() => this.redimensionar()) : null;
     if (this.obs) this.obs.observe(alvo); else addEventListener("resize", this.aoMudar = () => this.redimensionar());
@@ -180,6 +187,9 @@ export class Palco {
     // contraluz colorida (vermelho e azul de transmissão)
     const rim1 = new THREE.SpotLight(0xff3a2e, 26, 18, Math.PI / 6, 0.7, 1.5); rim1.position.set(-6, 4.5, -5); rim1.target.position.set(0, 1, 0);
     const rim2 = new THREE.SpotLight(0x4a7dff, 28, 18, Math.PI / 6, 0.7, 1.5); rim2.position.set(6, 4.5, -5); rim2.target.position.set(0, 1, 0);
+    // canhão que segue o lutador na entrada (fora do octógono a arena é escura); desligado na luta
+    this.seguidor = new THREE.SpotLight(0xfff2e0, 0, 16, Math.PI / 14, 0.5, 1.4); this.seguidor.position.set(0, 9, 12);
+    cena.add(this.seguidor, this.seguidor.target);
     // luz de preenchimento que acompanha a câmera: o rosto não some na sombra
     this.preenche = new THREE.DirectionalLight(0xfff1e6, 0.6); cena.add(this.preenche, this.preenche.target);
     cena.add(rim1, rim1.target, rim2, rim2.target);
@@ -271,6 +281,7 @@ export class Palco {
     for (let i = 0; i < nAng; i++) {
       const a = (i + 0.5) * (2 * Math.PI / nAng), setor = (a % (Math.PI / 6)) * raio;
       if (setor < 0.7 || Math.random() < falta) continue;   // corredor e lugar vazio
+      if (Math.sin(a) > 0 && Math.abs(Math.cos(a) * raio) < 1.3) continue;   // corredor da entrada (os lutadores vêm por +z)
       this.assentos.push({ pos: new THREE.Vector3(Math.cos(a) * raio, y, Math.sin(a) * raio), olha: 0 });
     }
   }
@@ -344,6 +355,16 @@ export class Palco {
     c.fillStyle = "#8a8f9c"; c.font = "700 40px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif"; c.fillText("VS", W / 2, 420);
     c.fillStyle = "#7fa0ff"; c.font = "700 56px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif"; c.fillText(corta(b), W / 2, 488);
     this.texTelao.needsUpdate = true;
+  }
+
+  /* qualidade automática (o diretor mede os quadros por segundo): 1 = menos pixel,
+     2 = sem sombra, 3 = sem torcida. Só desce, pra não ficar trocando. */
+  qualidade(nivel) {
+    if (!(nivel > (this.nivel || 0)) || nivel > 3) return;
+    this.nivel = nivel;
+    if (nivel === 1) { this.r.setPixelRatio(1); this.redimensionar(); }
+    if (nivel === 2) { this.r.shadowMap.enabled = false; this.cena.traverse((o) => { for (const m of [].concat(o.material || [])) m.needsUpdate = true; }); }
+    if (nivel === 3 && this.torcida) { this.torcida.corpo.visible = false; this.torcida.cabeca.visible = false; }
   }
 
   /* a torcida levanta: knockdown, nocaute, finalização */
