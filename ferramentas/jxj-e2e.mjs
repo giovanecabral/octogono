@@ -116,7 +116,8 @@ try {
   let fim = false, n = 0;
   while (!fim && n++ < 90) {
     for (const [pg, sem] of [[p1, 1], [p2, 7]])
-      await pg.evaluate((k) => { const bs = [...document.querySelectorAll(".jxj-acao:not([disabled])")]; if (bs.length) bs[k % bs.length].click(); }, n * sem);
+      // etapa do sinal (postura) e da ação: clica a carta que estiver na mão
+      await pg.evaluate((k) => { const bs = [...document.querySelectorAll(".jxj-postura:not([disabled]), .jxj-acao:not([disabled])")]; if (bs.length) bs[k % bs.length].click(); }, n * sem);
     await esperar(2600);
     fim = await p1.evaluate(() => !!document.querySelector(".jxj-resultado"));
     if (n === 4) await print(p1, "13-luta-meio");

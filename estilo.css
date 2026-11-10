@@ -1113,8 +1113,11 @@ html[data-noite="1"] .cfg-btn{z-index:70}
   24%{transform:scale(1) skewX(-8deg)}80%{opacity:1;transform:scale(1.02) skewX(-8deg)}100%{opacity:0;transform:scale(1.1) skewX(-8deg)}}
 .noite .live.com3d .play{min-height:0;max-height:230px;overflow-y:auto}
 /* Online em 3D: o palco menor, em cima da mesa (a mão de cartas continua presa embaixo) */
-.luta3d-caixa.jxj-3d{aspect-ratio:auto;height:min(26vh,260px);max-height:none;margin:0 0 12px}
-@media (max-width:700px){.luta3d-caixa.jxj-3d{height:22vh}}
+/* Online: o palco fica atrás da mesa (posição e tamanho vêm do JS, em cima da .jxj-mesa) */
+.luta3d-caixa.jxj-3d{position:absolute;z-index:0;margin:0;aspect-ratio:auto;max-height:none;border:0;pointer-events:none}
+.tela-jxj-luta .jxj-area{position:relative;z-index:1}
+.jxj-mesa.com3d{background:none}
+.jxj-mesa.com3d::before{display:none}
 .jxj-3d-botao{display:inline-flex;align-items:center;gap:6px;margin:0 0 8px;padding:6px 10px;cursor:pointer;font-family:var(--f-ui);font-weight:700;font-size:13px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--osso-2);background:rgba(17,19,26,.8);border:1px solid var(--linha-forte)}
 .jxj-3d-botao .ico{width:14px;height:14px}

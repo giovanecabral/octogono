@@ -6387,6 +6387,36 @@ roupa").**
   raspagem, levantar, encaixe, knockdown, grogue e o fim). As cartas e o
   prazo não mudam; troca atrasada anda em 2x. "Só as cartas" desliga.
 
+**Ajustes depois da etapa final (2026-11-10, pedidos do dono).**
+
+- *Vida nunca desce antes do golpe.* O diretor avisa o jogo na hora em que o
+  golpe encosta (`op.aoGolpe(lado)`, chamado no efeito de cada golpe); a
+  barra desse lado desce ali (`vidaNoGolpe`) e, se nenhum golpe apareceu
+  naquele lado, só no fim do lance. No Online com 3D o placar mostra
+  `JXJ_3D.mostrado`, que só desce no golpe do 3D (`jxj3dGolpe`) ou quando
+  o 3D alcança a troca de agora; as cartas e a faixa do golpe seguem como
+  antes (`jxjEfeitos` com `semVida`).
+- *Online sem rolar a tela.* O palco não fica mais em cima da mesa: fica
+  atrás dela, no lugar do desenho do octógono (`jxj3dPosicionar` mede a
+  `.jxj-mesa` a cada desenho e no redimensionar), e os lutadores aparecem
+  entre a sua carta e a dele.
+- *Roupa de verdade, não pintura.* O tecido do tronco e dos braços passa
+  por cima do corpo numa seção elíptica lisa por fatia (`secoes`/
+  `embrulhar`), sem marcar barriga e peito; e as peças que o corpo não tem
+  são malhas presas aos ossos (`noOsso`): a parte de baixo do kimono e do
+  roupão (até o joelho), as faixas amarradas, a gola, o capuz com a borda,
+  o bolso canguru e os cordões, e a bandeira do Brasil como capa.
+- *O anúncio do vencedor* (`cerimonia`). Decisão: os três de frente, o
+  árbitro (um terceiro lutador de camisa e calça pretas, que só aparece no
+  fim) segura o punho dos dois, "DECISÃO DOS JUÍZES", a câmera fecha
+  devagar, "E O VENCEDOR...", e só então ele levanta a mão de quem venceu;
+  quem venceu comemora e quem perdeu lamenta. Nocaute e finalização: o
+  árbitro vem e levanta a mão na hora. Nocaute técnico: antes ele entra no
+  meio e acena que acabou (`interrupcao`).
+- *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
+  ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
+  ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).
+
 **Rever luta (mesmo dia, pedido do dono).** No resultado, ao lado do Rever
 narração, a luta que acabou de novo em 3D numa tela própria (`abrirReprise`):
 palco grande, a narração de cada linha na legenda, Fechar (ou Esc) e Ver de

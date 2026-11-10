@@ -7,6 +7,7 @@
 import * as THREE from "./vendor/three.module.js";
 import { Palco } from "./palco.js";
 import { carregarBase, Lutador } from "./lutador.js";
+import { modeloCinturao } from "./aparencia.js";
 
 /* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
    Devolve { lance(linha), velocidade(v), destruir() }. */
@@ -26,6 +27,10 @@ const GUARDA = "Guarda_Gingando";
 const A = new Lutador(base, op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" });
 const B = new Lutador(base, op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" });
 palco.cena.add(A.raiz, B.raiz);
+/* o árbitro: só aparece no fim (anúncio do vencedor, interrupção do nocaute técnico) */
+const PARADO = A.clipeFixo("Alonga", 0.02, "Parado");
+const C = new Lutador(base, { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro" });
+C.raiz.visible = false; palco.cena.add(C.raiz); C.estado(PARADO, 0);
 A.raiz.position.set(-0.85, 0, 0); B.raiz.position.set(0.85, 0, 0);
 A.estado(GUARDA, 0); B.estado(GUARDA, 0);   // sem fade: nunca mostra a pose de repouso (braços abertos)
 B.acao(GUARDA).time = 1.4;          // os dois não gingam no mesmo compasso
@@ -113,6 +118,11 @@ function dirigir(dt) {
     const fr = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)), esq = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     a.pos.copy(p).addScaledVector(fr, 2.9).addScaledVector(esq, 0.7).setY(p.y + 0.55); a.olhar.copy(p).add(new THREE.Vector3(0, 0.05, 0)); a.fov = 44; a.rapido = true;
     return;
+  } else if (cam.modo === "cerimonia") {
+    // de frente pros três, fechando devagar durante o suspense
+    const c = cam.cerCentro;
+    a.pos.set(c.x + 0.25, 1.45, c.z + 3.6); a.olhar.set(c.x, 1.25, c.z); a.fov = cam.cerFov || 40; a.rapido = true;
+    return;
   } else if (cam.modo === "ko") {
     const t = cam.koAlvo.posMundo("spine_03"); t.y = Math.max(0.4, t.y * 0.85);
     a.pos.copy(cam.koPos); a.olhar.copy(t); a.fov = 36; a.rapido = true;
@@ -135,7 +145,9 @@ function vinheta(forca = 1) { elVin.style.setProperty("--forca", Math.min(1, for
 function flashBranco() { elFlash.classList.remove("ativa"); void elFlash.offsetWidth; elFlash.classList.add("ativa"); }
 function camLenta(on) { raiz.classList.toggle("lenta", on); }
 function vida() {}
-function efeitoGolpe(forca) {
+/* def: quem levou. O jogo baixa a vida desse lado nesta hora (aoGolpe), nunca antes do golpe encostar. */
+function efeitoGolpe(forca, def) {
+  if (op.aoGolpe && def) op.aoGolpe(def === B ? "B" : "A");
   som(forca > 1.15 ? "pesado" : "leve", Math.min(1, 0.55 + 0.3 * forca));
   if (forca > 1.25) { vinheta(forca - 0.6); palco.chute = Math.max(palco.chute, 2.5 * forca); }
 }
@@ -782,9 +794,7 @@ async function finalizacao(atk, def, texto, tipo = tipoDeFinalizacao(atk)) {
   cam.modo = "tv";
   await esperar(Math.max(0.3, (8.33 - atk.acao("Getting_Up").time) / 1.35 - 0.4));
   narrar(texto || `${nomeDe(atk)} vence por finalização.`, true);
-  atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); som("vitoria", 0.9);
-  if (!cena.perdedorDeitado) def.umaVez("Derrota_Boxe", { fade: 0.8, segurar: true, mover: false });
-  await esperar(4.2);
+  await cerimonia(atk, def);
 }
 
 async function mataLeao(atk, def, texto) {
@@ -822,9 +832,93 @@ async function mataLeao(atk, def, texto) {
   await esperar(1.2);
   cam.modo = "tv";
   narrar(texto || `${nomeDe(atk)} vence por finalização.`, true);
-  vida(def, 0);
-  atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); som("vitoria", 0.9);
-  await esperar(4.2);
+  await cerimonia(atk, def);
+}
+
+/* ---------- o anúncio: o árbitro levanta a mão de quem venceu ----------
+   Decisão (suspense): os três de frente, o árbitro segura o punho dos dois, a câmera fecha
+   devagar e só então levanta a mão de quem venceu (pedido do dono: "o jogador fica apreensivo
+   esperando a resposta"). Nocaute, nocaute técnico e finalização: o árbitro vem e levanta a mão
+   na hora. Disputa de cinturão que o jogador ganha: ele levanta o cinturão. */
+function segurar(L, mao, alvo) { L.ikFixo["hand_" + mao] = { alvo, peso: 1 }; }
+async function cerimonia(venc, perd, { suspense = false } = {}) {
+  if (montada) await separar({ narra: false });
+  travado = true; ocupadoLance = true;
+  for (const L of [A, B]) { L.ikFixo = {}; L.contatos.length = 0; }
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  let pontos;   // onde as mãos se encontram: [lutador, mão dele, mão do árbitro, baixo, alto]
+  flashBranco();
+  if (suspense) {
+    const esq = Math.random() < 0.5 ? A : B, dir = esq === A ? B : A;   // o lado de cada um não entrega o resultado
+    esq.raiz.position.set(-0.72, 0, 0); dir.raiz.position.set(0.72, 0, 0); C.raiz.position.set(0, 0, 0.1);
+    for (const L of [A, B, C]) { L.raiz.rotation.y = 0; L.raiz.position.y = 0; L.estado(PARADO, 0); }
+    pontos = [[esq, "l", "r", V(-0.38, 1.0, 0.16), V(-0.5, 2.05, 0.08)], [dir, "r", "l", V(0.38, 1.0, 0.16), V(0.5, 2.05, 0.08)]];
+    cam.cerCentro = V(0, 0, 0);
+  } else {
+    // quem perdeu fica onde está (no chão, se caiu); quem venceu vem pra frente com o árbitro do lado
+    const p = perd.raiz.position.clone();
+    venc.raiz.position.set(p.x * 0.3, 0, 0.9); venc.raiz.rotation.y = 0;
+    C.raiz.position.set(venc.raiz.position.x + 0.7, 0, 0.98); C.raiz.rotation.y = 0;
+    venc.estado(PARADO, 0); C.estado(PARADO, 0);
+    const x = venc.raiz.position.x;
+    pontos = [[venc, "l", "r", V(x + 0.36, 1.0, 1.08), V(x + 0.28, 2.05, 1.0)]];
+    cam.cerCentro = V(x + 0.34, 0, 0.95);
+  }
+  C.raiz.visible = true; C.ikFixo = {};
+  const sobe = { k: 0, quem: null };
+  for (const [L, mL, mC, baixo, alto] of pontos) {
+    const ponto = () => baixo.clone().lerp(alto, L === sobe.quem ? suave(sobe.k) : 0);
+    segurar(L, mL, ponto); segurar(C, mC, () => ponto().add(V(0, 0.03, 0.02)));
+  }
+  cam.modo = "cerimonia"; cam.cerFov = 42; palco.iniciado = false;
+  if (suspense) {
+    chamada("DECISÃO DOS JUÍZES", { pequena: true }); som("sobe", 0.8);
+    await animar(2.8, (k) => { cam.cerFov = 42 - 12 * suave(k); });
+    chamada("E O VENCEDOR...", { pequena: true });
+    await esperar(1.3);
+  } else await esperar(0.6);
+  // a mão sobe
+  sobe.quem = venc;
+  await animar(0.35, (k) => { sobe.k = k; });
+  chamada(String((venc === A ? op.nomes && op.nomes.a : op.nomes && op.nomes.b) || "VENCEDOR").toUpperCase());
+  som("explode", 1); som("vitoria", 0.9); palco.agitar(1.5);
+  await esperar(1.4);
+  // solta: quem venceu comemora, quem perdeu lamenta (se estiver em pé), o árbitro dá um passo
+  for (const L of [A, B, C]) L.ikFixo = {};
+  venc.umaVez(Math.random() < 0.5 ? "Vitoria_Boxe" : "Comemora", { fade: 0.35, segurar: true, mover: false });
+  if (suspense) perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
+  const c0 = C.raiz.position.clone(); animar(0.8, (k) => { C.raiz.position.z = c0.z - 0.7 * suave(k); });
+  cam.cerFov = 44;
+  await esperar(2.2);
+  if (op.titulo && venc === A) await levantarCinturao(venc);
+}
+async function levantarCinturao(L) {
+  const cinto = modeloCinturao(); cinto.scale.setScalar(0.01); palco.cena.add(cinto);
+  L.estado(PARADO, 0.3);
+  const ponta = (s) => () => L.posMundo("Head").add(new THREE.Vector3(s * 0.34, 0.36, 0.06));
+  L.ikFixo.hand_l = { alvo: ponta(1), peso: 0 }; L.ikFixo.hand_r = { alvo: ponta(-1), peso: 0 };
+  // o cinturão vai pra onde as mãos vão (o IK roda depois deste passo: as mãos ainda estão embaixo aqui)
+  L.extras.add(() => {
+    const w = L.ikFixo.hand_l ? L.ikFixo.hand_l.peso : 0;
+    const em = L.posMundo("hand_l").lerp(L.posMundo("hand_r"), 0.5), alto = ponta(1)().lerp(ponta(-1)(), 0.5);
+    cinto.position.copy(em.lerp(alto, w)).add(new THREE.Vector3(0, 0.02, 0.04));
+    cinto.rotation.set(0, L.raiz.rotation.y, 0);
+  });
+  chamada("CAMPEÃO!"); som("explode", 1); palco.agitar(1.5);
+  await animar(0.7, (k) => { const s = suave(k); cinto.scale.setScalar(Math.max(0.01, s)); L.ikFixo.hand_l.peso = L.ikFixo.hand_r.peso = s; });
+  await esperar(3.2);
+}
+/* nocaute técnico: o árbitro entra no meio e acena que acabou */
+async function interrupcao(venc, perd) {
+  C.raiz.visible = true; C.ikFixo = {};
+  const m = venc.raiz.position.clone().add(perd.raiz.position).multiplyScalar(0.5);
+  C.raiz.position.set(m.x + 0.2, 0, m.z + 0.35); C.raiz.rotation.y = 0; C.estado(PARADO, 0);
+  const t = { v: 0 }, cr = () => C.posMundo("spine_03").add(new THREE.Vector3(0, 0.12, 0.38));
+  C.ikFixo.hand_l = { alvo: () => cr().add(new THREE.Vector3(0.3 * Math.cos(t.v * 9), 0.1, 0)), peso: 1 };
+  C.ikFixo.hand_r = { alvo: () => cr().add(new THREE.Vector3(-0.3 * Math.cos(t.v * 9), 0.06, 0)), peso: 1 };
+  chamada("NOCAUTE TÉCNICO!"); som("explode", 1); palco.agitar(1.3);
+  await animar(1.5, (k) => { t.v = k * 1.5; });
+  C.ikFixo = {};
 }
 
 /* ---------- knockdown e nocaute ---------- */
@@ -872,8 +966,7 @@ async function nocaute(atk, def, { combinacao = true, textoFim = null } = {}) {
   cam.modo = "tv";
   narrar(textoFim || `${nomeDe(atk)} vence por nocaute.`, true);
   travado = true;
-  atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); som("vitoria", 0.9);
-  await esperar(4.2);
+  await cerimonia(atk, def);
 }
 
 /* ---------- luta simulada: o motor da carreira decide, o 3D mostra ----------
@@ -990,9 +1083,8 @@ async function lance(L) {
         else {
           // nocaute técnico no chão: chuva de socos por cima até o árbitro parar
           if (montada) await serieSocos(6, true);
-          chamada("NOCAUTE TÉCNICO!"); som("explode", 1); await esperar(1.6);
-          if (montada) await separar({ narra: false });
-          travado = true; atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); await esperar(2.5);
+          await interrupcao(atk, def);
+          await cerimonia(atk, def);
         }
         break;
       /* ---- eventos do Online (uma troca vira uns poucos lances) ---- */
@@ -1014,10 +1106,7 @@ async function lance(L) {
       }
       case "raspou": if (montada) await separar({ narra: false }); await queda(atk, def, { soco: false }); break;
       case "separa": if (montada) await separar({ narra: false }); break;
-      case "decisao":
-        if (montada) await separar({ narra: false });
-        chamada("DECISÃO"); travado = true;
-        atk.umaVez("Vitoria_Boxe", { fade: 0.4, segurar: true, mover: false }); await esperar(2.5); break;
+      case "decisao": await cerimonia(atk, def, { suspense: true }); break;
       default: break;
     }
   } finally { ocupadoLance = false; }
@@ -1030,6 +1119,7 @@ function mundo(dt) {
   for (const t of tweens.slice()) { t.t += dt; const k = Math.min(1, t.t / t.dur); t.fn(k); if (k >= 1) { tweens.splice(tweens.indexOf(t), 1); t.ok(); } }
   estudar(dt); voltarAoCentro(dt); encarar(dt);
   A.update(dt); B.update(dt);
+  if (C.raiz.visible) C.update(dt);
   manterDistancia();
 }
 /* qualidade automática: aparelho que não chega a 45 quadros por segundo perde,

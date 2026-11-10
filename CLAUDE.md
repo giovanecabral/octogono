@@ -236,7 +236,12 @@ metade). Regras do revamp que valem daqui pra frente:
   medido); vai em `ev.vida`. Aparência fiel ao boneco em `luta3d/aparencia.js`
   (opção nova na criação ganha peça lá, senão some no 3D); entrada com a
   roupa em `entrada()`; Online em 3D por `jxjLinhas3d` (evento novo do motor
-  do Online ganha conversão lá). Postura da montada em `MONTADA` (diretor),
+  do Online ganha conversão lá). **A vida nunca desce antes do golpe
+  encostar** (pedido do dono): diretor avisa por `op.aoGolpe`; no Online o
+  placar segura em `JXJ_3D.mostrado`. Online: o palco fica ATRÁS da mesa
+  (`jxj3dPosicionar`), nunca empurrando as cartas. Fim da luta: árbitro e
+  `cerimonia` (suspense na decisão), cinturão em 3D na disputa que o
+  jogador ganha. Postura da montada em `MONTADA` (diretor),
   escolhida comparando prints: mexeu, compare de novo. Desempenho: sem
   pós-processamento (bloom deixava pesado e a pele brilhando), torcida em
   poucos triângulos (~112 mil por quadro; antes 605 mil). Qualquer coisa

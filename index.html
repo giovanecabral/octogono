@@ -7269,7 +7269,7 @@ let me=null,picks=[],st=null,rng=null,holdRng=null,fraseRng=null,escolhaRng=null
 let budgetLeft=0,remaining=[],fightNo=0,auto=false,autoTimer=null,rerollUsado=false;
 let speed=1,playing=false,playTimer=null;
 /* luta em 3D: a instância, a carga em andamento, o adversário e quem espera um lance (ver ligar3d) */
-let LUTA3D=null,LUTA3D_CARREGANDO=null,LUTA3D_OPP=null,LUTA3D_CORTES=[];
+let LUTA3D=null,LUTA3D_CARREGANDO=null,LUTA3D_OPP=null,LUTA3D_CORTES=[],LUTA3D_TITULO=false;
 /* Rever luta: as linhas (com evento) da última luta desta sessão e a tela aberta (ver abrirReprise) */
 let REPRISE=null,REPRISE_TELA=null;
 /* Dilema aberto trava TUDO. O bug era eu desabilitar só o "Próxima luta":
@@ -7726,6 +7726,15 @@ function jxj3dParar(){
   if(x.inst){ try{ x.inst.destruir(); }catch(e){} }
   if(x.caixa){ x.caixa.hidden=true; x.caixa.innerHTML=""; }
 }
+/* o palco fica atrás da mesa (no lugar do desenho do octógono): não empurra as cartas pra baixo */
+function jxj3dPosicionar(c,caixa,area){
+  const mesa=area&&area.querySelector?area.querySelector(".jxj-mesa"):null;
+  if(!mesa||!JXJ_3D||!c.getBoundingClientRect){ caixa.hidden=true; return; }
+  mesa.classList.add("com3d");
+  const rc=c.getBoundingClientRect(),rm=mesa.getBoundingClientRect();
+  Object.assign(caixa.style,{left:(rm.left-rc.left)+"px",top:(rm.top-rc.top)+"px",width:rm.width+"px",height:rm.height+"px"});
+  caixa.hidden=false;
+}
 const jxj3dPode=()=>typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function"&&quer3d();
 /* uma troca do Online -> lances do diretor (A é quem joga nesta tela) */
 function jxjLinhas3d(t,eu){
@@ -7734,11 +7743,11 @@ function jxjLinhas3d(t,eu){
   let algo=false;
   for(const e of (t&&t.ev)||[]){
     const q=e.quem;
-    if(DANO.includes(e.tipo)&&q){ add({tipo:"golpe1",quem:Q(q),forca:e.dano||3}); algo=true; }
-    else if((e.tipo==="gnp"||e.tipo==="baixo")&&q){ add({tipo:"gnp1",quem:Q(q),forte:(e.dano||0)>=6}); algo=true; }
+    if(DANO.includes(e.tipo)&&q){ add({tipo:"golpe1",quem:Q(q),forca:e.dano||3,alvo:outro(q),dano:Number(e.dano)||0}); algo=true; }
+    else if((e.tipo==="gnp"||e.tipo==="baixo")&&q){ add({tipo:"gnp1",quem:Q(q),forte:(e.dano||0)>=6,alvo:outro(q),dano:Number(e.dano)||0}); algo=true; }
     else if(e.tipo==="errou"&&q){ add({tipo:"golpe1",quem:Q(q),forca:3,bloqueio:true}); algo=true; }
     else if(e.tipo==="bloqueou"&&q){ add({tipo:"golpe1",quem:Q(outro(q)),forca:3,bloqueio:true}); algo=true; }
-    else if(e.tipo==="knockdown"&&q){ add({tipo:"kd",quem:Q(q)}); algo=true; }
+    else if(e.tipo==="knockdown"&&q){ add({tipo:"kd",quem:Q(q),alvo:outro(q),dano:5}); algo=true; }
     else if((e.tipo==="queda"||e.tipo==="cadeia")&&q){ add({tipo:"queda",quem:Q(q)}); algo=true; }
     else if(e.tipo==="puxouGuarda"&&q){ add({tipo:"queda",quem:Q(outro(q))}); algo=true; }
     else if(e.tipo==="quedaDefendida"&&q){ add({tipo:"quedaDefendida",quem:Q(outro(q))}); algo=true; }
@@ -7749,23 +7758,40 @@ function jxjLinhas3d(t,eu){
     else if(e.tipo==="grogue"&&q){ add({tipo:"grogue",quem:Q(q)}); }
     else if(e.tipo==="fim"&&q){
       const m={KO:"Nocaute",TKO:"Nocaute técnico",FIN:"Finalização"}[e.metodo];
-      if(m)add({tipo:"fim",quem:Q(q),metodo:m}); else if(e.metodo==="DEC")add({tipo:"decisao",quem:Q(q)});
+      if(m)add({tipo:"fim",quem:Q(q),metodo:m,alvo:outro(q),zera:m!=="Finalização"}); else if(e.metodo==="DEC")add({tipo:"decisao",quem:Q(q)});
       algo=true;
     }
   }
   if(!algo)add({tipo:"estudo"});
   return linhas;
 }
+/* a vida no placar do Online com o 3D ligado (pedido do dono: "não quero que
+   abaixe antes em hipótese alguma"): o placar mostra x.mostrado, que só
+   desce quando o golpe encosta no 3D (aoGolpe) ou quando o 3D alcança a
+   troca de agora. As cartas viram como sempre. */
+function jxj3dGolpe(x,lado){
+  const L=x&&x.linha,ev=L&&L.ev; if(!ev||!ev.alvo||ev.aplicado)return;
+  const l=lado==="A"?x.eu:x.ele; if(l!==ev.alvo)return;
+  ev.aplicado=true;
+  if(ev.zera){ x.mostrado[l]=Infinity; jxjPintarVida(l,0,{ko:true}); return; }
+  x.mostrado[l]+=ev.dano||0; jxjPintarVida(l,jxjVida(x.mostrado[l]));
+}
+function jxj3dAlcancou(x){
+  if(!x||x.pendentes>0||!x.vista||!x.vista.estado)return;
+  for(const l of ["a","b"]){ const d=x.vista.estado[l]&&x.vista.estado[l].dano; if(typeof d==="number"&&d>x.mostrado[l]){ x.mostrado[l]=d; jxjPintarVida(l,jxjVida(d)); } }
+}
 function jxj3dTrocas(caixa,v,{eu,ele},novas){
   if(!caixa||!jxj3dPode()||!v||!v.nomes)return;
   if(!JXJ_3D){
-    const x={vivo:true,caixa,inst:null,corte:null,round:null,pendentes:0};
+    const x={vivo:true,caixa,inst:null,corte:null,round:null,pendentes:0,eu,ele,linha:null};
+    const antes=novas&&novas.length&&v.estado?jxjDanoAntes(v.estado,novas[0]):null;
+    x.mostrado={a:antes?antes.a:(v.estado&&v.estado.a?v.estado.a.dano:0),b:antes?antes.b:(v.estado&&v.estado.b?v.estado.b.dano:0)};
     x.cortado=new Promise(r=>{ x.corte=r; });
     caixa.hidden=false; caixa.innerHTML=`<div class="luta3d-carregando">Montando o octógono</div>`;
     const nome=l=>(v.nomes[l]&&v.nomes[l].nome)||"";
     x.fila=import("./luta3d/diretor.js")
       .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(v.nomes[eu]&&v.nomes[eu].rosto||cfgPadrao()),ele:corpo3d(v.nomes[ele]&&v.nomes[ele].rosto||cfgPadrao()),
-        nomes:{a:nome(eu),b:nome(ele)},som:som3d}))
+        nomes:{a:nome(eu),b:nome(ele)},som:som3d,aoGolpe:lado=>jxj3dGolpe(x,lado)}))
       .then(inst=>{
         if(!x.vivo){ inst.destruir(); return; }
         x.inst=inst; const c=caixa.querySelector(".luta3d-carregando"); if(c&&c.remove)c.remove();
@@ -7774,6 +7800,7 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas){
     JXJ_3D=x;
   }
   const x=JXJ_3D,linhas=[];
+  x.vista=v;
   for(const t of novas||[]){
     if(t.round!==x.round){
       if(x.round!=null)linhas.push(comEvento({round:x.round,kind:"rd",text:""},{tipo:"fimRound"}));
@@ -7788,10 +7815,14 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas){
     for(const L of linhas){
       if(!x.vivo||!x.inst)break;
       x.inst.velocidade(x.pendentes>1?2:1);   // atrasado (troca nova chegou antes de acabar a outra): anda em 2x
+      x.linha=L;
       await Promise.race([x.inst.lance(L).catch(()=>{}),x.cortado,new Promise(r=>setTimeout(r,15000))]);
+      // golpe que o 3D não mostrou encostando (bloqueio na tela, lance cortado): desce no fim do lance
+      if(x.vivo&&L.ev&&L.ev.alvo&&!L.ev.aplicado)jxj3dGolpe(x,L.ev.alvo===x.eu?"A":"B");
     }
-    x.pendentes--;
-  });
+    x.linha=null; x.pendentes--;
+    jxj3dAlcancou(x);
+  }).catch(()=>{ x.pendentes=Math.max(0,x.pendentes-1); });
 }
 async function jxj(acao,dados={}){
   const token=await meuAccessToken();
@@ -9082,6 +9113,9 @@ async function jxjTelaLuta(id){
     pintar3d();
   };
   c.appendChild(botao3d); c.appendChild(caixa3d);
+  if(c.style)c.style.position="relative";
+  const reposicionar=()=>{ if(tk!==JXJ_TOKEN){ removeEventListener("resize",reposicionar); return; } jxj3dPosicionar(c,caixa3d,area); };
+  if(typeof addEventListener==="function")addEventListener("resize",reposicionar);
   const area=el("div","jxj-area"); c.appendChild(area); jxjCarregando(area);
   try{ await jxjDef(); }catch(e){ if(tk!==JXJ_TOKEN)return; return jxjErro(area,e,()=>jxjTelaLuta(id)); }
   if(tk!==JXJ_TOKEN)return;
@@ -9148,6 +9182,9 @@ async function jxjTelaLuta(id){
     trocasVistas=todas.length; roundVisto=vista.status==="andamento"?vista.round:roundVisto; statusVisto=vista.status;
     if(novas.length)revelacao={i:todas.length-1,desde:Date.now(),animou:false};
     let revelar=null,danoAntes=null;
+    /* 3D ligado: a troca nova vai pra fila do palco antes de desenhar, pra o placar já sair na vida que o 3D mostrou */
+    const com3d=vista.status==="andamento"&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function";
+    if(com3d)jxj3dTrocas(caixa3d,vista,lados(),novas);
     if(revelacao&&vista.status==="andamento"&&Date.now()-revelacao.desde<JXJ_REVELACAO_MS){
       revelar=jxjRevelar(todas[revelacao.i],!revelacao.animou);
       /* 2026-10-29: o primeiro desenho da troca nova parte do dano de antes dela */
@@ -9177,16 +9214,17 @@ async function jxjTelaLuta(id){
         const pousar=()=>{ if(tk===JXJ_TOKEN&&escolha&&escolha.fam===fam&&vista&&vista.status==="andamento")desenhar(); };
         if(reduceMotion())pousar(); else setTimeout(pousar,JXJ_VOO_MS);
         try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,familia:fam}); }finally{ escolha=null; enviando=false; }
-      },{nova:novas.length>0,maoNova,revelar,soltou,danoAntes,
+      },{nova:novas.length>0,maoNova,revelar,soltou,danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:danoAntes,
         /* 2026-10-29: só contra bot; derrota por W.O. na hora, o resultado direto */
         abandonar:vista.lado&&vista.nomes&&vista.nomes[lados().ele]&&vista.nomes[lados().ele].bot?async()=>{
           if(enviando)return; enviando=true;
           try{ await ciclo("abandonar"); }finally{ enviando=false; }
         }:null});
       ultimaAndamento=vista;
-      if(typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function"){ botao3d.hidden=false; jxj3dTrocas(caixa3d,vista,lados(),novas); pintar3d(); }
+      if(com3d){ botao3d.hidden=false; pintar3d(); }
+      jxj3dPosicionar(c,caixa3d,area);
       if(comecou)SOM.sinoInicio();
-      return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes});
+      return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes,semVida:!!JXJ_3D});
     }
     /* a luta acabou com a tela aberta: a troca final na mesa, a barra e a cena;
        W.O. e anulada (sem troca final de luta) vão direto pro resultado */
@@ -9196,9 +9234,10 @@ async function jxjTelaLuta(id){
       const antes=jxjDanoAntes(vista.estado,ultT);
       const vf={...ultimaAndamento,status:"andamento",estado:vista.estado,trocas:todas,minhaAcao:null,meuSinal:null,etapa:null,sinais:null,
         adversarioEscolheu:false,adversarioSinalizou:false,momentoDecisivo:null};
-      jxjDesenharCombate(area,vf,lados(),()=>{},{nova:true,revelar:jxjRevelar(ultT,true),danoAntes:antes,final:true});
-      const dur=jxjEfeitos([ultT],lados(),tk,{antes})||0;
-      jxj3dTrocas(caixa3d,vista,lados(),novas.length?novas:[ultT]);
+      if(JXJ_3D)jxj3dTrocas(caixa3d,vista,lados(),novas.length?novas:[ultT]);
+      jxjDesenharCombate(area,vf,lados(),()=>{},{nova:true,revelar:jxjRevelar(ultT,true),danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:antes,final:true});
+      jxj3dPosicionar(c,caixa3d,area);
+      const dur=jxjEfeitos([ultT],lados(),tk,{antes,semVida:!!JXJ_3D})||0;
       jxjCenaFim(area,vista,lados(),()=>{
         if(tk!==JXJ_TOKEN)return;
         cenaFim="visto"; desenhar();
@@ -9207,6 +9246,7 @@ async function jxjTelaLuta(id){
       },{espera:dur+500});
       return;
     }
+    jxj3dParar(); caixa3d.hidden=true; botao3d.hidden=true;
     jxjDesenharResultado(area,vista,lados(),ciclo);
     if(acabouAgora)jxjEfeitos(novas,lados(),tk,{fim:vista});
   };
@@ -9612,7 +9652,7 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
    treme forte; queda mexe na posição; nocaute pisca a tela (mesma classe
    "ko" da carreira). Sem movimento quando o sistema pede menos movimento;
    o som segue o volume do jogo. Desiste se a tela mudou (JXJ_TOKEN). */
-function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null}={}){
+function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null,semVida=false}={}){
   if(!novas.length&&!fim)return;
   const card=l=>document.getElementById(l===eu?"jxj-card-eu":"jxj-card-ele");
   const anima=(no,cls)=>{ if(!no||reduceMotion())return; no.classList.remove(cls); void no.offsetWidth; no.classList.add(cls); };
@@ -9630,14 +9670,14 @@ function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null}={}
       if(dano&&typeof e.dano==="number"){ const v0=jxjVida(dano[alvo]); dano[alvo]+=e.dano; vida=jxjVida(dano[alvo]); menos=v0-vida; }
       depois(()=>{ if(pesado)SOM.golpePesado(); else SOM.golpeLeve();
         anima(card(alvo),"jxj-apanhou"); if(pesado)anima(document.getElementById("jxj-combate"),"jxj-tremor");
-        if(vida!=null){ jxjPintarVida(alvo,vida); jxjPopVida(card(alvo),menos,pesado); }
+        if(vida!=null&&!semVida){ jxjPintarVida(alvo,vida); jxjPopVida(card(alvo),menos,pesado); }
         jxjFaixaGolpe(ladoAlvo,nome,menos); },JXJ_GOLPE_MS);
     }
     else if(e.tipo==="knockdown"){
       let vida=null;
       if(dano){ dano[alvo]+=5; vida=jxjVida(dano[alvo]); }
       depois(()=>{ SOM.knockdown(); jxjClarao(); anima(card(alvo),"jxj-caiu"); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte");
-        if(vida!=null)jxjPintarVida(alvo,vida); jxjSeloKD(card(alvo)); },900);
+        if(vida!=null&&!semVida)jxjPintarVida(alvo,vida); jxjSeloKD(card(alvo)); },900);
     }
     else if(e.tipo==="queda"||e.tipo==="puxouGuarda"||e.tipo==="raspou"||e.tipo==="levantou"||e.tipo==="juizLevantou")
       depois(()=>{ if(e.tipo==="queda"||e.tipo==="puxouGuarda")SOM.queda(); anima(document.getElementById("jxj-posicao"),"jxj-muda"); });
@@ -9654,7 +9694,7 @@ function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null}={}
       const perd=e.quem==="a"?"b":"a",resto=dano?jxjVida(dano[perd]):0;
       depois(()=>{ SOM.nocaute();
         if(dano){ jxjClarao(); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte"); jxjFagulhas(card(perd)); anima(card(perd),"jxj-nocauteado");
-          jxjPintarVida(perd,0,{ko:true}); jxjPopVida(card(perd),resto,true); }
+          if(!semVida){ jxjPintarVida(perd,0,{ko:true}); jxjPopVida(card(perd),resto,true); } }
         else if(!reduceMotion()){ document.body.classList.add("ko"); setTimeout(()=>document.body.classList.remove("ko"),440); } },1200);
     }
     else if(e.tipo==="fim"&&e.metodo==="FIN"){
@@ -12601,7 +12641,7 @@ function rodarLuta(opp,titleFight,ehRival,semL,fixas){
       cards:scores.sa+"-"+scores.sb,log,knockdowns:kds()};
   };
   const encerrar=res=>{
-    REPRISE={n:fightNo,linhas:log.filter(L=>L.ev),opp,nomes:{a:me.name,b:opp.name}};   // pro Rever luta
+    REPRISE={n:fightNo,linhas:log.filter(L=>L.ev),opp,nomes:{a:me.name,b:opp.name},titulo:!!titleFight};   // pro Rever luta
     desligar3d(false);   // o resultado cobre o palco: devolve a placa de vídeo
     const won0=res.winner===me.name;
     const kd0=res.knockdowns[opp.name]||0,kdt0=res.knockdowns[me.name]||0;
@@ -12801,7 +12841,7 @@ function ligar3d(){
   const tk=CARREIRA_TOKEN;
   const ref=LUTA3D_CARREGANDO=import("./luta3d/diretor.js")
     .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(LUTA3D_OPP),
-      nomes:{a:me&&me.name||"",b:LUTA3D_OPP&&LUTA3D_OPP.name||""},som:som3d}))
+      nomes:{a:me&&me.name||"",b:LUTA3D_OPP&&LUTA3D_OPP.name||""},som:som3d,aoGolpe:vidaNoGolpe,titulo:LUTA3D_TITULO}))
     .then(l=>{
       if(tk!==CARREIRA_TOKEN||LUTA3D_CARREGANDO!==ref){ l.destruir(); return null; }
       const c=caixa.querySelector(".luta3d-carregando"); if(c)c.remove();
@@ -12883,7 +12923,7 @@ function abrirReprise(R){
   const cancelado=new Promise(r=>{estado.corte=r;});
   if(document.addEventListener)document.addEventListener("keydown",fecharComEsc);
   import("./luta3d/diretor.js")
-    .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(R.opp),nomes:R.nomes,som:som3d}))
+    .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(ROSTO||cfgPadrao()),ele:corpoGenerico3d(R.opp),nomes:R.nomes,som:som3d,aoGolpe:vidaNoGolpe,titulo:R.titulo}))
     .then(async inst=>{
       if(!estado.vivo){inst.destruir();return;}
       estado.inst=inst;
@@ -12893,8 +12933,8 @@ function abrirReprise(R){
         if(!estado.vivo)return;
         leg.className="luta3d-legenda"+(L.kind?" "+L.kind:"");
         leg.textContent=String(L.text||"").replace(/<[^>]+>/g,"");
-        setTimeout(()=>{ if(estado.vivo)pintarVidas(L,"r"); },atrasoVida3d(L));
-        await Promise.race([Promise.all([inst.lance(L),new Promise(r=>setTimeout(r,Math.min(2500,tempoDeLeitura(L))))]),cancelado]);
+        LINHA_VIDA={L,pre:"r"};
+        await Promise.race([Promise.all([inst.lance(L).then(()=>{ if(estado.vivo)pintarVidas(L,"r"); }),new Promise(r=>setTimeout(r,Math.min(2500,tempoDeLeitura(L))))]),cancelado]);
       }
       if(!estado.vivo)return;
       const de=el("button","botao",`${ICONE("reenviar")}<span>Ver de novo</span>`);
@@ -12936,8 +12976,13 @@ function pintarVidas(L,pre=""){
   jxjPintarVida(pre+"eu",v.A,{ko:v.A===0});
   jxjPintarVida(pre+"ele",v.B,{ko:v.B===0});
 }
-/* no 3D a barra desce quando o golpe entra, não quando a linha aparece */
-const atrasoVida3d=L=>({fim:1500,kd:1300,queda:1400,gnp:1100,controle:900}[L&&L.ev&&L.ev.tipo]||800)/Math.max(.5,Math.min(3,speed));
+/* no 3D a barra desce quando o golpe encosta: o diretor avisa (aoGolpe) qual lado levou */
+let LINHA_VIDA=null;
+function vidaNoGolpe(lado){
+  const x=LINHA_VIDA,v=x&&x.L&&x.L.ev&&x.L.ev.vida;
+  if(!v)return;
+  jxjPintarVida(x.pre+(lado==="A"?"eu":"ele"),v[lado],{ko:v[lado]===0});
+}
 /* a linha da narração também passa em cima do palco, como legenda (texto puro:
    nome de lutador nunca vira HTML) */
 function legenda3d(L){
@@ -12981,7 +13026,7 @@ function iniciarTelaLuta(opp,titleFight){
       <div class="play" id="play"></div>
       <aside class="luta-numeros painel-bloco" id="lutaNumeros">${painelNumeros({golpes:[0,0],quedas:[0,0],kd:[0,0]})}</aside>
     </div>`;
-  LUTA3D_OPP=opp;
+  LUTA3D_OPP=opp; LUTA3D_TITULO=!!titleFight;
   if(quer3d()&&aceita3d())ligar3d();
   pintarBotao3d();
 }
@@ -13003,8 +13048,9 @@ function animarTrecho(lines,aoTerminar){
     play.appendChild(row);
     rolarNarracao(play,row);
     legenda3d(L);
-    if(!luta3dAtiva())pintarVidas(L);
-    else setTimeout(()=>{ if(tk===CARREIRA_TOKEN)pintarVidas(L); },atrasoVida3d(L));
+    /* vida: no texto, com a linha; no 3D, só quando o golpe encosta (aoGolpe) e,
+       se nenhum golpe apareceu naquele lado, no fim do lance. Nunca antes (pedido do dono). */
+    if(!luta3dAtiva())pintarVidas(L); else LINHA_VIDA={L,pre:""};
     /* o som sai do TIPO da linha e do texto (somDaLinha, fase 6); no 3D,
        cada golpe e cada queda tem o seu, então a linha fica quieta */
     const efeito=somDaLinha(L);
@@ -13016,7 +13062,8 @@ function animarTrecho(lines,aoTerminar){
     const leitura=reduceMotion()?10:tempoDeLeitura(L)/speed;
     if(!luta3dAtiva()){playTimer=setTimeout(step,leitura);return;}
     /* no 3D a próxima linha espera o lance desta acabar (e o tempo de ler) */
-    Promise.all([esperarLance3d(L),new Promise(r=>{playTimer=setTimeout(r,leitura);})])
+    Promise.all([esperarLance3d(L).then(()=>{ if(tk===CARREIRA_TOKEN&&LINHA_VIDA&&LINHA_VIDA.L===L){ pintarVidas(L); LINHA_VIDA=null; } }),
+      new Promise(r=>{playTimer=setTimeout(r,leitura);})])
       .then(()=>{ if(tk===CARREIRA_TOKEN)step(); });
   };
   step();

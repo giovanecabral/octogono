@@ -283,8 +283,40 @@ export function infoDoCorpo(corpo) {
    pra fora e presos ao mesmo esqueleto): a roupa dobra junto com o lutador na caminhada. Mongkol e
    papakha ficam na cabeça. A roupa sai no octógono (tirarRoupa); a prajiad fica a luta inteira, como
    no muay thai. Regiões na pose de repouso (T): x pra esquerda do lutador, y pra cima, z pra frente. */
-function casca(corpo, info, ok, espessura, corDe) {
+/* seções do corpo na pose de repouso, por fatia: o tronco cortado em y, cada braço cortado em x.
+   Cada fatia vira uma elipse (centro e raios), suavizada entre vizinhas: o tecido passa por
+   cima, sem marcar barriga e peito (o dono achou a roupa colada "pintura"). */
+function secoes(info) {
+  if (info.__secoes) return info.__secoes;
+  const fat = (chave, a, b) => { const m = new Map(); return { m, add(k, u, w) { let f = m.get(k); if (!f) m.set(k, f = { a0: 9, a1: -9, b0: 9, b1: -9 }); f.a0 = Math.min(f.a0, u); f.a1 = Math.max(f.a1, u); f.b0 = Math.min(f.b0, w); f.b1 = Math.max(f.b1, w); } }; };
+  const tronco = fat(), bracoE = fat(), bracoD = fat();
+  for (const p of info.p) {
+    if (p.y > 0.8 && p.y < 1.56 && Math.abs(p.x) < 0.2) tronco.add(Math.round(p.y / 0.03), p.x, p.z);
+    else if (Math.abs(p.x) >= 0.19 && Math.abs(p.x) < 0.72 && p.y > 1.3) (p.x > 0 ? bracoE : bracoD).add(Math.round(Math.abs(p.x) / 0.03), p.y, p.z);
+  }
+  const lisa = (F) => {   // média das vizinhas (5 fatias) pra seção não ter degrau
+    const ks = [...F.m.keys()].sort((x, y) => x - y), out = new Map();
+    for (const k of ks) {
+      let n = 0, a0 = 0, a1 = 0, b0 = 0, b1 = 0;
+      for (let d = -2; d <= 2; d++) { const f = F.m.get(k + d); if (!f) continue; n++; a0 += f.a0; a1 += f.a1; b0 += f.b0; b1 += f.b1; }
+      out.set(k, { ca: (a0 + a1) / (2 * n), ra: (a1 - a0) / (2 * n), cb: (b0 + b1) / (2 * n), rb: (b1 - b0) / (2 * n) });
+    }
+    return out;
+  };
+  return (info.__secoes = { tronco: lisa(tronco), bracoE: lisa(bracoE), bracoD: lisa(bracoD) });
+}
+function embrulhar(p, sec, t) {
+  // p: posição de repouso; devolve o ponto na elipse da fatia dele, t pra fora
+  const braco = Math.abs(p.x) >= 0.19 && p.y > 1.3;
+  const tabela = braco ? (p.x > 0 ? sec.bracoE : sec.bracoD) : sec.tronco, f = tabela.get(Math.round((braco ? Math.abs(p.x) : p.y) / 0.03));
+  if (!f || f.ra < 0.01 || f.rb < 0.01) return null;
+  const u = braco ? p.y : p.x, w = p.z, ang = Math.atan2((w - f.cb) / f.rb, (u - f.ca) / f.ra);
+  const nu = f.ca + (f.ra + t) * Math.cos(ang), nw = f.cb + (f.rb + t) * Math.sin(ang);
+  return braco ? V(p.x, nu, nw) : V(nu, p.y, nw);
+}
+function casca(corpo, info, ok, espessura, corDe, embrulho = 0) {
   const g = corpo.geometry, pos = g.attributes.position, nor = g.attributes.normal, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const sec = embrulho ? secoes(info) : null, inv = embrulho ? corpo.bindMatrix.clone().invert() : null;
   const idx = g.index ? g.index.array : [...Array(pos.count).keys()], mapa = new Map(), P = [], N = [], I = [], W = [], Cr = [], T = [];
   const cor = new THREE.Color();
   for (let t = 0; t < idx.length; t += 3) {
@@ -294,7 +326,9 @@ function casca(corpo, info, ok, espessura, corDe) {
       if (!mapa.has(v)) {
         mapa.set(v, P.length / 3);
         const n = V(nor.getX(v), nor.getY(v), nor.getZ(v)).normalize();
-        P.push(pos.getX(v) + n.x * espessura, pos.getY(v) + n.y * espessura, pos.getZ(v) + n.z * espessura);
+        let q = V(pos.getX(v) + n.x * espessura, pos.getY(v) + n.y * espessura, pos.getZ(v) + n.z * espessura);
+        if (sec) { const e = embrulhar(info.p[v], sec, espessura); if (e) q.lerp(e.applyMatrix4(inv), embrulho); }
+        P.push(q.x, q.y, q.z);
         N.push(n.x, n.y, n.z);
         for (let k = 0; k < 4; k++) { I.push(si.getComponent(v, k)); W.push(sw.getComponent(v, k)); }
         corDe(info.p[v], cor); Cr.push(cor.r, cor.g, cor.b);
@@ -309,7 +343,37 @@ function casca(corpo, info, ok, espessura, corDe) {
   r.setAttribute("skinWeight", new THREE.Float32BufferAttribute(W, 4));
   r.setAttribute("color", new THREE.Float32BufferAttribute(Cr, 3));
   r.setIndex(T);
+  if (sec) r.computeVertexNormals();
   return r;
+}
+/* peça rígida presa a um osso, desenhada nas coordenadas do corpo em repouso */
+function noOsso(lutador, nome, geo, mat, lista) {
+  const o = lutador.ossos[nome]; lutador.modelo.updateMatrixWorld(true);
+  geo.applyMatrix4(o.matrixWorld.clone().invert().multiply(lutador.modelo.matrixWorld));
+  const m = new THREE.Mesh(geo, mat); m.castShadow = true; o.add(m); lista.push(m); return m;
+}
+/* saia (roupão, kimono): cone aberto da cintura pra baixo, preso à pelve */
+function saia(y0, y1, r0, r1, corFrente) {
+  const g = new THREE.CylinderGeometry(1, 1, 1, 28, 6, true), p = g.attributes.position, cores = [];
+  for (let i = 0; i < p.count; i++) {
+    const k = p.getY(i) + 0.5, y = y1 + (y0 - y1) * k, ex = r1[0] + (r0[0] - r1[0]) * k, ez = r1[1] + (r0[1] - r1[1]) * k;
+    p.setXYZ(i, p.getX(i) * ex, y, p.getZ(i) * ez - 0.03);
+    const c = corFrente(p.getX(i) / ex, p.getZ(i) / ez + 0.03 / ez, k); cores.push(c.r, c.g, c.b);
+  }
+  g.setAttribute("color", new THREE.Float32BufferAttribute(cores, 3)); g.computeVertexNormals();
+  return g;
+}
+/* anel horizontal (faixa na cintura): raio em x, raio em z e a grossura do tecido, em metros */
+const anel = (rx, rz, tubo, y, z = 0) => { const g = new THREE.TorusGeometry(rx, tubo, 8, 36); g.rotateX(Math.PI / 2); g.scale(1, 1, rz / rx); g.translate(0, y, z); return g; };
+function corGeo(g, c) { const cs = []; for (let i = 0; i < g.attributes.position.count; i++) cs.push(c.r, c.g, c.b); g.setAttribute("color", new THREE.Float32BufferAttribute(cs, 3)); return g; }
+/* a bandeira do Brasil desenhada (a capa) */
+function texturaBandeira() {
+  const cv = document.createElement("canvas"); cv.width = 512; cv.height = 360; const c = cv.getContext("2d");
+  c.fillStyle = "#1e8c45"; c.fillRect(0, 0, 512, 360);
+  c.fillStyle = "#f2c619"; c.beginPath(); c.moveTo(256, 30); c.lineTo(486, 180); c.lineTo(256, 330); c.lineTo(26, 180); c.closePath(); c.fill();
+  c.fillStyle = "#1f3a93"; c.beginPath(); c.arc(256, 180, 92, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = "#f2eee6"; c.lineWidth = 14; c.beginPath(); c.arc(256, 330, 190, Math.PI * 1.32, Math.PI * 1.68); c.stroke();
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const TRONCO = (p) => p.y > 0.86 && p.y < 1.54 && Math.abs(p.x) < 0.24;
 const BRACO = (ate) => (p) => Math.abs(p.x) >= 0.17 && Math.abs(p.x) < ate && p.y > 1.3;
@@ -326,30 +390,55 @@ export function montarRoupa(lutador, base, opt) {
   };
   const mat = (extra = {}) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, transparent: true, ...extra });
   const tipo = opt.entrada;
+  const solido = (extra = {}) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide, transparent: true, ...extra });
   if (tipo === "kimono") {
-    const gi = ["#f2eee6", "#1f3a6e", "#16181e"].includes(cor.getHexString && "#" + cor.getHexString()) ? cor.clone() : new THREE.Color("#f2eee6");
-    const lap = gi.clone().multiplyScalar(0.82), faixa = new THREE.Color("#15161b");
-    vestir(casca(corpo, info, (p) => (TRONCO(p) || BRACO(0.66)(p) || COXA(0.72)(p)) && !decote(p, 0.32), 0.016, (p, c) =>
-      c.copy(p.y > 0.93 && p.y < 0.99 ? faixa : naBorda(p, 0.32, 0.03) ? lap : gi)), mat({ roughness: 0.95 }), out.entrada);
+    const gi = ["f2eee6", "1f3a6e", "16181e"].includes(cor.getHexString()) ? cor.clone() : new THREE.Color("#f2eee6");
+    const lap = gi.clone().multiplyScalar(0.8), faixa = new THREE.Color("#15161b");
+    vestir(casca(corpo, info, (p) => (TRONCO(p) || BRACO(0.66)(p)) && !decote(p, 0.32), 0.028, (p, c) =>
+      c.copy(naBorda(p, 0.32, 0.035) ? lap : gi), 0.85), mat({ roughness: 0.95 }), out.entrada);
+    // a parte de baixo do kimono, a faixa amarrada e as pontas dela
+    noOsso(lutador, "pelvis", saia(0.98, 0.72, [0.2, 0.16], [0.235, 0.19], (x, z) => (z > 0.85 && Math.abs(x) < 0.16 ? lap : gi)), solido(), out.entrada);
+    noOsso(lutador, "pelvis", corGeo(anel(0.2, 0.16, 0.022, 0.975, -0.03), faixa), solido({ side: THREE.FrontSide }), out.entrada);
+    const pontas = [new THREE.BoxGeometry(0.05, 0.2, 0.012), new THREE.BoxGeometry(0.05, 0.17, 0.012)];
+    pontas[0].rotateZ(0.12); pontas[0].translate(0.05, 0.87, 0.15); pontas[1].rotateZ(-0.18); pontas[1].translate(0.1, 0.885, 0.145);
+    const no = new THREE.BoxGeometry(0.07, 0.05, 0.03); no.translate(0.07, 0.975, 0.15);
+    noOsso(lutador, "pelvis", corGeo(mergeGeometries([...pontas, no]), faixa), solido(), out.entrada);
   } else if (tipo === "roupão") {
-    const ouro = new THREE.Color("#d4a017");
-    vestir(casca(corpo, info, (p) => (TRONCO(p) || BRACO(0.6)(p) || COXA(0.5)(p)) && !decote(p, 0.4), 0.022, (p, c) =>
-      c.copy(naBorda(p, 0.4, 0.028) || (Math.abs(p.x) > 0.56) || p.y < 0.54 ? ouro : cor)), mat({ roughness: 0.55, metalness: 0.05 }), out.entrada);
+    const ouro = new THREE.Color("#d4a017"), escuro = cor.clone().multiplyScalar(0.8);
+    vestir(casca(corpo, info, (p) => (TRONCO(p) || BRACO(0.6)(p)) && !decote(p, 0.4), 0.035, (p, c) =>
+      c.copy(naBorda(p, 0.4, 0.034) || Math.abs(p.x) > 0.56 ? ouro : cor), 0.9), mat({ roughness: 0.55, metalness: 0.05 }), out.entrada);
+    // o roupão desce até o joelho, com a barra dourada; a faixa amarrada na cintura
+    noOsso(lutador, "pelvis", saia(1.0, 0.46, [0.21, 0.17], [0.3, 0.25], (x, z, k) => (k < 0.08 || (z > 0.9 && Math.abs(x) < 0.12) ? ouro : cor)),
+      solido({ roughness: 0.55 }), out.entrada);
+    noOsso(lutador, "pelvis", corGeo(anel(0.215, 0.175, 0.026, 1.0, -0.03), escuro), solido({ side: THREE.FrontSide }), out.entrada);
+    // gola alta atrás do pescoço
+    const gola = new THREE.TorusGeometry(0.1, 0.028, 8, 20, Math.PI * 1.1); gola.rotateX(Math.PI / 2); gola.rotateY(Math.PI * 0.95); gola.scale(1.05, 1, 0.9); gola.translate(0, 1.47, -0.04);
+    noOsso(lutador, "spine_03", corGeo(gola, ouro), solido({ roughness: 0.5 }), out.entrada);
   } else if (tipo === "capuz") {
-    vestir(casca(corpo, info, (p) => TRONCO(p) && p.y < 1.53 || BRACO(0.68)(p) || COXA(0.8)(p), 0.02, (p, c) => c.copy(cor).multiplyScalar(p.z > 0.06 && Math.abs(p.x) < 0.1 && p.y < 1.12 && p.y > 0.96 ? 0.8 : 1)),
+    const punho = cor.clone().multiplyScalar(0.82);
+    vestir(casca(corpo, info, (p) => (TRONCO(p) && p.y < 1.53) || BRACO(0.68)(p), 0.032, (p, c) => c.copy(Math.abs(p.x) > 0.6 || p.y < 0.92 ? punho : cor), 0.9),
       mat({ roughness: 1 }), out.entrada);
-    // o capuz na cabeça: casca de elipsoide atrás e em cima do rosto
-    const g = new THREE.SphereGeometry(1, 28, 18); g.scale(R.x * 1.38, R.y * 1.32, R.z * 1.36); g.translate(0, C.y + 0.01, C.z - 0.012);
-    const capuz = filtrar(g, (m) => m.z < 0.062 - (m.y - 0.08) * 0.25 && m.y > -0.07);
-    const h = new THREE.Mesh(capuz, new THREE.MeshStandardMaterial({ color: cor, roughness: 1, side: THREE.DoubleSide, transparent: true }));
+    // o capuz caído atrás, o bolso canguru e os cordões
+    const g = new THREE.SphereGeometry(1, 28, 18); g.scale(R.x * 1.45, R.y * 1.38, R.z * 1.42); g.translate(0, C.y + 0.01, C.z - 0.015);
+    const capuz = filtrar(g, (m) => m.z < 0.07 - (m.y - 0.08) * 0.25 && m.y > -0.08);
+    const borda = new THREE.TorusGeometry(0.085, 0.014, 8, 24); borda.scale(1.05, 1.2, 1); borda.rotateX(-0.25); borda.translate(0, C.y + 0.0, 0.055);
+    const h = new THREE.Mesh(mergeGeometries([capuz, filtrar(borda, (m) => m.y > -0.05)].map((x) => { x.deleteAttribute && x.deleteAttribute("uv"); return x; })),
+      new THREE.MeshStandardMaterial({ color: cor, roughness: 1, side: THREE.DoubleSide, transparent: true }));
     lutador.ossos.Head.add(h); out.entrada.push(h);
+    const bolso = new THREE.BoxGeometry(0.22, 0.12, 0.03); bolso.translate(0, 0.99, 0.135);
+    noOsso(lutador, "spine_01", corGeo(bolso, punho), solido({ roughness: 1 }), out.entrada);
+    const cordoes = [-0.035, 0.035].map((x) => { const c = new THREE.CylinderGeometry(0.005, 0.005, 0.17, 6); c.translate(x, 1.36, 0.135); return c; });
+    noOsso(lutador, "spine_03", corGeo(mergeGeometries(cordoes), new THREE.Color("#c9cbd2")), solido(), out.entrada);
   } else if (tipo === "bandeira") {
-    // a bandeira do Brasil nos ombros, como no boneco 2D: verde, losango amarelo e o círculo azul nas costas
-    const verde = new THREE.Color("#1e8c45"), amarelo = new THREE.Color("#f2c619"), azul = new THREE.Color("#1f3a93");
-    vestir(casca(corpo, info, (p) => ((p.z < -0.005 && p.y > 0.85 && p.y < 1.49 && Math.abs(p.x) < 0.25) || (p.y > 1.38 && p.y < 1.49 && Math.abs(p.x) < 0.27 && Math.abs(p.x) > 0.1)), 0.026, (p, c) => {
-      const d = Math.abs(p.x) / 0.17 + Math.abs(p.y - 1.2) / 0.24, cc = Math.hypot(p.x, p.y - 1.2);
-      c.copy(cc < 0.065 ? azul : d < 1 ? amarelo : verde);
-    }), mat({ roughness: 0.9 }), out.entrada);
+    // a bandeira do Brasil nas costas, como capa: presa nos ombros, caindo até a coxa
+    const g = new THREE.CylinderGeometry(0.25, 0.36, 0.92, 24, 6, true, Math.PI * 0.55, Math.PI * 0.9);
+    g.translate(0, 1.0, -0.06);
+    const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (p.getZ(i) > -0.06) p.setZ(i, p.getZ(i) * 0.6); p.setZ(i, p.getZ(i) - (1.46 - y) * 0.06); }
+    g.computeVertexNormals();
+    noOsso(lutador, "spine_03", g, new THREE.MeshStandardMaterial({ map: texturaBandeira(), roughness: 0.85, side: THREE.DoubleSide, transparent: true }), out.entrada);
+    // as pontas amarradas no peito
+    const pontas = [-1, 1].map((sx) => { const b = new THREE.BoxGeometry(0.035, 0.12, 0.012); b.rotateZ(sx * 0.5); b.translate(sx * 0.035, 1.37, 0.125); return b; });
+    noOsso(lutador, "spine_03", corGeo(mergeGeometries(pontas), new THREE.Color("#1e8c45")), solido(), out.entrada);
   } else if (tipo === "mongkol") {
     const g = new THREE.TorusGeometry(1, 0.11, 8, 40); g.rotateX(Math.PI / 2); g.scale(R.x * 1.1, R.x * 1.1, R.z * 1.16);
     g.rotateX(0.16); g.translate(0, C.y + 0.012, C.z - 0.006);
@@ -367,8 +456,32 @@ export function montarRoupa(lutador, base, opt) {
     const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: la, roughness: 1, flatShading: true, transparent: true }));
     lutador.ossos.Head.add(m); out.entrada.push(m);
   }
+  if (opt.uniforme === "arbitro") {
+    // o árbitro: camisa preta de manga curta e calça preta, a luta inteira
+    const preto = new THREE.Color("#121318"), cinza = new THREE.Color("#2a2c33");
+    vestir(casca(corpo, info, (p) => (TRONCO(p) && p.y < 1.53) || BRACO(0.42)(p), 0.02, (p, c) => c.copy(Math.abs(p.x) > 0.38 ? cinza : preto), 0.85),
+      mat({ transparent: false, roughness: 0.9 }), out.fixas);
+    vestir(casca(corpo, info, (p) => p.y > 0.09 && p.y < 0.98 && Math.abs(p.x) < 0.32, 0.014, (p, c) => c.copy(preto)), mat({ transparent: false, roughness: 0.95 }), out.fixas);
+  }
   if (opt.prajiad === "com") {
     vestir(casca(corpo, info, (p) => Math.abs(p.x) > 0.29 && Math.abs(p.x) < 0.335 && p.y > 1.35, 0.014, (p, c) => c.copy(cor)), mat({ transparent: false }), out.fixas);
   }
   return out;
+}
+
+/* ---------- cinturão: tira de couro preta, a placa grande dourada no meio e as laterais ---------- */
+export function modeloCinturao() {
+  const g = new THREE.Group(), ouro = new THREE.MeshStandardMaterial({ color: 0xd9a92b, metalness: 0.85, roughness: 0.3 });
+  const couro = new THREE.MeshStandardMaterial({ color: 0x15130f, roughness: 0.7 }), vermelho = new THREE.MeshStandardMaterial({ color: 0xb3141a, metalness: 0.3, roughness: 0.25 });
+  // tira curvada (arco), 0,9 m de ponta a ponta
+  const tira = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.075, 40, 1, true, -1.15, 2.3), couro); tira.rotation.x = Math.PI / 2; tira.rotation.z = Math.PI / 2; tira.position.z = -0.4;
+  tira.material.side = THREE.DoubleSide; g.add(tira);
+  const placa = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.016, 28), ouro); placa.rotation.x = Math.PI / 2; placa.position.z = 0.025; g.add(placa);
+  const aro = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.009, 8, 32), ouro); aro.position.z = 0.035; g.add(aro);
+  const pedra = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.012, 20), vermelho); pedra.rotation.x = Math.PI / 2; pedra.position.z = 0.036; g.add(pedra);
+  for (const s of [-1, 1]) {
+    const lat = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.012), ouro); lat.position.set(s * 0.17, 0, -0.012); lat.rotation.y = s * 0.42; g.add(lat);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
 }

@@ -15697,7 +15697,31 @@ async function testarLuta3d() {
     const falta = quer.filter((t) => !vistos.has(t));
     if (falta.length || fins < 30) throw new Error(`faltou ${falta} (fins ${fins}); vistos ${[...vistos]}`);
   });
+  await conf("vida no 3D nunca desce antes do golpe: a linha não pinta na hora, só no aviso do golpe (aoGolpe) ou no fim do lance", async () => {
+    const r = await X.run(`(async()=>{
+      const pintou=[]; const orig=jxjPintarVida; jxjPintarVida=(l,v)=>pintou.push(l+":"+v);
+      const L=comEvento({round:1,kind:"",text:""},{tipo:"janela",vida:{A:80,B:70}});
+      LINHA_VIDA={L,pre:""};
+      const antes=pintou.length;
+      vidaNoGolpe("B");
+      const depoisB=pintou.slice();
+      jxjPintarVida=orig;
+      return {antes,depoisB};
+    })()`);
+    if (r.antes !== 0) throw new Error("pintou antes do golpe");
+    if (r.depoisB.join() !== "ele:70") throw new Error("o golpe no adversário não desceu só a barra dele: " + r.depoisB);
+    const src = lerScript();
+    if (/setTimeout\(\(\)=>\{ if\(tk===CARREIRA_TOKEN\)pintarVidas/.test(src)) throw new Error("ainda baixa a vida por tempo, sem esperar o golpe");
+    if (!/aoGolpe/.test(fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8"))) throw new Error("o diretor não avisa o golpe");
+  });
   const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+  await conf("fim da luta com o árbitro: decisão com suspense, nocaute, nocaute técnico e finalização levantam a mão; cinturão na disputa", () => {
+    for (const t of ['case "decisao": await cerimonia(atk, def, { suspense: true })', "await interrupcao(atk, def);", "async function levantarCinturao"])
+      if (!diretor.includes(t)) throw new Error("faltou: " + t);
+    const chamadas = (diretor.match(/await cerimonia\(/g) || []).length;
+    if (chamadas < 5) throw new Error("só " + chamadas + " fins chamam a cerimônia");
+    if (!/titulo:LUTA3D_TITULO/.test(lerScript())) throw new Error("o jogo não manda a disputa de cinturão pro 3D");
+  });
   await conf("o diretor tem lance pra todo evento que o motor manda", () => {
     const src = lerScript(), i = src.indexOf("function simularRound("), j = src.indexOf("\nfunction ", i + 10);
     const k = src.indexOf("function jxjLinhas3d("), k2 = src.indexOf("\nfunction ", k + 10);
