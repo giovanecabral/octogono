@@ -12762,6 +12762,222 @@ function confJxJ(falhas) {
     catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
   };
 }
+/* Combate v2 do Online (2026-11-12): o motor de velocidade e prioridade
+   (api/_jxj-combate2.js) e o deck (api/_jxj-cartas.js). Um teste por regra
+   e por efeito; o balanço é a simulação (sim/), não aqui. */
+async function testarCombate2() {
+  console.log("\n" + cinza("combate2: motor v2 do Online (velocidade, interrupção, reações, empate, finta, chão, encaixe, deck)"));
+  const falhas = [], conf = confJxJ(falhas);
+  const url = require("url");
+  const M = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-combate2.js")).href);
+  const C = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+  const A = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
+  /* lutador neutro: tudo 50 (nenhum duelo mexe), deck padrão do estilo */
+  const neutro = (estilo = "striker", atr = {}) => ({ estilo, categoria: "middleweight", atr: { ...Object.fromEntries(A.ATRIBUTOS.map((k) => [k, 50])), ...atr }, deck: C.DECK_PADRAO[estilo].slice() });
+  /* luta montada à mão: as cartas da mão, energia cheia, em pé (ou o que vier em extra) */
+  const luta = (maoA, maoB, extra = {}, P = { a: neutro("wrestler"), b: neutro("wrestler") }) => {
+    const e = M.novaLuta2(P.a, P.b, "t");
+    e.mao = { a: maoA.slice(), b: maoB.slice() };
+    Object.assign(e, extra);
+    return { e, P };
+  };
+  const troca = (x, a, b, sinais = null) => M.resolverTroca2(x.e, x.P, { a, b, sinais }, "t");
+  const tem = (r, tipo, quem) => r.eventos.some((ev) => ev.tipo === tipo && (quem == null || ev.quem === quem));
+
+  await conf("deck: o padrão de cada estilo passa; 11 cartas, 3 cópias, sem as fixas, exclusiva de outro estilo, menos de 2 defesas e sem uma categoria são recusados", () => {
+    for (const s of A.ESTILOS_IDS) { const v = C.validarDeck(s, C.DECK_PADRAO[s]); if (!v.ok) throw new Error(s + ": " + v.erro); }
+    const base = C.DECK_PADRAO.striker;
+    const casos = [
+      [base.slice(1), /12 cartas/], [[...base.slice(0, 10), "jab", "jab"], /cópias/],
+      [["jab", "jab", "cruzado", "chute_alto", "bloqueio", "bloqueio", "antiqueda", "antiqueda", "clinch", "queda", "queda", "contra_ataque"], /fixas/],
+      [[...base.slice(0, 11), "puxar_guarda"], /liberada/],
+      [["jab", "cruzado", "cruzado", "chute_alto", "jab", "chute_alto", "bloqueio", "queda", "queda", "clinch", "clinch", "cruzado"].slice(0, 12), /cópias|defesa/],
+      [["jab", "cruzado", "cruzado", "chute_alto", "jab", "chute_alto", "bloqueio", "antiqueda", "queda", "queda", "contra_ataque", "contra_ataque"], /Pressão/],
+    ];
+    for (const [d, re] of casos) { const v = C.validarDeck("striker", d); if (v.ok || !re.test(v.erro)) throw new Error("passou ou erro errado: " + JSON.stringify([d, v])); }
+    if (C.validarDeck("ninja", base).ok || C.validarDeck("striker", [...base.slice(0, 11), "xyz"]).ok) throw new Error("estilo ou carta desconhecidos");
+  });
+  await conf("compra: a semente embaralha o deck e a mão tem 5 do deck; mesma semente, mesma mão; outra semente ou outro round, outra; a luta nova já vem com a mão do round 1", () => {
+    const d = C.DECK_PADRAO.counter, m1 = M.comprar(d, "s1", 1, "a");
+    if (m1.length !== 5 || JSON.stringify(M.comprar(d, "s1", 1, "a")) !== JSON.stringify(m1)) throw new Error("compra não é determinística");
+    const resto = d.slice(); for (const id of m1) { const i = resto.indexOf(id); if (i < 0) throw new Error("carta fora do deck"); resto.splice(i, 1); }
+    let mudou = 0; for (const [sem, rd] of [["s2", 1], ["s1", 2], ["s3", 1], ["s1", 3]]) if (JSON.stringify(M.comprar(d, sem, rd, "a")) !== JSON.stringify(m1)) mudou++;
+    if (mudou < 3) throw new Error("a semente quase não muda a mão");
+    const e = M.novaLuta2(neutro("counter"), neutro("striker"), "s1");
+    if (JSON.stringify(e.mao.a) !== JSON.stringify(m1) || e.mao.b.length !== 5 || e.cv !== 2 || e.tpr !== 3) throw new Error("luta nova: " + JSON.stringify(e.mao));
+    let erro = false; try { M.novaLuta2({ ...neutro(), deck: ["jab"] }, neutro(), "s"); } catch { erro = true; }
+    if (!erro) throw new Error("deck inválido entrou na luta");
+  });
+  await conf("determinismo: o mesmo estado, as mesmas cartas e a mesma semente dão o mesmo resultado; o estado recebido não muda; sem sorteio (Math.random nunca chamado)", () => {
+    const x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["contra_ataque", "jab", "antiqueda", "queda", "clinch"]);
+    const antes = JSON.stringify(x.e), rnd = Math.random; let chamou = 0;
+    Math.random = () => { chamou++; return rnd(); };
+    try {
+      const r1 = troca(x, "cruzado", "contra_ataque"), r2 = troca(x, "cruzado", "contra_ataque");
+      if (JSON.stringify(r1) !== JSON.stringify(r2)) throw new Error("mesmo pedido, outro resultado");
+    } finally { Math.random = rnd; }
+    if (JSON.stringify(x.e) !== antes) throw new Error("o estado recebido mudou");
+    if (chamou) throw new Error("Math.random chamado " + chamou + " vezes");
+  });
+  await conf("velocidade: a mais rápida resolve primeiro e, se tem dano e acerta, interrompe a mais lenta (que paga o custo e perde o efeito); o Jab que interrompe ganha 1 de energia", () => {
+    const x = luta(["jab", "bloqueio", "queda", "clinch", "antiqueda"], ["cruzado", "bloqueio", "queda", "clinch", "antiqueda"]);
+    x.e.a.energia = 5; x.e.b.energia = 5;
+    const r = troca(x, "jab", "cruzado");
+    if (r.resolucao.ordem !== "a" || r.resolucao.interrupcoes.length !== 1 || r.resolucao.interrupcoes[0].quem !== "a") throw new Error("ordem ou interrupção: " + JSON.stringify(r.resolucao));
+    if (r.estado.b.vida !== x.e.b.vida - 1 || r.estado.a.vida !== x.e.a.vida) throw new Error("dano: " + JSON.stringify([r.estado.a.vida, r.estado.b.vida]));
+    if (r.estado.a.energia !== 5 - 1 + 1 || r.estado.b.energia !== 5 - 2) throw new Error("energia: " + JSON.stringify([r.estado.a.energia, r.estado.b.energia]));
+    if (!tem(r, "interrompeu", "a")) throw new Error("sem o evento interrompeu");
+  });
+  await conf("empate de velocidade: as duas resolvem juntas (Cruzado contra Cruzado: os dois levam 3)", () => {
+    const x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "bloqueio", "queda", "clinch"]);
+    const r = troca(x, "cruzado", "cruzado");
+    if (r.resolucao.ordem !== "empate" || r.estado.a.vida !== x.e.a.vida - 3 || r.estado.b.vida !== x.e.b.vida - 3 || r.resolucao.interrupcoes.length) throw new Error(JSON.stringify(r.resolucao));
+  });
+  await conf("resistente: o Chute alto não é interrompido pelo Jab (dano base 1) e acerta depois; o Cruzado (dano 3) interrompe ele", () => {
+    const x = luta(["chute_alto", "jab", "bloqueio", "queda", "clinch"], ["jab", "cruzado", "bloqueio", "queda", "clinch"]);
+    const r = troca(x, "chute_alto", "jab");
+    if (r.resolucao.interrupcoes.length || r.estado.b.vida !== x.e.b.vida - 5 || r.estado.a.vida !== x.e.a.vida - 1 || !tem(r, "resistiu", "a")) throw new Error("jab: " + JSON.stringify(r.resolucao));
+    const r2 = troca(x, "chute_alto", "cruzado");
+    if (r2.resolucao.interrupcoes.length !== 1 || r2.estado.b.vida !== x.e.b.vida) throw new Error("cruzado: " + JSON.stringify(r2.resolucao));
+  });
+  await conf("reação (contra): o Bloqueio anula qualquer golpe em qualquer velocidade (até o Jab, mais rápido) e recupera 2 de energia; a Antiqueda anula a Queda e dá a iniciativa", () => {
+    for (const g of ["jab", "cruzado", "chute_alto"]) {
+      const x = luta(["bloqueio", "jab", "queda", "clinch", "antiqueda"], [g, "bloqueio", "queda", "clinch", "antiqueda"]);
+      x.e.a.energia = 3;
+      const r = troca(x, "bloqueio", g);
+      if (r.estado.a.vida !== x.e.a.vida || r.estado.a.energia !== 5 || !tem(r, "anulou", "a") || r.resolucao.reacoes[0].anulou !== "b") throw new Error(g + ": " + JSON.stringify(r.resolucao));
+    }
+    const x = luta(["antiqueda", "jab", "bloqueio", "clinch", "queda"], ["queda", "jab", "bloqueio", "clinch", "antiqueda"]);
+    const r = troca(x, "antiqueda", "queda");
+    if (r.estado.pos !== "pe" || r.estado.iniciativa !== "a" || r.estado.a.vida !== x.e.a.vida) throw new Error("antiqueda: " + JSON.stringify([r.estado.pos, r.estado.iniciativa]));
+  });
+  await conf("se_oponente: o Contra-ataque dobra o dano contra golpe (empata com o Cruzado: 4 contra 3), mas o Jab, mais rápido, interrompe ele; o clinch tira 2 de energia de quem jogou defesa", () => {
+    const x = luta(["contra_ataque", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "bloqueio", "queda", "clinch"]);
+    const r = troca(x, "contra_ataque", "cruzado");
+    if (r.estado.b.vida !== x.e.b.vida - 4 || r.estado.a.vida !== x.e.a.vida - 3) throw new Error("contra x cruzado: " + JSON.stringify([r.estado.a.vida, r.estado.b.vida]));
+    const r2 = troca(x, "contra_ataque", "jab");
+    if (r2.resolucao.interrupcoes.length !== 1 || r2.estado.b.vida !== x.e.b.vida) throw new Error("contra x jab");
+    const y = luta(["clinch", "jab", "bloqueio", "queda", "antiqueda"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
+    y.e.b.energia = 6;
+    const r3 = troca(y, "clinch", "bloqueio");
+    if (r3.estado.b.energia !== 4 || r3.estado.b.vida !== y.e.b.vida - 1 || tem(r3, "anulou")) throw new Error("clinch x bloqueio: " + JSON.stringify(r3.estado.b));
+  });
+  await conf("queda: contra o Bloqueio ela entra e a luta vai pro chão com quem derrubou por cima; o Jab, mais rápido, interrompe ela", () => {
+    const x = luta(["queda", "jab", "bloqueio", "clinch", "antiqueda"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
+    const r = troca(x, "queda", "bloqueio");
+    if (r.estado.pos !== "cima_a" || r.estado.nivelPos !== 0 || !tem(r, "queda", "a")) throw new Error("queda: " + r.estado.pos);
+    const r2 = troca(x, "queda", "jab");
+    if (r2.estado.pos !== "pe" || r2.resolucao.interrupcoes[0].quem !== "b") throw new Error("queda x jab: " + r2.estado.pos);
+  });
+  await conf("finta: carta de outra categoria que a postura custa 1,5 a mais (0,75 com a iniciativa); a da própria postura não custa nada", () => {
+    const base = () => luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
+    let x = base(); x.e.a.energia = 6;
+    let r = troca(x, "cruzado", "bloqueio", { a: "defesa", b: "defesa" });
+    if (r.estado.a.energia !== 6 - 2 - 1.5 || !tem(r, "finta", "a") || tem(r, "finta", "b")) throw new Error("finta: " + r.estado.a.energia);
+    x = base(); x.e.a.energia = 6; x.e.iniciativa = "a";
+    r = troca(x, "cruzado", "bloqueio", { a: "defesa", b: "defesa" });
+    if (r.estado.a.energia !== 6 - 2 - 0.75) throw new Error("finta com iniciativa: " + r.estado.a.energia);
+    x = base(); x.e.a.energia = 6;
+    r = troca(x, "cruzado", "bloqueio", { a: "golpes", b: "defesa" });
+    if (r.estado.a.energia !== 4 || tem(r, "finta")) throw new Error("sem finta: " + r.estado.a.energia);
+  });
+  await conf("sem energia: a carta sai exausta (2 mais lenta, metade do dano, sem efeitos) e a energia vai a zero; cansado (2 ou menos no começo da troca) é 1 mais lento", () => {
+    const x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "bloqueio", "queda", "clinch"]);
+    x.e.a.energia = 1;
+    const r = troca(x, "cruzado", "cruzado");
+    const ca = r.resolucao.cartas.a;
+    if (!ca.exausta || ca.vel !== 3 - 1 - 2 || r.estado.a.energia !== 0 || r.resolucao.interrupcoes[0].quem !== "b") throw new Error("exausta: " + JSON.stringify(ca));
+    const y = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "bloqueio", "queda", "clinch"]);
+    y.e.a.energia = 2;
+    const r2 = troca(y, "cruzado", "cruzado");
+    if (r2.resolucao.cartas.a.vel !== 2 || r2.resolucao.cartas.a.exausta) throw new Error("cansado: " + JSON.stringify(r2.resolucao.cartas.a));
+  });
+  await conf("atributos sem sorte: diferença de 15 no duelo dá +1 de velocidade e o dano escala pela diferença (previsível, mesma conta sempre)", () => {
+    const P = { a: neutro("wrestler", { golpe: 65 }), b: neutro("wrestler") };   // wrestler: a passiva dele não mexe em golpe
+    const x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "bloqueio", "queda", "clinch"], {}, P);
+    const r = troca(x, "cruzado", "cruzado");
+    const d = M.danoDe(x.P, "a", M.cartaEfetiva("cruzado", "pe", x.P.a), false);
+    if (Math.abs(d - 3 * 1.15) > 0.051) throw new Error("dano pelo duelo: " + d);
+    if (r.resolucao.cartas.a.vel !== 4 || r.resolucao.ordem !== "a" || Math.abs(r.estado.b.vida - (x.e.b.vida - d)) > 1e-9) throw new Error(JSON.stringify([r.resolucao.cartas.a, r.estado.b.vida]));
+  });
+  await conf("carta fora da mão vira a defesa da mão (evento semCarta); prazo perdido também, e conta a ausência; 3 seguidas: W.O.; os dois: anulada", () => {
+    const x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "antiqueda", "queda", "clinch"]);
+    const r = troca(x, "chute_alto", null);
+    if (!tem(r, "semCarta", "a") || r.resolucao.cartas.a.id !== "bloqueio" || r.resolucao.cartas.b.id !== "antiqueda" || r.estado.b.ausentesSeguidas !== 1) throw new Error(JSON.stringify(r.resolucao.cartas));
+    const y = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "antiqueda", "queda", "clinch"]);
+    y.e.b.ausentesSeguidas = 2;
+    const r2 = troca(y, "jab", null);
+    if (!r2.estado.fim || r2.estado.fim.metodo !== "WO" || r2.estado.fim.vencedor !== "a") throw new Error("WO: " + JSON.stringify(r2.estado.fim));
+    y.e.a.ausentesSeguidas = 2;
+    const r3 = troca(y, null, null);
+    if (!r3.estado.fim || r3.estado.fim.metodo !== "ANULADA") throw new Error("anulada: " + JSON.stringify(r3.estado.fim));
+  });
+  await conf("knockdown e nocaute: golpe em pé de dano 4 ou mais derruba e deixa grogue na troca seguinte (1 mais lento, +1 de dano recebido); golpe de 3 ou mais em quem está grogue é nocaute; vida zerada também", () => {
+    const x = luta(["chute_alto", "jab", "bloqueio", "queda", "clinch"], ["bloqueio", "queda", "clinch", "antiqueda", "jab"]);
+    x.e.b.energia = 0.5;   // exausta: a Antiqueda dele não reage, e o chute entra
+    let r = troca(x, "chute_alto", "antiqueda");
+    if (!tem(r, "knockdown", "a") || !r.estado.b.grogue || r.estado.b.kds !== 1) throw new Error("knockdown: " + JSON.stringify(r.estado.b));
+    const y = { e: r.estado, P: x.P }; y.e.mao.a.push("cruzado"); y.e.b.energia = 5;
+    const r2 = troca(y, "cruzado", "clinch");
+    if (!r2.estado.fim || r2.estado.fim.metodo !== "KO" || r2.estado.fim.vencedor !== "a") throw new Error("KO no grogue: " + JSON.stringify(r2.estado.fim));
+    const z = luta(["jab", "cruzado", "bloqueio", "queda", "clinch"], ["queda", "jab", "bloqueio", "clinch", "antiqueda"]);
+    z.e.b.vida = 0.5;
+    const r3 = troca(z, "jab", "queda");
+    if (!r3.estado.fim || r3.estado.fim.metodo !== "KO") throw new Error("vida zerada: " + JSON.stringify(r3.estado.fim));
+  });
+  await conf("chão: a carta da mão joga pela categoria (por cima, golpe vira Ground and pound; por baixo, defesa vira Guarda, que anula o ground and pound); Levantar, mais rápido, faz a Finalização falhar", () => {
+    const x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"], { pos: "cima_a", nivelPos: 0 });
+    const r = troca(x, "cruzado", "bloqueio");
+    if (r.resolucao.cartas.a.efetiva !== "ground_and_pound" || r.resolucao.cartas.b.efetiva !== "guarda" || r.estado.b.vida !== x.e.b.vida || !tem(r, "anulou", "b")) throw new Error(JSON.stringify(r.resolucao));
+    const r2 = troca(x, "queda", "clinch");
+    if (r2.resolucao.cartas.a.efetiva !== "finalizacao" || r2.resolucao.cartas.b.efetiva !== "levantar" || r2.estado.pos !== "pe" || !tem(r2, "falhou", "a") || r2.estado.fim) throw new Error(JSON.stringify([r2.resolucao, r2.estado.pos]));
+  });
+  await conf("finalização: na montada finaliza; na guarda encaixa; o encaixe é o 2x2 sem sorte (defender ganha de apertar, emendar ganha de defender, sair na força ganha de emendar e perde pra apertar)", () => {
+    const mao = ["queda", "clinch", "bloqueio", "jab", "cruzado"], maoB = ["jab", "bloqueio", "queda", "clinch", "antiqueda"];
+    let r = troca(luta(mao, maoB, { pos: "cima_a", nivelPos: 2 }), "queda", "jab");
+    if (r.estado.fim) throw new Error("o Golpes por baixo, mais rápido, devia interromper");
+    r = troca(luta(mao, maoB, { pos: "cima_a", nivelPos: 2 }), "queda", "bloqueio");
+    if (!r.estado.fim || r.estado.fim.metodo !== "FIN") throw new Error("montada: " + JSON.stringify(r.estado.fim));
+    r = troca(luta(mao, maoB, { pos: "cima_a", nivelPos: 0 }), "queda", "bloqueio");
+    if (r.estado.fim || !r.estado.encaixe || r.estado.encaixe.quem !== "a") throw new Error("guarda: " + JSON.stringify(r.estado.encaixe));
+    const casos = [["queda", "bloqueio", null], ["queda", "jab", "FIN"], ["clinch", "bloqueio", "FIN"], ["clinch", "jab", null]];
+    for (const [ta, tb, esperado] of casos) {
+      const y = luta(mao, maoB, { pos: "cima_a", nivelPos: 0, encaixe: { quem: "a" } });
+      const s = troca(y, ta, tb);
+      const fim = s.estado.fim ? s.estado.fim.metodo : null;
+      if (fim !== esperado || (!esperado && s.estado.encaixe)) throw new Error(`${ta} x ${tb}: ${fim}, encaixe ${JSON.stringify(s.estado.encaixe)}`);
+      if (ta === "clinch" && tb === "jab" && s.estado.pos !== "pe") throw new Error("sair na força não levantou");
+    }
+  });
+  await conf("round: depois da 3ª troca, cartão 10-9 pra quem fez mais pontos, mão nova de 5 pela semente, energia + recuperação + 1 por carta que sobrou, de volta em pé", () => {
+    let x = luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
+    let e = x.e;
+    for (const [a, b] of [["jab", "jab"], ["clinch", "clinch"], ["cruzado", "queda"]]) e = M.resolverTroca2(e, x.P, { a, b }, "t").estado;
+    if (e.round !== 2 || e.troca !== 1 || e.pos !== "pe" || e.mao.a.length !== 5 || e.cartoes.length !== 1 || e.jogadas.a.length) throw new Error(JSON.stringify({ round: e.round, mao: e.mao.a, cartoes: e.cartoes }));
+    if (JSON.stringify(e.mao.a) !== JSON.stringify(M.comprar(x.P.a.deck, "t", 2, "a"))) throw new Error("mão do round 2 fora da semente");
+    const c = e.cartoes[0]; if (c.a + c.b !== 19) throw new Error("cartão: " + JSON.stringify(c));
+  });
+  await conf("log de resolução: cartas (id, a do chão, velocidade, custo, finta, exausta), ordem, reações, interrupções, dano, energia antes e depois, posição e quem venceu a troca", () => {
+    const x = luta(["jab", "cruzado", "bloqueio", "queda", "clinch"], ["cruzado", "jab", "bloqueio", "queda", "clinch"]);
+    const r = troca(x, "jab", "cruzado").resolucao;
+    for (const k of ["cartas", "ordem", "reacoes", "interrupcoes", "dano", "energia", "posicao", "pontos", "vencedor"]) if (!(k in r)) throw new Error("sem " + k);
+    if (r.cartas.a.vel !== 5 || r.cartas.b.custo !== 2 || r.dano.a !== 1 || r.vencedor !== "a" || r.energia.a.antes !== x.e.a.energia) throw new Error(JSON.stringify(r));
+  });
+  await conf("luta inteira com cartas ao acaso: sempre termina em até 9 trocas (ou antes), vida e energia nunca negativas, método conhecido", () => {
+    const P = (s) => ({ ...A.perfilDeCombate({ estilo: s, categoria: "middleweight", build: {} }), deck: C.DECK_PADRAO[s] });
+    const al = (e, l, Ps, r) => ({ carta: e.mao[l][Math.floor(r() * e.mao[l].length)] });
+    for (let i = 0; i < 400; i++) {
+      const s1 = A.ESTILOS_IDS[i % 4], s2 = A.ESTILOS_IDS[(i >> 2) % 4];
+      const x = M.simularLuta2(P(s1), P(s2), al, al, "r" + i, M.gerador2(i + 7));
+      const f = x.estado.fim;
+      if (!f || !["KO", "TKO", "FIN", "DEC", "EMPATE"].includes(f.metodo) || x.trocas.length > 9) throw new Error("luta " + i + ": " + JSON.stringify(f) + " " + x.trocas.length);
+      for (const t of x.trocas) for (const l of ["a", "b"]) if (t.resolucao.energia[l].depois < 0) throw new Error("energia negativa");
+    }
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  combate2 ok") : vermelho(`  ${falhas.length} falha(s) no combate2`)));
+  return okTudo;
+}
 async function testarJxJMotor() {
   console.log("\n" + cinza("jxjmotor: motor do JxJ (determinismo, semente, invariantes, ausência, ciclo, balanço racional, métodos, evolução)"));
   const crypto = require("crypto");
@@ -16189,6 +16405,7 @@ try {
   else if (cmd === "jxjtemporada") ok = await testarJxJTemporada();
   else if (cmd === "jxjtelas") ok = await testarJxJTelas();
   else if (cmd === "jxjbot") ok = await testarJxJBot();
+  else if (cmd === "combate2") ok = await testarCombate2();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -16282,6 +16499,7 @@ try {
         ["jxjtemporada", () => testarJxJTemporada()],
         ["jxjtelas", () => testarJxJTelas()],
         ["jxjbot", () => testarJxJBot()],
+        ["combate2", () => testarCombate2()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],
