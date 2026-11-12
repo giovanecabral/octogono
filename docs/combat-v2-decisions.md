@@ -99,3 +99,59 @@ aqui).
 25. **Puxar guarda**, exclusiva do grappler (velocidade 4, sem dano, custo
     1): leva a luta pro chão com ele por baixo. O caminho do grappler pro
     chão é rápido, mas por baixo.
+
+## Calibragem na simulação (Fase 1)
+
+Medido com `sim/simular.mjs` (jogador atento contra atento, decks padrão).
+Cada mudança abaixo saiu de uma medida; os números de cada rodada estão
+no relatório (`sim/relatorio.md`).
+
+26. **Desempate pelos pontos.** Cartões iguais no fim: vence quem fez mais
+    pontos na luta toda; pontos iguais, empate. Sem isso, 6% de empate
+    (deck igual contra deck igual empata troca a troca); com ele, 1,6%.
+27. **Controle só com a carta resolvida.** Quem está por cima ganha o
+    ponto de controle da troca só se a carta dele resolveu. Antes, a
+    Segurar (custo 0) dava controle toda troca e quem estava por baixo
+    nunca vencia uma troca: grappler em 13,6%.
+28. **O chão virou um ciclo.** Segurar só anula o Levantar (anulava Raspar
+    e Levantar); Guarda só anula golpe (anulava golpe e Avançar); Raspar
+    velocidade 2; Levantar velocidade 4. Por cima: Segurar ganha do
+    Levantar, Ground and pound ganha do Raspar (mais rápido), Avançar e
+    Finalização ganham da Guarda. Por baixo: Golpes por baixo interrompe
+    Ground and pound, Avançar e Finalização; Raspar ganha da Segurar;
+    Levantar foge do Ground and pound, do Avançar e da Finalização.
+29. **Vida 12** (+0,2 por ponto de queixo acima de 50). Com 30, o dano
+    médio de 7 por lutador dava 85% de decisão e 9,6% de nocaute.
+30. **Finalização da meia-guarda** (`K2.finalizaNivel` 1; o grappler, da
+    guarda). Da montada, a finalização era 0,1%: o round tem 3 trocas e a
+    posição volta em pé a cada round. O encaixe quase sempre acontece na
+    última troca do round e o gongo salva; o mecanismo ficou como era.
+31. **Cartas que mudaram dos valores de partida:** Chute alto dano 5 → 4,
+    Queda velocidade 2 → 3, Antiqueda custo 1 → 0, Contra-ataque custo
+    1 → 2, Puxar guarda categoria Queda → Pressão. Motivos: deck aleatório
+    com 2 Chutes altos vencia o campo em 61%; a Queda lenta só ganhava do
+    Bloqueio e o wrestler perdia do striker em 69% a 77%; a Antiqueda era
+    escolhida 11% das vezes e saía de todo deck bom; o Contra-ataque
+    barato segurava o striker; a Antiqueda segurava o Puxar guarda e o
+    wrestler vencia o grappler em 73%.
+32. **Passivas que mudaram:** wrestler de "Queda +1 de velocidade" (com a
+    Queda em 3, ele ia a 63%) e de "Queda resistente ao Jab" pra "Queda
+    custa 1 a menos"; grappler finaliza da guarda (os outros, da
+    meia-guarda).
+33. **Limiar de velocidade dos atributos ficou em 15.** Com 20 ou 25, o
+    grappler perdia o +1 no chão e caía pra 26% a 30%.
+34. **Avançar anula o Raspar** (passar a guarda segura a raspagem). Sem
+    isso, o Raspar vencia 92% das trocas em que era jogado e ficava 17
+    pontos acima das outras cartas de baixo; Raspar custando 3 não mudava
+    nada (quem está por cima não tinha resposta).
+35. **Poder pela metade** (`K2.poderEscala` 200). Com 100, o peso-pesado
+    vencia o peso-leve em 54,5% (hoje, 49,7% a 51,7%).
+36. **Decks padrão do striker e do counter sem a segunda Antiqueda.** O
+    deck padrão do striker com 2 Antiquedas perdia pra um deck aleatório
+    sem elas (61,8% contra o campo): virou Jab, 2 Cruzados, 2 Chutes
+    altos, 2 Bloqueios, 2 Contra-ataques, clinch, Queda e mais um Jab. O do
+    counter troca uma Antiqueda por um Chute alto.
+37. **Passiva do striker: +0,25 de dano** (era 0,5). Com o deck novo e 0,5,
+    o striker ia a 57,3%: o Cruzado dele passava do dano do knockdown
+    contra quem tem pouca defesa. O dano fixo tem degrau: o knockdown é a
+    partir de 4, e um quarto de ponto muda confronto inteiro.

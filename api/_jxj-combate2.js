@@ -25,19 +25,20 @@ export const VERSAO_COMBATE = 2;
 export const FORMATO2 = { rounds: 3, trocasPorRound: 3 };
 /* Todos os números da luta (os das cartas estão em _jxj-cartas.js) */
 export const K2 = {
-  vidaBase: 30, vidaPorQueixo: 0.4,          // vida = base + (queixo - 50) x isto
+  vidaBase: 12, vidaPorQueixo: 0.2,          // vida = base + (queixo - 50) x isto (30 dava 85% de decisão: o dano médio é 7 por lutador)
   energiaBase: 10, energiaPorCardio: 0.1,    // energia máxima = base + (cardio - 50) x isto
   recuperacaoRound: 2, energiaPorSobra: 1,   // no fim do round: + recuperação + 1 por carta que sobrou na mão
   custoFinta: 1.5, fatorFintaIniciativa: 0.5,
   limiarVel: 15,       // diferença no duelo de atributos que dá +1 (ou -1) de velocidade
   escalaDano: 100,     // dano x (1 + diferença no duelo / isto)
-  poderMin: 3, poderEscala: 100,  // carta de dano base >= 3: dano x (1 + (poder - 50) / isto)
+  poderMin: 3, poderEscala: 200,  // carta de dano base >= 3: dano x (1 + (poder - 50) / isto) (com 100, o mais pesado vencia até 54,5%)
   cansado: 2,          // energia no começo da troca <= isto: -1 de velocidade
   exaustaVel: 2,       // sem energia pra pagar: -2 de velocidade e metade do dano, sem efeitos
   kdDano: 4,           // golpe em pé com dano >= isto: knockdown (fica grogue na troca seguinte)
   koGrogue: 3,         // golpe com dano >= isto em quem está grogue: nocaute
   kdsTko: 3,           // terceiro knockdown: nocaute técnico
   grogueVel: 1, grogueDano: 1,
+  finalizaNivel: 1,    // a Finalização finaliza a partir desta posição (2 montada, 1 meia-guarda, 0 guarda); abaixo, encaixa (2 dava 0,1% de finalização: o round tem 3 trocas)
   pts: { dano: 1, queda: 3, controle: 1.5, avanca: 1, inverte: 2, levanta: 1, anula: 1, interrompe: 0.5, kd: 4, ausencia: 5 },
   limite108: 12, empateRound: 0.01,
   ausenciasWO: 3,
@@ -213,7 +214,8 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
   /* fim da troca: ausência, controle, iniciativa, grogue */
   if (!e.fim) {
     for (const l of L2) if (e[l].ausentesSeguidas >= 2) { pontuar(e, outro(l), K2.pts.ausencia); ctx.ev.push({ tipo: "ausenciaPontos", quem: outro(l) }); }
-    if (e.pos !== "pe") { const t = e.pos.slice(5); pontuar(e, t, K2.pts.controle); }
+    /* controle: só pra quem está por cima e teve a carta resolvida (Guarda que anula o ground and pound tira o controle da troca) */
+    if (e.pos !== "pe") { const t = e.pos.slice(5); if (jog[t].resolveu || jog.encaixeResolvido) pontuar(e, t, K2.pts.controle); }
     const pt = e.pontos[e.round - 1], dA = (pt.a - ptsAntes.a) - (pt.b - ptsAntes.b);
     if (Math.abs(dA) > 0.01) { const v = dA > 0 ? "a" : "b"; if (e.iniciativa !== v) { e.iniciativa = v; ctx.ev.push({ tipo: "iniciativa", quem: v }); } }
   }
@@ -380,7 +382,7 @@ function aplicarAcao(e, perfis, jog, l, a, ctx) {
   if (a.inverte) { e.pos = "cima_" + l; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.inverte); ctx.ev.push({ tipo: "raspou", quem: l }); }
   if (a.levanta) { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.levanta); ctx.ev.push({ tipo: "levantou", quem: l }); }
   if (a.finaliza) {
-    const pas = PASSIVAS[perfis[l].estilo], minimo = pas && pas.finalizaNivel != null ? pas.finalizaNivel : 2;
+    const pas = PASSIVAS[perfis[l].estilo], minimo = pas && pas.finalizaNivel != null ? pas.finalizaNivel : K2.finalizaNivel;
     if (e.nivelPos >= minimo || e[o].grogue) fimDaLuta(e, ctx, l, "FIN");
     else { e.encaixe = { quem: l }; ctx.ev.push({ tipo: "encaixou", quem: l, alvo: o }); }
   }
@@ -418,7 +420,9 @@ function fecharRound2(e, perfis, semente, ctx) {
   e.cartoes.push(c);
   ctx.ev.push({ tipo: "fimRound", round: e.round, cartao: c });
   if (e.round >= FORMATO2.rounds) {
-    const ta = e.cartoes.reduce((s, x) => s + x.a, 0), tb = e.cartoes.reduce((s, x) => s + x.b, 0);
+    /* cartões iguais: desempata pelos pontos da luta toda (decisão 26); pontos iguais, empate */
+    let ta = e.cartoes.reduce((s, x) => s + x.a, 0), tb = e.cartoes.reduce((s, x) => s + x.b, 0);
+    if (ta === tb) { const p = e.pontos.reduce((s, x) => s + x.a - x.b, 0); if (Math.abs(p) > K2.empateRound) { ta += p > 0 ? 1 : 0; tb += p < 0 ? 1 : 0; } }
     e.fim = ta === tb ? { vencedor: null, metodo: "EMPATE", round: e.round, troca: e.troca } : { vencedor: ta > tb ? "a" : "b", metodo: "DEC", round: e.round, troca: e.troca };
     ctx.ev.push({ tipo: "fim", quem: e.fim.vencedor, metodo: e.fim.metodo });
     return;

@@ -30,20 +30,21 @@ export const CARTAS = {
   jab: { nome: "Jab", categoria: "golpes", vel: 5, dano: 1, custo: 1, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "se_interrompe", acao: { energia: 1 } }] },
   cruzado: { nome: "Cruzado", categoria: "golpes", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [] },
-  chute_alto: { nome: "Chute alto", categoria: "golpes", vel: 2, dano: 5, custo: 3, duelo: ["golpe", "defesa"],
+  chute_alto: { nome: "Chute alto", categoria: "golpes", vel: 2, dano: 4, custo: 3, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "resistente", acao: { ateDano: 1 } }] },
   bloqueio: { nome: "Bloqueio", categoria: "defesa", vel: 4, dano: 0, custo: 0, duelo: null,
     efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, energia: 2 } }] },
-  contra_ataque: { nome: "Contra-ataque", categoria: "defesa", vel: 3, dano: 2, custo: 1, duelo: ["golpe", "defesa"],
+  contra_ataque: { nome: "Contra-ataque", categoria: "defesa", vel: 3, dano: 2, custo: 2, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "se_oponente", condicao: { categoria: ["golpes"] }, acao: { multDano: 2 } }] },
-  queda: { nome: "Queda", categoria: "queda", vel: 2, dano: 2, custo: 2, duelo: ["queda", "defQueda"],
+  queda: { nome: "Queda", categoria: "queda", vel: 3, dano: 2, custo: 2, duelo: ["queda", "defQueda"],
     efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true } }] },
-  antiqueda: { nome: "Antiqueda", categoria: "defesa", vel: 4, dano: 0, custo: 1, duelo: ["defQueda", "queda"],
+  antiqueda: { nome: "Antiqueda", categoria: "defesa", vel: 4, dano: 0, custo: 0, duelo: ["defQueda", "queda"],
     efeitos: [{ quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true, iniciativa: true } }] },
   clinch: { nome: "Pressão (clinch)", categoria: "pressao", vel: 3, dano: 1, custo: 2, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "se_oponente", condicao: { categoria: ["defesa"] }, acao: { energiaOponente: -2 } }] },
-  /* grappler: o caminho dele pro chão é rápido, mas por baixo (decisão 13) */
-  puxar_guarda: { nome: "Puxar guarda", categoria: "queda", vel: 4, dano: 0, custo: 1, duelo: ["chao", "defChao"], estiloExclusivo: "grappler",
+  /* grappler: o caminho dele pro chão é rápido, mas por baixo (decisão 25). Categoria Pressão:
+     puxar a guarda não é queda, e a Antiqueda não segura (com Queda, o wrestler vencia o grappler em 73%) */
+  puxar_guarda: { nome: "Puxar guarda", categoria: "pressao", vel: 4, dano: 0, custo: 1, duelo: ["chao", "defChao"], estiloExclusivo: "grappler",
     efeitos: [{ quando: "se_acerta", acao: { puxaGuarda: true } }] },
 };
 for (const [id, c] of Object.entries(CARTAS)) Object.assign(c, { id, contexto: "pe" });
@@ -56,19 +57,21 @@ export const CHAO = {
       efeitos: [{ quando: "se_acerta", condicao: { nivelPos: 2 }, acao: { danoExtra: 1 } }] },
     queda: { id: "finalizacao", nome: "Finalização", vel: 2, dano: 0, custo: 2, duelo: ["chao", "defChao"],
       efeitos: [{ quando: "se_acerta", acao: { finaliza: true } }] },
+    /* só segura o Levantar (com ele parando Raspar e Levantar, por cima só segurava e ganhava no controle) */
     defesa: { id: "segurar", nome: "Segurar", vel: 4, dano: 0, custo: 0, duelo: null,
-      efeitos: [{ quando: "contra", condicao: { categoria: ["queda", "pressao"] }, acao: { anula: true, energia: 1 } }] },
+      efeitos: [{ quando: "contra", condicao: { categoria: ["pressao"] }, acao: { anula: true, energia: 1 } }] },
+    /* passar a guarda também segura a raspagem (sem isso, o Raspar vencia 92% das trocas em que era jogado) */
     pressao: { id: "avancar", nome: "Avançar", vel: 3, dano: 0, custo: 1, duelo: ["chao", "defChao"],
-      efeitos: [{ quando: "se_acerta", acao: { avanca: 1 } }] },
+      efeitos: [{ quando: "se_acerta", acao: { avanca: 1 } }, { quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true } }] },
   },
   baixo: {
     golpes: { id: "golpes_por_baixo", nome: "Golpes por baixo", vel: 4, dano: 1, custo: 1, duelo: ["chao", "defChao"],
       efeitos: [{ quando: "se_interrompe", acao: { energia: 1 } }] },
-    queda: { id: "raspar", nome: "Raspar", vel: 3, dano: 0, custo: 2, duelo: ["chao", "defChao"],
+    queda: { id: "raspar", nome: "Raspar", vel: 2, dano: 0, custo: 2, duelo: ["chao", "defChao"],
       efeitos: [{ quando: "se_acerta", acao: { inverte: true } }] },
     defesa: { id: "guarda", nome: "Guarda", vel: 4, dano: 0, custo: 0, duelo: null,
-      efeitos: [{ quando: "contra", condicao: { categoria: ["golpes", "pressao"] }, acao: { anula: true, energia: 1 } }] },
-    pressao: { id: "levantar", nome: "Levantar", vel: 3, dano: 0, custo: 2, duelo: ["defChao", "chao"],
+      efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, energia: 1 } }] },
+    pressao: { id: "levantar", nome: "Levantar", vel: 4, dano: 0, custo: 2, duelo: ["defChao", "chao"],
       efeitos: [{ quando: "se_acerta", acao: { levanta: true } }] },
   },
 };
@@ -80,12 +83,13 @@ export const CARTA_DO_CHAO = Object.fromEntries(Object.values(CHAO).flatMap((cat
    finalizaNivel: a partir de qual posição a Finalização finaliza (o
    padrão é a montada, 2). */
 export const PASSIVAS = {
-  striker: { nome: "Mãos pesadas", desc: "Golpes em pé dão 0,5 de dano a mais.",
-    mods: [{ alvo: { contexto: "pe", categoria: "golpes" }, dano: 0.5 }] },
-  wrestler: { nome: "Entrada rápida", desc: "A Queda é 1 mais rápida.",
-    mods: [{ alvo: { carta: "queda" }, vel: 1 }] },
-  grappler: { nome: "Jogo de chão", desc: "Cartas no chão custam 1 a menos, e a Finalização finaliza da meia-guarda.",
-    mods: [{ alvo: { contexto: ["cima", "baixo"] }, custo: -1 }], finalizaNivel: 1 },
+  /* 0,25: com 0,5 e o deck padrão novo, o striker ia a 57% (o Cruzado dele passava do dano do knockdown) */
+  striker: { nome: "Mãos pesadas", desc: "Golpes em pé dão 0,25 de dano a mais.",
+    mods: [{ alvo: { contexto: "pe", categoria: "golpes" }, dano: 0.25 }] },
+  wrestler: { nome: "Entrada barata", desc: "A Queda custa 1 a menos.",
+    mods: [{ alvo: { carta: "queda" }, custo: -1 }] },
+  grappler: { nome: "Jogo de chão", desc: "Cartas no chão custam 1 a menos, e a Finalização finaliza da guarda.",
+    mods: [{ alvo: { contexto: ["cima", "baixo"] }, custo: -1 }], finalizaNivel: 0 },
   counter: { nome: "Leitura", desc: "Bloqueio e Contra-ataque recuperam 1 de energia a mais quando funcionam.",
     mods: [{ alvo: { carta: "bloqueio" }, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { energia: 1 } }] },
       { alvo: { carta: "contra_ataque" }, efeitos: [{ quando: "se_acerta", acao: { energia: 1 } }] }] },
@@ -101,10 +105,12 @@ export const FIXAS = {
 };
 /* deck pronto de cada estilo (quem não quer montar e o treino guiado) */
 export const DECK_PADRAO = {
-  striker: [...FIXAS.striker, "jab", "chute_alto", "bloqueio", "bloqueio", "antiqueda", "antiqueda", "clinch", "queda"],
+  /* o do striker sem Antiqueda: com 2, um deck aleatório sem elas vencia o campo em 61,8% (simulação, 2026-11-12) */
+  striker: [...FIXAS.striker, "jab", "chute_alto", "bloqueio", "bloqueio", "contra_ataque", "contra_ataque", "clinch", "queda"],
   wrestler: [...FIXAS.wrestler, "clinch", "antiqueda", "bloqueio", "bloqueio", "jab", "jab", "cruzado", "contra_ataque"],
   grappler: [...FIXAS.grappler, "queda", "antiqueda", "bloqueio", "bloqueio", "jab", "jab", "clinch", "contra_ataque"],
-  counter: [...FIXAS.counter, "bloqueio", "antiqueda", "jab", "jab", "cruzado", "cruzado", "queda", "clinch"],
+  /* com uma Antiqueda: com duas, o counter ficava em 45% depois do striker novo */
+  counter: [...FIXAS.counter, "bloqueio", "jab", "jab", "cruzado", "cruzado", "chute_alto", "clinch", "queda"],
 };
 /* cartas que o lutador pode pôr no deck (a árvore abre mais na fase 4) */
 export const cartasLiberadas = (estilo) => Object.keys(CARTAS).filter((id) => !CARTAS[id].estiloExclusivo || CARTAS[id].estiloExclusivo === estilo);

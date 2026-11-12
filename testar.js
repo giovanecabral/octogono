@@ -12836,7 +12836,7 @@ async function testarCombate2() {
   await conf("resistente: o Chute alto não é interrompido pelo Jab (dano base 1) e acerta depois; o Cruzado (dano 3) interrompe ele", () => {
     const x = luta(["chute_alto", "jab", "bloqueio", "queda", "clinch"], ["jab", "cruzado", "bloqueio", "queda", "clinch"]);
     const r = troca(x, "chute_alto", "jab");
-    if (r.resolucao.interrupcoes.length || r.estado.b.vida !== x.e.b.vida - 5 || r.estado.a.vida !== x.e.a.vida - 1 || !tem(r, "resistiu", "a")) throw new Error("jab: " + JSON.stringify(r.resolucao));
+    if (r.resolucao.interrupcoes.length || r.estado.b.vida !== x.e.b.vida - C.CARTAS.chute_alto.dano || r.estado.a.vida !== x.e.a.vida - 1 || !tem(r, "resistiu", "a")) throw new Error("jab: " + JSON.stringify(r.resolucao));
     const r2 = troca(x, "chute_alto", "cruzado");
     if (r2.resolucao.interrupcoes.length !== 1 || r2.estado.b.vida !== x.e.b.vida) throw new Error("cruzado: " + JSON.stringify(r2.resolucao));
   });
@@ -12862,12 +12862,16 @@ async function testarCombate2() {
     const r3 = troca(y, "clinch", "bloqueio");
     if (r3.estado.b.energia !== 4 || r3.estado.b.vida !== y.e.b.vida - 1 || tem(r3, "anulou")) throw new Error("clinch x bloqueio: " + JSON.stringify(r3.estado.b));
   });
-  await conf("queda: contra o Bloqueio ela entra e a luta vai pro chão com quem derrubou por cima; o Jab, mais rápido, interrompe ela", () => {
-    const x = luta(["queda", "jab", "bloqueio", "clinch", "antiqueda"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
+  await conf("queda: contra o Bloqueio ela entra e a luta vai pro chão com quem derrubou por cima; o Jab, mais rápido, interrompe ela; a do wrestler (passiva) custa 1 a menos", () => {
+    const P = { a: neutro("counter"), b: neutro("counter") };   // counter: a passiva dele não mexe na Queda
+    const x = luta(["queda", "jab", "bloqueio", "clinch", "antiqueda"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"], {}, P);
     const r = troca(x, "queda", "bloqueio");
     if (r.estado.pos !== "cima_a" || r.estado.nivelPos !== 0 || !tem(r, "queda", "a")) throw new Error("queda: " + r.estado.pos);
     const r2 = troca(x, "queda", "jab");
     if (r2.estado.pos !== "pe" || r2.resolucao.interrupcoes[0].quem !== "b") throw new Error("queda x jab: " + r2.estado.pos);
+    const w = luta(["queda", "jab", "bloqueio", "clinch", "antiqueda"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
+    const r3 = troca(w, "queda", "bloqueio");
+    if (r3.resolucao.cartas.a.custo !== C.CARTAS.queda.custo - 1 || r3.estado.pos !== "cima_a") throw new Error("queda do wrestler: " + JSON.stringify(r3.resolucao.cartas.a));
   });
   await conf("finta: carta de outra categoria que a postura custa 1,5 a mais (0,75 com a iniciativa); a da própria postura não custa nada", () => {
     const base = () => luta(["cruzado", "jab", "bloqueio", "queda", "clinch"], ["bloqueio", "jab", "queda", "clinch", "antiqueda"]);
@@ -12931,6 +12935,11 @@ async function testarCombate2() {
     if (r.resolucao.cartas.a.efetiva !== "ground_and_pound" || r.resolucao.cartas.b.efetiva !== "guarda" || r.estado.b.vida !== x.e.b.vida || !tem(r, "anulou", "b")) throw new Error(JSON.stringify(r.resolucao));
     const r2 = troca(x, "queda", "clinch");
     if (r2.resolucao.cartas.a.efetiva !== "finalizacao" || r2.resolucao.cartas.b.efetiva !== "levantar" || r2.estado.pos !== "pe" || !tem(r2, "falhou", "a") || r2.estado.fim) throw new Error(JSON.stringify([r2.resolucao, r2.estado.pos]));
+    /* Avançar segura a raspagem; Segurar não */
+    const r3 = troca(x, "clinch", "queda");
+    if (r3.resolucao.cartas.b.efetiva !== "raspar" || r3.estado.pos !== "cima_a" || !tem(r3, "anulou", "a")) throw new Error("avançar x raspar: " + JSON.stringify([r3.estado.pos, r3.resolucao.reacoes]));
+    const r4 = troca(x, "bloqueio", "queda");
+    if (r4.resolucao.cartas.a.efetiva !== "segurar" || r4.estado.pos !== "cima_b") throw new Error("segurar x raspar: " + r4.estado.pos);
   });
   await conf("finalização: na montada finaliza; na guarda encaixa; o encaixe é o 2x2 sem sorte (defender ganha de apertar, emendar ganha de defender, sair na força ganha de emendar e perde pra apertar)", () => {
     const mao = ["queda", "clinch", "bloqueio", "jab", "cruzado"], maoB = ["jab", "bloqueio", "queda", "clinch", "antiqueda"];
