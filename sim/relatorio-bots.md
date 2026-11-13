@@ -9,20 +9,20 @@ Força = o rating com que o bot entra no Glicko (o jogador modelo vale 1500). Na
 
 | Jeito | Habilidade 0 | Habilidade 0,5 | Habilidade 1 |
 |---|---|---|---|
-| o Provocador | 67.6%, 1373 (1400) | 61.2%, 1421 (1420) | 61.7%, 1417 (1440) |
-| o Paciente | 73.5%, 1322 (1400) | 61.1%, 1422 (1420) | 56.1%, 1458 (1440) |
-| o Observador | 67.6%, 1372 (1400) | 56.1%, 1458 (1420) | 49.7%, 1502 (1440) |
-| o Inquieto | 72.8%, 1329 (1400) | 64.2%, 1399 (1420) | 61.2%, 1421 (1440) |
+| o Provocador | 68.8%, 1363 (1373) | 61.8%, 1416 (1421) | 60.1%, 1429 (1417) |
+| o Paciente | 73.0%, 1327 (1322) | 61.2%, 1421 (1422) | 55.4%, 1462 (1458) |
+| o Observador | 66.4%, 1381 (1372) | 55.4%, 1462 (1458) | 50.0%, 1500 (1502) |
+| o Inquieto | 73.6%, 1322 (1329) | 64.7%, 1394 (1399) | 60.9%, 1423 (1421) |
 
 Por nível (habilidade 0,5, força):
 
 | Jeito | Nível 1 | Nível 10 | Nível 30 |
 |---|---|---|---|
-| o Provocador | 1413 | 1407 | 1442 |
-| o Paciente | 1406 | 1415 | 1443 |
-| o Observador | 1460 | 1458 | 1455 |
-| o Inquieto | 1409 | 1396 | 1391 |
+| o Provocador | 1400 | 1401 | 1447 |
+| o Paciente | 1415 | 1411 | 1437 |
+| o Observador | 1468 | 1461 | 1459 |
+| o Inquieto | 1401 | 1392 | 1390 |
 
-FORCA_BOT2 medida: {"agressivo":[1373,1421,1417],"defensivo":[1322,1422,1458],"leitor":[1372,1458,1502],"caotico":[1329,1399,1421]}
+FORCA_BOT2 medida: {"agressivo":[1363,1416,1429],"defensivo":[1327,1421,1462],"leitor":[1381,1462,1500],"caotico":[1322,1394,1423]}
 
-Tempo: 424 s.
+Tempo: 362 s.

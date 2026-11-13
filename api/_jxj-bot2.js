@@ -71,12 +71,13 @@ export const politica2 = (s) => ({ erro: AJUSTE2.erroS0 * (1 - clamp(Number(s) |
    de rating R joga como alguém de rating R; quem vence o bot não ganha
    rating de graça. Mexeu no jeito, na leitura, no motor ou no AJUSTE2:
    medir de novo e copiar aqui. O Provocador quase não cresce da metade pra
-   cima (a inclinação pouco mexe em quem golpeia quase sempre). */
+   cima (a inclinação pouco mexe em quem golpeia quase sempre); o Observador
+   forte joga como o "atenta". */
 export const FORCA_BOT2 = {
-  agressivo: [1373, 1421, 1417],
-  defensivo: [1322, 1422, 1458],
-  leitor: [1372, 1458, 1502],
-  caotico: [1329, 1399, 1421],
+  agressivo: [1363, 1416, 1429],
+  defensivo: [1327, 1421, 1462],
+  leitor: [1381, 1462, 1500],
+  caotico: [1322, 1394, 1423],
 };
 export function forcaDoBot2(pers, s) {
   const f = FORCA_BOT2[pers];
