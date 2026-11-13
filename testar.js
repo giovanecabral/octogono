@@ -13368,6 +13368,18 @@ async function testarJxJV2() {
       if (/[–—←-⇿]/.test(c.efeito)) throw new Error("travessão ou seta: " + c.efeito);
     }
   });
+  await conf("carta v2 (jxjCarta2): custo, velocidade com a diferença do duelo, dano e o efeito; raridade e arte opcionais (sem elas, nada a mais; raridade fora da lista é ignorada); nome e arte escapados", () => {
+    const jab = defs.cartas.jab;
+    const h = noJogo("jxjCarta2", jab, { vel: 4, velBase: 5, dano: 1.25 });
+    if (!/aria-label="velocidade 4"/.test(h) || !/<b>4<i class="menos">-1<\/i><\/b>/.test(h) || !h.includes("<b>1,25</b>") || !h.includes(">1</span></span>")) throw new Error("números: " + h);
+    if (!h.includes("Se interrompe: recupera 1 de energia.")) throw new Error("efeito: " + h);
+    if (/rar-|<img/.test(h)) throw new Error("raridade ou arte sem pedir");
+    const com = noJogo("jxjCarta2", { ...jab, raridade: "lendaria", arte: "img/cartas/jab.webp" });
+    if (!/class="[^"]*\brar-lendaria\b/.test(com) || !com.includes('<img class="jxj-c2-img" src="img/cartas/jab.webp" alt="">')) throw new Error("raridade e arte: " + com);
+    if (/rar-/.test(noJogo("jxjCarta2", { ...jab, raridade: "mitica" }))) throw new Error("raridade fora da lista entrou");
+    const mau = noJogo("jxjCarta2", { ...jab, nome: MAU, arte: '"><img src=x onerror=alert(1)>' });
+    if (/<img src=x|onerror=alert\(1\)>/.test(mau.replace(/&[a-z#0-9]+;/g, "_"))) throw new Error("HTML cru: " + mau);
+  });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
   return okTudo;
@@ -14843,6 +14855,117 @@ async function testarJxJTelas() {
       await no.onclick(); await assentar(10);
       const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
       if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
+    });
+    /* combate v2 (2026-11-13, Fase 6): a aba Deck e a linha "Com cartas" da árvore, só com a flag */
+    const CT2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+    const flagV2T = (v) => db.query("update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", [JSON.stringify(v)]);
+    const guiasDe = (nos) => nos.filter((n) => tem(n, "guia")).map((n) => n.dataset.aba);
+    const slotsDe = (nos, cls) => nos.filter((n) => tem(n, "jxj-deck-slot") && (!cls || tem(n, cls)));
+    const deckDoServidor = async () => (await api(u1, "estado")).lutadores.find((x) => x.id === l1);
+    /* o último desenho da aba: as duas grades (seu deck e as liberadas) e os botões de cada carta */
+    const grades = () => { const g = env.todos.filter((n) => tem(n, "jxj-deck-cartas")); return { meu: g[g.length - 2], lib: g[g.length - 1] }; };
+    const botaoCarta = (grade, cls, id) => grade.children.flatMap((s) => s.children || []).filter((b) => tem(b, cls) && b.dataset.carta === id).pop();
+    await conf("combate v2 desligado: sem a aba Deck (o endereço da aba cai em Atributos) e a árvore sem a linha Com cartas", async () => {
+      await flagV2T(false);
+      let m = await abrir(`lutador/${l1}/deck`);
+      if (guiasDe(desde(m)).includes("deck")) throw new Error("aba Deck sem a flag: " + guiasDe(desde(m)));
+      if (slotsDe(desde(m)).length) throw new Error("a tela do deck abriu sem a flag");
+      m = await abrir(`lutador/${l1}/arvore`);
+      const h = htmlDe(desde(m));
+      if (h.includes("jxj-no-v2") || h.includes("Com cartas") || desde(m).some((n) => tem(n, "jxj-arvore-aviso2"))) throw new Error("árvore com a linha do combate novo sem a flag");
+    });
+    await conf("combate v2, aba Deck: entre Árvore e Histórico; o padrão com as 4 fixas travadas e os 4 selos ok; tirar acende o selo e o espaço que falta; pôr volta a 12; Desfazer volta; Salvar grava no servidor", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]);
+        const m = await abrir(`lutador/${l1}/deck`);
+        const g = guiasDe(desde(m)).slice(-6);   // o último desenho das guias
+        if (g.join(",") !== "perfil,arvore,deck,historico,aparencia,gerenciar") throw new Error("abas: " + g);
+        /* com as 12, nenhuma carta entra (Pôr desligado) */
+        const pores = grades().lib.children.flatMap((sl) => sl.children || []).filter((n) => tem(n, "jxj-deck-por"));
+        if (!pores.length || pores.some((n) => !n.disabled)) throw new Error("Pôr ligado com o deck cheio");
+        const cheios = grades().meu.children.filter((n) => !tem(n, "vazio"));
+        if (cheios.length !== 12 || cheios.filter((n) => tem(n, "fixa")).length !== 4) throw new Error(`slots do deck: ${cheios.length}, fixas ${cheios.filter((n) => tem(n, "fixa")).length}`);
+        if (cheios.filter((n) => tem(n, "fixa")).some((n) => n.children.some((x) => tem(x, "jxj-deck-tirar")))) throw new Error("fixa com botão de tirar");
+        const regras = () => desde(m).filter((n) => tem(n, "jxj-deck-regras")).pop().innerHTML;
+        if ((regras().match(/class="ok"/g) || []).length !== 4) throw new Error("selos do padrão: " + regras());
+        const salvar = () => botao(desde(m), "Salvar deck"), desfazer = () => botao(desde(m), "Desfazer");
+        if (!salvar().disabled || !desfazer().disabled) throw new Error("Salvar ou Desfazer ligado sem mudança");
+        /* tira um Bloqueio (o striker padrão tem 2, nenhum fixo) */
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "bloqueio").onclick(); await assentar(5);
+        if (!/class="falta"[^]*11 de 12 cartas/.test(regras())) throw new Error("selo das 12 cartas não acendeu: " + regras());
+        const vazio = grades().meu.children.filter((n) => tem(n, "vazio"));
+        if (vazio.length !== 1 || !htmlDe(vazio).includes("1 carta")) throw new Error("sem o espaço que falta");
+        if (!salvar().disabled) throw new Error("Salvar ligado com 11 cartas");
+        /* põe uma Antiqueda: 12 de novo, com defesa 2 */
+        const por = botaoCarta(grades().lib, "jxj-deck-por", "antiqueda");
+        if (!por || por.disabled) throw new Error("Pôr Antiqueda ausente ou desligado");
+        await por.onclick(); await assentar(5);
+        if ((regras().match(/class="ok"/g) || []).length !== 4 || salvar().disabled) throw new Error("depois de pôr: " + regras());
+        await desfazer().onclick(); await assentar(5);
+        if (!salvar().disabled) throw new Error("Desfazer não voltou ao salvo");
+        /* de novo, e salva */
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "bloqueio").onclick(); await assentar(5);
+        await botaoCarta(grades().lib, "jxj-deck-por", "antiqueda").onclick(); await assentar(5);
+        await salvar().onclick(); await assentar();
+        const L = await deckDoServidor();
+        const esperado = CT2.DECK_PADRAO.striker.slice(); esperado.splice(esperado.indexOf("bloqueio"), 1); esperado.push("antiqueda");
+        if (!L.deckMontado || JSON.stringify(L.deck) !== JSON.stringify(esperado)) throw new Error("deck no servidor: " + JSON.stringify(L.deck));
+      } finally { await flagV2T(false); }
+    });
+    await conf("combate v2, aba Deck: a carta da árvore sem o nó vem travada com o nó que libera; o erro do servidor aparece na linha vermelha; Usar o deck padrão volta pro padrão no servidor", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]);
+        let m = await abrir(`lutador/${l1}/deck`);
+        const trav = grades().lib.children.filter((n) => tem(n, "travada") && String(n.innerHTML).includes('data-carta="combinacao"'));
+        if (trav.length !== 1 || !/Libera no nó Combinações \(Boxe\)/.test(trav[0].innerHTML)) throw new Error("carta travada: " + htmlDe(slotsDe(desde(m), "travada")).slice(0, 200));
+        if (botaoCarta(grades().lib, "jxj-deck-por", "combinacao")) throw new Error("carta travada com Pôr");
+        if (htmlDe(desde(m)).includes('data-carta="esquiva"') || htmlDe(desde(m)).includes('data-carta="puxar_guarda"')) throw new Error("carta de outro estilo na tela do striker");
+        /* com o nó, a Combinação entra; o servidor perde o nó antes de salvar: recusa e a tela mostra */
+        await db.query("update jxj_lutadores set build = $1::jsonb where id = $2", [JSON.stringify({ precisao_maos: 2, combinacoes: 1 }), l1]);
+        m = await abrir(`lutador/${l1}/deck`);
+        if (grades().lib.children.some((n) => tem(n, "travada") && String(n.innerHTML).includes('data-carta="combinacao"'))) throw new Error("Combinação travada com o nó");
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "contra_ataque").onclick(); await assentar(5);
+        await botaoCarta(grades().lib, "jxj-deck-por", "combinacao").onclick(); await assentar(5);
+        await db.query("update jxj_lutadores set build = '{}'::jsonb where id = $1", [l1]);
+        await botao(desde(m), "Salvar deck").onclick(); await assentar();
+        const erro = desde(m).filter((n) => tem(n, "jxj-erro") && !n.hidden).pop();
+        if (!erro || !/recusou o deck: .*Combinação não está liberada/.test(erro.textContent)) throw new Error("erro do servidor: " + (erro && erro.textContent));
+        /* Usar o deck padrão: o servidor volta pro padrão */
+        const montado = CT2.DECK_PADRAO.striker.slice(); montado[montado.lastIndexOf("contra_ataque")] = "antiqueda";
+        await db.query("update jxj_lutadores set deck = $1::jsonb where id = $2", [JSON.stringify(montado), l1]);
+        m = await abrir(`lutador/${l1}/deck`);
+        const usar = botao(desde(m), "Usar o deck padrão");
+        if (!usar || usar.disabled) throw new Error("Usar o deck padrão desligado com deck montado");
+        await usar.onclick(); await assentar();
+        const L = await deckDoServidor();
+        if (L.deckMontado || JSON.stringify(L.deck) !== JSON.stringify(CT2.DECK_PADRAO.striker)) throw new Error("não voltou pro padrão: " + JSON.stringify(L.deck));
+      } finally { await flagV2T(false); await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]); }
+    });
+    await conf("combate v2, árvore: cada nó com a linha Com cartas (o texto do combate novo), o aviso do atributo, e o nó que libera carta mostra a carta no detalhe; a tela do deck e da árvore sem lixo", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        const def = await api(u1, "definicoes");
+        let m = await abrir(`lutador/${l1}/arvore`);
+        const nos = desde(m).filter((n) => tem(n, "jxj-no"));
+        const ultimoNo = (nome) => nos.filter((n) => String(n.innerHTML).includes(`<b>${nome}</b>`)).pop();   // do último desenho
+        const prec = ultimoNo("Precisão");
+        const txt = def.combate2.arvore.precisao_maos.join(" ");
+        if (!prec || !String(prec.innerHTML).includes(`<em>Com cartas</em>${txt.replace(/'/g, "&#39;")}`)) throw new Error("linha do nó: " + (prec && prec.innerHTML));
+        if (nos.some((n) => !String(n.innerHTML).includes("jxj-no-v2"))) throw new Error("nó sem a linha");
+        if (!desde(m).some((n) => tem(n, "jxj-arvore-aviso2"))) throw new Error("sem o aviso do atributo");
+        semLixoV3T(htmlDe(desde(m)), "árvore v2");
+        const comb = ultimoNo("Combinações");
+        await comb.onclick(); await assentar(10);
+        const det = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
+        if (!det.includes("jxj-no-v2-detalhe com-carta") || !det.includes('data-carta="combinacao"') || !det.includes("aparece na aba Deck")) throw new Error("detalhe: " + det.replace(/\s+/g, " ").slice(0, 300));
+        await ultimoNo("Precisão").onclick(); await assentar(10);
+        const det2 = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
+        if (!det2.includes("jxj-no-v2-detalhe") || det2.includes("com-carta")) throw new Error("detalhe sem carta: " + det2.replace(/\s+/g, " ").slice(-300));
+        m = await abrir(`lutador/${l1}/deck`);
+        semLixoV3T(htmlDe(desde(m)), "aba Deck");
+      } finally { await flagV2T(false); }
     });
     await conf("treino, o roteiro (2026-10-28; round de 3 trocas desde 2026-11-10): a mão do estilo; nas 3 guiadas só a carta certa joga; a lição 3 cobra a finta pela metade (iniciativa) e derruba; a troca 3 fecha o round 1 com o cartão; a 4 começa em pé, com a mão cheia e sem iniciativa; a vista passa pela tela sem lixo e diz 3 trocas por round", async () => {
       await vm.runInContext("jxjDef()", env.sandbox);
