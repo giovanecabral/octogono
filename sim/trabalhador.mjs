@@ -6,6 +6,8 @@ import * as M from "../api/_jxj-combate2.js";
 import * as C from "../api/_jxj-cartas.js";
 import { perfilLuta2 } from "../api/_jxj-luta2.js";
 import { aleatoria, atenta, oraculo } from "./politicas.mjs";
+import * as B2 from "../api/_jxj-bot2.js";
+import { custoFinta } from "../api/_jxj-luta2.js";
 
 import { aplicarAjuste } from "./ajuste.mjs";
 aplicarAjuste(workerData && workerData.ajuste);
@@ -78,7 +80,45 @@ function lote(job) {
   return out;
 }
 
+/* Fase 5: o jogador modelo (atenta, lado X) contra o bot do servidor (lado Y, job.bot =
+   {pers, s}), pelo caminho do servidor: os dois mostram postura antes (o bot pela
+   semente; o jogador mostra a categoria da carta e, ISCA_MODELO das vezes, outra, se
+   tiver energia pra fintar), e o bot joga cego, com as trocas no formato do banco */
+const ISCA_MODELO = 0.3;
+function loteBot(job) {
+  const out = { vA: 0, vB: 0, emp: 0, met: {}, trocas: 0, lutas: 0, empatesVel: 0, interrupcoes: 0, anuladas: 0, encaixes: 0, trocasTotal: 0, cartas: {} };
+  for (let i = 0; i < job.n; i++) {
+    const inv = i % 2 === 1, semente = `${job.sal}:${i}`, r = gerador(job.semente0 + i * 7919);
+    const eu = inv ? "b" : "a", ele = inv ? "a" : "b";
+    const P = { [eu]: perfil(job.sA, job.catA, job.deckA, job.buildA), [ele]: perfil(job.sB, job.catB, job.deckB, job.buildB) };
+    const perfis = { a: P.a, b: P.b }, pol = atenta("aval");
+    /* a roda do Inquieto: uma ordem das 4 categorias por luta */
+    const rr = gerador(job.semente0 + i * 104729 + 1), roda = [...C.CATEGORIAS_CARTA];
+    for (let k = roda.length - 1; k > 0; k--) { const j = Math.floor(rr() * (k + 1)); [roda[k], roda[j]] = [roda[j], roda[k]]; }
+    const dados = { v: B2.VERSAO_BOT2, s: job.bot.s, pers: job.bot.pers, estilo: job.sB, roda };
+    let e = M.novaLuta2(perfis.a, perfis.b, semente), n = 0;
+    const trocas = [];
+    while (!e.fim && n++ < 40) {
+      const carta = pol(e, eu, perfis, r).carta, c = C.CARTAS[carta].categoria;
+      const outras = [...new Set(e.mao[eu].map((id) => C.CARTAS[id].categoria))].filter((x) => x !== c);
+      const isca = outras.length && e[eu].energia >= custoFinta(e, eu, perfis[eu]) + C.CARTAS[carta].custo && r() < ISCA_MODELO;
+      const sinais = { [eu]: isca ? outras[Math.floor(r() * outras.length)] : c,
+        [ele]: B2.sinalDoBot2({ estado: e, semente, trocas, dados, perfis, lado: ele }) };
+      const cb = B2.cartaDoBot2({ estado: e, semente, trocas, dados, perfis, lado: ele, sinais });
+      const res = M.resolverTroca2(e, perfis, { [eu]: carta, [ele]: cb, sinais }, semente);
+      trocas.push({ round: e.round, troca: e.troca, acao_a: res.resolucao.cartas.a.id, acao_b: res.resolucao.cartas.b.id, eventos: [{ tipo: "resolucao", ...res.resolucao }, ...res.eventos] });
+      e = res.estado;
+    }
+    const f = e.fim;
+    out.lutas++;
+    out.trocas += (f.round - 1) * 3 + f.troca;
+    out.met[f.metodo] = (out.met[f.metodo] || 0) + 1;
+    if (f.vencedor === eu) out.vA++; else if (f.vencedor === ele) out.vB++; else out.emp++;
+  }
+  return out;
+}
+
 parentPort.on("message", (job) => {
   if (job === "fim") return process.exit(0);
-  parentPort.postMessage({ id: job.id, out: lote(job) });
+  parentPort.postMessage({ id: job.id, out: job.bot ? loteBot(job) : lote(job) });
 });
