@@ -8505,8 +8505,10 @@ async function jxjTelaLutador(param){
   area.appendChild(cab);
   const corpo=el("div","jxj-aba");
   const abas=[["perfil","Atributos","grafico"],["arvore","Árvore","arvore"],["historico","Histórico","historico"],["aparencia","Aparência","camera"],["gerenciar","Gerenciar","engrenagem"]];
+  /* combate v2: a aba do deck, só pra conta que joga o combate novo */
+  if(est.combateV2&&def.combate2)abas.splice(2,0,["deck","Deck","cards"]);
   const abrir=id=>{ try{ history.replaceState(null,"","#/jxj/lutador/"+l.id+"/"+id); }catch(e){}
-    corpo.innerHTML=""; ({perfil:jxjAbaPerfil,arvore:jxjAbaArvore,historico:jxjAbaHistorico,aparencia:jxjAbaAparencia,gerenciar:jxjAbaGerenciar})[id](corpo,def,est,l); };
+    corpo.innerHTML=""; ({perfil:jxjAbaPerfil,arvore:jxjAbaArvore,deck:jxjAbaDeck,historico:jxjAbaHistorico,aparencia:jxjAbaAparencia,gerenciar:jxjAbaGerenciar})[id](corpo,def,est,l); };
   const atual=abas.some(a=>a[0]===abaIni)?abaIni:"perfil";
   area.append(montarGuias(abas,atual,abrir),corpo);
   abrir(atual);
@@ -8534,6 +8536,10 @@ function jxjAbaArvore(c,def,est,l){
   let build={...(l.build||{})},rev=l.buildRev;
   const salvo=JSON.stringify(build);
   const NOS=jxjNos(def),A=def.arvore;
+  /* combate v2: o que cada nó dá no combate novo (o atributo dele vale só no de antes) */
+  const v2=est.combateV2&&def.combate2?def.combate2:null;
+  const v2Txt=id=>v2&&v2.arvore&&v2.arvore[id]?v2.arvore[id].join(" "):"";
+  const v2Carta=id=>v2?Object.values(v2.cartas).find(x=>x.desbloqueio===id)||null:null;
   const topo=el("div","jxj-arvore-topo"),msg=el("p","jxj-erro"),corpo=el("div","jxj-arvore");
   msg.hidden=true;
   const salvar=el("button","botao",`${ICONE("check")}<span>Salvar árvore</span>`); salvar.type="button";
@@ -8565,7 +8571,8 @@ function jxjAbaArvore(c,def,est,l){
           const aberto=antes>=A.pedidoPorTier[i];
           const teste={...build,[no.id]:nv+1},pode=nv<A.nivelMaxNo&&jxjValidar(def,l.estilo,teste,l.nivel).ok;
           const b=el("button","jxj-no"+(nv?" ativo":"")+(aberto?"":" travado")+(escolhido===no.id?" on":""),
-            `${aberto?"":ICONE("cadeado")}<b>${no.nome}</b>${jxjPips(nv,A.nivelMaxNo)}<small>${custo} ${custo>1?"pontos":"ponto"} por nível${aberto?"":` · pede ${A.pedidoPorTier[i]} no ramo`}</small>`);
+            `${aberto?"":ICONE("cadeado")}<b>${no.nome}</b>${jxjPips(nv,A.nivelMaxNo)}<small>${custo} ${custo>1?"pontos":"ponto"} por nível${aberto?"":` · pede ${A.pedidoPorTier[i]} no ramo`}</small>`
+            +(v2Txt(no.id)?`<span class="jxj-no-v2"><em>Com cartas</em>${jxjEsc(v2Txt(no.id))}</span>`:""));
           b.type="button"; if(b.setAttribute)b.setAttribute("aria-label",`${no.nome}, nível ${nv} de ${A.nivelMaxNo}`);
           b.onclick=()=>{ SOM.toque(); escolhido=no.id; mostrar(NOS[no.id],pode,nv); desenhar();
             /* o detalhe fica depois da árvore: no celular, fora da tela sem isto */
@@ -8577,6 +8584,7 @@ function jxjAbaArvore(c,def,est,l){
       return lin;
     };
     corpo.appendChild(el("h3","jxj-subtitulo",`Árvore de ${jxjEstilo(l.estilo)}`));
+    if(v2)corpo.appendChild(el("p","jxj-arvore-aviso2",`${ICONE("info")}<span>No Online com cartas, cada nó vale pelo que está em "Com cartas". O atributo que ele dá continua só no combate de antes.</span>`));
     corpo.appendChild(blocoRamos(l.estilo,false));
     const hib=el("details","jxj-hibrido");
     hib.appendChild(el("summary","",`Habilidades de outros estilos (custam ${A.custoHibrido} pontos por nível, só os ${A.tiersHibridos} primeiros nós de cada ramo)`));
@@ -8591,7 +8599,8 @@ function jxjAbaArvore(c,def,est,l){
     detalhe.hidden=false;
     detalhe.innerHTML=`<p class="jxj-rotulo">${jxjEsc(def.ramos[no.ramo].nome)} · nó ${no.tier}</p><h3 class="jxj-subtitulo">${no.nome}</h3>
       <p>${no.desc}</p><ul class="jxj-lista-simples">${no.efeitos.map(e=>`<li>${jxjTxtEfeito(def,e)}</li>`).join("")}</ul>
-      <p class="jxj-nota">Somar habilidades no mesmo atributo ou efeito rende cada vez menos: atributo tem teto suave de ${A.tetoBonus} pontos e cada efeito tem o teto dele.</p>`;
+      <p class="jxj-nota">Somar habilidades no mesmo atributo ou efeito rende cada vez menos: atributo tem teto suave de ${A.tetoBonus} pontos e cada efeito tem o teto dele.</p>`
+      +(v2Txt(no.id)?jxjNoV2Detalhe(v2Txt(no.id),v2Carta(no.id)):"");
     const linha=el("div","jxj-acoes");
     const mais=el("button","botao",`${ICONE("mais")}<span>Somar 1 nível</span>`); mais.type="button"; mais.disabled=!pode;
     mais.onclick=()=>{ SOM.toque(); build={...build,[no.id]:(build[no.id]||0)+1}; desenhar(); mostrar(no,jxjValidar(def,l.estilo,{...build,[no.id]:build[no.id]+1},l.nivel).ok&&build[no.id]<A.nivelMaxNo,build[no.id]); };
@@ -8617,6 +8626,117 @@ function jxjAbaArvore(c,def,est,l){
       try{ await jxj("respec",{lutadorId:l.id,rev}); irPara("jxj","lutador/"+l.id+"/arvore",{substituir:true}); }
       catch(e){ conf.querySelector("p").textContent=e.erro; sim.disabled=false; } };
     conf.append(sim,nao); topo.after(conf);
+  };
+  desenhar();
+}
+/* combate v2: o detalhe do nó com o que ele dá no combate novo; o nó que libera
+   carta mostra a carta (layout aprovado, 2026-11-13) */
+const JXJ_CAT2_NOME={golpes:"Golpe",queda:"Queda",defesa:"Defesa",pressao:"Pressão"};
+function jxjNoV2Detalhe(txt,carta){
+  const nota=carta?`<p class="jxj-nota">${JXJ_CAT2_NOME[carta.categoria]||carta.categoria} de velocidade ${carta.vel} e dano ${jxjNum2(carta.dano)}.${carta.estiloExclusivo?` Só o ${jxjEsc(jxjEstilo(carta.estiloExclusivo))} usa.`:""} Depois de liberar, ela aparece na aba Deck.</p>`:"";
+  return `<div class="jxj-no-v2-detalhe${carta?" com-carta":""}">${carta?jxjCarta2(carta,{w:96}):""}<div><p class="jxj-rotulo">Com cartas</p><p>${jxjEsc(txt)}</p>${nota}</div></div>`;
+}
+/* ---------- combate v2: aba Deck (2026-11-13, layout aprovado pelo dono) ----------
+   12 cartas: as fixas do estilo (travadas) e as escolhidas entre as liberadas. A tela
+   só monta e mostra as regras; quem valida e grava é o servidor (ação deck). */
+/* as cartas que o lutador pode pôr no deck (a mesma conta de cartasLiberadas no servidor) */
+const jxjLiberadas2=(d,estilo,build)=>Object.values(d.cartas).filter(c=>(!c.estiloExclusivo||c.estiloExclusivo===estilo)
+  &&(!c.desbloqueio||Number((build||{})[c.desbloqueio])>=1)).map(c=>c.id);
+/* os selos das regras do deck: [{ok, txt}] */
+function jxjRegrasDeck2(d,deck){
+  const R=d.deck,conta={},cat={};
+  for(const id of deck){ conta[id]=(conta[id]||0)+1; const k=(d.cartas[id]||{}).categoria; if(k)cat[k]=(cat[k]||0)+1; }
+  const faltam=JXJ_FAMILIAS.filter(k=>!cat[k]).map(k=>JXJ_CAT2_NOME[k]);
+  return [
+    {ok:deck.length===R.tamanho,txt:deck.length===R.tamanho?`${R.tamanho} cartas`:`${deck.length} de ${R.tamanho} cartas`},
+    {ok:(cat.defesa||0)>=R.minDefesa,txt:`Defesa: ${cat.defesa||0} (mínimo ${R.minDefesa})`},
+    {ok:!faltam.length,txt:faltam.length?`Falta ${faltam.join(", ")}`:"Golpe, Queda, Defesa e Pressão"},
+    {ok:Object.values(conta).every(n=>n<=R.copias),txt:`Até ${R.copias} de cada`},
+  ];
+}
+/* quais posições do deck são as fixas do estilo (as primeiras cópias de cada fixa) */
+function jxjFixasNoDeck2(d,estilo,deck){
+  const resto=[...(d.fixas[estilo]||[])];
+  return deck.map(id=>{ const i=resto.indexOf(id); if(i<0)return false; resto.splice(i,1); return true; });
+}
+function jxjAbaDeck(c,def,est,l){
+  const d=def.combate2,R=d.deck,NOS=jxjNos(def);
+  let deck=[...(l.deck||d.deckPadrao[l.estilo])];
+  const salvo=JSON.stringify(deck),padrao=JSON.stringify(d.deckPadrao[l.estilo]);
+  const lib=jxjLiberadas2(d,l.estilo,l.build);
+  const topo=el("div","jxj-arvore-topo jxj-deck-topo"),msg=el("p","jxj-erro"),regras=el("div","jxj-deck-regras");
+  msg.hidden=true;
+  const pas=d.passivas[l.estilo];
+  const passiva=el("p","jxj-deck-passiva",`${ICONE("raio")}<span><b>Passiva do ${jxjEsc(jxjEstilo(l.estilo))}, ${jxjEsc(pas.nome)}.</b> ${jxjEsc(pas.desc)} Toda luta compra ${R.compra} cartas por round deste deck.</span>`);
+  const grade=el("div","jxj-deck-grade");
+  const secMeu=el("section","painel-n jxj-deck-sec"),secLib=el("section","painel-n jxj-deck-sec");
+  grade.append(secMeu,secLib);
+  const salvar=el("button","botao",`${ICONE("check")}<span>Salvar deck</span>`); salvar.type="button";
+  const desfazer=el("button","botao botao-sec","Desfazer"); desfazer.type="button";
+  const usarPadrao=el("button","botao botao-sec",`${ICONE("reenviar")}<span>Usar o deck padrão</span>`); usarPadrao.type="button";
+  c.append(topo,msg,regras,passiva,grade);
+  const carta=id=>jxjCarta2(d.cartas[id],{w:84,mini:true});
+  const desenhar=()=>{
+    const fixa=jxjFixasNoDeck2(d,l.estilo,deck),nf=fixa.filter(Boolean).length;
+    const sel=jxjRegrasDeck2(d,deck),mudou=JSON.stringify(deck)!==salvo;
+    topo.innerHTML=`<div class="jxj-pontos"><b class="${deck.length===R.tamanho?"":"falta"}">${deck.length}</b><span>de ${R.tamanho} cartas<br><small>${nf} fixas do ${jxjEsc(jxjEstilo(l.estilo))} e ${deck.length-nf} suas${!mudou&&!l.deckMontado?" · o deck padrão":""}</small></span></div>`;
+    const bts=el("div","jxj-acoes"); salvar.disabled=!mudou||sel.some(x=>!x.ok); desfazer.disabled=!mudou;
+    usarPadrao.disabled=!l.deckMontado&&JSON.stringify(deck)===padrao;
+    bts.append(salvar,desfazer,usarPadrao); topo.appendChild(bts);
+    regras.innerHTML=sel.map(x=>`<span class="${x.ok?"ok":"falta"}">${ICONE(x.ok?"check":"alerta")}${x.txt}</span>`).join("");
+    /* seu deck: as fixas com cadeado, as suas com tirar, o espaço que falta */
+    secMeu.innerHTML=`<p class="jxj-rotulo jxj-deck-titulo"><span>${ICONE("cards")} Seu deck</span><small>quem luta com você vê este deck</small></p>`;
+    const meu=el("div","jxj-deck-cartas");
+    deck.forEach((id,i)=>{
+      const s=el("div","jxj-deck-slot"+(fixa[i]?" fixa":""));
+      if(!fixa[i]){
+        const b=el("button","jxj-deck-tirar",ICONE("fechar")); b.type="button"; b.dataset.carta=id;
+        if(b.setAttribute)b.setAttribute("aria-label",`Tirar ${d.cartas[id].nome} do deck`);
+        b.onclick=()=>{ SOM.toque(); deck=deck.filter((x,j)=>j!==i); msg.hidden=true; desenhar(); };
+        s.appendChild(b);
+      }
+      s.appendChild(el("span","jxj-deck-face",carta(id)));
+      s.appendChild(el("span","jxj-deck-tag",fixa[i]?`${ICONE("cadeado")}fixa`:"sua"));
+      meu.appendChild(s);
+    });
+    if(deck.length<R.tamanho){
+      const f=R.tamanho-deck.length;
+      meu.appendChild(el("div","jxj-deck-slot vazio",`<span class="jxj-deck-buraco">${f===1?"falta<br>1 carta":`faltam<br>${f} cartas`}</span>`));
+    }
+    secMeu.appendChild(meu);
+    /* as liberadas (pôr) e a carta da árvore ainda travada, com o nó que libera */
+    secLib.innerHTML=`<p class="jxj-rotulo jxj-deck-titulo"><span>${ICONE("lista")} Cartas liberadas</span><small>toque pra pôr no deck</small></p>`;
+    const pool=el("div","jxj-deck-cartas");
+    const conta={}; for(const id of deck)conta[id]=(conta[id]||0)+1;
+    for(const x of Object.values(d.cartas)){
+      if(x.estiloExclusivo&&x.estiloExclusivo!==l.estilo)continue;
+      if(!lib.includes(x.id)){
+        const no=NOS[x.desbloqueio],ramo=no&&def.ramos[no.ramo];
+        pool.appendChild(el("div","jxj-deck-slot travada",`<span class="jxj-deck-face">${carta(x.id)}</span><span class="jxj-deck-cadeado">${ICONE("cadeado")}</span>`
+          +`<span class="jxj-deck-tag">Libera no nó ${jxjEsc(no?no.nome:x.desbloqueio)}${ramo?` (${jxjEsc(ramo.nome)})`:""}</span>`));
+        continue;
+      }
+      const q=conta[x.id]||0,cheio=q>=R.copias;
+      const s=el("div","jxj-deck-slot"+(cheio?" cheio":""));
+      const b=el("button","jxj-deck-por",ICONE("mais")); b.type="button"; b.dataset.carta=x.id;
+      b.disabled=cheio||deck.length>=R.tamanho;
+      if(b.setAttribute)b.setAttribute("aria-label",`Pôr ${x.nome} no deck`);
+      b.onclick=()=>{ SOM.toque(); if(b.disabled)return; deck=[...deck,x.id]; msg.hidden=true; desenhar(); };
+      s.append(b,el("span","jxj-deck-face",carta(x.id)),el("span","jxj-deck-conta",`${q} de ${R.copias} no deck`));
+      pool.appendChild(s);
+    }
+    secLib.appendChild(pool);
+  };
+  salvar.onclick=async()=>{
+    SOM.toque(); salvar.disabled=true;
+    try{ await jxj("deck",{lutadorId:l.id,deck}); l.deck=[...deck]; l.deckMontado=true; irPara("jxj","lutador/"+l.id+"/deck",{substituir:true}); }
+    catch(e){ msg.textContent=`O servidor recusou o deck: ${e.erro||"tente de novo"}.`; msg.hidden=false; salvar.disabled=false; }
+  };
+  desfazer.onclick=()=>{ SOM.toque(); deck=JSON.parse(salvo); msg.hidden=true; desenhar(); };
+  usarPadrao.onclick=async()=>{
+    SOM.toque(); usarPadrao.disabled=true;
+    try{ await jxj("deck",{lutadorId:l.id,deck:null}); irPara("jxj","lutador/"+l.id+"/deck",{substituir:true}); }
+    catch(e){ msg.textContent=`O servidor recusou: ${e.erro||"tente de novo"}.`; msg.hidden=false; usarPadrao.disabled=false; }
   };
   desenhar();
 }
@@ -8979,6 +9099,26 @@ function jxjCartaDaTroca(fam,varId,papel,tam="mesa"){
 }
 function jxjVerso(tam="mesa"){
   return `<span class="jxj-verso corte" style="--w:${JXJ_TAM_CARTA[tam]||118}px"><span class="jxj-verso-oct oct"><span class="oct"></span></span></span>`;
+}
+/* Carta do combate v2 (2026-11-13, layout aprovado pelo dono): a mesma moldura da
+   carta de hoje; a gema é o custo, o selo de cima a velocidade, o da arte o dano.
+   c = carta das definições (definicoes.combate2.cartas, ou a do chão). Opcionais:
+   vel/velBase (o duelo mexeu: mostra a diferença), dano e custo de agora, origem
+   (no chão, a carta da mão que virou esta), raridade e arte (a próxima etapa,
+   cartas com arte e raridade: por enquanto só a classe e a imagem, sem desenho). */
+const JXJ_RARIDADES=["comum","rara","epica","lendaria"];
+function jxjCarta2(c,{w=116,mini=false,vel=c.vel,velBase=vel,dano=c.dano,custo=c.custo,origem=null,raridade=c.raridade,arte=c.arte,estado=""}={}){
+  const d=vel-velBase,mod=d?`<i class="${d<0?"menos":"mais"}">${d>0?"+":"-"}${Math.abs(d)}</i>`:"";
+  const rar=JXJ_RARIDADES.includes(raridade)?" rar-"+raridade:"";
+  const efeito=jxjEfeitoTexto2(c);
+  const figura=arte?`<img class="jxj-c2-img" src="${jxjEsc(arte)}" alt="">`:ICONE(JXJ_ICONE_ACAO[c.categoria]||"luta");
+  return `<span class="jxj-carta f-${c.categoria} corte jxj-c2${mini?" mini":""}${rar}${estado?" "+estado:""}" style="--w:${w}px" data-carta="${jxjEsc(c.id)}">`
+    +`<span class="jxj-carta-topo"><span class="jxj-gema oct" aria-label="custa ${jxjNum2(custo)} de energia"><span class="jxj-gema-num">${jxjNum2(custo)}</span></span>`
+    +`<span class="jxj-c2-stat vel" aria-label="velocidade ${vel}"><small>vel</small><b>${vel}${mod}</b></span></span>`
+    +`<span class="jxj-carta-arte">${origem?`<span class="jxj-c2-origem">do ${jxjEsc(origem)}</span>`:""}${figura}`
+    +`<span class="jxj-c2-stat dano${dano?"":" zero"}" aria-label="dano ${jxjNum2(dano)}"><small>dano</small><b>${jxjNum2(dano)}</b></span></span>`
+    +`<span class="jxj-carta-fita"><b>${jxjEsc(c.nome)}</b></span>`
+    +`<span class="jxj-carta-regra"><span class="jxj-carta-efeito">${jxjEsc(efeito)}</span></span></span>`;
 }
 /* A troca que acabou, nas vagas de ação ({a, b}): as duas cartas jogadas
    viram juntas (só no primeiro desenho: anima), a de quem leu brilha, a

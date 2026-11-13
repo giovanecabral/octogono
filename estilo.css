@@ -1605,6 +1605,74 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-perigo{border-color:rgba(215,38,30,.4)}
 @media (hover:hover) and (pointer:fine){.jxj-no:hover{border-color:var(--sangue)}}
 
+/* ===== combate v2 (2026-11-13, layout aprovado): carta v2, aba Deck e a linha
+   "Com cartas" da árvore. A tela da luta v2 tem bloco próprio. ===== */
+/* carta v2: gema = custo, selo de cima = velocidade, selo da arte = dano */
+.jxj-c2 .jxj-carta-topo{align-items:flex-start}
+.jxj-c2-stat{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:calc(var(--w,150px)*.24);padding:2px 4px 1px;background:#0b0b0d;color:var(--osso);line-height:1;
+  clip-path:polygon(4px 0,calc(100% - 4px) 0,100% 4px,100% calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,0 calc(100% - 4px),0 4px)}
+.jxj-c2-stat small{font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.06);letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
+.jxj-c2-stat b{font-family:var(--f-titulo);font-weight:400;font-size:calc(var(--w,150px)*.15);letter-spacing:.01em;color:var(--osso)}
+.jxj-c2-stat i{font-style:normal;font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.07);margin-left:1px}
+.jxj-c2-stat i.menos{color:var(--sangue-vivo)}.jxj-c2-stat i.mais{color:var(--ganho)}
+.jxj-c2 .jxj-c2-stat.dano{position:absolute;right:0;bottom:2px}
+.jxj-c2 .jxj-c2-stat.dano.zero{opacity:.55}
+.jxj-c2 .jxj-c2-origem{position:absolute;left:0;top:2px;z-index:2;padding:1px 5px;background:#0b0b0d;color:var(--ouro);font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.062);letter-spacing:.1em;text-transform:uppercase}
+.jxj-c2 .jxj-c2-img{width:100%;height:100%;object-fit:cover}
+.jxj-c2 .jxj-carta-regra{font-size:calc(var(--w,150px)*.078)}
+.jxj-c2.mini .jxj-carta-regra{display:none}
+.jxj-c2.mini{height:calc(var(--w,150px) * 1.12)}
+/* aba Deck */
+.jxj-pontos b.falta{color:#F0564D}
+.jxj-deck-regras{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.jxj-deck-regras span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--linha-forte);font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--osso-2)}
+.jxj-deck-regras span .ico{width:14px;height:14px}
+.jxj-deck-regras span.ok{color:var(--ganho);border-color:rgba(47,191,113,.45)}
+.jxj-deck-regras span.falta{color:#F0564D;border-color:rgba(215,38,30,.6);background:rgba(215,38,30,.1)}
+.jxj-deck-passiva{display:flex;gap:8px;align-items:center;margin:0 0 16px;font-size:14px;color:var(--osso-2)}
+.jxj-deck-passiva .ico{width:16px;height:16px;color:var(--ouro);flex:none}
+.jxj-deck-passiva b{color:var(--osso)}
+.jxj-deck-grade{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start}
+.jxj-deck-grade>section{padding:16px}
+.jxj-deck-titulo{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.jxj-deck-titulo small{color:var(--cinza);font-size:13px}
+.jxj-deck-cartas{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:14px 10px;margin-top:10px}
+.jxj-deck-cartas .jxj-carta{--w:84px!important}
+.jxj-deck-slot{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px}
+.jxj-deck-face{display:flex}
+.jxj-deck-tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--f-ui);font-weight:700;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--cinza);text-align:center}
+.jxj-deck-tag .ico{width:11px;height:11px}
+.jxj-deck-tirar,.jxj-deck-por{position:absolute;top:-12px;left:-12px;z-index:4;width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#0b0b0d;border:1px solid var(--linha-forte);color:var(--osso)}
+.jxj-deck-tirar .ico,.jxj-deck-por .ico{width:12px;height:12px}
+.jxj-deck-por{background:var(--sangue);border-color:var(--sangue);color:#fff}
+.jxj-deck-por:disabled{display:none}
+.jxj-deck-tirar:focus-visible,.jxj-deck-por:focus-visible{outline:2px solid var(--ouro);outline-offset:2px}
+.jxj-deck-slot.vazio .jxj-deck-buraco{width:84px;height:94px;border:2px dashed rgba(240,86,77,.6);display:flex;align-items:center;justify-content:center;text-align:center;font-family:var(--f-ui);font-weight:700;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#F0564D}
+.jxj-deck-slot.travada .jxj-carta{filter:grayscale(.9) brightness(.45)}
+.jxj-deck-slot.travada .jxj-deck-cadeado{position:absolute;top:34px;left:50%;transform:translateX(-50%);z-index:4;color:var(--osso)}
+.jxj-deck-slot.travada .jxj-deck-cadeado .ico{width:26px;height:26px}
+.jxj-deck-slot.travada .jxj-deck-tag{color:var(--ouro);max-width:110px;line-height:1.25}
+.jxj-deck-slot.cheio .jxj-carta{opacity:.45}
+.jxj-deck-conta{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.06em;color:var(--osso-2)}
+@media (hover:hover) and (pointer:fine){.jxj-deck-tirar:hover{border-color:var(--sangue)}.jxj-deck-por:hover{filter:brightness(1.15)}}
+/* árvore: o que o nó dá no combate novo */
+.jxj-no .jxj-no-v2{grid-column:1 / -1;display:block;margin-top:2px;padding-top:6px;border-top:1px dashed var(--linha-forte);font-size:13px;line-height:1.35;color:var(--osso-2)}
+.jxj-no .jxj-no-v2 em{font-style:normal;font-family:var(--f-ui);font-weight:800;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ouro);margin-right:6px}
+.jxj-no.travado .jxj-no-v2{color:var(--cinza)}
+.jxj-arvore-aviso2{display:flex;gap:8px;align-items:center;margin:0;font-size:14px;color:var(--osso-2)}
+.jxj-arvore-aviso2 .ico{width:16px;height:16px;color:var(--ouro);flex:none}
+.jxj-no-v2-detalhe{display:flex;gap:16px;align-items:center;margin:8px 0;padding:12px;border:1px solid rgba(212,160,23,.35);background:rgba(212,160,23,.06)}
+.jxj-no-v2-detalhe p{margin:0}
+.jxj-no-v2-detalhe>div{display:flex;flex-direction:column;gap:6px}
+@media (max-width:720px){
+  .jxj-deck-grade{grid-template-columns:minmax(0,1fr)}
+  .jxj-deck-titulo small{display:none}
+  .jxj-deck-cartas{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 6px}
+  .jxj-deck-cartas .jxj-carta{--w:72px!important}
+  .jxj-deck-slot.vazio .jxj-deck-buraco{width:72px;height:81px}
+  .jxj-no-v2-detalhe{flex-direction:column;align-items:flex-start}
+}
+
 /* histórico */
 .jxj-historico{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .jxj-hist-linha{display:grid;grid-template-columns:96px minmax(0,1fr) 90px auto;align-items:center;gap:12px;padding:10px 12px;
