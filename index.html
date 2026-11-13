@@ -7946,7 +7946,7 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas,aoCair=null){
   if(!caixa||!jxj3dPode()||!v||!v.nomes)return;
   if(!JXJ_3D){
     const x={vivo:true,caixa,inst:null,corte:null,round:null,pendentes:0,eu,ele,linha:null};
-    const antes=novas&&novas.length&&v.estado?jxjDanoAntes(v.estado,novas[0]):null;
+    const antes=novas&&novas.length&&v.estado?(v.combate===2?jxjDanoAntes2(v.estado,novas[0]):jxjDanoAntes(v.estado,novas[0])):null;
     x.mostrado={a:antes?antes.a:(v.estado&&v.estado.a?v.estado.a.dano:0),b:antes?antes.b:(v.estado&&v.estado.b?v.estado.b.dano:0)};
     x.cortado=new Promise(r=>{ x.corte=r; });
     caixa.hidden=false; caixa.innerHTML=`<div class="luta3d-carregando">Montando o octógono</div>`;
@@ -7969,7 +7969,7 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas,aoCair=null){
       linhas.push(comEvento({round:t.round,kind:"rd",text:""},{tipo:"inicio"}));
       x.round=t.round;
     }
-    linhas.push(...jxjLinhas3d(t,eu));
+    linhas.push(...(v.combate===2?jxj3dEscala2(jxjLinhas3d2(t,eu),v.estado):jxjLinhas3d(t,eu)));
   }
   if(!linhas.length)return;
   x.pendentes++;
@@ -9339,9 +9339,9 @@ async function jxjTelaLuta(id){
       const r=await jxj(acao||"luta",{lutaId:id,...extra});
       if(tk!==JXJ_TOKEN)return false;
       if(envio||(meu===envios&&!enviando)){
-      vista=r;
+      vista=jxjComDano2(r);
       const ass=[vista.status,vista.round,vista.troca,vista.minhaAcao,vista.adversarioEscolheu,(vista.trocas||[]).length,vista.confirmado&&vista.confirmado.a,vista.confirmado&&vista.confirmado.b,!!vista.narracao,JSON.stringify(vista.revanche||null),
-        vista.etapa,vista.meuSinal,vista.adversarioSinalizou,JSON.stringify(vista.sinais||null)].join("|");
+        vista.etapa,vista.meuSinal,vista.adversarioSinalizou,JSON.stringify(vista.sinais||null)].join("|")+(vista.combate===2?"|"+vista.minhaCarta:"");
       if(envio)escolha=null;
       /* o relógio antes do desenho: a tela cheia decide pelo relógio se as cartas já aparecem */
       relogio=vista.status==="confirmacao"?jxjRelogio(Date.parse(vista.confirmacaoAte)-Date.parse(vista.agora))
@@ -9365,6 +9365,8 @@ async function jxjTelaLuta(id){
   };
   const lados=()=>{ const eu=vista.lado,ele=eu==="a"?"b":"a"; return{eu,ele}; };
   const desenhar=()=>{
+    /* combate v2 (2026-11-13): a tela, a revelação, o dano de antes e os efeitos da v2 */
+    const v2=vista.combate===2;
     const todas=vista.trocas||[];
     const novas=trocasVistas==null?[]:todas.slice(trocasVistas);
     const maoNova=vista.status==="andamento"&&roundVisto!=null&&vista.round!==roundVisto;
@@ -9377,9 +9379,9 @@ async function jxjTelaLuta(id){
     const com3d=vista.status==="andamento"&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function";
     if(com3d)jxj3dTrocas(caixa3d,vista,lados(),novas,cair3d);
     if(revelacao&&vista.status==="andamento"&&Date.now()-revelacao.desde<JXJ_REVELACAO_MS){
-      revelar=jxjRevelar(todas[revelacao.i],!revelacao.animou);
+      revelar=(v2?jxjRevelar2:jxjRevelar)(todas[revelacao.i],!revelacao.animou);
       /* 2026-10-29: o primeiro desenho da troca nova parte do dano de antes dela */
-      if(!revelacao.animou&&novas.length&&vista.estado)danoAntes=jxjDanoAntes(vista.estado,todas[todas.length-1]);
+      if(!revelacao.animou&&novas.length&&vista.estado)danoAntes=(v2?jxjDanoAntes2:jxjDanoAntes)(vista.estado,todas[todas.length-1]);
       revelacao.animou=true;
       /* um redesenho só, no fim da revelação (armado uma vez: redesenhar no meio não rearma) */
       if(!revelacao.fim){ clearTimeout(fimRevelacao); revelacao.fim=true;
@@ -9397,14 +9399,16 @@ async function jxjTelaLuta(id){
     }
     if(vista.status==="confirmacao")return jxjDesenharConfirmacao(area,vista,lados(),ciclo);
     if(vista.status==="andamento"){
-      const vd=escolha?{...vista,[escolha.tipo==="sinal"?"meuSinal":"minhaAcao"]:escolha.fam}:vista;
-      jxjDesenharCombate(area,vd,lados(),async(fam,tipo="acao")=>{
+      /* v2: a carta jogada fica na vaga pelo id dela (minhaCarta) e a categoria vai em minhaAcao */
+      const vd=!escolha?vista:!v2?{...vista,[escolha.tipo==="sinal"?"meuSinal":"minhaAcao"]:escolha.fam}
+        :escolha.tipo==="sinal"?{...vista,meuSinal:escolha.fam}:{...vista,minhaCarta:escolha.fam,minhaAcao:escolha.cat};
+      (v2?jxjDesenharCombate2:jxjDesenharCombate)(area,vd,lados(),async(fam,tipo="acao")=>{
         if(enviando)return; enviando=true;
-        escolha={tipo,fam};
+        escolha={tipo,fam,cat:v2&&tipo!=="sinal"?((vista.mao||[]).find(x=>x.id===fam)||{}).categoria||null:null};
         /* a carta pousa na vaga quando o voo acaba (sem movimento, na hora) */
         const pousar=()=>{ if(tk===JXJ_TOKEN&&escolha&&escolha.fam===fam&&vista&&vista.status==="andamento")desenhar(); };
         if(reduceMotion())pousar(); else setTimeout(pousar,JXJ_VOO_MS);
-        try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,familia:fam}); }finally{ escolha=null; enviando=false; }
+        try{ await ciclo(tipo,{round:vista.round,troca:vista.troca,...(v2&&tipo!=="sinal"?{carta:fam}:{familia:fam})}); }finally{ escolha=null; enviando=false; }
       },{nova:novas.length>0,maoNova,revelar,soltou,danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:danoAntes,palco:com3d&&!!JXJ_3D,
         /* 2026-10-29: só contra bot; derrota por W.O. na hora, o resultado direto */
         abandonar:vista.lado&&vista.nomes&&vista.nomes[lados().ele]&&vista.nomes[lados().ele].bot?async()=>{
@@ -9417,21 +9421,21 @@ async function jxjTelaLuta(id){
       marcarAssistindo();
       jxj3dPosicionar(c,caixa3d,area);
       if(comecou)SOM.sinoInicio();
-      return jxjEfeitos(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes,semVida:!!JXJ_3D});
+      return (v2?jxjEfeitos2:jxjEfeitos)(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes,semVida:!!JXJ_3D,estado:vista.estado});
     }
     /* a luta acabou com a tela aberta: a troca final na mesa, a barra e a cena;
        W.O. e anulada (sem troca final de luta) vão direto pro resultado */
     const met=(vista.resultado||{}).metodo,ultT=todas[todas.length-1];
     if(acabouAgora&&ultimaAndamento&&ultT&&!cenaFim&&met!=="WO"&&met!=="ANULADA"){
       cenaFim="tela";
-      const antes=jxjDanoAntes(vista.estado,ultT);
-      const vf={...ultimaAndamento,status:"andamento",estado:vista.estado,trocas:todas,minhaAcao:null,meuSinal:null,etapa:null,sinais:null,
+      const antes=(v2?jxjDanoAntes2:jxjDanoAntes)(vista.estado,ultT);
+      const vf={...ultimaAndamento,status:"andamento",estado:vista.estado,trocas:todas,minhaAcao:null,minhaCarta:null,meuSinal:null,etapa:null,sinais:null,
         adversarioEscolheu:false,adversarioSinalizou:false,momentoDecisivo:null};
       if(JXJ_3D)jxj3dTrocas(caixa3d,vista,lados(),novas.length?novas:[ultT]);
-      jxjDesenharCombate(area,vf,lados(),()=>{},{nova:true,revelar:jxjRevelar(ultT,true),danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:antes,final:true,palco:!!JXJ_3D});
+      (v2?jxjDesenharCombate2:jxjDesenharCombate)(area,vf,lados(),()=>{},{nova:true,revelar:(v2?jxjRevelar2:jxjRevelar)(ultT,true),danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:antes,final:true,palco:!!JXJ_3D});
       jxjPalcoTela(c,!!JXJ_3D);
       jxj3dPosicionar(c,caixa3d,area);
-      const dur=jxjEfeitos([ultT],lados(),tk,{antes,semVida:!!JXJ_3D})||0;
+      const dur=(v2?jxjEfeitos2:jxjEfeitos)([ultT],lados(),tk,{antes,semVida:!!JXJ_3D,estado:vista.estado})||0;
       jxjCenaFim(area,vista,lados(),()=>{
         if(tk!==JXJ_TOKEN)return;
         cenaFim="visto"; desenhar();
@@ -9442,7 +9446,7 @@ async function jxjTelaLuta(id){
     }
     jxj3dParar(); caixa3d.hidden=true; botao3d.hidden=true; jxjPalcoTela(c,false);
     jxjDesenharResultado(area,vista,lados(),ciclo);
-    if(acabouAgora)jxjEfeitos(novas,lados(),tk,{fim:vista});
+    if(acabouAgora)(v2?jxjEfeitos2:jxjEfeitos)(novas,lados(),tk,{fim:vista,estado:vista.estado});
   };
   ciclo();
 }
@@ -9877,6 +9881,390 @@ function jxjDesenharCombate(area,v,{eu,ele},enviar,{nova=false,maoNova=false,rev
   area.appendChild(tela);
   return tela;
 }
+/* ---------- combate v2: a tela da luta (2026-11-13, Fase 6; layout aprovado pelo dono, com o porquê na linha do tempo) ----------
+   Entra só quando a vista diz combate: 2 (jxjTelaLuta escolhe); a luta de antes continua em
+   jxjDesenharCombate, sem mudar nada. A vista (api/_jxj-luta2.js, vistaV2) traz a minha mão com a
+   carta do chão, a velocidade e o dano de agora; da mão dele, só quantas; os dois decks; o que cada um
+   jogou no round. Os ids são os da tela de antes (vida, relógio, posição, mesa, vagas): a animação, o
+   3D e os testes acham tudo pelo id. */
+/* a vida da v2 na barra de sempre: o servidor manda vida e vidaMax (sem dano). jxjDano2 é o dano na
+   escala da barra (JXJ_DANO_CHEIO = a vida inteira), então jxjVida, jxjPintarVida e o placar do 3D
+   (x.mostrado) seguem iguais */
+const JXJ_DANO_CHEIO=100/JXJ_ESCALA_VIDA;
+const jxjDano2=(vida,vidaMax)=>vidaMax>0?Math.max(0,(vidaMax-vida)/vidaMax*JXJ_DANO_CHEIO):0;
+const jxjEscalaDano2=(estado,l)=>estado&&estado[l]&&estado[l].vidaMax>0?JXJ_DANO_CHEIO/estado[l].vidaMax:0;
+/* a vista v2 ganha estado.a.dano e estado.b.dano na escala da barra (quem lê a v1 lê dano) */
+function jxjComDano2(v){
+  if(v&&v.combate===2&&v.estado)for(const l of ["a","b"]){ const x=v.estado[l]; if(x&&typeof x.vida==="number")x.dano=jxjDano2(x.vida,x.vidaMax); }
+  return v;
+}
+/* o dano (na escala da barra) de cada lado antes da troca t */
+function jxjDanoAntes2(estado,t){
+  const r={a:estado.a.dano||0,b:estado.b.dano||0};
+  for(const x of (t&&t.ev)||[])if(x.tipo==="dano"&&x.alvo&&typeof x.dano==="number")r[x.alvo]-=x.dano*jxjEscalaDano2(estado,x.alvo);
+  return {a:Math.max(0,r.a),b:Math.max(0,r.b)};
+}
+/* os lances do 3D levam o dano da carta; o placar do 3D soma na escala da barra */
+function jxj3dEscala2(linhas,estado){
+  for(const L of linhas){ const ev=L.ev; if(ev&&ev.alvo&&typeof ev.dano==="number")ev.dano*=jxjEscalaDano2(estado,ev.alvo); }
+  return linhas;
+}
+/* a carta da v2 (a moldura de sempre): custo na gema, velocidade no selo de cima, dano na arte e o
+   efeito embaixo. c: {id, nome, categoria, vel, dano, custo, efeito, raridade?, arte?}; raridade
+   (comum, rara, epica, lendaria) e arte (caminho de imagem) são da próxima etapa: sem elas, o ícone da
+   categoria. velMod: quanto o duelo, o grogue ou o cansaço mudaram a velocidade (aparece ao lado).
+   origem: no chão, de qual carta da mão ela veio ("do Jab"). tam: mao, mesa, postura ou a largura. */
+const JXJ_RARIDADES2=["comum","rara","epica","lendaria"];
+const JXJ_FEM2=["queda","antiqueda","combinacao","rasteira","esquiva","clinch"];
+const jxjDeCarta2=id=>(JXJ_FEM2.includes(id)?"da ":"do ")+jxjNomeCarta2(id);
+function jxjCarta2(c,{tam="mao",estado="",origem=null,velMod=0,mini=false}={}){
+  const w=typeof tam==="number"?tam:(JXJ_TAM_CARTA[tam]||150),cat=c.categoria;
+  const rar=JXJ_RARIDADES2.includes(c.raridade)?c.raridade:null;
+  const mod=velMod?`<i class="${velMod<0?"menos":"mais"}">${velMod>0?"+":"−"}${jxjNum(Math.abs(velMod))}</i>`:"";
+  const arte=c.arte?`<img class="v2-arte" src="${jxjEsc(c.arte)}" alt="" loading="lazy">`:ICONE(JXJ_ICONE_ACAO[cat]||"luta");
+  return `<span class="jxj-carta f-${cat} corte v2c${mini?" mini":""}${rar?" rar-"+rar:""}${estado?" "+estado:""}" style="--w:${w}px" data-carta="${jxjEsc(c.id)}">`
+    +`<span class="jxj-carta-topo"><span class="jxj-gema oct" aria-label="custa ${jxjNum(c.custo)} de energia"><span class="jxj-gema-num">${jxjNum(c.custo)}</span></span>`
+    +`<span class="v2-stat vel" title="velocidade"><small>vel</small><b>${jxjNum(c.vel)}${mod}</b></span></span>`
+    +`<span class="jxj-carta-arte">${origem?`<span class="v2-origem">${jxjEsc(origem)}</span>`:""}${arte}<span class="v2-stat dano${c.dano?"":" zero"}" title="dano"><small>dano</small><b>${jxjNum(c.dano)}</b></span></span>`
+    +`<span class="jxj-carta-fita"><b>${jxjEsc(c.nome)}</b></span>`
+    +`<span class="jxj-carta-regra"><span class="jxj-carta-efeito">${jxjEsc(c.efeito||"")}</span></span></span>`;
+}
+/* a carta da minha mão (vista do servidor): no chão, a carta do chão, com a da mão na etiqueta */
+function jxjCartaMao2(x){
+  const ef=x.efetiva||{},chao=!!ef.contexto&&ef.contexto!=="pe";
+  return {c:{id:ef.id||x.id,nome:chao?ef.nome:x.nome,categoria:x.categoria,vel:x.vel,dano:x.dano,custo:x.custo,
+    efeito:jxjEfeitoTexto2({efeitos:x.efeitos}),raridade:x.raridade,arte:x.arte},
+    origem:chao?jxjDeCarta2(x.id):null,velMod:typeof x.velBase==="number"?x.vel-x.velBase:0};
+}
+/* uma carta pelas definições (o deck dele, a carta de uma troca resolvida); vel e custo da troca, quando houver */
+function jxjCartaDef2(id,{vel=null,custo=null}={}){
+  const d=JXJ_DEF&&JXJ_DEF.combate2;
+  const c=(d&&d.cartas&&d.cartas[id])||(d&&d.chao?Object.values(d.chao).flatMap(o=>Object.values(o)).find(x=>x.id===id):null)
+    ||{id,nome:jxjNomeCarta2(id),categoria:"defesa",vel:0,dano:0,custo:0,efeitos:[]};
+  return {id:c.id||id,nome:c.nome,categoria:c.categoria,vel:vel!=null?vel:c.vel,dano:c.dano,custo:custo!=null?custo:c.custo,
+    efeito:jxjEfeitoTexto2(c),raridade:c.raridade,arte:c.arte};
+}
+/* a régua de velocidade (no lugar de "Quem ganha de quem"): as cartas da minha mão de 6 a 1 */
+function jxjRegua2(mao,{regras=true}={}){
+  const a=el("aside","v2-regua");
+  if(a.setAttribute)a.setAttribute("aria-label","Velocidade das suas cartas");
+  const col=n=>{
+    const cs=(mao||[]).filter(x=>Math.max(1,Math.min(6,Math.round(Number(x.vel)||0)))===n);
+    return `<span class="v2-regua-col${cs.length?" tem":""}" data-vel="${n}"><small>${n}</small>${cs.map(x=>{ const k=jxjCartaMao2(x).c; return `<span class="v2-chip f-${k.categoria}">${jxjEsc(k.nome)}</span>`; }).join("")}</span>`;
+  };
+  a.innerHTML=`<span class="v2-regua-tit">${ICONE("velocidade")}<span>Velocidade</span></span><span class="v2-regua-trilho">${[6,5,4,3,2,1].map(col).join("")}</span>`
+    +(regras?`<span class="v2-regua-regras"><b>A mais rápida resolve primeiro</b>; golpe que acerta interrompe a mais lenta. Defesa que anula vale em qualquer velocidade. Velocidade igual: as duas juntas.</span>`:"");
+  return a;
+}
+/* a mesa da v2: as mesmas vagas de postura e de carta da tela de antes. A carta dele só de costas
+   quando a vista diz que ele escolheu, e de frente só na revelação (revelar: {a, b}) */
+function jxjMesa2(v,{eu,ele},revelar,{soltou=false}={}){
+  const mesa=el("section","jxj-mesa"+(v.etapa?" com-postura":""));
+  const vaga=(id,txt,tam,html)=>html?`<span class="jxj-vaga cheia" id="${id}">${html}</span>`
+    :`<span class="jxj-vaga" id="${id}" style="--w:${JXJ_TAM_CARTA[tam]}px">${txt?`<small>${txt}</small>`:""}</span>`;
+  const postura=f=>jxjCarta({familia:f},{tam:"postura",postura:true});
+  const minha=v.minhaCarta?(v.mao||[]).find(x=>x.id===v.minhaCarta):null;
+  const coluna=l=>{
+    const souEu=l===eu;
+    let rotP="",post=null;
+    if(v.etapa==="sinal"){
+      if(souEu&&v.meuSinal){ post=postura(v.meuSinal); rotP=`você mostrou <b>${JXJ_POSTURAS[v.meuSinal]}</b>`; }
+      else if(!souEu&&v.adversarioSinalizou){ post=jxjVerso("postura"); rotP="ele já mostrou"; }
+      else rotP=souEu?"sua postura":"postura dele";
+    }else if(v.etapa&&v.sinais&&v.sinais[l]){ post=postura(v.sinais[l]); rotP=`${souEu?"você":"ele"} mostrou <b>${JXJ_POSTURAS[v.sinais[l]]}</b>`; }
+    let acao=null;
+    if(revelar)acao=revelar[l];
+    else if(souEu&&v.minhaCarta){ const k=minha?jxjCartaMao2(minha):{c:jxjCartaDef2(v.minhaCarta)}; acao=jxjCarta2(k.c,{tam:"mesa",origem:k.origem,velMod:k.velMod}); }
+    else if(!souEu&&v.adversarioEscolheu)acao=soltou&&!reduceMotion()?jxjVerso("mesa").replace('class="jxj-verso corte"','class="jxj-verso corte cai"'):jxjVerso("mesa");
+    const c=el("div","jxj-mesa-lado "+(souEu?"eu":"ele")); c.id=souEu?"jxj-mesa-eu":"jxj-mesa-ele";
+    c.innerHTML=(v.etapa?`<span class="jxj-mesa-slot postura"><span class="jxj-rotulo-mesa">${rotP}</span>${vaga(souEu?"jxj-vaga-postura-eu":"jxj-vaga-postura-ele",souEu&&v.etapa==="sinal"?"toque numa carta":"","postura",post)}</span>`:"")
+      +`<span class="jxj-mesa-slot acao"><span class="jxj-rotulo-mesa">${souEu?"sua carta":"carta dele"}</span>${vaga(souEu?"jxj-vaga-acao-eu":"jxj-vaga-acao-ele","","mesa",acao)}</span>`;
+    return c;
+  };
+  mesa.append(coluna(eu),el("span","jxj-mesa-vs",""),coluna(ele));
+  return mesa;
+}
+/* a troca que acabou nas vagas de carta: as duas viram juntas (só no primeiro desenho), a de quem
+   levou a troca brilha, a outra apanha; carimbo na finta */
+function jxjRevelar2(t,animar){
+  const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return null;
+  const anima=animar&&!reduceMotion()?" anima":"";
+  const lado=l=>{
+    const x=r.cartas[l],res=r.vencedor?(r.vencedor===l?" venceu":" perdeu"):"";
+    const k=jxjCartaDef2(x.efetiva,{vel:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0))}),origem=x.efetiva!==x.id?jxjDeCarta2(x.id):null;
+    return `<span class="jxj-revelada${res}"><span class="vira aberta${anima}" style="--w:${JXJ_TAM_CARTA.mesa}px"><span class="gira"><span class="face verso">${jxjVerso("mesa")}</span><span class="face frente">${jxjCarta2(k,{tam:"mesa",origem})}</span></span></span>`
+      +(x.finta>0?`<span class="jxj-carimbo-finta${anima}">FINTA</span>`:"")+`</span>`;
+  };
+  return {a:lado("a"),b:lado("b")};
+}
+/* o porquê da troca na linha do tempo (opção B aprovada): quem resolveu primeiro, o que aconteceu, quem
+   veio depois (riscado, se não saiu), a frase de jxjPorQue2 e os selos do resultado */
+function jxjLinha2(t,{eu,ele},nomes,{nova=false,tam=70}={}){
+  const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return null;
+  const outro=l=>l==="a"?"b":"a",ev=t.ev||[];
+  const prim=r.ordem==="a"||r.ordem==="b"?r.ordem:eu,seg=outro(prim);
+  const interrompido=l=>(r.interrupcoes||[]).some(x=>x.interrompeu===l),anulado=l=>(r.reacoes||[]).some(x=>x.anulou===l);
+  const falhou=l=>ev.some(x=>x.tipo==="falhou"&&x.quem===l);
+  const juntos=r.ordem==="empate"||r.ordem==="anuladas"||r.ordem==="encaixe";
+  const selo=r.ordem==="encaixe"?"encaixe":r.ordem==="anuladas"?"se anularam":r.ordem==="empate"?"juntas"
+    :(r.reacoes||[]).length?"anulou":(r.interrupcoes||[]).length?"interrompeu":falhou(seg)?"mudou a posição":"depois";
+  const dano=r.dano||{};
+  const lado=(l,pos,qual)=>{
+    const x=r.cartas[l],k=jxjCartaDef2(x.efetiva,{vel:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0))});
+    const risca=interrompido(l)||anulado(l)||falhou(l)||r.ordem==="anuladas";
+    const levou=Number(dano[outro(l)])||0;
+    return `<span class="v2-linha-lado ${qual} ${l===eu?"eu":"ele"}"><span class="ordem">${juntos?"1º":pos}</span><span class="quem"><small>${l===eu?"você":"ele"}</small><b>${jxjEsc(k.nome)}</b></span>`
+      +`<span class="v2-linha-carta"><span class="${risca?"riscada":"inteira"}">${jxjCarta2(k,{tam,mini:true})}</span>${levou?`<em class="jxj-dano">−${jxjNum(levou)}</em>`:""}</span></span>`;
+  };
+  const g=[];
+  if(Number(dano[eu])>0)g.push(`<span class="bom">${ICONE("lesao")}${jxjNum(dano[eu])} de dano nele</span>`);
+  if(Number(dano[ele])>0)g.push(`<span class="ruim">${ICONE("lesao")}${jxjNum(dano[ele])} de dano em você</span>`);
+  const en=r.energia&&r.energia[eu]&&!r.cartas[eu].exausta?Math.round((r.energia[eu].depois-r.energia[eu].antes+(r.cartas[eu].custo||0))*10)/10:0;
+  if(en>0)g.push(`<span class="bom">${ICONE("energia")}+${jxjNum(en)} de energia</span>`);
+  if(r.pontos)g.push(`<span>${ICONE("bandeira")}Pontos na troca: ${jxjNum(r.pontos[eu])} a ${jxjNum(r.pontos[ele])}</span>`);
+  const sec=el("section","v2-linha"+(nova?" nova":""));
+  sec.innerHTML=`<div class="v2-linha-tempo">${lado(prim,"1º","primeiro")}<span class="v2-seta"></span><span class="v2-selo">${selo}</span><span class="v2-seta"></span>${lado(seg,"2º","segundo")}</div>`
+    +`<p class="v2-porque"><b>Por quê</b>${jxjPorQue2(t,eu,nomes).join(" ")}</p>`+(g.length?`<div class="v2-ganhos">${g.join("")}</div>`:"");
+  return sec;
+}
+/* o momento decisivo da v2 (grogue, finalização encaixada), com as regras da v2 */
+function jxjMomento2(e,eu,ele){
+  let ch=null,tit="",txt="";
+  if(e.encaixe&&e.encaixe.quem===eu){ ch="enc_cima_eu"; tit="Finalização encaixada"; txt="Queda aperta, Pressão emenda. A Defesa dele segura o aperto; emendar ganha de defender; sair na força ganha de emendar."; }
+  else if(e.encaixe&&e.encaixe.quem===ele){ ch="enc_baixo_eu"; tit="Você está preso"; txt="Defesa segura o aperto. Outra carta sai na força: ganha de emendar e perde pro aperto."; }
+  else if(e[eu].grogue){ ch="grogue_eu"; tit="Você está grogue"; txt="Nesta troca você fica 1 mais lento e leva 1 de dano a mais. Golpe de dano 3 ou mais em você é nocaute."; }
+  else if(e[ele].grogue){ ch="grogue_ele"; tit="Ele está grogue"; txt="Nesta troca ele fica 1 mais lento e leva 1 de dano a mais. Golpe de dano 3 ou mais nele é nocaute."; }
+  if(!ch)return null;
+  const grogue=ch.startsWith("grogue"),meu=ch.endsWith("_eu");
+  const f=el("div",`jxj-momento-decisivo ${grogue?"grogue":"encaixe"} ${meu===grogue?"contra":"favor"}`);
+  if(f.setAttribute)f.setAttribute("role","status");
+  f.innerHTML=`${ICONE(grogue?"alerta":"cadeado")}<span><b>${tit}</b><small>${txt}</small></span>`;
+  return f;
+}
+/* o deck dele aberto (botão "Deck dele" na barra dele): as 12 cartas, o que ele já jogou no round e
+   quantas tem na mão (a mão, nunca) */
+function jxjDeckDele2(v,ele){
+  const caixa=el("div","v2-deck-dele"); caixa.id="jxj-deck-dele"; caixa.hidden=true;
+  if(caixa.setAttribute){ caixa.setAttribute("role","dialog"); caixa.setAttribute("aria-label","Deck dele"); }
+  const deck=(v.decks&&v.decks[ele])||[],conta={},ordem=[];
+  for(const id of deck){ if(!conta[id])ordem.push(id); conta[id]=(conta[id]||0)+1; }
+  const n=v.nomes[ele]||{},jogou=((v.jogadas&&v.jogadas[ele])||[]).map(id=>jxjEsc(jxjNomeCarta2(id)));
+  caixa.innerHTML=`<header><b>Deck de ${jxjEsc(n.nome)}</b><small>${deck.length} cartas${n.estilo?` · ${jxjEsc(jxjEstilo(n.estilo))}`:""}</small></header>`
+    +`<div class="grade">${ordem.map(id=>`<span class="v2-cel">${jxjCarta2(jxjCartaDef2(id),{tam:74,mini:true})}${conta[id]>1?`<span class="v2-qtd">×${conta[id]}</span>`:""}</span>`).join("")}</div>`
+    +`<p>${jogou.length?`Neste round ele já jogou: ${jogou.join(", ")}.`:"Neste round ele ainda não jogou."} A mão dele tem ${Number(v.maoDele)||0} ${Number(v.maoDele)===1?"carta":"cartas"}; você só vê quantas.</p>`;
+  return caixa;
+}
+function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,danoAntes=null,final=false,abandonar=null,palco=false}={}){
+  jxjComDano2(v);
+  const F=v.formato,e=v.estado,nomes=v.nomes;
+  const tela=el("div","jxj-combate v2"+(palco?" tela-cheia":"")); tela.id="jxj-combate";
+  const hud=el("section","jxj-hud");
+  const lado=(l,souEu)=>{
+    const n=nomes[l],st=e[l];
+    const vida=jxjVida(danoAntes?danoAntes[l]:st.dano),ener=st.energiaMax?Math.max(0,Math.min(1,st.energia/st.energiaMax)):0;
+    const d=el("div","jxj-hud-lado "+(souEu?"eu":"ele")); d.id=souEu?"jxj-card-eu":"jxj-card-ele";
+    d.innerHTML=`${jxjRetrato(n,56)}<div class="jxj-hud-info">
+      <b class="jxj-hud-nome"><span>${jxjEsc(n.nome)}</span>${souEu?"<small>você</small>":""}${n.bot?jxjSeloBot():""}${palco&&n.bot&&n.alcunha?`<small class="jxj-alcunha">${jxjEsc(n.alcunha)}</small>`:""}</b>
+      ${!palco&&n.bot&&n.alcunha?`<small class="jxj-alcunha">${jxjEsc(n.alcunha)}</small>`:""}
+      <span class="jxj-vida" id="jxj-vida-${l}" data-vida="${vida}" data-nivel="${jxjNivelVida(vida)}" role="img" aria-label="Vida ${vida} de 100" style="--vida:${vida}%;--rastro:${vida}%"><i class="rastro"></i><i class="flash"></i><i class="atual"></i></span>
+      <span class="jxj-folego" role="img" aria-label="Energia ${jxjNum(st.energia)} de ${jxjNum(st.energiaMax)}"><i style="width:${Math.round(ener*100)}%"></i></span>
+      <span class="jxj-hud-num"><i>${ICONE("lesao")}<b class="jxj-vida-num" id="jxj-vida-num-${l}">${vida}</b></i><i>${ICONE("energia")}${jxjNum(st.energia)}</i>${st.ausentes?`<i class="jxj-ausente">${st.ausentes} sem ação</i>`:""}${jxjEtiquetas(e,l)}</span>
+      ${souEu?`<span class="jxj-mao v2-mao-eu"><small>Mão ${(v.mao||[]).length}</small></span>`:""}
+    </div>`;
+    if(!souEu){
+      /* a mão dele: o que ele jogou no round, as cartas de costas (só quantas) e o deck dele */
+      const md=el("span","jxj-mao v2-mao-dele"),q=Number(v.maoDele)||0;
+      const jogou=((v.jogadas&&v.jogadas[l])||[]).map(id=>{ const k=jxjCartaDef2(id); return `<span class="v2-chip f-${k.categoria}">${jxjEsc(k.nome)}</span>`; });
+      md.innerHTML=`${jogou.length?`<span class="jogou"><small class="n">jogou</small>${jogou.join("")}</span>`:""}<span class="na-mao"><span class="versos" aria-label="${q} ${q===1?"carta":"cartas"} na mão">${"<span></span>".repeat(q)}</span><small class="n">${q} na mão</small></span>`;
+      const bd=el("button","v2-btn-deck",`${ICONE("cards")}<span>Deck dele</span> ${((v.decks&&v.decks[l])||[]).length}`); bd.type="button";
+      if(bd.setAttribute)bd.setAttribute("aria-expanded","false");
+      bd.onclick=()=>{ SOM.toque(); const cx=document.getElementById("jxj-deck-dele"); if(!cx)return; cx.hidden=!cx.hidden; bd.classList.toggle("on",!cx.hidden); if(bd.setAttribute)bd.setAttribute("aria-expanded",String(!cx.hidden)); };
+      md.appendChild(bd);
+      d.appendChild(md);
+    }
+    return d;
+  };
+  const centro=el("div","jxj-hud-centro");
+  centro.innerHTML=`<div class="jxj-anel${v.semRelogio?" livre":""}" id="jxj-anel"><span class="jxj-relogio" id="jxj-relogio">${v.semRelogio?"livre":`${jxjSeg(jxjTotalEtapa(v))}s`}</span></div>
+    <p class="jxj-round">R${v.round}<small>/${F.rounds}</small> · ${v.troca}<small>/${F.trocasPorRound}</small></p>`;
+  const ladoEu=lado(eu,true),ladoEle=lado(ele,false);
+  const deckDele=jxjDeckDele2(v,ele);
+  const extraBaixo=palco?el("div","jxj-barra-extra"):null;
+  if(palco){
+    const cima=el("section","jxj-tarja cima");
+    const volta=el("button","jxj-palco-voltar",ICONE("seta-esq")); volta.type="button"; volta.title="Voltar";
+    if(volta.setAttribute)volta.setAttribute("aria-label","Voltar");
+    volta.onclick=()=>{ SOM.toque(); irPara("jxj"); };
+    const extraCima=el("div","jxj-barra-extra"); extraCima.id="jxj-barra-extra";
+    cima.append(volta,ladoEle,centro,extraCima,deckDele);
+    tela.appendChild(cima);
+  }else{
+    hud.append(ladoEu,centro,ladoEle,deckDele);
+    tela.appendChild(hud);
+  }
+  /* abandonar: só contra bot (quem chama passa a função); a confirmação fica na própria tela */
+  if(abandonar){
+    const conf=el("div","jxj-confirma"); conf.hidden=true;
+    if(conf.setAttribute){ conf.setAttribute("role","dialog"); conf.setAttribute("aria-label","Abandonar a luta"); }
+    conf.innerHTML=`<div class="jxj-confirma-caixa"><h3>Abandonar a luta?</h3><p>Você perde por W.O. O rating cai como numa derrota, e a luta não dá XP nem fichas.</p></div>`;
+    const sim=el("button","botao jxj-confirma-sim",`${ICONE("bandeira")}<span>Abandonar</span>`); sim.type="button";
+    const nao=el("button","botao botao-sec jxj-confirma-nao","Voltar pra luta"); nao.type="button";
+    let foi=false;
+    sim.onclick=()=>{ if(foi)return; foi=true; sim.disabled=true; nao.disabled=true; SOM.toque(); abandonar(); };
+    nao.onclick=()=>{ SOM.toque(); conf.hidden=true; };
+    const acoesConf=el("div","jxj-confirma-acoes"); acoesConf.append(sim,nao); conf.appendChild(acoesConf);
+    const ab=el("button","jxj-abandonar",`${ICONE("bandeira")}<span>Abandonar</span>`); ab.type="button";
+    ab.onclick=()=>{ SOM.toque(); conf.hidden=false; };
+    (palco?extraBaixo:centro).appendChild(ab);
+    tela.appendChild(conf);
+  }
+  /* faixa: posição, iniciativa, placar do round e cartões */
+  const ini=e.iniciativa;
+  const ultIni=(v.trocas||[]).length?(v.trocas[v.trocas.length-1].ev||[]).some(x=>x.tipo==="iniciativa"):false;
+  const faixa=el("div","jxj-faixa-combate");
+  faixa.innerHTML=`<span class="jxj-posicao" id="jxj-posicao">${jxjPosicaoTxt(v)}</span>
+    ${ini?`<span class="jxj-iniciativa ${ini===eu?"eu":"ele"}${nova&&ultIni?" muda":""}" title="Quem levou a última troca do round. Com ela, a finta custa metade.">${ICONE("bandeira")}Iniciativa: ${ini===eu?"você":"ele"}</span>`:""}
+    ${jxjPlacarRound(v.placarRound,eu,ele)}
+    ${(e.cartoes||[]).length?`<span class="jxj-cartoes">${e.cartoes.map((c,i)=>`R${i+1} <b>${c[eu]}-${c[ele]}</b>`).join(" ")}</span>`:""}`;
+  if(!palco)tela.appendChild(faixa);
+  const momEl=final?null:jxjMomento2(e,eu,ele);
+  if(momEl&&!palco)tela.appendChild(momEl);
+  const palcoEl=palco?el("div","jxj-palco"):null;
+  if(palcoEl)palcoEl.id="jxj-palco";
+  const mesaEl=jxjMesa2(v,{eu,ele},revelar,{soltou});
+  if(!palco){ const areaMesa=el("div","jxj-mesa-area"); areaMesa.appendChild(mesaEl); tela.appendChild(areaMesa); }
+  /* o porquê da troca que acabou de ser resolvida (opção B) */
+  const ult=(v.trocas||[])[(v.trocas||[]).length-1];
+  const linha=ult?jxjLinha2(ult,{eu,ele},nomes,{nova}):null;
+  if(linha)(palcoEl||tela).appendChild(linha);
+  /* as cartas (a troca que acabou a luta, na cena do fim, vem sem a mão) */
+  const zona=el("section","jxj-zona-acao");
+  if(palco&&momEl)zona.appendChild(momEl);
+  let maoPosta=false;
+  const poeMao=g=>{
+    if(!palco){ zona.appendChild(g); return; }
+    const grade=el("div","jxj-palco-mao"); grade.append(mesaEl,g); zona.appendChild(grade); maoPosta=true;
+  };
+  const cartaTitulo=(k,extra="")=>`${k.c.nome}: velocidade ${jxjNum(k.c.vel)}, dano ${jxjNum(k.c.dano)}, custa ${jxjNum(k.c.custo)} de energia.${k.c.efeito?" "+k.c.efeito:""}${extra}`;
+  const noChao=v.papel&&v.papel!=="pe";
+  if(final){}
+  else if(v.minhaCarta||v.minhaAcao){
+    const k=(v.mao||[]).find(x=>x.id===v.minhaCarta);
+    const nome=k?jxjCartaMao2(k).c.nome:jxjNomeCarta2(v.minhaCarta);
+    zona.appendChild(el("p","jxj-espera",`${ICONE("check")}<span>Carta jogada: <b>${jxjEsc(nome)}</b>. ${v.adversarioEscolheu?"Ele também escolheu. Resolvendo.":"Esperando o adversário."}</span>`));
+  }else if(v.etapa==="sinal"){
+    const topo=el("div","jxj-zona-topo");
+    topo.appendChild(el("p","jxj-rotulo",`${maoNova?`Round ${v.round}: mão nova · `:""}Mostre uma postura${v.adversarioSinalizou?" · ele já mostrou":""}`));
+    zona.appendChild(topo);
+    zona.appendChild(jxjRegua2(v.mao,{regras:!palco}));
+    if(v.meuSinal){
+      zona.appendChild(el("p","jxj-espera",`${ICONE(JXJ_ICONE_ACAO[v.meuSinal]||"luta")}<span>Você mostrou <b>${JXJ_POSTURAS[v.meuSinal]}</b>. ${v.adversarioSinalizou?"Ele também mostrou. Revelando.":"Esperando a postura dele."}</span>`));
+    }else{
+      zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>Toque numa carta: ele vê a categoria dela antes de escolher. Jogar outra categoria depois é finta e gasta energia.</span>`));
+      const g=el("div","jxj-mao-luta jxj-mao-postura"+(maoNova?" mao-nova":""));
+      for(const x of v.mao||[]){
+        const k=jxjCartaMao2(x);
+        const b=el("button","jxj-postura jxj-na-mao",jxjCarta2(k.c,{origem:k.origem,velMod:k.velMod}));
+        b.type="button"; b.title=`Mostrar ${JXJ_POSTURAS[x.categoria]}: ele vê antes de escolher`;
+        b.onclick=()=>{ if(b.disabled)return; SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(y=>{y.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-postura-eu"); enviar(x.categoria,"sinal"); };
+        g.appendChild(b);
+      }
+      poeMao(g);
+    }
+  }else{
+    const topo=el("div","jxj-zona-topo");
+    topo.appendChild(el("p","jxj-rotulo",maoNova?`Round ${v.round}: mão nova${v.adversarioEscolheu?" · ele já escolheu":""}`:`Sua carta${v.adversarioEscolheu?" · ele já escolheu":""}`));
+    zona.appendChild(topo);
+    zona.appendChild(jxjRegua2(v.mao,{regras:!palco}));
+    if(v.sinais&&v.sinais[ele])zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>Ele mostrou ${JXJ_POSTURAS[v.sinais[ele]]}. Pode ser verdade ou finta.${noChao?" No chão, cada carta joga como a carta do chão da mesma categoria.":""}</span>`));
+    else if(noChao)zona.appendChild(el("p","jxj-dica-sinal",`${ICONE("info")}<span>No chão, cada carta joga como a carta do chão da mesma categoria.</span>`));
+    /* a postura não chegou a tempo: vale a padrão e é ela que ele viu */
+    if(v.sinais&&!v.meuSinal&&v.sinais[eu])zona.appendChild(el("p","jxj-dica-sinal jxj-postura-atrasada",`${ICONE("relogio")}<span>Sua postura não chegou a tempo: ele viu ${JXJ_POSTURAS[v.sinais[eu]]}. Jogar outra categoria é finta.</span>`));
+    const g=el("div","jxj-mao-luta"+(maoNova?" mao-nova":"")+(momEl?" no-momento":""));
+    for(const x of v.mao||[]){
+      const k=jxjCartaMao2(x);
+      /* finta: carta de outra categoria que a minha postura (sem energia pra fintar, não dá); sem
+         energia pro custo, a carta sai exausta (2 mais lenta, metade do dano, sem efeitos) */
+      const finta=x.finta>0,semEnergia=finta&&e[eu].energia<x.finta,exausta=!semEnergia&&e[eu].energia+1e-9<(x.custo||0)+(x.finta||0);
+      const b=el("button","jxj-acao jxj-na-mao"+(finta?" finta":"")+(semEnergia?" sem-energia":"")+(exausta?" exausta":""),
+        `${finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${jxjNum2(x.finta)} de energia">−${jxjNum2(x.finta)} finta</em>`:""}${jxjCarta2(k.c,{origem:k.origem,velMod:k.velMod,estado:semEnergia?"apagada":""})}`
+        +`${semEnergia?`<span class="jxj-carta-tranca">${ICONE("cadeado")}</span>`:""}${exausta?`<span class="v2-exausta">sai exausta</span>`:""}`);
+      b.type="button"; b.title=cartaTitulo(k,finta?` Finta: mais ${jxjNum2(x.finta)} de energia.`:"");
+      if(semEnergia){ b.disabled=true; b.title="Sem energia pra fintar."; }
+      b.onclick=()=>{ if(b.disabled)return; SOM.toque(); g.querySelectorAll(".jxj-acao").forEach(y=>{y.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-acao-eu"); enviar(x.id,"acao"); };
+      g.appendChild(b);
+    }
+    poeMao(g);
+  }
+  /* palco sem mão na tela (carta jogada, esperando): a mesa continua, com a minha carta e o verso da dele */
+  if(palco&&!maoPosta&&!final){ const grade=el("div","jxj-palco-mao so-mesa"); grade.appendChild(mesaEl); zona.appendChild(grade); }
+  (palcoEl||tela).appendChild(zona);
+  /* histórico: gaveta fechada, com tudo dentro */
+  const todas=[...(v.trocas||[])].reverse();
+  const gav=el("details","jxj-log jxj-gaveta");
+  gav.innerHTML=`<summary>${ICONE("lista")}<span>O que aconteceu</span><small>${todas.length?`${todas.length} ${todas.length===1?"troca":"trocas"}`:"nada ainda"}</small></summary>`;
+  const corpoGav=palco?el("div","jxj-gaveta-corpo"):gav;
+  const ol=el("ol","jxj-log-lista");
+  if(!todas.length)ol.appendChild(el("li","",`<b></b><span>A primeira troca ainda não foi resolvida.</span>`));
+  for(const t of todas)ol.appendChild(el("li","",`<b>R${t.round} T${t.troca}</b><span>${(t.eventos||[]).map(x=>jxjEsc(jxjFrase(x))).join(" ")||"Nada mudou."}</span>`));
+  corpoGav.appendChild(ol);
+  if(palco){
+    gav.appendChild(corpoGav);
+    const baixo=el("section","jxj-tarja baixo");
+    baixo.append(ladoEu,faixa,gav,extraBaixo);
+    tela.append(palcoEl,baixo);
+  }else tela.appendChild(gav);
+  area.appendChild(tela);
+  return tela;
+}
+/* som e animação da troca v2 que acabou de ser resolvida: os eventos do motor v2 (dano com alvo e
+   carta, knockdown, posição, encaixe, fim). Mesmo jeito do jxjEfeitos da luta de antes; a barra anda
+   na escala da barra (estado traz a vidaMax de cada lado). */
+function jxjEfeitos2(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null,semVida=false,estado=null}={}){
+  if(!novas.length&&!fim)return;
+  const card=l=>document.getElementById(l===eu?"jxj-card-eu":"jxj-card-ele");
+  const anima=(no,cls)=>{ if(!no||reduceMotion())return; no.classList.remove(cls); void no.offsetWidth; no.classList.add(cls); };
+  let t=antes?JXJ_VIRA_MS:120;
+  const depois=(fn,passo=340)=>{ setTimeout(()=>{ if(tk===JXJ_TOKEN)fn(); },t); t+=passo; };
+  const ult=novas[novas.length-1],dano=antes?{...antes}:null;
+  for(const e of (ult&&ult.ev)||[]){
+    const alvo=e.alvo||(e.quem==="a"?"b":"a"),ladoAlvo=alvo===eu?"eu":"ele";
+    if(e.tipo==="dano"&&e.quem){
+      const pesado=(Number(e.dano)||0)>=4,nome=jxjNomeCarta2(e.carta);
+      let vida=null,menos=0;
+      if(dano&&typeof e.dano==="number"){ const v0=jxjVida(dano[alvo]); dano[alvo]+=e.dano*jxjEscalaDano2(estado,alvo); vida=jxjVida(dano[alvo]); menos=v0-vida; }
+      depois(()=>{ if(pesado)SOM.golpePesado(); else SOM.golpeLeve();
+        anima(card(alvo),"jxj-apanhou"); if(pesado)anima(document.getElementById("jxj-combate"),"jxj-tremor");
+        if(vida!=null&&!semVida){ jxjPintarVida(alvo,vida); jxjPopVida(card(alvo),menos,pesado); }
+        jxjFaixaGolpe(ladoAlvo,nome,menos); },JXJ_GOLPE_MS);
+    }
+    else if(e.tipo==="knockdown")depois(()=>{ SOM.knockdown(); jxjClarao(); anima(card(alvo),"jxj-caiu"); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte"); jxjSeloKD(card(alvo)); },900);
+    else if(["queda","puxouGuarda","raspou","levantou","avancou"].includes(e.tipo))
+      depois(()=>{ if(e.tipo==="queda"||e.tipo==="puxouGuarda")SOM.queda(); anima(document.getElementById("jxj-posicao"),"jxj-muda"); });
+    else if(e.tipo==="encaixou")depois(()=>{ SOM.quaseFinalizacao(); anima(card(alvo),"jxj-apertado"); },600);
+    else if(e.tipo==="escapou")depois(()=>SOM.evento());
+    else if(e.tipo==="anulou")depois(()=>SOM.golpeLeve());
+    else if(e.tipo==="fim"&&(e.metodo==="KO"||e.metodo==="TKO")){
+      const perd=e.quem==="a"?"b":"a",resto=dano?jxjVida(dano[perd]):0;
+      depois(()=>{ SOM.nocaute();
+        if(dano){ jxjClarao(); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte"); jxjFagulhas(card(perd)); anima(card(perd),"jxj-nocauteado");
+          if(!semVida){ jxjPintarVida(perd,0,{ko:true}); jxjPopVida(card(perd),resto,true); } }
+        else if(!reduceMotion()){ document.body.classList.add("ko"); setTimeout(()=>document.body.classList.remove("ko"),440); } },1200);
+    }
+    else if(e.tipo==="fim"&&e.metodo==="FIN"){
+      const perd=e.quem==="a"?"b":"a";
+      if(dano){ depois(()=>{ SOM.quaseFinalizacao(); anima(card(perd),"jxj-batendo"); },620); depois(()=>SOM.golpeLeve(),620); depois(()=>SOM.golpeLeve(),620); depois(()=>SOM.golpeLeve(),500); }
+      depois(()=>SOM.finalizacao(),1200);
+    }
+  }
+  if(fechouRound){ depois(()=>SOM.sinoFim(),900); depois(()=>SOM.sinoInicio(),200); }
+  if(fim){
+    const r=fim.resultado||{};
+    if(r.metodo==="DEC"||r.metodo==="EMPATE")depois(()=>SOM.sinoFim(),900);
+    if(fim.lado&&r.metodo!=="ANULADA")depois(()=>!r.vencedor?SOM.evento():r.vencedor===fim.lado?SOM.vitoria():SOM.derrota());
+  }
+  return t;
+}
 /* Som e animação da troca que acabou de ser resolvida (2026-10-04), a partir
    dos eventos em forma de dado da vista (tipo, quem). Um efeito por vez, com
    intervalo, como a narração da carreira. Quem apanhou treme; knockdown
@@ -10017,8 +10405,10 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
   const ultD=(v.trocas||[])[(v.trocas||[]).length-1];
   if(ultD&&r.vencedor&&["KO","TKO","FIN"].includes(r.metodo)){
     const famV=r.vencedor==="a"?ultD.acaoA:ultD.acaoB,varV=r.vencedor==="a"?ultD.varA:ultD.varB;
+    /* combate v2: a carta jogada (a do chão, se foi no chão), pelas definições */
+    const cV=v.combate===2&&ultD.resolucao&&ultD.resolucao.cartas?ultD.resolucao.cartas[r.vencedor]:null;
     if(famV){ cab.classList.add("com-carta");
-      cab.appendChild(el("div","jxj-resultado-carta",`<span class="jxj-revelada venceu">${jxjCartaDaTroca(famV,varV,null,"mesa")}</span><small>a carta que decidiu</small>`)); }
+      cab.appendChild(el("div","jxj-resultado-carta",`<span class="jxj-revelada venceu">${cV?jxjCarta2(jxjCartaDef2(cV.efetiva,{vel:cV.vel}),{tam:"mesa"}):jxjCartaDaTroca(famV,varV,null,"mesa")}</span><small>a carta que decidiu</small>`)); }
   }
   area.appendChild(cab);
   /* a linha da narração ao vivo do último lance (nocaute, finalização ou o

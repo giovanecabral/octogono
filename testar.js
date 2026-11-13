@@ -16005,6 +16005,159 @@ async function testarJxJTelas() {
       if (botoesBot(desde(m3)).length) throw new Error("com gente na fila, o painel ofereceu o bot direto");
       await api(uo, "filaSair");
     });
+    /* combate v2 na tela (2026-11-13, Fase 6): a luta v2 de verdade (flag ligada pras duas contas) e o desenho */
+    const flagV2T = (x) => db.query("update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", [JSON.stringify(x)]);
+    const mesaV2 = (nos) => nos.filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
+    const vagaEle = (h) => (h.match(/id="jxj-vaga-acao-ele"[^>]*>([\s\S]*?)<\/span><\/span>/) || [])[1] || "";
+    let lidV2 = null;
+    const lutaV2 = async () => {
+      await db.query("delete from jxj_limites");
+      await db.query("update jxj_lutas set status = 'cancelada' where status in ('confirmacao', 'andamento') and (a_user in ($1, $2) or b_user in ($1, $2))", [u1, u2]);
+      await db.query("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
+      await db.query("delete from jxj_fila");
+      await db.query("update jxj_lutadores set rating = 1500, rd = 200 where id in ($1, $2)", [l1, l2]);
+      await flagV2T({ contas: [u1, u2] });
+      await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
+      const p = await api(u1, "fila");
+      if (!p || !p.luta) throw new Error("o par v2 não se formou: " + JSON.stringify(p).slice(0, 200));
+      await api(u1, "confirmar", { lutaId: p.luta.id }); await api(u2, "confirmar", { lutaId: p.luta.id });
+      lidV2 = p.luta.id;
+      return lidV2;
+    };
+    await conf("combate v2 na tela (2026-11-13): com a flag desligada a luta é a de antes (sem a classe v2); com ela, a luta nasce v2 e a etapa do sinal mostra as 5 cartas da mão com velocidade, dano e custo, a régua no lugar de Quem ganha de quem; tocar uma carta manda a postura (a categoria dela)", async () => {
+      await lutaViva();
+      let m = await abrir(`luta/${lid}`);
+      const v1 = desde(m).filter((n) => n.id === "jxj-combate").pop();
+      if (!v1 || tem(v1, "v2") || desde(m).some((n) => tem(n, "v2-regua"))) throw new Error("a luta de antes ganhou peça da v2");
+      try {
+        await lutaV2();
+        const v = await api(u1, "luta", { lutaId: lidV2 });
+        if (v.combate !== 2 || !Array.isArray(v.mao) || v.mao.length !== 5) throw new Error("a luta não nasceu v2: " + JSON.stringify({ c: v.combate, mao: v.mao && v.mao.length }));
+        if (v.etapa !== "sinal") throw new Error("etapa: " + v.etapa);
+        m = await abrir(`luta/${lidV2}`);
+        const tela = desde(m).filter((n) => n.id === "jxj-combate").pop();
+        if (!tela || !tem(tela, "v2")) throw new Error("a tela da luta v2 não é a v2");
+        const cartas = desde(m).filter((n) => tem(n, "jxj-postura") && tem(n, "jxj-na-mao"));
+        if (cartas.length !== 5) throw new Error(`${cartas.length} cartas na etapa do sinal`);
+        const num = (x) => String(Math.round(Number(x || 0) * 10) / 10).replace(".", ",");
+        for (const x of v.mao) {
+          if (!cartas.some((b) => { const h = String(b.innerHTML); return h.includes(`data-carta="${x.efetiva.id}"`) && h.includes(`<small>vel</small><b>${num(x.vel)}`)
+            && h.includes(`<small>dano</small><b>${num(x.dano)}</b>`) && h.includes(`<span class="jxj-gema-num">${num(x.custo)}</span>`); }))
+            throw new Error("carta da mão sem velocidade, dano ou custo: " + JSON.stringify(x).slice(0, 160));
+        }
+        if (!desde(m).some((n) => tem(n, "v2-regua")) || desde(m).some((n) => tem(n, "jxj-ciclo"))) throw new Error("a régua não substituiu Quem ganha de quem");
+        semLixoV3(htmlDe(desde(m)), "luta v2, etapa do sinal");
+        const cat = v.mao[0].categoria;
+        const b0 = cartas.find((b) => String(b.innerHTML).includes(`data-carta="${v.mao[0].efetiva.id}"`));
+        await b0.onclick(); await assentar(15);
+        const depois = await api(u1, "luta", { lutaId: lidV2 });
+        if (depois.meuSinal !== cat) throw new Error(`postura no servidor: ${depois.meuSinal}, a carta era ${cat}`);
+      } finally { await flagV2T(false); }
+    });
+    await conf("combate v2 na tela: a mesa nunca mostra a carta dele antes da revelação (nem depois que ele joga: só o verso); tocar a carta manda acao com o id da carta; depois da troca, o porquê na linha do tempo (1º, o selo, 2º, a frase de jxjPorQue2) e a barra pela vida", async () => {
+      if (!lidV2) throw new Error("sem a luta v2 do teste anterior");
+      await flagV2T({ contas: [u1, u2] });
+      try {
+        await db.query("delete from jxj_limites");
+        await db.query("update jxj_lutas set prazo = now() + interval '60 seconds' where id = $1 and status = 'andamento'", [lidV2]);
+        let v = await api(u1, "luta", { lutaId: lidV2 }), w = await api(u2, "luta", { lutaId: lidV2 });
+        if (v.status !== "andamento") throw new Error("a luta v2 acabou antes: " + v.status);
+        if (!w.meuSinal) await api(u2, "sinal", { lutaId: lidV2, round: w.round, troca: w.troca, familia: w.mao[0].categoria });
+        w = await api(u2, "luta", { lutaId: lidV2 }); v = await api(u1, "luta", { lutaId: lidV2 });
+        if (v.etapa !== "acao") throw new Error("etapa depois das duas posturas: " + v.etapa);
+        let m = await abrir(`luta/${lidV2}`), h = mesaV2(desde(m));
+        if (/jxj-(verso|carta)/.test(vagaEle(h))) throw new Error("carta dele na mesa antes de ele jogar: " + vagaEle(h).slice(0, 200));
+        /* ele joga: a mesa mostra só o verso; a carta dele (id) nunca aparece na mesa */
+        const dele = w.mao[0].id;
+        await api(u2, "acao", { lutaId: lidV2, round: w.round, troca: w.troca, carta: dele });
+        m = await abrir(`luta/${lidV2}`); h = mesaV2(desde(m));
+        if (!/jxj-verso/.test(vagaEle(h)) || /data-carta=/.test(vagaEle(h))) throw new Error("depois que ele jogou, a vaga dele: " + vagaEle(h).slice(0, 200));
+        /* vazamento: mesmo se a vista trouxesse a carta dele, a mesa só desenha o verso */
+        const vaz = String(vm.runInContext(`(() => { const v = JSON.parse(globalThis.__vista); v.cartaDele = ${JSON.stringify(dele)}; v.minhaCartaDele = ${JSON.stringify(dele)};
+          const s = jxjMesa2(v, { eu: v.lado, ele: v.lado === "a" ? "b" : "a" }, null, {}); return s.children.map((c) => c.innerHTML).join("\\n"); })()`, Object.assign(env.sandbox, { __vista: JSON.stringify({ ...v, adversarioEscolheu: true }) })));
+        if (/data-carta=/.test(vagaEle(vaz))) throw new Error("a mesa desenhou a carta dele de um campo da vista: " + vagaEle(vaz).slice(0, 200));
+        /* a minha: tocar a carta manda acao com o id */
+        const acoes = desde(m).filter((n) => tem(n, "jxj-acao") && tem(n, "jxj-na-mao"));
+        if (acoes.length !== 5) throw new Error(`${acoes.length} cartas na etapa da ação`);
+        const minha = v.mao[v.mao.length - 1];
+        const b = acoes.find((x) => String(x.innerHTML).includes(`data-carta="${minha.efetiva.id}"`) && !x.disabled);
+        if (!b) throw new Error("carta da mão não achada ou desligada");
+        const m2 = env.todos.length;
+        await b.onclick(); await assentar(15);
+        const linhas = (await db.query("select a.carta from jxj_acoes a join jxj_lutas l on l.id = a.luta_id where a.luta_id = $1 and a.lado = case when l.a_id = $2 then 'a' else 'b' end", [lidV2, l1])).rows;
+        /* a troca pode ter resolvido (as duas cartas na mesa): a carta gravada fica na troca */
+        const t0 = (await api(u1, "luta", { lutaId: lidV2 })).trocas[0];
+        const eu = v.lado, gravada = linhas.length ? linhas[0].carta : t0 && (eu === "a" ? t0.cartaA : t0.cartaB);
+        if (gravada !== minha.id) throw new Error(`carta no servidor: ${gravada}, toquei ${minha.id}`);
+        /* o porquê na linha do tempo */
+        for (const ate = Date.now() + 8000; Date.now() < ate && !desde(m2).some((n) => tem(n, "v2-linha"));) await assentar(60);
+        const vf = await api(u1, "luta", { lutaId: lidV2 }), t = vf.trocas[vf.trocas.length - 1];
+        const lin = desde(m2).filter((n) => tem(n, "v2-linha")).pop();
+        if (!lin) throw new Error("sem a linha do tempo da troca");
+        const hl = String(lin.innerHTML);
+        const frases = JSON.parse(vm.runInContext(`JSON.stringify(jxjPorQue2(${JSON.stringify(t)}, ${JSON.stringify(eu)}, ${JSON.stringify(vf.nomes)}))`, env.sandbox));
+        if (!frases.length || !hl.includes(frases.join(" ")) || !/>Por quê</.test(hl)) throw new Error("o porquê: " + hl.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
+        if (!/class="v2-selo">(interrompeu|anulou|juntas|depois|se anularam|encaixe|mudou a posição)</.test(hl) || !/1º/.test(hl)) throw new Error("linha do tempo sem a ordem ou o selo: " + hl.slice(0, 300));
+        /* a barra pela vida: metade da vida de um lado e um quarto do outro (a troca do teste pode não
+           ter dado dano); abrir de novo: sem troca nova, o placar já vem no valor de agora */
+        await db.query(`update jxj_lutas set estado = jsonb_set(jsonb_set(estado, '{a,vida}', to_jsonb((estado->'a'->>'vidaMax')::numeric * 0.5)),
+          '{b,vida}', to_jsonb((estado->'b'->>'vidaMax')::numeric * 0.25)) where id = $1`, [lidV2]);
+        m = await abrir(`luta/${lidV2}`);
+        const est = (await api(u1, "luta", { lutaId: lidV2 })).estado;
+        const hud = htmlDe(desde(m).filter((n) => n.id === "jxj-card-eu" || n.id === "jxj-card-ele"));
+        for (const l of ["a", "b"]) {
+          const x = est[l], esp = Math.max(4, Math.min(100, Math.round(x.vida / x.vidaMax * 100)));
+          if (esp !== (l === "a" ? 50 : 25)) throw new Error(`a vida posta no banco não chegou na vista (${l}: ${x.vida} de ${x.vidaMax})`);
+          if (!new RegExp(`id="jxj-vida-${l}" data-vida="${esp}"`).test(hud)) throw new Error(`barra ${l}: vida ${x.vida} de ${x.vidaMax} devia dar ${esp}: ` + (hud.match(new RegExp(`id="jxj-vida-${l}" data-vida="\\d+"`)) || [])[0]);
+        }
+        semLixoV3(htmlDe(desde(m)), "luta v2 depois da troca");
+      } finally { await flagV2T(false); }
+    });
+    await conf("combate v2 no desenho: nome malicioso escapado no placar, no deck dele e no porquê; o botão Deck dele abre as 12 cartas dele (com as cópias) e fecha; no chão, a carta mostra a do chão com a de onde veio; o deck dele não sai da caixa enquanto fechada; sem 3D, a tela de cartas", async () => {
+      if (!lidV2) throw new Error("sem a luta v2");
+      await flagV2T({ contas: [u1, u2] });
+      let v;
+      try { v = await api(u1, "luta", { lutaId: lidV2 }); } finally { await flagV2T(false); }
+      const MAU = "<img src=x onerror=alert(1)>";
+      const eu = v.lado, ele = eu === "a" ? "b" : "a";
+      const vista = JSON.parse(JSON.stringify(v));
+      vista.status = "andamento"; vista.nomes[ele].nome = MAU; vista.jogadas[ele] = ["jab"];
+      if (!vista.mao || !vista.mao.length) vista.mao = [{ id: "jab", nome: "Jab", categoria: "golpes", efetiva: { id: "jab", nome: "Jab", contexto: "pe" }, vel: 5, velBase: 5, dano: 1, danoBase: 1, custo: 1, finta: null, efeitos: [] }];
+      const m = env.todos.length;
+      const r = JSON.parse(vm.runInContext(`(() => {
+        const v = JSON.parse(globalThis.__vista), lados = { eu: ${JSON.stringify(eu)}, ele: ${JSON.stringify(ele)} };
+        const t = jxjDesenharCombate2(document.createElement("div"), v, lados, () => {}, {});
+        const ach = (no, f) => { const fila = [no]; while (fila.length) { const x = fila.shift(); if (f(x)) return x; fila.push(...(x.children || [])); } return null; };
+        const bd = ach(t, (x) => String(x.className || "").split(" ").includes("v2-btn-deck")), cx = ach(t, (x) => x.id === "jxj-deck-dele");
+        const gid = document.getElementById;
+        document.getElementById = (id) => ach(t, (x) => x.id === id);
+        let fechada, aberta;
+        try { fechada = cx.hidden; bd.onclick(); aberta = !cx.hidden; bd.onclick(); } finally { document.getElementById = gid; }
+        /* no chão: a carta da mão vira a do chão (por cima, golpe vira Ground and pound) */
+        const chao = { ...v, papel: "cima", estado: { ...v.estado, pos: "cima_" + lados.eu, nivelPos: 0 },
+          mao: [{ id: "jab", nome: "Jab", categoria: "golpes", efetiva: { id: "ground_and_pound", nome: "Ground and pound", contexto: "cima" }, vel: 3, velBase: 3, dano: 3, danoBase: 3, custo: 2, finta: null, efeitos: [] }] };
+        const t2 = jxjDesenharCombate2(document.createElement("div"), chao, lados, () => {}, {});
+        const mao2 = ach(t2, (x) => String(x.className || "").split(" ").includes("jxj-na-mao"));
+        return JSON.stringify({ classe: String(t.className), fechada, aberta, fechouDeNovo: cx.hidden, deck: cx.innerHTML, mao2: mao2 ? mao2.innerHTML : "" });
+      })()`, Object.assign(env.sandbox, { __vista: JSON.stringify(vista) })));
+      const h = htmlDe(desde(m));
+      if (/<img src=x/.test(h) || !/&lt;img src=x/.test(h)) throw new Error("nome do adversário sem escapar no placar ou no deck dele");
+      if (r.classe.split(" ").includes("tela-cheia")) throw new Error("sem o palco, a tela não pode ser a cheia");
+      if (!r.fechada || !r.aberta || !r.fechouDeNovo) throw new Error(`deck dele: fechada ${r.fechada}, abriu ${r.aberta}, fechou ${r.fechouDeNovo}`);
+      const deck = v.decks[ele], unicas = [...new Set(deck)];
+      for (const id of unicas) if (!r.deck.includes(`data-carta="${id}"`)) throw new Error("o deck dele não mostra " + id);
+      const dup = unicas.find((id) => deck.filter((x) => x === id).length > 1);
+      if (dup && !r.deck.includes("×2")) throw new Error("o deck dele não mostra as cópias");
+      if (!/Neste round ele já jogou: Jab\./.test(r.deck) || !/você só vê quantas/.test(r.deck)) throw new Error("deck dele sem o que ele jogou: " + r.deck.replace(/<[^>]+>/g, " ").slice(-200));
+      if (!r.mao2.includes('data-carta="ground_and_pound"') || !r.mao2.includes(">Ground and pound</b>") || !r.mao2.includes('<span class="v2-origem">do Jab</span>')) throw new Error("carta no chão: " + r.mao2.slice(0, 400));
+      /* o porquê com nome malicioso */
+      const t = (v.trocas || [])[v.trocas.length - 1];
+      if (t) {
+        const lin = String(vm.runInContext(`jxjLinha2(${JSON.stringify(t)}, { eu: ${JSON.stringify(eu)}, ele: ${JSON.stringify(ele)} }, ${JSON.stringify(vista.nomes)}).innerHTML`, env.sandbox));
+        if (/<img src=x/.test(lin)) throw new Error("o porquê com o nome sem escapar");
+      }
+      semLixoV3(h, "desenho da v2");
+    });
     await conf("JxJ desligado (JXJ_ATIVO diferente de true): a entrada mostra 'abre em breve' e nenhum botão de criar", async () => {
       process.env.JXJ_ATIVO = "false";
       UI.zerarDef();
