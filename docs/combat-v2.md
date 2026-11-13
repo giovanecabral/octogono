@@ -177,6 +177,37 @@ Atrás da flag `combate_v2` (`jxj_config`), com a migração
 Ligar pra um grupo pequeno, ligar pra todos e desligar: comandos no
 começo da migração.
 
+### Ligar, acompanhar e voltar atrás
+
+Quem roda SQL e mexe na flag é o dono. A ordem:
+
+1. Backup do banco. Rodar `supabase_jxj_combate2.sql` e a consulta de
+   conferência do começo dele (esperado: `false, true, true, 3`). Com a flag
+   em `false`, nada muda pra ninguém.
+2. Deploy do código. Com a flag desligada, o caminho da v1 é o de hoje (a
+   suíte jxj prova: luta v1, estado sem deck, bot na v1).
+3. Ligar pra um grupo pequeno (`{"contas": [...]}`, só contas de teste ou
+   de quem topou). A luta só é v2 quando as duas contas estão na lista.
+4. Acompanhar nas primeiras lutas: os logs da função `api/jxj` na Vercel
+   (resposta 500 na ação `acao` ou `luta`), W.O. e anuladas (prazo perdido
+   demais indica tela travada) e a duração (a simulação dá 8,3 trocas por
+   luta). Contar as lutas v2:
+   `select status, count(*) from jxj_lutas where (estado->>'cv')::int = 2 group by status;`
+5. Voltar atrás, do mais leve ao mais pesado:
+   - Desligar a flag (`false`). A luta v2 em andamento termina na versão em
+     que nasceu; a próxima nasce v1. É o que resolve quase tudo, porque o
+     código da v1 não passa pelo da v2.
+   - Se a luta v2 em andamento travar (o prazo perdido 3 vezes seguidas já
+     termina a luta sozinho, em W.O. ou anulada): cancelar pelo banco,
+     `update jxj_lutas set status = 'cancelada' where id = <id>;` e
+     `update jxj_contas set luta_aberta_id = null where luta_aberta_id = <id>;`
+     (não existe botão no admin pra isso).
+   - Se o problema for no caminho da v1 (não deveria: a flag desligada é o
+     código de antes): promover o deploy anterior na Vercel.
+   - Desfazer o banco (só com nenhuma luta v2 em andamento; os comandos
+     estão no começo da migração). Os decks montados somem junto com a
+     coluna `deck`.
+
 ## Como rodar
 
 ```bash
