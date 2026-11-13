@@ -6,6 +6,7 @@ import * as M from "../api/_jxj-combate2.js";
 import * as C from "../api/_jxj-cartas.js";
 import { perfilLuta2 } from "../api/_jxj-luta2.js";
 import { aleatoria, atenta, oraculo } from "./politicas.mjs";
+import { lutaContraBot2 } from "./bots2.mjs";
 
 import { aplicarAjuste } from "./ajuste.mjs";
 aplicarAjuste(workerData && workerData.ajuste);
@@ -78,7 +79,24 @@ function lote(job) {
   return out;
 }
 
+/* Fase 5: o jogador modelo (lado X) contra o bot do servidor (lado Y, job.bot =
+   {pers, s}), pelo caminho do servidor (sim/bots2.mjs), trocando os lados a cada luta */
+function loteBot(job) {
+  const out = { vA: 0, vB: 0, emp: 0, met: {}, trocas: 0, lutas: 0, empatesVel: 0, interrupcoes: 0, anuladas: 0, encaixes: 0, trocasTotal: 0, cartas: {} };
+  for (let i = 0; i < job.n; i++) {
+    const { fim: f, eu, ele } = lutaContraBot2({
+      jogador: { estilo: job.sA, categoria: job.catA, build: job.buildA || {} },
+      bot: { estilo: job.sB, categoria: job.catB, build: job.buildB || {}, pers: job.bot.pers, s: job.bot.s },
+      ladoBot: i % 2 === 1 ? "a" : "b", semente: `${job.sal}:${i}`, n: job.semente0 + i });
+    out.lutas++;
+    out.trocas += (f.round - 1) * 3 + f.troca;
+    out.met[f.metodo] = (out.met[f.metodo] || 0) + 1;
+    if (f.vencedor === eu) out.vA++; else if (f.vencedor === ele) out.vB++; else out.emp++;
+  }
+  return out;
+}
+
 parentPort.on("message", (job) => {
   if (job === "fim") return process.exit(0);
-  parentPort.postMessage({ id: job.id, out: lote(job) });
+  parentPort.postMessage({ id: job.id, out: job.bot ? loteBot(job) : lote(job) });
 });

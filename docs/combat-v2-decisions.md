@@ -233,6 +233,62 @@ no relatório (`sim/relatorio.md`).
     carta): fica guardado, a luta usa o padrão e o estado diz
     `deckMontado: false`. Se o nó voltar, o montado volta.
 
+
+## Fase 5 (bots)
+
+54. **Luta contra bot no combate novo quando a flag vale pra conta do
+    jogador** (só a dele: a conta dos bots não entra na lista). Sem a
+    flag, a luta contra bot é a de antes, com o mesmo código.
+55. **O bot é o mesmo da tela** (`montarBot`: nome, rosto, estilo, build,
+    jeito e roda saem da mesma semente). Muda o perfil (`perfilLuta2`:
+    deck padrão do estilo, a árvore pelo efeito v2) e o rating
+    (`FORCA_BOT2`). O bot não monta deck: a carta nova da árvore fica fora
+    do deck dele.
+56. **Cego.** O bot enxerga o estado com a mão do jogador trocada pela
+    quantidade de cartas (`vistaDoBot`); o deck do jogador e o que ele já
+    jogou no round são públicos. A carta do jogador na troca nunca é
+    argumento das funções do bot. O perfil do jogador entra, como no bot
+    de antes (que já usava o perfil humano nas misturas).
+57. **A leitura da troca** (a tabela das cartas e a mistura de equilíbrio
+    do jogador "atenta") saiu de `sim/politicas.mjs` pra
+    `api/_jxj-leitura2.js` sem mudar a conta: 60 de 60 lutas iguais antes
+    e depois. O servidor e a simulação usam a mesma.
+58. **Habilidade:** carta ao acaso em 0,6 x (1 - s) das vezes; no resto, a
+    mistura de equilíbrio. Sem o "peso do estilo" de antes: o jeito já
+    puxa pro estilo.
+59. **As personalidades nas cartas:** os mesmos pesos por categoria do bot
+    de antes (`PESOS_PERSONALIDADE`), divididos entre as cartas da mão de
+    cada categoria. O Observador joga a carta que mais rende contra a
+    última do jogador (pela leitura); o forte, contra o hábito dele. O
+    Inquieto anda na roda das 4 categorias e pula a que não tem na mão.
+    O erro de propósito (`ERRO_PERSONALIDADE`), a regra de não repetir a
+    mesma categoria uma 4ª vez e o começo puro da primeira luta contra
+    bot continuam.
+60. **Inclinação:** o peso do jeito vezes e^(0,08 x s x ganho), com o ganho
+    no valor da leitura (na v1 era em chance de vencer).
+61. **Encaixe e grogue:** o bot joga a leitura, sem o jeito (como o momento
+    decisivo da v1).
+62. **Cansado** (energia 2 ou menos): metade das vezes a defesa (o
+    Provocador, um quarto), como antes.
+63. **Postura:** a categoria da carta pretendida ou, com a chance de isca do
+    jeito vezes s (mais se a finta dele está barata), outra categoria da
+    mão; sem energia pra fintar, nunca isca. Com as posturas reveladas, o
+    bot responde à do jogador como verdade (confia x s) ou como isca
+    (desconfia x s); sem energia pra fintar, joga a carta da própria
+    postura. Os números de isca, confia e desconfia são os do bot de antes.
+64. **Força medida contra o jogador "atenta" (1500)**, pelo caminho do
+    servidor, com o jogador mostrando a categoria da carta e 30% de isca
+    (`sim/bots2.mjs`). O número sai menor que o do bot de antes porque a
+    base é outra (o "atenta" joga a mistura de equilíbrio; na v1 a base era
+    o jogador de estilo). A faixa `RATING_BOT` (a habilidade pelo rating do
+    jogador) não mudou.
+65. **Lição do fim com as cartas do combate novo** (`LICAO2`): o que pune
+    cada jeito mudou (o Bloqueio e o Contra-ataque punem o Provocador; o
+    clinch passa pela defesa do Paciente e tira energia).
+66. **A simulação dos bots fica fora do relatório padrão** (custa 7 minutos
+    com 10.000): `SIM_PARTES=bots SIM_SAIDA=relatorio-bots.md node
+    sim/simular.mjs 10000`.
+
 ## Fase 6 (tela, a lógica)
 
 70. **Só funções puras no `index.html`, sem mexer na tela de hoje:**
@@ -265,8 +321,8 @@ no relatório (`sim/relatorio.md`).
     linha do round sozinho).
 75. **`trocaVista` não manda o `como` do escapou:** a conversão olha a
     posição depois da troca (em pé, saiu na força e levanta; senão,
-    defendeu). Mandar o `como` no servidor deixa isso direto; ficou como
-    achado, sem mexer em `api/`.
+    defendeu). Resolvido depois: a troca manda o `como` e a
+    conversão usa ele (a posição fica só pra troca gravada sem ele).
 76. **Referência da v2:** em pé, por cima e por baixo, da mais rápida pra
     mais lenta (empate: mais dano, depois o nome). O texto do efeito sai
     dos efeitos declarativos da carta (`jxjEfeitoTexto2`), não de texto

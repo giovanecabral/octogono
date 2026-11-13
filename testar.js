@@ -12600,17 +12600,52 @@ async function testarJxJ() {
       if ((await q("select valor from jxj_config where chave = 'bot'"))[0].valor.user !== contaBots) throw new Error("a recusa trocou a conta dos bots");
     });
     /* depois dos bots configurados (o teste de cima) */
-    await conf("combate v2 e bot: com a flag ligada, a luta contra bot continua a de antes (os bots jogam com cartas só na Fase 5)", async () => {
+    const BOT2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot2.js")).href);
+    await conf("combate v2 e bot (Fase 5): com a flag da conta do jogador, a luta contra bot nasce v2 (o bot com o deck padrão do estilo e a força FORCA_BOT2); a postura do bot é a da semente; cada carta gravada do bot é a que ele já tinha antes do jogador mandar a dele (prevista sem a carta do jogador, com a mão dele escondida); a lição do combate novo só no fim; sem a flag, a luta contra bot é a de antes", async () => {
       await zerarLimites();
       const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
-      await flagV2(true);
+      await flagV2({ contas: [u] });
       try {
         await ok(u, "filaEntrar", { lutadorId: l });
         const lid = (await ok(u, "bot", { lutadorId: l })).luta;
-        if ((await estadoDb(lid)).estado.cv) throw new Error("bot jogou v2");
-        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
-        await q("update jxj_contas set luta_aberta_id = null where user_id = $1", [u]);
+        const L0 = (await q("select estado, perfis, bot, nomes from jxj_lutas where id = $1", [lid]))[0];
+        if (L0.estado.cv !== 2 || JSON.stringify(L0.perfis.b.deck) !== JSON.stringify(CT.DECK_PADRAO[L0.bot.estilo]) || !L0.perfis.b.v2) throw new Error("luta contra bot não nasceu v2: " + JSON.stringify({ cv: L0.estado.cv }));
+        if (L0.bot.v !== BOT2.VERSAO_BOT2 || "mx" in L0.bot || L0.bot.rating !== BOT2.forcaDoBot2(L0.bot.pers, L0.bot.s) || L0.nomes.b.rating !== L0.bot.rating) throw new Error("dados do bot v2: " + JSON.stringify({ v: L0.bot.v, r: L0.bot.rating }));
+        const previstas = [];
+        for (let n = 0; n < 40; n++) {
+          const v = await ok(u, "luta", { lutaId: lid });
+          if (v.status !== "andamento") break;
+          if (v.combate !== 2 || !v.bot || v.etapa !== "sinal" || v.adversarioSinalizou !== true || v.adversarioEscolheu !== false) throw new Error("vista v2 contra bot: " + JSON.stringify({ c: v.combate, etapa: v.etapa, sin: v.adversarioSinalizou, esc: v.adversarioEscolheu }));
+          if ("licaoBot" in v) throw new Error("a lição do bot apareceu antes do fim");
+          const carta = v.mao[n % v.mao.length].id, cat = CT.CARTAS[carta].categoria;
+          /* nas trocas ímpares, finta (postura de outra categoria da mão), se tiver energia */
+          const outra = v.mao.map((x) => x.categoria).find((x) => x !== cat);
+          const fintar = n % 2 === 1 && outra && v.estado.a.energia >= v.mao.find((x) => x.id === carta).custo + 2;
+          const postura = fintar ? outra : cat;
+          await ok(u, "sinal", { lutaId: lid, round: v.round, troca: v.troca, familia: postura });
+          const vr = await ok(u, "luta", { lutaId: lid });
+          if (vr.etapa !== "acao" || vr.adversarioEscolheu !== true || !vr.sinais || vr.sinais.a !== postura) throw new Error("revelação contra bot: " + JSON.stringify({ etapa: vr.etapa, esc: vr.adversarioEscolheu, sinais: vr.sinais }));
+          const d = (await q("select public.jxj_luta($1) as d", [lid]))[0].d;
+          const arg = { estado: d.luta.estado, semente: d.luta.semente, trocas: d.trocas, dados: d.luta.bot, perfis: d.luta.perfis, lado: "b" };
+          if (vr.sinais.b !== BOT2.sinalDoBot2(arg)) throw new Error("a postura do bot na vista não é a da semente");
+          /* a previsão: só o público (os sinais) e a mão dele escondida; a carta do jogador não entra */
+          const esc = { ...arg, estado: { ...arg.estado, mao: { ...arg.estado.mao, a: arg.estado.mao.a.map(() => "jab") } } };
+          previstas.push(BOT2.cartaDoBot2({ ...esc, sinais: vr.sinais }));
+          await ok(u, "acao", { lutaId: lid, round: v.round, troca: v.troca, carta });
+        }
+        const gravadas = (await q("select acao_b from jxj_trocas where luta_id = $1 order by round, troca", [lid])).map((t) => t.acao_b);
+        if (!gravadas.length || gravadas.join() !== previstas.join()) throw new Error(`previstas ${previstas.join()} | gravadas ${gravadas.join()}`);
+        const vf = await ok(u, "luta", { lutaId: lid });
+        if (vf.status !== "encerrada" || vf.licaoBot !== BOT2.LICAO2[L0.bot.pers] || vf.revanche !== null) throw new Error("fim: " + JSON.stringify({ s: vf.status, licao: vf.licaoBot }));
+        if (/"roda"|"pers"|"build"/.test(JSON.stringify(vf))) throw new Error("a vista leva dado escondido do bot");
       } finally { await flagV2(false); }
+      /* sem a flag: a de antes */
+      await zerarLimites();
+      await ok(u, "filaEntrar", { lutadorId: l });
+      const lid2 = (await ok(u, "bot", { lutadorId: l })).luta;
+      const L2 = (await q("select estado, bot from jxj_lutas where id = $1", [lid2]))[0];
+      if (L2.estado.cv || !L2.bot.mx || L2.bot.v !== BOT.VERSAO_BOT) throw new Error("sem a flag, a luta contra bot não é a de antes");
+      await lutarBot(lid2, u);
     });
     await conf("Pro sozinho na fila (2026-10-20): fora da fila o servidor pede pra entrar; na fila, sem mais ninguém, o bot sai na hora", async () => {
       await zerarLimites();
@@ -13367,6 +13402,18 @@ async function testarJxJV2() {
       if ((defs.cartas[c.id] || {}).efeitos && defs.cartas[c.id].efeitos.length && !c.efeito) throw new Error("efeito sem texto: " + c.id);
       if (/[–—←-⇿]/.test(c.efeito)) throw new Error("travessão ou seta: " + c.efeito);
     }
+  });
+  await conf("carta v2 (jxjCarta2): custo, velocidade com a diferença do duelo, dano e o efeito; raridade e arte opcionais (sem elas, nada a mais; raridade fora da lista é ignorada); nome e arte escapados", () => {
+    const jab = defs.cartas.jab;
+    const h = noJogo("jxjCarta2", jab, { vel: 4, velBase: 5, dano: 1.25 });
+    if (!/aria-label="velocidade 4"/.test(h) || !/<b>4<i class="menos">-1<\/i><\/b>/.test(h) || !h.includes("<b>1,25</b>") || !h.includes(">1</span></span>")) throw new Error("números: " + h);
+    if (!h.includes("Se interrompe: recupera 1 de energia.")) throw new Error("efeito: " + h);
+    if (/rar-|<img/.test(h)) throw new Error("raridade ou arte sem pedir");
+    const com = noJogo("jxjCarta2", { ...jab, raridade: "lendaria", arte: "img/cartas/jab.webp" });
+    if (!/class="[^"]*\brar-lendaria\b/.test(com) || !com.includes('<img class="jxj-c2-img" src="img/cartas/jab.webp" alt="">')) throw new Error("raridade e arte: " + com);
+    if (/rar-/.test(noJogo("jxjCarta2", { ...jab, raridade: "mitica" }))) throw new Error("raridade fora da lista entrou");
+    const mau = noJogo("jxjCarta2", { ...jab, nome: MAU, arte: '"><img src=x onerror=alert(1)>' });
+    if (/<img src=x|onerror=alert\(1\)>/.test(mau.replace(/&[a-z#0-9]+;/g, "_"))) throw new Error("HTML cru: " + mau);
   });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
@@ -14729,6 +14776,128 @@ async function testarJxJBot() {
     if (ruins.length) throw new Error(ruins.join(" | "));
   });
 
+  /* ---------- o bot do combate v2 (Fase 5, api/_jxj-bot2.js) ---------- */
+  const B2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot2.js")).href);
+  const M2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-combate2.js")).href);
+  const CT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+  const V2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-luta2.js")).href);
+  const SB2 = await import(url.pathToFileURL(path.join(RAIZ, "sim", "bots2.mjs")).href);
+  const LEIT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-leitura2.js")).href);
+  const catDe = (id) => CT.CARTAS[id].categoria;
+  /* estados de lutas de verdade (cartas ao acaso dos dois lados, pela semente), com o bot no lado b */
+  const estadosV2 = (pers, s, nLutas, cada) => {
+    for (let i = 0; i < nLutas; i++) {
+      const bot = B2.montarBot2({ nivel: 1 + (i * 7) % 30, categoria: "middleweight", rating: BOT.RATING_BOT.min + s * (BOT.RATING_BOT.max - BOT.RATING_BOT.min), semente: `v2:${pers}:${i}`, pers });
+      const perfis = { a: V2.perfilLuta2({ estilo: A.ESTILOS_IDS[i % 4], categoria: "middleweight", build: {} }), b: bot.perfil };
+      const dados = B2.dadosDaLuta2(bot), sem = `luta:${pers}:${i}`, r = SB2.gerador(i + 1), trocas = [];
+      let e = M2.novaLuta2(perfis.a, perfis.b, sem);
+      for (let k = 0; !e.fim && k < 40; k++) {
+        const cb = cada({ e, dados, perfis, sem, trocas, i });
+        const ca = e.mao.a[Math.floor(r() * e.mao.a.length)];
+        const res = M2.resolverTroca2(e, perfis, { a: ca, b: cb || e.mao.b[0] }, sem);
+        trocas.push({ round: e.round, troca: e.troca, acao_a: res.resolucao.cartas.a.id, acao_b: res.resolucao.cartas.b.id, eventos: [{ tipo: "resolucao", ...res.resolucao }, ...res.eventos] });
+        e = res.estado;
+      }
+    }
+  };
+  await conf("bot v2, montar: a mesma semente dá o mesmo bot de antes (nome, estilo, build, jeito, roda); o perfil é o da luta v2 (deck padrão do estilo); o rating é a FORCA_BOT2 do jeito pela habilidade; os dados da luta não levam misturas", () => {
+    for (let k = 0; k < 24; k++) {
+      const arg = { nivel: 1 + k, categoria: "welterweight", rating: 1455 + (k % 5) * 26, semente: "m" + k, limitesRosto: LIM };
+      const a = BOT.montarBot(arg), b = B2.montarBot2(arg);
+      for (const x of ["nome", "estilo", "nivel", "pers", "s"]) if (a[x] !== b[x]) throw new Error(`${x}: ${a[x]} contra ${b[x]}`);
+      if (JSON.stringify(a.build) !== JSON.stringify(b.build) || JSON.stringify(a.roda) !== JSON.stringify(b.roda) || JSON.stringify(a.rosto) !== JSON.stringify(b.rosto)) throw new Error("build, roda ou rosto");
+      if (JSON.stringify(b.perfil.deck) !== JSON.stringify(CT.DECK_PADRAO[b.estilo]) || !b.perfil.v2) throw new Error("perfil v2: " + JSON.stringify(b.perfil.deck));
+      if (b.rating !== B2.forcaDoBot2(b.pers, b.s)) throw new Error("rating " + b.rating);
+      const d = B2.dadosDaLuta2(b, { puro: k % 2 ? 9 : 0 });
+      if (d.v !== B2.VERSAO_BOT2 || "mx" in d || "mm" in d || "pol" in d || d.pers !== b.pers || (k % 2 ? d.puro !== BOT.TROCAS_PURAS : "puro" in d)) throw new Error("dados: " + JSON.stringify(d));
+    }
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const f = B2.FORCA_BOT2[pers];
+      if (!f || f.length !== 3 || B2.forcaDoBot2(pers, 0) !== f[0] || B2.forcaDoBot2(pers, 0.5) !== f[1] || B2.forcaDoBot2(pers, 1) !== f[2] || B2.forcaDoBot2(pers, 0.25) !== Math.round((f[0] + f[1]) / 2)) throw new Error("FORCA_BOT2 de " + pers);
+      if (!B2.LICAO2[pers] || /—|–/.test(B2.LICAO2[pers])) throw new Error("lição v2 de " + pers);
+    }
+  });
+  await conf("bot v2 cego: a carta e a postura do bot não mudam quando a mão do jogador muda (o mesmo tamanho, outras cartas do deck dele); a carta do jogador nem entra na chamada; a mesma chamada dá a mesma carta", () => {
+    let conferidas = 0;
+    for (const pers of BOT.PERSONALIDADES_IDS) estadosV2(pers, 0.7, 6, ({ e, dados, perfis, sem, trocas, i }) => {
+      const arg = { estado: e, semente: sem, trocas, dados, perfis, lado: "b" };
+      const sb = B2.sinalDoBot2(arg), sinais = { a: catDe(e.mao.a[0]), b: sb };
+      const carta = B2.cartaDoBot2({ ...arg, sinais }), cartaSem = B2.cartaDoBot2(arg);
+      /* a mão dele trocada por outra (o resto do deck dele, embaralhado pela troca) */
+      const resto = e.deck.a.slice(); for (const id of e.jogadas.a) resto.splice(resto.indexOf(id), 1);
+      const outra = resto.slice((i + e.troca) % 3).concat(resto).slice(0, e.mao.a.length);
+      const e2 = { ...e, mao: { ...e.mao, a: outra } }, arg2 = { ...arg, estado: e2 };
+      if (B2.sinalDoBot2(arg2) !== sb || B2.cartaDoBot2({ ...arg2, sinais }) !== carta || B2.cartaDoBot2(arg2) !== cartaSem) throw new Error(`o bot leu a mão do jogador (${pers}, troca ${e.round}.${e.troca})`);
+      if (B2.cartaDoBot2({ ...arg, sinais }) !== carta || !e.mao.b.includes(carta) || !e.mao.b.includes(cartaSem)) throw new Error("a mesma chamada deu outra carta, ou carta fora da mão");
+      conferidas++;
+      return carta;
+    });
+    if (conferidas < 100) throw new Error("poucas trocas conferidas: " + conferidas);
+  });
+  await conf("bot v2, o jeito nas cartas: o Provocador golpeia e pressiona bem mais que o Paciente, o Paciente defende bem mais; o Inquieto quase nunca repete a categoria da carta anterior; o Observador joga, na maioria das vezes, uma das melhores respostas à última carta do jogador", () => {
+    const st = {};
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const x = st[pers] = { n: 0, ataque: 0, defesa: 0, repete: 0, nr: 0, responde: 0, nl: 0 };
+      estadosV2(pers, 0.5, 30, ({ e, dados, perfis, sem, trocas }) => {
+        if (e.pos !== "pe") return null;
+        const c = B2.cartaDoBot2({ estado: e, semente: sem, trocas, dados, perfis, lado: "b" }), k = catDe(c);
+        x.n++;
+        if (k === "golpes" || k === "pressao") x.ataque++;
+        if (k === "defesa") x.defesa++;
+        const minha = trocas.length ? trocas[trocas.length - 1].acao_b : null;
+        if (minha && e.mao.b.some((id) => catDe(id) !== catDe(minha))) { x.nr++; if (catDe(minha) === k) x.repete++; }
+        const dele = trocas.length ? trocas[trocas.length - 1].acao_a : null;
+        if (pers === "leitor" && dele) {
+          const minhas = [...new Set(e.mao.b)], col = LEIT.colunaContra(B2.vistaDoBot(e, "b"), "b", perfis, sem, minhas, dele), m = Math.max(...col);
+          x.nl++; if (col[minhas.indexOf(c)] >= m - 1e-9) x.responde++;
+        }
+        return c;
+      });
+    }
+    const p = (a, b) => (100 * a) / Math.max(1, b);
+    const resumo = Object.entries(st).map(([k, x]) => `${k} ataque ${p(x.ataque, x.n).toFixed(0)}% defesa ${p(x.defesa, x.n).toFixed(0)}% repete ${p(x.repete, x.nr).toFixed(0)}%`).join(" · ");
+    console.log(cinza("         " + resumo + ` · Observador responde ${p(st.leitor.responde, st.leitor.nl).toFixed(0)}%`));
+    const ruins = [];
+    /* 15 pontos: a mão tem 5 cartas e às vezes só uma categoria serve pro jeito (medido: 25 e 20 pontos de diferença) */
+    if (p(st.agressivo.ataque, st.agressivo.n) < p(st.defensivo.ataque, st.defensivo.n) + 15) ruins.push("o Provocador não ataca bem mais que o Paciente");
+    if (p(st.defensivo.defesa, st.defensivo.n) < p(st.agressivo.defesa, st.agressivo.n) + 15) ruins.push("o Paciente não defende bem mais que o Provocador");
+    if (p(st.caotico.repete, st.caotico.nr) > 15 || p(st.caotico.repete, st.caotico.nr) >= p(st.agressivo.repete, st.agressivo.nr)) ruins.push("o Inquieto repete a categoria");
+    if (p(st.leitor.responde, st.leitor.nl) < 60) ruins.push("o Observador não responde à última carta");
+    if (ruins.length) throw new Error(ruins.join(" | "));
+  });
+  await conf("bot v2, habilidade e força (jogador modelo, caminho do servidor, 240 lutas por jeito): o jogador vence menos o bot de habilidade 1 que o de 0 na média dos jeitos; a força média de cada jeito bate com FORCA_BOT2 (folga de 70 pontos); a postura e a carta de cada troca saem em menos de 50 ms (p95)", () => {
+    const elo = (p) => { const q = Math.min(0.99, Math.max(0.01, p)); return 1500 - 400 * Math.log10(q / (1 - q)); };
+    const SS = [0, 0.5, 1], NIV = [1, 10, 30], ruins = [], porS = SS.map(() => ({ v: 0, n: 0 })), linhas = [];
+    for (const pers of BOT.PERSONALIDADES_IDS) {
+      const forcas = SS.map((s, is) => {
+        let v = 0, n = 0;
+        for (let i = 0; i < 80; i++) {
+          const ej = A.ESTILOS_IDS[i % 4], eb = BOT.PERSONALIDADES[pers].estilo || A.ESTILOS_IDS[(i >> 2) % 4], nv = NIV[i % 3];
+          const x = SB2.lutaContraBot2({ jogador: { estilo: ej, categoria: "middleweight", build: A.buildTipica(ej, nv) },
+            bot: { estilo: eb, categoria: "middleweight", build: A.buildTipica(eb, nv), pers, s }, ladoBot: i % 2 ? "a" : "b", semente: `f:${pers}:${s}:${i}`, n: 900000 + i });
+          n++; v += x.fim.vencedor === x.eu ? 1 : x.fim.vencedor ? 0 : 0.5;
+        }
+        porS[is].v += v; porS[is].n += n;
+        return elo(v / n);
+      });
+      const media = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      linhas.push(`${pers} ${forcas.map((f) => Math.round(f)).join("/")} (FORCA_BOT2 ${B2.FORCA_BOT2[pers].join("/")})`);
+      if (Math.abs(media(forcas) - media(B2.FORCA_BOT2[pers])) > 70) ruins.push(`${pers}: força média ${Math.round(media(forcas))}, FORCA_BOT2 ${Math.round(media(B2.FORCA_BOT2[pers]))}`);
+    }
+    console.log(cinza("         força medida: " + linhas.join(" · ")));
+    if (!(porS[2].v / porS[2].n < porS[0].v / porS[0].n - 0.03)) ruins.push(`o jogador vence o bot de habilidade 1 (${(100 * porS[2].v / porS[2].n).toFixed(1)}%) quase tanto quanto o de 0 (${(100 * porS[0].v / porS[0].n).toFixed(1)}%)`);
+    const tempos = [];
+    estadosV2("leitor", 1, 4, ({ e, dados, perfis, sem, trocas }) => {
+      const t0 = performance.now(), arg = { estado: e, semente: sem, trocas, dados, perfis, lado: "b" };
+      const c = B2.cartaDoBot2({ ...arg, sinais: { a: catDe(e.mao.a[0]), b: B2.sinalDoBot2(arg) } });
+      tempos.push(performance.now() - t0);
+      return c;
+    });
+    tempos.sort((x, y) => x - y);
+    if (tempos[Math.floor(tempos.length * 0.95)] > 50) ruins.push(`decisão lenta: p95 ${tempos[Math.floor(tempos.length * 0.95)].toFixed(1)} ms`);
+    if (ruins.length) throw new Error(ruins.join(" | "));
+  });
+
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjbot ok") : vermelho(`  ${falhas.length} falha(s) no jxjbot`)));
   return okTudo;
@@ -14843,6 +15012,117 @@ async function testarJxJTelas() {
       await no.onclick(); await assentar(10);
       const h = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
       if (!/nos níveis 1, 2 e 3 \(teto 30%\)/.test(h)) throw new Error("texto do efeito: " + h.replace(/\s+/g, " ").slice(0, 260));
+    });
+    /* combate v2 (2026-11-13, Fase 6): a aba Deck e a linha "Com cartas" da árvore, só com a flag */
+    const CT2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+    const flagV2T = (v) => db.query("update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", [JSON.stringify(v)]);
+    const guiasDe = (nos) => nos.filter((n) => tem(n, "guia")).map((n) => n.dataset.aba);
+    const slotsDe = (nos, cls) => nos.filter((n) => tem(n, "jxj-deck-slot") && (!cls || tem(n, cls)));
+    const deckDoServidor = async () => (await api(u1, "estado")).lutadores.find((x) => x.id === l1);
+    /* o último desenho da aba: as duas grades (seu deck e as liberadas) e os botões de cada carta */
+    const grades = () => { const g = env.todos.filter((n) => tem(n, "jxj-deck-cartas")); return { meu: g[g.length - 2], lib: g[g.length - 1] }; };
+    const botaoCarta = (grade, cls, id) => grade.children.flatMap((s) => s.children || []).filter((b) => tem(b, cls) && b.dataset.carta === id).pop();
+    await conf("combate v2 desligado: sem a aba Deck (o endereço da aba cai em Atributos) e a árvore sem a linha Com cartas", async () => {
+      await flagV2T(false);
+      let m = await abrir(`lutador/${l1}/deck`);
+      if (guiasDe(desde(m)).includes("deck")) throw new Error("aba Deck sem a flag: " + guiasDe(desde(m)));
+      if (slotsDe(desde(m)).length) throw new Error("a tela do deck abriu sem a flag");
+      m = await abrir(`lutador/${l1}/arvore`);
+      const h = htmlDe(desde(m));
+      if (h.includes("jxj-no-v2") || h.includes("Com cartas") || desde(m).some((n) => tem(n, "jxj-arvore-aviso2"))) throw new Error("árvore com a linha do combate novo sem a flag");
+    });
+    await conf("combate v2, aba Deck: entre Árvore e Histórico; o padrão com as 4 fixas travadas e os 4 selos ok; tirar acende o selo e o espaço que falta; pôr volta a 12; Desfazer volta; Salvar grava no servidor", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]);
+        const m = await abrir(`lutador/${l1}/deck`);
+        const g = guiasDe(desde(m)).slice(-6);   // o último desenho das guias
+        if (g.join(",") !== "perfil,arvore,deck,historico,aparencia,gerenciar") throw new Error("abas: " + g);
+        /* com as 12, nenhuma carta entra (Pôr desligado) */
+        const pores = grades().lib.children.flatMap((sl) => sl.children || []).filter((n) => tem(n, "jxj-deck-por"));
+        if (!pores.length || pores.some((n) => !n.disabled)) throw new Error("Pôr ligado com o deck cheio");
+        const cheios = grades().meu.children.filter((n) => !tem(n, "vazio"));
+        if (cheios.length !== 12 || cheios.filter((n) => tem(n, "fixa")).length !== 4) throw new Error(`slots do deck: ${cheios.length}, fixas ${cheios.filter((n) => tem(n, "fixa")).length}`);
+        if (cheios.filter((n) => tem(n, "fixa")).some((n) => n.children.some((x) => tem(x, "jxj-deck-tirar")))) throw new Error("fixa com botão de tirar");
+        const regras = () => desde(m).filter((n) => tem(n, "jxj-deck-regras")).pop().innerHTML;
+        if ((regras().match(/class="ok"/g) || []).length !== 4) throw new Error("selos do padrão: " + regras());
+        const salvar = () => botao(desde(m), "Salvar deck"), desfazer = () => botao(desde(m), "Desfazer");
+        if (!salvar().disabled || !desfazer().disabled) throw new Error("Salvar ou Desfazer ligado sem mudança");
+        /* tira um Bloqueio (o striker padrão tem 2, nenhum fixo) */
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "bloqueio").onclick(); await assentar(5);
+        if (!/class="falta"[^]*11 de 12 cartas/.test(regras())) throw new Error("selo das 12 cartas não acendeu: " + regras());
+        const vazio = grades().meu.children.filter((n) => tem(n, "vazio"));
+        if (vazio.length !== 1 || !htmlDe(vazio).includes("1 carta")) throw new Error("sem o espaço que falta");
+        if (!salvar().disabled) throw new Error("Salvar ligado com 11 cartas");
+        /* põe uma Antiqueda: 12 de novo, com defesa 2 */
+        const por = botaoCarta(grades().lib, "jxj-deck-por", "antiqueda");
+        if (!por || por.disabled) throw new Error("Pôr Antiqueda ausente ou desligado");
+        await por.onclick(); await assentar(5);
+        if ((regras().match(/class="ok"/g) || []).length !== 4 || salvar().disabled) throw new Error("depois de pôr: " + regras());
+        await desfazer().onclick(); await assentar(5);
+        if (!salvar().disabled) throw new Error("Desfazer não voltou ao salvo");
+        /* de novo, e salva */
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "bloqueio").onclick(); await assentar(5);
+        await botaoCarta(grades().lib, "jxj-deck-por", "antiqueda").onclick(); await assentar(5);
+        await salvar().onclick(); await assentar();
+        const L = await deckDoServidor();
+        const esperado = CT2.DECK_PADRAO.striker.slice(); esperado.splice(esperado.indexOf("bloqueio"), 1); esperado.push("antiqueda");
+        if (!L.deckMontado || JSON.stringify(L.deck) !== JSON.stringify(esperado)) throw new Error("deck no servidor: " + JSON.stringify(L.deck));
+      } finally { await flagV2T(false); }
+    });
+    await conf("combate v2, aba Deck: a carta da árvore sem o nó vem travada com o nó que libera; o erro do servidor aparece na linha vermelha; Usar o deck padrão volta pro padrão no servidor", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]);
+        let m = await abrir(`lutador/${l1}/deck`);
+        const trav = grades().lib.children.filter((n) => tem(n, "travada") && String(n.innerHTML).includes('data-carta="combinacao"'));
+        if (trav.length !== 1 || !/Libera no nó Combinações \(Boxe\)/.test(trav[0].innerHTML)) throw new Error("carta travada: " + htmlDe(slotsDe(desde(m), "travada")).slice(0, 200));
+        if (botaoCarta(grades().lib, "jxj-deck-por", "combinacao")) throw new Error("carta travada com Pôr");
+        if (htmlDe(desde(m)).includes('data-carta="esquiva"') || htmlDe(desde(m)).includes('data-carta="puxar_guarda"')) throw new Error("carta de outro estilo na tela do striker");
+        /* com o nó, a Combinação entra; o servidor perde o nó antes de salvar: recusa e a tela mostra */
+        await db.query("update jxj_lutadores set build = $1::jsonb where id = $2", [JSON.stringify({ precisao_maos: 2, combinacoes: 1 }), l1]);
+        m = await abrir(`lutador/${l1}/deck`);
+        if (grades().lib.children.some((n) => tem(n, "travada") && String(n.innerHTML).includes('data-carta="combinacao"'))) throw new Error("Combinação travada com o nó");
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "contra_ataque").onclick(); await assentar(5);
+        await botaoCarta(grades().lib, "jxj-deck-por", "combinacao").onclick(); await assentar(5);
+        await db.query("update jxj_lutadores set build = '{}'::jsonb where id = $1", [l1]);
+        await botao(desde(m), "Salvar deck").onclick(); await assentar();
+        const erro = desde(m).filter((n) => tem(n, "jxj-erro") && !n.hidden).pop();
+        if (!erro || !/recusou o deck: .*Combinação não está liberada/.test(erro.textContent)) throw new Error("erro do servidor: " + (erro && erro.textContent));
+        /* Usar o deck padrão: o servidor volta pro padrão */
+        const montado = CT2.DECK_PADRAO.striker.slice(); montado[montado.lastIndexOf("contra_ataque")] = "antiqueda";
+        await db.query("update jxj_lutadores set deck = $1::jsonb where id = $2", [JSON.stringify(montado), l1]);
+        m = await abrir(`lutador/${l1}/deck`);
+        const usar = botao(desde(m), "Usar o deck padrão");
+        if (!usar || usar.disabled) throw new Error("Usar o deck padrão desligado com deck montado");
+        await usar.onclick(); await assentar();
+        const L = await deckDoServidor();
+        if (L.deckMontado || JSON.stringify(L.deck) !== JSON.stringify(CT2.DECK_PADRAO.striker)) throw new Error("não voltou pro padrão: " + JSON.stringify(L.deck));
+      } finally { await flagV2T(false); await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]); }
+    });
+    await conf("combate v2, árvore: cada nó com a linha Com cartas (o texto do combate novo), o aviso do atributo, e o nó que libera carta mostra a carta no detalhe; a tela do deck e da árvore sem lixo", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        const def = await api(u1, "definicoes");
+        let m = await abrir(`lutador/${l1}/arvore`);
+        const nos = desde(m).filter((n) => tem(n, "jxj-no"));
+        const ultimoNo = (nome) => nos.filter((n) => String(n.innerHTML).includes(`<b>${nome}</b>`)).pop();   // do último desenho
+        const prec = ultimoNo("Precisão");
+        const txt = def.combate2.arvore.precisao_maos.join(" ");
+        if (!prec || !String(prec.innerHTML).includes(`<em>Com cartas</em>${txt.replace(/'/g, "&#39;")}`)) throw new Error("linha do nó: " + (prec && prec.innerHTML));
+        if (nos.some((n) => !String(n.innerHTML).includes("jxj-no-v2"))) throw new Error("nó sem a linha");
+        if (!desde(m).some((n) => tem(n, "jxj-arvore-aviso2"))) throw new Error("sem o aviso do atributo");
+        semLixoV3T(htmlDe(desde(m)), "árvore v2");
+        const comb = ultimoNo("Combinações");
+        await comb.onclick(); await assentar(10);
+        const det = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
+        if (!det.includes("jxj-no-v2-detalhe com-carta") || !det.includes('data-carta="combinacao"') || !det.includes("aparece na aba Deck")) throw new Error("detalhe: " + det.replace(/\s+/g, " ").slice(0, 300));
+        await ultimoNo("Precisão").onclick(); await assentar(10);
+        const det2 = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
+        if (!det2.includes("jxj-no-v2-detalhe") || det2.includes("com-carta")) throw new Error("detalhe sem carta: " + det2.replace(/\s+/g, " ").slice(-300));
+        m = await abrir(`lutador/${l1}/deck`);
+        semLixoV3T(htmlDe(desde(m)), "aba Deck");
+      } finally { await flagV2T(false); }
     });
     await conf("treino, o roteiro (2026-10-28; round de 3 trocas desde 2026-11-10): a mão do estilo; nas 3 guiadas só a carta certa joga; a lição 3 cobra a finta pela metade (iniciativa) e derruba; a troca 3 fecha o round 1 com o cartão; a 4 começa em pé, com a mão cheia e sem iniciativa; a vista passa pela tela sem lixo e diz 3 trocas por round", async () => {
       await vm.runInContext("jxjDef()", env.sandbox);
