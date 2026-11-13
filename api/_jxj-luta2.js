@@ -5,25 +5,33 @@
 import * as C2 from "./_jxj-combate2.js";
 import * as C from "./_jxj-cartas.js";
 import { POSTURAS } from "./_jxj-estrategia.js";
+import { perfilDeCombate } from "./_jxj-arvores.js";
 
 export const ehV2 = (estado) => !!estado && estado.cv === C2.VERSAO_COMBATE;
 const outro = (l) => (l === "a" ? "b" : "a");
 const num = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
 
-/* o deck do lutador: o que ele montou, se ainda vale; senão o padrão do estilo */
+/* o deck do lutador: o que ele montou, se ainda vale (a árvore pode ter
+   tirado uma carta liberada, no reset); senão o padrão do estilo */
 export function deckDo(l) {
   const d = l && Array.isArray(l.deck) ? l.deck : null;
-  if (d && C.validarDeck(l.estilo, d).ok) return d.slice();
+  if (d && C.validarDeck(l.estilo, d, C.cartasLiberadas(l.estilo, l.build || {})).ok) return d.slice();
   return C.DECK_PADRAO[l.estilo].slice();
 }
-export const comDeck = (perfil, l) => ({ ...perfil, deck: deckDo(l) });
+/* o perfil da luta v2: atributos do estilo e da categoria, sem os da árvore
+   (no combate novo o nó vale só pelo que ARVORE_V2 dá, decisão 48), o que a
+   árvore dá no combate novo e o deck. A simulação usa este mesmo. */
+export const perfilLuta2 = (l) => ({
+  ...perfilDeCombate({ estilo: l.estilo, categoria: l.categoria, build: {} }),
+  v2: C.perfilV2(l.estilo, l.build || {}), deck: deckDo(l),
+});
 export const novaLuta = (perfis, semente) => C2.novaLuta2(perfis.a, perfis.b, semente);
 /* a postura de quem não mandou: a categoria da carta que jogaria sozinha (a defesa da mão) */
 export const posturaPadrao = (estado, lado) => C.CARTAS[C2.cartaPadrao(estado.mao[lado])].categoria;
 export const naMao = (estado, lado, carta) => typeof carta === "string" && Object.hasOwn(C.CARTAS, carta) && estado.mao[lado].includes(carta);
 export const temCategoria = (estado, lado, cat) => estado.mao[lado].some((id) => C.CARTAS[id].categoria === cat);
-/* finta na v2: o mesmo custo da v1 (metade com a iniciativa) */
-export const custoFinta = (estado, lado) => Math.round(C2.K2.custoFinta * (estado.iniciativa === lado ? C2.K2.fatorFintaIniciativa : 1) * 100) / 100;
+/* finta na v2: o custo da v1 menos o que a árvore tira (metade com a iniciativa) */
+export const custoFinta = (estado, lado, perfil) => Math.round(C2.fintaDe(perfil) * (estado.iniciativa === lado ? C2.K2.fatorFintaIniciativa : 1) * 100) / 100;
 
 /* ---------- texto dos eventos ---------- */
 /* como a carta aparece na frase (com artigo) */
@@ -32,6 +40,7 @@ const NA_FRASE = {
   queda: "a queda", antiqueda: "a antiqueda", clinch: "o clinch", puxar_guarda: "a puxada de guarda",
   ground_and_pound: "o ground and pound", finalizacao: "a finalização", segurar: "a pegada por cima", avancar: "o avanço",
   golpes_por_baixo: "os golpes por baixo", raspar: "a raspagem", guarda: "a guarda", levantar: "a levantada",
+  combinacao: "a combinação", double_leg: "o double leg", rasteira: "a rasteira", esquiva: "a esquiva",
 };
 export const naFrase = (id) => NA_FRASE[id] || (C.CARTAS[id] || C.CARTA_DO_CHAO[id] || { nome: id }).nome.toLowerCase();
 const NOME_CAT = { golpes: "golpe", queda: "queda", defesa: "defesa", pressao: "pressão" };
@@ -103,7 +112,7 @@ export function vistaV2(L, lado, { sinais = null, etapa = null } = {}) {
     decks: { a: e.deck.a.slice(), b: e.deck.b.slice() },
     jogadas: { a: e.jogadas.a.slice(), b: e.jogadas.b.slice() },
     mao: andando ? e.mao[lado].map((id) => cartaVista(e, L.perfis, lado, id,
-      etapa === "acao" && meuSinal ? (C.CARTAS[id].categoria === meuSinal ? 0 : custoFinta(e, lado)) : null)) : null,
+      etapa === "acao" && meuSinal ? (C.CARTAS[id].categoria === meuSinal ? 0 : custoFinta(e, lado, L.perfis && L.perfis[lado])) : null)) : null,
     maoDele: andando ? e.mao[outro(lado)].length : null,
   };
 }
@@ -123,7 +132,7 @@ export function trocaVista(t, nomes) {
 /* ---------- definições ---------- */
 export function definicoes2() {
   const carta = (c) => ({ id: c.id, nome: c.nome, categoria: c.categoria, contexto: c.contexto, vel: c.vel, dano: c.dano, custo: c.custo,
-    efeitos: c.efeitos, estiloExclusivo: c.estiloExclusivo || null });
+    efeitos: c.efeitos, estiloExclusivo: c.estiloExclusivo || null, desbloqueio: c.desbloqueio || null });
   return {
     versao: C2.VERSAO_COMBATE,
     cartas: Object.fromEntries(Object.values(C.CARTAS).map((c) => [c.id, carta(c)])),
@@ -131,6 +140,8 @@ export function definicoes2() {
     passivas: Object.fromEntries(Object.entries(C.PASSIVAS).map(([id, p]) => [id, { nome: p.nome, desc: p.desc }])),
     fixas: C.FIXAS, deckPadrao: C.DECK_PADRAO, deck: C.DECK,
     liberadas: Object.fromEntries(Object.keys(C.FIXAS).map((s) => [s, C.cartasLiberadas(s)])),
+    /* o que cada nó da árvore dá no combate novo (texto; a carta nova vem em cartas[].desbloqueio) */
+    arvore: Object.fromEntries(Object.entries(C.ARVORE_V2).map(([no, efs]) => [no, efs.map((x) => x.desc)])),
     regras: { vidaBase: C2.K2.vidaBase, custoFinta: C2.K2.custoFinta, fatorFintaIniciativa: C2.K2.fatorFintaIniciativa,
       kdDano: C2.K2.kdDano, koGrogue: C2.K2.koGrogue, limiarVel: C2.K2.limiarVel, finalizaNivel: C2.K2.finalizaNivel },
   };

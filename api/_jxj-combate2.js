@@ -30,6 +30,7 @@ export const K2 = {
   recuperacaoRound: 2, energiaPorSobra: 1,   // no fim do round: + recuperação + 1 por carta que sobrou na mão
   custoFinta: 1.5, fatorFintaIniciativa: 0.5,
   limiarVel: 15,       // diferença no duelo de atributos que dá +1 (ou -1) de velocidade
+  duelosVel: ["golpe", "defesa", "queda", "defQueda", "chao", "defChao"],   // o atributo de quem joga, nos duelos que mexem na velocidade
   escalaDano: 100,     // dano x (1 + diferença no duelo / isto)
   poderMin: 3, poderEscala: 200,  // carta de dano base >= 3: dano x (1 + (poder - 50) / isto) (com 100, o mais pesado vencia até 54,5%)
   cansado: 2,          // energia no começo da troca <= isto: -1 de velocidade
@@ -67,7 +68,9 @@ export function comprar(deck, semente, round, lado) {
 }
 
 /* ---------- lutador ---------- */
-export const vidaMax = (p) => r1(K2.vidaBase + (p.atr.queixo - 50) * K2.vidaPorQueixo);
+/* a árvore (Fase 4) entra pelo perfil.v2 (perfilV2 de _jxj-cartas.js): melhorias de carta, vida, finta e energia de fim de round */
+export const vidaMax = (p) => r1(K2.vidaBase + (p.atr.queixo - 50) * K2.vidaPorQueixo + ((p.v2 && p.v2.vida) || 0));
+export const fintaDe = (p) => Math.max(0.5, K2.custoFinta - ((p && p.v2 && p.v2.fintaMenos) || 0));
 export const energiaMax2 = (p) => r2(K2.energiaBase + (p.atr.cardio - 50) * K2.energiaPorCardio);
 const ladoNovo = (p) => ({
   vida: vidaMax(p), vidaMax: vidaMax(p), energia: energiaMax2(p), energiaMax: energiaMax2(p),
@@ -77,7 +80,7 @@ const ladoNovo = (p) => ({
 /* perfil: { estilo, categoria, atr, deck } (o deck validado no servidor; aqui só se confere) */
 export function novaLuta2(perfilA, perfilB, semente) {
   for (const p of [perfilA, perfilB]) {
-    const v = validarDeck(p.estilo, p.deck, p.liberadas || cartasLiberadas(p.estilo));
+    const v = validarDeck(p.estilo, p.deck, (p.v2 && p.v2.liberadas) || cartasLiberadas(p.estilo));
     if (!v.ok) throw new Error("deck inválido: " + v.erro);
   }
   return {
@@ -108,7 +111,8 @@ export function cartaEfetiva(id, pp, perfil) {
   const base = pp === "pe" ? origem : CHAO[pp][origem.categoria];
   const c = { ...base, origem: id, danoBase: base.dano, efeitos: base.efeitos.slice() };
   const pas = perfil && PASSIVAS[perfil.estilo];
-  if (pas) for (const m of pas.mods) {
+  const mods = [...(pas ? pas.mods : []), ...((perfil && perfil.v2 && perfil.v2.mods) || [])];
+  for (const m of mods) {
     if (!casaAlvo(m.alvo, c)) continue;
     if (m.vel) c.vel += m.vel;
     if (m.dano) c.dano += m.dano;
@@ -135,7 +139,7 @@ export const ehGolpe = (c) => c.dano > 0 && c.categoria !== "queda";
 /* velocidade: a da carta, +1/-1 pelo duelo de atributos, -1 grogue, -1 cansado, -2 exausta */
 export function velocidade(e, perfis, l, c, { energiaInicio = e[l].energia, exausta = false } = {}) {
   let v = c.vel;
-  if (c.duelo) {
+  if (c.duelo && K2.duelosVel.includes(c.duelo[0])) {
     const d = perfis[l].atr[c.duelo[0]] - perfis[outro(l)].atr[c.duelo[1]];
     v += d >= K2.limiarVel ? 1 : d <= -K2.limiarVel ? -1 : 0;
   }
@@ -187,7 +191,7 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
     if (ausente) { e[l].ausentesSeguidas++; ctx.ev.push({ tipo: "ausente", quem: l }); } else e[l].ausentesSeguidas = 0;
     const c = cartaEfetiva(id, pp[l], perfis[l]);
     const sinal = sinais && sinais[l];
-    const finta = sinal && sinal !== CARTAS[id].categoria ? r2(K2.custoFinta * (e.iniciativa === l ? K2.fatorFintaIniciativa : 1)) : 0;
+    const finta = sinal && sinal !== CARTAS[id].categoria ? r2(fintaDe(perfis[l]) * (e.iniciativa === l ? K2.fatorFintaIniciativa : 1)) : 0;
     const custo = r2(c.custo + finta);
     let exausta = false;
     if (e[l].energia + 1e-9 >= custo) e[l].energia = r2(e[l].energia - custo);
@@ -287,8 +291,9 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
   resolverJuntas(e, perfis, jog, ctx);
 }
 
-/* efeitos que mexem só em quem jogou (energia, iniciativa) */
+/* efeitos que mexem só em quem jogou (energia, iniciativa, pontos de juiz) */
 function aplicarAcaoPropria(e, l, acao, ctx, c) {
+  if (acao.pontos) pontuar(e, l, acao.pontos);
   if (acao.energia) { const antes = e[l].energia; e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + acao.energia)); if (e[l].energia !== antes) ctx.ev.push({ tipo: "energia", quem: l, carta: c.id, ganho: r2(e[l].energia - antes) }); }
   if (acao.iniciativa && e.iniciativa !== l) { e.iniciativa = l; ctx.ev.push({ tipo: "iniciativa", quem: l, carta: c.id }); }
 }
@@ -429,7 +434,8 @@ function fecharRound2(e, perfis, semente, ctx) {
   }
   for (const l of L2) {
     const sobra = e.mao[l].length;
-    e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + sobra * K2.energiaPorSobra));
+    const extra = (perfis[l].v2 && perfis[l].v2.energiaRound) || 0;
+    e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + extra + sobra * K2.energiaPorSobra));
     e[l].grogue = false;
   }
   e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.iniciativa = null;

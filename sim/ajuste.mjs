@@ -12,4 +12,5 @@ export function aplicarAjuste(aj) {
   for (const [est, m] of Object.entries(aj.passivas || {})) C.PASSIVAS[est] = m;
   for (const [est, d] of Object.entries(aj.decks || {})) C.DECK_PADRAO[est] = d;
   for (const [est, d] of Object.entries(aj.fixas || {})) C.FIXAS[est] = d;
+  for (const [no, efs] of Object.entries(aj.arvore || {})) C.ARVORE_V2[no] = efs;
 }

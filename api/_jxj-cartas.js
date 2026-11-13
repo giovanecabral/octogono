@@ -46,6 +46,20 @@ export const CARTAS = {
      puxar a guarda não é queda, e a Antiqueda não segura (com Queda, o wrestler vencia o grappler em 73%) */
   puxar_guarda: { nome: "Puxar guarda", categoria: "pressao", vel: 4, dano: 0, custo: 1, duelo: ["chao", "defChao"], estiloExclusivo: "grappler",
     efeitos: [{ quando: "se_acerta", acao: { puxaGuarda: true } }] },
+  /* Fase 4: uma carta nova por estilo, liberada por um nó da árvore (desbloqueio = id do nó) */
+  combinacao: { nome: "Combinação", categoria: "golpes", vel: 4, dano: 2, custo: 2, duelo: ["golpe", "defesa"], estiloExclusivo: "striker", desbloqueio: "combinacoes",
+    efeitos: [] },
+  /* lenta, mas o Jab não para. Com velocidade 3 (a terceira queda do deck, no lugar do Cruzado) valia 17,7 pontos */
+  double_leg: { nome: "Double leg", categoria: "queda", vel: 2, dano: 2, custo: 3, duelo: ["queda", "defQueda"], estiloExclusivo: "wrestler", desbloqueio: "correntes",
+    efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true } }, { quando: "resistente", acao: { ateDano: 1 } }] },
+  /* a queda barata sem dano, que só derruba quem atacou (contra Defesa, nada): a terceira e a
+     quarta queda do deck. Como pressão (a Antiqueda não segurava) ou com velocidade 4, o grappler
+     do nível 30 com ela ia de 59% a 65%; derrubando sempre, a 57% */
+  rasteira: { nome: "Rasteira", categoria: "queda", vel: 3, dano: 0, custo: 1, duelo: ["queda", "defQueda"], estiloExclusivo: "grappler", desbloqueio: "transicoes_sub",
+    efeitos: [{ quando: "se_acerta", condicao: { categoria: ["golpes", "pressao", "queda"] }, acao: { vaiProChao: true } }] },
+  /* velocidade 3: com 4, o 1 de dano dela interrompia a Queda, e a Esquiva no lugar do Chute alto valia 10 pontos */
+  esquiva: { nome: "Esquiva", categoria: "defesa", vel: 3, dano: 1, custo: 1, duelo: ["defesa", "golpe"], estiloExclusivo: "counter", desbloqueio: "padroes",
+    efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true } }] },
 };
 for (const [id, c] of Object.entries(CARTAS)) Object.assign(c, { id, contexto: "pe" });
 
@@ -112,8 +126,112 @@ export const DECK_PADRAO = {
   /* com uma Antiqueda: com duas, o counter ficava em 45% depois do striker novo */
   counter: [...FIXAS.counter, "bloqueio", "jab", "jab", "cruzado", "cruzado", "chute_alto", "clinch", "queda"],
 };
-/* cartas que o lutador pode pôr no deck (a árvore abre mais na fase 4) */
-export const cartasLiberadas = (estilo) => Object.keys(CARTAS).filter((id) => !CARTAS[id].estiloExclusivo || CARTAS[id].estiloExclusivo === estilo);
+/* cartas que o lutador pode pôr no deck: as comuns, a exclusiva do estilo e
+   as que a árvore libera (build: {noId: nível}) */
+export const cartasLiberadas = (estilo, build = {}) => Object.keys(CARTAS).filter((id) => {
+  const c = CARTAS[id];
+  if (c.estiloExclusivo && c.estiloExclusivo !== estilo) return false;
+  return !c.desbloqueio || (build && Number(build[c.desbloqueio]) >= 1);
+});
+
+/* A árvore no combate v2 (Fase 4, 2026-11-12). Os nós são os mesmos (mesmo
+   id, mesmo custo), mas no combate novo o nó vale só pelo que está aqui: o
+   atributo que ele dá fica no combate de antes (decisão 48: o degrau de 15
+   pontos da velocidade fazia o mesmo +6 valer 0 num estilo e 7 no outro).
+   Quem já gastou pontos recebe na hora o que os nós dele dão (decisão 47).
+   Efeito: { desc, apartir (nível do nó, padrão 1), porNivel (multiplica
+   pelos níveis a partir de apartir), mod (como a passiva: alvo + vel, dano,
+   custo, efeitos; com porNivel, os números dos efeitos também), finta
+   (custo da finta a menos), vida, energiaRound (a mais no fim do round) }.
+   A carta nova vem pelo desbloqueio da carta. */
+const efeito = (quando, acao, condicao) => (condicao ? { quando, condicao, acao } : { quando, acao });
+const contraGolpe = (acao) => efeito("contra", acao, { categoria: ["golpes"] });
+const contraQueda = (acao) => efeito("contra", acao, { categoria: ["queda"] });
+export const ARVORE_V2 = {
+  /* striker */
+  precisao_maos: [{ desc: "Jab com +0,1 de dano por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, dano: 0.1 } }],
+  combinacoes: [{ desc: "Libera a Combinação; +0,25 de dano nela por nível depois do 1.", apartir: 2, porNivel: true, mod: { alvo: { carta: "combinacao" }, dano: 0.25 } }],
+  contra_maos: [{ desc: "Contra-ataque com +0,1 de dano por nível.", porNivel: true, mod: { alvo: { carta: "contra_ataque" }, dano: 0.1 } }],
+  eficiencia_golpes: [{ desc: "O Cruzado que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "cruzado" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
+  chute_baixo: [{ desc: "O Chute alto que acerta dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "chute_alto" }, efeitos: [efeito("se_acerta", { pontos: 0.75 })] } }],
+  chute_corpo: [{ desc: "No nível 2, o Chute alto custa 1 a menos.", apartir: 2, mod: { alvo: { carta: "chute_alto" }, custo: -1 } }],
+  controle_distancia: [{ desc: "No nível 2, o Bloqueio também anula a Queda.", apartir: 2, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraQueda({ anula: true })] } }],
+  variedade: [{ desc: "Golpe em pé que acerta dá 0,25 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "pe", categoria: "golpes" }, efeitos: [efeito("se_acerta", { pontos: 0.25 })] } }],
+  controle_ritmo: [{ desc: "O Bloqueio que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraGolpe({ pontos: 0.5 })] } }],
+  combinacoes_pressao: [{ desc: "No nível 2, o clinch fica 1 mais rápido.", apartir: 2, mod: { alvo: { carta: "clinch" }, vel: 1 } }],
+  iniciativa: [{ desc: "O Jab que interrompe dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, efeitos: [efeito("se_interrompe", { pontos: 0.5 })] } }],
+  eficiencia_ofensiva: [{ desc: "O clinch que acerta dá 1 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "clinch" }, efeitos: [efeito("se_acerta", { pontos: 1 })] } }],
+  /* wrestler */
+  entradas: [{ desc: "A Queda que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
+  correntes: [{ desc: "Libera o Double leg; no nível 2, ele custa 1 a menos.", apartir: 2, mod: { alvo: { carta: "double_leg" }, custo: -1 } }],
+  timing_queda: [{ desc: "Queda com +0,5 de dano por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, dano: 0.5 } }],
+  eficiencia_tentativas: [{ desc: "Queda com +0,25 de dano por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, dano: 0.25 } }],
+  controle_posicional: [{ desc: "Por cima, a carta que resolve dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "cima" }, efeitos: [efeito("se_acerta", { pontos: 0.75 })] } }],
+  dominio: [{ desc: "A pegada por cima (Segurar) também anula a raspagem e dá 0,5 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "segurar" }, efeitos: [contraQueda({ anula: true, pontos: 0.5 })] } }],
+  transicoes_controle: [{ desc: "No nível 2, a Queda que acerta já passa pra meia-guarda.", apartir: 2, mod: { alvo: { carta: "queda" }, efeitos: [efeito("se_acerta", { avanca: 1 })] } }],
+  pressao_solo: [{ desc: "Por cima, a carta que resolve dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "cima" }, efeitos: [efeito("se_acerta", { pontos: 0.75 })] } }],
+  equilibrio: [{ desc: "A Antiqueda que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "antiqueda" }, efeitos: [contraQueda({ pontos: 0.5 })] } }],
+  recuperacao_posicao: [{ desc: "Vida +1 por nível.", porNivel: true, vida: 1 }],
+  defesa_entradas: [{ desc: "A Antiqueda também anula a pressão (clinch, puxada de guarda, rasteira) e dá 0,5 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "antiqueda" }, efeitos: [efeito("contra", { anula: true, pontos: 0.5 }, { categoria: ["pressao"] })] } }],
+  retorno_distancia: [{ desc: "O Bloqueio que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraGolpe({ pontos: 0.5 })] } }],
+  /* grappler */
+  /* a Finalização 2 mais rápida (velocidade 4) empatava com a Guarda e o Levantar: por cima, o grappler finalizava quase sempre */
+  eficiencia_sub: [{ desc: "No nível 3, a Finalização fica 1 mais rápida.", apartir: 3, mod: { alvo: { carta: "finalizacao" }, vel: 1 } },
+    { desc: "A Queda que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
+  transicoes_sub: [{ desc: "Libera a Rasteira.", mod: null }],
+  oportunidades: [{ desc: "A puxada de guarda que acerta dá 0,25 ponto por nível.", porNivel: true, mod: { alvo: { carta: "puxar_guarda" }, efeitos: [efeito("se_acerta", { pontos: 0.25 })] } }],
+  especializacao: [{ desc: "O Raspar que acerta dá 1,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "raspar" }, efeitos: [efeito("se_acerta", { pontos: 1.5 })] } }],
+  controle_chao: [{ desc: "Por cima, a carta que resolve dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "cima" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
+  passagens: [{ desc: "O Avançar que acerta dá 1 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "avancar" }, efeitos: [efeito("se_acerta", { pontos: 1 })] } }],
+  retencao: [{ desc: "A Guarda também anula o Avançar e dá 1 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "guarda" }, efeitos: [efeito("contra", { anula: true, pontos: 1 }, { categoria: ["pressao"] })] } }],
+  raspagem: [{ desc: "Golpes por baixo com +0,4 de dano por nível.", porNivel: true, mod: { alvo: { carta: "golpes_por_baixo" }, dano: 0.4 } }],
+  defesa_sub: [{ desc: "Golpes por baixo com +0,4 de dano por nível.", porNivel: true, mod: { alvo: { carta: "golpes_por_baixo" }, dano: 0.4 } }],
+  saidas: [{ desc: "O Levantar que acerta dá 1,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "levantar" }, efeitos: [efeito("se_acerta", { pontos: 1.5 })] } }],
+  sobrevivencia: [{ desc: "Por baixo, a carta que resolve dá 0,25 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "baixo" }, efeitos: [efeito("se_acerta", { pontos: 0.25 })] } }],
+  recuperar_guarda: [{ desc: "A Antiqueda que anula dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "antiqueda" }, efeitos: [contraQueda({ pontos: 0.75 })] } }],
+  /* counter */
+  padroes: [{ desc: "Libera a Esquiva.", mod: null }],
+  antecipacao: [{ desc: "O Bloqueio também anula o clinch e dá 0,5 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [efeito("contra", { anula: true, pontos: 0.5 }, { categoria: ["pressao"] })] } }],
+  resposta: [{ desc: "Contra-ataque com +0,15 de dano por nível.", porNivel: true, mod: { alvo: { carta: "contra_ataque" }, dano: 0.15 } }],
+  adaptacao: [{ desc: "Vida +0,75 por nível.", porNivel: true, vida: 0.75 }],
+  evasao: [{ desc: "O Jab que acerta dá 0,15 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, efeitos: [efeito("se_acerta", { pontos: 0.15 })] } }],
+  bloqueio: [{ desc: "O Bloqueio que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraGolpe({ pontos: 0.5 })] } }],
+  gestao_distancia: [{ desc: "No nível 2, o Bloqueio também anula a Queda.", apartir: 2, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraQueda({ anula: true })] } }],
+  recuperacao_defensiva: [{ desc: "Vida +1 por nível.", porNivel: true, vida: 1 }],
+  contra_ataques: [{ desc: "O Contra-ataque que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "contra_ataque" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
+  timing: [{ desc: "O Cruzado que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "cruzado" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
+  eficiencia_counter: [{ desc: "Cruzado com +0,1 de dano por nível.", porNivel: true, mod: { alvo: { carta: "cruzado" }, dano: 0.1 } }],
+  aproveitamento: [{ desc: "O Jab que interrompe dá 0,25 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, efeitos: [efeito("se_interrompe", { pontos: 0.25 })] } }],
+};
+/* com porNivel, os números do efeito multiplicam pelo nível (o ateDano e o avanca, não) */
+const ESCALA_EFEITO = ["energia", "energiaOponente", "pontos", "danoExtra"];
+const escalarEfeitos = (efs, k) => efs.map((ef) => ({ ...ef, acao: Object.fromEntries(Object.entries(ef.acao).map(([x, v]) => [x, ESCALA_EFEITO.includes(x) ? v * k : v])) }));
+/* o que a árvore dá no combate v2 pra esta build: as cartas liberadas, as
+   melhorias (mods, como a passiva), a finta a menos, a vida e a energia de
+   fim de round a mais */
+export function perfilV2(estilo, build = {}) {
+  const out = { liberadas: cartasLiberadas(estilo, build), mods: [], fintaMenos: 0, vida: 0, energiaRound: 0 };
+  for (const [no, nv] of Object.entries(build || {})) {
+    const nivel = Number(nv) || 0;
+    for (const ef of ARVORE_V2[no] || []) {
+      const ini = ef.apartir || 1;
+      if (nivel < ini) continue;
+      const k = ef.porNivel ? nivel - ini + 1 : 1;
+      if (ef.mod) {
+        const m = { ...ef.mod };
+        if (m.dano) m.dano *= k;
+        if (m.vel) m.vel *= k;
+        if (m.custo) m.custo *= k;
+        if (m.efeitos && ef.porNivel) m.efeitos = escalarEfeitos(m.efeitos, k);
+        out.mods.push(m);
+      }
+      if (ef.finta) out.fintaMenos += ef.finta * k;
+      if (ef.vida) out.vida += ef.vida * k;
+      if (ef.energiaRound) out.energiaRound += ef.energiaRound * k;
+    }
+  }
+  return out;
+}
 
 /* Validação do deck (o servidor usa esta; o cliente só mostra). Devolve {ok} ou {ok:false, erro}. */
 export function validarDeck(estilo, deck, liberadas = cartasLiberadas(estilo)) {

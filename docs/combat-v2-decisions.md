@@ -187,3 +187,49 @@ no relatório (`sim/relatorio.md`).
 46. **A vista nunca manda a mão dele:** só quantas cartas ele tem. A
     leitura do banco (`jxj_luta`) traz a carta dos dois na troca aberta;
     só o servidor usa, e a vista manda a de quem pede (`minhaCarta`).
+
+## Fase 4 (a árvore)
+
+47. **Os nós são os mesmos** (id, custo, regras de pontos e de tier). O
+    combate v2 lê o mesmo `build`; cada nó ganha um efeito v2 em
+    `ARVORE_V2` (`api/_jxj-cartas.js`). Quem já gastou pontos recebe na
+    hora o que os nós dele dão: sem reset, sem respec grátis, sem SQL. A
+    luta v1 segue com os efeitos de antes.
+48. **No combate v2, o nó vale só pelo efeito v2.** O atributo que o nó dá
+    fica na v1: o perfil da luta v2 (`perfilLuta2`, `api/_jxj-luta2.js`)
+    usa os atributos do estilo e da categoria. Medido com o atributo: o
+    degrau de 15 pontos da velocidade fazia a mesma Defesa de queda +6
+    valer 7 pontos no grappler (passa o limiar) e 0 no wrestler (não
+    passa); no nível 30, o atributo somado dava ao striker 97% a 99%
+    contra o wrestler. Sem o atributo da árvore, o nível 1 (o balanço
+    aprovado) não muda e `duelosVel` fica como estava.
+49. **Energia e finta não entram em efeito de nó.** Na simulação a energia
+    quase nunca falta (counter contra wrestler: 1 troca cansado em 2.572,
+    energia mínima mediana 6) e o jogador da simulação não finta: efeito
+    de energia e de finta mediu 0. Os nós usam dano, pontos de juiz,
+    anulação, velocidade (pouco: +1 no Contra-ataque valia 18 pontos),
+    vida e a carta nova. Com gente fintando a energia deve pesar mais; o
+    motor do round (recuperação 2 + 1 por carta guardada) não mudou.
+50. **Efeito novo no motor: `pontos`** (pontos de juiz a mais quando o
+    efeito dispara: na reação, quando a carta acerta ou quando interrompe).
+    Com `porNivel`, os números do efeito (pontos, energia, dano extra)
+    multiplicam pelo nível; `ateDano`, `avanca` e `anula`, não.
+51. **As 4 cartas novas** (uma por estilo, liberada pelo nó de
+    `desbloqueio`, só no deck do estilo): Combinação (striker, golpe,
+    velocidade 4, dano 2, custo 2), Double leg (wrestler, queda 2/2/3, lenta
+    mas o Jab não interrompe), Rasteira (grappler, queda 3/0/1 que só
+    derruba quem atacou: a terceira e a quarta queda do deck) e Esquiva (counter, defesa 3/1/1, anula golpe
+    e ainda acerta 1 de dano). Os números que não ficaram
+    estão no comentário de cada carta.
+52. **Como o nó é medido:** cada nó no nível 3 sozinho, contra os 4
+    estilos no nível 1, menos a mesma luta sem o nó, com as mesmas sementes
+    nos dois lados (sem isso, o ruído da linha de base mudava todos os nós
+    do estilo juntos em até 3 pontos). O nó de carta nova mede com a carta
+    no lugar de uma que o estilo dispensa (Striker, Contra-ataque;
+    Wrestler, Cruzado; Grappler, clinch; Counter, Chute alto), nunca do
+    Jab: sem Jab ninguém segura a queda de velocidade 4, e o teste media a
+    falta do Jab, não a carta.
+53. **Deck montado que deixou de valer** (a reconfiguração tirou o nó da
+    carta): fica guardado, a luta usa o padrão e o estado diz
+    `deckMontado: false`. Se o nó voltar, o montado volta.
+

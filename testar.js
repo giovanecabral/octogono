@@ -12018,6 +12018,33 @@ async function testarJxJ() {
         if (JSON.stringify(L1().deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1().deckMontado) throw new Error("null não voltou pro padrão");
       } finally { await flagV2(false); }
     });
+    await conf("árvore no combate v2 pelo servidor: carta da árvore no deck só com o nó; quem perde o nó joga com o padrão (o estado diz que o montado não vale); a luta usa o efeito v2 do nó e não o atributo dele", async () => {
+      await zerarLimites();
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      const meu = CT.DECK_PADRAO.striker.slice(); meu[meu.lastIndexOf("contra_ataque")] = "combinacao";
+      await flagV2({ contas: [u1, u2] });
+      try {
+        await erro(u1, "deck", { lutadorId: l1, deck: meu }, /liberada/);
+        await q("update jxj_lutadores set build = $1::jsonb where id = $2", [JSON.stringify({ precisao_maos: 3, combinacoes: 1 }), l1]);
+        await ok(u1, "deck", { lutadorId: l1, deck: meu });
+        let L1 = (await ok(u1, "estado")).lutadores.find((l) => l.id === l1);
+        if (JSON.stringify(L1.deck) !== JSON.stringify(meu) || !L1.deckMontado) throw new Error("deck com a carta da árvore no estado");
+        await q("update jxj_lutadores set build = $1::jsonb where id = $2", [JSON.stringify({ precisao_maos: 3 }), l1]);
+        L1 = (await ok(u1, "estado")).lutadores.find((l) => l.id === l1);
+        if (JSON.stringify(L1.deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1.deckMontado) throw new Error("sem o nó, o estado ainda mostra o montado: " + JSON.stringify({ m: L1.deckMontado }));
+        const lid = await parear(u1, l1, u2, l2);
+        const L = await estadoDb(lid), eu = L.a_user === u1 ? "a" : "b";
+        const base = ARV.perfilDeCombate({ estilo: "striker", categoria: L.perfis[eu].categoria, build: {} });
+        if (JSON.stringify(L.perfis[eu].deck) !== JSON.stringify(CT.DECK_PADRAO.striker)) throw new Error("a luta usou o deck sem o nó");
+        /* atributo por atributo: o jsonb do banco reordena as chaves */
+        const atrL = L.perfis[eu].atr, ks = Object.keys(base.atr);
+        if (Object.keys(atrL).length !== ks.length || ks.some((k) => atrL[k] !== base.atr[k])) throw new Error("o atributo da árvore entrou no combate v2: " + JSON.stringify({ luta: atrL, base: base.atr }));
+        if (!L.perfis[eu].v2 || !L.perfis[eu].v2.mods.some((m) => m.alvo && m.alvo.carta === "jab" && Math.abs(m.dano - 0.3) < 1e-9)) throw new Error("o efeito v2 do nó não entrou: " + JSON.stringify(L.perfis[eu].v2));
+        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
+        await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
+      } finally { await flagV2(false); }
+    });
     await conf("sem a migração do combate v2: a flag não existe, a luta nasce na v1 e salvar deck responde 503", async () => {
       const db2 = await B.novoBanco({ combate2: false });
       const fetchAntes = globalThis.fetch;
@@ -13149,6 +13176,59 @@ async function testarCombate2() {
       if (!f || !["KO", "TKO", "FIN", "DEC", "EMPATE"].includes(f.metodo) || x.trocas.length > 9) throw new Error("luta " + i + ": " + JSON.stringify(f) + " " + x.trocas.length);
       for (const t of x.trocas) for (const l of ["a", "b"]) if (t.resolucao.energia[l].depois < 0) throw new Error("energia negativa");
     }
+  });
+  /* a árvore no combate v2 (Fase 4) */
+  const V2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-luta2.js")).href);
+  const modDe = (p, carta) => p.mods.filter((m) => m.alvo && m.alvo.carta === carta);
+  await conf("árvore v2: todo nó da árvore tem efeito com texto; por nível multiplica dano, velocidade, custo e os números do efeito (pontos, energia); apartir só liga no nível; nó desconhecido ou nível 0 não dá nada", () => {
+    for (const r of Object.values(A.RAMOS)) for (const n of r.nos) {
+      const efs = C.ARVORE_V2[n.id];
+      if (!efs || !efs.length || efs.some((x) => typeof x.desc !== "string" || x.desc.length < 8 || /\u2014|\u2013/.test(x.desc))) throw new Error("nó sem efeito v2 ou sem texto: " + n.id);
+    }
+    const jab = modDe(C.perfilV2("striker", { precisao_maos: 3 }), "jab");
+    if (jab.length !== 1 || Math.abs(jab[0].dano - 0.3) > 1e-9) throw new Error("dano por nível: " + JSON.stringify(jab));
+    const q2 = modDe(C.perfilV2("wrestler", { entradas: 2 }), "queda");
+    if (q2.length !== 1 || q2[0].efeitos[0].acao.pontos !== 1 || C.ARVORE_V2.entradas[0].mod.efeitos[0].acao.pontos !== 0.5) throw new Error("pontos por nível (ou o efeito da árvore foi alterado): " + JSON.stringify(q2));
+    if (modDe(C.perfilV2("striker", { chute_corpo: 1 }), "chute_alto").length) throw new Error("apartir 2 ligou no nível 1");
+    for (const nv of [2, 3]) { const m = modDe(C.perfilV2("striker", { chute_corpo: nv }), "chute_alto"); if (m.length !== 1 || m[0].custo !== -1) throw new Error("apartir sem por nível, nível " + nv + ": " + JSON.stringify(m)); }
+    const comb = (nv) => modDe(C.perfilV2("striker", { combinacoes: nv }), "combinacao");
+    if (comb(1).length || Math.abs(comb(3)[0].dano - 0.5) > 1e-9) throw new Error("apartir com por nível: " + JSON.stringify([comb(1), comb(3)]));
+    const vazio = C.perfilV2("striker", { xyz: 3, precisao_maos: 0 });
+    if (vazio.mods.length || vazio.vida || vazio.energiaRound || vazio.fintaMenos) throw new Error("nó desconhecido ou nível 0 deu efeito");
+    if (C.perfilV2("counter", { adaptacao: 2 }).vida !== 1.5) throw new Error("vida por nível");
+  });
+  await conf("carta nova da árvore: só do estilo dela e só com o nó; o deck com ela passa pela build e é recusado sem o nó", () => {
+    for (const [s, carta, no] of [["striker", "combinacao", "combinacoes"], ["wrestler", "double_leg", "correntes"], ["grappler", "rasteira", "transicoes_sub"], ["counter", "esquiva", "padroes"]]) {
+      if (C.CARTAS[carta].desbloqueio !== no || C.cartasLiberadas(s).includes(carta) || !C.cartasLiberadas(s, { [no]: 1 }).includes(carta)) throw new Error("liberação de " + carta);
+      for (const o of A.ESTILOS_IDS) if (o !== s && C.cartasLiberadas(o, { [no]: 3 }).includes(carta)) throw new Error(carta + " liberada pra " + o);
+    }
+    const d = C.DECK_PADRAO.striker.slice(); d[d.lastIndexOf("contra_ataque")] = "combinacao";
+    if (C.validarDeck("striker", d).ok || !C.validarDeck("striker", d, C.cartasLiberadas("striker", { combinacoes: 1 })).ok) throw new Error("validação com a build");
+  });
+  await conf("árvore v2 no motor: o Jab com o nó bate mais; o Bloqueio com Controle de distância anula a Queda (sem o nó, ela entra); a Queda com Entradas dá os pontos a mais; vida a mais na luta nova", () => {
+    const com = (s, build) => ({ ...neutro(s), v2: C.perfilV2(s, build) });
+    let x = luta(["jab", "bloqueio", "queda", "clinch", "cruzado"], ["bloqueio", "antiqueda", "queda", "clinch", "cruzado"], {}, { a: com("wrestler", { precisao_maos: 3 }), b: neutro("wrestler") });
+    let r = troca(x, "jab", "clinch");
+    if (r.resolucao.dano.a !== 1.3) throw new Error("Jab com o nó: " + JSON.stringify(r.resolucao.dano));
+    for (const [build, anula] of [[{ controle_distancia: 2 }, true], [{}, false]]) {
+      x = luta(["bloqueio", "jab", "queda", "clinch", "cruzado"], ["queda", "antiqueda", "jab", "clinch", "cruzado"], {}, { a: com("striker", build), b: neutro("wrestler") });
+      r = troca(x, "bloqueio", "queda");
+      if (tem(r, "anulou", "a") !== anula || tem(r, "queda", "b") === anula) throw new Error("Bloqueio contra Queda, build " + JSON.stringify(build) + ": " + r.eventos.map((ev) => ev.tipo).join(","));
+    }
+    const pts = (build) => { const y = luta(["queda", "jab", "bloqueio", "clinch", "cruzado"], ["clinch", "jab", "bloqueio", "queda", "cruzado"], {}, { a: com("wrestler", build), b: neutro("wrestler") }); return troca(y, "queda", "clinch").resolucao.pontos.a; };
+    if (Math.abs(pts({ entradas: 2 }) - pts({}) - 1) > 1e-9) throw new Error("pontos da Queda: " + pts({ entradas: 2 }) + " contra " + pts({}));
+    const e = M.novaLuta2(com("counter", { adaptacao: 2 }), neutro("counter"), "v");
+    if (e.a.vidaMax !== e.b.vidaMax + 1.5) throw new Error("vida: " + e.a.vidaMax + " contra " + e.b.vidaMax);
+  });
+  await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
+    const build = { precisao_maos: 3, controle_distancia: 3 };
+    const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });
+    const base = A.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build: {} }), comArv = A.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build });
+    if (JSON.stringify(p.atr) !== JSON.stringify(base.atr) || comArv.atr.golpe <= base.atr.golpe) throw new Error("atributo da árvore no combate v2: " + JSON.stringify([p.atr.golpe, base.atr.golpe, comArv.atr.golpe]));
+    if (!modDe(p.v2, "jab").length || JSON.stringify(p.deck) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("v2 ou deck do perfil");
+    const d = C.DECK_PADRAO.striker.slice(); d[d.lastIndexOf("contra_ataque")] = "combinacao";
+    if (JSON.stringify(V2.deckDo({ estilo: "striker", build: { combinacoes: 1 }, deck: d })) !== JSON.stringify(d)) throw new Error("deck com o nó");
+    if (JSON.stringify(V2.deckDo({ estilo: "striker", build: {}, deck: d })) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("deck sem o nó não voltou pro padrão");
   });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  combate2 ok") : vermelho(`  ${falhas.length} falha(s) no combate2`)));

@@ -104,4 +104,92 @@ Espelho de cada estilo. Meta (decisão 10): o atento vence o jogador ao acaso em
 
 Dominância (acima de 60%): nenhuma.
 
-Tempo: 1355 s.
+## Nível 30 (build típica de cada estilo)
+
+Deck padrão:
+
+| | Striker | Wrestler | Grappler | Counter | Agregado |
+|---|---|---|---|---|---|
+| Striker | 49.9 | 62.7 | 41.3 | 50.4 | **51.5** |
+| Wrestler | 37.3 | 49.5 | 61.9 | 42.0 | **47.1** |
+| Grappler | 58.7 | 38.1 | 50.3 | 57.6 | **51.5** |
+| Counter | 49.6 | 58.0 | 42.4 | 50.8 | **50.0** |
+
+Com a carta nova no deck (no lugar de: Striker, Contra-ataque; Wrestler, Cruzado; Grappler, Pressão (clinch); Counter, Chute alto):
+
+| | Striker | Wrestler | Grappler | Counter | Agregado |
+|---|---|---|---|---|---|
+| Striker | 51.4 | 62.9 | 37.5 | 43.5 | **48.0** |
+| Wrestler | 37.1 | 50.0 | 57.0 | 44.2 | **46.1** |
+| Grappler | 62.5 | 43.0 | 49.8 | 62.7 | **56.1** |
+| Counter | 56.5 | 55.8 | 37.3 | 49.5 | **49.8** |
+
+## Evolução (mesmo estilo, build típica)
+
+Hoje (motor v5): 30 contra 1 entre 62% e 85%; 30 contra 20 acima de 50%.
+
+| Estilo | 10 contra 1 | 30 contra 1 | 30 contra 20 | 30 contra o campo no 1 |
+|---|---|---|---|---|
+| Striker | 48.0% | 62.6% | 53.8% | 68.5% |
+| Wrestler | 52.8% | 63.6% | 55.2% | 69.8% |
+| Grappler | 50.6% | 60.1% | 53.8% | 70.5% |
+| Counter | 59.2% | 71.8% | 55.2% | 69.5% |
+
+## Quanto vale cada nó (nível 3, sozinho)
+
+Vitória com o nó menos a vitória sem ele, média contra os 4 estilos (1000 lutas por confronto). Hoje (motor v5): de 0,5 a 6,5 pontos.
+
+| Estilo | Nó | No combate novo | Pontos |
+|---|---|---|---|
+| Striker | Precisão | Jab com +0,1 de dano por nível. | +3.3 |
+| Striker | Combinações | Libera a Combinação; +0,25 de dano nela por nível depois do 1. | +1.8 |
+| Striker | Contra-ataque de mãos | Contra-ataque com +0,1 de dano por nível. | +3.2 |
+| Striker | Eficiência de golpes | O Cruzado que acerta dá 0,5 ponto a mais por nível. | +1.4 |
+| Striker | Chutes baixos | O Chute alto que acerta dá 0,75 ponto a mais por nível. | +0.6 |
+| Striker | Chutes no corpo | No nível 2, o Chute alto custa 1 a menos. | +0.9 |
+| Striker | Controle de distância | No nível 2, o Bloqueio também anula a Queda. | +3.3 |
+| Striker | Variedade de ataques | Golpe em pé que acerta dá 0,25 ponto a mais por nível. | +4.7 |
+| Striker | Controle de ritmo | O Bloqueio que anula dá 0,5 ponto a mais por nível. | +1.0 |
+| Striker | Combinações sob pressão | No nível 2, o clinch fica 1 mais rápido. | +5.6 |
+| Striker | Manutenção de iniciativa | O Jab que interrompe dá 0,5 ponto a mais por nível. | +4.7 |
+| Striker | Eficiência de energia ofensiva | O clinch que acerta dá 1 ponto a mais por nível. | +1.6 |
+| Wrestler | Entradas | A Queda que acerta dá 0,5 ponto a mais por nível. | +2.9 |
+| Wrestler | Correntes de queda | Libera o Double leg; no nível 2, ele custa 1 a menos. | +3.2 |
+| Wrestler | Timing | Queda com +0,5 de dano por nível. | +3.5 |
+| Wrestler | Eficiência de tentativas | Queda com +0,25 de dano por nível. | +0.7 |
+| Wrestler | Controle posicional | Por cima, a carta que resolve dá 0,75 ponto a mais por nível. | +1.2 |
+| Wrestler | Manutenção de domínio | A pegada por cima (Segurar) também anula a raspagem e dá 0,5 ponto por nível quando anula. | +0.7 |
+| Wrestler | Transições | No nível 2, a Queda que acerta já passa pra meia-guarda. | +0.8 |
+| Wrestler | Pressão no solo | Por cima, a carta que resolve dá 0,75 ponto a mais por nível. | +1.2 |
+| Wrestler | Equilíbrio | A Antiqueda que anula dá 0,5 ponto a mais por nível. | +2.1 |
+| Wrestler | Recuperação de posição | Vida +1 por nível. | +4.4 |
+| Wrestler | Defesa de entradas | A Antiqueda também anula a pressão (clinch, puxada de guarda, rasteira) e dá 0,5 ponto por nível quando anula. | +1.4 |
+| Wrestler | Retorno à distância | O Bloqueio que anula dá 0,5 ponto a mais por nível. | +3.0 |
+| Grappler | Eficiência de submissão | No nível 3, a Finalização fica 1 mais rápida. A Queda que acerta dá 0,5 ponto a mais por nível. | +6.1 |
+| Grappler | Transições | Libera a Rasteira. | +3.7 |
+| Grappler | Oportunidades de ataque | A puxada de guarda que acerta dá 0,25 ponto por nível. | +3.1 |
+| Grappler | Especialização técnica | O Raspar que acerta dá 1,5 ponto a mais por nível. | +2.2 |
+| Grappler | Controle | Por cima, a carta que resolve dá 0,5 ponto a mais por nível. | +1.6 |
+| Grappler | Passagens | O Avançar que acerta dá 1 ponto a mais por nível. | +1.5 |
+| Grappler | Retenção | A Guarda também anula o Avançar e dá 1 ponto por nível quando anula. | +2.1 |
+| Grappler | Recuperação | Golpes por baixo com +0,4 de dano por nível. | +3.7 |
+| Grappler | Defesa de finalização | Golpes por baixo com +0,4 de dano por nível. | +3.7 |
+| Grappler | Saídas | O Levantar que acerta dá 1,5 ponto a mais por nível. | +2.9 |
+| Grappler | Sobrevivência posicional | Por baixo, a carta que resolve dá 0,25 ponto a mais por nível. | +5.1 |
+| Grappler | Recuperação de guarda | A Antiqueda que anula dá 0,75 ponto a mais por nível. | +3.0 |
+| Counter | Identificação de padrões | Libera a Esquiva. | +3.6 |
+| Counter | Antecipação | O Bloqueio também anula o clinch e dá 0,5 ponto por nível quando anula. | +1.4 |
+| Counter | Resposta a ataques | Contra-ataque com +0,15 de dano por nível. | +3.8 |
+| Counter | Adaptação | Vida +0,75 por nível. | +1.8 |
+| Counter | Evasão | O Jab que acerta dá 0,15 ponto a mais por nível. | +2.8 |
+| Counter | Bloqueio | O Bloqueio que anula dá 0,5 ponto a mais por nível. | +2.2 |
+| Counter | Gestão de distância | No nível 2, o Bloqueio também anula a Queda. | +4.0 |
+| Counter | Recuperação defensiva | Vida +1 por nível. | +2.1 |
+| Counter | Contra-ataques | O Contra-ataque que acerta dá 0,5 ponto a mais por nível. | +4.3 |
+| Counter | Timing | O Cruzado que acerta dá 0,5 ponto a mais por nível. | +2.0 |
+| Counter | Eficiência | Cruzado com +0,1 de dano por nível. | +1.6 |
+| Counter | Aproveitamento de oportunidades | O Jab que interrompe dá 0,25 ponto a mais por nível. | +4.9 |
+
+Fora de 0,5 a 6,5: nenhum.
+
+Tempo: 2025 s.

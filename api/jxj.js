@@ -166,7 +166,7 @@ async function combateV2Para(uids) {
 /* perfis e estado da luta nova, na versão de combate dos dois */
 async function lutaNova(lA, lB, uids, semente) {
   if (await combateV2Para(uids)) {
-    const perfis = { a: V2.comDeck(perfilDoLutador(lA), lA), b: V2.comDeck(perfilDoLutador(lB), lB) };
+    const perfis = { a: V2.perfilLuta2(lA), b: V2.perfilLuta2(lB) };
     return { perfis, estado: V2.novaLuta(perfis, semente) };
   }
   const perfis = { a: perfilDoLutador(lA), b: perfilDoLutador(lB) };
@@ -590,7 +590,7 @@ async function acaoV2(c, d0, uid, lid, round, troca) {
     if (sn0[lado0] && sn0[lado0] !== familia) throw new ErroJxJ("Espere ele mostrar a postura pra fintar.");
   } else if (etapa0 === "acao") {
     const meu = sinaisRevelados(L0, sn0)[lado0];
-    if (meu !== familia && L0.estado[lado0].energia < V2.custoFinta(L0.estado, lado0)) throw new ErroJxJ("Sem energia pra fintar.");
+    if (meu !== familia && L0.estado[lado0].energia < V2.custoFinta(L0.estado, lado0, L0.perfis && L0.perfis[lado0])) throw new ErroJxJ("Sem energia pra fintar.");
   }
   try { await rpc("jxj_enviar_carta", { uid, lid, round_: round, troca_: troca, familia_: familia, carta_: c.carta }); }
   catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("o combate novo ainda não foi ligado", 503); throw e; }
@@ -664,7 +664,8 @@ async function executar(acao, c, uid) {
       if (est.combateV2) {
         let decks = {};
         try { decks = (await rpc("jxj_decks", { uid })) || {}; } catch (e) { if (e.codigo !== "PGRST202") throw e; }
-        for (const l of est.lutadores || []) { const montado = decks[String(l.id)]; l.deck = V2.deckDo({ ...l, deck: montado }); l.deckMontado = !!montado; }
+        /* o montado que não vale mais (a reconfiguração tirou o nó da carta) fica guardado, mas a luta usa o padrão: deckMontado false */
+        for (const l of est.lutadores || []) { const montado = decks[String(l.id)]; l.deck = V2.deckDo({ ...l, deck: montado }); l.deckMontado = !!montado && JSON.stringify(l.deck) === JSON.stringify(montado); }
       }
       return est;
     }
@@ -684,7 +685,7 @@ async function executar(acao, c, uid) {
       let deck = null;
       if (c.deck != null) {
         if (!Array.isArray(c.deck)) throw new ErroJxJ("deck inválido");
-        const v = CARTAS.validarDeck(l.estilo, c.deck);
+        const v = CARTAS.validarDeck(l.estilo, c.deck, CARTAS.cartasLiberadas(l.estilo, l.build || {}));
         if (!v.ok) throw new ErroJxJ(v.erro);
         deck = c.deck.slice();
       }

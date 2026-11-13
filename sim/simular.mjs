@@ -6,7 +6,8 @@
      node sim/simular.mjs [lutas por confronto, padrão 10000]
    Variáveis:
      SIM_PARTES  partes, separadas por vírgula (padrão: todas):
-                 matriz, categorias, pesos, habilidade, decks
+                 matriz, categorias, pesos, habilidade, decks,
+                 nivel30, evolucao, nos (a árvore, Fase 4)
      SIM_AJUSTE  números de experimento em JSON (sim/ajuste.mjs)
      SIM_DECKS   decks aleatórios por estilo (padrão 40)
 
@@ -20,16 +21,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as C from "../api/_jxj-cartas.js";
-import { CATEGORIAS_LANCAMENTO, CATEGORIAS } from "../api/_jxj-arvores.js";
+import { CATEGORIAS_LANCAMENTO, CATEGORIAS, buildTipica, RAMOS, ESTILOS } from "../api/_jxj-arvores.js";
 import { aplicarAjuste } from "./ajuste.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const N = Number(process.argv[2] || 10000);
 const ajuste = process.env.SIM_AJUSTE ? JSON.parse(process.env.SIM_AJUSTE) : null;
 aplicarAjuste(ajuste);
-const PARTES = (process.env.SIM_PARTES || "matriz,categorias,pesos,habilidade,decks").split(",");
+const PARTES = (process.env.SIM_PARTES || "matriz,categorias,pesos,habilidade,decks,nivel30,evolucao,nos").split(",");
 const NDECKS = Number(process.env.SIM_DECKS || 40);
 const ESTS = ["striker", "wrestler", "grappler", "counter"];
+/* SIM_ESTILOS: na parte nos, mede só a árvore destes (contra os 4) */
+const ESTS_NOS = process.env.SIM_ESTILOS ? process.env.SIM_ESTILOS.split(",") : ESTS;
 const NOMES = { striker: "Striker", wrestler: "Wrestler", grappler: "Grappler", counter: "Counter" };
 const LOTE = 200;
 
@@ -37,12 +40,15 @@ const LOTE = 200;
 const W = Math.max(1, os.cpus().length - 1);
 const trabalhadores = Array.from({ length: W }, () => new Worker(path.join(AQUI, "trabalhador.mjs"), { workerData: { ajuste } }));
 let seq = 0;
+const hashPar = (t) => { let h = 2166136261; for (const ch of t) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h; };
 function rodar(jobs) {
   /* cada job vira lotes; devolve a soma por job */
   const fila = [], soma = new Map();
   for (const j of jobs) {
     soma.set(j.chave, null);
-    for (let ini = 0; ini < j.n; ini += LOTE) fila.push({ ...j, n: Math.min(LOTE, j.n - ini), sal: `${j.chave}:${ini}`, semente0: (seq++ * 104729) >>> 0, id: j.chave });
+    /* par: jobs com o mesmo par jogam as mesmas sementes (luta com o nó e sem ele: a diferença fica só no efeito) */
+    for (let ini = 0; ini < j.n; ini += LOTE) fila.push({ ...j, n: Math.min(LOTE, j.n - ini), sal: `${j.par || j.chave}:${ini}`,
+      semente0: j.par ? (hashPar(`${j.par}:${ini}`) >>> 0) : (seq++ * 104729) >>> 0, id: j.chave });
   }
   return new Promise((ok) => {
     let ativos = 0;
@@ -232,6 +238,79 @@ if (PARTES.includes("decks")) {
   for (const b of melhores) { const v = ESTS.reduce((a, o) => a + vit(r2.get(`D:${b.s}:${o}`)), 0) / 4; if (v > 60) dom.push(`${NOMES[b.s]} ${f1(v)}%`); linha(`- Melhor deck do ${NOMES[b.s]} medido de novo (${n2} lutas por confronto): ${f1(v)}% contra o campo.`); }
   linha();
   linha(`Dominância (acima de 60%): ${dom.length ? "SIM: " + dom.join(", ") : "nenhuma"}.`);
+  linha();
+}
+
+/* ---------- a árvore (Fase 4) ---------- */
+const B30 = Object.fromEntries(ESTS.map((s) => [s, buildTipica(s, 30)]));
+/* o deck padrão com a carta nova no lugar de uma que o estilo dispensa (nunca o Jab: sem
+   ele ninguém segura a queda de velocidade 4, e o teste media a falta do Jab, não a carta) */
+const NOVA = { striker: "combinacao", wrestler: "double_leg", grappler: "rasteira", counter: "esquiva", ...JSON.parse(process.env.SIM_NOVA || "{}") };
+const SAI = { striker: "contra_ataque", wrestler: "cruzado", grappler: "clinch", counter: "chute_alto" };
+const deckCom = (s) => { const d = C.DECK_PADRAO[s].slice(), i = d.lastIndexOf(SAI[s]); if (i >= 0) d[i] = NOVA[s]; return d; };
+if (PARTES.includes("nivel30")) {
+  const jobs = [];
+  for (let i = 0; i < 4; i++) for (let j = i; j < 4; j++) for (const comNova of [false, true])
+    jobs.push({ chave: `n30:${comNova ? 1 : 0}:${ESTS[i]}:${ESTS[j]}`, sA: ESTS[i], sB: ESTS[j], catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+      buildA: B30[ESTS[i]], buildB: B30[ESTS[j]], deckA: comNova ? deckCom(ESTS[i]) : undefined, deckB: comNova ? deckCom(ESTS[j]) : undefined, n: Math.round(N / 2) });
+  const r = await rodar(jobs);
+  linha("## Nível 30 (build típica de cada estilo)");
+  linha();
+  for (const comNova of [false, true]) {
+    const m = (a, b) => (r.get(`n30:${comNova ? 1 : 0}:${a}:${b}`) ? vit(r.get(`n30:${comNova ? 1 : 0}:${a}:${b}`)) : 100 - vit(r.get(`n30:${comNova ? 1 : 0}:${b}:${a}`)));
+    linha(comNova ? "Com a carta nova no deck (no lugar de: " + ESTS.map((x) => `${NOMES[x]}, ${C.CARTAS[SAI[x]].nome}`).join("; ") + "):" : "Deck padrão:");
+    linha();
+    linha("| | " + ESTS.map((s) => NOMES[s]).join(" | ") + " | Agregado |");
+    linha("|---|" + ESTS.map(() => "---").join("|") + "|---|");
+    for (const a of ESTS) { const ag = ESTS.filter((b) => b !== a).reduce((x, b) => x + m(a, b), 0) / 3; linha(`| ${NOMES[a]} | ` + ESTS.map((b) => f1(m(a, b))).join(" | ") + ` | **${f1(ag)}** |`); }
+    linha();
+  }
+}
+if (PARTES.includes("evolucao")) {
+  const jobs = [];
+  for (const s of ESTS) for (const [alto, baixo] of [[30, 1], [30, 20], [10, 1]])
+    jobs.push({ chave: `ev:${s}:${alto}:${baixo}`, sA: s, sB: s, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+      buildA: buildTipica(s, alto), buildB: buildTipica(s, baixo), n: Math.round(N / 4) });
+  /* e contra o campo: o 30 de cada estilo contra os 4 estilos no nível 1 */
+  for (const s of ESTS) for (const o of ESTS)
+    jobs.push({ chave: `evc:${s}:${o}`, sA: s, sB: o, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+      buildA: buildTipica(s, 30), n: Math.round(N / 8) });
+  const r = await rodar(jobs);
+  linha("## Evolução (mesmo estilo, build típica)");
+  linha();
+  linha("Hoje (motor v5): 30 contra 1 entre 62% e 85%; 30 contra 20 acima de 50%.");
+  linha();
+  linha("| Estilo | 10 contra 1 | 30 contra 1 | 30 contra 20 | 30 contra o campo no 1 |");
+  linha("|---|---|---|---|---|");
+  for (const s of ESTS) linha(`| ${NOMES[s]} | ${f1(vit(r.get(`ev:${s}:10:1`)))}% | ${f1(vit(r.get(`ev:${s}:30:1`)))}% | ${f1(vit(r.get(`ev:${s}:30:20`)))}% | ${f1(ESTS.reduce((x, o) => x + vit(r.get(`evc:${s}:${o}`)), 0) / 4)}% |`);
+  linha();
+}
+if (PARTES.includes("nos")) {
+  /* cada nó no nível 3, sozinho, contra os 4 estilos (nível 1), menos a mesma luta sem o nó: pontos de vitória */
+  const n = Math.round(N / 10), jobs = [];
+  for (const s of ESTS_NOS) {
+    for (const o of ESTS) jobs.push({ chave: `no:${s}:-:${o}`, par: `no:${s}:${o}`, sA: s, sB: o, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n });
+    for (const ramo of ESTILOS[s].ramos) for (const no of RAMOS[ramo].nos) {
+      const comCarta = Object.values(C.CARTAS).find((c) => c.desbloqueio === no.id);
+      for (const o of ESTS) jobs.push({ chave: `no:${s}:${no.id}:${o}`, par: `no:${s}:${o}`, sA: s, sB: o, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n,
+        buildA: { [no.id]: 3 }, deckA: comCarta ? deckCom(s) : undefined });
+    }
+  }
+  const r = await rodar(jobs);
+  linha("## Quanto vale cada nó (nível 3, sozinho)");
+  linha();
+  linha(`Vitória com o nó menos a vitória sem ele, média contra os 4 estilos (${n} lutas por confronto). Hoje (motor v5): de 0,5 a 6,5 pontos.`);
+  linha();
+  linha("| Estilo | Nó | No combate novo | Pontos |");
+  linha("|---|---|---|---|");
+  const fora = [];
+  for (const s of ESTS_NOS) for (const ramo of ESTILOS[s].ramos) for (const no of RAMOS[ramo].nos) {
+    const v = ESTS.reduce((a, o) => a + vit(r.get(`no:${s}:${no.id}:${o}`)) - vit(r.get(`no:${s}:-:${o}`)), 0) / 4;
+    if (v < 0.5 || v > 6.5) fora.push(`${no.nome} ${f1(v)}`);
+    linha(`| ${NOMES[s]} | ${no.nome} | ${(C.ARVORE_V2[no.id] || []).map((x) => x.desc).join(" ") || "só o atributo"} | ${v >= 0 ? "+" : ""}${f1(v)} |`);
+  }
+  linha();
+  linha(`Fora de 0,5 a 6,5: ${fora.length ? fora.join(", ") : "nenhum"}.`);
   linha();
 }
 

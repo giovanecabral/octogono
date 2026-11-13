@@ -1,8 +1,8 @@
 # Combate v2 do Online
 
-Status: Fase 1 (motor puro + simulação), no branch `combate-v2`. Nada da
-tela, do servidor ou do banco usa isto ainda; o jogo no ar segue com o
-motor v5 (`api/_jxj-motor.js`). Decisões: `docs/combat-v2-decisions.md`.
+Status: Fases 1, 3 e 4 (motor, servidor atrás da flag, árvore), no branch
+`combate-v2`. A tela ainda não usa; o jogo no ar segue com o motor v5
+(`api/_jxj-motor.js`). Decisões: `docs/combat-v2-decisions.md`.
 
 ## Arquivos
 
@@ -110,6 +110,50 @@ Por baixo:
 
 Decks padrão em `DECK_PADRAO` (`api/_jxj-cartas.js`).
 
+## Árvore (Fase 4)
+
+Os nós são os mesmos da árvore de hoje (id, custo, tiers); o `build` é o
+mesmo. No combate v2 cada nó vale pelo efeito de `ARVORE_V2`
+(`api/_jxj-cartas.js`), e o atributo que ele dá fica no combate de antes:
+o perfil da luta v2 (`perfilLuta2`) usa os atributos do estilo e da
+categoria. Quem já tem pontos gastos recebe o efeito na hora.
+
+Tipos de efeito: carta mais forte (dano, velocidade, custo), carta que
+anula mais coisa (o Bloqueio que segura a Queda), pontos de juiz a mais
+quando a carta acerta, anula ou interrompe, vida a mais e carta nova. Com
+"por nível", o número multiplica pelo nível do nó. Energia e finta ficaram
+de fora (decisão 49).
+
+Cartas novas (só no deck do estilo, liberadas pelo nó):
+
+| Carta | Estilo | Nó | Categoria | Vel | Dano | Custo | Efeito |
+|---|---|---|---|---|---|---|---|
+| Combinação | Striker | Combinações | Golpe | 4 | 2 | 2 | |
+| Double leg | Wrestler | Correntes de queda | Queda | 2 | 2 | 3 | Se acerta, chão; o Jab não interrompe |
+| Rasteira | Grappler | Transições | Queda | 3 | 0 | 1 | Se acerta quem atacou (golpe, pressão ou queda), chão |
+| Esquiva | Counter | Identificação de padrões | Defesa | 3 | 1 | 1 | Contra golpe: anula |
+
+O deck montado com carta que o lutador não tem mais (reconfigurou a
+árvore) fica guardado, mas a luta usa o deck padrão (`deckMontado:
+false` no estado).
+
+Resultado (2026-11-13, `sim/relatorio.md`, 10.000 lutas por confronto;
+o nível 1 saiu igual ao da Fase 1, número por número):
+
+| Medida | Meta | Resultado |
+|---|---|---|
+| Cada nó no nível 3, sozinho (pontos de vitória) | 0,5 a 6,5 | 0,6 a 6,1 |
+| Estilo no agregado, nível 30, deck padrão | 45% a 55% | 47,1% a 51,5% |
+| O mesmo, com a carta nova no deck | 45% a 55% | 46,1% a 56,1% (grappler com a Rasteira) |
+| 30 contra 1, mesmo estilo | 62% a 85% | 60,1% a 71,8% (grappler 60,1%) |
+| 30 contra 20, mesmo estilo | acima de 50% | 53,8% a 55,2% |
+| 30 contra os 4 estilos no nível 1 | (sem meta) | 68,5% a 70,5% |
+
+Fora por pouco: o grappler com a Rasteira no nível 30 (56,1%, ganha do
+striker e do counter, que têm 0 e 1 Antiqueda no deck padrão) e o grappler
+30 contra 1 no espelho (60,1%: o nível 1 da build típica já tem o nó mais
+forte do grappler, Eficiência de submissão; contra o campo, 70,5%).
+
 ## Servidor (Fase 3)
 
 Atrás da flag `combate_v2` (`jxj_config`), com a migração
@@ -142,7 +186,8 @@ SIM_PARTES=matriz node sim/simular.mjs 800       # só estilo contra estilo, rá
 SIM_AJUSTE='{"cartas":{"jab":{"vel":4}}}' sim/rodada.sh '<mesmo JSON>' 800   # experimento sem mexer no arquivo
 ```
 
-`SIM_PARTES`: matriz, categorias, pesos, habilidade, decks. `SIM_AJUSTE`
+`SIM_PARTES`: matriz, categorias, pesos, habilidade, decks, nivel30,
+evolucao, nos (`SIM_ESTILOS=grappler` mede só a árvore desse). `SIM_AJUSTE`
 mexe nos números só naquela rodada (`sim/ajuste.mjs`); o número que ficar
 bom vai à mão pro arquivo da carta ou do motor.
 

@@ -4,14 +4,20 @@
 import { parentPort, workerData } from "node:worker_threads";
 import * as M from "../api/_jxj-combate2.js";
 import * as C from "../api/_jxj-cartas.js";
-import { perfilDeCombate } from "../api/_jxj-arvores.js";
+import { perfilLuta2 } from "../api/_jxj-luta2.js";
 import { aleatoria, atenta, oraculo } from "./politicas.mjs";
 
 import { aplicarAjuste } from "./ajuste.mjs";
 aplicarAjuste(workerData && workerData.ajuste);
 
 const politica = (nome, semente) => nome === "aleatoria" ? aleatoria() : nome.startsWith("oraculo") ? oraculo(semente, Number(nome.split(":")[1])) : atenta(semente);
-const perfil = (estilo, categoria, deck) => ({ ...perfilDeCombate({ estilo, categoria, build: {} }), deck: deck || C.DECK_PADRAO[estilo] });
+/* o perfil do servidor (Fase 4): build {noId: nível}; sem build, nível 1. Deck que o
+   servidor não aceitaria vira o padrão lá: aqui, erro (senão mede o deck errado calado) */
+function perfil(estilo, categoria, deck, build = {}) {
+  const p = perfilLuta2({ estilo, categoria, build, deck: deck || null });
+  if (deck && JSON.stringify(p.deck) !== JSON.stringify(deck)) throw new Error(`deck recusado (${estilo}): ${deck.join(",")}`);
+  return p;
+}
 function gerador(n) {
   let s = n >>> 0;
   return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -24,9 +30,9 @@ function lote(job) {
   const espelho = job.sA === job.sB && JSON.stringify(job.deckA || C.DECK_PADRAO[job.sA]) === JSON.stringify(job.deckB || C.DECK_PADRAO[job.sB]) && job.catA === job.catB;
   for (let i = 0; i < job.n; i++) {
     const inv = i % 2 === 1, semente = `${job.sal}:${i}`, r = gerador(job.semente0 + i * 7919);
-    const X = { s: job.sA, cat: job.catA, deck: job.deckA, pol: job.polA }, Y = { s: job.sB, cat: job.catB, deck: job.deckB, pol: job.polB };
+    const X = { s: job.sA, cat: job.catA, deck: job.deckA, pol: job.polA, build: job.buildA }, Y = { s: job.sB, cat: job.catB, deck: job.deckB, pol: job.polB, build: job.buildB };
     const [ladoA, ladoB] = inv ? [Y, X] : [X, Y];
-    const perfis = { a: perfil(ladoA.s, ladoA.cat, ladoA.deck), b: perfil(ladoB.s, ladoB.cat, ladoB.deck) };
+    const perfis = { a: perfil(ladoA.s, ladoA.cat, ladoA.deck, ladoA.build), b: perfil(ladoB.s, ladoB.cat, ladoB.deck, ladoB.build) };
     const pol = { a: politica(ladoA.pol, "aval"), b: politica(ladoB.pol, "aval") };
     let e = M.novaLuta2(perfis.a, perfis.b, semente);
     const jogou = { a: new Set(), b: new Set() };
