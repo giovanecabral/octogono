@@ -154,6 +154,30 @@ striker e do counter, que têm 0 e 1 Antiqueda no deck padrão) e o grappler
 30 contra 1 no espelho (60,1%: o nível 1 da build típica já tem o nó mais
 forte do grappler, Eficiência de submissão; contra o campo, 70,5%).
 
+## Bots (Fase 5)
+
+Com a flag valendo pra conta do jogador, a luta contra bot é do combate
+novo (`api/_jxj-bot2.js`). O bot é o mesmo da tela (nome, estilo, build e
+jeito pela semente), com o deck padrão do estilo. Ele joga cego: enxerga o
+estado com a mão do jogador escondida (só quantas cartas), as trocas já
+resolvidas e a semente; a carta do jogador na troca nunca entra. A postura
+dele sai da semente. A habilidade (pelo rating do jogador, como antes)
+decide quanto ele erra de propósito e quanto joga a leitura de equilíbrio
+da troca (`api/_jxj-leitura2.js`, a mesma do jogador "atenta" da
+simulação); o jeito (Provocador, Paciente, Observador, Inquieto) puxa as
+cartas pra cada lado. Decisão em cerca de 1 ms.
+
+Força (o rating com que o bot entra no Glicko), contra o jogador "atenta"
+(1500), em `FORCA_BOT2` (2026-11-13, 10.000 lutas; tabela completa em
+`sim/relatorio-bots.md`):
+
+| Jeito | Habilidade 0 | Habilidade 0,5 | Habilidade 1 |
+|---|---|---|---|
+| Provocador | 1363 | 1416 | 1429 |
+| Paciente | 1327 | 1421 | 1462 |
+| Observador | 1381 | 1462 | 1500 |
+| Inquieto | 1322 | 1394 | 1423 |
+
 ## Servidor (Fase 3)
 
 Atrás da flag `combate_v2` (`jxj_config`), com a migração

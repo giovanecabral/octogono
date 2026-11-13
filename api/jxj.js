@@ -27,6 +27,7 @@ import * as ARV from "./_jxj-arvores.js";
 import * as RAT from "./_jxj-rating.js";
 import * as REG from "./_jxj-regras.js";
 import * as BOT from "./_jxj-bot.js";
+import * as BOT2 from "./_jxj-bot2.js";
 import * as NARR from "./_jxj-narracao.js";
 import * as EST from "./_jxj-estrategia.js";
 import * as C2 from "./_jxj-combate2.js";
@@ -155,8 +156,8 @@ const novaSemente = () => randomBytes(32).toString("hex");
    combate_v2 de jxj_config diz quem joga o combate novo: false (ninguém),
    true (todos) ou {"contas": [uuid...]} (só essas). A luta nova é v2 quando
    as contas dos dois lados estão liberadas. Sem a migração, a chave não
-   existe e tudo segue na v1. A luta contra bot segue na v1 até os bots
-   jogarem com cartas (Fase 5). */
+   existe e tudo segue na v1. A luta contra bot é v2 quando a conta do
+   jogador está liberada (Fase 5: o bot joga com cartas, api/_jxj-bot2.js). */
 async function combateV2Para(uids) {
   let cfg = null;
   try { cfg = await rpc("jxj_cfg", { k: "combate_v2" }); } catch { return false; }
@@ -236,7 +237,9 @@ async function sinaisDaTroca(d) {
   catch (e) { if (e.codigo === "PGRST202") return null; throw e; }
   const s = { a: null, b: null, em: { a: null, b: null } };
   for (const x of lista || []) { s[x.lado] = x.familia; s.em[x.lado] = x.enviado_em; }
-  if (L.bot) s.b = BOT.sinalDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
+  if (L.bot) s.b = V2.ehV2(L.estado)
+    ? BOT2.sinalDoBot2({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, perfis: L.perfis, lado: "b" })
+    : BOT.sinalDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
   return s;
 }
 const ACAO_MS = EST.ESTRATEGIA.prazos.acaoMs;
@@ -277,7 +280,12 @@ async function processarLuta(lid, uid, { porAcao = false } = {}) {
       /* combate v2: a carta de cada lado (jxj_acoes.carta, que a jxj_luta já traz); a troca anda com as duas ou com o prazo vencido */
       const cartas = { a: null, b: null };
       for (const x of d.acoes || []) cartas[x.lado] = x.carta || null;
-      if ((!(cartas.a && cartas.b) || !porAcao) && !vencido) return d;
+      if (L.bot) {
+        /* Fase 5: contra bot, a troca anda com a carta do jogador (ou o prazo vencido); a do bot sai do
+           estado com a mão do jogador escondida, das trocas resolvidas e da semente (a dele nesta troca nunca entra) */
+        if ((!cartas.a || !porAcao) && !vencido) return d;
+        cartas.b = BOT2.cartaDoBot2({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, perfis: L.perfis, lado: "b", sinais: sn ? sinaisRevelados(L, sn) : null });
+      } else if ((!(cartas.a && cartas.b) || !porAcao) && !vencido) return d;
       const r = C2.resolverTroca2(L.estado, L.perfis, { ...cartas, sinais: sn ? sinaisRevelados(L, sn) : null }, L.semente);
       const fim = r.estado.fim ? { ...r.estado.fim } : null;
       await rpc("jxj_gravar_troca", {
@@ -353,9 +361,11 @@ function vistaDaLutaV2(d, uid) {
     /* a minha carta da troca aberta (a dele, nunca): a família e a carta */
     minhaAcao: lado && abertas[lado] ? abertas[lado].familia : null,
     minhaCarta: lado && abertas[lado] ? abertas[lado].carta || null : null,
+    /* o bot já tem a carta da troca (sai da semente), só não foi gravada: conta depois da revelação, como na v1 */
     adversarioEscolheu: lado ? (() => {
-      if (!sn) return !!abertas[outroLado(lado)];
+      if (!sn) return L.bot && L.status === "andamento" ? true : !!abertas[outroLado(lado)];
       if (etapa !== "acao") return false;
+      if (L.bot) return true;
       const ac = abertas[outroLado(lado)];
       return !!ac && Date.parse(ac.enviada_em) > momentoDaRevelacao(L, sn);
     })() : null,
@@ -371,6 +381,8 @@ function vistaDaLutaV2(d, uid) {
     vista.efeitos = L.efeitos;
     vista.semente = L.semente;
     vista.narracao = L.narracao;
+    /* luta contra bot: o jeito dele e como puni-lo, com as cartas do combate novo, só depois do fim */
+    if (L.bot && BOT2.LICAO2[L.bot.pers]) vista.licaoBot = BOT2.LICAO2[L.bot.pers];
     vista.revanche = L.bot ? null : { a: !!L.revanche_a, b: !!L.revanche_b, luta: L.revanche_luta_id, ate: new Date(Date.parse(L.encerrada_em) + REG.REVANCHE_MS).toISOString() };
   }
   return vista;
@@ -887,14 +899,17 @@ async function executar(acao, c, uid) {
       if (pelaFila && !est.fila) throw new ErroJxJ("entre na fila pra lutar contra o bot");
       const mov = pelaFila ? await movimento() : null;
       const sozinho = !!mov && Number(mov.fila) <= 1;
-      const bot = BOT.montarBot({ nivel: l.nivel, categoria: l.categoria, rating: l.rating, semente: novaSemente(), limitesRosto: LIMITES_ROSTO });
+      /* Fase 5: com a flag combate_v2 da conta do jogador, a luta contra bot é do combate novo (o bot joga com cartas) */
+      const v2 = await combateV2Para([uid]);
+      const bot = (v2 ? BOT2.montarBot2 : BOT.montarBot)({ nivel: l.nivel, categoria: l.categoria, rating: l.rating, semente: novaSemente(), limitesRosto: LIMITES_ROSTO });
       /* primeira luta contra bot da conta: o jeito sai limpo nas primeiras trocas (BOT.TROCAS_PURAS) */
       const primeira = await primeiraContraBot(est);
-      const perfis = { a: perfilDoLutador(l), b: bot.perfil };
+      const puro = primeira ? BOT.TROCAS_PURAS : 0, semente = novaSemente();
+      const perfis = v2 ? { a: V2.perfilLuta2(l), b: bot.perfil } : { a: perfilDoLutador(l), b: bot.perfil };
       try {
         return await rpc("jxj_bot_criar", {
-          uid, lid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b),
-          nome_b: BOT.vitrine(bot), bot_: BOT.dadosDaLuta(bot, perfis.a, { puro: primeira ? BOT.TROCAS_PURAS : 0 }), prazo_ms: MOTOR.FORMATO.prazoMs,
+          uid, lid, semente_: semente, perfis_: perfis, estado_: v2 ? V2.novaLuta(perfis, semente) : MOTOR.novaLuta(perfis.a, perfis.b),
+          nome_b: BOT.vitrine(bot), bot_: v2 ? BOT2.dadosDaLuta2(bot, { puro }) : BOT.dadosDaLuta(bot, perfis.a, { puro }), prazo_ms: MOTOR.FORMATO.prazoMs,
           espera_s: sozinho ? 0 : REG.BOT_ESPERA_S, limite_free: REG.BOT_FREE_DIA,
         });
       } catch (e) {

@@ -7,7 +7,9 @@
    Variáveis:
      SIM_PARTES  partes, separadas por vírgula (padrão: todas):
                  matriz, categorias, pesos, habilidade, decks,
-                 nivel30, evolucao, nos (a árvore, Fase 4)
+                 nivel30, evolucao, nos (a árvore, Fase 4); bots (Fase 5,
+                 fora do padrão: SIM_PARTES=bots SIM_SAIDA=relatorio-bots.md)
+     SIM_SAIDA   arquivo do relatório em sim/ (padrão relatorio.md)
      SIM_AJUSTE  números de experimento em JSON (sim/ajuste.mjs)
      SIM_DECKS   decks aleatórios por estilo (padrão 40)
 
@@ -22,6 +24,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as C from "../api/_jxj-cartas.js";
 import { CATEGORIAS_LANCAMENTO, CATEGORIAS, buildTipica, RAMOS, ESTILOS } from "../api/_jxj-arvores.js";
+import * as BOT from "../api/_jxj-bot.js";
+import * as B2 from "../api/_jxj-bot2.js";
 import { aplicarAjuste } from "./ajuste.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -314,6 +318,44 @@ if (PARTES.includes("nos")) {
   linha();
 }
 
+if (PARTES.includes("bots")) {
+  /* Fase 5: a força de cada jeito do bot (habilidade 0, 0,5 e 1) contra o jogador modelo
+     (atenta, 1500), pelo caminho do servidor (posturas e o bot cego), níveis 1, 10 e 30,
+     o jogador de cada estilo; o Provocador é striker, os outros, de cada estilo */
+  const SS = [0, 0.5, 1], NIV = [1, 10, 30], n = Math.max(2, Math.round(N / 50)), jobs = [];
+  for (const pers of BOT.PERSONALIDADES_IDS) for (const sk of SS) for (const nv of NIV) for (const s of ESTS)
+    for (const sb of BOT.PERSONALIDADES[pers].estilo ? [BOT.PERSONALIDADES[pers].estilo] : ESTS)
+      jobs.push({ chave: `bot:${pers}:${sk}:${nv}:${s}:${sb}`, sA: s, sB: sb, catA: "middleweight", catB: "middleweight",
+        buildA: buildTipica(s, nv), buildB: buildTipica(sb, nv), bot: { pers, s: sk }, n });
+  const r = await rodar(jobs);
+  /* chance do jogador (empate vale meio) e a força do bot em rating: 1500 - 400 log10(p / (1 - p)) */
+  const chance = (os) => { const t = os.reduce((a, o) => ({ v: a.v + o.vA + o.emp / 2, n: a.n + o.vA + o.vB + o.emp }), { v: 0, n: 0 }); return t.v / t.n; };
+  const forca = (p) => { const q = Math.min(0.999, Math.max(0.001, p)); return 1500 - 400 * Math.log10(q / (1 - q)); };
+  const de = (prefixo) => [...r.entries()].filter(([k]) => k.startsWith(prefixo)).map(([, o]) => o);
+  linha("## Bots do combate v2 (Fase 5)");
+  linha();
+  linha(`Jogador modelo (atenta, mostra a categoria da carta e, 30% das vezes, uma isca) contra o bot do servidor; ${n} lutas por casa (estilo do jogador x estilo do bot x nível 1, 10 e 30).`);
+  linha("Força = o rating com que o bot entra no Glicko (o jogador modelo vale 1500). Na tabela, a vitória do jogador e a força medida; entre parênteses, FORCA_BOT2.");
+  linha();
+  linha("| Jeito | Habilidade 0 | Habilidade 0,5 | Habilidade 1 |");
+  linha("|---|---|---|---|");
+  const medida = {};
+  for (const pers of BOT.PERSONALIDADES_IDS) {
+    medida[pers] = SS.map((sk) => { const p = chance(de(`bot:${pers}:${sk}:`)); return { p, f: forca(p) }; });
+    linha(`| ${BOT.PERSONALIDADES[pers].alcunha} | ` + medida[pers].map((x, i) => `${f1(100 * x.p)}%, ${Math.round(x.f)} (${B2.FORCA_BOT2[pers][i]})`).join(" | ") + " |");
+  }
+  linha();
+  linha("Por nível (habilidade 0,5, força):");
+  linha();
+  linha("| Jeito | " + NIV.map((nv) => `Nível ${nv}`).join(" | ") + " |");
+  linha("|---|" + NIV.map(() => "---").join("|") + "|");
+  for (const pers of BOT.PERSONALIDADES_IDS)
+    linha(`| ${BOT.PERSONALIDADES[pers].alcunha} | ` + NIV.map((nv) => Math.round(forca(chance(de(`bot:${pers}:0.5:${nv}:`))))).join(" | ") + " |");
+  linha();
+  linha("FORCA_BOT2 medida: " + JSON.stringify(Object.fromEntries(Object.entries(medida).map(([k, v]) => [k, v.map((x) => Math.round(x.f))]))));
+  linha();
+}
+
 linha(`Tempo: ${((Date.now() - t0) / 1000).toFixed(0)} s.`);
-fs.writeFileSync(path.join(AQUI, "relatorio.md"), rel.join("\n") + "\n");
+fs.writeFileSync(path.join(AQUI, process.env.SIM_SAIDA || "relatorio.md"), rel.join("\n") + "\n");
 for (const w of trabalhadores) w.postMessage("fim");
