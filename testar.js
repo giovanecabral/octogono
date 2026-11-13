@@ -13292,6 +13292,17 @@ async function testarJxJV2() {
       ["clinch", "jab", /saiu na força e você emendou: sair na força ganha de emendar/], ["queda", "jab", /^Você apertou e .* não defendeu: o aperto finaliza/]];
     for (const [a, b, re] of casos) { const f = enc(a, b); if (f.length !== 1 || !re.test(f[0])) throw new Error(`encaixe ${a} contra ${b}: ` + JSON.stringify(f)); limpo(f); }
   });
+  await conf("escapou: a troca do servidor manda o como (saiu na força ou defendeu), e o 3D usa o como (saiu: levanta; defendeu: segue no chão)", () => {
+    const chao = { pos: "cima_a", nivelPos: 0, encaixe: { quem: "a" } };
+    const saiu = troca(MAO, MAO, "clinch", "jab", chao), defendeu = troca(MAO, MAO, "queda", "bloqueio", chao);
+    const como = (t) => (t.ev.find((e) => e.tipo === "escapou") || {}).como;
+    if (como(saiu) !== "saiu" || como(defendeu) !== "defendeu") throw new Error("como na troca: " + JSON.stringify([como(saiu), como(defendeu)]));
+    const lance = (t) => { X.sb.__args = JSON.stringify([t, "b"]); return JSON.parse(X.run("JSON.stringify(jxjLinhas3d2(...JSON.parse(globalThis.__args)).map(L=>L.ev.tipo))")); };
+    if (!lance(saiu).includes("levantou") || lance(defendeu).includes("levantou")) throw new Error("3D: " + JSON.stringify([lance(saiu), lance(defendeu)]));
+    /* o como manda, não a posição: o mesmo "defendeu" com o como trocado levanta */
+    const trocado = JSON.parse(JSON.stringify(defendeu)); trocado.ev.find((e) => e.tipo === "escapou").como = "saiu";
+    if (!lance(trocado).includes("levantou")) throw new Error("o 3D não leu o como: " + JSON.stringify(lance(trocado)));
+  });
   /* lutas inteiras ao acaso (com postura ao acaso, pra ter finta): o formato do servidor, os dois lados da tela */
   const lutas = [];
   {

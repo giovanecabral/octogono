@@ -124,7 +124,7 @@ export function trocaVista(t, nomes) {
     round: t.round, troca: t.troca, cartaA: t.acao_a, cartaB: t.acao_b, acaoA: cat(t.acao_a), acaoB: cat(t.acao_b),
     resolucao: res ? { ...res, tipo: undefined } : null,
     ev: evs.filter((ev) => ev.tipo !== "resolucao").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, alvo: ev.alvo || null, carta: ev.carta || null,
-      metodo: ev.metodo || null, dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null })),
+      metodo: ev.metodo || null, dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null, como: ev.como || null })),
     eventos: evs.map((ev) => textoEvento2(ev, nomes)).filter(Boolean),
   };
 }

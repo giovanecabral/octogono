@@ -7859,8 +7859,8 @@ const JXJ_3D2={
   raspou:(e,c)=>({tipo:"raspou",quem:c.Q(e.quem)}),
   levantou:(e,c)=>({tipo:"levantou",quem:c.Q(e.quem)}),
   encaixou:(e,c)=>({tipo:"sub",quem:c.Q(e.quem)}),
-  /* trocaVista não manda o "como" do escapou: a posição depois diz se saiu na força (em pé) */
-  escapou:(e,c)=>c.posDepois==="pe"?{tipo:"levantou",quem:c.Q(e.quem)}:{tipo:"estudo"},
+  /* saiu na força: em pé (o como da troca; troca sem ele, a posição depois diz) */
+  escapou:(e,c)=>(e.como?e.como==="saiu":c.posDepois==="pe")?{tipo:"levantou",quem:c.Q(e.quem)}:{tipo:"estudo"},
   soltou:()=>({tipo:"estudo"}),
   travaram:()=>({tipo:"estudo"}),
   knockdown:null, interrompeu:null, resistiu:null, finta:null, exausta:null, ausente:null, falhou:null, fimRound:null,
