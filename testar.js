@@ -16286,8 +16286,8 @@ async function testarJxJTelas() {
       await api(uo, "filaSair");
     });
     /* combate v2 na tela (2026-11-13, Fase 6): a luta v2 de verdade (flag ligada pras duas contas) e o desenho */
-    const flagV2T = (x) => db.query("update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", [JSON.stringify(x)]);
-    const mesaV2 = (nos) => nos.filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
+    /* flagV2T: a da tela do deck, mais acima */
+    const mesaV2 =(nos) => nos.filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join("\n");
     const vagaEle = (h) => (h.match(/id="jxj-vaga-acao-ele"[^>]*>([\s\S]*?)<\/span><\/span>/) || [])[1] || "";
     let lidV2 = null;
     const lutaV2 = async () => {
@@ -16429,7 +16429,7 @@ async function testarJxJTelas() {
       const dup = unicas.find((id) => deck.filter((x) => x === id).length > 1);
       if (dup && !r.deck.includes("×2")) throw new Error("o deck dele não mostra as cópias");
       if (!/Neste round ele já jogou: Jab\./.test(r.deck) || !/você só vê quantas/.test(r.deck)) throw new Error("deck dele sem o que ele jogou: " + r.deck.replace(/<[^>]+>/g, " ").slice(-200));
-      if (!r.mao2.includes('data-carta="ground_and_pound"') || !r.mao2.includes(">Ground and pound</b>") || !r.mao2.includes('<span class="v2-origem">do Jab</span>')) throw new Error("carta no chão: " + r.mao2.slice(0, 400));
+      if (!r.mao2.includes('data-carta="ground_and_pound"') || !r.mao2.includes(">Ground and pound</b>") || !r.mao2.includes('<span class="jxj-c2-origem">do Jab</span>')) throw new Error("carta no chão: " + r.mao2.slice(0, 400));
       /* o porquê com nome malicioso */
       const t = (v.trocas || [])[v.trocas.length - 1];
       if (t) {

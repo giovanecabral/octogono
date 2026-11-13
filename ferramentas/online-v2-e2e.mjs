@@ -100,11 +100,11 @@ try {
       const st = await p.avaliar(() => {
         const cb = document.getElementById("jxj-combate"), q = (s) => document.querySelector(s);
         const vida = (l) => { const b = document.getElementById("jxj-vida-" + l); return b ? Number(b.dataset.vida) : null; };
-        const mao = [...document.querySelectorAll(".jxj-na-mao .v2c")];
+        const mao = [...document.querySelectorAll(".jxj-na-mao .jxj-c2")];
         return { res: !!q(".jxj-resultado"), fimCena: !!q(".jxj-fim"), v2: !!(cb && cb.classList.contains("v2")), cheia: !!(cb && cb.classList.contains("tela-cheia")),
           assist: !!(cb && cb.classList.contains("assistindo")), linha: !!q(".v2-linha"), regua: !!q(".v2-regua"),
-          velDano: mao.length && mao.every((c) => c.querySelector(".v2-stat.vel b") && c.querySelector(".v2-stat.dano b")),
-          chao: !!q(".jxj-na-mao .v2-origem"), cartas: document.querySelectorAll(".jxj-postura:not([disabled]),.jxj-acao:not([disabled])").length,
+          velDano: mao.length && mao.every((c) => c.querySelector(".jxj-c2-stat.vel b") && c.querySelector(".jxj-c2-stat.dano b")),
+          chao: !!q(".jxj-na-mao .jxj-c2-origem"), cartas: document.querySelectorAll(".jxj-postura:not([disabled]),.jxj-acao:not([disabled])").length,
           vida: [vida("a"), vida("b")], round: (q(".jxj-round") || {}).textContent || "" };
       });
       if (st.res) { fim[nome] = true; await p.foto(`${nome}-resultado.png`); log.push(`${nome}: resultado`); continue; }
@@ -121,7 +121,7 @@ try {
         if (jogadas[nome] === 2 && !fotos.has(nome + "deck")) {
           fotos.add(nome + "deck");
           await p.avaliar(() => { const b = document.querySelector(".v2-btn-deck"); b && b.click(); }); await esperar(500);
-          viu.deck = viu.deck || (await p.avaliar(() => { const d = document.getElementById("jxj-deck-dele"); return !!(d && !d.hidden && d.querySelectorAll(".v2c").length >= 4); }));
+          viu.deck = viu.deck || (await p.avaliar(() => { const d = document.getElementById("jxj-deck-dele"); return !!(d && !d.hidden && d.querySelectorAll(".jxj-c2").length >= 4); }));
           await p.foto(`${nome}-deck-dele.png`);
           await p.avaliar(() => { const b = document.querySelector(".v2-btn-deck"); b && b.click(); });
         }

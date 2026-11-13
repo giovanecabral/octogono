@@ -9104,7 +9104,7 @@ function jxjVerso(tam="mesa"){
    carta de hoje; a gema é o custo, o selo de cima a velocidade, o da arte o dano.
    c = carta das definições (definicoes.combate2.cartas, ou a do chão). Opcionais:
    vel/velBase (o duelo mexeu: mostra a diferença), dano e custo de agora, origem
-   (no chão, a carta da mão que virou esta), raridade e arte (a próxima etapa,
+   (no chão, o id da carta da mão que virou esta: "do Jab", "da Queda"), raridade e arte (a próxima etapa,
    cartas com arte e raridade: por enquanto só a classe e a imagem, sem desenho). */
 const JXJ_RARIDADES=["comum","rara","epica","lendaria"];
 function jxjCarta2(c,{w=116,mini=false,vel=c.vel,velBase=vel,dano=c.dano,custo=c.custo,origem=null,raridade=c.raridade,arte=c.arte,estado=""}={}){
@@ -9115,7 +9115,7 @@ function jxjCarta2(c,{w=116,mini=false,vel=c.vel,velBase=vel,dano=c.dano,custo=c
   return `<span class="jxj-carta f-${c.categoria} corte jxj-c2${mini?" mini":""}${rar}${estado?" "+estado:""}" style="--w:${w}px" data-carta="${jxjEsc(c.id)}">`
     +`<span class="jxj-carta-topo"><span class="jxj-gema oct" aria-label="custa ${jxjNum2(custo)} de energia"><span class="jxj-gema-num">${jxjNum2(custo)}</span></span>`
     +`<span class="jxj-c2-stat vel" aria-label="velocidade ${vel}"><small>vel</small><b>${vel}${mod}</b></span></span>`
-    +`<span class="jxj-carta-arte">${origem?`<span class="jxj-c2-origem">do ${jxjEsc(origem)}</span>`:""}${figura}`
+    +`<span class="jxj-carta-arte">${origem?`<span class="jxj-c2-origem">${jxjEsc(jxjDeCarta2(origem))}</span>`:""}${figura}`
     +`<span class="jxj-c2-stat dano${dano?"":" zero"}" aria-label="dano ${jxjNum2(dano)}"><small>dano</small><b>${jxjNum2(dano)}</b></span></span>`
     +`<span class="jxj-carta-fita"><b>${jxjEsc(c.nome)}</b></span>`
     +`<span class="jxj-carta-regra"><span class="jxj-carta-efeito">${jxjEsc(efeito)}</span></span></span>`;
@@ -10049,40 +10049,21 @@ function jxj3dEscala2(linhas,estado){
   for(const L of linhas){ const ev=L.ev; if(ev&&ev.alvo&&typeof ev.dano==="number")ev.dano*=jxjEscalaDano2(estado,ev.alvo); }
   return linhas;
 }
-/* a carta da v2 (a moldura de sempre): custo na gema, velocidade no selo de cima, dano na arte e o
-   efeito embaixo. c: {id, nome, categoria, vel, dano, custo, efeito, raridade?, arte?}; raridade
-   (comum, rara, epica, lendaria) e arte (caminho de imagem) são da próxima etapa: sem elas, o ícone da
-   categoria. velMod: quanto o duelo, o grogue ou o cansaço mudaram a velocidade (aparece ao lado).
-   origem: no chão, de qual carta da mão ela veio ("do Jab"). tam: mao, mesa, postura ou a largura. */
-const JXJ_RARIDADES2=["comum","rara","epica","lendaria"];
+/* a etiqueta da carta do chão: de qual carta da mão ela veio ("do Jab", "da Queda") */
 const JXJ_FEM2=["queda","antiqueda","combinacao","rasteira","esquiva","clinch"];
 const jxjDeCarta2=id=>(JXJ_FEM2.includes(id)?"da ":"do ")+jxjNomeCarta2(id);
-function jxjCarta2(c,{tam="mao",estado="",origem=null,velMod=0,mini=false}={}){
-  const w=typeof tam==="number"?tam:(JXJ_TAM_CARTA[tam]||150),cat=c.categoria;
-  const rar=JXJ_RARIDADES2.includes(c.raridade)?c.raridade:null;
-  const mod=velMod?`<i class="${velMod<0?"menos":"mais"}">${velMod>0?"+":"−"}${jxjNum(Math.abs(velMod))}</i>`:"";
-  const arte=c.arte?`<img class="v2-arte" src="${jxjEsc(c.arte)}" alt="" loading="lazy">`:ICONE(JXJ_ICONE_ACAO[cat]||"luta");
-  return `<span class="jxj-carta f-${cat} corte v2c${mini?" mini":""}${rar?" rar-"+rar:""}${estado?" "+estado:""}" style="--w:${w}px" data-carta="${jxjEsc(c.id)}">`
-    +`<span class="jxj-carta-topo"><span class="jxj-gema oct" aria-label="custa ${jxjNum(c.custo)} de energia"><span class="jxj-gema-num">${jxjNum(c.custo)}</span></span>`
-    +`<span class="v2-stat vel" title="velocidade"><small>vel</small><b>${jxjNum(c.vel)}${mod}</b></span></span>`
-    +`<span class="jxj-carta-arte">${origem?`<span class="v2-origem">${jxjEsc(origem)}</span>`:""}${arte}<span class="v2-stat dano${c.dano?"":" zero"}" title="dano"><small>dano</small><b>${jxjNum(c.dano)}</b></span></span>`
-    +`<span class="jxj-carta-fita"><b>${jxjEsc(c.nome)}</b></span>`
-    +`<span class="jxj-carta-regra"><span class="jxj-carta-efeito">${jxjEsc(c.efeito||"")}</span></span></span>`;
-}
-/* a carta da minha mão (vista do servidor): no chão, a carta do chão, com a da mão na etiqueta */
+/* a carta da minha mão (vista do servidor) pro jxjCarta2: no chão, a carta do chão (os efeitos já com
+   a passiva e a árvore), com a da mão na etiqueta; velocidade (e a de antes do duelo), dano e custo de agora */
 function jxjCartaMao2(x){
   const ef=x.efetiva||{},chao=!!ef.contexto&&ef.contexto!=="pe";
-  return {c:{id:ef.id||x.id,nome:chao?ef.nome:x.nome,categoria:x.categoria,vel:x.vel,dano:x.dano,custo:x.custo,
-    efeito:jxjEfeitoTexto2({efeitos:x.efeitos}),raridade:x.raridade,arte:x.arte},
-    origem:chao?jxjDeCarta2(x.id):null,velMod:typeof x.velBase==="number"?x.vel-x.velBase:0};
+  return {c:{id:ef.id||x.id,nome:chao?ef.nome:x.nome,categoria:x.categoria,efeitos:x.efeitos||[],vel:x.vel,dano:x.dano,custo:x.custo,raridade:x.raridade,arte:x.arte},
+    o:{vel:x.vel,velBase:typeof x.velBase==="number"?x.velBase:x.vel,dano:x.dano,custo:x.custo,origem:chao?x.id:null}};
 }
-/* uma carta pelas definições (o deck dele, a carta de uma troca resolvida); vel e custo da troca, quando houver */
-function jxjCartaDef2(id,{vel=null,custo=null}={}){
+/* uma carta pelas definições (o deck dele, a carta de uma troca resolvida) */
+function jxjCartaDef2(id){
   const d=JXJ_DEF&&JXJ_DEF.combate2;
-  const c=(d&&d.cartas&&d.cartas[id])||(d&&d.chao?Object.values(d.chao).flatMap(o=>Object.values(o)).find(x=>x.id===id):null)
+  return (d&&d.cartas&&d.cartas[id])||(d&&d.chao?Object.values(d.chao).flatMap(o=>Object.values(o)).find(x=>x.id===id):null)
     ||{id,nome:jxjNomeCarta2(id),categoria:"defesa",vel:0,dano:0,custo:0,efeitos:[]};
-  return {id:c.id||id,nome:c.nome,categoria:c.categoria,vel:vel!=null?vel:c.vel,dano:c.dano,custo:custo!=null?custo:c.custo,
-    efeito:jxjEfeitoTexto2(c),raridade:c.raridade,arte:c.arte};
 }
 /* a régua de velocidade (no lugar de "Quem ganha de quem"): as cartas da minha mão de 6 a 1 */
 function jxjRegua2(mao,{regras=true}={}){
@@ -10114,7 +10095,7 @@ function jxjMesa2(v,{eu,ele},revelar,{soltou=false}={}){
     }else if(v.etapa&&v.sinais&&v.sinais[l]){ post=postura(v.sinais[l]); rotP=`${souEu?"você":"ele"} mostrou <b>${JXJ_POSTURAS[v.sinais[l]]}</b>`; }
     let acao=null;
     if(revelar)acao=revelar[l];
-    else if(souEu&&v.minhaCarta){ const k=minha?jxjCartaMao2(minha):{c:jxjCartaDef2(v.minhaCarta)}; acao=jxjCarta2(k.c,{tam:"mesa",origem:k.origem,velMod:k.velMod}); }
+    else if(souEu&&v.minhaCarta){ const k=minha?jxjCartaMao2(minha):{c:jxjCartaDef2(v.minhaCarta),o:{}}; acao=jxjCarta2(k.c,{...k.o,w:JXJ_TAM_CARTA.mesa}); }
     else if(!souEu&&v.adversarioEscolheu)acao=soltou&&!reduceMotion()?jxjVerso("mesa").replace('class="jxj-verso corte"','class="jxj-verso corte cai"'):jxjVerso("mesa");
     const c=el("div","jxj-mesa-lado "+(souEu?"eu":"ele")); c.id=souEu?"jxj-mesa-eu":"jxj-mesa-ele";
     c.innerHTML=(v.etapa?`<span class="jxj-mesa-slot postura"><span class="jxj-rotulo-mesa">${rotP}</span>${vaga(souEu?"jxj-vaga-postura-eu":"jxj-vaga-postura-ele",souEu&&v.etapa==="sinal"?"toque numa carta":"","postura",post)}</span>`:"")
@@ -10131,8 +10112,8 @@ function jxjRevelar2(t,animar){
   const anima=animar&&!reduceMotion()?" anima":"";
   const lado=l=>{
     const x=r.cartas[l],res=r.vencedor?(r.vencedor===l?" venceu":" perdeu"):"";
-    const k=jxjCartaDef2(x.efetiva,{vel:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0))}),origem=x.efetiva!==x.id?jxjDeCarta2(x.id):null;
-    return `<span class="jxj-revelada${res}"><span class="vira aberta${anima}" style="--w:${JXJ_TAM_CARTA.mesa}px"><span class="gira"><span class="face verso">${jxjVerso("mesa")}</span><span class="face frente">${jxjCarta2(k,{tam:"mesa",origem})}</span></span></span>`
+    const frente=jxjCarta2(jxjCartaDef2(x.efetiva),{w:JXJ_TAM_CARTA.mesa,vel:x.vel,velBase:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0)),origem:x.efetiva!==x.id?x.id:null});
+    return `<span class="jxj-revelada${res}"><span class="vira aberta${anima}" style="--w:${JXJ_TAM_CARTA.mesa}px"><span class="gira"><span class="face verso">${jxjVerso("mesa")}</span><span class="face frente">${frente}</span></span></span>`
       +(x.finta>0?`<span class="jxj-carimbo-finta${anima}">FINTA</span>`:"")+`</span>`;
   };
   return {a:lado("a"),b:lado("b")};
@@ -10150,11 +10131,11 @@ function jxjLinha2(t,{eu,ele},nomes,{nova=false,tam=70}={}){
     :(r.reacoes||[]).length?"anulou":(r.interrupcoes||[]).length?"interrompeu":falhou(seg)?"mudou a posição":"depois";
   const dano=r.dano||{};
   const lado=(l,pos,qual)=>{
-    const x=r.cartas[l],k=jxjCartaDef2(x.efetiva,{vel:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0))});
+    const x=r.cartas[l],k=jxjCartaDef2(x.efetiva);
     const risca=interrompido(l)||anulado(l)||falhou(l)||r.ordem==="anuladas";
     const levou=Number(dano[outro(l)])||0;
     return `<span class="v2-linha-lado ${qual} ${l===eu?"eu":"ele"}"><span class="ordem">${juntos?"1º":pos}</span><span class="quem"><small>${l===eu?"você":"ele"}</small><b>${jxjEsc(k.nome)}</b></span>`
-      +`<span class="v2-linha-carta"><span class="${risca?"riscada":"inteira"}">${jxjCarta2(k,{tam,mini:true})}</span>${levou?`<em class="jxj-dano">−${jxjNum(levou)}</em>`:""}</span></span>`;
+      +`<span class="v2-linha-carta"><span class="${risca?"riscada":"inteira"}">${jxjCarta2(k,{w:tam,mini:true,vel:x.vel,velBase:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0))})}</span>${levou?`<em class="jxj-dano">−${jxjNum(levou)}</em>`:""}</span></span>`;
   };
   const g=[];
   if(Number(dano[eu])>0)g.push(`<span class="bom">${ICONE("lesao")}${jxjNum(dano[eu])} de dano nele</span>`);
@@ -10190,7 +10171,7 @@ function jxjDeckDele2(v,ele){
   for(const id of deck){ if(!conta[id])ordem.push(id); conta[id]=(conta[id]||0)+1; }
   const n=v.nomes[ele]||{},jogou=((v.jogadas&&v.jogadas[ele])||[]).map(id=>jxjEsc(jxjNomeCarta2(id)));
   caixa.innerHTML=`<header><b>Deck de ${jxjEsc(n.nome)}</b><small>${deck.length} cartas${n.estilo?` · ${jxjEsc(jxjEstilo(n.estilo))}`:""}</small></header>`
-    +`<div class="grade">${ordem.map(id=>`<span class="v2-cel">${jxjCarta2(jxjCartaDef2(id),{tam:74,mini:true})}${conta[id]>1?`<span class="v2-qtd">×${conta[id]}</span>`:""}</span>`).join("")}</div>`
+    +`<div class="grade">${ordem.map(id=>`<span class="v2-cel">${jxjCarta2(jxjCartaDef2(id),{w:74,mini:true})}${conta[id]>1?`<span class="v2-qtd">×${conta[id]}</span>`:""}</span>`).join("")}</div>`
     +`<p>${jogou.length?`Neste round ele já jogou: ${jogou.join(", ")}.`:"Neste round ele ainda não jogou."} A mão dele tem ${Number(v.maoDele)||0} ${Number(v.maoDele)===1?"carta":"cartas"}; você só vê quantas.</p>`;
   return caixa;
 }
@@ -10285,7 +10266,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
     if(!palco){ zona.appendChild(g); return; }
     const grade=el("div","jxj-palco-mao"); grade.append(mesaEl,g); zona.appendChild(grade); maoPosta=true;
   };
-  const cartaTitulo=(k,extra="")=>`${k.c.nome}: velocidade ${jxjNum(k.c.vel)}, dano ${jxjNum(k.c.dano)}, custa ${jxjNum(k.c.custo)} de energia.${k.c.efeito?" "+k.c.efeito:""}${extra}`;
+  const cartaTitulo=(k,extra="")=>{ const ef=jxjEfeitoTexto2(k.c); return `${k.c.nome}: velocidade ${jxjNum(k.c.vel)}, dano ${jxjNum(k.c.dano)}, custa ${jxjNum(k.c.custo)} de energia.${ef?" "+ef:""}${extra}`; };
   const noChao=v.papel&&v.papel!=="pe";
   if(final){}
   else if(v.minhaCarta||v.minhaAcao){
@@ -10304,7 +10285,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
       const g=el("div","jxj-mao-luta jxj-mao-postura"+(maoNova?" mao-nova":""));
       for(const x of v.mao||[]){
         const k=jxjCartaMao2(x);
-        const b=el("button","jxj-postura jxj-na-mao",jxjCarta2(k.c,{origem:k.origem,velMod:k.velMod}));
+        const b=el("button","jxj-postura jxj-na-mao",jxjCarta2(k.c,{...k.o,w:JXJ_TAM_CARTA.mao}));
         b.type="button"; b.title=`Mostrar ${JXJ_POSTURAS[x.categoria]}: ele vê antes de escolher`;
         b.onclick=()=>{ if(b.disabled)return; SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(y=>{y.disabled=true;}); jxjVoarCarta(b,"jxj-vaga-postura-eu"); enviar(x.categoria,"sinal"); };
         g.appendChild(b);
@@ -10327,7 +10308,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
          energia pro custo, a carta sai exausta (2 mais lenta, metade do dano, sem efeitos) */
       const finta=x.finta>0,semEnergia=finta&&e[eu].energia<x.finta,exausta=!semEnergia&&e[eu].energia+1e-9<(x.custo||0)+(x.finta||0);
       const b=el("button","jxj-acao jxj-na-mao"+(finta?" finta":"")+(semEnergia?" sem-energia":"")+(exausta?" exausta":""),
-        `${finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${jxjNum2(x.finta)} de energia">−${jxjNum2(x.finta)} finta</em>`:""}${jxjCarta2(k.c,{origem:k.origem,velMod:k.velMod,estado:semEnergia?"apagada":""})}`
+        `${finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${jxjNum2(x.finta)} de energia">−${jxjNum2(x.finta)} finta</em>`:""}${jxjCarta2(k.c,{...k.o,w:JXJ_TAM_CARTA.mao,estado:semEnergia?"apagada":""})}`
         +`${semEnergia?`<span class="jxj-carta-tranca">${ICONE("cadeado")}</span>`:""}${exausta?`<span class="v2-exausta">sai exausta</span>`:""}`);
       b.type="button"; b.title=cartaTitulo(k,finta?` Finta: mais ${jxjNum2(x.finta)} de energia.`:"");
       if(semEnergia){ b.disabled=true; b.title="Sem energia pra fintar."; }
@@ -10548,7 +10529,7 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
     /* combate v2: a carta jogada (a do chão, se foi no chão), pelas definições */
     const cV=v.combate===2&&ultD.resolucao&&ultD.resolucao.cartas?ultD.resolucao.cartas[r.vencedor]:null;
     if(famV){ cab.classList.add("com-carta");
-      cab.appendChild(el("div","jxj-resultado-carta",`<span class="jxj-revelada venceu">${cV?jxjCarta2(jxjCartaDef2(cV.efetiva,{vel:cV.vel}),{tam:"mesa"}):jxjCartaDaTroca(famV,varV,null,"mesa")}</span><small>a carta que decidiu</small>`)); }
+      cab.appendChild(el("div","jxj-resultado-carta",`<span class="jxj-revelada venceu">${cV?jxjCarta2(jxjCartaDef2(cV.efetiva),{w:JXJ_TAM_CARTA.mesa,vel:cV.vel,velBase:cV.vel}):jxjCartaDaTroca(famV,varV,null,"mesa")}</span><small>a carta que decidiu</small>`)); }
   }
   area.appendChild(cab);
   /* a linha da narração ao vivo do último lance (nocaute, finalização ou o

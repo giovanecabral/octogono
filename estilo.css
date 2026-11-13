@@ -2376,26 +2376,8 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 
 /* ---------- combate v2: a tela da luta (2026-11-13, Fase 6; layout aprovado, porquê na linha do tempo) ----------
    Só pega a luta v2 (.jxj-combate.v2 e as classes v2-*); a luta de antes não muda. */
-/* a carta v2: gema = custo, selo de cima = velocidade (com o ajuste ao lado), selo da arte = dano */
-.v2c .jxj-carta-topo{align-items:flex-start}
-.v2-stat{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:calc(var(--w,150px)*.24);padding:2px 4px 1px;background:#0b0b0d;color:var(--osso);line-height:1;
-  clip-path:polygon(4px 0,calc(100% - 4px) 0,100% 4px,100% calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,0 calc(100% - 4px),0 4px)}
-.v2-stat small{font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.06);letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)}
-.v2-stat b{font-family:var(--f-titulo);font-weight:400;font-size:calc(var(--w,150px)*.15);letter-spacing:.01em;white-space:nowrap}
-.v2-stat i{font-style:normal;font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.07);margin-left:1px}
-.v2-stat i.menos{color:var(--sangue-vivo)}.v2-stat i.mais{color:var(--ganho)}
-.v2c .jxj-carta-arte{position:relative}
-.v2c .jxj-carta-arte .v2-arte{width:100%;height:100%;object-fit:cover}
-.v2c .v2-stat.dano{position:absolute;right:0;bottom:2px}
-.v2c .v2-stat.dano.zero{opacity:.55}
-.v2c .v2-origem{position:absolute;left:0;top:2px;z-index:2;padding:1px 5px;background:#0b0b0d;color:var(--ouro);font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.062);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
-.v2c .jxj-carta-regra{font-size:calc(var(--w,150px)*.078)}
-.v2c.mini .jxj-carta-regra{display:none}
-.v2c.mini{height:calc(var(--w,150px) * 1.12)}
-/* raridade (a próxima etapa desenha de verdade): uma faixa embaixo do nome */
-.v2c.rar-rara .jxj-carta-fita{box-shadow:inset 0 -3px 0 #4FA3E0}
-.v2c.rar-epica .jxj-carta-fita{box-shadow:inset 0 -3px 0 #A66BE0}
-.v2c.rar-lendaria .jxj-carta-fita{box-shadow:inset 0 -3px 0 var(--ouro)}
+/* a carta é a da tela do deck (.jxj-c2); aqui, só a etiqueta do chão numa linha ("da Pressão (clinch)") */
+.jxj-c2 .jxj-c2-origem{white-space:nowrap}
 /* a mão de 5 em leque */
 .jxj-combate.v2 .jxj-mao-luta .jxj-na-mao:nth-child(1){transform:rotate(-8deg) translateY(18px)}
 .jxj-combate.v2 .jxj-mao-luta .jxj-na-mao:nth-child(2){transform:rotate(-4deg) translateY(5px)}
@@ -2479,7 +2461,7 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
   .v2-chip{font-size:9.5px;padding:1px 4px}
   .jxj-combate.v2.tela-cheia .jxj-na-mao{margin:0 -3px}
   .jxj-combate.v2 .jxj-na-mao .jxj-carta{--w:74px!important}
-  .v2c .jxj-carta-regra{display:none}
+  .jxj-combate.v2 .jxj-c2 .jxj-carta-regra{display:none}
   .v2-mao-dele small.n{display:none}
   .v2-btn-deck span{display:none}
   .v2-mao-dele .versos span{width:14px;height:20px;margin-left:-5px}
