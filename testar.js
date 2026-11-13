@@ -13234,6 +13234,133 @@ async function testarCombate2() {
   console.log("\n" + (okTudo ? verde("  combate2 ok") : vermelho(`  ${falhas.length} falha(s) no combate2`)));
   return okTudo;
 }
+/* jxjv2 (Fase 6, a lógica): as funções puras da tela da v2 no index.html, com trocas
+   do motor de verdade passadas pelo formato do servidor (trocaVista) */
+async function testarJxJV2() {
+  console.log("\n" + cinza("jxjv2: tela do combate v2, a lógica (por quê da troca, troca no 3D, referência de velocidade e efeito)"));
+  const falhas = [], conf = confJxJ(falhas);
+  const url = require("url");
+  const M = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-combate2.js")).href);
+  const C = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+  const A = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-arvores.js")).href);
+  const V2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-luta2.js")).href);
+  const X = sandboxCarreira();
+  const defs = V2.definicoes2();
+  const MAU = "<img src=x onerror=alert(1)>";
+  const nomes = { a: "Ana", b: MAU };
+  /* troca do motor no formato que a tela recebe (o log de resolução é o primeiro evento, como o servidor grava) */
+  const vista = (r, antes) => V2.trocaVista({ round: antes.round, troca: antes.troca, acao_a: r.resolucao.cartas.a.id, acao_b: r.resolucao.cartas.b.id,
+    eventos: [{ tipo: "resolucao", ...r.resolucao }, ...r.eventos] }, nomes);
+  const noJogo = (fn, ...args) => { X.sb.__args = JSON.stringify(args); return JSON.parse(X.run(`JSON.stringify(${fn}(...JSON.parse(globalThis.__args)))`)); };
+  const neutro = (estilo = "wrestler") => ({ estilo, categoria: "middleweight", atr: Object.fromEntries(A.ATRIBUTOS.map((k) => [k, 50])), deck: C.DECK_PADRAO[estilo].slice() });
+  const troca = (maoA, maoB, a, b, extra = {}, P = { a: neutro(), b: neutro() }, sinais = null) => {
+    const e = M.novaLuta2(P.a, P.b, "t"); e.mao = { a: maoA.slice(), b: maoB.slice() }; Object.assign(e, extra);
+    return vista(M.resolverTroca2(e, P, { a, b, sinais }, "t"), e);
+  };
+  const porQue = (t, eu = "a") => noJogo("jxjPorQue2", t, eu, nomes, defs);
+  const MAO = ["jab", "cruzado", "bloqueio", "queda", "clinch"];
+  const limpo = (frases) => { for (const f of frases) if (/[–—]|[\u{1F300}-\u{1FAFF}←-⇿]|<img/u.test(f)) throw new Error("frase com travessão, emoji, seta ou HTML cru: " + f); };
+
+  await conf("por quê da troca: velocidade (quem saiu na frente e por quanto) e interrupção, dos dois lados da tela; nome do adversário escapado", () => {
+    const t = troca(MAO, MAO, "jab", "cruzado");
+    const a = porQue(t, "a"), b = porQue(t, "b");
+    if (!a.some((f) => f.startsWith("Você saiu na frente: Jab (velocidade 5) contra Cruzado (velocidade 3)"))) throw new Error("velocidade, lado a: " + JSON.stringify(a));
+    if (!a.some((f) => /Jab acertou antes e interrompeu a carta de &lt;img/.test(f))) throw new Error("interrupção, lado a: " + JSON.stringify(a));
+    if (!b.some((f) => f.startsWith("Ana saiu na frente: Jab")) || !b.some((f) => f === "Jab acertou antes e interrompeu a sua carta.")) throw new Error("lado b: " + JSON.stringify(b));
+    const mau = porQue(troca(MAO, MAO, "cruzado", "jab"), "a");
+    if (!mau.some((f) => f.startsWith("&lt;img src=x onerror=alert(1)&gt; saiu na frente"))) throw new Error("nome malicioso no começo da frase: " + JSON.stringify(mau));
+    limpo([...a, ...b]);
+  });
+  await conf("por quê da troca: reação (quem anulou o quê, com qual carta), empate de velocidade, carta resistente, sem energia e finta com o custo", () => {
+    const anula = porQue(troca(MAO, MAO, "bloqueio", "cruzado"));
+    if (!anula.some((f) => f === "Você anulou a carta de &lt;img src=x onerror=alert(1)&gt; (Cruzado) com Bloqueio.")) throw new Error("reação: " + JSON.stringify(anula));
+    const emp = porQue(troca(MAO, MAO, "cruzado", "cruzado"));
+    if (!emp.some((f) => f.startsWith("Velocidade igual (3): as duas cartas resolveram juntas"))) throw new Error("empate: " + JSON.stringify(emp));
+    const res = porQue(troca(["chute_alto", "jab", "bloqueio", "queda", "clinch"], MAO, "chute_alto", "jab"));
+    if (!res.some((f) => /^A sua carta \(Chute alto\) aguentou o golpe de dano 1/.test(f))) throw new Error("resistente: " + JSON.stringify(res));
+    const sem = porQue(troca(MAO, MAO, "cruzado", "jab", { a: { ...M.novaLuta2(neutro(), neutro(), "t").a, energia: 0 } }));
+    if (!sem.some((f) => /^Você jogou sem energia: Cruzado saiu 2 mais lenta/.test(f))) throw new Error("sem energia: " + JSON.stringify(sem));
+    const fin = porQue(troca(MAO, MAO, "cruzado", "jab", {}, undefined, { a: "defesa", b: "golpes" }));
+    if (!fin.some((f) => /^Você fintou e pagou 1,5 de energia a mais/.test(f))) throw new Error("finta: " + JSON.stringify(fin));
+  });
+  await conf("por quê da troca: no chão, a carta que falhou porque a posição mudou; o encaixe nos 4 casos (defender segura o aperto, emendar ganha de defender, sair na força ganha de emendar, o aperto finaliza quem não defende)", () => {
+    const chao = { pos: "cima_a", nivelPos: 0 };
+    const fal = porQue(troca(MAO, MAO, "queda", "clinch", chao));
+    if (!fal.some((f) => /^A posição mudou antes, e a sua carta \(Finalização\) não serviu mais/.test(f))) throw new Error("falhou: " + JSON.stringify(fal));
+    const enc = (a, b) => porQue(troca(MAO, MAO, a, b, { ...chao, encaixe: { quem: "a" } }));
+    const casos = [["queda", "bloqueio", /defendeu e você apertou: a defesa segura o aperto/], ["clinch", "bloqueio", /^Você emendou e .* defendeu: emendar ganha de defender/],
+      ["clinch", "jab", /saiu na força e você emendou: sair na força ganha de emendar/], ["queda", "jab", /^Você apertou e .* não defendeu: o aperto finaliza/]];
+    for (const [a, b, re] of casos) { const f = enc(a, b); if (f.length !== 1 || !re.test(f[0])) throw new Error(`encaixe ${a} contra ${b}: ` + JSON.stringify(f)); limpo(f); }
+  });
+  /* lutas inteiras ao acaso (com postura ao acaso, pra ter finta): o formato do servidor, os dois lados da tela */
+  const lutas = [];
+  {
+    const al = (e, l, P, r) => ({ carta: e.mao[l][Math.floor(r() * e.mao[l].length)], sinal: r() < 0.4 ? ["golpes", "queda", "defesa", "pressao"][Math.floor(r() * 4)] : null });
+    for (let i = 0; i < 240; i++) {
+      const s1 = A.ESTILOS_IDS[i % 4], s2 = A.ESTILOS_IDS[(i >> 2) % 4];
+      const P = (s) => V2.perfilLuta2({ estilo: s, categoria: "middleweight", build: {} });
+      const x = M.simularLuta2(P(s1), P(s2), al, al, "v2t" + i, M.gerador2(i + 11));
+      lutas.push(x.trocas.map((t) => V2.trocaVista({ round: t.round, troca: t.troca, acao_a: t.resolucao.cartas.a.id, acao_b: t.resolucao.cartas.b.id, eventos: [{ tipo: "resolucao", ...t.resolucao }, ...t.eventos] }, nomes)));
+    }
+  }
+  await conf("por quê da troca em lutas inteiras: toda troca tem de 1 a 3 frases, sem travessão, emoji ou HTML cru", () => {
+    let n = 0;
+    for (const L of lutas) for (const [i, t] of L.entries()) {
+      const f = porQue(t, i % 2 ? "b" : "a");
+      if (!f.length || f.length > 3) throw new Error(`troca com ${f.length} frases: ` + JSON.stringify(t.resolucao).slice(0, 200));
+      limpo(f); n++;
+    }
+    if (n < 1000) throw new Error("poucas trocas: " + n);
+  });
+  await conf("troca da v2 no 3D: todo tipo de evento das lutas tem entrada na tabela; todo lance existe no diretor; A é quem vê; o knockdown vira um lance só; o nocaute fica no lance do fim", () => {
+    const tabela = new Set(JSON.parse(X.run("JSON.stringify(Object.keys(JXJ_3D2))")));
+    const diretor = fs.readFileSync(path.join(RAIZ, "luta3d", "diretor.js"), "utf8");
+    const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map((m) => m[1]));
+    const vistos = new Set(), lances = new Set(); let kds = 0, fins = 0;
+    for (const L of lutas) for (const [i, t] of L.entries()) {
+      const eu = i % 2 ? "b" : "a";
+      for (const e of t.ev) { vistos.add(e.tipo); if (!tabela.has(e.tipo)) throw new Error("evento sem entrada na tabela do 3D: " + e.tipo); }
+      /* o evento da linha não é enumerável (comEvento): sai pelo map dentro do jogo */
+      X.sb.__args = JSON.stringify([t, eu]);
+      const ls = JSON.parse(X.run("JSON.stringify(jxjLinhas3d2(...JSON.parse(globalThis.__args)).map(L=>L.ev))"));
+      if (!ls.length) throw new Error("troca sem lance");
+      for (const ev of ls) { lances.add(ev.tipo); if (!casos.has(ev.tipo)) throw new Error("lance que o diretor não conhece: " + ev.tipo); }
+      const kdEv = t.ev.filter((e) => e.tipo === "knockdown").length, kdL = ls.filter((x) => x.tipo === "kd");
+      if (kdEv !== kdL.length) throw new Error(`knockdowns ${kdEv}, lances kd ${kdL.length}`);
+      for (const k of kdL) { kds++; if (!(k.dano > 0) || !["a", "b"].includes(k.alvo)) throw new Error("kd sem dano ou alvo: " + JSON.stringify(k)); }
+      const fim = t.ev.find((e) => e.tipo === "fim" && e.quem && ["KO", "TKO", "FIN", "DEC"].includes(e.metodo));
+      if (fim) {
+        fins++;
+        const lf = ls.find((x) => x.tipo === "fim" || x.tipo === "decisao");
+        if (!lf || lf.quem !== (fim.quem === eu ? "A" : "B")) throw new Error("fim no lado errado ou sem lance: " + JSON.stringify([fim, lf]));
+        if (fim.metodo === "KO" && ls.filter((x) => x.tipo === "golpe1" && x.quem === lf.quem).length) throw new Error("o golpe do nocaute virou lance antes do fim: " + JSON.stringify({ ev: t.ev, ls, ordem: t.resolucao.ordem }));
+      }
+    }
+    for (const t of ["dano", "anulou", "interrompeu", "queda", "fim", "fimRound", "knockdown", "finta", "avancou", "levantou"]) if (!vistos.has(t)) throw new Error("as lutas do teste não tiveram " + t + " (vistos: " + [...vistos] + ")");
+    for (const t of ["golpe1", "quedaDefendida", "queda", "kd", "fim", "decisao"]) if (!lances.has(t)) throw new Error("nenhum lance " + t + " (vistos: " + [...lances] + ")");
+    if (kds < 5 || fins < 200) throw new Error(`poucos knockdowns (${kds}) ou fins (${fins})`);
+  });
+  await conf("referência da v2: em pé, por cima e por baixo, da mais rápida pra mais lenta; todo efeito vira texto; a carta exclusiva só no estilo dela", () => {
+    const r = noJogo("jxjReferencia2", defs, "striker"), todas = noJogo("jxjReferencia2", defs, null);
+    for (const k of ["pe", "cima", "baixo"]) for (let i = 1; i < r[k].length; i++) if (r[k][i].vel > r[k][i - 1].vel) throw new Error(k + " fora de ordem: " + r[k].map((c) => c.id + c.vel));
+    if (r.cima.length !== 4 || r.baixo.length !== 4) throw new Error("chão: " + r.cima.length + "/" + r.baixo.length);
+    const ids = r.pe.map((c) => c.id);
+    if (!ids.includes("combinacao") || ids.includes("esquiva") || ids.includes("puxar_guarda")) throw new Error("exclusivas do striker: " + ids);
+    if (todas.pe.length !== Object.keys(defs.cartas).length) throw new Error("sem estilo, faltou carta");
+    const ef = (id) => [...todas.pe, ...todas.cima, ...todas.baixo].find((c) => c.id === id).efeito;
+    const espera = { bloqueio: "Contra golpe: anula, recupera 2 de energia.", chute_alto: "Golpe de dano 1 não interrompe.", contra_ataque: "Se ele jogou golpe: dano vezes 2.",
+      queda: "Se acerta: leva pro chão, você por cima.", ground_and_pound: "Se acerta na montada: 1 de dano a mais.", jab: "Se interrompe: recupera 1 de energia.",
+      rasteira: "Se acerta quem jogou golpe ou pressão ou queda: leva pro chão, você por cima.", avancar: "Se acerta: sobe a posição. Contra queda: anula." };
+    for (const [id, txt] of Object.entries(espera)) if (ef(id) !== txt) throw new Error(`efeito de ${id}: "${ef(id)}"`);
+    for (const c of [...todas.pe, ...todas.cima, ...todas.baixo]) {
+      if ((defs.cartas[c.id] || {}).efeitos && defs.cartas[c.id].efeitos.length && !c.efeito) throw new Error("efeito sem texto: " + c.id);
+      if (/[–—←-⇿]/.test(c.efeito)) throw new Error("travessão ou seta: " + c.efeito);
+    }
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
+  return okTudo;
+}
 async function testarJxJMotor() {
   console.log("\n" + cinza("jxjmotor: motor do JxJ (determinismo, semente, invariantes, ausência, ciclo, balanço racional, métodos, evolução)"));
   const crypto = require("crypto");
@@ -16287,7 +16414,10 @@ async function testarLuta3d() {
   await conf("o diretor tem lance pra todo evento que o motor manda", () => {
     const src = lerScript(), i = src.indexOf("function simularRound("), j = src.indexOf("\nfunction ", i + 10);
     const k = src.indexOf("function jxjLinhas3d("), k2 = src.indexOf("\nfunction ", k + 10);
-    const tipos = new Set([...src.slice(i, j).matchAll(/tipo:"(\w+)"/g), ...src.slice(k, k2).matchAll(/tipo:"(\w+)"/g)].map(m => m[1]).concat(["fim", "decisao"]));
+    /* o combate v2: a tabela JXJ_3D2 e a jxjLinhas3d2 (Fase 6) */
+    const k3 = src.indexOf("const JXJ_3D2="), k4 = src.indexOf("\nfunction ", src.indexOf("function jxjLinhas3d2(") + 10);
+    if (k3 < 0 || k4 < k3) throw new Error("não achei a tabela do 3D da v2 (JXJ_3D2) nem a jxjLinhas3d2");
+    const tipos = new Set([...src.slice(i, j).matchAll(/tipo:"(\w+)"/g), ...src.slice(k, k2).matchAll(/tipo:"(\w+)"/g), ...src.slice(k3, k4).matchAll(/tipo:"(\w+)"/g)].map(m => m[1]).concat(["fim", "decisao"]));
     const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map(m => m[1]));
     const faltam = [...tipos].filter(t => !casos.has(t));
     if (tipos.size < 10) throw new Error("achei poucos tipos no motor: " + [...tipos]);
@@ -16667,6 +16797,7 @@ try {
   else if (cmd === "jxjtelas") ok = await testarJxJTelas();
   else if (cmd === "jxjbot") ok = await testarJxJBot();
   else if (cmd === "combate2") ok = await testarCombate2();
+  else if (cmd === "jxjv2") ok = await testarJxJV2();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -16761,6 +16892,7 @@ try {
         ["jxjtelas", () => testarJxJTelas()],
         ["jxjbot", () => testarJxJBot()],
         ["combate2", () => testarCombate2()],
+        ["jxjv2", () => testarJxJV2()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],

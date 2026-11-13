@@ -208,6 +208,22 @@ Quem roda SQL e mexe na flag é o dono. A ordem:
      estão no começo da migração). Os decks montados somem junto com a
      coluna `deck`.
 
+## Tela (Fase 6, a lógica)
+
+Funções puras no `index.html` (a tela de hoje não mudou); suíte `jxjv2`.
+
+- `jxjPorQue2(troca, eu, nomes, defs?)`: de 1 a 3 frases (prontas pro
+  HTML) de por que a troca foi assim, do ponto de vista de `eu`.
+- `jxjLinhas3d2(troca, eu)`: a troca v2 nos lances do diretor do 3D (o
+  equivalente de `jxjLinhas3d`); a tabela `JXJ_3D2` tem uma entrada por
+  tipo de evento.
+- `jxjReferencia2(defs?, estilo?)`: `{pe, cima, baixo}`, cada um uma lista
+  de `{id, nome, categoria, vel, dano, custo, efeito, exclusivo,
+  desbloqueio}` da carta mais rápida pra mais lenta.
+
+`troca` é um item das trocas da vista v2 (`trocaVista`); `defs` é
+`definicoes.combate2` (padrão: `JXJ_DEF.combate2`).
+
 ## Como rodar
 
 ```bash
