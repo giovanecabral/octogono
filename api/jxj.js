@@ -29,17 +29,20 @@ import * as REG from "./_jxj-regras.js";
 import * as BOT from "./_jxj-bot.js";
 import * as NARR from "./_jxj-narracao.js";
 import * as EST from "./_jxj-estrategia.js";
+import * as C2 from "./_jxj-combate2.js";
+import * as V2 from "./_jxj-luta2.js";
+import * as CARTAS from "./_jxj-cartas.js";
 
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
 const ID = /^[1-9]\d{0,14}$/;
 const ACOES_PUBLICAS = new Set(["definicoes", "ranking", "perfil", "historico", "hall", "temporada", "torneios", "torneio", "replay"]);
-const ACOES_CONTA = new Set(["estado", "criar", "build", "respec", "principal", "aposentar", "moldura", "buildPublica",
+const ACOES_CONTA = new Set(["estado", "criar", "build", "deck", "respec", "principal", "aposentar", "moldura", "buildPublica",
   "filaEntrar", "filaSair", "fila", "luta", "confirmar", "recusar", "acao", "sinal", "revanche", "narracao", "bot", "abandonar",
   "torneioInscrever", "torneioSair", "torneioSala"]);
 /* limite por conta: [máximo, janela em segundos] (o banco conta, atômico) */
 const LIMITES = {
-  criar: [20, 3600], build: [120, 3600], respec: [10, 3600], principal: [10, 3600], aposentar: [5, 3600],
+  criar: [20, 3600], build: [120, 3600], deck: [120, 3600], respec: [10, 3600], principal: [10, 3600], aposentar: [5, 3600],
   moldura: [30, 3600], buildPublica: [30, 3600], filaEntrar: [40, 600], filaSair: [60, 600], fila: [400, 600],
   luta: [600, 600], confirmar: [60, 600], recusar: [60, 600], acao: [200, 600], sinal: [200, 600], revanche: [40, 600],
   narracao: [40, 3600], torneioInscrever: [20, 3600], torneioSair: [20, 3600], torneioSala: [300, 600], estado: [600, 600],
@@ -148,11 +151,32 @@ const chaveNome = (n) => String(n).normalize("NFD").replace(/[̀-ͯ]/g, "").toLo
 const perfilDoLutador = (l) => ARV.perfilDeCombate({ estilo: l.estilo, categoria: l.categoria, build: l.build || {} });
 const novaSemente = () => randomBytes(32).toString("hex");
 
+/* Combate v2 (combat_v2, 2026-11-12; supabase_jxj_combate2.sql): a chave
+   combate_v2 de jxj_config diz quem joga o combate novo: false (ninguém),
+   true (todos) ou {"contas": [uuid...]} (só essas). A luta nova é v2 quando
+   as contas dos dois lados estão liberadas. Sem a migração, a chave não
+   existe e tudo segue na v1. A luta contra bot segue na v1 até os bots
+   jogarem com cartas (Fase 5). */
+async function combateV2Para(uids) {
+  let cfg = null;
+  try { cfg = await rpc("jxj_cfg", { k: "combate_v2" }); } catch { return false; }
+  if (!cfg) return false;
+  return uids.every((u) => cfg === true || (cfg && Array.isArray(cfg.contas) && cfg.contas.includes(u)));
+}
+/* perfis e estado da luta nova, na versão de combate dos dois */
+async function lutaNova(lA, lB, uids, semente) {
+  if (await combateV2Para(uids)) {
+    const perfis = { a: V2.comDeck(perfilDoLutador(lA), lA), b: V2.comDeck(perfilDoLutador(lB), lB) };
+    return { perfis, estado: V2.novaLuta(perfis, semente) };
+  }
+  const perfis = { a: perfilDoLutador(lA), b: perfilDoLutador(lB) };
+  return { perfis, estado: MOTOR.novaLuta(perfis.a, perfis.b) };
+}
+
 async function prepararSeFaltar(d) {
   const L = d.luta;
   if (L.perfis) return false;
-  const perfis = { a: perfilDoLutador(d.lutadorA), b: perfilDoLutador(d.lutadorB) };
-  const estado = MOTOR.novaLuta(perfis.a, perfis.b);
+  const { perfis, estado } = await lutaNova(d.lutadorA, d.lutadorB, [L.a_user, L.b_user], L.semente);
   return rpc("jxj_luta_preparar", { lid: L.id, perfis_: perfis, estado_: estado });
 }
 
@@ -221,8 +245,9 @@ function etapaDaTroca(L, sn, agora) {
   if (!sn) return null;
   return (sn.a && sn.b) || agora > Date.parse(L.prazo) - ACAO_MS ? "acao" : "sinal";
 }
-/* sinais revelados, com a postura padrão pra quem não mandou */
-const sinaisRevelados = (L, sn) => ({ a: sn.a || EST.acaoPadrao(L.estado, "a"), b: sn.b || EST.acaoPadrao(L.estado, "b") });
+/* sinais revelados, com a postura padrão pra quem não mandou (v2: a categoria da carta que jogaria sozinha) */
+const posturaPadrao = (L, l) => (V2.ehV2(L.estado) ? V2.posturaPadrao(L.estado, l) : EST.acaoPadrao(L.estado, l));
+const sinaisRevelados = (L, sn) => ({ a: sn.a || posturaPadrao(L, "a"), b: sn.b || posturaPadrao(L, "b") });
 /* quando a revelação aconteceu (ms): o último dos dois sinais ou o fim da etapa do sinal */
 function momentoDaRevelacao(L, sn) {
   const fim = Date.parse(L.prazo) - ACAO_MS;
@@ -248,6 +273,21 @@ async function processarLuta(lid, uid, { porAcao = false } = {}) {
     const acoes = { a: null, b: null };
     for (const a of d.acoes || []) acoes[a.lado] = a.familia;
     const vencido = Date.parse(L.prazo) + MOTOR.FORMATO.toleranciaMs < agora;
+    if (V2.ehV2(L.estado)) {
+      /* combate v2: a carta de cada lado (jxj_acoes.carta, que a jxj_luta já traz); a troca anda com as duas ou com o prazo vencido */
+      const cartas = { a: null, b: null };
+      for (const x of d.acoes || []) cartas[x.lado] = x.carta || null;
+      if ((!(cartas.a && cartas.b) || !porAcao) && !vencido) return d;
+      const r = C2.resolverTroca2(L.estado, L.perfis, { ...cartas, sinais: sn ? sinaisRevelados(L, sn) : null }, L.semente);
+      const fim = r.estado.fim ? { ...r.estado.fim } : null;
+      await rpc("jxj_gravar_troca", {
+        lid, versao_: L.versao, round_: L.round, troca_: L.troca, acao_a_: r.resolucao.cartas.a.id, acao_b_: r.resolucao.cartas.b.id,
+        /* o log de resolução vai junto com os eventos (o "por quê" da troca na tela) */
+        eventos_: [{ tipo: "resolucao", ...r.resolucao }, ...r.eventos], estado_: r.estado,
+        prazo_ms: MOTOR.FORMATO.prazoMs + MOTOR.FORMATO.animacaoMs, fim_: fim, efeitos_: fim ? efeitosDoFim(d, r.estado, fim) : null,
+      });
+      continue;
+    }
     if (L.bot) {
       /* contra bot, a troca anda quando o jogador manda a ação (ou o prazo
          vence). A ação do bot sai do estado, das trocas resolvidas e da
@@ -296,7 +336,48 @@ function tendenciaDoAdversario(trocas, lado, papelDele) {
 }
 /* O que o jogador vê da luta: nunca a ação do adversário na troca aberta,
    nunca a semente antes do fim, nunca o perfil (build) do adversário. */
+/* a vista da luta do combate v2: as partes comuns (etapa, sinais, quem já
+   escolheu, resultado) como na v1; a mão é só a de quem pede */
+function vistaDaLutaV2(d, uid) {
+  const L = d.luta;
+  const sn = L.status === "andamento" && d.sinais ? d.sinais : null, etapa = sn ? etapaDaTroca(L, sn, Date.parse(d.agora)) : null;
+  const lado = L.a_user === uid ? "a" : L.b_user === uid ? "b" : null;
+  const nomes = nomesDaLuta(L);
+  const abertas = Object.fromEntries((d.acoes || []).map((a) => [a.lado, a]));
+  const vista = {
+    id: L.id, tipo: L.tipo, bot: !!L.bot, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
+    confirmacaoAte: L.confirmacao_ate, confirmado: { a: L.confirmado_a, b: L.confirmado_b },
+    round: L.round, troca: L.troca, prazo: L.prazo, agora: d.agora, comRating: L.com_rating,
+    formato: { ...MOTOR.FORMATO, trocasPorRound: C2.FORMATO2.trocasPorRound, animacaoMs: MOTOR.FORMATO.animacaoMs },
+    ...V2.vistaV2(L, lado, { sinais: sn ? sinaisRevelados(L, sn) : null, etapa }),
+    /* a minha carta da troca aberta (a dele, nunca): a família e a carta */
+    minhaAcao: lado && abertas[lado] ? abertas[lado].familia : null,
+    minhaCarta: lado && abertas[lado] ? abertas[lado].carta || null : null,
+    adversarioEscolheu: lado ? (() => {
+      if (!sn) return !!abertas[outroLado(lado)];
+      if (etapa !== "acao") return false;
+      const ac = abertas[outroLado(lado)];
+      return !!ac && Date.parse(ac.enviada_em) > momentoDaRevelacao(L, sn);
+    })() : null,
+    etapa,
+    prazoSinal: etapa ? new Date(Date.parse(L.prazo) - ACAO_MS).toISOString() : null,
+    meuSinal: sn && lado ? sn[lado] : null,
+    adversarioSinalizou: sn && lado ? !!sn[outroLado(lado)] : null,
+    sinais: etapa === "acao" ? sinaisRevelados(L, sn) : null,
+    trocas: (d.trocas || []).map((t) => V2.trocaVista(t, nomes)),
+  };
+  if (L.status === "encerrada") {
+    vista.resultado = L.resultado;
+    vista.efeitos = L.efeitos;
+    vista.semente = L.semente;
+    vista.narracao = L.narracao;
+    vista.revanche = L.bot ? null : { a: !!L.revanche_a, b: !!L.revanche_b, luta: L.revanche_luta_id, ate: new Date(Date.parse(L.encerrada_em) + REG.REVANCHE_MS).toISOString() };
+  }
+  return vista;
+}
+
 function vistaDaLuta(d, uid) {
+  if (d.luta && V2.ehV2(d.luta.estado)) return vistaDaLutaV2(d, uid);
   const L = d.luta;
   const sn = L.status === "andamento" && d.sinais ? d.sinais : null, etapa = sn ? etapaDaTroca(L, sn, Date.parse(d.agora)) : null;
   const lado = L.a_user === uid ? "a" : L.b_user === uid ? "b" : null;
@@ -487,7 +568,37 @@ function definicoes(ativo) {
     xpPorNivel: Array.from({ length: REG.NIVEL_MAX }, (_, i) => REG.xpProximo(i + 1)),
     molduras: REG.MOLDURAS,
     conquistas: REG.CONQUISTAS,
+    /* combate v2 (combat_v2): as cartas, o chão, as passivas e o deck; quem joga ele diz o estado da conta (combateV2) */
+    combate2: V2.definicoes2(),
   };
+}
+
+/* a ação da troca no combate v2: a carta (que tem que estar na mão), com as
+   mesmas regras de etapa da v1 (na etapa do sinal, só o compromisso honesto;
+   na da ação, finta sem energia é recusada) */
+async function acaoV2(c, d0, uid, lid, round, troca) {
+  const L0 = d0.luta, lado0 = L0.a_user === uid ? "a" : L0.b_user === uid ? "b" : null;
+  if (typeof c.carta !== "string" || !Object.hasOwn(CARTAS.CARTAS, c.carta)) throw new ErroJxJ("carta inválida");
+  const familia = CARTAS.CARTAS[c.carta].categoria;
+  const aberta = L0.status === "andamento" && lado0 && L0.round === round && L0.troca === troca;
+  if (aberta && !V2.naMao(L0.estado, lado0, c.carta)) throw new ErroJxJ("Essa carta não está na sua mão.");
+
+  const jaEnviou = (d0.acoes || []).some((x) => x.lado === lado0);
+  const sn0 = !jaEnviou && aberta ? d0.sinais : null;
+  const etapa0 = sn0 ? etapaDaTroca(L0, sn0, Date.parse(d0.agora)) : null;
+  if (etapa0 === "sinal") {
+    if (sn0[lado0] && sn0[lado0] !== familia) throw new ErroJxJ("Espere ele mostrar a postura pra fintar.");
+  } else if (etapa0 === "acao") {
+    const meu = sinaisRevelados(L0, sn0)[lado0];
+    if (meu !== familia && L0.estado[lado0].energia < V2.custoFinta(L0.estado, lado0)) throw new ErroJxJ("Sem energia pra fintar.");
+  }
+  try { await rpc("jxj_enviar_carta", { uid, lid, round_: round, troca_: troca, familia_: familia, carta_: c.carta }); }
+  catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("o combate novo ainda não foi ligado", 503); throw e; }
+  if (etapa0 === "sinal" && !sn0[lado0]) {
+    try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: familia, acao_ms: ACAO_MS }); }
+    catch (e) { if (!/etapa do sinal acabou/.test(e.message)) throw e; }
+  }
+  return vistaDaLuta(await processarLuta(lid, uid, { porAcao: true }), uid);
 }
 
 /* ---------- ações ---------- */
@@ -548,6 +659,13 @@ async function executar(acao, c, uid) {
       if (mov) est.movimento = mov;
       const bi = await botInfo(uid);
       if (bi) est.bot = bi;
+      /* combate v2: se esta conta joga o combate novo e o deck de cada lutador (o montado ou o padrão) */
+      est.combateV2 = await combateV2Para([uid]);
+      if (est.combateV2) {
+        let decks = {};
+        try { decks = (await rpc("jxj_decks", { uid })) || {}; } catch (e) { if (e.codigo !== "PGRST202") throw e; }
+        for (const l of est.lutadores || []) { const montado = decks[String(l.id)]; l.deck = V2.deckDo({ ...l, deck: montado }); l.deckMontado = !!montado; }
+      }
       return est;
     }
     case "criar": {
@@ -556,6 +674,22 @@ async function executar(acao, c, uid) {
       if (typeof c.estilo !== "string" || !Object.hasOwn(ARV.ESTILOS, c.estilo)) throw new ErroJxJ("estilo inválido");
       if (typeof c.categoria !== "string" || !Object.hasOwn(ARV.CATEGORIAS, c.categoria)) throw new ErroJxJ("categoria inválida");
       return rpc("jxj_criar_lutador", { uid, nome_: v.nome, chave_: chaveNome(v.nome), rosto_: rostoValido(c.rosto), categoria_: c.categoria, estilo_: c.estilo });
+    }
+    case "deck": {
+      /* combate v2: o deck do lutador (12 cartas, as fixas do estilo, até 2 cópias; o servidor valida). null volta pro padrão */
+      const lid = idDe(c.lutadorId, "lutador");
+      const est = await rpc("jxj_estado", { uid });
+      const l = (est.lutadores || []).find((x) => x.id === lid);
+      if (!l) throw new ErroJxJ("lutador não encontrado", 404);
+      let deck = null;
+      if (c.deck != null) {
+        if (!Array.isArray(c.deck)) throw new ErroJxJ("deck inválido");
+        const v = CARTAS.validarDeck(l.estilo, c.deck);
+        if (!v.ok) throw new ErroJxJ(v.erro);
+        deck = c.deck.slice();
+      }
+      try { return await rpc("jxj_salvar_deck", { uid, lid, deck_: deck }); }
+      catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("o deck ainda não foi ligado", 503); throw e; }
     }
     case "build": {
       const lid = idDe(c.lutadorId, "lutador");
@@ -640,11 +774,12 @@ async function executar(acao, c, uid) {
     }
     case "acao": {
       const lid = idDe(c.lutaId, "luta");
-      if (!MOTOR.FAMILIAS.includes(c.familia)) throw new ErroJxJ("ação inválida");
       const round = Math.floor(Number(c.round)), troca = Math.floor(Number(c.troca));
       if (!(round >= 1 && round <= 9 && troca >= 1 && troca <= 9)) throw new ErroJxJ("troca inválida");
       const d0 = await processarLuta(lid, uid);
       const L0 = d0.luta, lado0 = L0.a_user === uid ? "a" : L0.b_user === uid ? "b" : null;
+      if (V2.ehV2(L0.estado)) return acaoV2(c, d0, uid, lid, round, troca);
+      if (!MOTOR.FAMILIAS.includes(c.familia)) throw new ErroJxJ("ação inválida");
       /* v4: só ação com carta na mão; recusa antes de gravar (o console não passa daqui) */
       if (L0.status === "andamento" && lado0 && L0.estado && L0.round === round && L0.troca === troca && !EST.temCarta(L0.estado, lado0, c.familia))
         throw new ErroJxJ("Você já usou essa ação neste round.");
@@ -677,7 +812,9 @@ async function executar(acao, c, uid) {
       const round = Math.floor(Number(c.round)), troca = Math.floor(Number(c.troca));
       if (!(round >= 1 && round <= 9 && troca >= 1 && troca <= 9)) throw new ErroJxJ("troca inválida");
       const d0 = await processarLuta(lid, uid), L0 = d0.luta, lado0 = L0.a_user === uid ? "a" : L0.b_user === uid ? "b" : null;
-      if (L0.status === "andamento" && L0.estado && lado0 && !EST.temCarta(L0.estado, lado0, c.familia)) throw new ErroJxJ("Você já usou essa ação neste round.");
+      /* v2: a postura é a categoria de uma carta da mão (a carta continua na mão) */
+      if (V2.ehV2(L0.estado)) { if (L0.status === "andamento" && lado0 && !V2.temCategoria(L0.estado, lado0, c.familia)) throw new ErroJxJ("Você não tem carta dessa categoria na mão."); }
+      else if (L0.status === "andamento" && L0.estado && lado0 && !EST.temCarta(L0.estado, lado0, c.familia)) throw new ErroJxJ("Você já usou essa ação neste round.");
       try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: ACAO_MS }); }
       catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("os sinais ainda não foram ligados", 503); throw e; }
       return vistaDaLuta(await processarLuta(lid, uid), uid);
@@ -709,8 +846,9 @@ async function executar(acao, c, uid) {
       if (!r.pronta) return { esperando: true };
       const d = await rpc("jxj_luta", { lid });
       /* na revanche os lados trocam: quem era B vira A */
-      const perfis = { a: perfilDoLutador(d.lutadorB), b: perfilDoLutador(d.lutadorA) };
-      return rpc("jxj_revanche_criar", { lid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b), prazo_ms: MOTOR.FORMATO.prazoMs });
+      const semente = novaSemente();
+      const { perfis, estado } = await lutaNova(d.lutadorB, d.lutadorA, [d.luta.b_user, d.luta.a_user], semente);
+      return rpc("jxj_revanche_criar", { lid, semente_: semente, perfis_: perfis, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs });
     }
     case "narracao": {
       /* Só quem lutou (o banco confere o uid antes de devolver ou gerar).
@@ -770,8 +908,9 @@ async function executar(acao, c, uid) {
       const r = await rpc("jxj_torneio_sala", { uid, cid });
       if (!r.pronto) return r;
       const t = await rpc("jxj_torneio_lutadores", { cid });
-      const perfis = { a: perfilDoLutador(t.a), b: perfilDoLutador(t.b) };
-      return rpc("jxj_torneio_criar_luta", { cid, semente_: novaSemente(), perfis_: perfis, estado_: MOTOR.novaLuta(perfis.a, perfis.b), prazo_ms: MOTOR.FORMATO.prazoMs });
+      const semente = novaSemente();
+      const { perfis, estado } = await lutaNova(t.a, t.b, [t.a.user_id, t.b.user_id], semente);
+      return rpc("jxj_torneio_criar_luta", { cid, semente_: semente, perfis_: perfis, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs });
     }
     default: throw new ErroJxJ("ação desconhecida");
   }

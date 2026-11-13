@@ -110,6 +110,29 @@ Por baixo:
 
 Decks padrão em `DECK_PADRAO` (`api/_jxj-cartas.js`).
 
+## Servidor (Fase 3)
+
+Atrás da flag `combate_v2` (`jxj_config`), com a migração
+`supabase_jxj_combate2.sql` (o dono roda; entra desligada). Módulo
+`api/_jxj-luta2.js`; rota `api/jxj.js`.
+
+- `acao` na luta v2: `{lutaId, round, troca, carta}` (o id da carta da
+  mão; carta fora da mão: 400 antes de gravar).
+- `sinal`: `{familia}` = a categoria de uma carta da mão.
+- `deck`: `{lutadorId, deck}` (12 ids; o servidor valida) ou `deck: null`
+  (volta pro padrão).
+- `estado`: `combateV2` (esta conta joga o combate novo) e, por lutador,
+  `deck` e `deckMontado`.
+- Vista da luta v2: `combate: 2`, `mao` (as minhas cartas com a carta do
+  chão, velocidade e dano de agora, custo e finta), `maoDele` (só quantas),
+  `decks` (os dois, públicos), `jogadas` (do round), `minhaCarta` e, em
+  cada troca, `cartaA`/`cartaB`, `resolucao` (o log) e os textos.
+- `definicoes.combate2`: cartas, chão, passivas, fixas, decks padrão,
+  regras do deck e as liberadas de cada estilo.
+
+Ligar pra um grupo pequeno, ligar pra todos e desligar: comandos no
+começo da migração.
+
 ## Como rodar
 
 ```bash

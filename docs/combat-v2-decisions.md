@@ -155,3 +155,35 @@ no relatório (`sim/relatorio.md`).
     o striker ia a 57,3%: o Cruzado dele passava do dano do knockdown
     contra quem tem pouca defesa. O dano fixo tem degrau: o knockdown é a
     partir de 4, e um quarto de ponto muda confronto inteiro.
+
+## Fase 3 (servidor)
+
+38. **O deck mora numa coluna própria** (`jxj_lutadores.deck`), não no
+    `build` (revisa a 7). O `build` é lido como mapa de nós pela tela da
+    árvore, pela validação e pelo SQL; misturar o deck ali mexeria em todos
+    esses leitores. Como a carta da troca já pedia migração (39), o deck foi
+    junto. `null` = o deck padrão do estilo.
+39. **A carta da troca em `jxj_acoes.carta`** (migração
+    `supabase_jxj_combate2.sql`). A coluna `familia` tem o check das 4
+    famílias, e com deck duas cartas da mesma família são jogadas
+    diferentes. `familia` continua sendo a categoria da carta.
+40. **Flag:** `jxj_config` `combate_v2` = `false` (ninguém), `true`
+    (todos) ou `{"contas": [...]}` (só essas contas), lida pela `jxj_cfg`
+    que já existe. A luta nova é v2 quando as contas dos dois lados estão
+    liberadas; ela termina na versão em que nasceu (desligar a flag não mexe
+    em luta começada). Sem a migração, a chave não existe e tudo é v1. A
+    migração entra com a flag desligada.
+41. **Luta contra bot continua na v1** até a Fase 5 (os bots ainda não
+    jogam com cartas).
+42. **Narração ao vivo por IA só na v1** até a Fase 6. A narração do fim
+    funciona na v2 com os textos dos eventos novos (`textoEvento2`).
+43. **Sem energia:** a finta sem energia é recusada, como na v1; o custo
+    da carta sem energia não é recusado: a carta joga exausta (regra 18).
+44. **Log de resolução gravado com a troca**, como o primeiro evento
+    (`tipo: "resolucao"`); `acao_a` e `acao_b` guardam o id da carta.
+45. **Postura na v2:** a categoria de uma carta da mão (a carta continua na
+    mão). Quem não mandou mostra a categoria da carta que jogaria sozinho
+    (a Defesa da mão).
+46. **A vista nunca manda a mão dele:** só quantas cartas ele tem. A
+    leitura do banco (`jxj_luta`) traz a carta dos dois na troca aberta;
+    só o servidor usa, e a vista manda a de quem pede (`minhaCarta`).

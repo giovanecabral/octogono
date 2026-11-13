@@ -11886,6 +11886,160 @@ async function testarJxJ() {
       await desde(8500);
       await erro(u2, "sinal", { lutaId: lid, round: 1, troca: 1, familia: "golpes" }, /etapa do sinal acabou/);
     });
+    /* combate v2 (2026-11-12, Fase 3): atrás da flag combate_v2 de jxj_config */
+    const C2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-combate2.js")).href);
+    const CT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+    const flagV2 = (v) => q("update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", [JSON.stringify(v)]);
+    const estadoDb = async (lid) => (await q("select estado, perfis, semente, a_user from jxj_lutas where id = $1", [lid]))[0];
+    await conf("combate v2 desligado (o padrão da migração): a luta nova é a de antes; as definições trazem as cartas, o chão, as passivas e os decks padrão; o estado diz combateV2 false e não manda deck", async () => {
+      await zerarLimites();
+      if ((await q("select valor from jxj_config where chave = 'combate_v2'"))[0].valor !== false) throw new Error("a migração não entra desligada");
+      const d = await ok(null, "definicoes"), c = d.combate2;
+      if (!c || c.versao !== 2 || !c.cartas.jab || c.cartas.jab.vel !== CT.CARTAS.jab.vel || !c.chao.cima.golpes || !c.passivas.striker.nome || c.deckPadrao.striker.length !== 12 || !c.liberadas.grappler.includes("puxar_guarda") || c.liberadas.striker.includes("puxar_guarda"))
+        throw new Error("definições: " + JSON.stringify(c).slice(0, 200));
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const lid = await parear(u1, (await criar(u1)).id, u2, (await criar(u2)).id);
+      const L = await estadoDb(lid);
+      if (L.estado.cv || !L.estado.mao || Array.isArray(L.estado.mao.a)) throw new Error("luta nasceu v2 com a flag desligada");
+      const e = await ok(u1, "estado");
+      if (e.combateV2 !== false || e.lutadores.some((l) => "deck" in l)) throw new Error("estado: " + JSON.stringify({ v2: e.combateV2 }));
+    });
+    await conf("combate v2 ligado pras duas contas: a luta nasce v2 (cv 2, o deck de cada um nos perfis, 5 cartas na mão); a vista manda a minha mão e só quantas cartas ele tem; com a flag de uma conta só, a luta é a de antes", async () => {
+      await zerarLimites();
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true }), u3 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2, { estilo: "wrestler" })).id, l3 = (await criar(u3)).id;
+      await flagV2({ contas: [u1, u2] });
+      try {
+        const lid = await parear(u1, l1, u2, l2);
+        const L = await estadoDb(lid), eu = L.a_user === u1 ? "a" : "b", ele = eu === "a" ? "b" : "a";
+        if (L.estado.cv !== 2 || L.estado.mao.a.length !== 5 || L.estado.mao.b.length !== 5 || L.perfis.a.deck.length !== 12) throw new Error("luta: " + JSON.stringify({ cv: L.estado.cv, mao: L.estado.mao }));
+        const v = await ok(u1, "luta", { lutaId: lid });
+        if (v.combate !== 2 || v.lado !== eu || v.mao.length !== 5 || v.maoDele !== 5 || JSON.stringify(v.mao.map((x) => x.id)) !== JSON.stringify(L.estado.mao[eu])) throw new Error("vista: " + JSON.stringify({ c: v.combate, mao: v.mao && v.mao.length, dele: v.maoDele }));
+        if (v.mao.some((x) => typeof x.vel !== "number" || typeof x.custo !== "number" || !x.efetiva)) throw new Error("carta sem velocidade, custo ou efetiva");
+        if ("acoes" in v || "maos" in v || JSON.stringify(v).includes(JSON.stringify(L.estado.mao[ele]))) throw new Error("a vista vazou a mão dele");
+        if ((await ok(u1, "estado")).combateV2 !== true || (await ok(u3, "estado")).combateV2 !== false) throw new Error("combateV2 no estado");
+        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
+        await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
+        await zerarLimites();
+        const lid2 = await parear(u1, l1, u3, l3);
+        if ((await estadoDb(lid2)).estado.cv) throw new Error("conta fora da flag jogou v2");
+        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid2]);
+        await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u3]);
+      } finally { await flagV2(false); }
+    });
+    await conf("ação do combate v2: carta inválida e carta fora da mão são recusadas antes de gravar; a mesma carta de novo é idempotente e outra é recusada; antes dos dois jogarem, nenhum vê a carta do outro; depois, a troca tem as duas cartas, o log de resolução e o texto, e a luta refeita pelo motor com as cartas gravadas e a semente dá o mesmo estado", async () => {
+      await zerarLimites();
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2, { estilo: "counter" })).id;
+      await flagV2(true);
+      try {
+        const lid = await parear(u1, l1, u2, l2);
+        const L = await estadoDb(lid), eu = L.a_user === u1 ? "a" : "b", ele = eu === "a" ? "b" : "a";
+        const minha = L.estado.mao[eu], dele = L.estado.mao[ele];
+        const fora = Object.keys(CT.CARTAS).find((id) => !minha.includes(id));
+        await erro(u1, "acao", { lutaId: lid, round: 1, troca: 1, carta: "xyz" }, /carta inválida/);
+        await erro(u1, "acao", { lutaId: lid, round: 1, troca: 1, carta: fora }, /não está na sua mão/);
+        if ((await q("select count(*)::int n from jxj_acoes where luta_id = $1", [lid]))[0].n) throw new Error("gravou carta recusada");
+        await ok(u1, "acao", { lutaId: lid, round: 1, troca: 1, carta: minha[0] });
+        await ok(u1, "acao", { lutaId: lid, round: 1, troca: 1, carta: minha[0] });
+        const outra = minha.find((id) => id !== minha[0]);
+        if (outra) await erro(u1, "acao", { lutaId: lid, round: 1, troca: 1, carta: outra }, /já foi enviada/);
+        const v2 = await ok(u2, "luta", { lutaId: lid });
+        if (v2.minhaCarta || "acoes" in v2 || JSON.stringify(v2).includes(`"minhaCarta":"${minha[0]}"`)) throw new Error("o outro viu a carta: " + JSON.stringify({ minhaCarta: v2.minhaCarta }));
+        if ((await ok(u1, "luta", { lutaId: lid })).minhaCarta !== minha[0]) throw new Error("a minha carta não volta pra mim");
+        await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, carta: dele[0] });
+        const v = await ok(u1, "luta", { lutaId: lid }), t = v.trocas[0];
+        if (!t || t[eu === "a" ? "cartaA" : "cartaB"] !== minha[0] || t[ele === "a" ? "cartaA" : "cartaB"] !== dele[0] || !t.resolucao || !t.resolucao.cartas || !t.eventos.length)
+          throw new Error("troca: " + JSON.stringify(t).slice(0, 300));
+        if (t.resolucao.cartas[eu].id !== minha[0] || typeof t.resolucao.cartas[eu].vel !== "number") throw new Error("log de resolução: " + JSON.stringify(t.resolucao));
+        /* refazer pela semente: as duas mandaram a carta na etapa do sinal (compromisso honesto), então a postura é a categoria da carta */
+        const fim = await estadoDb(lid);
+        const ac = { [eu]: minha[0], [ele]: dele[0] };
+        const sinais = { a: CT.CARTAS[ac.a].categoria, b: CT.CARTAS[ac.b].categoria };
+        let e = C2.novaLuta2(fim.perfis.a, fim.perfis.b, fim.semente);
+        e = C2.resolverTroca2(e, fim.perfis, { a: ac.a, b: ac.b, sinais }, fim.semente).estado;
+        const canon = (x) => JSON.stringify(x, (k, val) => (val && typeof val === "object" && !Array.isArray(val) ? Object.fromEntries(Object.keys(val).sort().map((c) => [c, val[c]])) : val));
+        if (canon(e) !== canon(fim.estado)) throw new Error("a luta refeita pela semente ficou diferente");
+        if (crypto.createHash("sha256").update(fim.semente).digest("hex") !== v.compromisso) throw new Error("compromisso não é o sha256 da semente");
+        const ms = Number((await q("select extract(epoch from (prazo - now())) * 1000 as ms from jxj_lutas where id = $1", [lid]))[0].ms);
+        if (Math.abs(ms - (MOTOR.FORMATO.prazoMs + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(ms));
+        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
+        await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
+      } finally { await flagV2(false); }
+    });
+    await conf("luta inteira no combate v2 pelo servidor: termina com resultado, a semente sai no fim e o texto de cada troca vem sem lixo", async () => {
+      await zerarLimites();
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1, { estilo: "grappler" })).id, l2 = (await criar(u2, { estilo: "wrestler" })).id;
+      await flagV2(true);
+      try {
+        const lid = await parear(u1, l1, u2, l2);
+        let v;
+        for (let n = 0; n < 30; n++) {
+          v = await ok(u1, "luta", { lutaId: lid });
+          if (v.status !== "andamento") break;
+          const w = await ok(u2, "luta", { lutaId: lid });
+          await ok(u1, "acao", { lutaId: lid, round: v.round, troca: v.troca, carta: v.mao[n % v.mao.length].id });
+          await ok(u2, "acao", { lutaId: lid, round: w.round, troca: w.troca, carta: w.mao[(n * 3) % w.mao.length].id });
+        }
+        v = await ok(u1, "luta", { lutaId: lid });
+        if (v.status !== "encerrada" || !v.resultado || !v.semente || !v.trocas.length) throw new Error("não terminou: " + JSON.stringify({ s: v.status, r: v.resultado }));
+        for (const t of v.trocas) for (const x of t.eventos) { if (/undefined|NaN|null|\[object/.test(x) || /[—–]/.test(x)) throw new Error("texto: " + x); }
+      } finally { await flagV2(false); }
+    });
+    await conf("deck do combate v2: o servidor valida (tamanho, cópias, fixas, carta de outro estilo, carta desconhecida); o montado entra na luta nova e no estado; salvar a árvore não mexe nele; null volta pro padrão", async () => {
+      await zerarLimites();
+      const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+      const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+      await flagV2({ contas: [u1, u2] });
+      try {
+        let e = await ok(u1, "estado");
+        const L1 = () => e.lutadores.find((l) => l.id === l1);
+        if (JSON.stringify(L1().deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1().deckMontado) throw new Error("deck padrão no estado");
+        await erro(u1, "deck", { lutadorId: l1, deck: ["jab"] }, /12 cartas/);
+        await erro(u1, "deck", { lutadorId: l1, deck: "jab" }, /deck inválido/);
+        await erro(u1, "deck", { lutadorId: l1, deck: [...CT.DECK_PADRAO.striker.slice(0, 11), "puxar_guarda"] }, /liberada/);
+        await erro(u1, "deck", { lutadorId: l1, deck: [...CT.DECK_PADRAO.striker.slice(0, 11), "xyz"] }, /desconhecida/);
+        await erro(u2, "deck", { lutadorId: l1, deck: CT.DECK_PADRAO.striker }, /não encontrado/, 404);
+        const meu = [...CT.FIXAS.striker, "jab", "chute_alto", "bloqueio", "bloqueio", "antiqueda", "antiqueda", "clinch", "queda"];
+        await ok(u1, "deck", { lutadorId: l1, deck: meu });
+        e = await ok(u1, "estado");
+        if (JSON.stringify(L1().deck) !== JSON.stringify(meu) || !L1().deckMontado) throw new Error("deck montado no estado");
+        await ok(u1, "build", { lutadorId: l1, rev: L1().buildRev, build: {} });
+        e = await ok(u1, "estado");
+        if (JSON.stringify(L1().deck) !== JSON.stringify(meu)) throw new Error("salvar a árvore mexeu no deck");
+        const lid = await parear(u1, l1, u2, l2);
+        const L = await estadoDb(lid), eu = L.a_user === u1 ? "a" : "b";
+        if (JSON.stringify(L.perfis[eu].deck) !== JSON.stringify(meu) || JSON.stringify(L.estado.deck[eu]) !== JSON.stringify(meu)) throw new Error("o deck montado não entrou na luta");
+        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
+        await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
+        await ok(u1, "deck", { lutadorId: l1, deck: null });
+        e = await ok(u1, "estado");
+        if (JSON.stringify(L1().deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1().deckMontado) throw new Error("null não voltou pro padrão");
+      } finally { await flagV2(false); }
+    });
+    await conf("sem a migração do combate v2: a flag não existe, a luta nasce na v1 e salvar deck responde 503", async () => {
+      const db2 = await B.novoBanco({ combate2: false });
+      const fetchAntes = globalThis.fetch;
+      globalThis.fetch = B.fetchFalso(db2, { SUPABASE_URL });
+      try {
+        const u1 = "00000000-0000-4000-8000-0000000009d1", u2 = "00000000-0000-4000-8000-0000000009d2";
+        await B.criarUsuario(db2, u1, { pro: true }); await B.criarUsuario(db2, u2, { pro: true });
+        const c1 = await B.chamar(H, { token: "tok:" + u1, acao: "criar", nome: "Sem Cartas Um", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const c2 = await B.chamar(H, { token: "tok:" + u2, acao: "criar", nome: "Sem Cartas Dois", rosto: ROSTO, categoria: "lightweight", estilo: "striker" });
+        const dk = await B.chamar(H, { token: "tok:" + u1, acao: "deck", lutadorId: c1.json.id, deck: CT.DECK_PADRAO.striker });
+        if (dk.status !== 503) throw new Error("deck sem a migração: " + JSON.stringify(dk));
+        const e = await B.chamar(H, { token: "tok:" + u1, acao: "estado" });
+        if (e.status !== 200 || e.json.combateV2 !== false) throw new Error("estado: " + JSON.stringify(e).slice(0, 200));
+        await B.chamar(H, { token: "tok:" + u1, acao: "filaEntrar", lutadorId: c1.json.id });
+        await B.chamar(H, { token: "tok:" + u2, acao: "filaEntrar", lutadorId: c2.json.id });
+        const f = await B.chamar(H, { token: "tok:" + u1, acao: "fila" });
+        if (f.status !== 200 || !f.json.luta) throw new Error("sem par: " + JSON.stringify(f).slice(0, 200));
+        await B.chamar(H, { token: "tok:" + u1, acao: "luta", lutaId: f.json.luta.id || f.json.luta });
+        const L = (await db2.query("select estado from jxj_lutas order by id desc limit 1")).rows[0];
+        if (!L.estado || L.estado.cv) throw new Error("sem a migração, nasceu v2");
+      } finally { globalThis.fetch = fetchAntes; }
+    });
     await conf("animação antes das cartas (2026-11-10, motor v5): luta nova com 3 trocas por round; a vista manda trocasPorRound 3 e animacaoMs; a troca resolvida deixa o prazo da próxima em prazoMs + animacaoMs (a etapa do sinal ganha a janela); luta de antes (sem tpr) segue com 4 trocas, 20 s e sem janela", async () => {
       await zerarLimites();
       const F = MOTOR.FORMATO;
@@ -12417,6 +12571,19 @@ async function testarJxJ() {
       let e2 = null; try { await q("select public.jxj_bot_configurar('jogador.bot@teste')"); } catch (e) { e2 = e.message; }
       if (!/tem lutador/.test(String(e2))) throw new Error("conta com lutador: " + e2);
       if ((await q("select valor from jxj_config where chave = 'bot'"))[0].valor.user !== contaBots) throw new Error("a recusa trocou a conta dos bots");
+    });
+    /* depois dos bots configurados (o teste de cima) */
+    await conf("combate v2 e bot: com a flag ligada, a luta contra bot continua a de antes (os bots jogam com cartas só na Fase 5)", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      await flagV2(true);
+      try {
+        await ok(u, "filaEntrar", { lutadorId: l });
+        const lid = (await ok(u, "bot", { lutadorId: l })).luta;
+        if ((await estadoDb(lid)).estado.cv) throw new Error("bot jogou v2");
+        await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
+        await q("update jxj_contas set luta_aberta_id = null where user_id = $1", [u]);
+      } finally { await flagV2(false); }
     });
     await conf("Pro sozinho na fila (2026-10-20): fora da fila o servidor pede pra entrar; na fila, sem mais ninguém, o bot sai na hora", async () => {
       await zerarLimites();
@@ -14671,8 +14838,13 @@ async function testarJxJTelas() {
       await db.query("update jxj_lutas set prazo = now() + interval '60 seconds' where id = $1 and status = 'andamento'", [lid]);
       const v = await api(u1, "luta", { lutaId: lid });
       if (v.status === "andamento") return lid;
+      /* a luta de apoio acabou no meio (nocaute ou W.O., a semente é sorteada): depois dela o rating dos
+         dois se afasta mais que a tolerância de começo da fila (100) e o par não se forma (2026-11-12:
+         era a cascata de "reading 'id'" que aparecia às vezes na bateria) */
+      await db.query("update jxj_lutadores set rating = 1500, rd = 200 where id in ($1, $2)", [l1, l2]);
       await api(u1, "filaEntrar", { lutadorId: l1 }); await api(u2, "filaEntrar", { lutadorId: l2 });
       const p2 = await api(u1, "fila");
+      if (!p2 || !p2.luta) throw new Error("a luta de apoio acabou e o par novo não se formou: " + JSON.stringify(p2).slice(0, 200));
       await api(u1, "confirmar", { lutaId: p2.luta.id }); await api(u2, "confirmar", { lutaId: p2.luta.id });
       lid = p2.luta.id;
       return lid;
