@@ -233,3 +233,47 @@ no relatório (`sim/relatorio.md`).
     carta): fica guardado, a luta usa o padrão e o estado diz
     `deckMontado: false`. Se o nó voltar, o montado volta.
 
+## Fase 6 (tela, a lógica)
+
+70. **Só funções puras no `index.html`, sem mexer na tela de hoje:**
+    `jxjPorQue2`, `jxjLinhas3d2` (com a tabela `JXJ_3D2`),
+    `jxjReferencia2` (com `jxjEfeitoTexto2`) e `jxjNomeCarta2`. O nome da
+    carta vem das definições (`JXJ_DEF.combate2`), sem cópia da lista no
+    cliente.
+71. **O por quê da troca tem até 3 frases**, nesta ordem: encaixe; reação
+    (quem anulou o quê); velocidade e interrupção, ou empate de velocidade;
+    carta que falhou porque a posição mudou; carta sem energia; finta e o
+    custo. Sem nada disso: quem fez mais pontos na troca, ou "Nenhuma das
+    duas cartas mudou a troca."
+72. **A frase não depende de gênero:** "a sua carta", "a carta de Fulano",
+    "saiu na frente" (e não "foi mais rápido"). Os dados não dizem o gênero
+    da carta nem do jogador. A frase sai pronta pro HTML: nome de jogador e
+    de carta passam por `jxjEsc` dentro da função.
+73. **3D da v2 por tabela (`JXJ_3D2`):** todo tipo de evento do motor v2
+    tem entrada; `null` = sem lance próprio. Usa só os lances que o diretor
+    já tem: o golpe pela carta (Jab, jab; Cruzado, cruzado de esquerda;
+    Chute alto, chute alto; Combinação, jab e direto; Contra-ataque,
+    direto; clinch, cruzado no corpo; Esquiva, jab), o dano no chão como
+    `gnp1`, a anulação como o lance da carta anulada (golpe no bloqueio,
+    queda defendida, controle de quem está por cima) e o Avançar como
+    `controle`.
+74. **Um lance por acontecimento:** o golpe que derruba vira um `kd` só,
+    com o dano; o golpe do nocaute fica no lance do fim; o dano da queda vai
+    no lance da queda (com `alvo` e `dano`, pro placar descer no golpe).
+    Interrupção, carta resistente, finta, sem energia e carta que falhou não
+    têm lance (o golpe já mostra), nem o fim do round (o `jxj3dTrocas` põe a
+    linha do round sozinho).
+75. **`trocaVista` não manda o `como` do escapou:** a conversão olha a
+    posição depois da troca (em pé, saiu na força e levanta; senão,
+    defendeu). Mandar o `como` no servidor deixa isso direto; ficou como
+    achado, sem mexer em `api/`.
+76. **Referência da v2:** em pé, por cima e por baixo, da mais rápida pra
+    mais lenta (empate: mais dano, depois o nome). O texto do efeito sai
+    dos efeitos declarativos da carta (`jxjEfeitoTexto2`), não de texto
+    escrito à mão: carta ou efeito novo aparece sozinho. Com o estilo, a
+    carta exclusiva de outro estilo sai da lista.
+77. **Suíte `jxjv2`:** as funções rodam no jogo de verdade (a sandbox da
+    carreira), com trocas do motor de verdade passadas por `trocaVista` e
+    nome malicioso. A `luta3d` passou a varrer também a `JXJ_3D2` (lance
+    sem `case` no diretor reprova).
+

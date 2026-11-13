@@ -177,6 +177,22 @@ Atrás da flag `combate_v2` (`jxj_config`), com a migração
 Ligar pra um grupo pequeno, ligar pra todos e desligar: comandos no
 começo da migração.
 
+## Tela (Fase 6, a lógica)
+
+Funções puras no `index.html` (a tela de hoje não mudou); suíte `jxjv2`.
+
+- `jxjPorQue2(troca, eu, nomes, defs?)`: de 1 a 3 frases (prontas pro
+  HTML) de por que a troca foi assim, do ponto de vista de `eu`.
+- `jxjLinhas3d2(troca, eu)`: a troca v2 nos lances do diretor do 3D (o
+  equivalente de `jxjLinhas3d`); a tabela `JXJ_3D2` tem uma entrada por
+  tipo de evento.
+- `jxjReferencia2(defs?, estilo?)`: `{pe, cima, baixo}`, cada um uma lista
+  de `{id, nome, categoria, vel, dano, custo, efeito, exclusivo,
+  desbloqueio}` da carta mais rápida pra mais lenta.
+
+`troca` é um item das trocas da vista v2 (`trocaVista`); `defs` é
+`definicoes.combate2` (padrão: `JXJ_DEF.combate2`).
+
 ## Como rodar
 
 ```bash

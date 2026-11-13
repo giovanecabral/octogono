@@ -7782,6 +7782,151 @@ function jxjLinhas3d(t,eu){
   if(!algo)add({tipo:"estudo"});
   return linhas;
 }
+/* ---------- combate v2 (2026-11-13, Fase 6, a lógica): funções puras pra tela da v2 ----------
+   Leem os formatos do servidor (api/_jxj-luta2.js: trocaVista, definicoes2) e
+   não mexem na tela de hoje. Nome de carta vem das definições (JXJ_DEF.combate2);
+   número com vírgula pelo jxjNum2 de sempre. */
+/* o nome da carta (em pé, por cima ou por baixo) pelas definições; sem elas, o id */
+function jxjNomeCarta2(id,defs){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2);
+  if(d&&d.cartas&&d.cartas[id])return d.cartas[id].nome;
+  if(d&&d.chao)for(const ctx of Object.keys(d.chao))for(const c of Object.values(d.chao[ctx]))if(c.id===id)return c.nome;
+  return id||"";
+}
+/* por que a troca foi assim: de 1 a 3 frases do ponto de vista de quem vê (eu), prontas pro HTML
+   (nome e carta escapados). Ordem do que importa: encaixe, reação, velocidade, interrupção,
+   carta que falhou, sem energia, finta. Troca sem log (W.O. antes da troca): nenhuma frase. */
+function jxjPorQue2(t,eu,nomes,defs){
+  const r=t&&t.resolucao; if(!r||!r.cartas)return [];
+  const outro=l=>l==="a"?"b":"a",nm=x=>typeof x==="string"?x:(x&&x.nome)||"";
+  const nome=l=>jxjEsc(nm(nomes&&nomes[l])||"O adversário");
+  const quem=l=>l===eu?"Você":nome(l),quemMeio=l=>l===eu?"você":nome(l);
+  const daCarta=l=>l===eu?"a sua carta":`a carta de ${nome(l)}`;
+  const carta=l=>jxjEsc(jxjNomeCarta2(r.cartas[l].efetiva,defs)),cartaId=id=>jxjEsc(jxjNomeCarta2(id,defs)),ev=t.ev||[];
+  const fr=[];
+  if(r.ordem==="encaixe"){
+    const fin=ev.find(e=>e.tipo==="fim"&&e.metodo==="FIN"&&e.quem),esc=ev.find(e=>e.tipo==="escapou"&&e.quem);
+    if(fin){
+      const tt=fin.quem,pp=outro(tt);
+      fr.push(r.cartas[tt].categoria==="queda"?`${quem(tt)} apertou e ${quemMeio(pp)} não defendeu: o aperto finaliza quem não defende.`
+        :`${quem(tt)} emendou e ${quemMeio(pp)} defendeu: emendar ganha de defender.`);
+    } else if(esc){
+      const pp=esc.quem,tt=outro(pp);
+      fr.push(r.posicao&&r.posicao.depois&&r.posicao.depois.pos==="pe"?`${quem(pp)} saiu na força e ${quemMeio(tt)} emendou: sair na força ganha de emendar.`
+        :`${quem(pp)} defendeu e ${quemMeio(tt)} apertou: a defesa segura o aperto.`);
+    }
+    return fr;
+  }
+  if(r.ordem==="anuladas")fr.push("As duas cartas se anularam.");
+  else for(const x of r.reacoes||[])fr.push(`${quem(x.quem)} anulou ${daCarta(x.anulou)} (${cartaId(x.cartaAnulada)}) com ${cartaId(x.carta)}.`);
+  if(r.ordem==="a"||r.ordem==="b"){
+    const f=r.ordem,s=outro(f),va=r.cartas[f].vel,vb=r.cartas[s].vel;
+    if(!(r.reacoes||[]).length&&va!==vb)fr.push(`${quem(f)} saiu na frente: ${carta(f)} (velocidade ${jxjNum2(va)}) contra ${carta(s)} (velocidade ${jxjNum2(vb)}).`);
+    for(const x of r.interrupcoes||[])fr.push(`${cartaId(x.carta)} acertou antes e interrompeu ${daCarta(x.interrompeu)}.`);
+    if(ev.some(e=>e.tipo==="resistiu"&&e.quem===s)){ const dc=daCarta(s); fr.push(`${dc[0].toUpperCase()+dc.slice(1)} (${carta(s)}) aguentou o golpe de dano 1 e resolveu.`); }
+  }
+  if(r.ordem==="empate"){
+    fr.push(`Velocidade igual (${jxjNum2(r.cartas.a.vel)}): as duas cartas resolveram juntas.`);
+    if(ev.some(e=>e.tipo==="travaram"))fr.push("As duas tentaram mudar a posição e travaram.");
+  }
+  for(const e of ev)if(e.tipo==="falhou"&&e.quem)fr.push(`A posição mudou antes, e ${daCarta(e.quem)} (${cartaId(e.carta)}) não serviu mais.`);
+  for(const l of ["a","b"])if(r.cartas[l].exausta)fr.push(`${quem(l)} jogou sem energia: ${carta(l)} saiu 2 mais lenta e com metade do dano.`);
+  for(const l of ["a","b"])if(r.cartas[l].finta>0)fr.push(`${quem(l)} fintou e pagou ${jxjNum2(r.cartas[l].finta)} de energia a mais.`);
+  if(!fr.length)fr.push(r.vencedor?`${quem(r.vencedor)} fez mais pontos na troca.`:"Nenhuma das duas cartas mudou a troca.");
+  return fr.slice(0,3);
+}
+/* troca da v2 no 3D: cada evento de trocaVista tem entrada aqui; null = sem lance
+   próprio (só dado, ou já mostrado por outro lance: o golpe mostra a interrupção, e a
+   linha do round o jxj3dTrocas põe sozinho). A suíte jxjv2 reprova tipo sem entrada. */
+const JXJ_3D2_GOLPE={jab:"jab",cruzado:"cruzadoFrente",chute_alto:"chuteCabeca",combinacao:"umDois",contra_ataque:"direto",clinch:"jabCorpo",esquiva:"jab"};
+const JXJ_3D2_CHAO=["ground_and_pound","golpes_por_baixo"],JXJ_3D2_QUEDA=["queda","double_leg","rasteira"];
+const JXJ_3D2={
+  /* o dano da queda vai no lance da queda */
+  dano:(e,c)=>JXJ_3D2_QUEDA.includes(e.carta)?null:JXJ_3D2_CHAO.includes(e.carta)
+    ?{tipo:"gnp1",quem:c.Q(e.quem),forte:(e.dano||0)>=3,alvo:e.alvo,dano:Number(e.dano)||0}
+    :{tipo:"golpe1",quem:c.Q(e.quem),forca:e.dano||1,golpe:JXJ_3D2_GOLPE[e.carta],alvo:e.alvo,dano:Number(e.dano)||0},
+  /* a carta anulada é o lance: golpe no bloqueio, queda defendida, controle de quem está por cima */
+  anulou:(e,c)=>{
+    const alvo=e.alvo,atk=c.outro(e.quem);
+    if(JXJ_3D2_QUEDA.includes(alvo)||alvo==="puxar_guarda")return {tipo:"quedaDefendida",quem:c.Q(atk)};
+    if(alvo in JXJ_3D2_GOLPE)return {tipo:"golpe1",quem:c.Q(atk),forca:2,golpe:JXJ_3D2_GOLPE[alvo],bloqueio:true};
+    if(c.pos==="cima_"+e.quem)return {tipo:"controle",quem:c.Q(e.quem)};
+    return {tipo:"estudo"};
+  },
+  queda:(e,c)=>({tipo:"queda",quem:c.Q(e.quem),...(c.danoQueda[e.quem]?{alvo:c.outro(e.quem),dano:c.danoQueda[e.quem]}:{})}),
+  puxouGuarda:(e,c)=>({tipo:"queda",quem:c.Q(c.outro(e.quem))}),
+  avancou:(e,c)=>({tipo:"controle",quem:c.Q(e.quem)}),
+  raspou:(e,c)=>({tipo:"raspou",quem:c.Q(e.quem)}),
+  levantou:(e,c)=>({tipo:"levantou",quem:c.Q(e.quem)}),
+  encaixou:(e,c)=>({tipo:"sub",quem:c.Q(e.quem)}),
+  /* trocaVista não manda o "como" do escapou: a posição depois diz se saiu na força (em pé) */
+  escapou:(e,c)=>c.posDepois==="pe"?{tipo:"levantou",quem:c.Q(e.quem)}:{tipo:"estudo"},
+  soltou:()=>({tipo:"estudo"}),
+  travaram:()=>({tipo:"estudo"}),
+  knockdown:null, interrompeu:null, resistiu:null, finta:null, exausta:null, ausente:null, falhou:null, fimRound:null,
+  resolveu:null, energia:null, iniciativa:null, empateVelocidade:null, semCarta:null, ausenciaPontos:null,
+  fim:(e,c)=>{
+    const m={KO:"Nocaute",TKO:"Nocaute técnico",FIN:"Finalização"}[e.metodo];
+    if(m&&e.quem)return {tipo:"fim",quem:c.Q(e.quem),metodo:m,alvo:c.outro(e.quem),zera:m!=="Finalização"};
+    return e.metodo==="DEC"&&e.quem?{tipo:"decisao",quem:c.Q(e.quem)}:null;
+  },
+};
+/* uma troca v2 (trocaVista) vira os lances do diretor. O golpe que derruba vira o
+   knockdown (um lance só, com o dano); o golpe do nocaute fica no lance do fim. A é quem
+   vê a tela. Sem nenhum lance, o estudo (os dois se medindo). */
+function jxjLinhas3d2(t,eu){
+  const Q=l=>l===eu?"A":"B",outro=l=>l==="a"?"b":"a",r=t&&t.resolucao,evs=(t&&t.ev)||[];
+  const c={Q,outro,pos:r&&r.posicao&&r.posicao.antes?r.posicao.antes.pos:"pe",posDepois:r&&r.posicao&&r.posicao.depois?r.posicao.depois.pos:"pe",danoQueda:{a:0,b:0}};
+  for(const e of evs)if(e.tipo==="dano"&&JXJ_3D2_QUEDA.includes(e.carta)&&e.quem)c.danoQueda[e.quem]+=Number(e.dano)||0;
+  const linhas=[],add=ev=>linhas.push(comEvento({round:t.round,kind:"",text:""},ev));
+  for(let i=0;i<evs.length;i++){
+    const e=evs[i],f=JXJ_3D2[e.tipo];
+    if(!f)continue;
+    /* cada lado tem um dano por troca; no empate de velocidade o dano do outro vem no meio, então olha a troca toda */
+    if(e.tipo==="dano"&&e.quem&&!JXJ_3D2_QUEDA.includes(e.carta)){
+      const resto=evs.slice(i+1);
+      if(resto.some(x=>x.tipo==="knockdown"&&x.quem===e.quem)){ add({tipo:"kd",quem:Q(e.quem),alvo:e.alvo,dano:Number(e.dano)||0}); continue; }
+      if(resto.some(x=>x.tipo==="fim"&&x.quem===e.quem&&(x.metodo==="KO"||x.metodo==="TKO")))continue;
+    }
+    const ev=f(e,c); if(ev)add(ev);
+  }
+  if(!linhas.length)add({tipo:"estudo"});
+  return linhas;
+}
+/* a referência da v2 (no lugar de "Quem ganha de quem"): as cartas em pé, por cima e
+   por baixo, da mais rápida pra mais lenta, com custo, dano e o efeito em texto curto.
+   Com o estilo, tira a carta exclusiva de outro estilo. defs = definicoes2 (JXJ_DEF.combate2). */
+const JXJ_CAT2={golpes:"golpe",queda:"queda",defesa:"defesa",pressao:"pressão"};
+function jxjEfeitoTexto2(c){
+  const cats=x=>((x&&x.categoria)||[]).map(k=>JXJ_CAT2[k]||k).join(" ou ");
+  const partes=[];
+  for(const ef of c.efeitos||[]){
+    const a=ef.acao||{},q=ef.quando,cond=ef.condicao||{},extra=[];
+    if(a.energia)extra.push(`recupera ${jxjNum2(a.energia)} de energia`);
+    if(a.pontos)extra.push(`dá ${jxjNum2(a.pontos)} ${a.pontos===1?"ponto":"pontos"} a mais`);
+    if(a.iniciativa)extra.push("dá a iniciativa");
+    if(a.energiaOponente)extra.push(`tira ${jxjNum2(-a.energiaOponente)} de energia dele`);
+    if(q==="contra"){ partes.push(`Contra ${cats(cond)}: ${[a.anula?"anula":null,...extra].filter(Boolean).join(", ")}`); continue; }
+    if(q==="resistente"){ partes.push(`Golpe de dano ${jxjNum2(a.ateDano)} não interrompe`); continue; }
+    const fx=[a.vaiProChao?"leva pro chão, você por cima":null,a.puxaGuarda?"puxa pro chão, você por baixo":null,
+      a.avanca?"sobe a posição":null,a.inverte?"inverte, você fica por cima":null,a.levanta?"volta em pé":null,
+      a.finaliza?"finaliza ou encaixa":null,a.multDano?`dano vezes ${jxjNum2(a.multDano)}`:null,
+      a.danoExtra?`${jxjNum2(a.danoExtra)} de dano a mais`:null,...extra].filter(Boolean);
+    if(!fx.length)continue;
+    const onde=cond.nivelPos!=null?(cond.nivelPos>=2?" na montada":" a partir da meia-guarda"):"";
+    const pre=q==="se_interrompe"?"Se interrompe":q==="se_oponente"?`Se ele jogou ${cats(cond)}`:cond.categoria?`Se acerta quem jogou ${cats(cond)}`:"Se acerta";
+    partes.push(`${pre}${onde}: ${fx.join(", ")}`);
+  }
+  return partes.length?partes.join(". ")+".":"";
+}
+function jxjReferencia2(defs,estilo){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2); if(!d||!d.cartas)return {pe:[],cima:[],baixo:[]};
+  const item=c=>({id:c.id,nome:c.nome,categoria:c.categoria,vel:c.vel,dano:c.dano,custo:c.custo,efeito:jxjEfeitoTexto2(c),exclusivo:c.estiloExclusivo||null,desbloqueio:c.desbloqueio||null});
+  const ordem=(x,y)=>y.vel-x.vel||y.dano-x.dano||String(x.nome).localeCompare(String(y.nome));
+  const pe=Object.values(d.cartas).filter(c=>!estilo||!c.estiloExclusivo||c.estiloExclusivo===estilo).map(item).sort(ordem);
+  const ctx=k=>Object.values((d.chao&&d.chao[k])||{}).map(item).sort(ordem);
+  return {pe,cima:ctx("cima"),baixo:ctx("baixo")};
+}
 /* a vida no placar do Online com o 3D ligado (pedido do dono: "não quero que
    abaixe antes em hipótese alguma"): o placar mostra x.mostrado, que só
    desce quando o golpe encosta no 3D (aoGolpe) ou quando o 3D alcança a
