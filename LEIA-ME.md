@@ -6241,9 +6241,25 @@ quadros que a interpolação não recupera, 0,3 grau: de 6,3 MB pra 1,9 MB).
 A licença do Mixamo deixa usar no jogo mas não redistribuir o arquivo, e o
 GitHub é público: `luta3d/mx_lutas.glb` está no `.gitignore` e só sobe pelo
 `vercel --prod` (o deploy sobe a pasta). O deploy automático do push na
-master sai sem ele; a luta cai no texto até o `vercel --prod` do fluxo. A
-ferramenta que converte (FBX do Mixamo pra GLB) e o protótipo ficaram fora
-do repositório pelo mesmo motivo.
+master sai sem ele; a luta cai no texto até o `vercel --prod` do fluxo. O
+protótipo ficou fora do repositório pelo mesmo motivo.
+
+**Conversor do Mixamo (2026-11-15).** A ferramenta de antes se perdeu e foi
+refeita em `ferramentas/converter-mixamo.mjs`: lê o FBX do Mixamo (sem
+pele, 30 quadros), passa os 52 ossos `mixamorig` pro esqueleto do corpo
+(`MAPA`, mais a correção de descanso `CORRECAO`, calibrada com o FBX
+original do `Mma_Kick`), enxuga a 0,3 grau e grava um GLB só de animações
+com os mesmos nós do `mx_lutas.glb`. Rodar:
+`MIXAMO_THREE=<pasta do FBXLoader do three r169> node ferramentas/converter-mixamo.mjs <lista.tsv> [saida.glb]`,
+com uma linha `arquivo.fbx<TAB>NomeDoClipe` por clipe; a saída padrão é
+`luta3d/mx_cartas.glb` (os clipes das cartas). O FBX, o FBXLoader (com
+`libs/fflate.module.js` e `curves/NURBS*.js`, baixados à parte) e o GLB
+gerado nunca vão pro git; o `mx_cartas.glb` está no `.gitignore` e sobe
+no `vercel --prod`, como o `mx_lutas.glb`. Suíte `mixamo`: com
+`MIXAMO_THREE` e `MIXAMO_FBX` (pasta dos FBX) apontando pros arquivos, o
+`Mma_Kick` e o `Roundhouse_Kick` convertidos de novo batem com o
+`mx_lutas.glb` (média 0,05 grau, máxima 0,32); sem eles, a conversão pula
+com aviso.
 
 **O que cada evento vira.** `janela`: troca de golpes (até 2 de cada lado,
 alguns defendidos). `queda`: a queda em dupla capturada e a montada.
