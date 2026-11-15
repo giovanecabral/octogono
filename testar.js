@@ -16890,6 +16890,85 @@ async function testarLuta3d() {
   console.log("\n" + (falhas.length ? vermelho(`luta3d: ${falhas.length} falha(s)`) : verde("luta3d ok")) + "\n");
   return !falhas.length;
 }
+/* Conversor do Mixamo (ferramentas/converter-mixamo.mjs, 2026-11-15): o FBX original de um clipe que
+   já está no mx_lutas.glb, convertido de novo, tem que dar o mesmo clipe. O FBX, os arquivos do three
+   que leem FBX e o GLB ficam fora do repositório (licença do Mixamo; o GitHub é público): sem eles na
+   máquina, a parte da conversão pula com aviso. Onde estão: MIXAMO_THREE (pasta com
+   loaders/FBXLoader.js, libs/ e curves/ do three r169) e MIXAMO_FBX (pasta dos FBX). */
+async function testarMixamo() {
+  console.log("\n" + cinza("mixamo: conversor do Mixamo pro esqueleto do corpo, conferido contra o mx_lutas.glb"));
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const CV = await import(require("url").pathToFileURL(path.join(__dirname, "ferramentas", "converter-mixamo.mjs")).href);
+  await conf("o GLB dos clipes das cartas fica fora do repositório, como o mx_lutas.glb", () => {
+    const gi = fs.readFileSync(path.join(__dirname, ".gitignore"), "utf8").split("\n").map((l) => l.trim());
+    if (!gi.includes("luta3d/mx_cartas.glb")) throw new Error(".gitignore não tira luta3d/mx_cartas.glb");
+  });
+  await conf("mapa de ossos: 52 ossos do Mixamo, cada um num osso diferente do corpo; a correção de descanso só em osso do mapa", () => {
+    const alvos = Object.values(CV.MAPA);
+    if (alvos.length !== 52 || new Set(alvos).size !== 52) throw new Error("mapa: " + alvos.length + " ossos, " + new Set(alvos).size + " diferentes");
+    for (const lado of ["l", "r"]) for (const o of ["clavicle", "upperarm", "lowerarm", "hand", "thigh", "calf", "foot", "ball", "thumb_03", "pinky_01"])
+      if (!alvos.includes(`${o}_${lado}`)) throw new Error("osso do corpo sem par no Mixamo: " + `${o}_${lado}`);
+    const fora = Object.keys(CV.CORRECAO).filter((a) => !alvos.includes(a));
+    if (fora.length) throw new Error("correção em osso fora do mapa: " + fora);
+  });
+  const pastaThree = process.env.MIXAMO_THREE, pastaFbx = process.env.MIXAMO_FBX;
+  const temThree = !!pastaThree && fs.existsSync(path.join(pastaThree, "loaders", "FBXLoader.js"));
+  const acha = (nomes) => (pastaFbx ? nomes.map((n) => path.join(pastaFbx, n)).find((f) => fs.existsSync(f)) : null);
+  const fbxKick = acha(["validacao__mma_kick.fbx", "Mma Kick.fbx"]);
+  if (!temThree || !fbxKick || !fs.existsSync(CV.GLB_MODELO)) {
+    const falta = [!temThree ? "MIXAMO_THREE (FBXLoader do three r169)" : null, !fbxKick ? "o FBX do Mma Kick em MIXAMO_FBX" : null,
+      !fs.existsSync(CV.GLB_MODELO) ? "luta3d/mx_lutas.glb" : null].filter(Boolean);
+    console.log(cinza("  pula  a conversão (falta " + falta.join(", ") + ")"));
+  } else {
+    const { FBXLoader } = await CV.carregarThree(pastaThree);
+    const modelo = CV.lerGLB(CV.GLB_MODELO), ref = CV.clipesDoGLB(modelo);
+    const confere = (arquivo, nome) => {
+      const c = CV.converterClipe(CV.lerFBX(FBXLoader, arquivo), modelo), r = ref[nome];
+      if (!r) throw new Error("o mx_lutas.glb não tem " + nome);
+      const k1 = Object.keys(c.faixas).sort().join(","), k2 = Object.keys(r.faixas).sort().join(",");
+      if (k1 !== k2) throw new Error("ossos diferentes: " + k1 + " / " + k2);
+      const x = CV.compararClipes(c, r, 10);
+      if (x.difDuracao > 0.05 || x.media > 3 || x.max > 10) throw new Error(`duração ${x.difDuracao.toFixed(3)} s, média ${x.media.toFixed(2)} graus, máxima ${x.max.toFixed(2)} (${x.pior})`);
+      return { c, x };
+    };
+    let kick = null;
+    await conf("Mma_Kick: o FBX original convertido de novo dá o clipe do mx_lutas.glb (mesma duração e ossos; rotação em 10 instantes com média abaixo de 3 graus e máxima abaixo de 10)", () => {
+      kick = confere(fbxKick, "Mma_Kick");
+      console.log(cinza(`         média ${kick.x.media.toFixed(2)} grau, máxima ${kick.x.max.toFixed(2)}`));
+    });
+    const fbxRound = acha(["Roundhouse Kick.fbx", "validacao__roundhouse_kick.fbx"]);
+    if (fbxRound) await conf("Roundhouse_Kick, que não entrou na calibração da correção: a mesma conferência", () => {
+      const { x } = confere(fbxRound, "Roundhouse_Kick");
+      console.log(cinza(`         média ${x.media.toFixed(2)} grau, máxima ${x.max.toFixed(2)}`));
+    });
+    else console.log(cinza("  pula  Roundhouse_Kick (o FBX não está em MIXAMO_FBX)"));
+    await conf("enxugar e gravar: o clipe enxuto fica a até 0,3 grau do inteiro, com menos quadros; o GLB gravado volta igual na leitura, com os nós do modelo", () => {
+      if (!kick) throw new Error("sem a conversão do Mma_Kick");
+      const enxuto = { duracao: kick.c.duracao, faixas: {} };
+      let antes = 0, depois = 0;
+      for (const [k, f] of Object.entries(kick.c.faixas)) { enxuto.faixas[k] = CV.enxugar(f); antes += f.t.length; depois += enxuto.faixas[k].t.length; }
+      if (!(depois < antes * 0.8)) throw new Error(`quase nada saiu: ${antes} quadros, ficaram ${depois}`);
+      const x = CV.compararClipes(enxuto, kick.c, 40);
+      if (x.max > CV.TOLERANCIA_GRAUS + 0.05) throw new Error("enxuto longe do inteiro: " + x.max.toFixed(3) + " grau em " + x.pior);
+      const tmp = path.join(require("os").tmpdir(), "mx_teste_" + process.pid + ".glb");
+      try {
+        CV.escreverGLB({ Teste: enxuto }, tmp, modelo);
+        const lido = CV.lerGLB(tmp), c2 = CV.clipesDoGLB(lido).Teste;
+        if (JSON.stringify(lido.json.nodes) !== JSON.stringify(modelo.json.nodes)) throw new Error("nós diferentes do modelo");
+        for (const [k, f] of Object.entries(enxuto.faixas)) {
+          const g = c2.faixas[k];
+          if (!g || g.t.length !== f.t.length || g.v.some((v, i) => Math.abs(v - f.v[i]) > 1e-6)) throw new Error("faixa diferente depois de gravar: " + k);
+        }
+      } finally { try { fs.unlinkSync(tmp); } catch {} }
+    });
+  }
+  console.log("\n" + (falhas.length ? vermelho(`mixamo: ${falhas.length} falha(s)`) : verde("mixamo ok")) + "\n");
+  return !falhas.length;
+}
 async function testarLutaInterativa() {
   console.log("\n" + cinza("luta interativa: plano antes de cada round, 4 opções que mudam, vale só no round, automático não abre"));
   const F = lerLutadores();
@@ -17232,6 +17311,7 @@ try {
   else if (cmd === "regras") ok = await testarRegrasCarreira();
   else if (cmd === "lutainterativa") ok = await testarLutaInterativa();
   else if (cmd === "luta3d") ok = await testarLuta3d();
+  else if (cmd === "mixamo") ok = await testarMixamo();
   else if (cmd === "gapinterativa") ok = testarGapInterativa(Number(div) || 3000);
   else if (cmd === "jxj") ok = await testarJxJ();
   else if (cmd === "jxjmotor") ok = await testarJxJMotor();
@@ -17327,6 +17407,7 @@ try {
         ["regras", () => testarRegrasCarreira()],
         ["lutainterativa", () => testarLutaInterativa()],
         ["luta3d", () => testarLuta3d()],
+        ["mixamo", () => testarMixamo()],
         ["gapinterativa", () => testarGapInterativa()],
         ["jxj", () => testarJxJ()],
         ["jxjmotor", () => testarJxJMotor()],
