@@ -13258,6 +13258,31 @@ async function testarCombate2() {
     const sem = C.validarDeck("striker", [...base, rara, rara]);
     if (sem.ok || !/liberada/.test(sem.erro)) throw new Error("carta sem o nó passou");
   });
+  await conf("casa: na casa a carta joga como ela; fora, como a básica da categoria (em pé, BASICA_PE; no chão, CHAO); a estrela vale só na casa (estrela 2: +0,5 de dano, ou +0,5 ponto quando funciona; estrela 3: o mod da carta)", () => {
+    const cima = Object.values(C.CARTAS).find((c) => c.casa === "cima" && c.categoria === "golpes");
+    const pe = C.CARTA_DO_NO.precisao_maos;   // Direto: golpe em pé, com dano
+    const P = (build) => ({ ...neutro("striker"), v2: C.perfilV2("striker", build) });
+    if (M.cartaEfetiva(cima.id, "cima", P({})).id !== cima.id) throw new Error("na casa");
+    if (M.cartaEfetiva(cima.id, "pe", P({})).id !== C.BASICA_PE.golpes) throw new Error("fora da casa, em pé");
+    if (M.cartaEfetiva(cima.id, "baixo", P({})).id !== C.CHAO.baixo.golpes.id) throw new Error("fora da casa, por baixo");
+    if (M.cartaEfetiva(pe, "cima", P({})).id !== C.CHAO.cima.golpes.id) throw new Error("carta em pé no chão");
+    const b1 = M.cartaEfetiva(pe, "pe", P({ precisao_maos: 1 })), b2 = M.cartaEfetiva(pe, "pe", P({ precisao_maos: 2 }));
+    if (Math.abs(b2.dano - b1.dano - 0.5) > 1e-9 || b2.estrelas !== 2) throw new Error("estrela 2 com dano: " + [b1.dano, b2.dano]);
+    if (M.cartaEfetiva(pe, "cima", P({ precisao_maos: 3 })).dano !== M.cartaEfetiva("jab", "cima", P({})).dano) throw new Error("estrela valeu fora da casa");
+    /* carta sem dano com reação (a Esquiva tem dano; o Sprawl não): estrela 2 dá +0,5 ponto na reação */
+    const semDano = { ...C.CARTAS.sprawl, id: "t_sd", efeitos: [{ quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true } }], estrela3: { custo: -1 } };
+    C.CARTAS.t_sd = semDano;
+    try {
+      const s2 = M.cartaEfetiva("t_sd", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { t_sd: 2 } } });
+      if (!s2.efeitos.some((ef) => ef.quando === "contra" && ef.acao.pontos >= 0.5)) throw new Error("estrela 2 sem dano: " + JSON.stringify(s2.efeitos));
+      const c3 = M.cartaEfetiva("t_sd", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { t_sd: 3 } } });
+      if (c3.custo !== Math.max(0, semDano.custo - 1)) throw new Error("estrela 3 (custo): " + c3.custo);
+      const c1 = M.cartaEfetiva("t_sd", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { t_sd: 1 } } });
+      if (c1.efeitos.some((ef) => ef.acao.pontos) || c1.custo !== semDano.custo) throw new Error("estrela 1 mudou a carta");
+    } finally { delete C.CARTAS.t_sd; }
+    /* a comum não tem estrela, mesmo com o perfil dizendo */
+    if (M.cartaEfetiva("jab", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { jab: 3 } } }).dano !== M.cartaEfetiva("jab", "pe", neutro()).dano) throw new Error("estrela em carta comum");
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });

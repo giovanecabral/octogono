@@ -19,7 +19,7 @@
    5. velocidade igual: as duas resolvem juntas;
    6. dano, posição, knockdown, grogue, encaixe, pontos e iniciativa. */
 import { createHash } from "node:crypto";
-import { CARTAS, CHAO, PASSIVAS, DECK, validarDeck, cartasLiberadas } from "./_jxj-cartas.js";
+import { CARTAS, CHAO, PASSIVAS, DECK, BASICA_PE, validarDeck, cartasLiberadas } from "./_jxj-cartas.js";
 
 export const VERSAO_COMBATE = 2;
 export const FORMATO2 = { rounds: 3, trocasPorRound: 3 };
@@ -105,20 +105,30 @@ const casaAlvo = (alvo, c) => {
   if (alvo.contexto) { const cs = Array.isArray(alvo.contexto) ? alvo.contexto : [alvo.contexto]; if (!cs.includes(c.contexto)) return false; }
   return true;
 };
+/* aplica um mod (da passiva ou da estrela 3) na carta */
+function aplicarMod(c, m) {
+  if (m.vel) c.vel += m.vel;
+  if (m.dano) c.dano += m.dano;
+  if (m.custo) c.custo = Math.max(0, c.custo + m.custo);
+  if (m.efeitos) c.efeitos.push(...m.efeitos);
+}
+/* estrela 2 na carta sem dano: +0,5 ponto quando ela funciona (reação ou carta que resolve) */
+const comMeioPonto = (efs) => efs.map((ef) => (ef.quando === "contra" || ef.quando === "se_acerta")
+  ? { ...ef, acao: { ...ef.acao, pontos: (ef.acao.pontos || 0) + 0.5 } } : ef);
+/* a carta efetiva: na casa, ela mesma; fora, a básica da categoria ali (em pé, BASICA_PE; no
+   chão, CHAO). Depois a passiva do estilo e, só na casa e só na carta da árvore, as estrelas */
 export function cartaEfetiva(id, pp, perfil) {
   const origem = CARTAS[id];
   if (!origem) throw new Error("carta desconhecida: " + id);
-  const base = pp === "pe" ? origem : CHAO[pp][origem.categoria];
-  const c = { ...base, origem: id, danoBase: base.dano, efeitos: base.efeitos.slice() };
+  const naCasa = (origem.casa || "pe") === pp;
+  const base = naCasa ? origem : pp === "pe" ? CARTAS[BASICA_PE[origem.categoria]] : CHAO[pp][origem.categoria];
+  const c = { ...base, origem: id, naCasa, danoBase: base.dano, efeitos: base.efeitos.slice(), estrelas: 0 };
   const pas = perfil && PASSIVAS[perfil.estilo];
-  const mods = pas ? pas.mods : [];
-  for (const m of mods) {
-    if (!casaAlvo(m.alvo, c)) continue;
-    if (m.vel) c.vel += m.vel;
-    if (m.dano) c.dano += m.dano;
-    if (m.custo) c.custo = Math.max(0, c.custo + m.custo);
-    if (m.efeitos) c.efeitos.push(...m.efeitos);
-  }
+  for (const m of (pas ? pas.mods : [])) if (casaAlvo(m.alvo, c)) aplicarMod(c, m);
+  const nv = naCasa && origem.no && perfil && perfil.v2 && perfil.v2.estrelas ? perfil.v2.estrelas[id] || 0 : 0;
+  c.estrelas = nv;
+  if (nv >= 2) { if (c.dano > 0) c.dano += 0.5; else c.efeitos = comMeioPonto(c.efeitos); }
+  if (nv >= 3 && origem.estrela3) aplicarMod(c, origem.estrela3);
   return c;
 }
 /* a carta que joga sozinha (prazo perdido ou carta que não está na mão): a defesa da mão, se houver */
