@@ -5,7 +5,7 @@
 import * as C2 from "./_jxj-combate2.js";
 import * as C from "./_jxj-cartas.js";
 import { POSTURAS } from "./_jxj-estrategia.js";
-import { perfilDeCombate } from "./_jxj-arvores.js";
+import { perfilDeCombate, NOS } from "./_jxj-arvores.js";
 
 export const ehV2 = (estado) => !!estado && estado.cv === C2.VERSAO_COMBATE;
 const outro = (l) => (l === "a" ? "b" : "a");
@@ -19,7 +19,7 @@ export function deckDo(l) {
   return C.DECK_PADRAO[l.estilo].slice();
 }
 /* o perfil da luta v2: atributos do estilo e da categoria, sem os da árvore
-   (no combate novo o nó vale só pelo que ARVORE_V2 dá, decisão 48), o que a
+   (no combate novo o nó vale só pela carta que libera, decisões 48 e 80), o que a
    árvore dá no combate novo e o deck. A simulação usa este mesmo. */
 export const perfilLuta2 = (l) => ({
   ...perfilDeCombate({ estilo: l.estilo, categoria: l.categoria, build: {} }),
@@ -132,7 +132,12 @@ export function trocaVista(t, nomes) {
 /* ---------- definições ---------- */
 export function definicoes2() {
   const carta = (c) => ({ id: c.id, nome: c.nome, categoria: c.categoria, contexto: c.contexto, vel: c.vel, dano: c.dano, custo: c.custo,
-    efeitos: c.efeitos, estiloExclusivo: c.estiloExclusivo || null, desbloqueio: c.desbloqueio || null });
+    efeitos: c.efeitos, estiloExclusivo: c.estiloExclusivo || null,
+    /* desbloqueio: o nó da carta (o nome de antes, que a tela ainda lê; some na etapa da tela) */
+    desbloqueio: c.no || null, no: c.no || null, raridade: c.raridade || null, casa: c.casa || c.contexto,
+    estrela3: c.estrela3 || null, inanulavel: !!c.inanulavel,
+    /* de que estilo é o nó e em que andar (o híbrido compra rara de outro estilo, andar 1 e 2) */
+    estilo: c.no && NOS[c.no] ? NOS[c.no].estilo : c.estiloExclusivo || null, andar: c.no && NOS[c.no] ? NOS[c.no].tier : null });
   return {
     versao: C2.VERSAO_COMBATE,
     cartas: Object.fromEntries(Object.values(C.CARTAS).map((c) => [c.id, carta(c)])),
@@ -140,8 +145,8 @@ export function definicoes2() {
     passivas: Object.fromEntries(Object.entries(C.PASSIVAS).map(([id, p]) => [id, { nome: p.nome, desc: p.desc }])),
     fixas: C.FIXAS, deckPadrao: C.DECK_PADRAO, deck: C.DECK,
     liberadas: Object.fromEntries(Object.keys(C.FIXAS).map((s) => [s, C.cartasLiberadas(s)])),
-    /* o que cada nó da árvore dá no combate novo (texto; a carta nova vem em cartas[].desbloqueio) */
-    arvore: Object.fromEntries(Object.entries(C.ARVORE_V2).map(([no, efs]) => [no, efs.map((x) => x.desc)])),
+    /* o que cada nó da árvore dá no combate novo: a carta dele */
+    arvore: Object.fromEntries(Object.values(C.CARTAS).filter((c) => c.no).map((c) => [c.no, [`Libera a carta ${c.nome} (${C.NOME_RARIDADE[c.raridade]}).`]])),
     regras: { vidaBase: C2.K2.vidaBase, custoFinta: C2.K2.custoFinta, fatorFintaIniciativa: C2.K2.fatorFintaIniciativa,
       kdDano: C2.K2.kdDano, koGrogue: C2.K2.koGrogue, limiarVel: C2.K2.limiarVel, finalizaNivel: C2.K2.finalizaNivel },
   };

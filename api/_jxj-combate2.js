@@ -68,9 +68,9 @@ export function comprar(deck, semente, round, lado) {
 }
 
 /* ---------- lutador ---------- */
-/* a árvore (Fase 4) entra pelo perfil.v2 (perfilV2 de _jxj-cartas.js): melhorias de carta, vida, finta e energia de fim de round */
-export const vidaMax = (p) => r1(K2.vidaBase + (p.atr.queixo - 50) * K2.vidaPorQueixo + ((p.v2 && p.v2.vida) || 0));
-export const fintaDe = (p) => Math.max(0.5, K2.custoFinta - ((p && p.v2 && p.v2.fintaMenos) || 0));
+/* a árvore entra pelo perfil.v2 (perfilV2 de _jxj-cartas.js): as cartas liberadas e as estrelas de cada uma */
+export const vidaMax = (p) => r1(K2.vidaBase + (p.atr.queixo - 50) * K2.vidaPorQueixo);
+export const fintaDe = () => K2.custoFinta;
 export const energiaMax2 = (p) => r2(K2.energiaBase + (p.atr.cardio - 50) * K2.energiaPorCardio);
 const ladoNovo = (p) => ({
   vida: vidaMax(p), vidaMax: vidaMax(p), energia: energiaMax2(p), energiaMax: energiaMax2(p),
@@ -111,7 +111,7 @@ export function cartaEfetiva(id, pp, perfil) {
   const base = pp === "pe" ? origem : CHAO[pp][origem.categoria];
   const c = { ...base, origem: id, danoBase: base.dano, efeitos: base.efeitos.slice() };
   const pas = perfil && PASSIVAS[perfil.estilo];
-  const mods = [...(pas ? pas.mods : []), ...((perfil && perfil.v2 && perfil.v2.mods) || [])];
+  const mods = pas ? pas.mods : [];
   for (const m of mods) {
     if (!casaAlvo(m.alvo, c)) continue;
     if (m.vel) c.vel += m.vel;
@@ -434,8 +434,7 @@ function fecharRound2(e, perfis, semente, ctx) {
   }
   for (const l of L2) {
     const sobra = e.mao[l].length;
-    const extra = (perfis[l].v2 && perfis[l].v2.energiaRound) || 0;
-    e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + extra + sobra * K2.energiaPorSobra));
+    e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + sobra * K2.energiaPorSobra));
     e[l].grogue = false;
   }
   e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.iniciativa = null;

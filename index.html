@@ -7923,8 +7923,11 @@ function jxjReferencia2(defs,estilo){
   const d=defs||(JXJ_DEF&&JXJ_DEF.combate2); if(!d||!d.cartas)return {pe:[],cima:[],baixo:[]};
   const item=c=>({id:c.id,nome:c.nome,categoria:c.categoria,vel:c.vel,dano:c.dano,custo:c.custo,efeito:jxjEfeitoTexto2(c),exclusivo:c.estiloExclusivo||null,desbloqueio:c.desbloqueio||null});
   const ordem=(x,y)=>y.vel-x.vel||y.dano-x.dano||String(x.nome).localeCompare(String(y.nome));
-  const pe=Object.values(d.cartas).filter(c=>!estilo||!c.estiloExclusivo||c.estiloExclusivo===estilo).map(item).sort(ordem);
-  const ctx=k=>Object.values((d.chao&&d.chao[k])||{}).map(item).sort(ordem);
+  /* com o estilo: as comuns dele, as cartas do nó dele e a rara de outro estilo que o híbrido compra (andar 1 e 2) */
+  const dele=c=>!estilo||(c.no?(c.estilo===estilo||c.andar<=2):(!c.estiloExclusivo||c.estiloExclusivo===estilo));
+  const daCasa=k=>Object.values(d.cartas).filter(c=>(c.casa||"pe")===k&&dele(c)).map(item);
+  const pe=daCasa("pe").sort(ordem);
+  const ctx=k=>[...Object.values((d.chao&&d.chao[k])||{}).map(item),...daCasa(k)].sort(ordem);
   return {pe,cima:ctx("cima"),baixo:ctx("baixo")};
 }
 /* a vida no placar do Online com o 3D ligado (pedido do dono: "não quero que
@@ -8709,7 +8712,8 @@ function jxjAbaDeck(c,def,est,l){
     const pool=el("div","jxj-deck-cartas");
     const conta={}; for(const id of deck)conta[id]=(conta[id]||0)+1;
     for(const x of Object.values(d.cartas)){
-      if(x.estiloExclusivo&&x.estiloExclusivo!==l.estilo)continue;
+      /* carta de nó de outro estilo só aparece quando o híbrido já tem o nó (travada, não) */
+      if(x.no?(x.estilo&&x.estilo!==l.estilo&&!lib.includes(x.id)):(x.estiloExclusivo&&x.estiloExclusivo!==l.estilo))continue;
       if(!lib.includes(x.id)){
         const no=NOS[x.desbloqueio],ramo=no&&def.ramos[no.ramo];
         pool.appendChild(el("div","jxj-deck-slot travada",`<span class="jxj-deck-face">${carta(x.id)}</span><span class="jxj-deck-cadeado">${ICONE("cadeado")}</span>`

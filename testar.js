@@ -12040,7 +12040,7 @@ async function testarJxJ() {
         /* atributo por atributo: o jsonb do banco reordena as chaves */
         const atrL = L.perfis[eu].atr, ks = Object.keys(base.atr);
         if (Object.keys(atrL).length !== ks.length || ks.some((k) => atrL[k] !== base.atr[k])) throw new Error("o atributo da árvore entrou no combate v2: " + JSON.stringify({ luta: atrL, base: base.atr }));
-        if (!L.perfis[eu].v2 || !L.perfis[eu].v2.mods.some((m) => m.alvo && m.alvo.carta === "jab" && Math.abs(m.dano - 0.3) < 1e-9)) throw new Error("o efeito v2 do nó não entrou: " + JSON.stringify(L.perfis[eu].v2));
+        if (!L.perfis[eu].v2 || L.perfis[eu].v2.estrelas[CT.CARTA_DO_NO.precisao_maos] !== 3) throw new Error("as estrelas do nó não entraram: " + JSON.stringify(L.perfis[eu].v2));
         await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
         await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
       } finally { await flagV2(false); }
@@ -13214,53 +13214,56 @@ async function testarCombate2() {
   });
   /* a árvore no combate v2 (Fase 4) */
   const V2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-luta2.js")).href);
-  const modDe = (p, carta) => p.mods.filter((m) => m.alvo && m.alvo.carta === carta);
-  await conf("árvore v2: todo nó da árvore tem efeito com texto; por nível multiplica dano, velocidade, custo e os números do efeito (pontos, energia); apartir só liga no nível; nó desconhecido ou nível 0 não dá nada", () => {
-    for (const r of Object.values(A.RAMOS)) for (const n of r.nos) {
-      const efs = C.ARVORE_V2[n.id];
-      if (!efs || !efs.length || efs.some((x) => typeof x.desc !== "string" || x.desc.length < 8 || /\u2014|\u2013/.test(x.desc))) throw new Error("nó sem efeito v2 ou sem texto: " + n.id);
+  await conf("catálogo: toda carta tem casa, raridade e nó coerentes; cada nó da árvore libera exatamente uma carta, com a raridade do andar (1 e 2 rara, 3 épica, 4 lendária); as comuns não têm nó", () => {
+    const porNo = {};
+    for (const [id, c] of Object.entries(C.CARTAS)) {
+      if (!["pe", "cima", "baixo"].includes(c.casa) || !C.RARIDADES.includes(c.raridade)) throw new Error("casa ou raridade: " + id);
+      if ((c.raridade === "comum") !== (c.no == null)) throw new Error("comum com nó ou carta da árvore sem nó: " + id);
+      if (c.no) { if (porNo[c.no]) throw new Error("dois nós iguais: " + c.no); porNo[c.no] = id; }
+      if (c.contexto !== c.casa) throw new Error("contexto diferente da casa: " + id);
     }
-    const jab = modDe(C.perfilV2("striker", { precisao_maos: 3 }), "jab");
-    if (jab.length !== 1 || Math.abs(jab[0].dano - 0.3) > 1e-9) throw new Error("dano por nível: " + JSON.stringify(jab));
-    const q2 = modDe(C.perfilV2("wrestler", { entradas: 2 }), "queda");
-    if (q2.length !== 1 || q2[0].efeitos[0].acao.pontos !== 1 || C.ARVORE_V2.entradas[0].mod.efeitos[0].acao.pontos !== 0.5) throw new Error("pontos por nível (ou o efeito da árvore foi alterado): " + JSON.stringify(q2));
-    if (modDe(C.perfilV2("striker", { chute_corpo: 1 }), "chute_alto").length) throw new Error("apartir 2 ligou no nível 1");
-    for (const nv of [2, 3]) { const m = modDe(C.perfilV2("striker", { chute_corpo: nv }), "chute_alto"); if (m.length !== 1 || m[0].custo !== -1) throw new Error("apartir sem por nível, nível " + nv + ": " + JSON.stringify(m)); }
-    const comb = (nv) => modDe(C.perfilV2("striker", { combinacoes: nv }), "combinacao");
-    if (comb(1).length || Math.abs(comb(3)[0].dano - 0.5) > 1e-9) throw new Error("apartir com por nível: " + JSON.stringify([comb(1), comb(3)]));
-    const vazio = C.perfilV2("striker", { xyz: 3, precisao_maos: 0 });
-    if (vazio.mods.length || vazio.vida || vazio.energiaRound || vazio.fintaMenos) throw new Error("nó desconhecido ou nível 0 deu efeito");
-    if (C.perfilV2("counter", { adaptacao: 2 }).vida !== 1.5) throw new Error("vida por nível");
+    for (const r of Object.values(A.RAMOS)) r.nos.forEach((n, i) => {
+      const id = porNo[n.id];
+      if (!id) throw new Error("nó sem carta: " + n.id);
+      const esperada = i < 2 ? "rara" : i === 2 ? "epica" : "lendaria";
+      if (C.CARTAS[id].raridade !== esperada) throw new Error(`${id}: ${C.CARTAS[id].raridade}, esperava ${esperada}`);
+      if (C.CARTA_DO_NO[n.id] !== id) throw new Error("CARTA_DO_NO: " + n.id);
+    });
+    if (Object.keys(porNo).length !== 48) throw new Error("cartas da árvore: " + Object.keys(porNo).length);
   });
-  await conf("carta nova da árvore: só do estilo dela e só com o nó; o deck com ela passa pela build e é recusado sem o nó", () => {
-    for (const [s, carta, no] of [["striker", "combinacao", "combinacoes"], ["wrestler", "double_leg", "correntes"], ["grappler", "rasteira", "transicoes_sub"], ["counter", "esquiva", "padroes"]]) {
-      if (C.CARTAS[carta].desbloqueio !== no || C.cartasLiberadas(s).includes(carta) || !C.cartasLiberadas(s, { [no]: 1 }).includes(carta)) throw new Error("liberação de " + carta);
-      for (const o of A.ESTILOS_IDS) if (o !== s && C.cartasLiberadas(o, { [no]: 3 }).includes(carta)) throw new Error(carta + " liberada pra " + o);
-    }
-    const d = C.DECK_PADRAO.striker.slice(); d[d.lastIndexOf("contra_ataque")] = "combinacao";
-    if (C.validarDeck("striker", d).ok || !C.validarDeck("striker", d, C.cartasLiberadas("striker", { combinacoes: 1 })).ok) throw new Error("validação com a build");
+  await conf("liberadas e estrelas: comuns sempre (puxar guarda só no grappler); nó no nível 1 libera a carta com 1 estrela, nível 3 dá 3; nó desconhecido ou nível 0 não dá nada; build híbrida forjada com nó de andar 3 de outro estilo não libera a épica", () => {
+    const lib = C.cartasLiberadas("striker");
+    for (const id of ["jab", "cruzado", "chute_alto", "bloqueio", "contra_ataque", "queda", "antiqueda", "clinch"]) if (!lib.includes(id)) throw new Error("comum faltando: " + id);
+    if (lib.includes("puxar_guarda") || !C.cartasLiberadas("grappler").includes("puxar_guarda")) throw new Error("puxar guarda");
+    if (lib.some((id) => C.CARTAS[id].no)) throw new Error("carta da árvore sem nó");
+    const b = { precisao_maos: 1, combinacoes: 3, xyz: 3, chute_baixo: 0 };
+    const l2 = C.cartasLiberadas("striker", b), est = C.estrelasDe(b);
+    if (!l2.includes(C.CARTA_DO_NO.precisao_maos) || !l2.includes(C.CARTA_DO_NO.combinacoes) || l2.includes(C.CARTA_DO_NO.chute_baixo)) throw new Error("liberadas: " + l2);
+    if (est[C.CARTA_DO_NO.precisao_maos] !== 1 || est[C.CARTA_DO_NO.combinacoes] !== 3 || Object.keys(est).length !== 2) throw new Error("estrelas: " + JSON.stringify(est));
+    /* híbrido: rara de outro estilo sim (andar 1 e 2), épica e lendária nunca */
+    const hib = C.cartasLiberadas("striker", { entradas: 1, timing_queda: 3, eficiencia_tentativas: 3 });
+    if (!hib.includes(C.CARTA_DO_NO.entradas) || hib.includes(C.CARTA_DO_NO.timing_queda) || hib.includes(C.CARTA_DO_NO.eficiencia_tentativas)) throw new Error("híbrido: " + hib);
+    const p = C.perfilV2("striker", b);
+    if (JSON.stringify(p.liberadas) !== JSON.stringify(l2) || JSON.stringify(p.estrelas) !== JSON.stringify(est)) throw new Error("perfilV2");
   });
-  await conf("árvore v2 no motor: o Jab com o nó bate mais; o Bloqueio com Controle de distância anula a Queda (sem o nó, ela entra); a Queda com Entradas dá os pontos a mais; vida a mais na luta nova", () => {
-    const com = (s, build) => ({ ...neutro(s), v2: C.perfilV2(s, build) });
-    let x = luta(["jab", "bloqueio", "queda", "clinch", "cruzado"], ["bloqueio", "antiqueda", "queda", "clinch", "cruzado"], {}, { a: com("wrestler", { precisao_maos: 3 }), b: neutro("wrestler") });
-    let r = troca(x, "jab", "clinch");
-    if (r.resolucao.dano.a !== 1.3) throw new Error("Jab com o nó: " + JSON.stringify(r.resolucao.dano));
-    for (const [build, anula] of [[{ controle_distancia: 2 }, true], [{}, false]]) {
-      x = luta(["bloqueio", "jab", "queda", "clinch", "cruzado"], ["queda", "antiqueda", "jab", "clinch", "cruzado"], {}, { a: com("striker", build), b: neutro("wrestler") });
-      r = troca(x, "bloqueio", "queda");
-      if (tem(r, "anulou", "a") !== anula || tem(r, "queda", "b") === anula) throw new Error("Bloqueio contra Queda, build " + JSON.stringify(build) + ": " + r.eventos.map((ev) => ev.tipo).join(","));
-    }
-    const pts = (build) => { const y = luta(["queda", "jab", "bloqueio", "clinch", "cruzado"], ["clinch", "jab", "bloqueio", "queda", "cruzado"], {}, { a: com("wrestler", build), b: neutro("wrestler") }); return troca(y, "queda", "clinch").resolucao.pontos.a; };
-    if (Math.abs(pts({ entradas: 2 }) - pts({}) - 1) > 1e-9) throw new Error("pontos da Queda: " + pts({ entradas: 2 }) + " contra " + pts({}));
-    const e = M.novaLuta2(com("counter", { adaptacao: 2 }), neutro("counter"), "v");
-    if (e.a.vidaMax !== e.b.vidaMax + 1.5) throw new Error("vida: " + e.a.vidaMax + " contra " + e.b.vidaMax);
+  await conf("deck: cópias pela raridade (comum e rara 2, épica e lendária 1), carta não liberada recusada", () => {
+    const epica = C.CARTA_DO_NO.contra_maos, rara = C.CARTA_DO_NO.precisao_maos;
+    const lib = C.cartasLiberadas("striker", { precisao_maos: 1, combinacoes: 1, contra_maos: 1 });
+    /* o padrão sem o 2º Chute alto e o 2º Contra-ataque: 10 cartas com as 4 categorias */
+    const base = C.DECK_PADRAO.striker.filter((id, i, d) => !((id === "chute_alto" || id === "contra_ataque") && d.indexOf(id) !== i));
+    if (base.length !== 10) throw new Error("base do teste: " + base);
+    if (!C.validarDeck("striker", [...base, rara, rara], lib).ok) throw new Error("2 raras recusadas: " + JSON.stringify(C.validarDeck("striker", [...base, rara, rara], lib)));
+    const v = C.validarDeck("striker", [...base, epica, epica], lib);
+    if (v.ok || !/cópia/.test(v.erro)) throw new Error("2 épicas passaram: " + JSON.stringify(v));
+    const sem = C.validarDeck("striker", [...base, rara, rara]);
+    if (sem.ok || !/liberada/.test(sem.erro)) throw new Error("carta sem o nó passou");
   });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });
     const base = A.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build: {} }), comArv = A.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build });
     if (JSON.stringify(p.atr) !== JSON.stringify(base.atr) || comArv.atr.golpe <= base.atr.golpe) throw new Error("atributo da árvore no combate v2: " + JSON.stringify([p.atr.golpe, base.atr.golpe, comArv.atr.golpe]));
-    if (!modDe(p.v2, "jab").length || JSON.stringify(p.deck) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("v2 ou deck do perfil");
+    if (p.v2.estrelas[C.CARTA_DO_NO.precisao_maos] !== 3 || JSON.stringify(p.deck) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("v2 ou deck do perfil");
     const d = C.DECK_PADRAO.striker.slice(); d[d.lastIndexOf("contra_ataque")] = "combinacao";
     if (JSON.stringify(V2.deckDo({ estilo: "striker", build: { combinacoes: 1 }, deck: d })) !== JSON.stringify(d)) throw new Error("deck com o nó");
     if (JSON.stringify(V2.deckDo({ estilo: "striker", build: {}, deck: d })) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("deck sem o nó não voltou pro padrão");
@@ -13386,13 +13389,17 @@ async function testarJxJV2() {
     for (const t of ["golpe1", "quedaDefendida", "queda", "kd", "fim", "decisao"]) if (!lances.has(t)) throw new Error("nenhum lance " + t + " (vistos: " + [...lances] + ")");
     if (kds < 5 || fins < 200) throw new Error(`poucos knockdowns (${kds}) ou fins (${fins})`);
   });
-  await conf("referência da v2: em pé, por cima e por baixo, da mais rápida pra mais lenta; todo efeito vira texto; a carta exclusiva só no estilo dela", () => {
+  await conf("referência da v2: em pé, por cima e por baixo (pela casa da carta), da mais rápida pra mais lenta; todo efeito vira texto; com o estilo, as cartas dele e a rara de outro estilo que o híbrido compra, nunca a épica ou lendária de outro", () => {
     const r = noJogo("jxjReferencia2", defs, "striker"), todas = noJogo("jxjReferencia2", defs, null);
     for (const k of ["pe", "cima", "baixo"]) for (let i = 1; i < r[k].length; i++) if (r[k][i].vel > r[k][i - 1].vel) throw new Error(k + " fora de ordem: " + r[k].map((c) => c.id + c.vel));
-    if (r.cima.length !== 4 || r.baixo.length !== 4) throw new Error("chão: " + r.cima.length + "/" + r.baixo.length);
+    const casaDe = (id) => (defs.cartas[id] ? defs.cartas[id].casa : null);
+    for (const k of ["cima", "baixo"]) {
+      const base = Object.values(defs.chao[k]).map((c) => c.id);
+      if (!base.every((id) => r[k].some((c) => c.id === id)) || r[k].some((c) => !base.includes(c.id) && casaDe(c.id) !== k)) throw new Error("chão " + k + ": " + r[k].map((c) => c.id));
+    }
     const ids = r.pe.map((c) => c.id);
-    if (!ids.includes("combinacao") || ids.includes("esquiva") || ids.includes("puxar_guarda")) throw new Error("exclusivas do striker: " + ids);
-    if (todas.pe.length !== Object.keys(defs.cartas).length) throw new Error("sem estilo, faltou carta");
+    if (!ids.includes("combinacao") || !ids.includes("esquiva") || ids.includes("leitura_total") || ids.includes("puxar_guarda") || r.pe.some((c) => casaDe(c.id) !== "pe")) throw new Error("cartas do striker: " + ids);
+    if (todas.pe.length + todas.cima.length + todas.baixo.length !== Object.keys(defs.cartas).length + 8) throw new Error("sem estilo, faltou carta");
     const ef = (id) => [...todas.pe, ...todas.cima, ...todas.baixo].find((c) => c.id === id).efeito;
     const espera = { bloqueio: "Contra golpe: anula, recupera 2 de energia.", chute_alto: "Golpe de dano 1 não interrompe.", contra_ataque: "Se ele jogou golpe: dano vezes 2.",
       queda: "Se acerta: leva pro chão, você por cima.", ground_and_pound: "Se acerta na montada: 1 de dano a mais.", jab: "Se interrompe: recupera 1 de energia.",
@@ -13404,7 +13411,8 @@ async function testarJxJV2() {
     }
   });
   await conf("carta v2 (jxjCarta2): custo, velocidade com a diferença do duelo, dano e o efeito; raridade e arte opcionais (sem elas, nada a mais; raridade fora da lista é ignorada); nome e arte escapados", () => {
-    const jab = defs.cartas.jab;
+    /* a carta sem raridade nos dados (as de antes das cartas da árvore): nada a mais */
+    const jab = { ...defs.cartas.jab, raridade: null };
     const h = noJogo("jxjCarta2", jab, { vel: 4, velBase: 5, dano: 1.25 });
     if (!/aria-label="velocidade 4"/.test(h) || !/<b>4<i class="menos">-1<\/i><\/b>/.test(h) || !h.includes("<b>1,25</b>") || !h.includes(">1</span></span>")) throw new Error("números: " + h);
     if (!h.includes("Se interrompe: recupera 1 de energia.")) throw new Error("efeito: " + h);
@@ -15119,7 +15127,7 @@ async function testarJxJTelas() {
         if (!det.includes("jxj-no-v2-detalhe com-carta") || !det.includes('data-carta="combinacao"') || !det.includes("aparece na aba Deck")) throw new Error("detalhe: " + det.replace(/\s+/g, " ").slice(0, 300));
         await ultimoNo("Precisão").onclick(); await assentar(10);
         const det2 = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
-        if (!det2.includes("jxj-no-v2-detalhe") || det2.includes("com-carta")) throw new Error("detalhe sem carta: " + det2.replace(/\s+/g, " ").slice(-300));
+        if (!det2.includes("jxj-no-v2-detalhe com-carta") || !det2.includes('data-carta="direto"')) throw new Error("detalhe do Precisão (o Direto): " + det2.replace(/\s+/g, " ").slice(-300));
         m = await abrir(`lutador/${l1}/deck`);
         semLixoV3T(htmlDe(desde(m)), "aba Deck");
       } finally { await flagV2T(false); }
