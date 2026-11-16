@@ -13357,6 +13357,35 @@ async function testarCombate2() {
       if (r.estado.pos !== "cima_b" || r.estado.nivelPos !== 0 || !tem(r, "recuou", "a")) throw new Error("recua: " + r.estado.pos + r.estado.nivelPos);
     } finally { for (const id of ["t_cq", "t_bl", "t_rg", "t_pj", "t_rc"]) delete C.CARTAS[id]; }
   });
+  await conf("estado de luta: grogue sem knockdown; nocauteSe (grogue, vida até 3 antes do golpe, metade da vida); tirar o grogue; ao_jogar com danoProprio vale mesmo anulada", () => {
+    try {
+      cartaTeste("t_sp", { nome: "SP", categoria: "queda", vel: 3, dano: 1, custo: 0, efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true, grogue: true } }] });
+      cartaTeste("t_mi", { nome: "MI", categoria: "golpes", vel: 4, dano: 2, custo: 0, efeitos: [{ quando: "se_acerta", acao: { nocauteSe: { grogue: true, vidaAte: 3 } } }] });
+      cartaTeste("t_mt", { nome: "MT", casa: "cima", categoria: "golpes", vel: 3, dano: 1, custo: 0, efeitos: [{ quando: "se_acerta", acao: { nocauteSe: { fracao: 0.5 } } }] });
+      cartaTeste("t_sf", { nome: "SF", categoria: "defesa", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, tiraGrogue: true } }] });
+      cartaTeste("t_su", { nome: "SU", categoria: "golpes", vel: 5, dano: 3, custo: 0, efeitos: [{ quando: "ao_jogar", condicao: { categoria: ["defesa"] }, acao: { danoProprio: 2 } }] });
+      const x = luta(["t_sp", ...MAO5.slice(1)], MAO5);
+      let r = troca(x, "t_sp", "bloqueio");
+      if (!r.estado.b.grogue || !tem(r, "grogue", "b") || tem(r, "knockdown")) throw new Error("grogue sem knockdown: " + r.eventos.map((ev) => ev.tipo));
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: true } }), "t_mi", "clinch");
+      if (!r.estado.fim || r.estado.fim.metodo !== "KO") throw new Error("nocauteSe grogue: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: false, vida: 3 } }), "t_mi", "clinch");
+      if (!r.estado.fim) throw new Error("nocauteSe com 3 de vida antes do golpe");
+      /* a vida de antes do golpe: com 5, o golpe de 2 deixa 3 e não é nocaute */
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: false, vida: 5 } }), "t_mi", "clinch");
+      if (r.estado.fim) throw new Error("nocauteSe olhou a vida depois do golpe");
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5), "t_mi", "clinch");
+      if (r.estado.fim) throw new Error("nocauteSe sem condição");
+      /* por baixo ele joga a Queda (vira o Raspar, mais lento): a Guarda (o Bloqueio por baixo) anularia o golpe */
+      r = troca(luta(["t_mt", ...MAO5.slice(1)], MAO5, { pos: "cima_a", nivelPos: 2, b: { ...x.e.b, grogue: false, vida: x.e.b.vidaMax / 2 } }), "t_mt", "queda");
+      if (!r.estado.fim || r.estado.fim.metodo !== "TKO") throw new Error("nocauteSe metade no chão: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_sf", ...MAO5.slice(1)], MAO5, { a: { ...x.e.a, grogue: true } }), "t_sf", "jab");
+      if (r.estado.a.grogue || !tem(r, "tirouGrogue", "a")) throw new Error("tirar grogue");
+      const y = luta(["t_su", ...MAO5.slice(1)], MAO5), vida = y.e.a.vida;
+      r = troca(y, "t_su", "bloqueio");
+      if (r.estado.a.vida !== vida - 2 || !tem(r, "anulou", "b")) throw new Error("danoProprio: " + r.estado.a.vida);
+    } finally { for (const id of ["t_sp", "t_mi", "t_mt", "t_sf", "t_su"]) delete C.CARTAS[id]; }
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });

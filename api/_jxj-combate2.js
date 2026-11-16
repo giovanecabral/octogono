@@ -229,6 +229,19 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
   if (wo.length === 2) fimDaLuta(e, ctx, null, "ANULADA");
   else if (wo.length === 1) fimDaLuta(e, ctx, outro(wo[0]), "WO");
 
+  /* ao jogar (antes das reações, vale mesmo se a carta for anulada): o Superman punch que cai no contra */
+  for (const l of L2) {
+    if (jog[l].exausta || e.fim) continue;
+    const o = outro(l);
+    for (const ef of efeitosDe(jog[l].c, "ao_jogar")) {
+      if (!casaCond(ef.condicao, jog[o].c, e, o) || !ef.acao.danoProprio) continue;
+      e[l].vida = r1(e[l].vida - ef.acao.danoProprio);
+      pontuar(e, o, K2.pts.dano * ef.acao.danoProprio);
+      ctx.ev.push({ tipo: "dano", quem: o, carta: jog[o].c.id, alvo: l, dano: ef.acao.danoProprio, punicao: true });
+      if (e[l].vida <= 0) fimDaLuta(e, ctx, o, "TKO");
+    }
+  }
+
   if (!e.fim) {
     if (e.encaixe) resolverEncaixe(e, perfis, jog, ctx);
     if (!e.fim && !jog.a.resolveu && !jog.b.resolveu && !jog.encaixeResolvido) resolverNormal(e, perfis, jog, ctx, pp);
@@ -243,7 +256,7 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
     if (Math.abs(dA) > 0.01) { const v = dA > 0 ? "a" : "b"; if (e.iniciativa !== v) { e.iniciativa = v; ctx.ev.push({ tipo: "iniciativa", quem: v }); } }
   }
   /* o grogue vale uma troca: só fica quem caiu nesta */
-  for (const l of L2) e[l].grogue = !!jog[outro(l)].deuKd && !e.fim;
+  for (const l of L2) e[l].grogue = (!!jog[outro(l)].deuKd || !!jog[outro(l)].deuGrogue) && !e.fim;
   /* o lento e o rápido valem só na troca seguinte */
   for (const l of L2) { e[l].lento = e[l].lentoProx || 0; e[l].lentoProx = 0; e[l].rapido = e[l].rapidoProx || 0; e[l].rapidoProx = 0; }
   res.dano = { a: jog.a.dano, b: jog.b.dano };   // quanto cada um causou
@@ -328,6 +341,7 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
 function aplicarAcaoPropria(e, l, acao, ctx, c) {
   if (acao.pontos) pontuar(e, l, acao.pontos);
   if (acao.rapidoProxima) { e[l].rapidoProx = 1; ctx.ev.push({ tipo: "rapido", quem: l, carta: c.id }); }
+  if (acao.tiraGrogue && e[l].grogue) { e[l].grogue = false; ctx.ev.push({ tipo: "tirouGrogue", quem: l, carta: c.id }); }
   /* reação que derruba: quem reagiu vai pro chão por cima (Contra-queda) */
   if (acao.poeEmCima) { e.pos = "cima_" + l; e.nivelPos = acao.nivel || 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
   /* recuar: a posição volta pra guarda (quem está por baixo recompõe) */
@@ -359,6 +373,7 @@ function resolverCarta(e, perfis, jog, l, ctx) {
   j.resolveu = true;
   e[l].total.acertos++;
   ctx.ev.push({ tipo: "resolveu", quem: l, carta: j.c.id });
+  j.vidaAlvoAntes = e[o].vida;   // o nocauteSe olha a vida de antes do golpe
   if (dano > 0) aplicarDano(e, perfis, jog, l, dano, ctx);
   if (e.fim) return;
   for (const a of acoes) aplicarAcao(e, perfis, jog, l, a, ctx);
@@ -374,6 +389,7 @@ function resolverJuntas(e, perfis, jog, ctx) {
     ctx.ev.push({ tipo: "resolveu", quem: l, carta: j.c.id });
   }
   /* o dano dos dois entra junto; nocaute dos dois: vence quem bateu mais */
+  for (const l of L2) jog[l].vidaAlvoAntes = e[outro(l)].vida;
   for (const l of L2) if (calc[l] && calc[l].dano > 0) aplicarDano(e, perfis, jog, l, calc[l].dano, ctx, { adiarFim: true });
   const caidos = L2.filter((l) => jog[l].koPendente);
   if (caidos.length === 2) {
@@ -421,6 +437,16 @@ function aplicarAcao(e, perfis, jog, l, a, ctx) {
   aplicarAcaoPropria(e, l, a, ctx, c);
   if (a.lentoProxima) { e[o].lentoProx = 1; ctx.ev.push({ tipo: "lento", quem: o, carta: c.id }); }
   if (a.sangra && !e[o].sangra) { e[o].sangra = true; ctx.ev.push({ tipo: "sangrou", quem: o, carta: c.id }); }
+  /* grogue sem knockdown (Suplex, Berimbolo): vale na troca seguinte, como o do knockdown */
+  if (a.grogue) { jog[l].deuGrogue = true; ctx.ev.push({ tipo: "grogue", quem: o, carta: c.id }); }
+  /* acertar é nocaute se ele estava grogue, ou com a vida até um número ou até uma fração (antes do golpe) */
+  if (a.nocauteSe && jog[l].dano > 0) {
+    const n = a.nocauteSe, alvo = e[o], antes = jog[l].vidaAlvoAntes != null ? jog[l].vidaAlvoAntes : alvo.vida;
+    if ((n.grogue && alvo.grogue) || (n.vidaAte != null && antes <= n.vidaAte) || (n.fracao != null && antes <= alvo.vidaMax * n.fracao)) {
+      fimDaLuta(e, ctx, l, papel2(e, l) === "pe" ? "KO" : "TKO");
+      return;
+    }
+  }
   if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = a.nivel || 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
   if (a.puxaGuarda) { e.pos = "cima_" + o; e.nivelPos = 0; ctx.ev.push({ tipo: "puxouGuarda", quem: l }); }
   if (a.avanca) { const antes = e.nivelPos; e.nivelPos = Math.min(2, e.nivelPos + a.avanca); if (e.nivelPos !== antes) { pontuar(e, l, K2.pts.avanca); ctx.ev.push({ tipo: "avancou", quem: l, nivelPos: e.nivelPos }); } }
