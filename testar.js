@@ -13386,6 +13386,24 @@ async function testarCombate2() {
       if (r.estado.a.vida !== vida - 2 || !tem(r, "anulou", "b")) throw new Error("danoProprio: " + r.estado.a.vida);
     } finally { for (const id of ["t_sp", "t_mi", "t_mt", "t_sf", "t_su"]) delete C.CARTAS[id]; }
   });
+  await conf("finalizações novas: por baixo finaliza ao resolver; em pé finaliza quem está grogue (ou cansado, se a carta pedir) e senão derruba pra montada; o Avançar dele (contra queda) segura a de baixo", () => {
+    try {
+      cartaTeste("t_tri", { nome: "TRI", casa: "baixo", categoria: "queda", vel: 2, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { finaliza: true, porBaixo: true } }] });
+      cartaTeste("t_ml", { nome: "ML", categoria: "queda", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { finalizaSe: { grogue: true }, vaiProChao: true, nivel: 2 } }] });
+      cartaTeste("t_mlc", { nome: "MLC", categoria: "queda", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { finalizaSe: { cansado: true }, vaiProChao: true } }] });
+      let r = troca(luta(["t_tri", ...MAO5.slice(1)], MAO5, { pos: "cima_b", nivelPos: 0 }), "t_tri", "bloqueio");
+      if (!r.estado.fim || r.estado.fim.metodo !== "FIN" || r.estado.fim.vencedor !== "a") throw new Error("por baixo: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_tri", ...MAO5.slice(1)], ["clinch", ...MAO5.slice(0, 4)], { pos: "cima_b", nivelPos: 0 }), "t_tri", "clinch");
+      if (r.estado.fim) throw new Error("o Avançar (contra queda) não segurou o triângulo");
+      const x = luta(MAO5, MAO5);
+      r = troca(luta(["t_ml", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: true } }), "t_ml", "clinch");
+      if (!r.estado.fim || r.estado.fim.metodo !== "FIN") throw new Error("em pé com ele grogue: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_ml", ...MAO5.slice(1)], MAO5), "t_ml", "clinch");
+      if (r.estado.fim || r.estado.pos !== "cima_a" || r.estado.nivelPos !== 2) throw new Error("em pé sem grogue: " + r.estado.pos + r.estado.nivelPos);
+      r = troca(luta(["t_mlc", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, energia: 1 } }), "t_mlc", "bloqueio");
+      if (!r.estado.fim || r.estado.fim.metodo !== "FIN") throw new Error("em pé com ele cansado: " + JSON.stringify(r.estado.fim));
+    } finally { for (const id of ["t_tri", "t_ml", "t_mlc"]) delete C.CARTAS[id]; }
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });

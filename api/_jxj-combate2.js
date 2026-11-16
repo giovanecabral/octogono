@@ -434,6 +434,11 @@ function aplicarDano(e, perfis, jog, l, dano, ctx, { adiarFim = false } = {}) {
 /* efeitos que mexem no oponente ou na posição */
 function aplicarAcao(e, perfis, jog, l, a, ctx) {
   const o = outro(l), c = jog[l].c;
+  /* finalizar em pé (Mata-leão): quem está grogue (ou cansado, se a carta pede) é finalizado; o resto da carta nem roda */
+  if (a.finalizaSe) {
+    const fs = a.finalizaSe;
+    if ((fs.grogue && e[o].grogue) || (fs.cansado && e[o].energia <= K2.cansado)) { fimDaLuta(e, ctx, l, "FIN"); return; }
+  }
   aplicarAcaoPropria(e, l, a, ctx, c);
   if (a.lentoProxima) { e[o].lentoProx = 1; ctx.ev.push({ tipo: "lento", quem: o, carta: c.id }); }
   if (a.sangra && !e[o].sangra) { e[o].sangra = true; ctx.ev.push({ tipo: "sangrou", quem: o, carta: c.id }); }
@@ -454,7 +459,8 @@ function aplicarAcao(e, perfis, jog, l, a, ctx) {
   if (a.levanta) { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.levanta); ctx.ev.push({ tipo: "levantou", quem: l }); }
   if (a.finaliza) {
     const pas = PASSIVAS[perfis[l].estilo], minimo = pas && pas.finalizaNivel != null ? pas.finalizaNivel : K2.finalizaNivel;
-    if (e.nivelPos >= minimo || e[o].grogue) fimDaLuta(e, ctx, l, "FIN");
+    /* porBaixo: a finalização de quem está por baixo (Triângulo) finaliza ao resolver */
+    if (a.porBaixo || e.nivelPos >= minimo || e[o].grogue) fimDaLuta(e, ctx, l, "FIN");
     else { e.encaixe = { quem: l }; ctx.ev.push({ tipo: "encaixou", quem: l, alvo: o }); }
   }
 }
