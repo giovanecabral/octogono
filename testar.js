@@ -13335,6 +13335,28 @@ async function testarCombate2() {
       if (r.resolucao.cartas.a.vel !== C.CARTAS.cruzado.vel + 1) throw new Error("rapidoProxima: " + r.resolucao.cartas.a.vel);
     } finally { delete C.CARTAS.t_perna; delete C.CARTAS.t_lado; }
   });
+  await conf("posição: reação que derruba (poeEmCima: anula a queda e quem reagiu fica por cima, sem 'falhou'); queda e raspagem com nível; avançar 2; recuar volta pra guarda", () => {
+    try {
+      cartaTeste("t_cq", { nome: "CQ", categoria: "defesa", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true, poeEmCima: true } }] });
+      cartaTeste("t_bl", { nome: "BL", categoria: "pressao", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true, nivel: 1 } }] });
+      cartaTeste("t_rg", { nome: "RG", casa: "baixo", categoria: "queda", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { inverte: true, nivel: 2 } }] });
+      cartaTeste("t_pj", { nome: "PJ", casa: "cima", categoria: "pressao", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { avanca: 2 } }] });
+      cartaTeste("t_rc", { nome: "RC", casa: "baixo", categoria: "pressao", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { recua: true } }] });
+      let r = troca(luta(["t_cq", ...MAO5.slice(1)], MAO5), "t_cq", "queda");
+      if (r.estado.pos !== "cima_a" || !tem(r, "queda", "a") || tem(r, "falhou")) throw new Error("poeEmCima: " + r.estado.pos + " " + r.eventos.map((ev) => ev.tipo));
+      r = troca(luta(["t_bl", ...MAO5.slice(1)], MAO5), "t_bl", "jab");
+      if (r.estado.pos === "cima_a") throw new Error("o Jab mais rápido devia interromper");
+      r = troca(luta(["t_bl", ...MAO5.slice(1)], MAO5), "t_bl", "bloqueio");
+      if (r.estado.pos !== "cima_a" || r.estado.nivelPos !== 1) throw new Error("vaiProChao nível 1: " + r.estado.pos + r.estado.nivelPos);
+      r = troca(luta(["t_rg", ...MAO5.slice(1)], MAO5, { pos: "cima_b", nivelPos: 0 }), "t_rg", "bloqueio");
+      if (r.estado.pos !== "cima_a" || r.estado.nivelPos !== 2) throw new Error("inverte nível 2: " + r.estado.pos + r.estado.nivelPos);
+      r = troca(luta(["t_pj", ...MAO5.slice(1)], MAO5, { pos: "cima_a", nivelPos: 0 }), "t_pj", "bloqueio");
+      if (r.estado.nivelPos !== 2) throw new Error("avança 2: " + r.estado.nivelPos);
+      /* ele joga o Jab (ground and pound por cima): a Segurar dele (Bloqueio por cima) anularia a pressão */
+      r = troca(luta(["t_rc", ...MAO5.slice(1)], MAO5, { pos: "cima_b", nivelPos: 2 }), "t_rc", "jab");
+      if (r.estado.pos !== "cima_b" || r.estado.nivelPos !== 0 || !tem(r, "recuou", "a")) throw new Error("recua: " + r.estado.pos + r.estado.nivelPos);
+    } finally { for (const id of ["t_cq", "t_bl", "t_rg", "t_pj", "t_rc"]) delete C.CARTAS[id]; }
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });

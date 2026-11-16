@@ -273,6 +273,8 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
     for (const ef of efeitosDe(jog[l].c, "contra")) {
       if (!casaCond(ef.condicao, jog[o].c, e, o)) continue;
       if (ef.acao.anula) anulou[l] = true;
+      /* a reação que mudou a posição já resolveu a carta: ela não resolve de novo (senão "falhou") */
+      if (ef.acao.poeEmCima) jog[l].posPropria = true;
       aplicarAcaoPropria(e, l, ef.acao, ctx, jog[l].c);
     }
   }
@@ -285,7 +287,11 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
     ctx.ev.push({ tipo: "anulou", quem: l, carta: jog[l].c.id, alvo: jog[o].c.id });
   }
   const vivos = L2.filter((l) => !jog[l].anulada);
-  if (vivos.length === 1) { res.ordem = vivos[0]; resolverCarta(e, perfis, jog, vivos[0], ctx); return; }
+  if (vivos.length === 1) {
+    res.ordem = vivos[0];
+    if (jog[vivos[0]].posPropria) { jog[vivos[0]].resolveu = true; return; }
+    resolverCarta(e, perfis, jog, vivos[0], ctx); return;
+  }
   if (!vivos.length) { res.ordem = "anuladas"; return; }
   /* 4. a mais rápida primeiro */
   if (jog.a.vel !== jog.b.vel) {
@@ -322,6 +328,10 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
 function aplicarAcaoPropria(e, l, acao, ctx, c) {
   if (acao.pontos) pontuar(e, l, acao.pontos);
   if (acao.rapidoProxima) { e[l].rapidoProx = 1; ctx.ev.push({ tipo: "rapido", quem: l, carta: c.id }); }
+  /* reação que derruba: quem reagiu vai pro chão por cima (Contra-queda) */
+  if (acao.poeEmCima) { e.pos = "cima_" + l; e.nivelPos = acao.nivel || 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
+  /* recuar: a posição volta pra guarda (quem está por baixo recompõe) */
+  if (acao.recua && e.pos !== "pe" && e.nivelPos > 0) { e.nivelPos = 0; ctx.ev.push({ tipo: "recuou", quem: l, carta: c.id }); }
   if (acao.energiaOponente) { const o = outro(l), antes = e[o].energia; e[o].energia = r2(Math.max(0, e[o].energia + acao.energiaOponente)); if (antes !== e[o].energia) ctx.ev.push({ tipo: "energia", quem: o, carta: c.id, ganho: r2(e[o].energia - antes) }); }
   if (acao.energia) { const antes = e[l].energia; e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + acao.energia)); if (e[l].energia !== antes) ctx.ev.push({ tipo: "energia", quem: l, carta: c.id, ganho: r2(e[l].energia - antes) }); }
   if (acao.iniciativa && e.iniciativa !== l) { e.iniciativa = l; ctx.ev.push({ tipo: "iniciativa", quem: l, carta: c.id }); }
@@ -339,7 +349,7 @@ function calcularCarta(e, perfis, jog, l, grogueAlvo) {
   const dano = danoDe(perfis, l, c, grogueAlvo, { mult, extra, exausta: j.exausta, sangra: !!e[o].sangra });
   return { dano, acoes };
 }
-const posicional = (a) => a.vaiProChao || a.puxaGuarda || a.finaliza || a.inverte || a.levanta || a.avanca;
+const posicional = (a) => a.vaiProChao || a.puxaGuarda || a.finaliza || a.inverte || a.levanta || a.avanca || a.recua;
 
 function resolverCarta(e, perfis, jog, l, ctx) {
   const j = jog[l], o = outro(l);
@@ -411,10 +421,10 @@ function aplicarAcao(e, perfis, jog, l, a, ctx) {
   aplicarAcaoPropria(e, l, a, ctx, c);
   if (a.lentoProxima) { e[o].lentoProx = 1; ctx.ev.push({ tipo: "lento", quem: o, carta: c.id }); }
   if (a.sangra && !e[o].sangra) { e[o].sangra = true; ctx.ev.push({ tipo: "sangrou", quem: o, carta: c.id }); }
-  if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
+  if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = a.nivel || 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
   if (a.puxaGuarda) { e.pos = "cima_" + o; e.nivelPos = 0; ctx.ev.push({ tipo: "puxouGuarda", quem: l }); }
   if (a.avanca) { const antes = e.nivelPos; e.nivelPos = Math.min(2, e.nivelPos + a.avanca); if (e.nivelPos !== antes) { pontuar(e, l, K2.pts.avanca); ctx.ev.push({ tipo: "avancou", quem: l, nivelPos: e.nivelPos }); } }
-  if (a.inverte) { e.pos = "cima_" + l; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.inverte); ctx.ev.push({ tipo: "raspou", quem: l }); }
+  if (a.inverte) { e.pos = "cima_" + l; e.nivelPos = a.nivel || 0; e.encaixe = null; pontuar(e, l, K2.pts.inverte); ctx.ev.push({ tipo: "raspou", quem: l }); }
   if (a.levanta) { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.levanta); ctx.ev.push({ tipo: "levantou", quem: l }); }
   if (a.finaliza) {
     const pas = PASSIVAS[perfis[l].estilo], minimo = pas && pas.finalizaNivel != null ? pas.finalizaNivel : K2.finalizaNivel;
