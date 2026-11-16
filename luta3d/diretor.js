@@ -1152,8 +1152,10 @@ return {
   lance,
   entrada,
   pularEntrada() { if (cortarEntrada) cortarEntrada(); },
-  /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera e o palco */
-  _dev: { A, B, cam, palco, THREE, MONTADA, get montada() { return montada; } },
+  /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera, o palco e os
+     lances um a um (a arte das cartas, ferramentas/arte-cartas.mjs, fotografa o lance de cada carta) */
+  _dev: { A, B, cam, palco, THREE, MONTADA, get montada() { return montada; },
+    lances: { golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },
   destruir() {
     vivo = false; cancelAnimationFrame(quadro); clearTimeout(timerCham);

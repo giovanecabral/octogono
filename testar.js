@@ -13269,6 +13269,70 @@ async function testarCombate2() {
   console.log("\n" + (okTudo ? verde("  combate2 ok") : vermelho(`  ${falhas.length} falha(s) no combate2`)));
   return okTudo;
 }
+/* cartasarte (cartas da árvore, Tarefa 16): toda carta tem lance no 3D e imagem.
+   Antes do merge com a Etapa 1 (o catálogo das 48 em api/_jxj-cartas.js), os ids
+   vêm também da lista do plano (Tarefa 8); depois do merge, C.CARTAS já tem todas
+   e a lista do plano pode sair. */
+const IDS_CARTAS_PLANO = ["jab", "cruzado", "chute_alto", "bloqueio", "contra_ataque", "queda", "antiqueda", "clinch", "puxar_guarda",
+  "direto", "combinacao", "contragolpe", "overhand", "chute_perna", "chute_corpo", "chute_frontal", "chute_rodado", "passo_lateral", "joelhada", "cotovelada", "superman",
+  "single_leg", "double_leg", "queda_contragolpe", "suplex", "peso_ombro", "cotovelada_cima", "passagem_joelho", "martelada", "sprawl", "levantada_tecnica", "contra_queda", "bodylock",
+  "kimura", "rasteira", "triangulo", "mata_leao", "cem_quilos", "passagem_guarda", "guarda_fechada", "raspagem_gancho", "defesa_finalizacao", "fuga_quadril", "recomposicao", "berimbolo",
+  "esquiva", "leitura_queda", "contra_esquerda", "leitura_total", "pendulo", "guarda_alta", "saida_lado", "segundo_folego", "contra_corpo", "cruzado_contra", "uppercut", "misericordia"];
+/* largura e altura de um webp (simples com perda, sem perda ou estendido) */
+function tamanhoWebp(b) {
+  if (b.length < 30 || b.toString("ascii", 0, 4) !== "RIFF" || b.toString("ascii", 8, 12) !== "WEBP") return null;
+  const tipo = b.toString("ascii", 12, 16);
+  if (tipo === "VP8X") return { w: 1 + b.readUIntLE(24, 3), h: 1 + b.readUIntLE(27, 3) };
+  if (tipo === "VP8 ") return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+  if (tipo === "VP8L") { const v = b.readUInt32LE(21); return { w: 1 + (v & 0x3fff), h: 1 + ((v >> 14) & 0x3fff) }; }
+  return null;
+}
+async function testarCartasArte() {
+  console.log("\n" + cinza("cartasarte: toda carta tem lance no 3D e imagem (img/cartas)"));
+  const falhas = [], conf = confJxJ(falhas), url = require("url");
+  const C = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
+  const L = await import(url.pathToFileURL(path.join(RAIZ, "luta3d", "lances-cartas.js")).href);
+  const ids = [...new Set([...Object.keys(C.CARTAS), ...Object.values(C.CARTA_DO_CHAO).map((c) => c.id), ...IDS_CARTAS_PLANO])];
+  const diretor = fs.readFileSync(path.join(RAIZ, "luta3d", "diretor.js"), "utf8");
+  const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map((m) => m[1]));
+  const golpes = new Set([...diretor.matchAll(/^\s{2}(\w+):\s*\{ clip:/gm)].map((m) => m[1]));
+  const glb = path.join(RAIZ, "luta3d", "mx_lutas.glb");
+  const clipes = fs.existsSync(glb) ? (() => { const b = fs.readFileSync(glb); return new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name)); })() : null;
+  const PASSOS = ["golpe", "queda", "defendida", "socos", "tentativa", "expulsar", "fin", "kd", "espera"];
+  const CAMERAS = ["lado", "tres", "baixo", "perto", "costas", "chao", "cima"];
+  await conf("toda carta (as comuns, as 48 da árvore e as 8 do chão) tem lance e foto, e o lance não sobra pra carta que não existe", () => {
+    if (ids.length !== 65) throw new Error("cartas: " + ids.length);
+    for (const id of ids) if (!L.LANCES_CARTAS[id] || !L.LANCES_CARTAS[id].arte) throw new Error("sem lance ou arte: " + id);
+    for (const id of Object.keys(L.LANCES_CARTAS)) if (!ids.includes(id)) throw new Error("lance de carta que não existe: " + id);
+  });
+  await conf("o lance usa o que o diretor tem: o tipo é um case, o golpe está no GOLPES, o clipe está no mx_lutas.glb (ou tem reserva lá); a foto tem passos, câmera e instante conhecidos", () => {
+    for (const [id, l] of Object.entries(L.LANCES_CARTAS)) {
+      if (!casos.has(l.tipo)) throw new Error(`${id}: tipo ${l.tipo} sem case no diretor`);
+      if (l.golpe && !golpes.has(l.golpe)) throw new Error(`${id}: golpe ${l.golpe} fora do GOLPES`);
+      for (const c of [l.clipe, l.arte.clipe, l.arte.exige].filter(Boolean)) if (clipes && !clipes.has(c) && !(l.reserva && clipes.has(l.reserva))) throw new Error(`${id}: clipe ${c} fora do mx_lutas.glb`);
+      const a = l.arte;
+      if (!Array.isArray(a.passos) || !a.passos.length || a.passos.some((p) => !PASSOS.includes(p[0]))) throw new Error(`${id}: passos ${JSON.stringify(a.passos)}`);
+      for (const p of a.passos) if (p[0] === "golpe" && !golpes.has(p[2])) throw new Error(`${id}: golpe do passo ${p[2]}`);
+      if (!a.camera || !CAMERAS.includes(a.camera.tipo)) throw new Error(`${id}: câmera ${JSON.stringify(a.camera)}`);
+      if (!a.t || (!(a.t.impacto >= 1) && !(a.t.s > 0))) throw new Error(`${id}: instante ${JSON.stringify(a.t)}`);
+    }
+  });
+  await conf("toda carta tem a imagem img/cartas/<id>.webp, 512 x 640, com até 80 KB", () => {
+    let total = 0;
+    for (const id of ids) {
+      const f = path.join(RAIZ, "img", "cartas", id + ".webp");
+      if (!fs.existsSync(f)) throw new Error("sem imagem: " + id);
+      const b = fs.readFileSync(f), t = tamanhoWebp(b);
+      if (!t || t.w !== 512 || t.h !== 640) throw new Error(`${id}: ${t ? t.w + " x " + t.h : "não é webp"}`);
+      if (b.length > 80 * 1024) throw new Error(`${id}: ${Math.round(b.length / 1024)} KB`);
+      total += b.length;
+    }
+    console.log(cinza(`         ${ids.length} imagens, ${Math.round(total / 1024)} KB no total`));
+  });
+  const okTudo = !falhas.length;
+  console.log("\n" + (okTudo ? verde("  cartasarte ok") : vermelho(`  ${falhas.length} falha(s) no cartasarte`)));
+  return okTudo;
+}
 /* jxjv2 (Fase 6, a lógica): as funções puras da tela da v2 no index.html, com trocas
    do motor de verdade passadas pelo formato do servidor (trocaVista) */
 async function testarJxJV2() {
@@ -17322,6 +17386,7 @@ try {
   else if (cmd === "jxjbot") ok = await testarJxJBot();
   else if (cmd === "combate2") ok = await testarCombate2();
   else if (cmd === "jxjv2") ok = await testarJxJV2();
+  else if (cmd === "cartasarte") ok = await testarCartasArte();
   else if (cmd === "personagem") ok = await testarPersonagem();
   else if (cmd === "resultado") ok = testarResultadoLuta();
   else if (cmd === "aivivo") ok = await testarAiVivo();
@@ -17418,6 +17483,7 @@ try {
         ["jxjbot", () => testarJxJBot()],
         ["combate2", () => testarCombate2()],
         ["jxjv2", () => testarJxJV2()],
+        ["cartasarte", () => testarCartasArte()],
         ["escalonamento", () => testarEscalonamentoDisputa()],
         ["espera", () => testarEspera(div || "lightweight")],
         ["lesaonocaute", () => testarLesaoNocaute()],
