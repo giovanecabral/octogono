@@ -13404,6 +13404,33 @@ async function testarCombate2() {
       if (!r.estado.fim || r.estado.fim.metodo !== "FIN") throw new Error("em pé com ele cansado: " + JSON.stringify(r.estado.fim));
     } finally { for (const id of ["t_tri", "t_ml", "t_mlc"]) delete C.CARTAS[id]; }
   });
+  await conf("catálogo: as 48 cartas da spec com os ids, nós e casas combinados, cada uma com efeito e estrela 3; toda carta resolve sem erro numa troca contra cada comum, na casa e fora dela", () => {
+    const esperado = {
+      direto: ["precisao_maos", "pe"], combinacao: ["combinacoes", "pe"], contragolpe: ["contra_maos", "pe"], overhand: ["eficiencia_golpes", "pe"],
+      chute_perna: ["chute_baixo", "pe"], chute_corpo: ["chute_corpo", "pe"], chute_frontal: ["controle_distancia", "pe"], chute_rodado: ["variedade", "pe"],
+      passo_lateral: ["controle_ritmo", "pe"], joelhada: ["combinacoes_pressao", "pe"], cotovelada: ["iniciativa", "pe"], superman: ["eficiencia_ofensiva", "pe"],
+      single_leg: ["entradas", "pe"], double_leg: ["correntes", "pe"], queda_contragolpe: ["timing_queda", "pe"], suplex: ["eficiencia_tentativas", "pe"],
+      peso_ombro: ["controle_posicional", "cima"], cotovelada_cima: ["dominio", "cima"], passagem_joelho: ["transicoes_controle", "cima"], martelada: ["pressao_solo", "cima"],
+      sprawl: ["equilibrio", "pe"], levantada_tecnica: ["recuperacao_posicao", "baixo"], contra_queda: ["defesa_entradas", "pe"], bodylock: ["retorno_distancia", "pe"],
+      kimura: ["eficiencia_sub", "cima"], rasteira: ["transicoes_sub", "pe"], triangulo: ["oportunidades", "baixo"], mata_leao: ["especializacao", "pe"],
+      cem_quilos: ["controle_chao", "cima"], passagem_guarda: ["passagens", "cima"], guarda_fechada: ["retencao", "baixo"], raspagem_gancho: ["raspagem", "baixo"],
+      defesa_finalizacao: ["defesa_sub", "baixo"], fuga_quadril: ["saidas", "baixo"], recomposicao: ["sobrevivencia", "baixo"], berimbolo: ["recuperar_guarda", "baixo"],
+      esquiva: ["padroes", "pe"], leitura_queda: ["antecipacao", "pe"], contra_esquerda: ["resposta", "pe"], leitura_total: ["adaptacao", "pe"],
+      pendulo: ["evasao", "pe"], guarda_alta: ["bloqueio", "pe"], saida_lado: ["gestao_distancia", "pe"], segundo_folego: ["recuperacao_defensiva", "pe"],
+      contra_corpo: ["contra_ataques", "pe"], cruzado_contra: ["timing", "pe"], uppercut: ["eficiencia_counter", "pe"], misericordia: ["aproveitamento", "pe"],
+    };
+    for (const [id, [no, casa]] of Object.entries(esperado)) {
+      const c = C.CARTAS[id];
+      if (!c || c.no !== no || c.casa !== casa || !c.estrela3 || !c.nome) throw new Error("carta: " + id + " " + JSON.stringify(c && { no: c.no, casa: c.casa, e3: c.estrela3 }));
+      if (!c.efeitos.length && !c.inanulavel && id !== "direto" && id !== "cotovelada_cima") throw new Error("carta sem efeito: " + id);
+    }
+    const comuns = ["jab", "cruzado", "chute_alto", "bloqueio", "contra_ataque", "queda", "antiqueda", "clinch"];
+    for (const id of Object.keys(esperado)) for (const pos of [{ pos: "pe", nivelPos: 0 }, { pos: "cima_a", nivelPos: 1 }, { pos: "cima_b", nivelPos: 1 }]) for (const ele of comuns) {
+      const P = { a: { ...neutro("grappler"), v2: { liberadas: C.cartasLiberadas("grappler"), estrelas: { [id]: 3 } } }, b: neutro("wrestler") };
+      const x = luta([id, "jab", "bloqueio", "queda", "clinch"], [ele, "jab", "bloqueio", "queda", "clinch"], pos, P);
+      troca(x, id, ele);   // não pode lançar erro
+    }
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });
