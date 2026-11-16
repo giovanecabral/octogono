@@ -13283,6 +13283,35 @@ async function testarCombate2() {
     /* a comum não tem estrela, mesmo com o perfil dizendo */
     if (M.cartaEfetiva("jab", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { jab: 3 } } }).dano !== M.cartaEfetiva("jab", "pe", neutro()).dano) throw new Error("estrela em carta comum");
   });
+  /* carta de teste (apagada no fim): só pra provar cada mecânica sozinha */
+  const cartaTeste = (id, c) => { C.CARTAS[id] = { id, raridade: "rara", no: null, estrela3: null, duelo: null, casa: "pe", ...c, contexto: c.casa || "pe" }; return id; };
+  const MAO5 = ["jab", "cruzado", "bloqueio", "queda", "clinch"];
+  await conf("condições e reações novas: danoMin/danoMax na reação; resistente com condição; inanulável passa pela reação; reação que tira energia; se_interrompe com dano a mais", () => {
+    try {
+      cartaTeste("t_grande", { nome: "Grande", categoria: "defesa", vel: 5, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"], danoMin: 3 }, acao: { anula: true } }] });
+      cartaTeste("t_pequeno", { nome: "Pequeno", categoria: "defesa", vel: 5, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"], danoMax: 2 }, acao: { anula: true, energiaOponente: -1 } }] });
+      cartaTeste("t_rodado", { nome: "Rodado", categoria: "golpes", vel: 1, dano: 5, custo: 3, efeitos: [{ quando: "resistente", condicao: { categoria: ["golpes"] }, acao: { ateDano: 3 } }] });
+      cartaTeste("t_over", { nome: "Over", categoria: "golpes", vel: 2, dano: 4, custo: 3, inanulavel: true, efeitos: [] });
+      cartaTeste("t_combo", { nome: "Combo", categoria: "golpes", vel: 4, dano: 2, custo: 2, efeitos: [{ quando: "se_interrompe", acao: { danoExtra: 1 } }] });
+      let r = troca(luta(["t_grande", ...MAO5.slice(1)], MAO5), "t_grande", "cruzado");
+      if (!tem(r, "anulou", "a")) throw new Error("danoMin 3 não anulou o Cruzado");
+      r = troca(luta(["t_grande", ...MAO5.slice(1)], MAO5), "t_grande", "jab");
+      if (tem(r, "anulou", "a")) throw new Error("danoMin 3 anulou o Jab");
+      const x = luta(["t_pequeno", ...MAO5.slice(1)], MAO5), antes = x.e.b.energia;
+      r = troca(x, "t_pequeno", "jab");
+      if (!tem(r, "anulou", "a") || r.estado.b.energia !== Math.round((antes - 1 - 1) * 100) / 100) throw new Error("danoMax e energiaOponente na reação: " + r.estado.b.energia);
+      r = troca(luta(["t_pequeno", ...MAO5.slice(1)], MAO5), "t_pequeno", "cruzado");
+      if (tem(r, "anulou", "a")) throw new Error("danoMax 2 anulou o Cruzado");
+      r = troca(luta(["t_rodado", ...MAO5.slice(1)], MAO5), "t_rodado", "cruzado");
+      if (!tem(r, "resistiu", "a") || !(r.resolucao.dano.a > 0)) throw new Error("resistente com condição (contra golpe) não segurou");
+      r = troca(luta(["t_rodado", ...MAO5.slice(1)], ["clinch", ...MAO5.slice(0, 4)]), "t_rodado", "clinch");
+      if (tem(r, "resistiu", "a")) throw new Error("resistente valeu contra pressão");
+      r = troca(luta(["t_over", ...MAO5.slice(1)], MAO5), "t_over", "bloqueio");
+      if (tem(r, "anulou", "b") || !(r.resolucao.dano.a > 0)) throw new Error("inanulável foi anulada");
+      r = troca(luta(["t_combo", ...MAO5.slice(1)], MAO5), "t_combo", "cruzado");
+      if (r.resolucao.dano.a !== 3) throw new Error("se_interrompe com dano a mais: " + r.resolucao.dano.a);
+    } finally { for (const id of ["t_grande", "t_pequeno", "t_rodado", "t_over", "t_combo"]) delete C.CARTAS[id]; }
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });

@@ -140,6 +140,9 @@ const casaCond = (cond, cOp, e, alvo) => {
   if (cond.carta && !cond.carta.includes(cOp.id) && !cond.carta.includes(cOp.origem)) return false;
   if (cond.nivelPos != null && !(e.pos !== "pe" && e.nivelPos >= cond.nivelPos)) return false;
   if (cond.grogue && !e[alvo].grogue) return false;
+  /* pelo dano base da carta dele (o número que o jogador vê) */
+  if (cond.danoMin != null && !(cOp.danoBase >= cond.danoMin)) return false;
+  if (cond.danoMax != null && !(cOp.danoBase <= cond.danoMax)) return false;
   return true;
 };
 const efeitosDe = (c, quando) => c.efeitos.filter((ef) => ef.quando === quando);
@@ -257,6 +260,8 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
   for (const l of L2) {
     const o = outro(l);
     if (jog[l].exausta) continue;
+    /* a carta inanulável dele não dispara a reação (passa pelo Bloqueio, pela Guarda, pela Esquiva) */
+    if (jog[o].c.inanulavel) continue;
     for (const ef of efeitosDe(jog[l].c, "contra")) {
       if (!casaCond(ef.condicao, jog[o].c, e, o)) continue;
       if (ef.acao.anula) anulou[l] = true;
@@ -281,14 +286,18 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
     resolverCarta(e, perfis, jog, r, ctx);
     if (e.fim) { jog[s].interrompida = true; return; }
     /* resistente olha o dano base da carta dele (sem passiva nem atributo): é o número que o jogador vê */
-    const resiste = efeitosDe(jog[s].c, "resistente").some((ef) => jog[r].c.danoBase <= ef.acao.ateDano);
+    const resiste = efeitosDe(jog[s].c, "resistente").some((ef) => casaCond(ef.condicao, jog[r].c, e, r) && jog[r].c.danoBase <= ef.acao.ateDano);
     if (jog[r].resolveu && jog[r].c.dano > 0 && !resiste) {
       jog[s].interrompida = true;
       pontuar(e, r, K2.pts.interrompe);
       e[r].total.interrupcoes++;
       res.interrupcoes.push({ quem: r, carta: jog[r].c.id, interrompeu: s, cartaInterrompida: jog[s].c.id });
       ctx.ev.push({ tipo: "interrompeu", quem: r, carta: jog[r].c.id, alvo: jog[s].c.id });
-      for (const ef of efeitosDe(jog[r].c, "se_interrompe")) aplicarAcaoPropria(e, r, ef.acao, ctx, jog[r].c);
+      for (const ef of efeitosDe(jog[r].c, "se_interrompe")) {
+        aplicarAcaoPropria(e, r, ef.acao, ctx, jog[r].c);
+        /* o segundo golpe da combinação: entra depois de interromper */
+        if (ef.acao.danoExtra) { aplicarDano(e, perfis, jog, r, ef.acao.danoExtra, ctx); if (e.fim) return; }
+      }
     } else {
       if (resiste && jog[r].resolveu && jog[r].c.dano > 0) ctx.ev.push({ tipo: "resistiu", quem: s, carta: jog[s].c.id });
       resolverCarta(e, perfis, jog, s, ctx);
@@ -301,9 +310,10 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
   resolverJuntas(e, perfis, jog, ctx);
 }
 
-/* efeitos que mexem só em quem jogou (energia, iniciativa, pontos de juiz) */
+/* efeitos que valem também na reação: energia, iniciativa, pontos de juiz e a energia dele */
 function aplicarAcaoPropria(e, l, acao, ctx, c) {
   if (acao.pontos) pontuar(e, l, acao.pontos);
+  if (acao.energiaOponente) { const o = outro(l), antes = e[o].energia; e[o].energia = r2(Math.max(0, e[o].energia + acao.energiaOponente)); if (antes !== e[o].energia) ctx.ev.push({ tipo: "energia", quem: o, carta: c.id, ganho: r2(e[o].energia - antes) }); }
   if (acao.energia) { const antes = e[l].energia; e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + acao.energia)); if (e[l].energia !== antes) ctx.ev.push({ tipo: "energia", quem: l, carta: c.id, ganho: r2(e[l].energia - antes) }); }
   if (acao.iniciativa && e.iniciativa !== l) { e.iniciativa = l; ctx.ev.push({ tipo: "iniciativa", quem: l, carta: c.id }); }
 }
@@ -390,7 +400,6 @@ function aplicarDano(e, perfis, jog, l, dano, ctx, { adiarFim = false } = {}) {
 function aplicarAcao(e, perfis, jog, l, a, ctx) {
   const o = outro(l), c = jog[l].c;
   aplicarAcaoPropria(e, l, a, ctx, c);
-  if (a.energiaOponente) { const antes = e[o].energia; e[o].energia = r2(Math.max(0, e[o].energia + a.energiaOponente)); if (antes !== e[o].energia) ctx.ev.push({ tipo: "energia", quem: o, carta: c.id, ganho: r2(e[o].energia - antes) }); }
   if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
   if (a.puxaGuarda) { e.pos = "cima_" + o; e.nivelPos = 0; ctx.ev.push({ tipo: "puxouGuarda", quem: l }); }
   if (a.avanca) { const antes = e.nivelPos; e.nivelPos = Math.min(2, e.nivelPos + a.avanca); if (e.nivelPos !== antes) { pontuar(e, l, K2.pts.avanca); ctx.ev.push({ tipo: "avancou", quem: l, nivelPos: e.nivelPos }); } }
