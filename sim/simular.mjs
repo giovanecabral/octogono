@@ -7,7 +7,8 @@
    Variáveis:
      SIM_PARTES  partes, separadas por vírgula (padrão: todas):
                  matriz, categorias, pesos, habilidade, decks,
-                 nivel30, evolucao, nos (a árvore, Fase 4); bots (Fase 5,
+                 nivel30, evolucao, nos (a árvore: cada nó e cada carta), busca (melhor deck
+                 no nível 30, lento); bots (Fase 5,
                  fora do padrão: SIM_PARTES=bots SIM_SAIDA=relatorio-bots.md)
      SIM_SAIDA   arquivo do relatório em sim/ (padrão relatorio.md)
      SIM_AJUSTE  números de experimento em JSON (sim/ajuste.mjs)
@@ -27,12 +28,13 @@ import { CATEGORIAS_LANCAMENTO, CATEGORIAS, buildTipica, RAMOS, ESTILOS } from "
 import * as BOT from "../api/_jxj-bot.js";
 import * as B2 from "../api/_jxj-bot2.js";
 import { aplicarAjuste } from "./ajuste.mjs";
+import { buscarDeck, deckDoNo, deckEmTexto } from "./busca-deck.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const N = Number(process.argv[2] || 10000);
 const ajuste = process.env.SIM_AJUSTE ? JSON.parse(process.env.SIM_AJUSTE) : null;
 aplicarAjuste(ajuste);
-const PARTES = (process.env.SIM_PARTES || "matriz,categorias,pesos,habilidade,decks,nivel30,evolucao,nos").split(",");
+const PARTES = (process.env.SIM_PARTES || "matriz,categorias,pesos,habilidade,decks,nivel30,evolucao,nos,busca").split(",");
 const NDECKS = Number(process.env.SIM_DECKS || 40);
 const ESTS = ["striker", "wrestler", "grappler", "counter"];
 /* SIM_ESTILOS: na parte nos, mede só a árvore destes (contra os 4) */
@@ -78,12 +80,12 @@ const vit = (o) => pct(o.vA, o.vA + o.vB);   // vitória de A, sem os empates
 
 /* ---------- decks aleatórios (caçar combo quebrado) ---------- */
 function gerador(n) { let s = n >>> 0; return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-function deckAleatorio(estilo, r) {
-  const lib = C.cartasLiberadas(estilo);
+function deckAleatorio(estilo, r, build) {
+  const lib = C.cartasLiberadas(estilo, build);
   for (let tent = 0; tent < 500; tent++) {
     const d = C.FIXAS[estilo].slice();
-    while (d.length < C.DECK.tamanho) { const id = lib[Math.floor(r() * lib.length)]; if (d.filter((x) => x === id).length < C.DECK.copias) d.push(id); }
-    if (C.validarDeck(estilo, d).ok) return d.sort();
+    while (d.length < C.DECK.tamanho) { const id = lib[Math.floor(r() * lib.length)]; if (d.filter((x) => x === id).length < (C.COPIAS[C.CARTAS[id].raridade] || C.DECK.copias)) d.push(id); }
+    if (C.validarDeck(estilo, d, lib).ok) return d.sort();
   }
   throw new Error("não achei deck válido pra " + estilo);
 }
@@ -214,61 +216,58 @@ if (PARTES.includes("habilidade")) {
   linha();
 }
 
+/* a build típica de cada estilo no nível 30 (a parte decks também a usa) */
+const B30 = Object.fromEntries(ESTS.map((s) => [s, buildTipica(s, 30)]));
 if (PARTES.includes("decks")) {
-  const rr = gerador(20261112), decks = {};
-  for (const s of ESTS) decks[s] = Array.from({ length: NDECKS }, () => deckAleatorio(s, rr));
-  const n = 400, jobs = [];
-  for (const s of ESTS) decks[s].forEach((d, k) => { for (const o of ESTS) jobs.push({ chave: `d:${s}:${k}:${o}`, sA: s, sB: o, deckA: d, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n }); });
-  const r = await rodar(jobs);
-  linha("## Decks montados ao acaso (caça a combo quebrado)");
-  linha();
-  linha(`${NDECKS} decks válidos por estilo, cada um contra os 4 decks padrão (${n} lutas por confronto). Dominância = acima de 60% contra o campo.`);
-  linha();
-  const melhores = [];
-  linha("| Estilo | Melhor deck aleatório | Contra o campo | Mediana | Pior |");
-  linha("|---|---|---|---|---|");
-  for (const s of ESTS) {
-    const res = decks[s].map((d, k) => ({ d, v: ESTS.reduce((a, o) => a + vit(r.get(`d:${s}:${k}:${o}`)), 0) / 4 })).sort((x, y) => y.v - x.v);
-    const conta = (d) => Object.entries(d.reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {})).map(([id, q]) => `${q}x ${C.CARTAS[id].nome}`).join(", ");
-    linha(`| ${NOMES[s]} | ${conta(res[0].d)} | ${f1(res[0].v)}% | ${f1(res[Math.floor(res.length / 2)].v)}% | ${f1(res[res.length - 1].v)}% |`);
-    melhores.push({ s, d: res[0].d, v: res[0].v });
+  for (const nivel of [1, 30]) {
+    const rr = gerador(nivel === 1 ? 20261112 : 20261142), decks = {}, bld = (s) => (nivel === 30 ? B30[s] : undefined);
+    for (const s of ESTS) decks[s] = Array.from({ length: NDECKS }, () => deckAleatorio(s, rr, bld(s)));
+    const n = 400, jobs = [];
+    for (const s of ESTS) decks[s].forEach((d, k) => { for (const o of ESTS) jobs.push({ chave: `d${nivel}:${s}:${k}:${o}`, sA: s, sB: o, deckA: d, buildA: bld(s), buildB: bld(o), catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n }); });
+    const r = await rodar(jobs);
+    linha(nivel === 1 ? "## Decks montados ao acaso (caça a combo quebrado)" : "## Decks montados ao acaso no nível 30 (com as cartas da árvore)");
+    linha();
+    linha(`${NDECKS} decks válidos por estilo${nivel === 30 ? " (com tudo que a build típica do nível 30 libera)" : ""}, cada um contra os 4 decks padrão${nivel === 30 ? " (também no nível 30)" : ""} (${n} lutas por confronto). Dominância = acima de 60% contra o campo.`);
+    linha();
+    const melhores = [];
+    linha("| Estilo | Melhor deck aleatório | Contra o campo | Mediana | Pior |");
+    linha("|---|---|---|---|---|");
+    for (const s of ESTS) {
+      const res = decks[s].map((d, k) => ({ d, v: ESTS.reduce((a, o) => a + vit(r.get(`d${nivel}:${s}:${k}:${o}`)), 0) / 4 })).sort((x, y) => y.v - x.v);
+      linha(`| ${NOMES[s]} | ${deckEmTexto(res[0].d)} | ${f1(res[0].v)}% | ${f1(res[Math.floor(res.length / 2)].v)}% | ${f1(res[res.length - 1].v)}% |`);
+      melhores.push({ s, d: res[0].d, v: res[0].v });
+    }
+    linha();
+    /* o melhor de cada estilo de novo, com mais lutas (o primeiro lugar de 40 tende a ser sorte) */
+    const n2 = Math.round(N / 2), jobs2 = [];
+    for (const b of melhores) for (const o of ESTS) jobs2.push({ chave: `D${nivel}:${b.s}:${o}`, sA: b.s, sB: o, deckA: b.d, buildA: bld(b.s), buildB: bld(o), catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n: n2 });
+    const r2 = await rodar(jobs2);
+    const dom = [];
+    for (const b of melhores) { const v = ESTS.reduce((a, o) => a + vit(r2.get(`D${nivel}:${b.s}:${o}`)), 0) / 4; if (v > 60) dom.push(`${NOMES[b.s]} ${f1(v)}%`); linha(`- Melhor deck do ${NOMES[b.s]} medido de novo (${n2} lutas por confronto): ${f1(v)}% contra o campo.`); }
+    linha();
+    linha(`Dominância (acima de 60%): ${dom.length ? "SIM: " + dom.join(", ") : "nenhuma"}.`);
+    linha();
   }
-  linha();
-  /* o melhor de cada estilo de novo, com mais lutas (o primeiro lugar de 40 tende a ser sorte) */
-  const n2 = Math.round(N / 2), jobs2 = [];
-  for (const b of melhores) for (const o of ESTS) jobs2.push({ chave: `D:${b.s}:${o}`, sA: b.s, sB: o, deckA: b.d, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n: n2 });
-  const r2 = await rodar(jobs2);
-  const dom = [];
-  for (const b of melhores) { const v = ESTS.reduce((a, o) => a + vit(r2.get(`D:${b.s}:${o}`)), 0) / 4; if (v > 60) dom.push(`${NOMES[b.s]} ${f1(v)}%`); linha(`- Melhor deck do ${NOMES[b.s]} medido de novo (${n2} lutas por confronto): ${f1(v)}% contra o campo.`); }
-  linha();
-  linha(`Dominância (acima de 60%): ${dom.length ? "SIM: " + dom.join(", ") : "nenhuma"}.`);
-  linha();
 }
 
-/* ---------- a árvore (Fase 4) ---------- */
-const B30 = Object.fromEntries(ESTS.map((s) => [s, buildTipica(s, 30)]));
-/* o deck padrão com a carta nova no lugar de uma que o estilo dispensa (nunca o Jab: sem
-   ele ninguém segura a queda de velocidade 4, e o teste media a falta do Jab, não a carta) */
-const NOVA = { striker: "combinacao", wrestler: "double_leg", grappler: "rasteira", counter: "esquiva", ...JSON.parse(process.env.SIM_NOVA || "{}") };
-const SAI = { striker: "contra_ataque", wrestler: "cruzado", grappler: "clinch", counter: "chute_alto" };
-const deckCom = (s) => { const d = C.DECK_PADRAO[s].slice(), i = d.lastIndexOf(SAI[s]); if (i >= 0) d[i] = NOVA[s]; return d; };
+/* ---------- a árvore (cartas, 2026-11-15) ---------- */
+let deck30 = null;   // os melhores decks do nível 30 (a parte busca preenche; nivel30 mede com eles se a busca já rodou)
 if (PARTES.includes("nivel30")) {
   const jobs = [];
-  for (let i = 0; i < 4; i++) for (let j = i; j < 4; j++) for (const comNova of [false, true])
-    jobs.push({ chave: `n30:${comNova ? 1 : 0}:${ESTS[i]}:${ESTS[j]}`, sA: ESTS[i], sB: ESTS[j], catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
-      buildA: B30[ESTS[i]], buildB: B30[ESTS[j]], deckA: comNova ? deckCom(ESTS[i]) : undefined, deckB: comNova ? deckCom(ESTS[j]) : undefined, n: Math.round(N / 2) });
+  for (let i = 0; i < 4; i++) for (let j = i; j < 4; j++)
+    jobs.push({ chave: `n30:${ESTS[i]}:${ESTS[j]}`, sA: ESTS[i], sB: ESTS[j], catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+      buildA: B30[ESTS[i]], buildB: B30[ESTS[j]], n: Math.round(N / 2) });
   const r = await rodar(jobs);
-  linha("## Nível 30 (build típica de cada estilo)");
+  linha("## Nível 30 (build típica de cada estilo, deck padrão)");
   linha();
-  for (const comNova of [false, true]) {
-    const m = (a, b) => (r.get(`n30:${comNova ? 1 : 0}:${a}:${b}`) ? vit(r.get(`n30:${comNova ? 1 : 0}:${a}:${b}`)) : 100 - vit(r.get(`n30:${comNova ? 1 : 0}:${b}:${a}`)));
-    linha(comNova ? "Com a carta nova no deck (no lugar de: " + ESTS.map((x) => `${NOMES[x]}, ${C.CARTAS[SAI[x]].nome}`).join("; ") + "):" : "Deck padrão:");
-    linha();
-    linha("| | " + ESTS.map((s) => NOMES[s]).join(" | ") + " | Agregado |");
-    linha("|---|" + ESTS.map(() => "---").join("|") + "|---|");
-    for (const a of ESTS) { const ag = ESTS.filter((b) => b !== a).reduce((x, b) => x + m(a, b), 0) / 3; linha(`| ${NOMES[a]} | ` + ESTS.map((b) => f1(m(a, b))).join(" | ") + ` | **${f1(ag)}** |`); }
-    linha();
-  }
+  const m = (a, b) => (r.get(`n30:${a}:${b}`) ? vit(r.get(`n30:${a}:${b}`)) : 100 - vit(r.get(`n30:${b}:${a}`)));
+  linha("| | " + ESTS.map((s) => NOMES[s]).join(" | ") + " | Agregado |");
+  linha("|---|" + ESTS.map(() => "---").join("|") + "|---|");
+  const fora = [];
+  for (const a of ESTS) { const ag = ESTS.filter((b) => b !== a).reduce((x, b) => x + m(a, b), 0) / 3; if (ag < 45 || ag > 55) fora.push(`${NOMES[a]} ${f1(ag)}%`); linha(`| ${NOMES[a]} | ` + ESTS.map((b) => f1(m(a, b))).join(" | ") + ` | **${f1(ag)}** |`); }
+  linha();
+  linha(`Meta 45% a 55% no agregado: ${fora.length ? "FORA: " + fora.join(", ") : "todos dentro"}.`);
+  linha();
 }
 if (PARTES.includes("evolucao")) {
   const jobs = [];
@@ -290,31 +289,82 @@ if (PARTES.includes("evolucao")) {
   linha();
 }
 if (PARTES.includes("nos")) {
-  /* cada nó no nível 3, sozinho, contra os 4 estilos (nível 1), menos a mesma luta sem o nó: pontos de vitória */
+  /* cada nó no nível 3, sozinho, contra os 4 estilos (nível 1), menos a mesma luta sem o nó: pontos de vitória.
+     A carta do nó entra no deck padrão no lugar de uma não fixa da mesma categoria (deckDoNo) */
   const n = Math.round(N / 10), jobs = [];
   for (const s of ESTS_NOS) {
     for (const o of ESTS) jobs.push({ chave: `no:${s}:-:${o}`, par: `no:${s}:${o}`, sA: s, sB: o, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n });
     for (const ramo of ESTILOS[s].ramos) for (const no of RAMOS[ramo].nos) {
-      const comCarta = Object.values(C.CARTAS).find((c) => c.desbloqueio === no.id);
       for (const o of ESTS) jobs.push({ chave: `no:${s}:${no.id}:${o}`, par: `no:${s}:${o}`, sA: s, sB: o, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n,
-        buildA: { [no.id]: 3 }, deckA: comCarta ? deckCom(s) : undefined });
+        buildA: { [no.id]: 3 }, deckA: C.CARTA_DO_NO[no.id] ? deckDoNo(s, no.id) : undefined });
     }
   }
   const r = await rodar(jobs);
   linha("## Quanto vale cada nó (nível 3, sozinho)");
   linha();
-  linha(`Vitória com o nó menos a vitória sem ele, média contra os 4 estilos (${n} lutas por confronto). Hoje (motor v5): de 0,5 a 6,5 pontos.`);
+  linha(`Vitória com o nó menos a vitória sem ele, média contra os 4 estilos (${n} lutas por confronto). Meta: de 0,5 a 6,5 pontos. Carta = a que o nó libera, com 3 estrelas; Luta = lutas vencidas por quem jogou a carta pelo menos uma vez (meta 40% a 60%, com mais de 200 jogadas).`);
   linha();
-  linha("| Estilo | Nó | No combate novo | Pontos |");
-  linha("|---|---|---|---|");
-  const fora = [];
+  linha("| Estilo | Nó | Carta | Raridade | Pontos | Jogadas | Escolha | Luta |");
+  linha("|---|---|---|---|---|---|---|---|");
+  const fora = [], foraCarta = [];
   for (const s of ESTS_NOS) for (const ramo of ESTILOS[s].ramos) for (const no of RAMOS[ramo].nos) {
     const v = ESTS.reduce((a, o) => a + vit(r.get(`no:${s}:${no.id}:${o}`)) - vit(r.get(`no:${s}:-:${o}`)), 0) / 4;
     if (v < 0.5 || v > 6.5) fora.push(`${no.nome} ${f1(v)}`);
-    linha(`| ${NOMES[s]} | ${no.nome} | ${(C.ARVORE_V2[no.id] || []).map((x) => x.desc).join(" ") || "só o atributo"} | ${v >= 0 ? "+" : ""}${f1(v)} |`);
+    const id = C.CARTA_DO_NO[no.id], c = { naMao: 0, jogadas: 0, lutas: 0, lutasVencidas: 0 };
+    if (id) for (const o of ESTS) { const x = r.get(`no:${s}:${no.id}:${o}`).cartas[id]; if (x) for (const k of Object.keys(c)) c[k] += x[k]; }
+    const lu = pct(c.lutasVencidas, c.lutas);
+    if (c.jogadas > 200 && (lu < 40 || lu > 60)) foraCarta.push(`${C.CARTAS[id].nome} ${f1(lu)}%`);
+    linha(`| ${NOMES[s]} | ${no.nome} | ${id ? C.CARTAS[id].nome : "-"} | ${id ? C.NOME_RARIDADE[C.CARTAS[id].raridade] : "-"} | ${v >= 0 ? "+" : ""}${f1(v)} | ${c.jogadas} | ${f1(pct(c.jogadas, c.naMao))}% | ${c.lutas ? f1(lu) + "%" : "-"} |`);
   }
   linha();
-  linha(`Fora de 0,5 a 6,5: ${fora.length ? fora.join(", ") : "nenhum"}.`);
+  linha(`Nó fora de 0,5 a 6,5: ${fora.length ? fora.join(", ") : "nenhum"}. Carta fora de 40% a 60%: ${foraCarta.length ? foraCarta.join(", ") : "nenhuma"}.`);
+  linha();
+}
+
+if (PARTES.includes("busca")) {
+  /* melhor deck no nível 30 (subida de encosta, sim/busca-deck.mjs): a 1ª volta contra os 4 decks padrão do nível 30;
+     a 2ª, contra os melhores decks da 1ª. Triagem com NBUSCA lutas por rival, confirmação com NCONF */
+  const NB = Number(process.env.SIM_NBUSCA || 200), NC = Number(process.env.SIM_NCONF || 2000);
+  const padrao = ESTS.map((s) => ({ s, build: B30[s], deck: C.DECK_PADRAO[s] }));
+  const volta = async (rivais, rotulo) => {
+    const out = [];   // um estilo por vez: o rodar() divide os mesmos trabalhadores e não aceita duas chamadas juntas
+    for (const s of ESTS) out.push(await buscarDeck(s, B30[s], rivais, { n: NB, confirmaN: NC, rodar, politica: "atenta", rotulo: rotulo + s }));
+    return out.map((o, i) => ({ s: ESTS[i], build: B30[ESTS[i]], deck: o.deck, vitoria: o.vitoria, passos: o.passos }));
+  };
+  const v1 = await volta(padrao, "b1:");
+  const v2 = await volta([...padrao, ...v1], "b2:");
+  linha("## Melhor deck no nível 30 (busca de deck)");
+  linha();
+  linha(`Subida de encosta a partir do deck padrão: troca uma carta não fixa por uma carta liberada da árvore, aceita a troca que mais melhora (mais de 1 ponto), triagem com ${NB} lutas por rival e confirmação com ${NC}. Volta 1 contra os 4 decks padrão do nível 30; volta 2 contra os padrão mais os melhores da volta 1.`);
+  linha();
+  linha("| Estilo | Volta | Melhor deck | Contra os rivais | Passos |");
+  linha("|---|---|---|---|---|");
+  for (const [rot, v] of [["1", v1], ["2", v2]]) for (const b of v) linha(`| ${NOMES[b.s]} | ${rot} | ${deckEmTexto(b.deck)} | ${f1(b.vitoria)}% | ${b.passos} |`);
+  linha();
+  /* o nível 30 com os melhores decks da volta 2, uns contra os outros, e cada um contra os decks padrão */
+  const jobs = [];
+  for (let i = 0; i < 4; i++) for (let j = i; j < 4; j++)
+    jobs.push({ chave: `bm:${ESTS[i]}:${ESTS[j]}`, sA: ESTS[i], sB: ESTS[j], catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+      buildA: B30[ESTS[i]], buildB: B30[ESTS[j]], deckA: v2[i].deck, deckB: v2[j].deck, n: Math.round(N / 2) });
+  for (const s of ESTS) for (const o of ESTS) jobs.push({ chave: `bp:${s}:${o}`, sA: s, sB: o, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+    buildA: B30[s], buildB: B30[o], deckA: v2[ESTS.indexOf(s)].deck, n: Math.round(N / 4) });
+  const r = await rodar(jobs);
+  const m = (a, b) => (r.get(`bm:${a}:${b}`) ? vit(r.get(`bm:${a}:${b}`)) : 100 - vit(r.get(`bm:${b}:${a}`)));
+  linha("Nível 30, todos com o melhor deck (volta 2), uns contra os outros:");
+  linha();
+  linha("| | " + ESTS.map((s) => NOMES[s]).join(" | ") + " | Agregado |");
+  linha("|---|" + ESTS.map(() => "---").join("|") + "|---|");
+  const fora = [];
+  for (const a of ESTS) { const ag = ESTS.filter((b) => b !== a).reduce((x, b) => x + m(a, b), 0) / 3; if (ag < 45 || ag > 55) fora.push(`${NOMES[a]} ${f1(ag)}%`); linha(`| ${NOMES[a]} | ` + ESTS.map((b) => f1(m(a, b))).join(" | ") + ` | **${f1(ag)}** |`); }
+  linha();
+  linha(`Meta 45% a 55% no agregado: ${fora.length ? "FORA: " + fora.join(", ") : "todos dentro"}.`);
+  linha();
+  linha("Melhor deck contra os decks padrão (nível 30, " + Math.round(N / 4) + " lutas por confronto):");
+  linha();
+  const dom = [];
+  for (const s of ESTS) { const v = ESTS.reduce((a, o) => a + vit(r.get(`bp:${s}:${o}`)), 0) / 4; if (v > 60) dom.push(`${NOMES[s]} ${f1(v)}%`); linha(`- ${NOMES[s]}: ${f1(v)}% contra o campo.`); }
+  linha();
+  linha(`Dominância (acima de 60%): ${dom.length ? "SIM: " + dom.join(", ") : "nenhuma"}.`);
   linha();
 }
 
