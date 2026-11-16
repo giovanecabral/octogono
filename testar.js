@@ -13312,6 +13312,29 @@ async function testarCombate2() {
       if (r.resolucao.dano.a !== 3) throw new Error("se_interrompe com dano a mais: " + r.resolucao.dano.a);
     } finally { for (const id of ["t_grande", "t_pequeno", "t_rodado", "t_over", "t_combo"]) delete C.CARTAS[id]; }
   });
+  await conf("próxima troca e round: lentoProxima deixa ele 1 mais lento só na troca seguinte; rapidoProxima deixa você 1 mais rápido só na seguinte; sangra dá +0,5 nos seus golpes até o fim do round; nada disso atravessa o round", () => {
+    try {
+      cartaTeste("t_perna", { nome: "Perna", categoria: "golpes", vel: 4, dano: 1, custo: 1, efeitos: [{ quando: "se_acerta", acao: { lentoProxima: true, sangra: true } }] });
+      cartaTeste("t_lado", { nome: "Lado", categoria: "defesa", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, rapidoProxima: true } }] });
+      let x = luta(["t_perna", "jab", "cruzado", "bloqueio", "queda"], MAO5);
+      let r = troca(x, "t_perna", "clinch");
+      if (!tem(r, "lento", "b") || !tem(r, "sangrou", "b")) throw new Error("eventos: " + r.eventos.map((ev) => ev.tipo));
+      x = { e: r.estado, P: x.P };
+      r = troca(x, "jab", "cruzado");
+      if (r.resolucao.cartas.b.vel !== C.CARTAS.cruzado.vel - 1) throw new Error("não ficou lento: " + r.resolucao.cartas.b.vel);
+      if (r.resolucao.dano.a !== 1.5) throw new Error("sangra: " + r.resolucao.dano.a);
+      x = { e: r.estado, P: x.P };
+      r = troca(x, "cruzado", "bloqueio");   // última troca do round: o lento já passou, o sangra ainda vale
+      if (r.resolucao.cartas.b.vel !== C.CARTAS.bloqueio.vel) throw new Error("lento durou duas trocas");
+      if (r.estado.round !== 2 || r.estado.b.sangra || r.estado.b.lento || r.estado.b.lentoProx) throw new Error("atravessou o round: " + JSON.stringify(r.estado.b));
+      x = luta(["t_lado", "jab", "cruzado", "bloqueio", "queda"], MAO5);
+      r = troca(x, "t_lado", "jab");
+      if (!tem(r, "rapido", "a")) throw new Error("sem o evento rapido");
+      x = { e: r.estado, P: x.P };
+      r = troca(x, "cruzado", "bloqueio");
+      if (r.resolucao.cartas.a.vel !== C.CARTAS.cruzado.vel + 1) throw new Error("rapidoProxima: " + r.resolucao.cartas.a.vel);
+    } finally { delete C.CARTAS.t_perna; delete C.CARTAS.t_lado; }
+  });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });

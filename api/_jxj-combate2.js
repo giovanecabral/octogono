@@ -39,6 +39,7 @@ export const K2 = {
   koGrogue: 3,         // golpe com dano >= isto em quem está grogue: nocaute
   kdsTko: 3,           // terceiro knockdown: nocaute técnico
   grogueVel: 1, grogueDano: 1,
+  sangraDano: 0.5,     // quem sangra leva isto a mais de cada golpe até o fim do round (Cotovelada)
   finalizaNivel: 1,    // a Finalização finaliza a partir desta posição (2 montada, 1 meia-guarda, 0 guarda); abaixo, encaixa (2 dava 0,1% de finalização: o round tem 3 trocas)
   pts: { dano: 1, queda: 3, controle: 1.5, avanca: 1, inverte: 2, levanta: 1, anula: 1, interrompe: 0.5, kd: 4, ausencia: 5 },
   limite108: 12, empateRound: 0.01,
@@ -75,6 +76,8 @@ export const energiaMax2 = (p) => r2(K2.energiaBase + (p.atr.cardio - 50) * K2.e
 const ladoNovo = (p) => ({
   vida: vidaMax(p), vidaMax: vidaMax(p), energia: energiaMax2(p), energiaMax: energiaMax2(p),
   grogue: false, kds: 0, ausentesSeguidas: 0, ultima: null,
+  /* efeitos da próxima troca (lento, rápido: o "Prox" vira o de agora no fim da troca) e do round (sangra) */
+  lento: 0, lentoProx: 0, rapido: 0, rapidoProx: 0, sangra: false,
   total: { jogadas: 0, acertos: 0, dano: 0, quedas: 0, interrupcoes: 0, anulacoes: 0, knockdowns: 0 },
 });
 /* perfil: { estilo, categoria, atr, deck } (o deck validado no servidor; aqui só se confere) */
@@ -156,13 +159,15 @@ export function velocidade(e, perfis, l, c, { energiaInicio = e[l].energia, exau
     const d = perfis[l].atr[c.duelo[0]] - perfis[outro(l)].atr[c.duelo[1]];
     v += d >= K2.limiarVel ? 1 : d <= -K2.limiarVel ? -1 : 0;
   }
+  v -= e[l].lento || 0;
+  v += e[l].rapido || 0;
   if (e[l].grogue) v -= K2.grogueVel;
   if (energiaInicio <= K2.cansado) v -= 1;
   if (exausta) v -= K2.exaustaVel;
   return v;
 }
 /* dano: o da carta (vezes os efeitos), pelo duelo e pelo poder; +1 em quem está grogue; metade exausta */
-export function danoDe(perfis, l, c, alvoGrogue, { mult = 1, extra = 0, exausta = false } = {}) {
+export function danoDe(perfis, l, c, alvoGrogue, { mult = 1, extra = 0, exausta = false, sangra = false } = {}) {
   const base = c.dano * mult + extra;
   if (base <= 0) return 0;
   const A = perfis[l].atr, D = perfis[outro(l)].atr;
@@ -170,6 +175,7 @@ export function danoDe(perfis, l, c, alvoGrogue, { mult = 1, extra = 0, exausta 
   if (c.duelo) d *= 1 + (A[c.duelo[0]] - D[c.duelo[1]]) / K2.escalaDano;
   if (c.dano >= K2.poderMin) d *= 1 + (A.poder - 50) / K2.poderEscala;
   if (alvoGrogue && ehGolpe(c)) d += K2.grogueDano;
+  if (sangra && ehGolpe(c)) d += K2.sangraDano;
   if (exausta) d /= 2;
   return Math.max(0, r1(d));
 }
@@ -238,6 +244,8 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
   }
   /* o grogue vale uma troca: só fica quem caiu nesta */
   for (const l of L2) e[l].grogue = !!jog[outro(l)].deuKd && !e.fim;
+  /* o lento e o rápido valem só na troca seguinte */
+  for (const l of L2) { e[l].lento = e[l].lentoProx || 0; e[l].lentoProx = 0; e[l].rapido = e[l].rapidoProx || 0; e[l].rapidoProx = 0; }
   res.dano = { a: jog.a.dano, b: jog.b.dano };   // quanto cada um causou
   res.energia = Object.fromEntries(L2.map((l) => [l, { antes: energiaInicio[l], depois: e[l].energia }]));
   res.posicao = { antes: posAntes, depois: { pos: e.pos, nivelPos: e.nivelPos } };
@@ -313,6 +321,7 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
 /* efeitos que valem também na reação: energia, iniciativa, pontos de juiz e a energia dele */
 function aplicarAcaoPropria(e, l, acao, ctx, c) {
   if (acao.pontos) pontuar(e, l, acao.pontos);
+  if (acao.rapidoProxima) { e[l].rapidoProx = 1; ctx.ev.push({ tipo: "rapido", quem: l, carta: c.id }); }
   if (acao.energiaOponente) { const o = outro(l), antes = e[o].energia; e[o].energia = r2(Math.max(0, e[o].energia + acao.energiaOponente)); if (antes !== e[o].energia) ctx.ev.push({ tipo: "energia", quem: o, carta: c.id, ganho: r2(e[o].energia - antes) }); }
   if (acao.energia) { const antes = e[l].energia; e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + acao.energia)); if (e[l].energia !== antes) ctx.ev.push({ tipo: "energia", quem: l, carta: c.id, ganho: r2(e[l].energia - antes) }); }
   if (acao.iniciativa && e.iniciativa !== l) { e.iniciativa = l; ctx.ev.push({ tipo: "iniciativa", quem: l, carta: c.id }); }
@@ -327,7 +336,7 @@ function calcularCarta(e, perfis, jog, l, grogueAlvo) {
     for (const ef of efeitosDe(c, "se_oponente")) if (casaCond(ef.condicao, jog[o].c, e, o)) { if (ef.acao.multDano) mult *= ef.acao.multDano; if (ef.acao.danoExtra) extra += ef.acao.danoExtra; acoes.push(ef.acao); }
     for (const ef of efeitosDe(c, "se_acerta")) if (casaCond(ef.condicao, jog[o].c, e, o)) { if (ef.acao.multDano) mult *= ef.acao.multDano; if (ef.acao.danoExtra) extra += ef.acao.danoExtra; acoes.push(ef.acao); }
   }
-  const dano = danoDe(perfis, l, c, grogueAlvo, { mult, extra, exausta: j.exausta });
+  const dano = danoDe(perfis, l, c, grogueAlvo, { mult, extra, exausta: j.exausta, sangra: !!e[o].sangra });
   return { dano, acoes };
 }
 const posicional = (a) => a.vaiProChao || a.puxaGuarda || a.finaliza || a.inverte || a.levanta || a.avanca;
@@ -400,6 +409,8 @@ function aplicarDano(e, perfis, jog, l, dano, ctx, { adiarFim = false } = {}) {
 function aplicarAcao(e, perfis, jog, l, a, ctx) {
   const o = outro(l), c = jog[l].c;
   aplicarAcaoPropria(e, l, a, ctx, c);
+  if (a.lentoProxima) { e[o].lentoProx = 1; ctx.ev.push({ tipo: "lento", quem: o, carta: c.id }); }
+  if (a.sangra && !e[o].sangra) { e[o].sangra = true; ctx.ev.push({ tipo: "sangrou", quem: o, carta: c.id }); }
   if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
   if (a.puxaGuarda) { e.pos = "cima_" + o; e.nivelPos = 0; ctx.ev.push({ tipo: "puxouGuarda", quem: l }); }
   if (a.avanca) { const antes = e.nivelPos; e.nivelPos = Math.min(2, e.nivelPos + a.avanca); if (e.nivelPos !== antes) { pontuar(e, l, K2.pts.avanca); ctx.ev.push({ tipo: "avancou", quem: l, nivelPos: e.nivelPos }); } }
@@ -455,6 +466,7 @@ function fecharRound2(e, perfis, semente, ctx) {
     const sobra = e.mao[l].length;
     e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + sobra * K2.energiaPorSobra));
     e[l].grogue = false;
+    Object.assign(e[l], { lento: 0, lentoProx: 0, rapido: 0, rapidoProx: 0, sangra: false });
   }
   e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.iniciativa = null;
   e.mao = { a: comprar(e.deck.a, semente, e.round, "a"), b: comprar(e.deck.b, semente, e.round, "b") };
