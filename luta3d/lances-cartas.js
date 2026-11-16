@@ -130,3 +130,39 @@ export const LANCES_CARTAS = {
   misericordia: { tipo: "kd", golpe: "gancho", clipe: "Cruzado_Tras",
     arte: { clipe: "Cruzado_Tras", t: { impacto: 1, depois: 0.3 }, camera: cam("baixo"), passos: [["kd", "A"]] } },
 };
+
+/* Golpes novos do mx_cartas.glb (Mixamo, fora do git). Medidos com ferramentas/medir-golpes-cartas.mjs
+   (o mesmo método dos golpes do GOLPES do diretor: jab e direto saem com 0,01 de diferença no imp):
+   imp = instante do alcance máximo do membro; dist = esse alcance mais o quanto o alvo fica à frente
+   (rosto 0,10, corpo 0,15, perna 0,08). ik: false = o membro não está na CADEIA do lutador.js
+   (joelho e cotovelo), então o contato vale só pro efeito, sem puxar o osso. Rasteira e validação
+   ainda não são lance de nenhuma carta (a rasteira é queda e a validação não existe no catálogo):
+   ficam medidas pra Tarefa 19. */
+export const GOLPES_MX = {
+  overhand:      { membro: "hand_r",     alvo: "cabeca", imp: 0.42, dist: 0.99, ik: true },
+  chute_frontal: { membro: "ball_l",     alvo: "corpo",  imp: 1.28, dist: 1.12, ik: true },
+  chute_rodado:  { membro: "ball_r",     alvo: "cabeca", imp: 0.98, dist: 1.31, ik: true },
+  validacao:     { membro: "ball_r",     alvo: "cabeca", imp: 0.75, dist: 1.51, ik: true },
+  rasteira:      { membro: "ball_r",     alvo: "perna",  imp: 1.43, dist: 1.56, ik: true },
+  joelhada:      { membro: "calf_r",     alvo: "corpo",  imp: 0.85, dist: 0.92, ik: false },
+  cotovelada:    { membro: "lowerarm_l", alvo: "cabeca", imp: 0.33, dist: 0.65, ik: false },
+  uppercut:      { membro: "hand_l",     alvo: "cabeca", imp: 0.47, dist: 0.87, ik: true },
+  misericordia:  { membro: "hand_l",     alvo: "cabeca", imp: 0.97, dist: 1.52, ik: true },
+};
+/* a carta que toca o clipe novo: o lance de hoje vira a reserva (clipe e golpe seguem como estão) */
+for (const [id, l] of Object.entries(LANCES_CARTAS)) {
+  const g = GOLPES_MX[id];
+  if (!g || l.tipo === "queda") continue;
+  l.reserva = l.clipe;
+  l.mx = { clipe: id, ...g };
+}
+
+/* O clipe que o lance toca: o principal quando ele existe nos clipes carregados (o mx_cartas.glb chega
+   depois que a luta abre e fica fora do git), senão a reserva do mx_lutas.glb. null: nem um nem outro. */
+export function clipeDoLance(lance, clips) {
+  const tem = (c) => c && (clips instanceof Set ? clips.has(c) : !!clips[c]);
+  const c = lance.mx ? lance.mx.clipe : lance.clipe;
+  if (tem(c)) return c;
+  if (tem(lance.reserva)) return lance.reserva;
+  return tem(lance.clipe) ? lance.clipe : null;
+}

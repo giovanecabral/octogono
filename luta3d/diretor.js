@@ -6,7 +6,8 @@
 // esqueleto do corpo; o arquivo delas (mx_lutas.glb) não vai pro GitHub.
 import * as THREE from "./vendor/three.module.js";
 import { Palco } from "./palco.js";
-import { carregarBase, Lutador } from "./lutador.js";
+import { carregarBase, carregarCartas, Lutador } from "./lutador.js";
+import { clipeDoLance } from "./lances-cartas.js";
 import { modeloCinturao } from "./aparencia.js";
 
 /* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
@@ -22,6 +23,8 @@ raiz.append(elPalco, elVin, elFlash, elCham);
 const palco = new Palco(elPalco);
 if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
+/* clipes das cartas: chegam depois que a luta abre; sem o arquivo, o lance de reserva (lances-cartas.js) */
+const cartasProntas = carregarCartas(base, dir);
 /* guarda de luta: o gingado de boxe (pacote 2 do Mixamo, mais vivo que a guarda parada de antes) */
 const GUARDA = "Guarda_Gingando";
 const A = new Lutador(base, op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" });
@@ -1154,8 +1157,10 @@ return {
   pularEntrada() { if (cortarEntrada) cortarEntrada(); },
   /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera, o palco e os
      lances um a um (a arte das cartas, ferramentas/arte-cartas.mjs, fotografa o lance de cada carta) */
-  _dev: { A, B, cam, palco, THREE, MONTADA, get montada() { return montada; },
+  _dev: { A, B, base, cartasProntas, cam, palco, THREE, MONTADA, get montada() { return montada; },
     lances: { golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
+  /* o clipe que a carta toca: o do mx_cartas.glb se já chegou, senão a reserva (nunca trava a luta) */
+  clipeDaCarta(lance) { return clipeDoLance(lance, base.clips); },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },
   destruir() {
     vivo = false; cancelAnimationFrame(quadro); clearTimeout(timerCham);
