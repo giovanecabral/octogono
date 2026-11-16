@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Arte das cartas</title>
+<!-- Página da ferramenta ferramentas/arte-cartas.mjs (fora do deploy): o diretor do 3D de
+     verdade toca o lance de cada carta (luta3d/lances-cartas.js) e a foto sai do quadro
+     escolhido, com fundo, luz e calção pela raridade. -->
+<style>
+  html, body { margin: 0; background: #000; }
+  #palco { position: relative; width: 1024px; height: 1280px; overflow: hidden; }
+  #palco .luta3d-palco { position: absolute; inset: 0; }
+  #palco .luta3d-vinheta, #palco .luta3d-flash, #palco .luta3d-chamada { display: none; }
+</style>
+<script id="relogio-virtual">
+  /* relógio virtual: o diretor anda um quadro por vez (__passo), sempre igual; o sorteio dele
+     (golpe, câmera, esquiva) sai de uma semente por carta (__semear) */
+  window.__virt = 0;
+  performance.now = () => window.__virt;
+  window.__rafs = [];
+  window.requestAnimationFrame = (cb) => { window.__rafs.push(cb); return window.__rafs.length; };
+  window.cancelAnimationFrame = () => {};
+  window.__passo = (dt) => { window.__virt += dt * 1000; const fs = window.__rafs; window.__rafs = []; for (const f of fs) f(window.__virt); };
+  let __s = 1;
+  window.__semear = (n) => { __s = n >>> 0; };
+  Math.random = () => { __s |= 0; __s = (__s + 0x6d2b79f5) | 0; let t = Math.imul(__s ^ (__s >>> 15), 1 | __s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+</script>
+</head>
+<body>
+<div id="palco"></div>
+<script type="module">
+import { criarLuta3d } from "../luta3d/diretor.js";
+import { LANCES_CARTAS } from "../luta3d/lances-cartas.js";
+
+/* cores da raridade (os tons do jogo; a épica nunca no vermelho do golpe) */
+const RAR = {
+  comum: { topo: "#5b544b", fundo: "#121110", brilho: "#f2eee6", calcao: "#d9d2c2", chao: "#1a1815" },
+  rara: { topo: "#33618a", fundo: "#08131d", brilho: "#9fc6ee", calcao: "#3f72a3", chao: "#0c1823" },
+  epica: { topo: "#6a2154", fundo: "#14061a", brilho: "#e695cf", calcao: "#7d2b67", chao: "#1a0a1c" },
+  lendaria: { topo: "#9a7118", fundo: "#181004", brilho: "#ffd772", calcao: "#c99a22", chao: "#21170a" },
+};
+const passoQuadro = 1 / 60;
+const andar = async (seg, parar) => {
+  for (let t = 0; t < seg; t += passoQuadro) {
+    window.__passo(passoQuadro);
+    await new Promise((r) => setTimeout(r, 0));
+    if (parar && parar()) return true;
+  }
+  return false;
+};
+
+function fundoDa(rar) {
+  const c = document.createElement("canvas"); c.width = 512; c.height = 640;
+  const x = c.getContext("2d");
+  const g = x.createRadialGradient(256, 250, 30, 256, 300, 470);
+  g.addColorStop(0, rar.topo); g.addColorStop(1, rar.fundo);
+  x.fillStyle = g; x.fillRect(0, 0, 512, 640);
+  // riscos finos em diagonal, bem leves (textura de carta)
+  x.globalAlpha = 0.05; x.strokeStyle = rar.brilho; x.lineWidth = 1;
+  for (let i = -640; i < 512; i += 14) { x.beginPath(); x.moveTo(i, 640); x.lineTo(i + 640, 0); x.stroke(); }
+  return c;
+}
+
+/* a cena vira estúdio: some a arena (torcida, grade, telões, treliça), fica o chão na cor da raridade */
+function estudio(D, rar) {
+  const { palco: P, THREE, A, B } = D, cena = P.cena;
+  let lona = null;
+  const escondidos = [];
+  for (const o of cena.children) {
+    if (o === A.raiz || o === B.raiz || o.isLight) continue;
+    if (!lona && o.isMesh && o.geometry && o.geometry.type === "CircleGeometry") { lona = o; continue; }
+    o.visible = false; escondidos.push(o);
+  }
+  /* chão que só mostra a sombra: sem linha de horizonte cortando o fundo */
+  if (lona) { lona.material = new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.5 }); lona.scale.set(8, 8, 8); }
+  const tex = new THREE.CanvasTexture(fundoDa(rar)); tex.colorSpace = THREE.SRGBColorSpace;
+  cena.background = tex;
+  cena.fog = null;
+  cena.environmentIntensity = 0.35;
+  // quem não joga a carta fica escuro: o destaque é de quem joga
+  B.modelo.traverse((o) => { if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.32); } });
+  const luzes = cena.children.filter((o) => o.isLight);
+  const spots = luzes.filter((l) => l.isSpotLight);
+  // as duas contraluzes de transmissão (vermelha e azul) viram as da raridade
+  const rims = spots.filter((l) => l.color.r > 0.9 && l.color.g < 0.3 || l.color.b > 0.9 && l.color.r < 0.4);
+  for (const r of rims) { r.color = new THREE.Color(rar.brilho); r.intensity = 70; r.angle = Math.PI / 5; r.penumbra = 0.6; r.distance = 14; }
+  /* o palco reacende pedaços da grade a cada quadro (os que saem da frente da câmera): antes da foto, apaga de novo */
+  return { rims, lona, esconder: () => { for (const o of escondidos) o.visible = false; } };
+}
+
+/* câmera: a direção vem do tipo (de lado, três quartos, por cima...) e a distância é a que
+   cabe quem joga a carta inteiro no retrato (cabeça, mãos, pés), com um pouco do outro */
+const PONTOS_A = ["Head", "hand_l", "hand_r", "foot_l", "foot_r", "pelvis", "lowerarm_l", "lowerarm_r", "calf_l", "calf_r"];
+const TIPOS_CAM = {
+  lado: { a: 1, b: 0, elev: 8, folga: 0.98 },
+  tres: { a: 0.8, b: 0.6, elev: 12, folga: 0.98 },
+  costas: { a: 0.45, b: 0.9, elev: 20, folga: 1.05 },
+  baixo: { a: 0.85, b: 0.35, elev: -10, folga: 0.98 },
+  perto: { a: 0.9, b: 0.3, elev: 10, folga: 0.8 },
+  chao: { a: 1, b: 0.25, elev: 40, folga: 1.08 },
+  cima: { a: 1, b: 0.2, elev: 64, folga: 1.08 },
+};
+function camera(D, cam) {
+  const { A, B, THREE } = D;
+  const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+  const pa = A.posMundo("pelvis").setY(0), pb = B.posMundo("pelvis").setY(0);
+  const linha = pb.clone().sub(pa); if (linha.lengthSq() < 1e-4) linha.set(1, 0, 0); linha.normalize();
+  const lado = V(-linha.z, 0, linha.x).multiplyScalar(cam.lado || 1);
+  const T = TIPOS_CAM[cam.tipo] || TIPOS_CAM.lado;
+  const pts = PONTOS_A.map((n) => A.posMundo(n));
+  const cA = pts.reduce((s, p) => s.add(p), V()).multiplyScalar(1 / pts.length);
+  // um pouco puxado pro outro (o golpe chega nele), sem perder quem joga
+  const c = cA.clone().lerp(B.posMundo("spine_03"), 0.18);
+  const r = Math.max(0.5, ...pts.map((p) => p.distanceTo(c)));
+  const fov = 38, meiaH = Math.atan(Math.tan((fov * Math.PI) / 360) * 0.8);
+  const dist = (r * T.folga) / Math.tan(meiaH);
+  const el = (T.elev * Math.PI) / 180;
+  const horiz = lado.clone().multiplyScalar(T.a).addScaledVector(linha, T.b).normalize();
+  const dir = horiz.multiplyScalar(Math.cos(el)).add(V(0, Math.sin(el), 0));
+  const pos = c.clone().addScaledVector(dir, dist);
+  // em pé, o centro sobe um pouco: o tronco e o golpe no meio da carta (o pé pode encostar na borda)
+  if (A.posMundo("Head").y > 1.15) { c.y += 0.12 * r; pos.y += 0.12 * r; }
+  if (pos.y < 0.3) pos.y = 0.3;
+  return { pos, olhar: c, fov, linha, lado };
+}
+
+const PASSOS = {
+  golpe: (D, a, d, p) => D.lances.golpe(a, d, p[2], { bloqueio: !!(p[3] && p[3].bloqueio), narra: false }),
+  queda: (D, a, d) => D.lances.queda(a, d, { soco: false }),
+  defendida: (D, a, d) => D.lances.quedaDefendida(a, d),
+  socos: (D, a, d, p) => D.lances.serieSocos(p[2], !!p[3]),
+  tentativa: (D, a, d, p) => D.lances.tentativaChao(p[1]),
+  expulsar: (D) => D.lances.expulsar(),
+  fin: (D, a, d, p) => D.lances.finalizacao(a, d, "", p[2]),
+  kd: (D, a, d) => D.lances.knockdown(a, d),
+  espera: (D, a, d, p) => D.lances.esperar(p[1]),
+};
+
+async function fotoUma(id, raridade, semente) {
+  const l = LANCES_CARTAS[id];
+  if (!l) throw new Error("carta sem lance: " + id);
+  const rar = RAR[raridade] || RAR.comum, arte = l.arte;
+  const raiz = document.getElementById("palco"); raiz.innerHTML = "";
+  window.__semear(semente);
+  const luta = await criarLuta3d(raiz, {
+    eu: { pele: "#b57d55", calcao: rar.calcao, cabelo: "militar", corCabelo: "#231812" },
+    ele: { pele: "#9a6c4b", calcao: "#2b2f38", cabelo: "repartido", corCabelo: "#151210" },
+  });
+  const D = luta._dev, P = D.palco;
+  try {
+    let contatos = 0;
+    const fx = P.impactoFx.bind(P);
+    P.impactoFx = (...a) => { contatos++; return fx(...a); };
+    const { rims, esconder } = estudio(D, rar);
+    await andar(0.6);
+    const quem = (q) => (q === "B" ? [D.B, D.A] : [D.A, D.B]);
+    for (let i = 0; i < arte.passos.length; i++) {
+      const p = arte.passos[i], [a, d] = quem(p[1]), ultimo = i === arte.passos.length - 1;
+      let pronto = false;
+      const prom = PASSOS[p[0]](D, a, d, p);
+      Promise.resolve(prom).then(() => { pronto = true; });
+      if (!ultimo) { if (!(await andar(14, () => pronto))) throw new Error(`passo ${p[0]} não terminou`); await andar(0.2); continue; }
+      contatos = 0;
+      if (arte.t.impacto) {
+        /* a defesa de cabeça às vezes esquiva (o golpe passa no vazio): com exige, outra semente */
+        if (!(await andar(10, () => contatos >= arte.t.impacto))) { if (arte.exige) return { exigeFalhou: true }; throw new Error("o contato não veio"); }
+        await andar(arte.t.depois || 0);
+      } else await andar(arte.t.s);
+    }
+    if (arte.exige) {
+      const ac = D.A.acoes[arte.exige];
+      if (!ac || !ac.isRunning() || ac.getEffectiveWeight() < 0.2) return { exigeFalhou: true };
+    }
+    /* a foto: câmera, contraluz da raridade atrás de quem joga, sem tremor */
+    const c = camera(D, arte.camera);
+    P.tremor = 0; P.chute = 0;
+    P.cam.fov = c.fov; P.cam.aspect = 0.8; P.cam.position.copy(c.pos); P.cam.lookAt(c.olhar); P.cam.updateProjectionMatrix();
+    P.preenche.position.copy(c.pos).add(new D.THREE.Vector3(0, 1.2, 0)); P.preenche.target.position.copy(c.olhar);
+    const atras = c.olhar.clone().sub(c.pos).setY(0).normalize();
+    rims.forEach((r, k) => {
+      const lado = new D.THREE.Vector3(-atras.z, 0, atras.x).multiplyScalar(k ? 2.4 : -2.4);
+      r.position.copy(c.olhar).addScaledVector(atras, 3.2).add(lado).setY(3.2);
+      r.target.position.copy(D.A.posMundo("spine_03"));
+      r.target.updateMatrixWorld();
+    });
+    esconder();
+    P.r.render(P.cena, P.cam);
+    const c2 = document.createElement("canvas"); c2.width = 512; c2.height = 640;
+    const x = c2.getContext("2d"); x.imageSmoothingQuality = "high";
+    x.drawImage(P.r.domElement, 0, 0, 512, 640);
+    return { url: c2.toDataURL("image/webp", 0.8), placa: P.placa || "" };
+  } finally { luta.destruir(); }
+}
+
+/* prancha pra conferir: todas as cartas no tamanho da mão (116 px) com o nome embaixo */
+async function prancha(ids, base) {
+  const larg = 116, alt = 145, col = 10, lin = Math.ceil(ids.length / col), pad = 8, txt = 16;
+  const c = document.createElement("canvas"); c.width = col * (larg + pad) + pad; c.height = lin * (alt + txt + pad) + pad;
+  const x = c.getContext("2d"); x.fillStyle = "#0b0c10"; x.fillRect(0, 0, c.width, c.height);
+  x.font = "11px sans-serif"; x.fillStyle = "#c9cbd2"; x.textAlign = "center";
+  for (let i = 0; i < ids.length; i++) {
+    const img = new Image(); img.src = `${base}img/cartas/${ids[i]}.webp?v=${Date.now()}`;
+    await img.decode();
+    const cx = pad + (i % col) * (larg + pad), cy = pad + Math.floor(i / col) * (alt + txt + pad);
+    x.imageSmoothingQuality = "high"; x.drawImage(img, cx, cy, larg, alt);
+    x.fillText(ids[i], cx + larg / 2, cy + alt + 12);
+  }
+  return c.toDataURL("image/png");
+}
+
+window.ARTE = {
+  ids: Object.keys(LANCES_CARTAS),
+  async foto(id, raridade, semente = 1) {
+    for (let s = semente; s < semente + 12; s++) {
+      const r = await fotoUma(id, raridade, s);
+      if (!r.exigeFalhou) return { ...r, semente: s };
+    }
+    throw new Error(`${id}: nenhuma semente deu ${LANCES_CARTAS[id].arte.exige}`);
+  },
+  prancha,
+};
+window.ARTE_PRONTA = true;
+</script>
+</body>
+</html>
