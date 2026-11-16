@@ -7817,19 +7817,22 @@ function jxjPorQue2(t,eu,nomes,defs){
     }
     return fr;
   }
+  for(const e of ev)if(e.tipo==="dano"&&e.punicao&&e.alvo)fr.push(`${quem(e.alvo)} entrou no contra e levou ${jxjNum2(e.dano)} de dano.`);
   if(r.ordem==="anuladas")fr.push("As duas cartas se anularam.");
   else for(const x of r.reacoes||[])fr.push(`${quem(x.quem)} anulou ${daCarta(x.anulou)} (${cartaId(x.cartaAnulada)}) com ${cartaId(x.carta)}.`);
   if(r.ordem==="a"||r.ordem==="b"){
     const f=r.ordem,s=outro(f),va=r.cartas[f].vel,vb=r.cartas[s].vel;
     if(!(r.reacoes||[]).length&&va!==vb)fr.push(`${quem(f)} saiu na frente: ${carta(f)} (velocidade ${jxjNum2(va)}) contra ${carta(s)} (velocidade ${jxjNum2(vb)}).`);
     for(const x of r.interrupcoes||[])fr.push(`${cartaId(x.carta)} acertou antes e interrompeu ${daCarta(x.interrompeu)}.`);
-    if(ev.some(e=>e.tipo==="resistiu"&&e.quem===s)){ const dc=daCarta(s); fr.push(`${dc[0].toUpperCase()+dc.slice(1)} (${carta(s)}) aguentou o golpe de dano 1 e resolveu.`); }
+    if(ev.some(e=>e.tipo==="resistiu"&&e.quem===s)){ const dc=daCarta(s); fr.push(`${dc[0].toUpperCase()+dc.slice(1)} (${carta(s)}) aguentou o golpe e resolveu.`); }
   }
   if(r.ordem==="empate"){
     fr.push(`Velocidade igual (${jxjNum2(r.cartas.a.vel)}): as duas cartas resolveram juntas.`);
     if(ev.some(e=>e.tipo==="travaram"))fr.push("As duas tentaram mudar a posição e travaram.");
   }
   for(const e of ev)if(e.tipo==="falhou"&&e.quem)fr.push(`A posição mudou antes, e ${daCarta(e.quem)} (${cartaId(e.carta)}) não serviu mais.`);
+  for(const e of ev)if(e.tipo==="grogue"&&e.quem)fr.push(`${quem(e.quem)} ficou grogue: mais lento e levando mais dano na próxima troca.`);
+  for(const e of ev)if(e.tipo==="lento"&&e.quem)fr.push(`${quem(e.quem)} ficou 1 mais lento pra próxima troca.`);
   for(const l of ["a","b"])if(r.cartas[l].exausta)fr.push(`${quem(l)} jogou sem energia: ${carta(l)} saiu 2 mais lenta e com metade do dano.`);
   for(const l of ["a","b"])if(r.cartas[l].finta>0)fr.push(`${quem(l)} fintou e pagou ${jxjNum2(r.cartas[l].finta)} de energia a mais.`);
   if(!fr.length)fr.push(r.vencedor?`${quem(r.vencedor)} fez mais pontos na troca.`:"Nenhuma das duas cartas mudou a troca.");
@@ -7838,8 +7841,13 @@ function jxjPorQue2(t,eu,nomes,defs){
 /* troca da v2 no 3D: cada evento de trocaVista tem entrada aqui; null = sem lance
    próprio (só dado, ou já mostrado por outro lance: o golpe mostra a interrupção, e a
    linha do round o jxj3dTrocas põe sozinho). A suíte jxjv2 reprova tipo sem entrada. */
-const JXJ_3D2_GOLPE={jab:"jab",cruzado:"cruzadoFrente",chute_alto:"chuteCabeca",combinacao:"umDois",contra_ataque:"direto",clinch:"jabCorpo",esquiva:"jab"};
-const JXJ_3D2_CHAO=["ground_and_pound","golpes_por_baixo"],JXJ_3D2_QUEDA=["queda","double_leg","rasteira"];
+const JXJ_3D2_GOLPE={jab:"jab",cruzado:"cruzadoFrente",chute_alto:"chuteCabeca",combinacao:"umDois",contra_ataque:"direto",clinch:"jabCorpo",esquiva:"jab",
+  /* cartas da árvore com os lances de hoje (o lance próprio de cada uma vem com as animações) */
+  direto:"direto",overhand:"gancho",chute_perna:"chuteBaixo",chute_corpo:"chuteCorpo",chute_rodado:"chuteCabeca",joelhada:"jabCorpo",
+  cotovelada:"cruzadoFrente",superman:"direto",cruzado_contra:"gancho",uppercut:"upper",misericordia:"gancho",contragolpe:"direto",
+  contra_esquerda:"cruzadoFrente",contra_corpo:"jabCorpo",chute_frontal:"jab"};
+const JXJ_3D2_CHAO=["ground_and_pound","golpes_por_baixo","cotovelada_cima","martelada"],
+  JXJ_3D2_QUEDA=["queda","double_leg","rasteira","single_leg","queda_contragolpe","suplex","mata_leao","bodylock"];
 const JXJ_3D2={
   /* o dano da queda vai no lance da queda */
   dano:(e,c)=>JXJ_3D2_QUEDA.includes(e.carta)?null:JXJ_3D2_CHAO.includes(e.carta)
@@ -7864,6 +7872,8 @@ const JXJ_3D2={
   soltou:()=>({tipo:"estudo"}),
   travaram:()=>({tipo:"estudo"}),
   knockdown:null, interrompeu:null, resistiu:null, finta:null, exausta:null, ausente:null, falhou:null, fimRound:null,
+  /* cartas da árvore: o grogue sem knockdown tem lance; o resto é só dado (o golpe ou a reação já mostram) */
+  grogue:(e,c)=>({tipo:"grogue",quem:c.Q(e.quem)}), lento:null, rapido:null, sangrou:null, tirouGrogue:null, recuou:null,
   resolveu:null, energia:null, iniciativa:null, empateVelocidade:null, semCarta:null, ausenciaPontos:null,
   fim:(e,c)=>{
     const m={KO:"Nocaute",TKO:"Nocaute técnico",FIN:"Finalização"}[e.metodo];
@@ -7902,21 +7912,34 @@ function jxjEfeitoTexto2(c){
   const partes=[];
   for(const ef of c.efeitos||[]){
     const a=ef.acao||{},q=ef.quando,cond=ef.condicao||{},extra=[];
+    const faixa=(cond.danoMin!=null?` de dano ${jxjNum2(cond.danoMin)} ou mais`:"")+(cond.danoMax!=null?` de dano ${jxjNum2(cond.danoMax)} ou menos`:"");
     if(a.energia)extra.push(`recupera ${jxjNum2(a.energia)} de energia`);
+    if(a.rapidoProxima)extra.push("a sua próxima carta sai 1 mais rápida");
+    if(a.tiraGrogue)extra.push("tira o seu grogue");
+    if(a.poeEmCima)extra.push("vocês vão pro chão com você por cima");
+    if(a.recua)extra.push("ele volta pra guarda");
     if(a.pontos)extra.push(`dá ${jxjNum2(a.pontos)} ${a.pontos===1?"ponto":"pontos"} a mais`);
     if(a.iniciativa)extra.push("dá a iniciativa");
     if(a.energiaOponente)extra.push(`tira ${jxjNum2(-a.energiaOponente)} de energia dele`);
-    if(q==="contra"){ partes.push(`Contra ${cats(cond)}: ${[a.anula?"anula":null,...extra].filter(Boolean).join(", ")}`); continue; }
-    if(q==="resistente"){ partes.push(`Golpe de dano ${jxjNum2(a.ateDano)} não interrompe`); continue; }
-    const fx=[a.vaiProChao?"leva pro chão, você por cima":null,a.puxaGuarda?"puxa pro chão, você por baixo":null,
-      a.avanca?"sobe a posição":null,a.inverte?"inverte, você fica por cima":null,a.levanta?"volta em pé":null,
-      a.finaliza?"finaliza ou encaixa":null,a.multDano?`dano vezes ${jxjNum2(a.multDano)}`:null,
-      a.danoExtra?`${jxjNum2(a.danoExtra)} de dano a mais`:null,...extra].filter(Boolean);
+    if(q==="contra"){ partes.push(`Contra ${cats(cond)}${faixa}: ${[a.anula?"anula":null,...extra].filter(Boolean).join(", ")}`); continue; }
+    if(q==="resistente"){ partes.push(`${cond.categoria?`Se ele jogou ${cats(cond)}: g`:"G"}olpe de dano ${jxjNum2(a.ateDano)}${a.ateDano>1?" ou menos":""} não interrompe`); continue; }
+    if(q==="ao_jogar"){ if(a.danoProprio)partes.push(`Se ele jogou ${cats(cond)}: você leva ${jxjNum2(a.danoProprio)} de dano, mesmo anulada`); continue; }
+    const nv=n=>n>=2?", já na montada":n>=1?", já na meia-guarda":"";
+    const nc=a.nocauteSe?[a.nocauteSe.grogue?"está grogue":null,a.nocauteSe.vidaAte!=null?`tem ${jxjNum2(a.nocauteSe.vidaAte)} de vida ou menos`:null,
+      a.nocauteSe.fracao!=null?"tem metade da vida ou menos":null].filter(Boolean).join(" ou "):"";
+    const fs=a.finalizaSe?[a.finalizaSe.grogue?"grogue":null,a.finalizaSe.cansado?"cansado":null].filter(Boolean).join(" ou "):"";
+    const fx=[fs?`finaliza se ele está ${fs}`:null,a.vaiProChao?`leva pro chão, você por cima${nv(a.nivel)}`:null,a.puxaGuarda?"puxa pro chão, você por baixo":null,
+      a.avanca?(a.avanca>=2?`sobe ${a.avanca} posições`:"sobe a posição"):null,a.inverte?`inverte, você fica por cima${nv(a.nivel)}`:null,a.levanta?"volta em pé":null,
+      a.finaliza?(a.porBaixo?"finaliza":"finaliza ou encaixa"):null,a.multDano?`dano vezes ${jxjNum2(a.multDano)}`:null,
+      a.danoExtra?`${jxjNum2(a.danoExtra)} de dano a mais`:null,a.lentoProxima?"ele fica 1 mais lento na próxima troca":null,
+      a.sangra?`ele sangra: seus golpes dão ${jxjNum2(0.5)} de dano a mais até o fim do round`:null,a.grogue?"ele fica grogue":null,
+      nc?`é nocaute se ele ${nc}`:null,...extra].filter(Boolean);
     if(!fx.length)continue;
     const onde=cond.nivelPos!=null?(cond.nivelPos>=2?" na montada":" a partir da meia-guarda"):"";
     const pre=q==="se_interrompe"?"Se interrompe":q==="se_oponente"?`Se ele jogou ${cats(cond)}`:cond.categoria?`Se acerta quem jogou ${cats(cond)}`:"Se acerta";
     partes.push(`${pre}${onde}: ${fx.join(", ")}`);
   }
+  if(c.inanulavel)partes.unshift("Nenhuma reação anula");
   return partes.length?partes.join(". ")+".":"";
 }
 function jxjReferencia2(defs,estilo){

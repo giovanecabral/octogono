@@ -40,7 +40,19 @@ const NA_FRASE = {
   queda: "a queda", antiqueda: "a antiqueda", clinch: "o clinch", puxar_guarda: "a puxada de guarda",
   ground_and_pound: "o ground and pound", finalizacao: "a finalização", segurar: "a pegada por cima", avancar: "o avanço",
   golpes_por_baixo: "os golpes por baixo", raspar: "a raspagem", guarda: "a guarda", levantar: "a levantada",
-  combinacao: "a combinação", double_leg: "o double leg", rasteira: "a rasteira", esquiva: "a esquiva",
+  /* as cartas da árvore */
+  direto: "o direto", combinacao: "a combinação", contragolpe: "o contragolpe", overhand: "o overhand",
+  chute_perna: "o chute na perna", chute_corpo: "o chute no corpo", chute_frontal: "o chute frontal", chute_rodado: "o chute rodado",
+  passo_lateral: "o passo lateral", joelhada: "a joelhada", cotovelada: "a cotovelada", superman: "o superman punch",
+  single_leg: "o single leg", double_leg: "o double leg", queda_contragolpe: "a queda no contragolpe", suplex: "o suplex",
+  peso_ombro: "o peso do ombro", cotovelada_cima: "a cotovelada por cima", passagem_joelho: "a passagem de joelho", martelada: "a martelada",
+  sprawl: "o sprawl", levantada_tecnica: "a levantada técnica", contra_queda: "a contra-queda", bodylock: "o bodylock",
+  kimura: "a kimura", rasteira: "a rasteira", triangulo: "o triângulo", mata_leao: "o mata-leão",
+  cem_quilos: "o cem quilos", passagem_guarda: "a passagem de guarda", guarda_fechada: "a guarda fechada", raspagem_gancho: "a raspagem de gancho",
+  defesa_finalizacao: "a defesa de finalização", fuga_quadril: "a fuga de quadril", recomposicao: "a recomposição", berimbolo: "o berimbolo",
+  esquiva: "a esquiva", leitura_queda: "a leitura de queda", contra_esquerda: "o contra de esquerda", leitura_total: "a leitura total",
+  pendulo: "o pêndulo", guarda_alta: "a guarda alta", saida_lado: "a saída de lado", segundo_folego: "o segundo fôlego",
+  contra_corpo: "o contra no corpo", cruzado_contra: "o cruzado de contra", uppercut: "o uppercut", misericordia: "o golpe de misericórdia",
 };
 export const naFrase = (id) => NA_FRASE[id] || (C.CARTAS[id] || C.CARTA_DO_CHAO[id] || { nome: id }).nome.toLowerCase();
 const NOME_CAT = { golpes: "golpe", queda: "queda", defesa: "defesa", pressao: "pressão" };
@@ -48,7 +60,7 @@ const METODO = { KO: "nocaute", TKO: "nocaute técnico", FIN: "finalização", D
 export function textoEvento2(ev, nomes) {
   const N = (l) => nomes[l] || l;
   switch (ev.tipo) {
-    case "dano": return `${N(ev.quem)} acertou ${naFrase(ev.carta)} (${num(ev.dano)} de dano).`;
+    case "dano": return ev.punicao ? `${N(ev.alvo)} entrou no contra e levou ${num(ev.dano)} de dano.` : `${N(ev.quem)} acertou ${naFrase(ev.carta)} (${num(ev.dano)} de dano).`;
     case "anulou": return `${N(ev.quem)} anulou ${naFrase(ev.alvo)} com ${naFrase(ev.carta)}.`;
     case "interrompeu": return `${N(ev.quem)} interrompeu ${naFrase(ev.alvo)} com ${naFrase(ev.carta)}.`;
     case "resistiu": return `${N(ev.quem)} aguentou o golpe e seguiu com ${naFrase(ev.carta)}.`;
@@ -66,6 +78,12 @@ export function textoEvento2(ev, nomes) {
     case "ausente": return `${N(ev.quem)} não escolheu a tempo.`;
     case "falhou": return `A posição mudou e ${naFrase(ev.carta)} de ${N(ev.quem)} não serviu mais.`;
     case "travaram": return "Os dois tentaram mudar a posição e travaram.";
+    case "lento": return `${N(ev.quem)} ficou mais lento pra próxima troca.`;
+    case "rapido": return `${N(ev.quem)} sai na frente na próxima troca.`;
+    case "sangrou": return `${N(ev.quem)} está sangrando: os golpes nele entram mais até o fim do round.`;
+    case "grogue": return `${N(ev.quem)} ficou grogue.`;
+    case "tirouGrogue": return `${N(ev.quem)} se recuperou e não está mais grogue.`;
+    case "recuou": return `${N(ev.quem)} recompôs a guarda.`;
     case "fimRound": {
       const c = ev.cartao || {};
       if (c.a === c.b) return `O round ${ev.round} terminou empatado.`;
@@ -124,7 +142,7 @@ export function trocaVista(t, nomes) {
     round: t.round, troca: t.troca, cartaA: t.acao_a, cartaB: t.acao_b, acaoA: cat(t.acao_a), acaoB: cat(t.acao_b),
     resolucao: res ? { ...res, tipo: undefined } : null,
     ev: evs.filter((ev) => ev.tipo !== "resolucao").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, alvo: ev.alvo || null, carta: ev.carta || null,
-      metodo: ev.metodo || null, dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null, como: ev.como || null })),
+      metodo: ev.metodo || null, dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null, como: ev.como || null, punicao: !!ev.punicao })),
     eventos: evs.map((ev) => textoEvento2(ev, nomes)).filter(Boolean),
   };
 }

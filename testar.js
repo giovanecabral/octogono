@@ -13488,7 +13488,8 @@ async function testarJxJV2() {
     const emp = porQue(troca(MAO, MAO, "cruzado", "cruzado"));
     if (!emp.some((f) => f.startsWith("Velocidade igual (3): as duas cartas resolveram juntas"))) throw new Error("empate: " + JSON.stringify(emp));
     const res = porQue(troca(["chute_alto", "jab", "bloqueio", "queda", "clinch"], MAO, "chute_alto", "jab"));
-    if (!res.some((f) => /^A sua carta \(Chute alto\) aguentou o golpe de dano 1/.test(f))) throw new Error("resistente: " + JSON.stringify(res));
+    /* o texto não diz o dano: com as cartas da árvore, a resistência vai até dano 3 (Chute rodado) */
+    if (!res.some((f) => /^A sua carta \(Chute alto\) aguentou o golpe e resolveu/.test(f))) throw new Error("resistente: " + JSON.stringify(res));
     const sem = porQue(troca(MAO, MAO, "cruzado", "jab", { a: { ...M.novaLuta2(neutro(), neutro(), "t").a, energia: 0 } }));
     if (!sem.some((f) => /^Você jogou sem energia: Cruzado saiu 2 mais lenta/.test(f))) throw new Error("sem energia: " + JSON.stringify(sem));
     const fin = porQue(troca(MAO, MAO, "cruzado", "jab", {}, undefined, { a: "defesa", b: "golpes" }));
@@ -13595,6 +13596,40 @@ async function testarJxJV2() {
     if (/rar-/.test(noJogo("jxjCarta2", { ...jab, raridade: "mitica" }))) throw new Error("raridade fora da lista entrou");
     const mau = noJogo("jxjCarta2", { ...jab, nome: MAU, arte: '"><img src=x onerror=alert(1)>' });
     if (/<img src=x|onerror=alert\(1\)>/.test(mau.replace(/&[a-z#0-9]+;/g, "_"))) throw new Error("HTML cru: " + mau);
+  });
+  await conf("cartas da árvore no texto e no 3D: todo evento novo tem frase e entrada no 3D; toda carta tem frase com artigo e lance; o efeito de cada carta vira texto; a punição e o grogue entram no porquê", () => {
+    const novos = ["lento", "rapido", "sangrou", "grogue", "tirouGrogue", "recuou"];
+    const tabela = new Set(JSON.parse(X.run("JSON.stringify(Object.keys(JXJ_3D2))")));
+    for (const t of novos) {
+      if (!tabela.has(t)) throw new Error("evento sem entrada no 3D: " + t);
+      const f = V2.textoEvento2({ tipo: t, quem: "a", carta: "chute_perna" }, { a: "Ana", b: "Bia" });
+      if (!f || /undefined/.test(f) || /[–—]/.test(f)) throw new Error("evento sem frase: " + t + " " + f);
+    }
+    const pun = V2.textoEvento2({ tipo: "dano", quem: "b", alvo: "a", carta: "bloqueio", dano: 2, punicao: true }, { a: "Ana", b: "Bia" });
+    if (!/Ana entrou no contra/.test(pun)) throw new Error("frase da punição: " + pun);
+    const golpes = new Set(JSON.parse(X.run("JSON.stringify([...Object.keys(JXJ_3D2_GOLPE), ...JXJ_3D2_QUEDA, ...JXJ_3D2_CHAO])")));
+    const todas = noJogo("jxjReferencia2", defs, null), ref = [...todas.pe, ...todas.cima, ...todas.baixo];
+    for (const c of Object.values(defs.cartas)) {
+      if (c.no == null) continue;
+      if (!/^(o|a|os|as) /.test(V2.naFrase(c.id))) throw new Error("sem artigo: " + c.id + " " + V2.naFrase(c.id));
+      if (c.categoria === "golpes" && !golpes.has(c.id)) throw new Error("golpe sem lance: " + c.id);
+      if (["queda_contragolpe", "suplex", "single_leg", "mata_leao", "bodylock"].includes(c.id) && !golpes.has(c.id)) throw new Error("queda sem lance: " + c.id);
+      const t = ref.find((x) => x.id === c.id);
+      if (!t || ((c.efeitos.length || c.inanulavel) && !t.efeito)) throw new Error("efeito sem texto: " + c.id);
+      if (/undefined|NaN|[–—]/.test(t.efeito)) throw new Error("efeito com lixo: " + c.id + " " + t.efeito);
+      if (!c.raridade || !c.casa) throw new Error("definições sem raridade ou casa: " + c.id);
+    }
+    const ef = (id) => ref.find((x) => x.id === id).efeito;
+    for (const [id, re] of [["overhand", /Nenhuma reação anula/], ["passo_lateral", /dano 3 ou mais/], ["pendulo", /dano 2 ou menos/], ["superman", /você leva 2 de dano/],
+      ["chute_perna", /1 mais lento/], ["cotovelada", /sangra/], ["suplex", /grogue/], ["misericordia", /nocaute/], ["triangulo", /finaliza/], ["mata_leao", /grogue/],
+      ["contra_queda", /você por cima/], ["passagem_joelho", /2 posições/], ["raspagem_gancho", /montada/], ["recomposicao", /guarda/], ["segundo_folego", /grogue/], ["saida_lado", /mais rápida/]])
+      if (!re.test(ef(id))) throw new Error(`efeito de ${id}: "${ef(id)}"`);
+    /* o porquê: a punição do Superman punch e o grogue do Suplex */
+    const tr = (maoA, maoB, a, b, extra) => troca(maoA, maoB, a, b, extra);
+    const sup = tr(["superman", "jab", "cruzado", "bloqueio", "queda"], MAO, "superman", "bloqueio");
+    if (!porQue(sup).some((f) => /entrou no contra/.test(f))) throw new Error("porquê da punição: " + JSON.stringify(porQue(sup)));
+    const sp = tr(["suplex", "jab", "cruzado", "bloqueio", "queda"], MAO, "suplex", "bloqueio");
+    if (!porQue(sp).some((f) => /grogue/.test(f))) throw new Error("porquê do grogue: " + JSON.stringify(porQue(sp)));
   });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
