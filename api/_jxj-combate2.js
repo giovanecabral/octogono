@@ -19,7 +19,7 @@
    5. velocidade igual: as duas resolvem juntas;
    6. dano, posição, knockdown, grogue, encaixe, pontos e iniciativa. */
 import { createHash } from "node:crypto";
-import { CARTAS, CHAO, PASSIVAS, DECK, validarDeck, cartasLiberadas } from "./_jxj-cartas.js";
+import { CARTAS, CHAO, PASSIVAS, DECK, BASICA_PE, validarDeck, cartasLiberadas } from "./_jxj-cartas.js";
 
 export const VERSAO_COMBATE = 2;
 export const FORMATO2 = { rounds: 3, trocasPorRound: 3 };
@@ -39,6 +39,7 @@ export const K2 = {
   koGrogue: 3,         // golpe com dano >= isto em quem está grogue: nocaute
   kdsTko: 3,           // terceiro knockdown: nocaute técnico
   grogueVel: 1, grogueDano: 1,
+  sangraDano: 0.5,     // quem sangra leva isto a mais de cada golpe até o fim do round (Cotovelada)
   finalizaNivel: 1,    // a Finalização finaliza a partir desta posição (2 montada, 1 meia-guarda, 0 guarda); abaixo, encaixa (2 dava 0,1% de finalização: o round tem 3 trocas)
   pts: { dano: 1, queda: 3, controle: 1.5, avanca: 1, inverte: 2, levanta: 1, anula: 1, interrompe: 0.5, kd: 4, ausencia: 5 },
   limite108: 12, empateRound: 0.01,
@@ -68,13 +69,15 @@ export function comprar(deck, semente, round, lado) {
 }
 
 /* ---------- lutador ---------- */
-/* a árvore (Fase 4) entra pelo perfil.v2 (perfilV2 de _jxj-cartas.js): melhorias de carta, vida, finta e energia de fim de round */
-export const vidaMax = (p) => r1(K2.vidaBase + (p.atr.queixo - 50) * K2.vidaPorQueixo + ((p.v2 && p.v2.vida) || 0));
-export const fintaDe = (p) => Math.max(0.5, K2.custoFinta - ((p && p.v2 && p.v2.fintaMenos) || 0));
+/* a árvore entra pelo perfil.v2 (perfilV2 de _jxj-cartas.js): as cartas liberadas e as estrelas de cada uma */
+export const vidaMax = (p) => r1(K2.vidaBase + (p.atr.queixo - 50) * K2.vidaPorQueixo);
+export const fintaDe = () => K2.custoFinta;
 export const energiaMax2 = (p) => r2(K2.energiaBase + (p.atr.cardio - 50) * K2.energiaPorCardio);
 const ladoNovo = (p) => ({
   vida: vidaMax(p), vidaMax: vidaMax(p), energia: energiaMax2(p), energiaMax: energiaMax2(p),
   grogue: false, kds: 0, ausentesSeguidas: 0, ultima: null,
+  /* efeitos da próxima troca (lento, rápido: o "Prox" vira o de agora no fim da troca) e do round (sangra) */
+  lento: 0, lentoProx: 0, rapido: 0, rapidoProx: 0, sangra: false,
   total: { jogadas: 0, acertos: 0, dano: 0, quedas: 0, interrupcoes: 0, anulacoes: 0, knockdowns: 0 },
 });
 /* perfil: { estilo, categoria, atr, deck } (o deck validado no servidor; aqui só se confere) */
@@ -105,20 +108,30 @@ const casaAlvo = (alvo, c) => {
   if (alvo.contexto) { const cs = Array.isArray(alvo.contexto) ? alvo.contexto : [alvo.contexto]; if (!cs.includes(c.contexto)) return false; }
   return true;
 };
+/* aplica um mod (da passiva ou da estrela 3) na carta */
+function aplicarMod(c, m) {
+  if (m.vel) c.vel += m.vel;
+  if (m.dano) c.dano += m.dano;
+  if (m.custo) c.custo = Math.max(0, c.custo + m.custo);
+  if (m.efeitos) c.efeitos.push(...m.efeitos);
+}
+/* estrela 2 na carta sem dano: +0,5 ponto quando ela funciona (reação ou carta que resolve) */
+const comMeioPonto = (efs) => efs.map((ef) => (ef.quando === "contra" || ef.quando === "se_acerta")
+  ? { ...ef, acao: { ...ef.acao, pontos: (ef.acao.pontos || 0) + 0.5 } } : ef);
+/* a carta efetiva: na casa, ela mesma; fora, a básica da categoria ali (em pé, BASICA_PE; no
+   chão, CHAO). Depois a passiva do estilo e, só na casa e só na carta da árvore, as estrelas */
 export function cartaEfetiva(id, pp, perfil) {
   const origem = CARTAS[id];
   if (!origem) throw new Error("carta desconhecida: " + id);
-  const base = pp === "pe" ? origem : CHAO[pp][origem.categoria];
-  const c = { ...base, origem: id, danoBase: base.dano, efeitos: base.efeitos.slice() };
+  const naCasa = (origem.casa || "pe") === pp;
+  const base = naCasa ? origem : pp === "pe" ? CARTAS[BASICA_PE[origem.categoria]] : CHAO[pp][origem.categoria];
+  const c = { ...base, origem: id, naCasa, danoBase: base.dano, efeitos: base.efeitos.slice(), estrelas: 0 };
   const pas = perfil && PASSIVAS[perfil.estilo];
-  const mods = [...(pas ? pas.mods : []), ...((perfil && perfil.v2 && perfil.v2.mods) || [])];
-  for (const m of mods) {
-    if (!casaAlvo(m.alvo, c)) continue;
-    if (m.vel) c.vel += m.vel;
-    if (m.dano) c.dano += m.dano;
-    if (m.custo) c.custo = Math.max(0, c.custo + m.custo);
-    if (m.efeitos) c.efeitos.push(...m.efeitos);
-  }
+  for (const m of (pas ? pas.mods : [])) if (casaAlvo(m.alvo, c)) aplicarMod(c, m);
+  const nv = naCasa && origem.no && perfil && perfil.v2 && perfil.v2.estrelas ? perfil.v2.estrelas[id] || 0 : 0;
+  c.estrelas = nv;
+  if (nv >= 2) { if (c.dano > 0) c.dano += 0.5; else c.efeitos = comMeioPonto(c.efeitos); }
+  if (nv >= 3 && origem.estrela3) aplicarMod(c, origem.estrela3);
   return c;
 }
 /* a carta que joga sozinha (prazo perdido ou carta que não está na mão): a defesa da mão, se houver */
@@ -130,6 +143,9 @@ const casaCond = (cond, cOp, e, alvo) => {
   if (cond.carta && !cond.carta.includes(cOp.id) && !cond.carta.includes(cOp.origem)) return false;
   if (cond.nivelPos != null && !(e.pos !== "pe" && e.nivelPos >= cond.nivelPos)) return false;
   if (cond.grogue && !e[alvo].grogue) return false;
+  /* pelo dano base da carta dele (o número que o jogador vê) */
+  if (cond.danoMin != null && !(cOp.danoBase >= cond.danoMin)) return false;
+  if (cond.danoMax != null && !(cOp.danoBase <= cond.danoMax)) return false;
   return true;
 };
 const efeitosDe = (c, quando) => c.efeitos.filter((ef) => ef.quando === quando);
@@ -143,13 +159,15 @@ export function velocidade(e, perfis, l, c, { energiaInicio = e[l].energia, exau
     const d = perfis[l].atr[c.duelo[0]] - perfis[outro(l)].atr[c.duelo[1]];
     v += d >= K2.limiarVel ? 1 : d <= -K2.limiarVel ? -1 : 0;
   }
+  v -= e[l].lento || 0;
+  v += e[l].rapido || 0;
   if (e[l].grogue) v -= K2.grogueVel;
   if (energiaInicio <= K2.cansado) v -= 1;
   if (exausta) v -= K2.exaustaVel;
   return v;
 }
 /* dano: o da carta (vezes os efeitos), pelo duelo e pelo poder; +1 em quem está grogue; metade exausta */
-export function danoDe(perfis, l, c, alvoGrogue, { mult = 1, extra = 0, exausta = false } = {}) {
+export function danoDe(perfis, l, c, alvoGrogue, { mult = 1, extra = 0, exausta = false, sangra = false } = {}) {
   const base = c.dano * mult + extra;
   if (base <= 0) return 0;
   const A = perfis[l].atr, D = perfis[outro(l)].atr;
@@ -157,6 +175,7 @@ export function danoDe(perfis, l, c, alvoGrogue, { mult = 1, extra = 0, exausta 
   if (c.duelo) d *= 1 + (A[c.duelo[0]] - D[c.duelo[1]]) / K2.escalaDano;
   if (c.dano >= K2.poderMin) d *= 1 + (A.poder - 50) / K2.poderEscala;
   if (alvoGrogue && ehGolpe(c)) d += K2.grogueDano;
+  if (sangra && ehGolpe(c)) d += K2.sangraDano;
   if (exausta) d /= 2;
   return Math.max(0, r1(d));
 }
@@ -210,6 +229,19 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
   if (wo.length === 2) fimDaLuta(e, ctx, null, "ANULADA");
   else if (wo.length === 1) fimDaLuta(e, ctx, outro(wo[0]), "WO");
 
+  /* ao jogar (antes das reações, vale mesmo se a carta for anulada): o Superman punch que cai no contra */
+  for (const l of L2) {
+    if (jog[l].exausta || e.fim) continue;
+    const o = outro(l);
+    for (const ef of efeitosDe(jog[l].c, "ao_jogar")) {
+      if (!casaCond(ef.condicao, jog[o].c, e, o) || !ef.acao.danoProprio) continue;
+      e[l].vida = r1(e[l].vida - ef.acao.danoProprio);
+      pontuar(e, o, K2.pts.dano * ef.acao.danoProprio);
+      ctx.ev.push({ tipo: "dano", quem: o, carta: jog[o].c.id, alvo: l, dano: ef.acao.danoProprio, punicao: true });
+      if (e[l].vida <= 0) fimDaLuta(e, ctx, o, "TKO");
+    }
+  }
+
   if (!e.fim) {
     if (e.encaixe) resolverEncaixe(e, perfis, jog, ctx);
     if (!e.fim && !jog.a.resolveu && !jog.b.resolveu && !jog.encaixeResolvido) resolverNormal(e, perfis, jog, ctx, pp);
@@ -224,7 +256,9 @@ export function resolverTroca2(estadoIn, perfis, acoes, semente) {
     if (Math.abs(dA) > 0.01) { const v = dA > 0 ? "a" : "b"; if (e.iniciativa !== v) { e.iniciativa = v; ctx.ev.push({ tipo: "iniciativa", quem: v }); } }
   }
   /* o grogue vale uma troca: só fica quem caiu nesta */
-  for (const l of L2) e[l].grogue = !!jog[outro(l)].deuKd && !e.fim;
+  for (const l of L2) e[l].grogue = (!!jog[outro(l)].deuKd || !!jog[outro(l)].deuGrogue) && !e.fim;
+  /* o lento e o rápido valem só na troca seguinte */
+  for (const l of L2) { e[l].lento = e[l].lentoProx || 0; e[l].lentoProx = 0; e[l].rapido = e[l].rapidoProx || 0; e[l].rapidoProx = 0; }
   res.dano = { a: jog.a.dano, b: jog.b.dano };   // quanto cada um causou
   res.energia = Object.fromEntries(L2.map((l) => [l, { antes: energiaInicio[l], depois: e[l].energia }]));
   res.posicao = { antes: posAntes, depois: { pos: e.pos, nivelPos: e.nivelPos } };
@@ -247,9 +281,13 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
   for (const l of L2) {
     const o = outro(l);
     if (jog[l].exausta) continue;
+    /* a carta inanulável dele não dispara a reação (passa pelo Bloqueio, pela Guarda, pela Esquiva) */
+    if (jog[o].c.inanulavel) continue;
     for (const ef of efeitosDe(jog[l].c, "contra")) {
       if (!casaCond(ef.condicao, jog[o].c, e, o)) continue;
       if (ef.acao.anula) anulou[l] = true;
+      /* a reação que mudou a posição já resolveu a carta: ela não resolve de novo (senão "falhou") */
+      if (ef.acao.poeEmCima) jog[l].posPropria = true;
       aplicarAcaoPropria(e, l, ef.acao, ctx, jog[l].c);
     }
   }
@@ -262,7 +300,11 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
     ctx.ev.push({ tipo: "anulou", quem: l, carta: jog[l].c.id, alvo: jog[o].c.id });
   }
   const vivos = L2.filter((l) => !jog[l].anulada);
-  if (vivos.length === 1) { res.ordem = vivos[0]; resolverCarta(e, perfis, jog, vivos[0], ctx); return; }
+  if (vivos.length === 1) {
+    res.ordem = vivos[0];
+    if (jog[vivos[0]].posPropria) { jog[vivos[0]].resolveu = true; return; }
+    resolverCarta(e, perfis, jog, vivos[0], ctx); return;
+  }
   if (!vivos.length) { res.ordem = "anuladas"; return; }
   /* 4. a mais rápida primeiro */
   if (jog.a.vel !== jog.b.vel) {
@@ -271,14 +313,18 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
     resolverCarta(e, perfis, jog, r, ctx);
     if (e.fim) { jog[s].interrompida = true; return; }
     /* resistente olha o dano base da carta dele (sem passiva nem atributo): é o número que o jogador vê */
-    const resiste = efeitosDe(jog[s].c, "resistente").some((ef) => jog[r].c.danoBase <= ef.acao.ateDano);
+    const resiste = efeitosDe(jog[s].c, "resistente").some((ef) => casaCond(ef.condicao, jog[r].c, e, r) && jog[r].c.danoBase <= ef.acao.ateDano);
     if (jog[r].resolveu && jog[r].c.dano > 0 && !resiste) {
       jog[s].interrompida = true;
       pontuar(e, r, K2.pts.interrompe);
       e[r].total.interrupcoes++;
       res.interrupcoes.push({ quem: r, carta: jog[r].c.id, interrompeu: s, cartaInterrompida: jog[s].c.id });
       ctx.ev.push({ tipo: "interrompeu", quem: r, carta: jog[r].c.id, alvo: jog[s].c.id });
-      for (const ef of efeitosDe(jog[r].c, "se_interrompe")) aplicarAcaoPropria(e, r, ef.acao, ctx, jog[r].c);
+      for (const ef of efeitosDe(jog[r].c, "se_interrompe")) {
+        aplicarAcaoPropria(e, r, ef.acao, ctx, jog[r].c);
+        /* o segundo golpe da combinação: entra depois de interromper */
+        if (ef.acao.danoExtra) { aplicarDano(e, perfis, jog, r, ef.acao.danoExtra, ctx); if (e.fim) return; }
+      }
     } else {
       if (resiste && jog[r].resolveu && jog[r].c.dano > 0) ctx.ev.push({ tipo: "resistiu", quem: s, carta: jog[s].c.id });
       resolverCarta(e, perfis, jog, s, ctx);
@@ -291,9 +337,16 @@ function resolverNormal(e, perfis, jog, ctx, pp) {
   resolverJuntas(e, perfis, jog, ctx);
 }
 
-/* efeitos que mexem só em quem jogou (energia, iniciativa, pontos de juiz) */
+/* efeitos que valem também na reação: energia, iniciativa, pontos de juiz e a energia dele */
 function aplicarAcaoPropria(e, l, acao, ctx, c) {
   if (acao.pontos) pontuar(e, l, acao.pontos);
+  if (acao.rapidoProxima) { e[l].rapidoProx = 1; ctx.ev.push({ tipo: "rapido", quem: l, carta: c.id }); }
+  if (acao.tiraGrogue && e[l].grogue) { e[l].grogue = false; ctx.ev.push({ tipo: "tirouGrogue", quem: l, carta: c.id }); }
+  /* reação que derruba: quem reagiu vai pro chão por cima (Contra-queda) */
+  if (acao.poeEmCima) { e.pos = "cima_" + l; e.nivelPos = acao.nivel || 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
+  /* recuar: a posição volta pra guarda (quem está por baixo recompõe) */
+  if (acao.recua && e.pos !== "pe" && e.nivelPos > 0) { e.nivelPos = 0; ctx.ev.push({ tipo: "recuou", quem: l, carta: c.id }); }
+  if (acao.energiaOponente) { const o = outro(l), antes = e[o].energia; e[o].energia = r2(Math.max(0, e[o].energia + acao.energiaOponente)); if (antes !== e[o].energia) ctx.ev.push({ tipo: "energia", quem: o, carta: c.id, ganho: r2(e[o].energia - antes) }); }
   if (acao.energia) { const antes = e[l].energia; e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + acao.energia)); if (e[l].energia !== antes) ctx.ev.push({ tipo: "energia", quem: l, carta: c.id, ganho: r2(e[l].energia - antes) }); }
   if (acao.iniciativa && e.iniciativa !== l) { e.iniciativa = l; ctx.ev.push({ tipo: "iniciativa", quem: l, carta: c.id }); }
 }
@@ -307,10 +360,10 @@ function calcularCarta(e, perfis, jog, l, grogueAlvo) {
     for (const ef of efeitosDe(c, "se_oponente")) if (casaCond(ef.condicao, jog[o].c, e, o)) { if (ef.acao.multDano) mult *= ef.acao.multDano; if (ef.acao.danoExtra) extra += ef.acao.danoExtra; acoes.push(ef.acao); }
     for (const ef of efeitosDe(c, "se_acerta")) if (casaCond(ef.condicao, jog[o].c, e, o)) { if (ef.acao.multDano) mult *= ef.acao.multDano; if (ef.acao.danoExtra) extra += ef.acao.danoExtra; acoes.push(ef.acao); }
   }
-  const dano = danoDe(perfis, l, c, grogueAlvo, { mult, extra, exausta: j.exausta });
+  const dano = danoDe(perfis, l, c, grogueAlvo, { mult, extra, exausta: j.exausta, sangra: !!e[o].sangra });
   return { dano, acoes };
 }
-const posicional = (a) => a.vaiProChao || a.puxaGuarda || a.finaliza || a.inverte || a.levanta || a.avanca;
+const posicional = (a) => a.vaiProChao || a.puxaGuarda || a.finaliza || a.inverte || a.levanta || a.avanca || a.recua;
 
 function resolverCarta(e, perfis, jog, l, ctx) {
   const j = jog[l], o = outro(l);
@@ -320,6 +373,7 @@ function resolverCarta(e, perfis, jog, l, ctx) {
   j.resolveu = true;
   e[l].total.acertos++;
   ctx.ev.push({ tipo: "resolveu", quem: l, carta: j.c.id });
+  j.vidaAlvoAntes = e[o].vida;   // o nocauteSe olha a vida de antes do golpe
   if (dano > 0) aplicarDano(e, perfis, jog, l, dano, ctx);
   if (e.fim) return;
   for (const a of acoes) aplicarAcao(e, perfis, jog, l, a, ctx);
@@ -335,6 +389,7 @@ function resolverJuntas(e, perfis, jog, ctx) {
     ctx.ev.push({ tipo: "resolveu", quem: l, carta: j.c.id });
   }
   /* o dano dos dois entra junto; nocaute dos dois: vence quem bateu mais */
+  for (const l of L2) jog[l].vidaAlvoAntes = e[outro(l)].vida;
   for (const l of L2) if (calc[l] && calc[l].dano > 0) aplicarDano(e, perfis, jog, l, calc[l].dano, ctx, { adiarFim: true });
   const caidos = L2.filter((l) => jog[l].koPendente);
   if (caidos.length === 2) {
@@ -379,16 +434,33 @@ function aplicarDano(e, perfis, jog, l, dano, ctx, { adiarFim = false } = {}) {
 /* efeitos que mexem no oponente ou na posição */
 function aplicarAcao(e, perfis, jog, l, a, ctx) {
   const o = outro(l), c = jog[l].c;
+  /* finalizar em pé (Mata-leão): quem está grogue (ou cansado, se a carta pede) é finalizado; o resto da carta nem roda */
+  if (a.finalizaSe) {
+    const fs = a.finalizaSe;
+    if ((fs.grogue && e[o].grogue) || (fs.cansado && e[o].energia <= K2.cansado)) { fimDaLuta(e, ctx, l, "FIN"); return; }
+  }
   aplicarAcaoPropria(e, l, a, ctx, c);
-  if (a.energiaOponente) { const antes = e[o].energia; e[o].energia = r2(Math.max(0, e[o].energia + a.energiaOponente)); if (antes !== e[o].energia) ctx.ev.push({ tipo: "energia", quem: o, carta: c.id, ganho: r2(e[o].energia - antes) }); }
-  if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
+  if (a.lentoProxima) { e[o].lentoProx = 1; ctx.ev.push({ tipo: "lento", quem: o, carta: c.id }); }
+  if (a.sangra && !e[o].sangra) { e[o].sangra = true; ctx.ev.push({ tipo: "sangrou", quem: o, carta: c.id }); }
+  /* grogue sem knockdown (Suplex, Berimbolo): vale na troca seguinte, como o do knockdown */
+  if (a.grogue) { jog[l].deuGrogue = true; ctx.ev.push({ tipo: "grogue", quem: o, carta: c.id }); }
+  /* acertar é nocaute se ele estava grogue, ou com a vida até um número ou até uma fração (antes do golpe) */
+  if (a.nocauteSe && jog[l].dano > 0) {
+    const n = a.nocauteSe, alvo = e[o], antes = jog[l].vidaAlvoAntes != null ? jog[l].vidaAlvoAntes : alvo.vida;
+    if ((n.grogue && alvo.grogue) || (n.vidaAte != null && antes <= n.vidaAte) || (n.fracao != null && antes <= alvo.vidaMax * n.fracao)) {
+      fimDaLuta(e, ctx, l, papel2(e, l) === "pe" ? "KO" : "TKO");
+      return;
+    }
+  }
+  if (a.vaiProChao) { e.pos = "cima_" + l; e.nivelPos = a.nivel || 0; e[l].total.quedas++; pontuar(e, l, K2.pts.queda); ctx.ev.push({ tipo: "queda", quem: l, carta: c.id }); }
   if (a.puxaGuarda) { e.pos = "cima_" + o; e.nivelPos = 0; ctx.ev.push({ tipo: "puxouGuarda", quem: l }); }
   if (a.avanca) { const antes = e.nivelPos; e.nivelPos = Math.min(2, e.nivelPos + a.avanca); if (e.nivelPos !== antes) { pontuar(e, l, K2.pts.avanca); ctx.ev.push({ tipo: "avancou", quem: l, nivelPos: e.nivelPos }); } }
-  if (a.inverte) { e.pos = "cima_" + l; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.inverte); ctx.ev.push({ tipo: "raspou", quem: l }); }
+  if (a.inverte) { e.pos = "cima_" + l; e.nivelPos = a.nivel || 0; e.encaixe = null; pontuar(e, l, K2.pts.inverte); ctx.ev.push({ tipo: "raspou", quem: l }); }
   if (a.levanta) { e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; pontuar(e, l, K2.pts.levanta); ctx.ev.push({ tipo: "levantou", quem: l }); }
   if (a.finaliza) {
     const pas = PASSIVAS[perfis[l].estilo], minimo = pas && pas.finalizaNivel != null ? pas.finalizaNivel : K2.finalizaNivel;
-    if (e.nivelPos >= minimo || e[o].grogue) fimDaLuta(e, ctx, l, "FIN");
+    /* porBaixo: a finalização de quem está por baixo (Triângulo) finaliza ao resolver */
+    if (a.porBaixo || e.nivelPos >= minimo || e[o].grogue) fimDaLuta(e, ctx, l, "FIN");
     else { e.encaixe = { quem: l }; ctx.ev.push({ tipo: "encaixou", quem: l, alvo: o }); }
   }
 }
@@ -434,9 +506,9 @@ function fecharRound2(e, perfis, semente, ctx) {
   }
   for (const l of L2) {
     const sobra = e.mao[l].length;
-    const extra = (perfis[l].v2 && perfis[l].v2.energiaRound) || 0;
-    e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + extra + sobra * K2.energiaPorSobra));
+    e[l].energia = r2(Math.min(e[l].energiaMax, e[l].energia + K2.recuperacaoRound + sobra * K2.energiaPorSobra));
     e[l].grogue = false;
+    Object.assign(e[l], { lento: 0, lentoProx: 0, rapido: 0, rapidoProx: 0, sangra: false });
   }
   e.round++; e.troca = 1; e.pos = "pe"; e.nivelPos = 0; e.encaixe = null; e.iniciativa = null;
   e.mao = { a: comprar(e.deck.a, semente, e.round, "a"), b: comprar(e.deck.b, semente, e.round, "b") };

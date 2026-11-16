@@ -12040,7 +12040,7 @@ async function testarJxJ() {
         /* atributo por atributo: o jsonb do banco reordena as chaves */
         const atrL = L.perfis[eu].atr, ks = Object.keys(base.atr);
         if (Object.keys(atrL).length !== ks.length || ks.some((k) => atrL[k] !== base.atr[k])) throw new Error("o atributo da árvore entrou no combate v2: " + JSON.stringify({ luta: atrL, base: base.atr }));
-        if (!L.perfis[eu].v2 || !L.perfis[eu].v2.mods.some((m) => m.alvo && m.alvo.carta === "jab" && Math.abs(m.dano - 0.3) < 1e-9)) throw new Error("o efeito v2 do nó não entrou: " + JSON.stringify(L.perfis[eu].v2));
+        if (!L.perfis[eu].v2 || L.perfis[eu].v2.estrelas[CT.CARTA_DO_NO.precisao_maos] !== 3) throw new Error("as estrelas do nó não entraram: " + JSON.stringify(L.perfis[eu].v2));
         await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
         await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
       } finally { await flagV2(false); }
@@ -13214,53 +13214,229 @@ async function testarCombate2() {
   });
   /* a árvore no combate v2 (Fase 4) */
   const V2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-luta2.js")).href);
-  const modDe = (p, carta) => p.mods.filter((m) => m.alvo && m.alvo.carta === carta);
-  await conf("árvore v2: todo nó da árvore tem efeito com texto; por nível multiplica dano, velocidade, custo e os números do efeito (pontos, energia); apartir só liga no nível; nó desconhecido ou nível 0 não dá nada", () => {
-    for (const r of Object.values(A.RAMOS)) for (const n of r.nos) {
-      const efs = C.ARVORE_V2[n.id];
-      if (!efs || !efs.length || efs.some((x) => typeof x.desc !== "string" || x.desc.length < 8 || /\u2014|\u2013/.test(x.desc))) throw new Error("nó sem efeito v2 ou sem texto: " + n.id);
+  await conf("catálogo: toda carta tem casa, raridade e nó coerentes; cada nó da árvore libera exatamente uma carta, com a raridade do andar (1 e 2 rara, 3 épica, 4 lendária); as comuns não têm nó", () => {
+    const porNo = {};
+    for (const [id, c] of Object.entries(C.CARTAS)) {
+      if (!["pe", "cima", "baixo"].includes(c.casa) || !C.RARIDADES.includes(c.raridade)) throw new Error("casa ou raridade: " + id);
+      if ((c.raridade === "comum") !== (c.no == null)) throw new Error("comum com nó ou carta da árvore sem nó: " + id);
+      if (c.no) { if (porNo[c.no]) throw new Error("dois nós iguais: " + c.no); porNo[c.no] = id; }
+      if (c.contexto !== c.casa) throw new Error("contexto diferente da casa: " + id);
     }
-    const jab = modDe(C.perfilV2("striker", { precisao_maos: 3 }), "jab");
-    if (jab.length !== 1 || Math.abs(jab[0].dano - 0.3) > 1e-9) throw new Error("dano por nível: " + JSON.stringify(jab));
-    const q2 = modDe(C.perfilV2("wrestler", { entradas: 2 }), "queda");
-    if (q2.length !== 1 || q2[0].efeitos[0].acao.pontos !== 1 || C.ARVORE_V2.entradas[0].mod.efeitos[0].acao.pontos !== 0.5) throw new Error("pontos por nível (ou o efeito da árvore foi alterado): " + JSON.stringify(q2));
-    if (modDe(C.perfilV2("striker", { chute_corpo: 1 }), "chute_alto").length) throw new Error("apartir 2 ligou no nível 1");
-    for (const nv of [2, 3]) { const m = modDe(C.perfilV2("striker", { chute_corpo: nv }), "chute_alto"); if (m.length !== 1 || m[0].custo !== -1) throw new Error("apartir sem por nível, nível " + nv + ": " + JSON.stringify(m)); }
-    const comb = (nv) => modDe(C.perfilV2("striker", { combinacoes: nv }), "combinacao");
-    if (comb(1).length || Math.abs(comb(3)[0].dano - 0.5) > 1e-9) throw new Error("apartir com por nível: " + JSON.stringify([comb(1), comb(3)]));
-    const vazio = C.perfilV2("striker", { xyz: 3, precisao_maos: 0 });
-    if (vazio.mods.length || vazio.vida || vazio.energiaRound || vazio.fintaMenos) throw new Error("nó desconhecido ou nível 0 deu efeito");
-    if (C.perfilV2("counter", { adaptacao: 2 }).vida !== 1.5) throw new Error("vida por nível");
+    for (const r of Object.values(A.RAMOS)) r.nos.forEach((n, i) => {
+      const id = porNo[n.id];
+      if (!id) throw new Error("nó sem carta: " + n.id);
+      const esperada = i < 2 ? "rara" : i === 2 ? "epica" : "lendaria";
+      if (C.CARTAS[id].raridade !== esperada) throw new Error(`${id}: ${C.CARTAS[id].raridade}, esperava ${esperada}`);
+      if (C.CARTA_DO_NO[n.id] !== id) throw new Error("CARTA_DO_NO: " + n.id);
+    });
+    if (Object.keys(porNo).length !== 48) throw new Error("cartas da árvore: " + Object.keys(porNo).length);
   });
-  await conf("carta nova da árvore: só do estilo dela e só com o nó; o deck com ela passa pela build e é recusado sem o nó", () => {
-    for (const [s, carta, no] of [["striker", "combinacao", "combinacoes"], ["wrestler", "double_leg", "correntes"], ["grappler", "rasteira", "transicoes_sub"], ["counter", "esquiva", "padroes"]]) {
-      if (C.CARTAS[carta].desbloqueio !== no || C.cartasLiberadas(s).includes(carta) || !C.cartasLiberadas(s, { [no]: 1 }).includes(carta)) throw new Error("liberação de " + carta);
-      for (const o of A.ESTILOS_IDS) if (o !== s && C.cartasLiberadas(o, { [no]: 3 }).includes(carta)) throw new Error(carta + " liberada pra " + o);
-    }
-    const d = C.DECK_PADRAO.striker.slice(); d[d.lastIndexOf("contra_ataque")] = "combinacao";
-    if (C.validarDeck("striker", d).ok || !C.validarDeck("striker", d, C.cartasLiberadas("striker", { combinacoes: 1 })).ok) throw new Error("validação com a build");
+  await conf("liberadas e estrelas: comuns sempre (puxar guarda só no grappler); nó no nível 1 libera a carta com 1 estrela, nível 3 dá 3; nó desconhecido ou nível 0 não dá nada; build híbrida forjada com nó de andar 3 de outro estilo não libera a épica", () => {
+    const lib = C.cartasLiberadas("striker");
+    for (const id of ["jab", "cruzado", "chute_alto", "bloqueio", "contra_ataque", "queda", "antiqueda", "clinch"]) if (!lib.includes(id)) throw new Error("comum faltando: " + id);
+    if (lib.includes("puxar_guarda") || !C.cartasLiberadas("grappler").includes("puxar_guarda")) throw new Error("puxar guarda");
+    if (lib.some((id) => C.CARTAS[id].no)) throw new Error("carta da árvore sem nó");
+    const b = { precisao_maos: 1, combinacoes: 3, xyz: 3, chute_baixo: 0 };
+    const l2 = C.cartasLiberadas("striker", b), est = C.estrelasDe(b);
+    if (!l2.includes(C.CARTA_DO_NO.precisao_maos) || !l2.includes(C.CARTA_DO_NO.combinacoes) || l2.includes(C.CARTA_DO_NO.chute_baixo)) throw new Error("liberadas: " + l2);
+    if (est[C.CARTA_DO_NO.precisao_maos] !== 1 || est[C.CARTA_DO_NO.combinacoes] !== 3 || Object.keys(est).length !== 2) throw new Error("estrelas: " + JSON.stringify(est));
+    /* híbrido: rara de outro estilo sim (andar 1 e 2), épica e lendária nunca */
+    const hib = C.cartasLiberadas("striker", { entradas: 1, timing_queda: 3, eficiencia_tentativas: 3 });
+    if (!hib.includes(C.CARTA_DO_NO.entradas) || hib.includes(C.CARTA_DO_NO.timing_queda) || hib.includes(C.CARTA_DO_NO.eficiencia_tentativas)) throw new Error("híbrido: " + hib);
+    const p = C.perfilV2("striker", b);
+    if (JSON.stringify(p.liberadas) !== JSON.stringify(l2) || JSON.stringify(p.estrelas) !== JSON.stringify(est)) throw new Error("perfilV2");
   });
-  await conf("árvore v2 no motor: o Jab com o nó bate mais; o Bloqueio com Controle de distância anula a Queda (sem o nó, ela entra); a Queda com Entradas dá os pontos a mais; vida a mais na luta nova", () => {
-    const com = (s, build) => ({ ...neutro(s), v2: C.perfilV2(s, build) });
-    let x = luta(["jab", "bloqueio", "queda", "clinch", "cruzado"], ["bloqueio", "antiqueda", "queda", "clinch", "cruzado"], {}, { a: com("wrestler", { precisao_maos: 3 }), b: neutro("wrestler") });
-    let r = troca(x, "jab", "clinch");
-    if (r.resolucao.dano.a !== 1.3) throw new Error("Jab com o nó: " + JSON.stringify(r.resolucao.dano));
-    for (const [build, anula] of [[{ controle_distancia: 2 }, true], [{}, false]]) {
-      x = luta(["bloqueio", "jab", "queda", "clinch", "cruzado"], ["queda", "antiqueda", "jab", "clinch", "cruzado"], {}, { a: com("striker", build), b: neutro("wrestler") });
-      r = troca(x, "bloqueio", "queda");
-      if (tem(r, "anulou", "a") !== anula || tem(r, "queda", "b") === anula) throw new Error("Bloqueio contra Queda, build " + JSON.stringify(build) + ": " + r.eventos.map((ev) => ev.tipo).join(","));
+  await conf("deck: cópias pela raridade (comum e rara 2, épica e lendária 1), carta não liberada recusada", () => {
+    const epica = C.CARTA_DO_NO.contra_maos, rara = C.CARTA_DO_NO.precisao_maos;
+    const lib = C.cartasLiberadas("striker", { precisao_maos: 1, combinacoes: 1, contra_maos: 1 });
+    /* o padrão sem o 2º Chute alto e o 2º Contra-ataque: 10 cartas com as 4 categorias */
+    const base = C.DECK_PADRAO.striker.filter((id, i, d) => !((id === "chute_alto" || id === "contra_ataque") && d.indexOf(id) !== i));
+    if (base.length !== 10) throw new Error("base do teste: " + base);
+    if (!C.validarDeck("striker", [...base, rara, rara], lib).ok) throw new Error("2 raras recusadas: " + JSON.stringify(C.validarDeck("striker", [...base, rara, rara], lib)));
+    const v = C.validarDeck("striker", [...base, epica, epica], lib);
+    if (v.ok || !/cópia/.test(v.erro)) throw new Error("2 épicas passaram: " + JSON.stringify(v));
+    const sem = C.validarDeck("striker", [...base, rara, rara]);
+    if (sem.ok || !/liberada/.test(sem.erro)) throw new Error("carta sem o nó passou");
+  });
+  await conf("casa: na casa a carta joga como ela; fora, como a básica da categoria (em pé, BASICA_PE; no chão, CHAO); a estrela vale só na casa (estrela 2: +0,5 de dano, ou +0,5 ponto quando funciona; estrela 3: o mod da carta)", () => {
+    const cima = Object.values(C.CARTAS).find((c) => c.casa === "cima" && c.categoria === "golpes");
+    const pe = C.CARTA_DO_NO.precisao_maos;   // Direto: golpe em pé, com dano
+    const P = (build) => ({ ...neutro("striker"), v2: C.perfilV2("striker", build) });
+    if (M.cartaEfetiva(cima.id, "cima", P({})).id !== cima.id) throw new Error("na casa");
+    if (M.cartaEfetiva(cima.id, "pe", P({})).id !== C.BASICA_PE.golpes) throw new Error("fora da casa, em pé");
+    if (M.cartaEfetiva(cima.id, "baixo", P({})).id !== C.CHAO.baixo.golpes.id) throw new Error("fora da casa, por baixo");
+    if (M.cartaEfetiva(pe, "cima", P({})).id !== C.CHAO.cima.golpes.id) throw new Error("carta em pé no chão");
+    const b1 = M.cartaEfetiva(pe, "pe", P({ precisao_maos: 1 })), b2 = M.cartaEfetiva(pe, "pe", P({ precisao_maos: 2 }));
+    if (Math.abs(b2.dano - b1.dano - 0.5) > 1e-9 || b2.estrelas !== 2) throw new Error("estrela 2 com dano: " + [b1.dano, b2.dano]);
+    if (M.cartaEfetiva(pe, "cima", P({ precisao_maos: 3 })).dano !== M.cartaEfetiva("jab", "cima", P({})).dano) throw new Error("estrela valeu fora da casa");
+    /* carta sem dano com reação (a Esquiva tem dano; o Sprawl não): estrela 2 dá +0,5 ponto na reação */
+    const semDano = { ...C.CARTAS.sprawl, id: "t_sd", efeitos: [{ quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true } }], estrela3: { custo: -1 } };
+    C.CARTAS.t_sd = semDano;
+    try {
+      const s2 = M.cartaEfetiva("t_sd", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { t_sd: 2 } } });
+      if (!s2.efeitos.some((ef) => ef.quando === "contra" && ef.acao.pontos >= 0.5)) throw new Error("estrela 2 sem dano: " + JSON.stringify(s2.efeitos));
+      const c3 = M.cartaEfetiva("t_sd", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { t_sd: 3 } } });
+      if (c3.custo !== Math.max(0, semDano.custo - 1)) throw new Error("estrela 3 (custo): " + c3.custo);
+      const c1 = M.cartaEfetiva("t_sd", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { t_sd: 1 } } });
+      if (c1.efeitos.some((ef) => ef.acao.pontos) || c1.custo !== semDano.custo) throw new Error("estrela 1 mudou a carta");
+    } finally { delete C.CARTAS.t_sd; }
+    /* a comum não tem estrela, mesmo com o perfil dizendo */
+    if (M.cartaEfetiva("jab", "pe", { ...neutro(), v2: { liberadas: [], estrelas: { jab: 3 } } }).dano !== M.cartaEfetiva("jab", "pe", neutro()).dano) throw new Error("estrela em carta comum");
+  });
+  /* carta de teste (apagada no fim): só pra provar cada mecânica sozinha */
+  const cartaTeste = (id, c) => { C.CARTAS[id] = { id, raridade: "rara", no: null, estrela3: null, duelo: null, casa: "pe", ...c, contexto: c.casa || "pe" }; return id; };
+  const MAO5 = ["jab", "cruzado", "bloqueio", "queda", "clinch"];
+  await conf("condições e reações novas: danoMin/danoMax na reação; resistente com condição; inanulável passa pela reação; reação que tira energia; se_interrompe com dano a mais", () => {
+    try {
+      cartaTeste("t_grande", { nome: "Grande", categoria: "defesa", vel: 5, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"], danoMin: 3 }, acao: { anula: true } }] });
+      cartaTeste("t_pequeno", { nome: "Pequeno", categoria: "defesa", vel: 5, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"], danoMax: 2 }, acao: { anula: true, energiaOponente: -1 } }] });
+      cartaTeste("t_rodado", { nome: "Rodado", categoria: "golpes", vel: 1, dano: 5, custo: 3, efeitos: [{ quando: "resistente", condicao: { categoria: ["golpes"] }, acao: { ateDano: 3 } }] });
+      cartaTeste("t_over", { nome: "Over", categoria: "golpes", vel: 2, dano: 4, custo: 3, inanulavel: true, efeitos: [] });
+      cartaTeste("t_combo", { nome: "Combo", categoria: "golpes", vel: 4, dano: 2, custo: 2, efeitos: [{ quando: "se_interrompe", acao: { danoExtra: 1 } }] });
+      let r = troca(luta(["t_grande", ...MAO5.slice(1)], MAO5), "t_grande", "cruzado");
+      if (!tem(r, "anulou", "a")) throw new Error("danoMin 3 não anulou o Cruzado");
+      r = troca(luta(["t_grande", ...MAO5.slice(1)], MAO5), "t_grande", "jab");
+      if (tem(r, "anulou", "a")) throw new Error("danoMin 3 anulou o Jab");
+      const x = luta(["t_pequeno", ...MAO5.slice(1)], MAO5), antes = x.e.b.energia;
+      r = troca(x, "t_pequeno", "jab");
+      if (!tem(r, "anulou", "a") || r.estado.b.energia !== Math.round((antes - 1 - 1) * 100) / 100) throw new Error("danoMax e energiaOponente na reação: " + r.estado.b.energia);
+      r = troca(luta(["t_pequeno", ...MAO5.slice(1)], MAO5), "t_pequeno", "cruzado");
+      if (tem(r, "anulou", "a")) throw new Error("danoMax 2 anulou o Cruzado");
+      r = troca(luta(["t_rodado", ...MAO5.slice(1)], MAO5), "t_rodado", "cruzado");
+      if (!tem(r, "resistiu", "a") || !(r.resolucao.dano.a > 0)) throw new Error("resistente com condição (contra golpe) não segurou");
+      r = troca(luta(["t_rodado", ...MAO5.slice(1)], ["clinch", ...MAO5.slice(0, 4)]), "t_rodado", "clinch");
+      if (tem(r, "resistiu", "a")) throw new Error("resistente valeu contra pressão");
+      r = troca(luta(["t_over", ...MAO5.slice(1)], MAO5), "t_over", "bloqueio");
+      if (tem(r, "anulou", "b") || !(r.resolucao.dano.a > 0)) throw new Error("inanulável foi anulada");
+      r = troca(luta(["t_combo", ...MAO5.slice(1)], MAO5), "t_combo", "cruzado");
+      if (r.resolucao.dano.a !== 3) throw new Error("se_interrompe com dano a mais: " + r.resolucao.dano.a);
+    } finally { for (const id of ["t_grande", "t_pequeno", "t_rodado", "t_over", "t_combo"]) delete C.CARTAS[id]; }
+  });
+  await conf("próxima troca e round: lentoProxima deixa ele 1 mais lento só na troca seguinte; rapidoProxima deixa você 1 mais rápido só na seguinte; sangra dá +0,5 nos seus golpes até o fim do round; nada disso atravessa o round", () => {
+    try {
+      cartaTeste("t_perna", { nome: "Perna", categoria: "golpes", vel: 4, dano: 1, custo: 1, efeitos: [{ quando: "se_acerta", acao: { lentoProxima: true, sangra: true } }] });
+      cartaTeste("t_lado", { nome: "Lado", categoria: "defesa", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, rapidoProxima: true } }] });
+      let x = luta(["t_perna", "jab", "cruzado", "bloqueio", "queda"], MAO5);
+      let r = troca(x, "t_perna", "clinch");
+      if (!tem(r, "lento", "b") || !tem(r, "sangrou", "b")) throw new Error("eventos: " + r.eventos.map((ev) => ev.tipo));
+      x = { e: r.estado, P: x.P };
+      r = troca(x, "jab", "cruzado");
+      if (r.resolucao.cartas.b.vel !== C.CARTAS.cruzado.vel - 1) throw new Error("não ficou lento: " + r.resolucao.cartas.b.vel);
+      if (r.resolucao.dano.a !== 1.5) throw new Error("sangra: " + r.resolucao.dano.a);
+      x = { e: r.estado, P: x.P };
+      r = troca(x, "cruzado", "bloqueio");   // última troca do round: o lento já passou, o sangra ainda vale
+      if (r.resolucao.cartas.b.vel !== C.CARTAS.bloqueio.vel) throw new Error("lento durou duas trocas");
+      if (r.estado.round !== 2 || r.estado.b.sangra || r.estado.b.lento || r.estado.b.lentoProx) throw new Error("atravessou o round: " + JSON.stringify(r.estado.b));
+      x = luta(["t_lado", "jab", "cruzado", "bloqueio", "queda"], MAO5);
+      r = troca(x, "t_lado", "jab");
+      if (!tem(r, "rapido", "a")) throw new Error("sem o evento rapido");
+      x = { e: r.estado, P: x.P };
+      r = troca(x, "cruzado", "bloqueio");
+      if (r.resolucao.cartas.a.vel !== C.CARTAS.cruzado.vel + 1) throw new Error("rapidoProxima: " + r.resolucao.cartas.a.vel);
+    } finally { delete C.CARTAS.t_perna; delete C.CARTAS.t_lado; }
+  });
+  await conf("posição: reação que derruba (poeEmCima: anula a queda e quem reagiu fica por cima, sem 'falhou'); queda e raspagem com nível; avançar 2; recuar volta pra guarda", () => {
+    try {
+      cartaTeste("t_cq", { nome: "CQ", categoria: "defesa", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true, poeEmCima: true } }] });
+      cartaTeste("t_bl", { nome: "BL", categoria: "pressao", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true, nivel: 1 } }] });
+      cartaTeste("t_rg", { nome: "RG", casa: "baixo", categoria: "queda", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { inverte: true, nivel: 2 } }] });
+      cartaTeste("t_pj", { nome: "PJ", casa: "cima", categoria: "pressao", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { avanca: 2 } }] });
+      cartaTeste("t_rc", { nome: "RC", casa: "baixo", categoria: "pressao", vel: 4, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { recua: true } }] });
+      let r = troca(luta(["t_cq", ...MAO5.slice(1)], MAO5), "t_cq", "queda");
+      if (r.estado.pos !== "cima_a" || !tem(r, "queda", "a") || tem(r, "falhou")) throw new Error("poeEmCima: " + r.estado.pos + " " + r.eventos.map((ev) => ev.tipo));
+      r = troca(luta(["t_bl", ...MAO5.slice(1)], MAO5), "t_bl", "jab");
+      if (r.estado.pos === "cima_a") throw new Error("o Jab mais rápido devia interromper");
+      r = troca(luta(["t_bl", ...MAO5.slice(1)], MAO5), "t_bl", "bloqueio");
+      if (r.estado.pos !== "cima_a" || r.estado.nivelPos !== 1) throw new Error("vaiProChao nível 1: " + r.estado.pos + r.estado.nivelPos);
+      r = troca(luta(["t_rg", ...MAO5.slice(1)], MAO5, { pos: "cima_b", nivelPos: 0 }), "t_rg", "bloqueio");
+      if (r.estado.pos !== "cima_a" || r.estado.nivelPos !== 2) throw new Error("inverte nível 2: " + r.estado.pos + r.estado.nivelPos);
+      r = troca(luta(["t_pj", ...MAO5.slice(1)], MAO5, { pos: "cima_a", nivelPos: 0 }), "t_pj", "bloqueio");
+      if (r.estado.nivelPos !== 2) throw new Error("avança 2: " + r.estado.nivelPos);
+      /* ele joga o Jab (ground and pound por cima): a Segurar dele (Bloqueio por cima) anularia a pressão */
+      r = troca(luta(["t_rc", ...MAO5.slice(1)], MAO5, { pos: "cima_b", nivelPos: 2 }), "t_rc", "jab");
+      if (r.estado.pos !== "cima_b" || r.estado.nivelPos !== 0 || !tem(r, "recuou", "a")) throw new Error("recua: " + r.estado.pos + r.estado.nivelPos);
+    } finally { for (const id of ["t_cq", "t_bl", "t_rg", "t_pj", "t_rc"]) delete C.CARTAS[id]; }
+  });
+  await conf("estado de luta: grogue sem knockdown; nocauteSe (grogue, vida até 3 antes do golpe, metade da vida); tirar o grogue; ao_jogar com danoProprio vale mesmo anulada", () => {
+    try {
+      cartaTeste("t_sp", { nome: "SP", categoria: "queda", vel: 3, dano: 1, custo: 0, efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true, grogue: true } }] });
+      cartaTeste("t_mi", { nome: "MI", categoria: "golpes", vel: 4, dano: 2, custo: 0, efeitos: [{ quando: "se_acerta", acao: { nocauteSe: { grogue: true, vidaAte: 3 } } }] });
+      cartaTeste("t_mt", { nome: "MT", casa: "cima", categoria: "golpes", vel: 3, dano: 1, custo: 0, efeitos: [{ quando: "se_acerta", acao: { nocauteSe: { fracao: 0.5 } } }] });
+      cartaTeste("t_sf", { nome: "SF", categoria: "defesa", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, tiraGrogue: true } }] });
+      cartaTeste("t_su", { nome: "SU", categoria: "golpes", vel: 5, dano: 3, custo: 0, efeitos: [{ quando: "ao_jogar", condicao: { categoria: ["defesa"] }, acao: { danoProprio: 2 } }] });
+      const x = luta(["t_sp", ...MAO5.slice(1)], MAO5);
+      let r = troca(x, "t_sp", "bloqueio");
+      if (!r.estado.b.grogue || !tem(r, "grogue", "b") || tem(r, "knockdown")) throw new Error("grogue sem knockdown: " + r.eventos.map((ev) => ev.tipo));
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: true } }), "t_mi", "clinch");
+      if (!r.estado.fim || r.estado.fim.metodo !== "KO") throw new Error("nocauteSe grogue: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: false, vida: 3 } }), "t_mi", "clinch");
+      if (!r.estado.fim) throw new Error("nocauteSe com 3 de vida antes do golpe");
+      /* a vida de antes do golpe: com 5, o golpe de 2 deixa 3 e não é nocaute */
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: false, vida: 5 } }), "t_mi", "clinch");
+      if (r.estado.fim) throw new Error("nocauteSe olhou a vida depois do golpe");
+      r = troca(luta(["t_mi", ...MAO5.slice(1)], MAO5), "t_mi", "clinch");
+      if (r.estado.fim) throw new Error("nocauteSe sem condição");
+      /* por baixo ele joga a Queda (vira o Raspar, mais lento): a Guarda (o Bloqueio por baixo) anularia o golpe */
+      r = troca(luta(["t_mt", ...MAO5.slice(1)], MAO5, { pos: "cima_a", nivelPos: 2, b: { ...x.e.b, grogue: false, vida: x.e.b.vidaMax / 2 } }), "t_mt", "queda");
+      if (!r.estado.fim || r.estado.fim.metodo !== "TKO") throw new Error("nocauteSe metade no chão: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_sf", ...MAO5.slice(1)], MAO5, { a: { ...x.e.a, grogue: true } }), "t_sf", "jab");
+      if (r.estado.a.grogue || !tem(r, "tirouGrogue", "a")) throw new Error("tirar grogue");
+      const y = luta(["t_su", ...MAO5.slice(1)], MAO5), vida = y.e.a.vida;
+      r = troca(y, "t_su", "bloqueio");
+      if (r.estado.a.vida !== vida - 2 || !tem(r, "anulou", "b")) throw new Error("danoProprio: " + r.estado.a.vida);
+    } finally { for (const id of ["t_sp", "t_mi", "t_mt", "t_sf", "t_su"]) delete C.CARTAS[id]; }
+  });
+  await conf("finalizações novas: por baixo finaliza ao resolver; em pé finaliza quem está grogue (ou cansado, se a carta pedir) e senão derruba pra montada; o Avançar dele (contra queda) segura a de baixo", () => {
+    try {
+      cartaTeste("t_tri", { nome: "TRI", casa: "baixo", categoria: "queda", vel: 2, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { finaliza: true, porBaixo: true } }] });
+      cartaTeste("t_ml", { nome: "ML", categoria: "queda", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { finalizaSe: { grogue: true }, vaiProChao: true, nivel: 2 } }] });
+      cartaTeste("t_mlc", { nome: "MLC", categoria: "queda", vel: 3, dano: 0, custo: 0, efeitos: [{ quando: "se_acerta", acao: { finalizaSe: { cansado: true }, vaiProChao: true } }] });
+      let r = troca(luta(["t_tri", ...MAO5.slice(1)], MAO5, { pos: "cima_b", nivelPos: 0 }), "t_tri", "bloqueio");
+      if (!r.estado.fim || r.estado.fim.metodo !== "FIN" || r.estado.fim.vencedor !== "a") throw new Error("por baixo: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_tri", ...MAO5.slice(1)], ["clinch", ...MAO5.slice(0, 4)], { pos: "cima_b", nivelPos: 0 }), "t_tri", "clinch");
+      if (r.estado.fim) throw new Error("o Avançar (contra queda) não segurou o triângulo");
+      const x = luta(MAO5, MAO5);
+      r = troca(luta(["t_ml", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, grogue: true } }), "t_ml", "clinch");
+      if (!r.estado.fim || r.estado.fim.metodo !== "FIN") throw new Error("em pé com ele grogue: " + JSON.stringify(r.estado.fim));
+      r = troca(luta(["t_ml", ...MAO5.slice(1)], MAO5), "t_ml", "clinch");
+      if (r.estado.fim || r.estado.pos !== "cima_a" || r.estado.nivelPos !== 2) throw new Error("em pé sem grogue: " + r.estado.pos + r.estado.nivelPos);
+      r = troca(luta(["t_mlc", ...MAO5.slice(1)], MAO5, { b: { ...x.e.b, energia: 1 } }), "t_mlc", "bloqueio");
+      if (!r.estado.fim || r.estado.fim.metodo !== "FIN") throw new Error("em pé com ele cansado: " + JSON.stringify(r.estado.fim));
+    } finally { for (const id of ["t_tri", "t_ml", "t_mlc"]) delete C.CARTAS[id]; }
+  });
+  await conf("catálogo: as 48 cartas da spec com os ids, nós e casas combinados, cada uma com efeito e estrela 3; toda carta resolve sem erro numa troca contra cada comum, na casa e fora dela", () => {
+    const esperado = {
+      direto: ["precisao_maos", "pe"], combinacao: ["combinacoes", "pe"], contragolpe: ["contra_maos", "pe"], overhand: ["eficiencia_golpes", "pe"],
+      chute_perna: ["chute_baixo", "pe"], chute_corpo: ["chute_corpo", "pe"], chute_frontal: ["controle_distancia", "pe"], chute_rodado: ["variedade", "pe"],
+      passo_lateral: ["controle_ritmo", "pe"], joelhada: ["combinacoes_pressao", "pe"], cotovelada: ["iniciativa", "pe"], superman: ["eficiencia_ofensiva", "pe"],
+      single_leg: ["entradas", "pe"], double_leg: ["correntes", "pe"], queda_contragolpe: ["timing_queda", "pe"], suplex: ["eficiencia_tentativas", "pe"],
+      peso_ombro: ["controle_posicional", "cima"], cotovelada_cima: ["dominio", "cima"], passagem_joelho: ["transicoes_controle", "cima"], martelada: ["pressao_solo", "cima"],
+      sprawl: ["equilibrio", "pe"], levantada_tecnica: ["recuperacao_posicao", "baixo"], contra_queda: ["defesa_entradas", "pe"], bodylock: ["retorno_distancia", "pe"],
+      kimura: ["eficiencia_sub", "cima"], rasteira: ["transicoes_sub", "pe"], triangulo: ["oportunidades", "baixo"], mata_leao: ["especializacao", "pe"],
+      cem_quilos: ["controle_chao", "cima"], passagem_guarda: ["passagens", "cima"], guarda_fechada: ["retencao", "baixo"], raspagem_gancho: ["raspagem", "baixo"],
+      defesa_finalizacao: ["defesa_sub", "baixo"], fuga_quadril: ["saidas", "baixo"], recomposicao: ["sobrevivencia", "baixo"], berimbolo: ["recuperar_guarda", "baixo"],
+      esquiva: ["padroes", "pe"], leitura_queda: ["antecipacao", "pe"], contra_esquerda: ["resposta", "pe"], leitura_total: ["adaptacao", "pe"],
+      pendulo: ["evasao", "pe"], guarda_alta: ["bloqueio", "pe"], saida_lado: ["gestao_distancia", "pe"], segundo_folego: ["recuperacao_defensiva", "pe"],
+      contra_corpo: ["contra_ataques", "pe"], cruzado_contra: ["timing", "pe"], uppercut: ["eficiencia_counter", "pe"], misericordia: ["aproveitamento", "pe"],
+    };
+    for (const [id, [no, casa]] of Object.entries(esperado)) {
+      const c = C.CARTAS[id];
+      if (!c || c.no !== no || c.casa !== casa || !c.estrela3 || !c.nome) throw new Error("carta: " + id + " " + JSON.stringify(c && { no: c.no, casa: c.casa, e3: c.estrela3 }));
+      if (!c.efeitos.length && !c.inanulavel && id !== "direto" && id !== "cotovelada_cima") throw new Error("carta sem efeito: " + id);
     }
-    const pts = (build) => { const y = luta(["queda", "jab", "bloqueio", "clinch", "cruzado"], ["clinch", "jab", "bloqueio", "queda", "cruzado"], {}, { a: com("wrestler", build), b: neutro("wrestler") }); return troca(y, "queda", "clinch").resolucao.pontos.a; };
-    if (Math.abs(pts({ entradas: 2 }) - pts({}) - 1) > 1e-9) throw new Error("pontos da Queda: " + pts({ entradas: 2 }) + " contra " + pts({}));
-    const e = M.novaLuta2(com("counter", { adaptacao: 2 }), neutro("counter"), "v");
-    if (e.a.vidaMax !== e.b.vidaMax + 1.5) throw new Error("vida: " + e.a.vidaMax + " contra " + e.b.vidaMax);
+    const comuns = ["jab", "cruzado", "chute_alto", "bloqueio", "contra_ataque", "queda", "antiqueda", "clinch"];
+    for (const id of Object.keys(esperado)) for (const pos of [{ pos: "pe", nivelPos: 0 }, { pos: "cima_a", nivelPos: 1 }, { pos: "cima_b", nivelPos: 1 }]) for (const ele of comuns) {
+      const P = { a: { ...neutro("grappler"), v2: { liberadas: C.cartasLiberadas("grappler"), estrelas: { [id]: 3 } } }, b: neutro("wrestler") };
+      const x = luta([id, "jab", "bloqueio", "queda", "clinch"], [ele, "jab", "bloqueio", "queda", "clinch"], pos, P);
+      troca(x, id, ele);   // não pode lançar erro
+    }
   });
   await conf("perfil da luta v2: o atributo da árvore não entra (o nó vale só pelo efeito v2, decisão 48); o deck montado com carta que o lutador não tem mais volta pro padrão", () => {
     const build = { precisao_maos: 3, controle_distancia: 3 };
     const p = V2.perfilLuta2({ estilo: "striker", categoria: "middleweight", build });
     const base = A.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build: {} }), comArv = A.perfilDeCombate({ estilo: "striker", categoria: "middleweight", build });
     if (JSON.stringify(p.atr) !== JSON.stringify(base.atr) || comArv.atr.golpe <= base.atr.golpe) throw new Error("atributo da árvore no combate v2: " + JSON.stringify([p.atr.golpe, base.atr.golpe, comArv.atr.golpe]));
-    if (!modDe(p.v2, "jab").length || JSON.stringify(p.deck) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("v2 ou deck do perfil");
+    if (p.v2.estrelas[C.CARTA_DO_NO.precisao_maos] !== 3 || JSON.stringify(p.deck) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("v2 ou deck do perfil");
     const d = C.DECK_PADRAO.striker.slice(); d[d.lastIndexOf("contra_ataque")] = "combinacao";
     if (JSON.stringify(V2.deckDo({ estilo: "striker", build: { combinacoes: 1 }, deck: d })) !== JSON.stringify(d)) throw new Error("deck com o nó");
     if (JSON.stringify(V2.deckDo({ estilo: "striker", build: {}, deck: d })) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("deck sem o nó não voltou pro padrão");
@@ -13376,7 +13552,8 @@ async function testarJxJV2() {
     const emp = porQue(troca(MAO, MAO, "cruzado", "cruzado"));
     if (!emp.some((f) => f.startsWith("Velocidade igual (3): as duas cartas resolveram juntas"))) throw new Error("empate: " + JSON.stringify(emp));
     const res = porQue(troca(["chute_alto", "jab", "bloqueio", "queda", "clinch"], MAO, "chute_alto", "jab"));
-    if (!res.some((f) => /^A sua carta \(Chute alto\) aguentou o golpe de dano 1/.test(f))) throw new Error("resistente: " + JSON.stringify(res));
+    /* o texto não diz o dano: com as cartas da árvore, a resistência vai até dano 3 (Chute rodado) */
+    if (!res.some((f) => /^A sua carta \(Chute alto\) aguentou o golpe e resolveu/.test(f))) throw new Error("resistente: " + JSON.stringify(res));
     const sem = porQue(troca(MAO, MAO, "cruzado", "jab", { a: { ...M.novaLuta2(neutro(), neutro(), "t").a, energia: 0 } }));
     if (!sem.some((f) => /^Você jogou sem energia: Cruzado saiu 2 mais lenta/.test(f))) throw new Error("sem energia: " + JSON.stringify(sem));
     const fin = porQue(troca(MAO, MAO, "cruzado", "jab", {}, undefined, { a: "defesa", b: "golpes" }));
@@ -13450,13 +13627,17 @@ async function testarJxJV2() {
     for (const t of ["golpe1", "quedaDefendida", "queda", "kd", "fim", "decisao"]) if (!lances.has(t)) throw new Error("nenhum lance " + t + " (vistos: " + [...lances] + ")");
     if (kds < 5 || fins < 200) throw new Error(`poucos knockdowns (${kds}) ou fins (${fins})`);
   });
-  await conf("referência da v2: em pé, por cima e por baixo, da mais rápida pra mais lenta; todo efeito vira texto; a carta exclusiva só no estilo dela", () => {
+  await conf("referência da v2: em pé, por cima e por baixo (pela casa da carta), da mais rápida pra mais lenta; todo efeito vira texto; com o estilo, as cartas dele e a rara de outro estilo que o híbrido compra, nunca a épica ou lendária de outro", () => {
     const r = noJogo("jxjReferencia2", defs, "striker"), todas = noJogo("jxjReferencia2", defs, null);
     for (const k of ["pe", "cima", "baixo"]) for (let i = 1; i < r[k].length; i++) if (r[k][i].vel > r[k][i - 1].vel) throw new Error(k + " fora de ordem: " + r[k].map((c) => c.id + c.vel));
-    if (r.cima.length !== 4 || r.baixo.length !== 4) throw new Error("chão: " + r.cima.length + "/" + r.baixo.length);
+    const casaDe = (id) => (defs.cartas[id] ? defs.cartas[id].casa : null);
+    for (const k of ["cima", "baixo"]) {
+      const base = Object.values(defs.chao[k]).map((c) => c.id);
+      if (!base.every((id) => r[k].some((c) => c.id === id)) || r[k].some((c) => !base.includes(c.id) && casaDe(c.id) !== k)) throw new Error("chão " + k + ": " + r[k].map((c) => c.id));
+    }
     const ids = r.pe.map((c) => c.id);
-    if (!ids.includes("combinacao") || ids.includes("esquiva") || ids.includes("puxar_guarda")) throw new Error("exclusivas do striker: " + ids);
-    if (todas.pe.length !== Object.keys(defs.cartas).length) throw new Error("sem estilo, faltou carta");
+    if (!ids.includes("combinacao") || !ids.includes("esquiva") || ids.includes("leitura_total") || ids.includes("puxar_guarda") || r.pe.some((c) => casaDe(c.id) !== "pe")) throw new Error("cartas do striker: " + ids);
+    if (todas.pe.length + todas.cima.length + todas.baixo.length !== Object.keys(defs.cartas).length + 8) throw new Error("sem estilo, faltou carta");
     const ef = (id) => [...todas.pe, ...todas.cima, ...todas.baixo].find((c) => c.id === id).efeito;
     const espera = { bloqueio: "Contra golpe: anula, recupera 2 de energia.", chute_alto: "Golpe de dano 1 não interrompe.", contra_ataque: "Se ele jogou golpe: dano vezes 2.",
       queda: "Se acerta: leva pro chão, você por cima.", ground_and_pound: "Se acerta na montada: 1 de dano a mais.", jab: "Se interrompe: recupera 1 de energia.",
@@ -13468,7 +13649,8 @@ async function testarJxJV2() {
     }
   });
   await conf("carta v2 (jxjCarta2): custo, velocidade com a diferença do duelo, dano e o efeito; raridade e arte opcionais (sem elas, nada a mais; raridade fora da lista é ignorada); nome e arte escapados", () => {
-    const jab = defs.cartas.jab;
+    /* a carta sem raridade nos dados (as de antes das cartas da árvore): nada a mais */
+    const jab = { ...defs.cartas.jab, raridade: null };
     const h = noJogo("jxjCarta2", jab, { vel: 4, velBase: 5, dano: 1.25 });
     if (!/aria-label="velocidade 4"/.test(h) || !/<b>4<i class="menos">-1<\/i><\/b>/.test(h) || !h.includes("<b>1,25</b>") || !h.includes(">1</span></span>")) throw new Error("números: " + h);
     if (!h.includes("Se interrompe: recupera 1 de energia.")) throw new Error("efeito: " + h);
@@ -13478,6 +13660,40 @@ async function testarJxJV2() {
     if (/rar-/.test(noJogo("jxjCarta2", { ...jab, raridade: "mitica" }))) throw new Error("raridade fora da lista entrou");
     const mau = noJogo("jxjCarta2", { ...jab, nome: MAU, arte: '"><img src=x onerror=alert(1)>' });
     if (/<img src=x|onerror=alert\(1\)>/.test(mau.replace(/&[a-z#0-9]+;/g, "_"))) throw new Error("HTML cru: " + mau);
+  });
+  await conf("cartas da árvore no texto e no 3D: todo evento novo tem frase e entrada no 3D; toda carta tem frase com artigo e lance; o efeito de cada carta vira texto; a punição e o grogue entram no porquê", () => {
+    const novos = ["lento", "rapido", "sangrou", "grogue", "tirouGrogue", "recuou"];
+    const tabela = new Set(JSON.parse(X.run("JSON.stringify(Object.keys(JXJ_3D2))")));
+    for (const t of novos) {
+      if (!tabela.has(t)) throw new Error("evento sem entrada no 3D: " + t);
+      const f = V2.textoEvento2({ tipo: t, quem: "a", carta: "chute_perna" }, { a: "Ana", b: "Bia" });
+      if (!f || /undefined/.test(f) || /[–—]/.test(f)) throw new Error("evento sem frase: " + t + " " + f);
+    }
+    const pun = V2.textoEvento2({ tipo: "dano", quem: "b", alvo: "a", carta: "bloqueio", dano: 2, punicao: true }, { a: "Ana", b: "Bia" });
+    if (!/Ana entrou no contra/.test(pun)) throw new Error("frase da punição: " + pun);
+    const golpes = new Set(JSON.parse(X.run("JSON.stringify([...Object.keys(JXJ_3D2_GOLPE), ...JXJ_3D2_QUEDA, ...JXJ_3D2_CHAO])")));
+    const todas = noJogo("jxjReferencia2", defs, null), ref = [...todas.pe, ...todas.cima, ...todas.baixo];
+    for (const c of Object.values(defs.cartas)) {
+      if (c.no == null) continue;
+      if (!/^(o|a|os|as) /.test(V2.naFrase(c.id))) throw new Error("sem artigo: " + c.id + " " + V2.naFrase(c.id));
+      if (c.categoria === "golpes" && !golpes.has(c.id)) throw new Error("golpe sem lance: " + c.id);
+      if (["queda_contragolpe", "suplex", "single_leg", "mata_leao", "bodylock"].includes(c.id) && !golpes.has(c.id)) throw new Error("queda sem lance: " + c.id);
+      const t = ref.find((x) => x.id === c.id);
+      if (!t || ((c.efeitos.length || c.inanulavel) && !t.efeito)) throw new Error("efeito sem texto: " + c.id);
+      if (/undefined|NaN|[–—]/.test(t.efeito)) throw new Error("efeito com lixo: " + c.id + " " + t.efeito);
+      if (!c.raridade || !c.casa) throw new Error("definições sem raridade ou casa: " + c.id);
+    }
+    const ef = (id) => ref.find((x) => x.id === id).efeito;
+    for (const [id, re] of [["overhand", /Nenhuma reação anula/], ["passo_lateral", /dano 3 ou mais/], ["pendulo", /dano 2 ou menos/], ["superman", /você leva 2 de dano/],
+      ["chute_perna", /1 mais lento/], ["cotovelada", /sangra/], ["suplex", /grogue/], ["misericordia", /nocaute/], ["triangulo", /finaliza/], ["mata_leao", /grogue/],
+      ["contra_queda", /você por cima/], ["passagem_joelho", /2 posições/], ["raspagem_gancho", /montada/], ["recomposicao", /guarda/], ["segundo_folego", /grogue/], ["saida_lado", /mais rápida/]])
+      if (!re.test(ef(id))) throw new Error(`efeito de ${id}: "${ef(id)}"`);
+    /* o porquê: a punição do Superman punch e o grogue do Suplex */
+    const tr = (maoA, maoB, a, b, extra) => troca(maoA, maoB, a, b, extra);
+    const sup = tr(["superman", "jab", "cruzado", "bloqueio", "queda"], MAO, "superman", "bloqueio");
+    if (!porQue(sup).some((f) => /entrou no contra/.test(f))) throw new Error("porquê da punição: " + JSON.stringify(porQue(sup)));
+    const sp = tr(["suplex", "jab", "cruzado", "bloqueio", "queda"], MAO, "suplex", "bloqueio");
+    if (!porQue(sp).some((f) => /grogue/.test(f))) throw new Error("porquê do grogue: " + JSON.stringify(porQue(sp)));
   });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
@@ -15183,7 +15399,7 @@ async function testarJxJTelas() {
         if (!det.includes("jxj-no-v2-detalhe com-carta") || !det.includes('data-carta="combinacao"') || !det.includes("aparece na aba Deck")) throw new Error("detalhe: " + det.replace(/\s+/g, " ").slice(0, 300));
         await ultimoNo("Precisão").onclick(); await assentar(10);
         const det2 = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
-        if (!det2.includes("jxj-no-v2-detalhe") || det2.includes("com-carta")) throw new Error("detalhe sem carta: " + det2.replace(/\s+/g, " ").slice(-300));
+        if (!det2.includes("jxj-no-v2-detalhe com-carta") || !det2.includes('data-carta="direto"')) throw new Error("detalhe do Precisão (o Direto): " + det2.replace(/\s+/g, " ").slice(-300));
         m = await abrir(`lutador/${l1}/deck`);
         semLixoV3T(htmlDe(desde(m)), "aba Deck");
       } finally { await flagV2T(false); }

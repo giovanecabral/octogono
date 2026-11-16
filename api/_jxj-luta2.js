@@ -5,7 +5,7 @@
 import * as C2 from "./_jxj-combate2.js";
 import * as C from "./_jxj-cartas.js";
 import { POSTURAS } from "./_jxj-estrategia.js";
-import { perfilDeCombate } from "./_jxj-arvores.js";
+import { perfilDeCombate, NOS } from "./_jxj-arvores.js";
 
 export const ehV2 = (estado) => !!estado && estado.cv === C2.VERSAO_COMBATE;
 const outro = (l) => (l === "a" ? "b" : "a");
@@ -19,7 +19,7 @@ export function deckDo(l) {
   return C.DECK_PADRAO[l.estilo].slice();
 }
 /* o perfil da luta v2: atributos do estilo e da categoria, sem os da árvore
-   (no combate novo o nó vale só pelo que ARVORE_V2 dá, decisão 48), o que a
+   (no combate novo o nó vale só pela carta que libera, decisões 48 e 80), o que a
    árvore dá no combate novo e o deck. A simulação usa este mesmo. */
 export const perfilLuta2 = (l) => ({
   ...perfilDeCombate({ estilo: l.estilo, categoria: l.categoria, build: {} }),
@@ -40,7 +40,19 @@ const NA_FRASE = {
   queda: "a queda", antiqueda: "a antiqueda", clinch: "o clinch", puxar_guarda: "a puxada de guarda",
   ground_and_pound: "o ground and pound", finalizacao: "a finalização", segurar: "a pegada por cima", avancar: "o avanço",
   golpes_por_baixo: "os golpes por baixo", raspar: "a raspagem", guarda: "a guarda", levantar: "a levantada",
-  combinacao: "a combinação", double_leg: "o double leg", rasteira: "a rasteira", esquiva: "a esquiva",
+  /* as cartas da árvore */
+  direto: "o direto", combinacao: "a combinação", contragolpe: "o contragolpe", overhand: "o overhand",
+  chute_perna: "o chute na perna", chute_corpo: "o chute no corpo", chute_frontal: "o chute frontal", chute_rodado: "o chute rodado",
+  passo_lateral: "o passo lateral", joelhada: "a joelhada", cotovelada: "a cotovelada", superman: "o superman punch",
+  single_leg: "o single leg", double_leg: "o double leg", queda_contragolpe: "a queda no contragolpe", suplex: "o suplex",
+  peso_ombro: "o peso do ombro", cotovelada_cima: "a cotovelada por cima", passagem_joelho: "a passagem de joelho", martelada: "a martelada",
+  sprawl: "o sprawl", levantada_tecnica: "a levantada técnica", contra_queda: "a contra-queda", bodylock: "o bodylock",
+  kimura: "a kimura", rasteira: "a rasteira", triangulo: "o triângulo", mata_leao: "o mata-leão",
+  cem_quilos: "o cem quilos", passagem_guarda: "a passagem de guarda", guarda_fechada: "a guarda fechada", raspagem_gancho: "a raspagem de gancho",
+  defesa_finalizacao: "a defesa de finalização", fuga_quadril: "a fuga de quadril", recomposicao: "a recomposição", berimbolo: "o berimbolo",
+  esquiva: "a esquiva", leitura_queda: "a leitura de queda", contra_esquerda: "o contra de esquerda", leitura_total: "a leitura total",
+  pendulo: "o pêndulo", guarda_alta: "a guarda alta", saida_lado: "a saída de lado", segundo_folego: "o segundo fôlego",
+  contra_corpo: "o contra no corpo", cruzado_contra: "o cruzado de contra", uppercut: "o uppercut", misericordia: "o golpe de misericórdia",
 };
 export const naFrase = (id) => NA_FRASE[id] || (C.CARTAS[id] || C.CARTA_DO_CHAO[id] || { nome: id }).nome.toLowerCase();
 const NOME_CAT = { golpes: "golpe", queda: "queda", defesa: "defesa", pressao: "pressão" };
@@ -48,7 +60,7 @@ const METODO = { KO: "nocaute", TKO: "nocaute técnico", FIN: "finalização", D
 export function textoEvento2(ev, nomes) {
   const N = (l) => nomes[l] || l;
   switch (ev.tipo) {
-    case "dano": return `${N(ev.quem)} acertou ${naFrase(ev.carta)} (${num(ev.dano)} de dano).`;
+    case "dano": return ev.punicao ? `${N(ev.alvo)} entrou no contra e levou ${num(ev.dano)} de dano.` : `${N(ev.quem)} acertou ${naFrase(ev.carta)} (${num(ev.dano)} de dano).`;
     case "anulou": return `${N(ev.quem)} anulou ${naFrase(ev.alvo)} com ${naFrase(ev.carta)}.`;
     case "interrompeu": return `${N(ev.quem)} interrompeu ${naFrase(ev.alvo)} com ${naFrase(ev.carta)}.`;
     case "resistiu": return `${N(ev.quem)} aguentou o golpe e seguiu com ${naFrase(ev.carta)}.`;
@@ -66,6 +78,12 @@ export function textoEvento2(ev, nomes) {
     case "ausente": return `${N(ev.quem)} não escolheu a tempo.`;
     case "falhou": return `A posição mudou e ${naFrase(ev.carta)} de ${N(ev.quem)} não serviu mais.`;
     case "travaram": return "Os dois tentaram mudar a posição e travaram.";
+    case "lento": return `${N(ev.quem)} ficou mais lento pra próxima troca.`;
+    case "rapido": return `${N(ev.quem)} sai na frente na próxima troca.`;
+    case "sangrou": return `${N(ev.quem)} está sangrando: os golpes nele entram mais até o fim do round.`;
+    case "grogue": return `${N(ev.quem)} ficou grogue.`;
+    case "tirouGrogue": return `${N(ev.quem)} se recuperou e não está mais grogue.`;
+    case "recuou": return `${N(ev.quem)} recompôs a guarda.`;
     case "fimRound": {
       const c = ev.cartao || {};
       if (c.a === c.b) return `O round ${ev.round} terminou empatado.`;
@@ -124,7 +142,7 @@ export function trocaVista(t, nomes) {
     round: t.round, troca: t.troca, cartaA: t.acao_a, cartaB: t.acao_b, acaoA: cat(t.acao_a), acaoB: cat(t.acao_b),
     resolucao: res ? { ...res, tipo: undefined } : null,
     ev: evs.filter((ev) => ev.tipo !== "resolucao").map((ev) => ({ tipo: ev.tipo, quem: ev.quem || null, alvo: ev.alvo || null, carta: ev.carta || null,
-      metodo: ev.metodo || null, dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null, como: ev.como || null })),
+      metodo: ev.metodo || null, dano: typeof ev.dano === "number" ? Math.round(ev.dano * 10) / 10 : null, como: ev.como || null, punicao: !!ev.punicao })),
     eventos: evs.map((ev) => textoEvento2(ev, nomes)).filter(Boolean),
   };
 }
@@ -132,7 +150,12 @@ export function trocaVista(t, nomes) {
 /* ---------- definições ---------- */
 export function definicoes2() {
   const carta = (c) => ({ id: c.id, nome: c.nome, categoria: c.categoria, contexto: c.contexto, vel: c.vel, dano: c.dano, custo: c.custo,
-    efeitos: c.efeitos, estiloExclusivo: c.estiloExclusivo || null, desbloqueio: c.desbloqueio || null });
+    efeitos: c.efeitos, estiloExclusivo: c.estiloExclusivo || null,
+    /* desbloqueio: o nó da carta (o nome de antes, que a tela ainda lê; some na etapa da tela) */
+    desbloqueio: c.no || null, no: c.no || null, raridade: c.raridade || null, casa: c.casa || c.contexto,
+    estrela3: c.estrela3 || null, inanulavel: !!c.inanulavel,
+    /* de que estilo é o nó e em que andar (o híbrido compra rara de outro estilo, andar 1 e 2) */
+    estilo: c.no && NOS[c.no] ? NOS[c.no].estilo : c.estiloExclusivo || null, andar: c.no && NOS[c.no] ? NOS[c.no].tier : null });
   return {
     versao: C2.VERSAO_COMBATE,
     cartas: Object.fromEntries(Object.values(C.CARTAS).map((c) => [c.id, carta(c)])),
@@ -140,8 +163,8 @@ export function definicoes2() {
     passivas: Object.fromEntries(Object.entries(C.PASSIVAS).map(([id, p]) => [id, { nome: p.nome, desc: p.desc }])),
     fixas: C.FIXAS, deckPadrao: C.DECK_PADRAO, deck: C.DECK,
     liberadas: Object.fromEntries(Object.keys(C.FIXAS).map((s) => [s, C.cartasLiberadas(s)])),
-    /* o que cada nó da árvore dá no combate novo (texto; a carta nova vem em cartas[].desbloqueio) */
-    arvore: Object.fromEntries(Object.entries(C.ARVORE_V2).map(([no, efs]) => [no, efs.map((x) => x.desc)])),
+    /* o que cada nó da árvore dá no combate novo: a carta dele */
+    arvore: Object.fromEntries(Object.values(C.CARTAS).filter((c) => c.no).map((c) => [c.no, [`Libera a carta ${c.nome} (${C.NOME_RARIDADE[c.raridade]}).`]])),
     regras: { vidaBase: C2.K2.vidaBase, custoFinta: C2.K2.custoFinta, fatorFintaIniciativa: C2.K2.fatorFintaIniciativa,
       kdDano: C2.K2.kdDano, koGrogue: C2.K2.koGrogue, limiarVel: C2.K2.limiarVel, finalizaNivel: C2.K2.finalizaNivel },
   };

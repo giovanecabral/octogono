@@ -3,7 +3,7 @@
    tesoura das 4 famílias por velocidade e prioridade, e a mão por estilo
    por um deck montado pelo jogador. Regras em docs/combat-v2.md; decisões
    em docs/combat-v2-decisions.md. O motor é api/_jxj-combate2.js; este
-   arquivo não importa nada.
+   arquivo só importa da árvore (os nós e os andares que o híbrido compra).
 
    Uma carta: id, nome, categoria (golpes, queda, defesa, pressao: a mesma
    chave das famílias de antes, e é ela que a postura mostra), contexto
@@ -22,46 +22,111 @@
    acao: energia, energiaOponente, anula, iniciativa, multDano, danoExtra,
          vaiProChao, puxaGuarda, finaliza, inverte, levanta, avanca, ateDano */
 
+import { NOS, TIERS_HIBRIDOS } from "./_jxj-arvores.js";
+
 export const CATEGORIAS_CARTA = ["golpes", "queda", "defesa", "pressao"];
 export const NOME_CATEGORIA = { golpes: "Golpe", queda: "Queda", defesa: "Defesa", pressao: "Pressão" };
+/* Cartas da árvore (2026-11-15, spec docs/superpowers/specs/2026-11-13-cartas-colecao-design.md):
+   cada nó libera uma carta. Raridade pelo andar do ramo (1 e 2 rara, 3 épica, 4 lendária); as
+   cartas de antes são as comuns. Casa: onde a carta joga como ela mesma (em pé, por cima, por
+   baixo); fora dela, joga como a básica da categoria ali. */
+export const RARIDADES = ["comum", "rara", "epica", "lendaria"];
+export const NOME_RARIDADE = { comum: "comum", rara: "rara", epica: "épica", lendaria: "lendária" };
+export const COPIAS = { comum: 2, rara: 2, epica: 1, lendaria: 1 };
+/* fora da casa, a carta joga como a básica da categoria ali (em pé: estas; no chão: CHAO) */
+export const BASICA_PE = { golpes: "jab", queda: "queda", defesa: "bloqueio", pressao: "clinch" };
+/* efeito = { quando, condicao, acao } (o helper deixa o catálogo legível) */
+const efeito = (quando, acao, condicao) => (condicao ? { quando, condicao, acao } : { quando, acao });
+const E = efeito;
+/* estrela 3 que só dá pontos de juiz quando a carta funciona */
+const ponto = (quando, v, cond) => ({ efeitos: [E(quando, { pontos: v }, cond)] });
 
 /* Em pé: as 8 da spec (valores de partida, ajustados na simulação) e as exclusivas de estilo */
 export const CARTAS = {
-  jab: { nome: "Jab", categoria: "golpes", vel: 5, dano: 1, custo: 1, duelo: ["golpe", "defesa"],
+  jab: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Jab", categoria: "golpes", vel: 5, dano: 1, custo: 1, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "se_interrompe", acao: { energia: 1 } }] },
-  cruzado: { nome: "Cruzado", categoria: "golpes", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [] },
-  chute_alto: { nome: "Chute alto", categoria: "golpes", vel: 2, dano: 4, custo: 3, duelo: ["golpe", "defesa"],
+  cruzado: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Cruzado", categoria: "golpes", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [] },
+  chute_alto: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Chute alto", categoria: "golpes", vel: 2, dano: 4, custo: 3, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "resistente", acao: { ateDano: 1 } }] },
-  bloqueio: { nome: "Bloqueio", categoria: "defesa", vel: 4, dano: 0, custo: 0, duelo: null,
+  bloqueio: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Bloqueio", categoria: "defesa", vel: 4, dano: 0, custo: 0, duelo: null,
     efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true, energia: 2 } }] },
-  contra_ataque: { nome: "Contra-ataque", categoria: "defesa", vel: 3, dano: 2, custo: 2, duelo: ["golpe", "defesa"],
+  contra_ataque: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Contra-ataque", categoria: "defesa", vel: 3, dano: 2, custo: 2, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "se_oponente", condicao: { categoria: ["golpes"] }, acao: { multDano: 2 } }] },
-  queda: { nome: "Queda", categoria: "queda", vel: 3, dano: 2, custo: 2, duelo: ["queda", "defQueda"],
+  queda: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Queda", categoria: "queda", vel: 3, dano: 2, custo: 2, duelo: ["queda", "defQueda"],
     efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true } }] },
-  antiqueda: { nome: "Antiqueda", categoria: "defesa", vel: 4, dano: 0, custo: 0, duelo: ["defQueda", "queda"],
+  antiqueda: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Antiqueda", categoria: "defesa", vel: 4, dano: 0, custo: 0, duelo: ["defQueda", "queda"],
     efeitos: [{ quando: "contra", condicao: { categoria: ["queda"] }, acao: { anula: true, iniciativa: true } }] },
-  clinch: { nome: "Pressão (clinch)", categoria: "pressao", vel: 3, dano: 1, custo: 2, duelo: ["golpe", "defesa"],
+  clinch: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Pressão (clinch)", categoria: "pressao", vel: 3, dano: 1, custo: 2, duelo: ["golpe", "defesa"],
     efeitos: [{ quando: "se_oponente", condicao: { categoria: ["defesa"] }, acao: { energiaOponente: -2 } }] },
   /* grappler: o caminho dele pro chão é rápido, mas por baixo (decisão 25). Categoria Pressão:
      puxar a guarda não é queda, e a Antiqueda não segura (com Queda, o wrestler vencia o grappler em 73%) */
-  puxar_guarda: { nome: "Puxar guarda", categoria: "pressao", vel: 4, dano: 0, custo: 1, duelo: ["chao", "defChao"], estiloExclusivo: "grappler",
+  puxar_guarda: { casa: "pe", raridade: "comum", no: null, estrela3: null, nome: "Puxar guarda", categoria: "pressao", vel: 4, dano: 0, custo: 1, duelo: ["chao", "defChao"], estiloExclusivo: "grappler",
     efeitos: [{ quando: "se_acerta", acao: { puxaGuarda: true } }] },
-  /* Fase 4: uma carta nova por estilo, liberada por um nó da árvore (desbloqueio = id do nó) */
-  combinacao: { nome: "Combinação", categoria: "golpes", vel: 4, dano: 2, custo: 2, duelo: ["golpe", "defesa"], estiloExclusivo: "striker", desbloqueio: "combinacoes",
-    efeitos: [] },
+  /* ---- as cartas da árvore: uma por nó (no = id do nó) ---- */
+  /* striker */
+  direto: { nome: "Direto", categoria: "golpes", casa: "pe", raridade: "rara", no: "precisao_maos", vel: 4, dano: 2, custo: 1, duelo: ["golpe", "defesa"], efeitos: [], estrela3: { efeitos: [E("se_interrompe", { energia: 1 })] } },
+  combinacao: { nome: "Combinação", categoria: "golpes", casa: "pe", raridade: "rara", no: "combinacoes", vel: 4, dano: 2, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_interrompe", { danoExtra: 1 })], estrela3: ponto("se_acerta", 0.5) },
+  contragolpe: { nome: "Contragolpe", categoria: "defesa", casa: "pe", raridade: "epica", no: "contra_maos", vel: 3, dano: 2, custo: 2, duelo: ["defesa", "golpe"], efeitos: [E("contra", { anula: true }, { categoria: ["golpes"] })], estrela3: { efeitos: [E("contra", { energia: 1 }, { categoria: ["golpes"] })] } },
+  overhand: { nome: "Overhand", categoria: "golpes", casa: "pe", raridade: "lendaria", no: "eficiencia_golpes", vel: 2, dano: 4, custo: 3, duelo: ["golpe", "defesa"], inanulavel: true, efeitos: [], estrela3: ponto("se_acerta", 1) },
+  chute_perna: { nome: "Chute na perna", categoria: "golpes", casa: "pe", raridade: "rara", no: "chute_baixo", vel: 4, dano: 1, custo: 1, duelo: ["golpe", "defesa"], efeitos: [E("se_acerta", { lentoProxima: true })], estrela3: ponto("se_acerta", 0.5) },
+  chute_corpo: { nome: "Chute no corpo", categoria: "golpes", casa: "pe", raridade: "rara", no: "chute_corpo", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_acerta", { energiaOponente: -2 })], estrela3: { efeitos: [E("se_acerta", { energiaOponente: -1 })] } },
+  chute_frontal: { nome: "Chute frontal", categoria: "defesa", casa: "pe", raridade: "epica", no: "controle_distancia", vel: 4, dano: 1, custo: 1, duelo: ["golpe", "defesa"], efeitos: [E("contra", { anula: true }, { categoria: ["pressao", "queda"] })], estrela3: { efeitos: [E("contra", { iniciativa: true }, { categoria: ["pressao", "queda"] })] } },
+  chute_rodado: { nome: "Chute rodado", categoria: "golpes", casa: "pe", raridade: "lendaria", no: "variedade", vel: 1, dano: 5, custo: 3, duelo: ["golpe", "defesa"], efeitos: [E("resistente", { ateDano: 3 })], estrela3: ponto("se_acerta", 1) },
+  passo_lateral: { nome: "Passo lateral", categoria: "defesa", casa: "pe", raridade: "rara", no: "controle_ritmo", vel: 5, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true }, { categoria: ["golpes"], danoMin: 3 })], estrela3: { efeitos: [E("contra", { energia: 1 }, { categoria: ["golpes"], danoMin: 3 })] } },
+  joelhada: { nome: "Joelhada no clinch", categoria: "pressao", casa: "pe", raridade: "rara", no: "combinacoes_pressao", vel: 3, dano: 2, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_oponente", { danoExtra: 1 }, { categoria: ["defesa"] })], estrela3: { efeitos: [E("se_acerta", { energiaOponente: -1 })] } },
+  cotovelada: { nome: "Cotovelada", categoria: "golpes", casa: "pe", raridade: "epica", no: "iniciativa", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_acerta", { sangra: true })], estrela3: ponto("se_acerta", 0.5) },
+  superman: { nome: "Superman punch", categoria: "golpes", casa: "pe", raridade: "lendaria", no: "eficiencia_ofensiva", vel: 5, dano: 3, custo: 3, duelo: ["golpe", "defesa"], efeitos: [E("ao_jogar", { danoProprio: 2 }, { categoria: ["defesa"] })], estrela3: { efeitos: [E("resistente", { ateDano: 1 })] } },
+  /* wrestler */
+  single_leg: { nome: "Single leg", categoria: "queda", casa: "pe", raridade: "rara", no: "entradas", vel: 3, dano: 1, custo: 1, duelo: ["queda", "defQueda"], efeitos: [E("se_acerta", { vaiProChao: true })], estrela3: { efeitos: [E("resistente", { ateDano: 1 })] } },
   /* lenta, mas o Jab não para. Com velocidade 3 (a terceira queda do deck, no lugar do Cruzado) valia 17,7 pontos */
-  double_leg: { nome: "Double leg", categoria: "queda", vel: 2, dano: 2, custo: 3, duelo: ["queda", "defQueda"], estiloExclusivo: "wrestler", desbloqueio: "correntes",
+  double_leg: { nome: "Double leg", categoria: "queda", casa: "pe", raridade: "rara", no: "correntes", vel: 2, dano: 2, custo: 3, duelo: ["queda", "defQueda"], estrela3: { efeitos: [E("se_acerta", { avanca: 1 })] },
     efeitos: [{ quando: "se_acerta", acao: { vaiProChao: true } }, { quando: "resistente", acao: { ateDano: 1 } }] },
+  queda_contragolpe: { nome: "Queda no contragolpe", categoria: "queda", casa: "pe", raridade: "epica", no: "timing_queda", vel: 3, dano: 2, custo: 2, duelo: ["queda", "defQueda"], efeitos: [E("se_acerta", { vaiProChao: true }), E("resistente", { ateDano: 3 }, { categoria: ["golpes"] })], estrela3: ponto("se_acerta", 1) },
+  suplex: { nome: "Suplex", categoria: "queda", casa: "pe", raridade: "lendaria", no: "eficiencia_tentativas", vel: 2, dano: 3, custo: 3, duelo: ["queda", "defQueda"], efeitos: [E("se_acerta", { vaiProChao: true, grogue: true })], estrela3: { efeitos: [E("se_acerta", { avanca: 1 })] } },
+  peso_ombro: { nome: "Peso do ombro", categoria: "defesa", casa: "cima", raridade: "rara", no: "controle_posicional", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true }, { categoria: ["pressao", "queda"] })], estrela3: ponto("contra", 0.5, { categoria: ["pressao", "queda"] }) },
+  cotovelada_cima: { nome: "Cotovelada por cima", categoria: "golpes", casa: "cima", raridade: "rara", no: "dominio", vel: 4, dano: 2, custo: 1, duelo: ["chao", "defChao"], efeitos: [], estrela3: { efeitos: [E("se_acerta", { danoExtra: 1 }, { nivelPos: 2 })] } },
+  passagem_joelho: { nome: "Passagem de joelho", categoria: "pressao", casa: "cima", raridade: "epica", no: "transicoes_controle", vel: 4, dano: 0, custo: 1, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { avanca: 2 })], estrela3: { efeitos: [E("contra", { anula: true }, { categoria: ["queda"] })] } },
+  martelada: { nome: "Martelada", categoria: "golpes", casa: "cima", raridade: "lendaria", no: "pressao_solo", vel: 3, dano: 3, custo: 3, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { nocauteSe: { fracao: 0.5 } }, { nivelPos: 2 })], estrela3: { dano: 0.5 } },
+  sprawl: { nome: "Sprawl", categoria: "defesa", casa: "pe", raridade: "rara", no: "equilibrio", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true, pontos: 1 }, { categoria: ["queda"] })], estrela3: { efeitos: [E("contra", { energia: 1 }, { categoria: ["queda"] })] } },
+  levantada_tecnica: { nome: "Levantada técnica", categoria: "pressao", casa: "baixo", raridade: "rara", no: "recuperacao_posicao", vel: 5, dano: 0, custo: 1, duelo: ["defChao", "chao"], efeitos: [E("se_acerta", { levanta: true })], estrela3: ponto("se_acerta", 0.5) },
+  contra_queda: { nome: "Contra-queda", categoria: "defesa", casa: "pe", raridade: "epica", no: "defesa_entradas", vel: 4, dano: 0, custo: 1, duelo: null, efeitos: [E("contra", { anula: true, poeEmCima: true }, { categoria: ["queda"] })], estrela3: ponto("contra", 1, { categoria: ["queda"] }) },
+  bodylock: { nome: "Bodylock", categoria: "pressao", casa: "pe", raridade: "lendaria", no: "retorno_distancia", vel: 3, dano: 0, custo: 2, duelo: ["queda", "defQueda"], efeitos: [E("se_acerta", { vaiProChao: true, nivel: 1 }, { categoria: ["golpes", "pressao"] })], estrela3: ponto("se_acerta", 1, { categoria: ["golpes", "pressao"] }) },
+  /* grappler */
+  kimura: { nome: "Kimura", categoria: "queda", casa: "cima", raridade: "rara", no: "eficiencia_sub", vel: 3, dano: 0, custo: 2, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { finaliza: true })], estrela3: { custo: -1 } },
   /* a queda barata sem dano, que só derruba quem atacou (contra Defesa, nada): a terceira e a
      quarta queda do deck. Como pressão (a Antiqueda não segurava) ou com velocidade 4, o grappler
      do nível 30 com ela ia de 59% a 65%; derrubando sempre, a 57% */
-  rasteira: { nome: "Rasteira", categoria: "queda", vel: 3, dano: 0, custo: 1, duelo: ["queda", "defQueda"], estiloExclusivo: "grappler", desbloqueio: "transicoes_sub",
+  rasteira: { nome: "Rasteira", categoria: "queda", casa: "pe", raridade: "rara", no: "transicoes_sub", vel: 3, dano: 0, custo: 1, duelo: ["queda", "defQueda"], estrela3: ponto("se_acerta", 0.5, { categoria: ["golpes", "pressao", "queda"] }),
     efeitos: [{ quando: "se_acerta", condicao: { categoria: ["golpes", "pressao", "queda"] }, acao: { vaiProChao: true } }] },
+  triangulo: { nome: "Triângulo", categoria: "queda", casa: "baixo", raridade: "epica", no: "oportunidades", vel: 2, dano: 0, custo: 2, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { finaliza: true, porBaixo: true })], estrela3: { vel: 1 } },
+  mata_leao: { nome: "Mata-leão", categoria: "queda", casa: "pe", raridade: "lendaria", no: "especializacao", vel: 3, dano: 0, custo: 3, duelo: ["queda", "defQueda"], efeitos: [E("se_acerta", { finalizaSe: { grogue: true }, vaiProChao: true, nivel: 2 })], estrela3: { efeitos: [E("se_acerta", { finalizaSe: { cansado: true } })] } },
+  cem_quilos: { nome: "Cem quilos", categoria: "defesa", casa: "cima", raridade: "rara", no: "controle_chao", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true }, { categoria: ["golpes", "pressao"] })], estrela3: ponto("contra", 0.5, { categoria: ["golpes", "pressao"] }) },
+  passagem_guarda: { nome: "Passagem de guarda", categoria: "pressao", casa: "cima", raridade: "rara", no: "passagens", vel: 3, dano: 0, custo: 1, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { avanca: 2 })], estrela3: ponto("se_acerta", 0.5) },
+  guarda_fechada: { nome: "Guarda fechada", categoria: "defesa", casa: "baixo", raridade: "epica", no: "retencao", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true, energia: 1 }, { categoria: ["golpes", "pressao"] })], estrela3: ponto("contra", 0.5, { categoria: ["golpes", "pressao"] }) },
+  raspagem_gancho: { nome: "Raspagem de gancho", categoria: "queda", casa: "baixo", raridade: "lendaria", no: "raspagem", vel: 4, dano: 0, custo: 2, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { inverte: true, nivel: 2 })], estrela3: ponto("se_acerta", 1) },
+  defesa_finalizacao: { nome: "Defesa de finalização", categoria: "defesa", casa: "baixo", raridade: "rara", no: "defesa_sub", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true }, { categoria: ["queda"] })], estrela3: { efeitos: [E("contra", { recua: true }, { categoria: ["queda"] })] } },
+  fuga_quadril: { nome: "Fuga de quadril", categoria: "pressao", casa: "baixo", raridade: "rara", no: "saidas", vel: 4, dano: 0, custo: 1, duelo: ["defChao", "chao"], efeitos: [E("se_acerta", { levanta: true })], estrela3: ponto("se_acerta", 0.5) },
+  recomposicao: { nome: "Recomposição", categoria: "pressao", casa: "baixo", raridade: "epica", no: "sobrevivencia", vel: 4, dano: 0, custo: 1, duelo: ["defChao", "chao"], efeitos: [E("se_acerta", { recua: true, iniciativa: true })], estrela3: { efeitos: [E("se_acerta", { energia: 1 })] } },
+  berimbolo: { nome: "Berimbolo", categoria: "queda", casa: "baixo", raridade: "lendaria", no: "recuperar_guarda", vel: 3, dano: 0, custo: 2, duelo: ["chao", "defChao"], efeitos: [E("se_acerta", { inverte: true, grogue: true })], estrela3: ponto("se_acerta", 1) },
+  /* counter */
   /* velocidade 3: com 4, o 1 de dano dela interrompia a Queda, e a Esquiva no lugar do Chute alto valia 10 pontos */
-  esquiva: { nome: "Esquiva", categoria: "defesa", vel: 3, dano: 1, custo: 1, duelo: ["defesa", "golpe"], estiloExclusivo: "counter", desbloqueio: "padroes",
+  esquiva: { nome: "Esquiva", categoria: "defesa", casa: "pe", raridade: "rara", no: "padroes", vel: 3, dano: 1, custo: 1, duelo: ["defesa", "golpe"], estrela3: ponto("contra", 0.5, { categoria: ["golpes"] }),
     efeitos: [{ quando: "contra", condicao: { categoria: ["golpes"] }, acao: { anula: true } }] },
+  leitura_queda: { nome: "Leitura de queda", categoria: "defesa", casa: "pe", raridade: "rara", no: "antecipacao", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true, iniciativa: true }, { categoria: ["queda", "pressao"] })], estrela3: ponto("contra", 0.5, { categoria: ["queda", "pressao"] }) },
+  contra_esquerda: { nome: "Contra de esquerda", categoria: "defesa", casa: "pe", raridade: "epica", no: "resposta", vel: 4, dano: 2, custo: 2, duelo: ["defesa", "golpe"], efeitos: [E("se_oponente", { multDano: 2 }, { categoria: ["golpes"] })], estrela3: { efeitos: [E("resistente", { ateDano: 1 })] } },
+  leitura_total: { nome: "Leitura total", categoria: "defesa", casa: "pe", raridade: "lendaria", no: "adaptacao", vel: 3, dano: 0, custo: 2, duelo: null, efeitos: [E("contra", { anula: true }, { categoria: ["golpes", "queda", "defesa", "pressao"] })], estrela3: { efeitos: [E("contra", { energia: 1 }, { categoria: ["golpes", "queda", "defesa", "pressao"] })] } },
+  pendulo: { nome: "Pêndulo", categoria: "defesa", casa: "pe", raridade: "rara", no: "evasao", vel: 5, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true }, { categoria: ["golpes"], danoMax: 2 })], estrela3: ponto("contra", 0.5, { categoria: ["golpes"], danoMax: 2 }) },
+  guarda_alta: { nome: "Guarda alta", categoria: "defesa", casa: "pe", raridade: "rara", no: "bloqueio", vel: 4, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true, energiaOponente: -1 }, { categoria: ["golpes"] })], estrela3: ponto("contra", 0.5, { categoria: ["golpes"] }) },
+  saida_lado: { nome: "Saída de lado", categoria: "defesa", casa: "pe", raridade: "epica", no: "gestao_distancia", vel: 4, dano: 0, custo: 1, duelo: null, efeitos: [E("contra", { anula: true, rapidoProxima: true }, { categoria: ["pressao", "queda"] })], estrela3: ponto("contra", 0.5, { categoria: ["pressao", "queda"] }) },
+  segundo_folego: { nome: "Segundo fôlego", categoria: "defesa", casa: "pe", raridade: "lendaria", no: "recuperacao_defensiva", vel: 3, dano: 0, custo: 0, duelo: null, efeitos: [E("contra", { anula: true, energia: 3, tiraGrogue: true }, { categoria: ["golpes"] }), E("se_acerta", { tiraGrogue: true })], estrela3: ponto("contra", 1, { categoria: ["golpes"] }) },
+  contra_corpo: { nome: "Contra no corpo", categoria: "defesa", casa: "pe", raridade: "rara", no: "contra_ataques", vel: 3, dano: 2, custo: 2, duelo: ["defesa", "golpe"], efeitos: [E("se_oponente", { multDano: 2, energiaOponente: -2 }, { categoria: ["golpes"] })], estrela3: ponto("se_acerta", 0.5) },
+  cruzado_contra: { nome: "Cruzado de contra", categoria: "golpes", casa: "pe", raridade: "rara", no: "timing", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_oponente", { danoExtra: 1 }, { categoria: ["pressao", "queda"] })], estrela3: ponto("se_acerta", 0.5) },
+  uppercut: { nome: "Uppercut", categoria: "golpes", casa: "pe", raridade: "epica", no: "eficiencia_counter", vel: 3, dano: 3, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_oponente", { multDano: 2 }, { categoria: ["queda", "pressao"] })], estrela3: ponto("se_acerta", 0.5) },
+  misericordia: { nome: "Golpe de misericórdia", categoria: "golpes", casa: "pe", raridade: "lendaria", no: "aproveitamento", vel: 4, dano: 2, custo: 2, duelo: ["golpe", "defesa"], efeitos: [E("se_acerta", { nocauteSe: { grogue: true, vidaAte: 3 } })], estrela3: { dano: 0.5 } },
 };
-for (const [id, c] of Object.entries(CARTAS)) Object.assign(c, { id, contexto: "pe" });
+for (const [id, c] of Object.entries(CARTAS)) Object.assign(c, { id, contexto: c.casa });
+/* a carta de cada nó da árvore */
+export const CARTA_DO_NO = Object.fromEntries(Object.values(CARTAS).filter((c) => c.no).map((c) => [c.no, c.id]));
 
 /* No chão a carta da mão joga pela categoria: a de cima ou a de baixo
    dessa categoria (decisão 10). Mesma lógica de velocidade, custo e efeito. */
@@ -126,112 +191,29 @@ export const DECK_PADRAO = {
   /* com uma Antiqueda: com duas, o counter ficava em 45% depois do striker novo */
   counter: [...FIXAS.counter, "bloqueio", "jab", "jab", "cruzado", "cruzado", "chute_alto", "clinch", "queda"],
 };
-/* cartas que o lutador pode pôr no deck: as comuns, a exclusiva do estilo e
-   as que a árvore libera (build: {noId: nível}) */
-export const cartasLiberadas = (estilo, build = {}) => Object.keys(CARTAS).filter((id) => {
-  const c = CARTAS[id];
-  if (c.estiloExclusivo && c.estiloExclusivo !== estilo) return false;
-  return !c.desbloqueio || (build && Number(build[c.desbloqueio]) >= 1);
-});
-
-/* A árvore no combate v2 (Fase 4, 2026-11-12). Os nós são os mesmos (mesmo
-   id, mesmo custo), mas no combate novo o nó vale só pelo que está aqui: o
-   atributo que ele dá fica no combate de antes (decisão 48: o degrau de 15
-   pontos da velocidade fazia o mesmo +6 valer 0 num estilo e 7 no outro).
-   Quem já gastou pontos recebe na hora o que os nós dele dão (decisão 47).
-   Efeito: { desc, apartir (nível do nó, padrão 1), porNivel (multiplica
-   pelos níveis a partir de apartir), mod (como a passiva: alvo + vel, dano,
-   custo, efeitos; com porNivel, os números dos efeitos também), finta
-   (custo da finta a menos), vida, energiaRound (a mais no fim do round) }.
-   A carta nova vem pelo desbloqueio da carta. */
-const efeito = (quando, acao, condicao) => (condicao ? { quando, condicao, acao } : { quando, acao });
-const contraGolpe = (acao) => efeito("contra", acao, { categoria: ["golpes"] });
-const contraQueda = (acao) => efeito("contra", acao, { categoria: ["queda"] });
-export const ARVORE_V2 = {
-  /* striker */
-  precisao_maos: [{ desc: "Jab com +0,1 de dano por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, dano: 0.1 } }],
-  combinacoes: [{ desc: "Libera a Combinação; +0,25 de dano nela por nível depois do 1.", apartir: 2, porNivel: true, mod: { alvo: { carta: "combinacao" }, dano: 0.25 } }],
-  contra_maos: [{ desc: "Contra-ataque com +0,1 de dano por nível.", porNivel: true, mod: { alvo: { carta: "contra_ataque" }, dano: 0.1 } }],
-  eficiencia_golpes: [{ desc: "O Cruzado que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "cruzado" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
-  chute_baixo: [{ desc: "O Chute alto que acerta dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "chute_alto" }, efeitos: [efeito("se_acerta", { pontos: 0.75 })] } }],
-  chute_corpo: [{ desc: "No nível 2, o Chute alto custa 1 a menos.", apartir: 2, mod: { alvo: { carta: "chute_alto" }, custo: -1 } }],
-  controle_distancia: [{ desc: "No nível 2, o Bloqueio também anula a Queda.", apartir: 2, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraQueda({ anula: true })] } }],
-  variedade: [{ desc: "Golpe em pé que acerta dá 0,25 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "pe", categoria: "golpes" }, efeitos: [efeito("se_acerta", { pontos: 0.25 })] } }],
-  controle_ritmo: [{ desc: "O Bloqueio que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraGolpe({ pontos: 0.5 })] } }],
-  combinacoes_pressao: [{ desc: "No nível 2, o clinch fica 1 mais rápido.", apartir: 2, mod: { alvo: { carta: "clinch" }, vel: 1 } }],
-  iniciativa: [{ desc: "O Jab que interrompe dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, efeitos: [efeito("se_interrompe", { pontos: 0.5 })] } }],
-  eficiencia_ofensiva: [{ desc: "O clinch que acerta dá 1 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "clinch" }, efeitos: [efeito("se_acerta", { pontos: 1 })] } }],
-  /* wrestler */
-  entradas: [{ desc: "A Queda que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
-  correntes: [{ desc: "Libera o Double leg; no nível 2, ele custa 1 a menos.", apartir: 2, mod: { alvo: { carta: "double_leg" }, custo: -1 } }],
-  timing_queda: [{ desc: "Queda com +0,5 de dano por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, dano: 0.5 } }],
-  eficiencia_tentativas: [{ desc: "Queda com +0,25 de dano por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, dano: 0.25 } }],
-  controle_posicional: [{ desc: "Por cima, a carta que resolve dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "cima" }, efeitos: [efeito("se_acerta", { pontos: 0.75 })] } }],
-  dominio: [{ desc: "A pegada por cima (Segurar) também anula a raspagem e dá 0,5 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "segurar" }, efeitos: [contraQueda({ anula: true, pontos: 0.5 })] } }],
-  transicoes_controle: [{ desc: "No nível 2, a Queda que acerta já passa pra meia-guarda.", apartir: 2, mod: { alvo: { carta: "queda" }, efeitos: [efeito("se_acerta", { avanca: 1 })] } }],
-  pressao_solo: [{ desc: "Por cima, a carta que resolve dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "cima" }, efeitos: [efeito("se_acerta", { pontos: 0.75 })] } }],
-  equilibrio: [{ desc: "A Antiqueda que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "antiqueda" }, efeitos: [contraQueda({ pontos: 0.5 })] } }],
-  recuperacao_posicao: [{ desc: "Vida +1 por nível.", porNivel: true, vida: 1 }],
-  defesa_entradas: [{ desc: "A Antiqueda também anula a pressão (clinch, puxada de guarda, rasteira) e dá 0,5 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "antiqueda" }, efeitos: [efeito("contra", { anula: true, pontos: 0.5 }, { categoria: ["pressao"] })] } }],
-  retorno_distancia: [{ desc: "O Bloqueio que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraGolpe({ pontos: 0.5 })] } }],
-  /* grappler */
-  /* a Finalização 2 mais rápida (velocidade 4) empatava com a Guarda e o Levantar: por cima, o grappler finalizava quase sempre */
-  eficiencia_sub: [{ desc: "No nível 3, a Finalização fica 1 mais rápida.", apartir: 3, mod: { alvo: { carta: "finalizacao" }, vel: 1 } },
-    { desc: "A Queda que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "queda" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
-  transicoes_sub: [{ desc: "Libera a Rasteira.", mod: null }],
-  oportunidades: [{ desc: "A puxada de guarda que acerta dá 0,25 ponto por nível.", porNivel: true, mod: { alvo: { carta: "puxar_guarda" }, efeitos: [efeito("se_acerta", { pontos: 0.25 })] } }],
-  especializacao: [{ desc: "O Raspar que acerta dá 1,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "raspar" }, efeitos: [efeito("se_acerta", { pontos: 1.5 })] } }],
-  controle_chao: [{ desc: "Por cima, a carta que resolve dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "cima" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
-  passagens: [{ desc: "O Avançar que acerta dá 1 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "avancar" }, efeitos: [efeito("se_acerta", { pontos: 1 })] } }],
-  retencao: [{ desc: "A Guarda também anula o Avançar e dá 1 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "guarda" }, efeitos: [efeito("contra", { anula: true, pontos: 1 }, { categoria: ["pressao"] })] } }],
-  raspagem: [{ desc: "Golpes por baixo com +0,4 de dano por nível.", porNivel: true, mod: { alvo: { carta: "golpes_por_baixo" }, dano: 0.4 } }],
-  defesa_sub: [{ desc: "Golpes por baixo com +0,4 de dano por nível.", porNivel: true, mod: { alvo: { carta: "golpes_por_baixo" }, dano: 0.4 } }],
-  saidas: [{ desc: "O Levantar que acerta dá 1,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "levantar" }, efeitos: [efeito("se_acerta", { pontos: 1.5 })] } }],
-  sobrevivencia: [{ desc: "Por baixo, a carta que resolve dá 0,25 ponto a mais por nível.", porNivel: true, mod: { alvo: { contexto: "baixo" }, efeitos: [efeito("se_acerta", { pontos: 0.25 })] } }],
-  recuperar_guarda: [{ desc: "A Antiqueda que anula dá 0,75 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "antiqueda" }, efeitos: [contraQueda({ pontos: 0.75 })] } }],
-  /* counter */
-  padroes: [{ desc: "Libera a Esquiva.", mod: null }],
-  antecipacao: [{ desc: "O Bloqueio também anula o clinch e dá 0,5 ponto por nível quando anula.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [efeito("contra", { anula: true, pontos: 0.5 }, { categoria: ["pressao"] })] } }],
-  resposta: [{ desc: "Contra-ataque com +0,15 de dano por nível.", porNivel: true, mod: { alvo: { carta: "contra_ataque" }, dano: 0.15 } }],
-  adaptacao: [{ desc: "Vida +0,75 por nível.", porNivel: true, vida: 0.75 }],
-  evasao: [{ desc: "O Jab que acerta dá 0,15 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, efeitos: [efeito("se_acerta", { pontos: 0.15 })] } }],
-  bloqueio: [{ desc: "O Bloqueio que anula dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraGolpe({ pontos: 0.5 })] } }],
-  gestao_distancia: [{ desc: "No nível 2, o Bloqueio também anula a Queda.", apartir: 2, mod: { alvo: { carta: "bloqueio" }, efeitos: [contraQueda({ anula: true })] } }],
-  recuperacao_defensiva: [{ desc: "Vida +1 por nível.", porNivel: true, vida: 1 }],
-  contra_ataques: [{ desc: "O Contra-ataque que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "contra_ataque" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
-  timing: [{ desc: "O Cruzado que acerta dá 0,5 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "cruzado" }, efeitos: [efeito("se_acerta", { pontos: 0.5 })] } }],
-  eficiencia_counter: [{ desc: "Cruzado com +0,1 de dano por nível.", porNivel: true, mod: { alvo: { carta: "cruzado" }, dano: 0.1 } }],
-  aproveitamento: [{ desc: "O Jab que interrompe dá 0,25 ponto a mais por nível.", porNivel: true, mod: { alvo: { carta: "jab" }, efeitos: [efeito("se_interrompe", { pontos: 0.25 })] } }],
-};
-/* com porNivel, os números do efeito multiplicam pelo nível (o ateDano e o avanca, não) */
-const ESCALA_EFEITO = ["energia", "energiaOponente", "pontos", "danoExtra"];
-const escalarEfeitos = (efs, k) => efs.map((ef) => ({ ...ef, acao: Object.fromEntries(Object.entries(ef.acao).map(([x, v]) => [x, ESCALA_EFEITO.includes(x) ? v * k : v])) }));
-/* o que a árvore dá no combate v2 pra esta build: as cartas liberadas, as
-   melhorias (mods, como a passiva), a finta a menos, a vida e a energia de
-   fim de round a mais */
-export function perfilV2(estilo, build = {}) {
-  const out = { liberadas: cartasLiberadas(estilo, build), mods: [], fintaMenos: 0, vida: 0, energiaRound: 0 };
+/* cartas que o lutador pode pôr no deck: as comuns (a exclusiva só no estilo dela) e a do
+   nó que ele tem. Híbrido (nó de outro estilo) só nos andares que a árvore deixa: a build
+   forjada com andar alto de outro estilo não libera a carta */
+export function cartasLiberadas(estilo, build = {}) {
+  return Object.keys(CARTAS).filter((id) => {
+    const c = CARTAS[id];
+    if (!c.no) return !c.estiloExclusivo || c.estiloExclusivo === estilo;
+    const nv = Number((build || {})[c.no]) || 0, no = NOS[c.no];
+    if (nv < 1 || !no) return false;
+    return no.estilo === estilo || no.tier <= TIERS_HIBRIDOS;
+  });
+}
+/* estrelas da carta da árvore: o nível do nó (1 a 3) */
+export function estrelasDe(build = {}) {
+  const out = {};
   for (const [no, nv] of Object.entries(build || {})) {
-    const nivel = Number(nv) || 0;
-    for (const ef of ARVORE_V2[no] || []) {
-      const ini = ef.apartir || 1;
-      if (nivel < ini) continue;
-      const k = ef.porNivel ? nivel - ini + 1 : 1;
-      if (ef.mod) {
-        const m = { ...ef.mod };
-        if (m.dano) m.dano *= k;
-        if (m.vel) m.vel *= k;
-        if (m.custo) m.custo *= k;
-        if (m.efeitos && ef.porNivel) m.efeitos = escalarEfeitos(m.efeitos, k);
-        out.mods.push(m);
-      }
-      if (ef.finta) out.fintaMenos += ef.finta * k;
-      if (ef.vida) out.vida += ef.vida * k;
-      if (ef.energiaRound) out.energiaRound += ef.energiaRound * k;
-    }
+    const n = Math.min(3, Number(nv) || 0);
+    if (n >= 1 && CARTA_DO_NO[no]) out[CARTA_DO_NO[no]] = n;
   }
   return out;
 }
+/* o que a árvore dá no combate v2: as cartas liberadas e as estrelas de cada uma */
+export const perfilV2 = (estilo, build = {}) => ({ liberadas: cartasLiberadas(estilo, build), estrelas: estrelasDe(build) });
 
 /* Validação do deck (o servidor usa esta; o cliente só mostra). Devolve {ok} ou {ok:false, erro}. */
 export function validarDeck(estilo, deck, liberadas = cartasLiberadas(estilo)) {
@@ -242,7 +224,8 @@ export function validarDeck(estilo, deck, liberadas = cartasLiberadas(estilo)) {
     if (typeof id !== "string" || !Object.hasOwn(CARTAS, id)) return { ok: false, erro: "carta desconhecida" };
     if (!liberadas.includes(id)) return { ok: false, erro: `a carta ${CARTAS[id].nome} não está liberada` };
     conta[id] = (conta[id] || 0) + 1;
-    if (conta[id] > DECK.copias) return { ok: false, erro: `no máximo ${DECK.copias} cópias de ${CARTAS[id].nome}` };
+    const max = COPIAS[CARTAS[id].raridade] || DECK.copias;
+    if (conta[id] > max) return { ok: false, erro: `no máximo ${max} ${max === 1 ? "cópia" : "cópias"} de ${CARTAS[id].nome}` };
   }
   const fixas = {};
   for (const id of FIXAS[estilo]) fixas[id] = (fixas[id] || 0) + 1;
