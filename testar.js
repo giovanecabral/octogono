@@ -13691,7 +13691,7 @@ async function testarJxJV2() {
     const ef = (id) => [...todas.pe, ...todas.cima, ...todas.baixo].find((c) => c.id === id).efeito;
     const espera = { bloqueio: "Contra golpe: anula, recupera 2 de energia.", chute_alto: "Golpe de dano 1 não interrompe.", contra_ataque: "Se ele jogou golpe: dano vezes 2.",
       queda: "Se acerta: leva pro chão, você por cima.", ground_and_pound: "Se acerta na montada: 1 de dano a mais.", jab: "Se interrompe: recupera 1 de energia.",
-      rasteira: "Se acerta quem jogou golpe ou pressão ou queda: leva pro chão, você por cima.", avancar: "Se acerta: sobe a posição. Contra queda: anula." };
+      rasteira: "Se acerta quem jogou golpe ou pressão ou queda: leva pro chão, você por cima, dá 0,5 pontos a mais.", avancar: "Se acerta: sobe a posição. Contra queda: anula." };
     for (const [id, txt] of Object.entries(espera)) if (ef(id) !== txt) throw new Error(`efeito de ${id}: "${ef(id)}"`);
     for (const c of [...todas.pe, ...todas.cima, ...todas.baixo]) {
       if ((defs.cartas[c.id] || {}).efeitos && defs.cartas[c.id].efeitos.length && !c.efeito) throw new Error("efeito sem texto: " + c.id);
@@ -13749,7 +13749,7 @@ async function testarJxJV2() {
       if (!c.raridade || !c.casa) throw new Error("definições sem raridade ou casa: " + c.id);
     }
     const ef = (id) => ref.find((x) => x.id === id).efeito;
-    for (const [id, re] of [["overhand", /Nenhuma reação anula/], ["passo_lateral", /dano 3 ou mais/], ["pendulo", /dano 2 ou menos/], ["superman", /você leva 2 de dano/],
+    for (const [id, re] of [["overhand", /Nenhuma reação anula/], ["passo_lateral", /recupera 3 de energia/], ["pendulo", /dano 3 ou menos/], ["superman", /você leva 2 de dano/],
       ["chute_perna", /1 mais lento/], ["cotovelada", /sangra/], ["suplex", /grogue/], ["misericordia", /nocaute/], ["triangulo", /finaliza/], ["mata_leao", /grogue/],
       ["contra_queda", /você por cima/], ["passagem_joelho", /2 posições/], ["raspagem_gancho", /montada/], ["recomposicao", /guarda/], ["segundo_folego", /grogue/], ["saida_lado", /mais rápida/]])
       if (!re.test(ef(id))) throw new Error(`efeito de ${id}: "${ef(id)}"`);

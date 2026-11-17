@@ -333,3 +333,149 @@ no relatório (`sim/relatorio.md`).
     nome malicioso. A `luta3d` passou a varrer também a `JXJ_3D2` (lance
     sem `case` no diretor reprova).
 
+
+## Cartas da árvore: simulação e calibragem (Tarefa 10, 2026-11-16)
+
+80. **A casa.** A carta da árvore joga como ela mesma só em pé, por cima ou
+    por baixo conforme o campo `casa`; fora dela entra a básica da categoria
+    ali (Jab, Queda, Bloqueio, Pressão em pé; as 8 do chão no chão). Passiva
+    do estilo e estrelas valem só na casa.
+81. **O `ARVORE_V2` acabou.** O nó vale pela carta que libera e pelas
+    estrelas dela; sem a carta no deck, o nó só dá o atributo. Por isso o
+    nível 30 com deck padrão não passa de 52% e a evolução só aparece com o
+    deck montado.
+82. **Estrelas = nível do nó (1 a 3).** Nível 2: +0,5 de dano, ou +0,5 ponto
+    de juiz em carta sem dano. Nível 3: o efeito da coluna "Estrela 3".
+83. **Cópias por raridade:** comum 2, rara 2, épica 1, lendária 1
+    (`COPIAS`); o deck aleatório da simulação e a `validarDeck` usam a mesma
+    tabela.
+84. **Como a simulação mede.** (a) O valor do nó é a luta com a carta no deck
+    padrão no lugar de uma carta não fixa da mesma categoria
+    (`deckDoNo`; se não houver, no lugar da última com 2 cópias). (b) A busca
+    de deck é subida de encosta (`sim/busca-deck.mjs`) com a política atenta
+    dos dois lados (a mistura de equilíbrio é o que ela joga): triagem com 100
+    lutas por rival e confirmação com 1.000 (o plano pedia 200 e 2.000; a
+    rodada final levou 5.232 s mesmo assim). (c) A evolução é medida com o
+    melhor deck do nível 30 contra o nível 1 e o nível 20 com deck padrão.
+    (d) Na parte `decks` do nível 1 o sorteio mudou de decks (a ordem do
+    catálogo mudou), mas as outras 6 partes do nível 1 ficaram idênticas ao
+    relatório aprovado; no sorteio novo nenhum deck passa de 60%.
+85. **Calibragem em 3 rodadas, o que mudou** (cada carta tem um comentário
+    com o antes e o depois e o resultado medido em `api/_jxj-cartas.js`).
+    Rodada 1: vel 4 para 3 em Direto, Combinação e Chute na perna (+10 caiu
+    pra 0: passou do ponto), nerfs de dano e velocidade em Superman,
+    Contragolpe, Joelhada e Cotovelada, buffs em Double leg, Suplex, Mata-leão
+    e nas defesas fracas. Rodada 2: Direto, Combinação e Chute na perna
+    voltam pra vel 4 com menos dano e mais custo (de 33 nós fora pra 20);
+    Contra de esquerda de +22,5 pra +5,1; Golpe de misericórdia de +10,0 pra
+    +10,5 (ainda fora). Rodada 3: Leitura de queda e Saída de lado passam a
+    anular golpe também (de -2,8 e -2,4 pra +4,5 e +6,6), Leitura total
+    anula só o que tem dano 2 ou mais (de +9,8 pra +3,2), Misericórdia sai
+    de vel 4/dano 2/custo 2 pra dano 1/custo 3 (+5,7), Bodylock deixa de
+    valer contra golpe (de +7,9 pra +4,4). Duas coisas aprendidas: a
+    velocidade não mexe em carta de reação (`contra` vale em qualquer
+    velocidade, decisão 2), e carta de chão não responde a número, porque a
+    maior parte do valor dela vem da troca que o `deckDoNo` faz.
+86. **DÚVIDA PRO DONO: nó de carta de chão.** Depois das 3 rodadas, 13 nós
+    seguem fora de 0,5 a 6,5 nos 10.000 lutas finais: Controle de ritmo
+    -3,9, Equilíbrio -2,1, Defesa de entradas -1,7, Controle -0,8, Defesa de
+    finalização -0,9, Sobrevivência posicional -0,8, Evasão -0,5, Controle
+    posicional 0,0 e Recuperação de posição +0,1 (abaixo), e Combinações
+    +6,9, Eficiência de energia ofensiva +7,0, Manutenção de domínio +9,8 e
+    Pressão no solo +9,6 (acima). Causa: fora da casa a carta joga como a
+    básica. Cotovelada por cima e Martelada (golpe por cima, wrestler)
+    viram um terceiro Jab no lugar do Cruzado, que no deck padrão do
+    wrestler é fraco: +9 sem a carta fazer nada. As defesas de chão ficam em
+    0 porque a carta de chão quase não é jogada (7% a 13% da mão). Pergunta:
+    trocar a regra do `deckDoNo` (por exemplo, trocar sempre a básica da
+    mesma categoria) ou aceitar esses nós fora da faixa?
+87. **DÚVIDA PRO DONO: portão "carta jogada de 40% a 60%" no chão.** Em pé
+    ficou só o Mata-leão em 60,0% e o Pêndulo em 39,9%. No chão, as cartas
+    decisivas passam: Kimura 96,0% (relativa à posição +31,9), Triângulo
+    68,4% (+31,8), Berimbolo 62,2% (+25,6), Raspagem de gancho 61,3% (+24,7),
+    Martelada 78,2% (+14,1), Cem quilos, Passagem de guarda, Guarda fechada
+    (+13 a +16). Quem joga finalização no chão já está ganhando, seja qual
+    for a carta (decisão 9). Pergunta: o portão do chão vale pela relativa à
+    posição (até 10 pontos), como na Fase 1, ou por outra régua?
+88. **DÚVIDA PRO DONO: nível 30 com o melhor deck e deck aleatório.** A busca
+    acha, pros 4 estilos, um deck que vence os decks padrão do nível 30 em
+    67,6% (Striker), 84,8% (Wrestler), 79,4% (Grappler) e 70,7% (Counter), e
+    com os melhores decks uns contra os outros o Striker fica em 39,6% e o
+    Counter em 55,1% (Wrestler 52,4%, Grappler 52,9%). O melhor de 40 decks
+    aleatórios no nível 30 vence o campo em 61,7% (Striker), 75,6% (Wrestler),
+    67,9% (Grappler) e 67,8% (Counter). A evolução também passa do teto: 30
+    contra 1 de 66,6% a 92,6% (Wrestler 92,6% contra 85%). As cartas da
+    árvore somadas valem mais do que 1 nó isolado sugere. Parei na terceira
+    rodada, como combinado. Opções: nova rodada de nerfs (começando por
+    Martelada, Cotovelada por cima e Peso do ombro do Wrestler) ou ajustar o
+    portão pra "deck aleatório até 60% no nível 1 e 30 vs 1 até 92%".
+
+### Resposta do dono às decisões 86 a 88 e a rodada 4 (2026-11-17)
+
+86 (resolvida na medição, sem efeito). O dono pediu que a carta do nó entre no
+    lugar de uma carta não fixa da MESMA CASA no deck padrão, com o fallback
+    de antes se não houver. O `deckDoNo` agora faz isso, mas o deck padrão só
+    tem cartas em pé (as de chão entram como básicas), então pra carta de
+    cima e de baixo vale o fallback e pras de pé a regra já era essa: os 192
+    decks (48 nós por 4 estilos) saíram idênticos aos de antes, e a medição
+    não mudou. O motivo do +9 de Cotovelada por cima e Martelada continua
+    sendo o terceiro Jab no lugar do Cruzado do wrestler. Defesas
+    situacionais abaixo de 0,5, com o número medido (10.000, 4.000 lutas por
+    nó): Controle de ritmo (Passo lateral) -3,9, Equilíbrio (Sprawl) -2,1,
+    Defesa de entradas (Contra-queda) -1,7, Controle (Cem quilos) -0,8,
+    Defesa de finalização -0,9, Sobrevivência posicional (Recomposição)
+    -0,8, Evasão (Pêndulo) -0,5, Controle posicional (Peso do ombro) -0,3,
+    Recuperação de posição (Levantada técnica) +0,1 e Transições (Rasteira)
+    -3,5. Seguem registradas como situacionais, como o dono permitiu.
+87 (a régua da decisão 9 fica: relativa à posição, até 10 pontos). Rodada 4:
+    vel e custo piores em Kimura, Triângulo, Berimbolo e Raspagem de gancho.
+    Não fechou: relativa Kimura +27,8, Triângulo +31,3, Berimbolo +26,4,
+    Raspagem +24,9 (antes +31,9, +31,8, +25,6, +24,7). Quem joga finalização
+    no chão já está ganhando; número de carta quase não mexe nisso. Peso do
+    ombro voltou pra dentro (+9,1). Mata-leão 60,0% e Pêndulo 39,9% em pé.
+88 (rodada 4, a última). Martelada (dano 1,5, nocaute abaixo de 0,3 da
+    vida), Cotovelada por cima (vel 3, dano 0,5, custo 2), Peso do ombro (sem
+    energia e sem anular golpe), Rasteira (vel 3) e as 4 finalizações acima,
+    com a busca de deck em 200 lutas por rival na triagem e 2.000 na
+    confirmação. Resultado: 14 nós fora (eram 13), nenhum portão novo
+    fechado. Nível 30 com deck padrão dentro (47,8%, 51,3%, 52,3%, 48,7%).
+    Melhor deck uns contra os outros: Striker 42,1% fora, Wrestler 52,8%,
+    Grappler 53,6%, Counter 51,5% (o Counter passou a caber). Melhor deck
+    contra os padrão: 67,0%, 82,8%, 74,6% e 70,4%. Deck aleatório no nível
+    30: 61,9%, 72,3%, 68,8% e 68,2% (5.000 lutas). Evolução: 30 contra 1 de
+    61,3% a 91,6% (Grappler 61,3% passou abaixo de 62%, Wrestler 91,6% acima
+    de 85%), 30 contra 20 de 62,0% a 92,0%. A Rasteira nerfada derrubou o nó
+    pra -3,5 e o Grappler contra o Striker de 81,0% pra 76,4%. Sem 5ª rodada,
+    como combinado: dúvida aberta pro dono (o conjunto de cartas do Wrestler
+    por cima, e o teto do deck aleatório, passam do teto com qualquer
+    número de carta; as opções são tirar a casa "por cima" do deck do
+    Wrestler ou subir o teto do portão).
+
+### Rodada 5 (2026-11-17, a última liberada pelo dono)
+
+89. **Os portões "melhor deck no nível 30" e "deck aleatório no nível 30"
+    comparam com o campo dos melhores decks da volta 2**, não com o deck
+    padrão: o deck padrão não leva nenhuma carta da árvore, então é um
+    adversário fraco por definição. Contra o deck padrão os dois seguem no
+    relatório, só como informação (parte `decks` e a linha "melhor deck
+    contra os decks padrão"). A parte `busca` agora mede 40 decks aleatórios
+    por estilo contra os 4 melhores decks (300 lutas por confronto).
+    Alvos da rodada: Wrestler de 30 contra 1 abaixo de 85%, Grappler contra
+    Striker abaixo de 65%, Striker com 45% ou mais.
+    Números mudados: Cotovelada por cima vel 3 para 2, dano 0,5 para 0, custo
+    2 para 3 (nó +9,6 para +9,4; luta 77,5% para 83,3%: o valor do nó vem do
+    Jab que ela deixa no deck, não dela); Suplex dano 3 para 2, custo 2 para
+    3 (+3,1 para +2,2); Kimura custo 2 para 3 (+0,6 para +0,5); Triângulo
+    custo 3 para 4 (+3,4 para +3,1); Chute frontal custo 1 para
+    0, reforço do Striker (+3,6 para +3,9). Medido só o valor dos nós
+    (6.000 lutas, 2.400 por nó) e o nível 30 com deck padrão (Striker 48,1%,
+    Wrestler 50,8%, Grappler 52,0%, Counter 49,1%). Os alvos de busca (melhor
+    deck, deck aleatório, evolução) dependem da rodada longa, que o dono roda.
+
+### Rodada 6 (2026-11-17): limite de cópias (decisão 90)
+
+90. **Carta da árvore de chão (casa `cima` ou `baixo`) e carta de finalização da árvore (inclusive as de pé, como o Mata-leão) têm no máximo 1 cópia por deck, qualquer que seja a raridade.** As outras seguem a raridade (comum e rara 2, épica e lendária 1). Motivo: no melhor deck da rodada 5, o Grappler levava 2 Kimuras e o Wrestler 2 Cotoveladas por cima, e as duas dominavam o campo. O número mora num ponto só, `copiasDe(id)` em `api/_jxj-cartas.js`: `validarDeck`, o deck do bot (`deckDoBot2`), o deck aleatório da simulação e as definições que o servidor manda (`cartas[id].copias`, que a tela lê no lugar do número da raridade). A busca de deck passa por `validarDeck`. Deck salvo com 2 cópias de carta de chão deixa de valer e volta pro padrão. Nenhum número de carta mudou nesta rodada. Nós medidos de novo (6.000 lutas): Combinações, Evasão voltaram pra faixa; Gestão de distância (+6,6) saiu; Martelada, Kimura e Pêndulo voltaram pra faixa de 40% a 60% por carta; seguem fora Triângulo, Mata-leão, Cem quilos, Passagem de guarda, Guarda fechada, Raspagem de gancho e Berimbolo. Rodada final (melhor deck, aleatório, evolução): o dono roda.
+
+Resultado da rodada 6 (10.000 lutas, `sim/relatorio-r6-final.md`): o limite de cópias quase não mexeu. Melhor deck contra melhor deck no nível 30: Striker 45,5%, Wrestler 57,8%, Grappler 53,7%, Counter 43,1% (rodada 5: 45,0, 57,6, 54,6, 42,8); Grappler contra Striker 74,2% (76,2%); Wrestler de 30 contra 1 com o melhor deck 91,5% (92,2%); deck aleatório contra o campo de melhores até 53,1%; nível 1 igual ao relatório aprovado nas 6 seções.
+
+91. **A calibragem para aqui e os números da rodada 5, com a regra da decisão 90, valem pro grupo de teste (decisão do dono, 2026-11-17).** Seis rodadas mostraram que o Wrestler forte e as cartas de chão decisivas não respondem a número de carta nem a cópias: o peso vem da regra do chão (posição e finalização). Ficam fora dos portões, conhecidos: Wrestler 57,8% e Counter 43,1% no melhor contra melhor, Wrestler 91,5% de 30 contra 1, Grappler contra Striker 74,2%, 13 nós e as cartas de chão pela relativa. Tudo atrás da flag `combate_v2`: o grupo de teste da Fase 7 dá o dado de gente jogando, e uma regra nova pro chão, se precisar, sai de lá.

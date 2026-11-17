@@ -110,49 +110,72 @@ Por baixo:
 
 Decks padrão em `DECK_PADRAO` (`api/_jxj-cartas.js`).
 
-## Árvore (Fase 4)
+## Árvore (cartas, 2026-11-16)
 
-Os nós são os mesmos da árvore de hoje (id, custo, tiers); o `build` é o
-mesmo. No combate v2 cada nó vale pelo efeito de `ARVORE_V2`
-(`api/_jxj-cartas.js`), e o atributo que ele dá fica no combate de antes:
-o perfil da luta v2 (`perfilLuta2`) usa os atributos do estilo e da
-categoria. Quem já tem pontos gastos recebe o efeito na hora.
+Cada nó da árvore libera uma carta (`CARTA_DO_NO` em `api/_jxj-cartas.js`), com raridade pelo andar do ramo, e as estrelas da carta são o nível do nó. O nó não dá mais efeito solto: o `ARVORE_V2` acabou (decisão 81). Quem não põe a carta no deck não ganha nada com o nó além do atributo.
 
-Tipos de efeito: carta mais forte (dano, velocidade, custo), carta que
-anula mais coisa (o Bloqueio que segura a Queda), pontos de juiz a mais
-quando a carta acerta, anula ou interrompe, vida a mais e carta nova. Com
-"por nível", o número multiplica pelo nível do nó. Energia e finta ficaram
-de fora (decisão 49).
+Valor de cada nó = vitória com o nó no nível 3 e a carta no deck padrão (no lugar de uma carta não fixa da mesma categoria, `deckDoNo` em `sim/busca-deck.mjs`) menos a vitória sem ele, média contra os 4 estilos no nível 1 (`sim/relatorio-r4-nos.md`, 1.000 lutas por confronto, 4.000 por nó). Luta = lutas vencidas por quem jogou a carta pelo menos uma vez.
 
-Cartas novas (só no deck do estilo, liberadas pelo nó):
+| Nó | Carta | Raridade | Casa | Vel | Dano | Custo | Nó em pontos | Luta |
+|---|---|---|---|---|---|---|---|---|
+| precisao_maos | Direto | rara | em pé | 4 | 1 | 2 | +5.8 | 55.6% |
+| combinacoes | Combinação | rara | em pé | 4 | 1 | 3 | +6.9 | 57.7% |
+| contra_maos | Contragolpe | épica | em pé | 3 | 1.5 | 2 | +3.6 | 53.7% |
+| eficiencia_golpes | Overhand | lendária | em pé | 2 | 4 | 3 | +2.9 | 49.3% |
+| chute_baixo | Chute na perna | rara | em pé | 4 | 0.5 | 2 | +6.0 | 56.0% |
+| chute_corpo | Chute no corpo | rara | em pé | 3 | 3 | 2 | +5.7 | 54.0% |
+| controle_distancia | Chute frontal | épica | em pé | 4 | 1 | 1 | +2.7 | 55.1% |
+| variedade | Chute rodado | lendária | em pé | 1 | 5 | 3 | +5.7 | 55.3% |
+| controle_ritmo | Passo lateral | rara | em pé | 5 | 0 | 0 | -3.9 | 40.7% |
+| combinacoes_pressao | Joelhada no clinch | rara | em pé | 3 | 1 | 2 | +2.9 | 52.1% |
+| iniciativa | Cotovelada | épica | em pé | 3 | 2.75 | 2 | +5.3 | 53.8% |
+| eficiencia_ofensiva | Superman punch | lendária | em pé | 3 | 3 | 3 | +7.0 | 59.5% |
+| entradas | Single leg | rara | em pé | 3 | 1 | 1 | +2.8 | 56.8% |
+| correntes | Double leg | rara | em pé | 3 | 2 | 3 | +2.9 | 57.8% |
+| timing_queda | Queda no contragolpe | épica | em pé | 3 | 1.5 | 2 | +3.9 | 58.8% |
+| eficiencia_tentativas | Suplex | lendária | em pé | 3 | 3 | 2 | +2.3 | 57.5% |
+| controle_posicional | Peso do ombro | rara | por cima | 4 | 0 | 0 | -0.3 | 73.3% |
+| dominio | Cotovelada por cima | rara | por cima | 3 | 0.5 | 2 | +9.6 | 77.5% |
+| transicoes_controle | Passagem de joelho | épica | por cima | 4 | 0 | 1 | +0.7 | 70.0% |
+| pressao_solo | Martelada | lendária | por cima | 3 | 1.5 | 3 | +9.5 | 77.4% |
+| equilibrio | Sprawl | rara | em pé | 4 | 0 | 0 | -2.1 | 45.1% |
+| recuperacao_posicao | Levantada técnica | rara | por baixo | 5 | 0 | 0 | +0.1 | 29.4% |
+| defesa_entradas | Contra-queda | épica | em pé | 4 | 0 | 0 | -1.7 | 44.3% |
+| retorno_distancia | Bodylock | lendária | em pé | 3 | 0 | 1 | +4.0 | 48.0% |
+| eficiencia_sub | Kimura | rara | por cima | 3 | 0 | 2 | +0.6 | 92.0% |
+| transicoes_sub | Rasteira | rara | em pé | 3 | 1 | 0 | -3.5 | 44.6% |
+| oportunidades | Triângulo | épica | por baixo | 1 | 0 | 3 | +3.4 | 67.8% |
+| especializacao | Mata-leão | lendária | em pé | 4 | 0 | 3 | +4.8 | 60.0% |
+| controle_chao | Cem quilos | rara | por cima | 4 | 0 | 0 | -0.8 | 79.5% |
+| passagens | Passagem de guarda | rara | por cima | 4 | 0 | 1 | +0.6 | 77.1% |
+| retencao | Guarda fechada | épica | por baixo | 4 | 0 | 0 | +0.6 | 52.9% |
+| raspagem | Raspagem de gancho | lendária | por baixo | 3 | 0 | 2 | +0.7 | 61.4% |
+| defesa_sub | Defesa de finalização | rara | por baixo | 5 | 0 | 0 | -0.9 | 25.1% |
+| saidas | Fuga de quadril | rara | por baixo | 4 | 0 | 1 | +1.3 | 40.9% |
+| sobrevivencia | Recomposição | épica | por baixo | 4 | 0 | 0 | -0.8 | 29.6% |
+| recuperar_guarda | Berimbolo | lendária | por baixo | 3 | 0 | 2 | +0.9 | 63.0% |
+| padroes | Esquiva | rara | em pé | 3 | 0.5 | 2 | +4.8 | 56.8% |
+| antecipacao | Leitura de queda | rara | em pé | 5 | 0 | 0 | +4.0 | 53.1% |
+| resposta | Contra de esquerda | épica | em pé | 3 | 1 | 3 | +4.3 | 57.5% |
+| adaptacao | Leitura total | lendária | em pé | 2 | 0 | 3 | +2.9 | 50.9% |
+| evasao | Pêndulo | rara | em pé | 5 | 0 | 0 | -0.5 | 39.9% |
+| bloqueio | Guarda alta | rara | em pé | 4 | 0 | 0 | +0.5 | 44.8% |
+| gestao_distancia | Saída de lado | épica | em pé | 4 | 0 | 0 | +6.4 | 57.6% |
+| recuperacao_defensiva | Segundo fôlego | lendária | em pé | 3 | 0 | 0 | +2.5 | 49.2% |
+| contra_ataques | Contra no corpo | rara | em pé | 3 | 1.5 | 2 | +4.7 | 58.5% |
+| timing | Cruzado de contra | rara | em pé | 3 | 3 | 2 | +2.9 | 55.0% |
+| eficiencia_counter | Uppercut | épica | em pé | 3 | 3 | 2 | +3.7 | 55.0% |
+| aproveitamento | Golpe de misericórdia | lendária | em pé | 4 | 1 | 3 | +5.4 | 58.1% |
 
-| Carta | Estilo | Nó | Categoria | Vel | Dano | Custo | Efeito |
-|---|---|---|---|---|---|---|---|
-| Combinação | Striker | Combinações | Golpe | 4 | 2 | 2 | |
-| Double leg | Wrestler | Correntes de queda | Queda | 2 | 2 | 3 | Se acerta, chão; o Jab não interrompe |
-| Rasteira | Grappler | Transições | Queda | 3 | 0 | 1 | Se acerta quem atacou (golpe, pressão ou queda), chão |
-| Esquiva | Counter | Identificação de padrões | Defesa | 3 | 1 | 1 | Contra golpe: anula |
+Calibragem em 3 tentativas e o que ficou fora dos portões: decisões 85 a 88 em `docs/combat-v2-decisions.md`.
 
-O deck montado com carta que o lutador não tem mais (reconfigurou a
-árvore) fica guardado, mas a luta usa o deck padrão (`deckMontado:
-false` no estado).
+### Resultado das simulações finais (2026-11-16)
 
-Resultado (2026-11-13, `sim/relatorio.md`, 10.000 lutas por confronto;
-o nível 1 saiu igual ao da Fase 1, número por número):
-
-| Medida | Meta | Resultado |
-|---|---|---|
-| Cada nó no nível 3, sozinho (pontos de vitória) | 0,5 a 6,5 | 0,6 a 6,1 |
-| Estilo no agregado, nível 30, deck padrão | 45% a 55% | 47,1% a 51,5% |
-| O mesmo, com a carta nova no deck | 45% a 55% | 46,1% a 56,1% (grappler com a Rasteira) |
-| 30 contra 1, mesmo estilo | 62% a 85% | 60,1% a 71,8% (grappler 60,1%) |
-| 30 contra 20, mesmo estilo | acima de 50% | 53,8% a 55,2% |
-| 30 contra os 4 estilos no nível 1 | (sem meta) | 68,5% a 70,5% |
-
-Fora por pouco: o grappler com a Rasteira no nível 30 (56,1%, ganha do
-striker e do counter, que têm 0 e 1 Antiqueda no deck padrão) e o grappler
-30 contra 1 no espelho (60,1%: o nível 1 da build típica já tem o nó mais
-forte do grappler, Eficiência de submissão; contra o campo, 70,5%).
+- Estilo contra estilo, categorias, peso contra peso, habilidade e duração no nível 1 com deck padrão: iguais ao relatório aprovado (`git show 25716d8:sim/relatorio.md`, 10.000 lutas).
+- Nível 30 com deck padrão: Striker 47,8%, Wrestler 51,3%, Grappler 52,3%, Counter 48,7% (dentro de 45% a 55%). O deck padrão não leva carta da árvore, então o nível 30 só pesa com o deck montado.
+- Nível 30 com o melhor deck da busca (volta 2, rodada 4): Striker 42,1% fora da faixa, Wrestler 52,8%, Grappler 53,6%, Counter 51,5%; o melhor deck contra os decks padrão vence de 67,0% a 82,8%. Fora do portão (decisão 88).
+- Evolução (30 com o melhor deck): 30 contra 1 de 61,3% a 91,6%; 30 contra 20 de 62,0% a 92,0%.
+- Deck aleatório no nível 30: o melhor de 40 passa de 60% nos 4 estilos (61,9% a 72,3%). Fora do portão (decisão 88).
 
 ## Bots (Fase 5)
 
