@@ -60,6 +60,9 @@ export const ESTRATEGIA = {
      (Guarda alta) e toda outra ação virava finta. Só tempo: não muda
      nenhum número da luta, então VERSAO_MOTOR fica. */
   prazos: { sinalMs: 8000, acaoMs: 12000 },
+  /* combate v2 (2026-11-17, pedido do dono: a tela das cartas pedia mais tempo): a carta tem 18 s, a
+     postura segue com 8 s. Só a luta v2 (estado com cv); a v1 fica com os prazos de cima. Só tempo. */
+  prazosV2: { sinalMs: 8000, acaoMs: 18000 },
   /* luta de 3 trocas por round (motor v5, 2026-11-10): com uma troca a
      menos por round sobra mais carta e mais energia. Medido junto com
      K_POR_TROCAS do motor (matriz de estilos com 1.200 lutas por dupla,
@@ -113,3 +116,10 @@ export function filtrarPelaMao(dist, estado, lado) {
   const disp = FAMILIAS_MAO.map((f) => (temCarta(estado, lado, f) ? 1 : 0)), n = disp.reduce((a, b) => a + b, 0);
   return n ? disp.map((x) => x / n) : dist;
 }
+
+/* O ÚNICO ponto do prazo da troca: sinalMs, acaoMs e prazoMs (a soma) da luta, pela versão do estado
+   (estado.cv = combate v2). Servidor, definições e vista leem daqui; o banco só recebe os números. */
+export const prazosDaLuta = (e) => {
+  const p = e && e.cv ? ESTRATEGIA.prazosV2 : ESTRATEGIA.prazos;
+  return { sinalMs: p.sinalMs, acaoMs: p.acaoMs, prazoMs: p.sinalMs + p.acaoMs };
+};

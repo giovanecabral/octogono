@@ -11962,10 +11962,47 @@ async function testarJxJ() {
         if (canon(e) !== canon(fim.estado)) throw new Error("a luta refeita pela semente ficou diferente");
         if (crypto.createHash("sha256").update(fim.semente).digest("hex") !== v.compromisso) throw new Error("compromisso não é o sha256 da semente");
         const ms = Number((await q("select extract(epoch from (prazo - now())) * 1000 as ms from jxj_lutas where id = $1", [lid]))[0].ms);
-        if (Math.abs(ms - (MOTOR.FORMATO.prazoMs + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(ms));
+        if (Math.abs(ms - (EST.prazosDaLuta({ cv: 2 }).prazoMs + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(ms));
         await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
         await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
       } finally { await flagV2(false); }
+    });
+    await conf("prazo por versão da luta (layout da luta v2, 2026-11-17): luta v2 tem 8 s de postura e 18 s de carta (a vista manda formato.prazoMs 26000, prazoSinal 8 s depois do começo, o prazo da próxima troca soma a animação, e o banco recusa sinal depois dos 8 s); luta v1 segue com 8 s e 12 s", async () => {
+      await zerarLimites();
+      const ms = async (lid) => Number((await q("select extract(epoch from (prazo - now())) * 1000 as ms from jxj_lutas where id = $1", [lid]))[0].ms);
+      const fecha = async (lid, us) => { await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]); await q("update jxj_contas set luta_aberta_id = null where user_id = any($1::uuid[])", [us]); };
+      for (const v2 of [true, false]) {
+        const u1 = await novoUsuario({ pro: true }), u2 = await novoUsuario({ pro: true });
+        const l1 = (await criar(u1)).id, l2 = (await criar(u2)).id;
+        await flagV2(v2);
+        try {
+          const lid = await parear(u1, l1, u2, l2);
+          const acaoEsperada = v2 ? 18000 : 12000, total = 8000 + acaoEsperada;
+          const v = await ok(u1, "luta", { lutaId: lid });
+          if (!!(await estadoDb(lid)).estado.cv !== v2) throw new Error("versão da luta");
+          if (v.formato.prazoMs !== total) throw new Error(`formato.prazoMs ${v.formato.prazoMs} (esperado ${total})`);
+          if (Math.abs((await ms(lid)) - total) > 1500) throw new Error("prazo da luta nova: " + Math.round(await ms(lid)));
+          const sinalMs = Date.parse(v.prazoSinal) - Date.parse(v.agora);
+          if (v.etapa !== "sinal" || Math.abs(sinalMs - 8000) > 1500) throw new Error("etapa do sinal: " + JSON.stringify({ etapa: v.etapa, sinalMs }));
+          /* a troca resolvida deixa o prazo da próxima em prazo + animação */
+          const w = await ok(u2, "luta", { lutaId: lid });
+          const pega = (x) => (v2 ? x.mao[0].id : null);
+          const a1 = v2 ? { carta: pega(v) } : { familia: "golpes" }, a2 = v2 ? { carta: pega(w) } : { familia: "defesa" };
+          await ok(u1, "acao", { lutaId: lid, round: 1, troca: 1, ...a1 });
+          await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, ...a2 });
+          if (Math.abs((await ms(lid)) - (total + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(await ms(lid)));
+          const v3 = await ok(u1, "luta", { lutaId: lid });
+          if (v3.troca !== 2 || Math.abs((Date.parse(v3.prazoSinal) - Date.parse(v3.agora)) - (8000 + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("sinal da próxima: " + JSON.stringify({ t: v3.troca, p: v3.prazoSinal, a: v3.agora }));
+          /* o banco recusa sinal depois da etapa do sinal: faltam 15 s (v2: 18 s de carta) */
+          await q("update jxj_lutas set prazo = now() + make_interval(secs => $2::double precision / 1000) where id = $1", [lid, acaoEsperada - 1000]);
+          const antes = await ok(u1, "luta", { lutaId: lid });
+          if (antes.etapa !== "acao") throw new Error("depois dos 8 s deveria ser a etapa da carta: " + antes.etapa);
+          await q("update jxj_lutas set prazo = now() + make_interval(secs => $2::double precision / 1000) where id = $1", [lid, acaoEsperada + 2000]);
+          const dentro = await ok(u1, "luta", { lutaId: lid });
+          if (dentro.etapa !== "sinal") throw new Error("2 s antes do fim da postura deveria ser a etapa do sinal: " + dentro.etapa);
+          await fecha(lid, [u1, u2]);
+        } finally { await flagV2(false); }
+      }
     });
     await conf("luta inteira no combate v2 pelo servidor: termina com resultado, a semente sai no fim e o texto de cada troca vem sem lixo", async () => {
       await zerarLimites();

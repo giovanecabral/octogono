@@ -10,7 +10,7 @@
    Quem chama: api/jxj.js (o servidor decide) e testar.js (simulação em
    massa). O navegador nunca roda isto pra decidir nada. */
 import { createHash } from "node:crypto";
-import { ESTRATEGIA, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao, custoFintaDe, regraDaLuta } from "./_jxj-estrategia.js";
+import { ESTRATEGIA, prazosDaLuta, POSTURAS, maoCheia, cartasNaMao, temCarta, acaoPadrao, familiaNaMao, custoFintaDe, regraDaLuta } from "./_jxj-estrategia.js";
 
 export const VERSAO_MOTOR = 5;   // 2: variantes de ação por round (2026-10-04); 3: leitura que decide, grogue e finalização encaixada (2026-10-20); 4: mão à vista (2026-10-27); 5: 3 trocas por round com a animação antes das cartas (2026-11-10)
 /* Formato (ajustado pela suíte jxjmotor; valores finais no LEIA-ME). O
@@ -23,7 +23,7 @@ export const FORMATO = { rounds: 3, trocasPorRound: 3, prazoMs: ESTRATEGIA.prazo
    com 4 até o fim e sem a animação no prazo. */
 export const trocasDoRound = (e) => (e && e.tpr) || 4;
 /* prazo da próxima troca: a animação da troca que acabou de resolver entra antes do sinal */
-export const prazoDaProxima = (e) => FORMATO.prazoMs + (e && e.tpr ? FORMATO.animacaoMs : 0);
+export const prazoDaProxima = (e) => prazosDaLuta(e).prazoMs + (e && e.tpr ? FORMATO.animacaoMs : 0);
 export const FAMILIAS = ["golpes", "queda", "defesa", "pressao"];
 export const AUSENCIAS_WO = 3;
 

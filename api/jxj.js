@@ -242,18 +242,19 @@ async function sinaisDaTroca(d) {
     : BOT.sinalDoBot({ estado: L.estado, semente: L.semente, trocas: d.trocas, dados: L.bot, lado: "b" });
   return s;
 }
-const ACAO_MS = EST.ESTRATEGIA.prazos.acaoMs;
+/* o prazo é da luta (v1: 12 s de carta; v2: 18 s), lido do estado dela num ponto só: EST.prazosDaLuta */
+const acaoMsDe = (L) => EST.prazosDaLuta(L && L.estado).acaoMs;
 /* etapa da troca aberta: "acao" quando os dois sinalizaram ou a etapa do sinal acabou */
 function etapaDaTroca(L, sn, agora) {
   if (!sn) return null;
-  return (sn.a && sn.b) || agora > Date.parse(L.prazo) - ACAO_MS ? "acao" : "sinal";
+  return (sn.a && sn.b) || agora > Date.parse(L.prazo) - acaoMsDe(L) ? "acao" : "sinal";
 }
 /* sinais revelados, com a postura padrão pra quem não mandou (v2: a categoria da carta que jogaria sozinha) */
 const posturaPadrao = (L, l) => (V2.ehV2(L.estado) ? V2.posturaPadrao(L.estado, l) : EST.acaoPadrao(L.estado, l));
 const sinaisRevelados = (L, sn) => ({ a: sn.a || posturaPadrao(L, "a"), b: sn.b || posturaPadrao(L, "b") });
 /* quando a revelação aconteceu (ms): o último dos dois sinais ou o fim da etapa do sinal */
 function momentoDaRevelacao(L, sn) {
-  const fim = Date.parse(L.prazo) - ACAO_MS;
+  const fim = Date.parse(L.prazo) - acaoMsDe(L);
   if (sn.a && sn.b && sn.em.a && sn.em.b) return Math.min(fim, Math.max(Date.parse(sn.em.a), Date.parse(sn.em.b)));
   return fim;
 }
@@ -292,7 +293,7 @@ async function processarLuta(lid, uid, { porAcao = false } = {}) {
         lid, versao_: L.versao, round_: L.round, troca_: L.troca, acao_a_: r.resolucao.cartas.a.id, acao_b_: r.resolucao.cartas.b.id,
         /* o log de resolução vai junto com os eventos (o "por quê" da troca na tela) */
         eventos_: [{ tipo: "resolucao", ...r.resolucao }, ...r.eventos], estado_: r.estado,
-        prazo_ms: MOTOR.FORMATO.prazoMs + MOTOR.FORMATO.animacaoMs, fim_: fim, efeitos_: fim ? efeitosDoFim(d, r.estado, fim) : null,
+        prazo_ms: MOTOR.prazoDaProxima(r.estado), fim_: fim, efeitos_: fim ? efeitosDoFim(d, r.estado, fim) : null,
       });
       continue;
     }
@@ -356,7 +357,7 @@ function vistaDaLutaV2(d, uid) {
     id: L.id, tipo: L.tipo, bot: !!L.bot, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
     confirmacaoAte: L.confirmacao_ate, confirmado: { a: L.confirmado_a, b: L.confirmado_b },
     round: L.round, troca: L.troca, prazo: L.prazo, agora: d.agora, comRating: L.com_rating,
-    formato: { ...MOTOR.FORMATO, trocasPorRound: C2.FORMATO2.trocasPorRound, animacaoMs: MOTOR.FORMATO.animacaoMs },
+    formato: { ...MOTOR.FORMATO, prazoMs: EST.prazosDaLuta(L.estado).prazoMs, trocasPorRound: C2.FORMATO2.trocasPorRound, animacaoMs: MOTOR.FORMATO.animacaoMs },
     ...V2.vistaV2(L, lado, { sinais: sn ? sinaisRevelados(L, sn) : null, etapa }),
     /* a minha carta da troca aberta (a dele, nunca): a família e a carta */
     minhaAcao: lado && abertas[lado] ? abertas[lado].familia : null,
@@ -370,7 +371,7 @@ function vistaDaLutaV2(d, uid) {
       return !!ac && Date.parse(ac.enviada_em) > momentoDaRevelacao(L, sn);
     })() : null,
     etapa,
-    prazoSinal: etapa ? new Date(Date.parse(L.prazo) - ACAO_MS).toISOString() : null,
+    prazoSinal: etapa ? new Date(Date.parse(L.prazo) - acaoMsDe(L)).toISOString() : null,
     meuSinal: sn && lado ? sn[lado] : null,
     adversarioSinalizou: sn && lado ? !!sn[outroLado(lado)] : null,
     sinais: etapa === "acao" ? sinaisRevelados(L, sn) : null,
@@ -442,7 +443,7 @@ function vistaDaLuta(d, uid) {
     /* fase 2: a etapa da troca (sinal ou ação), o fim da etapa do sinal, o
        meu sinal, se ele já sinalizou e, só depois da revelação, os dois sinais */
     etapa,
-    prazoSinal: etapa ? new Date(Date.parse(L.prazo) - ACAO_MS).toISOString() : null,
+    prazoSinal: etapa ? new Date(Date.parse(L.prazo) - acaoMsDe(L)).toISOString() : null,
     meuSinal: sn && lado ? sn[lado] : null,
     adversarioSinalizou: sn && lado ? !!sn[outroLado(lado)] : null,
     sinais: etapa === "acao" ? sinaisRevelados(L, sn) : null,
@@ -607,7 +608,7 @@ async function acaoV2(c, d0, uid, lid, round, troca) {
   try { await rpc("jxj_enviar_carta", { uid, lid, round_: round, troca_: troca, familia_: familia, carta_: c.carta }); }
   catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("o combate novo ainda não foi ligado", 503); throw e; }
   if (etapa0 === "sinal" && !sn0[lado0]) {
-    try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: familia, acao_ms: ACAO_MS }); }
+    try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: familia, acao_ms: acaoMsDe(L0) }); }
     catch (e) { if (!/etapa do sinal acabou/.test(e.message)) throw e; }
   }
   return vistaDaLuta(await processarLuta(lid, uid, { porAcao: true }), uid);
@@ -775,8 +776,8 @@ async function executar(acao, c, uid) {
     }
     case "confirmar": {
       const lid = idDe(c.lutaId, "luta");
-      await processarLuta(lid, uid);
-      await rpc("jxj_luta_confirmar", { uid, lid, prazo_ms: MOTOR.FORMATO.prazoMs });
+      const dc = await processarLuta(lid, uid);
+      await rpc("jxj_luta_confirmar", { uid, lid, prazo_ms: EST.prazosDaLuta(dc.luta.estado).prazoMs });
       return vistaDaLuta(await processarLuta(lid, uid), uid);
     }
     case "recusar": {
@@ -813,7 +814,7 @@ async function executar(acao, c, uid) {
          escolheu" (senão o outro saberia que foi honesto). A etapa acabou
          entre as duas chamadas: a ação vale e a postura é a padrão */
       if (etapa0 === "sinal" && !sn0[lado0]) {
-        try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: ACAO_MS }); }
+        try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: acaoMsDe(L0) }); }
         catch (e) { if (!/etapa do sinal acabou/.test(e.message)) throw e; }
       }
       return vistaDaLuta(await processarLuta(lid, uid, { porAcao: true }), uid);
@@ -828,7 +829,7 @@ async function executar(acao, c, uid) {
       /* v2: a postura é a categoria de uma carta da mão (a carta continua na mão) */
       if (V2.ehV2(L0.estado)) { if (L0.status === "andamento" && lado0 && !V2.temCategoria(L0.estado, lado0, c.familia)) throw new ErroJxJ("Você não tem carta dessa categoria na mão."); }
       else if (L0.status === "andamento" && L0.estado && lado0 && !EST.temCarta(L0.estado, lado0, c.familia)) throw new ErroJxJ("Você já usou essa ação neste round.");
-      try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: ACAO_MS }); }
+      try { await rpc("jxj_enviar_sinal", { uid, lid, round_: round, troca_: troca, familia_: c.familia, acao_ms: acaoMsDe(L0) }); }
       catch (e) { if (e.codigo === "PGRST202") throw new ErroJxJ("os sinais ainda não foram ligados", 503); throw e; }
       return vistaDaLuta(await processarLuta(lid, uid), uid);
     }
@@ -845,7 +846,7 @@ async function executar(acao, c, uid) {
         const estado = { ...L.estado, fim };
         const eventos = [{ tipo: "abandono", quem: "a" }, { tipo: "fim", quem: "b", metodo: "WO", abandono: true }];
         const r = await rpc("jxj_gravar_troca", { lid, versao_: L.versao, round_: L.round, troca_: L.troca, acao_a_: null, acao_b_: null,
-          eventos_: eventos, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs, fim_: fim, efeitos_: efeitosDoFim(d, estado, fim) });
+          eventos_: eventos, estado_: estado, prazo_ms: EST.prazosDaLuta(estado).prazoMs, fim_: fim, efeitos_: efeitosDoFim(d, estado, fim) });
         if (r && r.gravou) return vistaDaLuta(await processarLuta(lid, uid), uid);
       }
       throw new ErroJxJ("A luta mudou no meio. Tente de novo.", 409);
@@ -861,7 +862,7 @@ async function executar(acao, c, uid) {
       /* na revanche os lados trocam: quem era B vira A */
       const semente = novaSemente();
       const { perfis, estado } = await lutaNova(d.lutadorB, d.lutadorA, [d.luta.b_user, d.luta.a_user], semente);
-      return rpc("jxj_revanche_criar", { lid, semente_: semente, perfis_: perfis, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs });
+      return rpc("jxj_revanche_criar", { lid, semente_: semente, perfis_: perfis, estado_: estado, prazo_ms: EST.prazosDaLuta(estado).prazoMs });
     }
     case "narracao": {
       /* Só quem lutou (o banco confere o uid antes de devolver ou gerar).
@@ -909,7 +910,7 @@ async function executar(acao, c, uid) {
       try {
         return await rpc("jxj_bot_criar", {
           uid, lid, semente_: semente, perfis_: perfis, estado_: v2 ? V2.novaLuta(perfis, semente) : MOTOR.novaLuta(perfis.a, perfis.b),
-          nome_b: BOT.vitrine(bot), bot_: v2 ? BOT2.dadosDaLuta2(bot, { puro }) : BOT.dadosDaLuta(bot, perfis.a, { puro }), prazo_ms: MOTOR.FORMATO.prazoMs,
+          nome_b: BOT.vitrine(bot), bot_: v2 ? BOT2.dadosDaLuta2(bot, { puro }) : BOT.dadosDaLuta(bot, perfis.a, { puro }), prazo_ms: EST.prazosDaLuta(v2 ? { cv: 2 } : null).prazoMs,
           espera_s: sozinho ? 0 : REG.BOT_ESPERA_S, limite_free: REG.BOT_FREE_DIA,
         });
       } catch (e) {
@@ -926,7 +927,7 @@ async function executar(acao, c, uid) {
       const t = await rpc("jxj_torneio_lutadores", { cid });
       const semente = novaSemente();
       const { perfis, estado } = await lutaNova(t.a, t.b, [t.a.user_id, t.b.user_id], semente);
-      return rpc("jxj_torneio_criar_luta", { cid, semente_: semente, perfis_: perfis, estado_: estado, prazo_ms: MOTOR.FORMATO.prazoMs });
+      return rpc("jxj_torneio_criar_luta", { cid, semente_: semente, perfis_: perfis, estado_: estado, prazo_ms: EST.prazosDaLuta(estado).prazoMs });
     }
     default: throw new ErroJxJ("ação desconhecida");
   }
