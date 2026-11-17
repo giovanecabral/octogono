@@ -7856,7 +7856,7 @@ const JXJ_3D2={
   /* a carta anulada é o lance: golpe no bloqueio, queda defendida, controle de quem está por cima */
   anulou:(e,c)=>{
     const alvo=e.alvo,atk=c.outro(e.quem);
-    if(JXJ_3D2_QUEDA.includes(alvo)||alvo==="puxar_guarda")return {tipo:"quedaDefendida",quem:c.Q(atk)};
+    if(JXJ_3D2_QUEDA.includes(alvo)||alvo==="puxar_guarda")return {tipo:"quedaDefendida",quem:c.Q(atk),carta:e.carta};
     if(alvo in JXJ_3D2_GOLPE)return {tipo:"golpe1",quem:c.Q(atk),forca:2,golpe:JXJ_3D2_GOLPE[alvo],carta:alvo,bloqueio:true};
     if(c.pos==="cima_"+e.quem)return {tipo:"controle",quem:c.Q(e.quem)};
     return {tipo:"estudo"};

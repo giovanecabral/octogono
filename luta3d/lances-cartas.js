@@ -47,6 +47,8 @@ const contra = (gDele, gMeu, camera) => ({
 const queda = (s, camera, passos = [["queda", "A"]]) => ({ tipo: "queda", clipe: QUEDA, arte: { clipe: QUEDA, t: { s }, camera, passos } });
 /* queda dele defendida (antiqueda e afins) */
 const defQueda = (s, camera) => ({ tipo: "quedaDefendida", clipe: "Passo_Tras", arte: { clipe: "Passo_Tras", t: { s }, camera, passos: [["defendida", "B"]] } });
+/* o mesmo, com o lance programado do diretor (PROG) no lugar do passo pra trás */
+const defQuedaProg = (prog, s, camera) => ({ ...defQueda(s, camera), prog, arte: { clipe: "Passo_Tras", t: { s }, camera, passos: [["prog", "B", prog]] } });
 /* no chão: quem joga a carta por cima (preparo: queda dele) ou por baixo (preparo: queda do outro) */
 const cima = (tipo, ultimo, t, camera, clipe = QUEDA) => ({ tipo, clipe, arte: { clipe, t, camera, passos: [["queda", "A"], ultimo] } });
 const baixo = (tipo, ultimo, t, camera, clipe = DEITADO) => ({ tipo, clipe, arte: { clipe, t, camera, passos: [["queda", "B"], ultimo] } });
@@ -96,7 +98,7 @@ export const LANCES_CARTAS = {
   cotovelada_cima: cima("gnp1", ["socos", "A", 1, false], { impacto: 1, depois: 0.02 }, cam("cima")),
   passagem_joelho: cima("controle", ["socos", "A", 1, false], { s: 0.15 }, cam("tres", -1)),
   martelada: cima("gnp1", ["socos", "A", 2, true], { impacto: 2, depois: 0.02 }, cam("chao")),
-  sprawl: defQueda(0.55, cam("tres")),
+  sprawl: defQuedaProg("sprawl", 0.75, cam("tres")),
   levantada_tecnica: baixo("levantou", ["expulsar"], { s: 3.3 }, cam("tres"), "Getting_Up"),
   contra_queda: defQueda(0.8, cam("tres", -1)),
   bodylock: queda(1.25, cam("perto", -1)),

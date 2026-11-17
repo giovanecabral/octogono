@@ -17218,6 +17218,21 @@ async function testarLuta3d() {
     if (!/golpeDaCarta\(ev\.carta, ev\.golpe\)/.test(diretor)) throw new Error("o diretor não usa a carta do lance");
     if (!/if \(g\.ik !== false\) atk\.contato/.test(diretor)) throw new Error("joelho e cotovelo (ik: false) iriam pro IK e quebrariam");
   });
+  /* Tarefa 19: lances programados (quadros-chave no diretor, como a MONTADA). Cada carta com `prog` tem a
+     função no PROG e o diretor despacha por ela; a lista abaixo é a dos lances prontos (cada um passou por print) */
+  await conf("lances programados: a carta com prog tem a função no PROG do diretor, o diretor despacha por ela e a lista dos prontos bate", async () => {
+    const L = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
+    const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    const bloco = diretor.slice(diretor.indexOf("const PROG = {"), diretor.indexOf("/* ---------- estudo"));
+    const funcoes = new Set([...bloco.matchAll(/^  (?:async )?(\w+)\(/gm)].map((m) => m[1]));
+    const prontos = ["sprawl"];
+    for (const p of prontos) if (!funcoes.has(p)) throw new Error("lance programado sem função no PROG: " + p);
+    for (const f of funcoes) if (!prontos.includes(f)) throw new Error("função no PROG fora da lista dos prontos: " + f);
+    const usados = new Set(Object.values(L.LANCES_CARTAS).map((l) => l.prog).filter(Boolean));
+    for (const p of prontos) if (!usados.has(p)) throw new Error("nenhuma carta toca o lance " + p);
+    for (const [id, l] of Object.entries(L.LANCES_CARTAS)) if (l.prog && !funcoes.has(l.prog)) throw new Error(`${id}: prog ${l.prog} sem função`);
+    if (!/PROG\[ev\.prog \|\|/.test(diretor)) throw new Error("o diretor não despacha pelo PROG");
+  });
   await conf("os golpes novos têm imp e dist medidos e o clipe existe no mx_cartas.glb (quando o arquivo está na pasta)", async () => {
     const LC = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
     const f = path.join(__dirname, "luta3d", "mx_cartas.glb");

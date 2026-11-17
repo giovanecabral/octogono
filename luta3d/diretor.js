@@ -1009,6 +1009,57 @@ async function quedaDefendida(atk, def) {
   await esperar(0.8);
   await ajustarDist(1.7, 0.6);
 }
+/* ---------- lances programados das cartas (Tarefa 19) ----------
+   Quadros-chave por IK e por pose da raiz, no estilo da MONTADA: cada lance é uma função do PROG
+   (a carta aponta pra ela em `prog`, lances-cartas.js) e termina no mesmo estado que o lance de
+   antes (montada ou em pé, `travado` solto), pra o resto da luta não notar. Sem o lance, cai no case. */
+/* o corpo na pose do clipe, mas com a pelve mandada pra `onde` e o tronco girado: pitch (pra frente)
+   e roll (de lado) em torno da pelve. Serve pra erguer, virar e jogar quem está sendo levantado. */
+function poseRigida(L, onde, yaw, pitch = 0, roll = 0) {
+  L.raiz.rotation.order = "YXZ";
+  L.raiz.rotation.set(pitch, yaw, roll);
+  L.raiz.position.set(0, 0, 0); L.raiz.updateMatrixWorld(true);
+  const p = L.ossos.pelvis.getWorldPosition(V3());
+  L.raiz.position.copy(onde).sub(p);
+  L.raiz.updateMatrixWorld(true);
+}
+const PROG = {
+  /* sprawl: quem defende joga as pernas pra trás e o quadril desce, o peito cai sobre as costas de quem atirou */
+  async sprawl(atk, def) {
+    await ajustarDist(1.25, 0.4);
+    const st = { w: 0 };
+    const fr = () => fr0(def), esq = () => esq0(def);
+    const pe = (s) => () => def.raiz.position.clone().setY(0.07).addScaledVector(fr(), -0.1 - 0.75 * suave(st.w)).addScaledVector(esq(), 0.2 * s);
+    const f = () => {
+      const w = suave(st.w); if (w < 0.001) return;
+      const pel = def.ossos.pelvis, wp = pel.getWorldPosition(V3());
+      wp.addScaledVector(fr(), -0.2 * w).y -= 0.4 * w; pel.parent.worldToLocal(wp); pel.position.copy(wp);
+      def.modelo.updateMatrixWorld(true);
+      for (const [o, p] of [["spine_01", 0.35], ["spine_02", 0.35], ["spine_03", 0.3]]) def.girarMundo(def.ossos[o], esq(), 0.9 * p * w);
+      def.modelo.updateMatrixWorld(true);
+    };
+    def.extras.add(f);
+    /* quem atirou é achatado pelo peso: o tronco vai pra frente e pra baixo */
+    const aperta = () => { const w = suave(st.w); for (const [o, p] of [["spine_01", 0.3], ["spine_02", 0.4], ["spine_03", 0.3]]) atk.girarMundo(atk.ossos[o], esq0(atk), 0.8 * p * w); atk.modelo.updateMatrixWorld(true); };
+    atk.extras.add(aperta);
+    for (const l of ["l", "r"]) {
+      const s = l === "l" ? 1 : -1;
+      def.ikFixo["ball_" + l] = { peso: 0, alvo: pe(s), polo: () => def.posMundo("thigh_" + l).addScaledVector(esq(), 0.5 * s).add(V3(0, -0.2, 0)) };
+      def.ikFixo["hand_" + l] = { peso: 0, alvo: () => atk.posMundo("spine_03").add(V3(0, 0.05, 0)).addScaledVector(esq(), 0.14 * s), polo: () => def.posMundo("upperarm_" + l).addScaledVector(esq(), 0.5 * s) };
+    }
+    const peso = () => { for (const k of Object.values(def.ikFixo)) if (k) k.peso = suave(st.w); };
+    def.extras.add(peso);
+    atk.umaVez("Double_Leg_Takedown___Attacker", { ate: 1.05, vel: 1.1, fade: 0.12, volta: 0.5, mover: false });
+    await esperar(0.3);
+    await animar(0.25, (k) => { st.w = k; });
+    palco.tremor = Math.max(palco.tremor, 0.02); som("leve", 0.6); atk.impacto("spine_02", esq0(atk), 0.3);
+    await esperar(0.5);
+    await animar(0.4, (k) => { st.w = 1 - k; });
+    def.extras.delete(f); def.extras.delete(peso); atk.extras.delete(aperta); delete def.ikFixo.ball_l; delete def.ikFixo.ball_r; delete def.ikFixo.hand_l; delete def.ikFixo.hand_r;
+    await ajustarDist(1.7, 0.6);
+  },
+};
+
 /* ---------- estudo: fintas enquanto ninguém está num lance ---------- */
 let estudo = 1.5;
 function estudar(dt) {
@@ -1079,6 +1130,8 @@ async function lance(L) {
   const [atk, def] = de(ev.quem);
   ocupadoLance = true;
   try {
+    const prog = PROG[ev.prog || (ev.carta && LANCES_CARTAS[ev.carta] && LANCES_CARTAS[ev.carta].prog)];
+    if (prog && !ev.bloqueio) { await prog(atk, def, ev); return; }
     switch (ev.tipo) {
       case "inicio":
         if (montada) await separar({ narra: false });
@@ -1170,7 +1223,7 @@ return {
   /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera, o palco e os
      lances um a um (a arte das cartas, ferramentas/arte-cartas.mjs, fotografa o lance de cada carta) */
   _dev: { A, B, base, cartasProntas, cam, palco, THREE, MONTADA, get montada() { return montada; },
-    lances: { golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
+    lances: { prog: (nome, atk, def, ev) => PROG[nome](atk, def, ev || {}), golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
   /* o clipe que a carta toca: o do mx_cartas.glb se já chegou, senão a reserva (nunca trava a luta) */
   clipeDaCarta(lance) { return clipeDoLance(lance, base.clips); },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },
