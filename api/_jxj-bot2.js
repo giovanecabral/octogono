@@ -74,11 +74,13 @@ export const politica2 = (s) => ({ erro: AJUSTE2.erroS0 * (1 - clamp(Number(s) |
    medir de novo e copiar aqui. O Provocador quase não cresce da metade pra
    cima (a inclinação pouco mexe em quem golpeia quase sempre); o Observador
    forte joga como o "atenta". */
+/* 2026-11-17: medida de novo com o deck por faixa de nível (Tarefa 11) e os
+   números da calibragem (decisão 91). */
 export const FORCA_BOT2 = {
-  agressivo: [1363, 1416, 1429],
-  defensivo: [1327, 1421, 1462],
-  leitor: [1381, 1462, 1500],
-  caotico: [1322, 1394, 1423],
+  agressivo: [1403, 1426, 1425],
+  defensivo: [1437, 1524, 1555],
+  leitor: [1497, 1562, 1576],
+  caotico: [1436, 1497, 1522],
 };
 export function forcaDoBot2(pers, s) {
   const f = FORCA_BOT2[pers];
@@ -105,24 +107,24 @@ export const faixaDoNivel = (nivel) => (nivel >= 20 ? "alto" : nivel >= 10 ? "me
 /* DECKS_BOT2:inicio */
 export const DECKS_BOT2 = {
   striker: {
-    baixo: DECK_PADRAO.striker,
-    medio: DECK_PADRAO.striker,
-    alto: ["jab","cruzado","cruzado","chute_alto","jab","chute_frontal","chute_corpo","contragolpe","contra_ataque","contra_ataque","clinch","queda"],
+    baixo: ["jab","cruzado","cruzado","chute_alto","bloqueio","clinch","combinacao","combinacao","contra_ataque","contra_ataque","jab","queda"],
+    medio: ["jab","cruzado","cruzado","chute_alto","chute_corpo","clinch","contra_ataque","contra_ataque","contragolpe","direto","jab","queda"],
+    alto: ["jab","cruzado","cruzado","chute_alto","chute_corpo","chute_frontal","clinch","contra_ataque","contra_ataque","contragolpe","jab","queda"],
   },
   wrestler: {
-    baixo: DECK_PADRAO.wrestler,
-    medio: DECK_PADRAO.wrestler,
-    alto: ["queda","queda","clinch","antiqueda","double_leg","cotovelada_cima","peso_ombro","martelada","jab","jab","queda_contragolpe","single_leg"],
+    baixo: ["queda","queda","clinch","antiqueda","antiqueda","bloqueio","double_leg","double_leg","jab","jab","single_leg","single_leg"],
+    medio: ["queda","queda","clinch","antiqueda","bloqueio","bloqueio","cotovelada_cima","double_leg","double_leg","jab","jab","queda_contragolpe"],
+    alto: ["queda","queda","clinch","antiqueda","cotovelada_cima","double_leg","jab","jab","martelada","peso_ombro","queda_contragolpe","single_leg"],
   },
   grappler: {
-    baixo: DECK_PADRAO.grappler,
-    medio: DECK_PADRAO.grappler,
-    alto: ["puxar_guarda","puxar_guarda","queda","antiqueda","kimura","kimura","mata_leao","bloqueio","bloqueio","jab","jab","triangulo"],
+    baixo: ["puxar_guarda","puxar_guarda","queda","antiqueda","antiqueda","bloqueio","cem_quilos","jab","jab","kimura","queda","rasteira"],
+    medio: ["puxar_guarda","puxar_guarda","queda","antiqueda","antiqueda","bloqueio","defesa_finalizacao","jab","jab","kimura","queda","rasteira"],
+    alto: ["puxar_guarda","puxar_guarda","queda","antiqueda","bloqueio","bloqueio","jab","jab","kimura","kimura","mata_leao","triangulo"],
   },
   counter: {
-    baixo: DECK_PADRAO.counter,
-    medio: DECK_PADRAO.counter,
-    alto: ["contra_ataque","contra_ataque","bloqueio","antiqueda","leitura_queda","jab","jab","misericordia","saida_lado","contra_esquerda","clinch","queda"],
+    baixo: ["contra_ataque","contra_ataque","bloqueio","antiqueda","clinch","esquiva","esquiva","jab","jab","leitura_queda","leitura_queda","queda"],
+    medio: ["contra_ataque","contra_ataque","bloqueio","antiqueda","clinch","esquiva","esquiva","jab","jab","leitura_queda","leitura_queda","queda"],
+    alto: ["contra_ataque","contra_ataque","bloqueio","antiqueda","clinch","contra_esquerda","jab","jab","leitura_queda","misericordia","queda","saida_lado"],
   },
 };
 /* DECKS_BOT2:fim */
