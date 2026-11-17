@@ -12067,6 +12067,15 @@ async function testarJxJ() {
         L1 = (await ok(u1, "estado")).lutadores.find((l) => l.id === l1);
         if (JSON.stringify(L1.deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1.deckMontado) throw new Error("deck inválido não voltou pro padrão: " + JSON.stringify({ m: L1.deckMontado }));
         if (!Array.isArray(L1.liberadas) || !L1.liberadas.includes(epica.id) || JSON.stringify(L1.liberadas) !== JSON.stringify(CT.cartasLiberadas("striker", { [epica.no]: 1 }))) throw new Error("estado sem liberadas");
+        /* carta de chão da árvore (rara: 2 pela raridade) com 2 cópias: recusada ao salvar e, gravada direto, volta pro padrão */
+        const chao = Object.values(CT.CARTAS).find((c) => c.no && c.casa === "cima" && CT.COPIAS[c.raridade] === 2 && ARV.NOS[c.no] && ARV.NOS[c.no].tier <= ARV.TIERS_HIBRIDOS);
+        if (!chao) throw new Error("sem carta de chão rara liberável pro striker");
+        await q("update jxj_lutadores set build = $1::jsonb where id = $2", [JSON.stringify({ [chao.no]: 1 }), l1]);
+        const dc = CT.DECK_PADRAO.striker.slice(); dc[i] = chao.id; dc[j] = chao.id;
+        await erro(u1, "deck", { lutadorId: l1, deck: dc }, /cópia/);
+        await q("update jxj_lutadores set deck = $1::jsonb where id = $2", [JSON.stringify(dc), l1]);
+        L1 = (await ok(u1, "estado")).lutadores.find((l) => l.id === l1);
+        if (JSON.stringify(L1.deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1.deckMontado) throw new Error("deck com 2 cópias de carta de chão não voltou pro padrão");
       } finally { await flagV2(false); }
     });
     await conf("sem a migração do combate v2: a flag não existe, a luta nasce na v1 e salvar deck responde 503", async () => {
@@ -13281,6 +13290,22 @@ async function testarCombate2() {
     if (v.ok || !/cópia/.test(v.erro)) throw new Error("2 épicas passaram: " + JSON.stringify(v));
     const sem = C.validarDeck("striker", [...base, rara, rara]);
     if (sem.ok || !/liberada/.test(sem.erro)) throw new Error("carta sem o nó passou");
+  });
+  await conf("deck: carta de chão da árvore e finalização da árvore, no máximo 1 cópia por deck qualquer que seja a raridade (copiasDe); as outras seguem a raridade", () => {
+    const lib = C.cartasLiberadas("grappler", { eficiencia_sub: 1, especializacao: 1, dominio: 1 });
+    const base = C.DECK_PADRAO.grappler.filter((id, i, d) => !((id === "jab" || id === "bloqueio") && d.indexOf(id) !== i));
+    if (base.length !== 10) throw new Error("base do teste: " + base);
+    const kim = C.CARTA_DO_NO.eficiencia_sub, mata = C.CARTA_DO_NO.especializacao, cot = C.CARTA_DO_NO.dominio;
+    if (typeof C.copiasDe !== "function") throw new Error("sem copiasDe");
+    for (const id of [kim, mata, cot]) if (C.copiasDe(id) !== 1) throw new Error(id + " devia ter 1 cópia: " + C.copiasDe(id));
+    if (C.CARTAS[cot].raridade !== "rara" || C.COPIAS.rara !== 2) throw new Error("a Cotovelada por cima devia ser rara (2 pela raridade)");
+    if (C.copiasDe("jab") !== 2 || C.copiasDe("direto") !== 2 || C.copiasDe("contragolpe") !== 1) throw new Error("as de pé seguem a raridade");
+    for (const id of [kim, cot]) {
+      const dois = C.validarDeck("grappler", [...base, id, id], lib);
+      if (dois.ok || !/cópia/.test(dois.erro)) throw new Error(id + " com 2 cópias passou: " + JSON.stringify(dois));
+      if (!C.validarDeck("grappler", [...base, id, "bloqueio"], lib).ok) throw new Error(id + " com 1 cópia recusada");
+    }
+    if (C.validarDeck("grappler", [...base, mata, mata], lib).ok) throw new Error("2 Mata-leão passaram");
   });
   await conf("casa: na casa a carta joga como ela; fora, como a básica da categoria (em pé, BASICA_PE; no chão, CHAO); a estrela vale só na casa (estrela 2: +0,5 de dano, ou +0,5 ponto quando funciona; estrela 3: o mod da carta)", () => {
     const cima = Object.values(C.CARTAS).find((c) => c.casa === "cima" && c.categoria === "golpes");
@@ -15444,7 +15469,7 @@ async function testarJxJTelas() {
       const ls = env.sandbox.localStorage;
       try {
         ls.removeItem("jxj:vistas:" + l1);   // as vistas de testes anteriores
-        const b = { precisao_maos: 3, combinacoes: 3, contra_maos: 3, eficiencia_golpes: 3, chute_baixo: 3, chute_corpo: 3, controle_distancia: 3, variedade: 3, controle_ritmo: 3, combinacoes_pressao: 3 };
+        const b = { precisao_maos: 3, combinacoes: 3, contra_maos: 3, eficiencia_golpes: 3, chute_baixo: 3, chute_corpo: 3, controle_distancia: 3, variedade: 3, controle_ritmo: 3, combinacoes_pressao: 3, controle_posicional: 1 };
         await db.query("update jxj_lutadores set deck = null, build = $2::jsonb where id = $1", [l1, JSON.stringify(b)]);
         let m = await abrir(`lutador/${l1}/deck`);
         const novas = () => grades().lib.children.filter((s) => (s.children || []).some((x) => tem(x, "selo-nova"))).map((s) => s.dataset.carta);
@@ -15456,8 +15481,11 @@ async function testarJxJTelas() {
         if (!String(guia().innerHTML).includes(">" + daArvore.length + "<")) throw new Error("contador na guia: " + guia().innerHTML);
         if (!desde(m).some((n) => tem(n, "deck2-filtro"))) throw new Error("sem filtro com mais de 16 liberadas");
         /* pela estrutura: a de 1 cópia e uma de 2 */
-        const uma = daArvore.find((id) => CT2.COPIAS[CT2.CARTAS[id].raridade] === 1), duas = daArvore.find((id) => CT2.COPIAS[CT2.CARTAS[id].raridade] === 2);
+        const uma = daArvore.find((id) => CT2.copiasDe(id) === 1), duas = daArvore.find((id) => CT2.copiasDe(id) === 2);
         if (!uma || !duas) throw new Error("o catálogo perdeu uma raridade");
+        /* a de chão rara (2 pela raridade) mostra "até 1": o número é o da carta */
+        const chao = daArvore.find((id) => CT2.COPIAS[CT2.CARTAS[id].raridade] === 2 && CT2.copiasDe(id) === 1);
+        if (!chao || !contaDe(chao).includes("até 1")) throw new Error("carta de chão rara sem 'até 1': " + chao);
         if (!contaDe(uma).includes("até 1") || !contaDe(duas).includes("até 2")) throw new Error("cópias por raridade: " + contaDe(uma) + " / " + contaDe(duas));
         /* filtro: só as da raridade pedida (os chips estão fora da grade) */
         const raridadeDe = (id) => CT2.CARTAS[id].raridade;

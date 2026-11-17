@@ -8712,7 +8712,7 @@ function jxjNoV2Detalhe(txt,carta,estrelas=0){
 const jxjLiberadas2=(d,estilo,build)=>Object.values(d.cartas).filter(c=>(!c.estiloExclusivo||c.estiloExclusivo===estilo)
   &&(!c.desbloqueio||Number((build||{})[c.desbloqueio])>=1)).map(c=>c.id);
 /* quantas cópias de uma carta cabem no deck (a raridade manda; o servidor valida a mesma conta) */
-const jxjCopias2=(d,id)=>(d.copiasPorRaridade&&d.copiasPorRaridade[(d.cartas[id]||{}).raridade])||d.deck.copias;
+const jxjCopias2=(d,id)=>((d.cartas[id]||{}).copias)||(d.copiasPorRaridade&&d.copiasPorRaridade[(d.cartas[id]||{}).raridade])||d.deck.copias;
 /* Cartas novas (2026-11-17): as liberadas da árvore que ainda não entraram em nenhum deck salvo e que a
    pessoa ainda não pôs no deck na tela. As vistas ficam só no navegador (jxj:vistas:<lutador>); sem
    localStorage (aba privada, bloqueado) tudo continua funcionando, só a lembrança some. */
@@ -8737,7 +8737,7 @@ function jxjRegrasDeck2(d,deck){
     {ok:deck.length===R.tamanho,txt:deck.length===R.tamanho?`${R.tamanho} cartas`:`${deck.length} de ${R.tamanho} cartas`},
     {ok:(cat.defesa||0)>=R.minDefesa,txt:`Defesa: ${cat.defesa||0} (mínimo ${R.minDefesa})`},
     {ok:!faltam.length,txt:faltam.length?`Falta ${faltam.join(", ")}`:"Golpe, Queda, Defesa e Pressão"},
-    {ok:Object.entries(conta).every(([id,n])=>n<=jxjCopias2(d,id)),txt:`Até ${R.copias} de cada, uma só das épicas e lendárias`},
+    {ok:Object.entries(conta).every(([id,n])=>n<=jxjCopias2(d,id)),txt:`Até ${R.copias} de cada; 1 só das épicas, lendárias, de chão e finalizações`},
   ];
 }
 /* quais posições do deck são as fixas do estilo (as primeiras cópias de cada fixa) */

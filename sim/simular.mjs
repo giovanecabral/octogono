@@ -84,7 +84,7 @@ function deckAleatorio(estilo, r, build) {
   const lib = C.cartasLiberadas(estilo, build);
   for (let tent = 0; tent < 500; tent++) {
     const d = C.FIXAS[estilo].slice();
-    while (d.length < C.DECK.tamanho) { const id = lib[Math.floor(r() * lib.length)]; if (d.filter((x) => x === id).length < (C.COPIAS[C.CARTAS[id].raridade] || C.DECK.copias)) d.push(id); }
+    while (d.length < C.DECK.tamanho) { const id = lib[Math.floor(r() * lib.length)]; if (d.filter((x) => x === id).length < C.copiasDe(id)) d.push(id); }
     if (C.validarDeck(estilo, d, lib).ok) return d.sort();
   }
   throw new Error("não achei deck válido pra " + estilo);

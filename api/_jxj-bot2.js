@@ -25,7 +25,7 @@
  */
 import { createHash } from "node:crypto";
 import * as C2 from "./_jxj-combate2.js";
-import { CARTAS, CATEGORIAS_CARTA, DECK_PADRAO, COPIAS, DECK, cartasLiberadas, validarDeck } from "./_jxj-cartas.js";
+import { CARTAS, CATEGORIAS_CARTA, DECK_PADRAO, COPIAS, DECK, copiasDe, cartasLiberadas, validarDeck } from "./_jxj-cartas.js";
 import { buildTipica } from "./_jxj-arvores.js";
 import * as V2 from "./_jxj-luta2.js";
 import * as BOT from "./_jxj-bot.js";
@@ -132,7 +132,7 @@ export const DECKS_BOT2 = {
 export function deckDoBot2(estilo, nivel, build = buildTipica(estilo, nivel)) {
   const lib = cartasLiberadas(estilo, build), set = new Set(lib), alvo = (DECKS_BOT2[estilo] || {})[faixaDoNivel(nivel)] || DECK_PADRAO[estilo];
   if (validarDeck(estilo, alvo, lib).ok) return alvo.slice();
-  const limite = (id) => COPIAS[CARTAS[id].raridade] || DECK.copias, tem = (d, id) => d.filter((x) => x === id).length;
+  const limite = copiasDe, tem = (d, id) => d.filter((x) => x === id).length;
   const d = [];
   for (const id of alvo) if (set.has(id) && tem(d, id) < limite(id)) d.push(id);
   for (const id of DECK_PADRAO[estilo]) if (d.length < DECK.tamanho && tem(d, id) < limite(id)) d.push(id);

@@ -176,6 +176,15 @@ export const PASSIVAS = {
 
 /* Deck: 12 cartas, até 2 cópias, 4 fixas do estilo + 8 escolhidas */
 export const DECK = { tamanho: 12, copias: 2, minDefesa: 2, compra: 5 };
+/* quantas cópias de uma carta cabem num deck: o ponto único (validação, busca de deck, bot, simulação e a tela, que
+   recebe o número nas definições). Carta da árvore de chão (casa cima ou baixo) e finalização da árvore (inclusive a
+   de pé, como o Mata-leão): 1, qualquer que seja a raridade (decisão 90). As outras seguem a raridade. */
+export function copiasDe(id) {
+  const c = CARTAS[id];
+  if (!c) return 0;
+  if (c.no && (c.casa === "cima" || c.casa === "baixo" || (c.efeitos || []).some((e) => e.acao && e.acao.finaliza))) return 1;
+  return COPIAS[c.raridade] || DECK.copias;
+}
 export const FIXAS = {
   striker: ["jab", "cruzado", "cruzado", "chute_alto"],
   wrestler: ["queda", "queda", "clinch", "antiqueda"],
@@ -224,7 +233,7 @@ export function validarDeck(estilo, deck, liberadas = cartasLiberadas(estilo)) {
     if (typeof id !== "string" || !Object.hasOwn(CARTAS, id)) return { ok: false, erro: "carta desconhecida" };
     if (!liberadas.includes(id)) return { ok: false, erro: `a carta ${CARTAS[id].nome} não está liberada` };
     conta[id] = (conta[id] || 0) + 1;
-    const max = COPIAS[CARTAS[id].raridade] || DECK.copias;
+    const max = copiasDe(id);
     if (conta[id] > max) return { ok: false, erro: `no máximo ${max} ${max === 1 ? "cópia" : "cópias"} de ${CARTAS[id].nome}` };
   }
   const fixas = {};

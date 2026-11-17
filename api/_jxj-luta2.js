@@ -154,7 +154,7 @@ export function definicoes2() {
     /* desbloqueio: o nó da carta (o nome de antes, que a tela ainda lê; some na etapa da tela) */
     desbloqueio: c.no || null, no: c.no || null, raridade: c.raridade || null, casa: c.casa || c.contexto,
     /* a arte da carta (img/cartas/<id>.webp, uma por carta e por carta do chão; a suíte confere os arquivos) */
-    arte: `img/cartas/${c.id}.webp`,
+    arte: `img/cartas/${c.id}.webp`, copias: C.copiasDe(c.id),
     estrela3: c.estrela3 || null, inanulavel: !!c.inanulavel,
     /* de que estilo é o nó e em que andar (o híbrido compra rara de outro estilo, andar 1 e 2) */
     estilo: c.no && NOS[c.no] ? NOS[c.no].estilo : c.estiloExclusivo || null, andar: c.no && NOS[c.no] ? NOS[c.no].tier : null });
