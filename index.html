@@ -9134,15 +9134,21 @@ function jxjVerso(tam="mesa"){
    (no chão, o id da carta da mão que virou esta: "do Jab", "da Queda"), raridade e arte (a próxima etapa,
    cartas com arte e raridade: por enquanto só a classe e a imagem, sem desenho). */
 const JXJ_RARIDADES=["comum","rara","epica","lendaria"];
-function jxjCarta2(c,{w=116,mini=false,vel=c.vel,velBase=vel,dano=c.dano,custo=c.custo,origem=null,raridade=c.raridade,arte=c.arte,estado=""}={}){
+function jxjCarta2(c,{w=116,mini=false,vel=c.vel,velBase=vel,dano=c.dano,custo=c.custo,origem=null,raridade,arte,estrelas=0,estado=""}={}){
+  /* raridade e arte vêm da carta; a da mão (vista do servidor) não leva, então cai nas definições */
+  const def=(raridade===undefined||arte===undefined)?jxjCartaDef2(c.id):{};
+  if(raridade===undefined)raridade=c.raridade||def.raridade;
+  if(arte===undefined)arte=c.arte||def.arte;
   const d=vel-velBase,mod=d?`<i class="${d<0?"menos":"mais"}">${d>0?"+":"-"}${Math.abs(d)}</i>`:"";
   const rar=JXJ_RARIDADES.includes(raridade)?" rar-"+raridade:"";
   const efeito=jxjEfeitoTexto2(c);
-  const figura=arte?`<img class="jxj-c2-img" src="${jxjEsc(arte)}" alt="">`:ICONE(JXJ_ICONE_ACAO[c.categoria]||"luta");
+  const figura=arte?`<img class="jxj-c2-img carta2-arte" src="${jxjEsc(arte)}" alt="" loading="lazy">`:ICONE(JXJ_ICONE_ACAO[c.categoria]||"luta");
+  const n=Math.max(0,Math.min(3,Math.floor(Number(estrelas))||0));
+  const est=n?`<span class="carta2-estrelas" aria-label="${n} ${n===1?"estrela":"estrelas"}">${ICONE("estrela").repeat(n)}</span>`:"";
   return `<span class="jxj-carta f-${c.categoria} corte jxj-c2${mini?" mini":""}${rar}${estado?" "+estado:""}" style="--w:${w}px" data-carta="${jxjEsc(c.id)}">`
     +`<span class="jxj-carta-topo"><span class="jxj-gema oct" aria-label="custa ${jxjNum2(custo)} de energia"><span class="jxj-gema-num">${jxjNum2(custo)}</span></span>`
     +`<span class="jxj-c2-stat vel" aria-label="velocidade ${vel}"><small>vel</small><b>${vel}${mod}</b></span></span>`
-    +`<span class="jxj-carta-arte">${origem?`<span class="jxj-c2-origem">${jxjEsc(jxjDeCarta2(origem))}</span>`:""}${figura}`
+    +`<span class="jxj-carta-arte">${origem?`<span class="jxj-c2-origem">${jxjEsc(jxjDeCarta2(origem))}</span>`:""}${figura}${est}`
     +`<span class="jxj-c2-stat dano${dano?"":" zero"}" aria-label="dano ${jxjNum2(dano)}"><small>dano</small><b>${jxjNum2(dano)}</b></span></span>`
     +`<span class="jxj-carta-fita"><b>${jxjEsc(c.nome)}</b></span>`
     +`<span class="jxj-carta-regra"><span class="jxj-carta-efeito">${jxjEsc(efeito)}</span></span></span>`;

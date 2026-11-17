@@ -13674,16 +13674,31 @@ async function testarJxJV2() {
   });
   await conf("carta v2 (jxjCarta2): custo, velocidade com a diferença do duelo, dano e o efeito; raridade e arte opcionais (sem elas, nada a mais; raridade fora da lista é ignorada); nome e arte escapados", () => {
     /* a carta sem raridade nos dados (as de antes das cartas da árvore): nada a mais */
-    const jab = { ...defs.cartas.jab, raridade: null };
+    const jab = { ...defs.cartas.jab, raridade: null, arte: null };
     const h = noJogo("jxjCarta2", jab, { vel: 4, velBase: 5, dano: 1.25 });
     if (!/aria-label="velocidade 4"/.test(h) || !/<b>4<i class="menos">-1<\/i><\/b>/.test(h) || !h.includes("<b>1,25</b>") || !h.includes(">1</span></span>")) throw new Error("números: " + h);
     if (!h.includes("Se interrompe: recupera 1 de energia.")) throw new Error("efeito: " + h);
     if (/rar-|<img/.test(h)) throw new Error("raridade ou arte sem pedir");
     const com = noJogo("jxjCarta2", { ...jab, raridade: "lendaria", arte: "img/cartas/jab.webp" });
-    if (!/class="[^"]*\brar-lendaria\b/.test(com) || !com.includes('<img class="jxj-c2-img" src="img/cartas/jab.webp" alt="">')) throw new Error("raridade e arte: " + com);
+    if (!/class="[^"]*\brar-lendaria\b/.test(com) || !com.includes('<img class="jxj-c2-img carta2-arte" src="img/cartas/jab.webp" alt="" loading="lazy">')) throw new Error("raridade e arte: " + com);
     if (/rar-/.test(noJogo("jxjCarta2", { ...jab, raridade: "mitica" }))) throw new Error("raridade fora da lista entrou");
     const mau = noJogo("jxjCarta2", { ...jab, nome: MAU, arte: '"><img src=x onerror=alert(1)>' });
     if (/<img src=x|onerror=alert\(1\)>/.test(mau.replace(/&[a-z#0-9]+;/g, "_"))) throw new Error("HTML cru: " + mau);
+  });
+  await conf("carta v2 com raridade, arte e estrelas: classe rar-x, imagem com caminho escapado, n ícones de estrela do sprite e nenhum caractere de estrela; sem estrelas, sem o bloco; toda carta das definições tem a arte no disco", () => {
+    const base = defs.cartas.overhand;
+    const html = noJogo("jxjCarta2", base, { raridade: "lendaria", arte: 'img/cartas/overhand.webp" onerror="x', estrelas: 3 });
+    if (!/rar-lendaria/.test(html) || !/carta2-arte/.test(html) || /onerror="x/.test(html)) throw new Error("raridade ou arte: " + html.slice(0, 300));
+    if ((html.match(/#estrela"/g) || []).length !== 3 || !/carta2-estrelas/.test(html) || /[★☆]/.test(html)) throw new Error("estrelas: " + html.slice(0, 300));
+    if (/carta2-estrelas/.test(noJogo("jxjCarta2", base, { estrelas: 0 }))) throw new Error("bloco de estrelas sem estrela");
+    if ((noJogo("jxjCarta2", base, { estrelas: 9 }).match(/#estrela"/g) || []).length !== 3) throw new Error("mais de 3 estrelas");
+    /* sem opção, a raridade e a arte vêm das definições (a carta da mão do servidor não leva) */
+    X.run("JXJ_DEF={combate2:" + JSON.stringify(defs) + "}");
+    let solta;
+    try { solta = noJogo("jxjCarta2", { id: base.id, nome: base.nome, categoria: base.categoria, efeitos: [], vel: 1, dano: 1, custo: 1 }); } finally { X.run("JXJ_DEF=null"); }
+    if (!new RegExp("rar-" + base.raridade).test(solta) || !solta.includes(base.arte)) throw new Error("a carta sem raridade não caiu nas definições: " + solta.slice(0, 200));
+    for (const c of [...Object.values(defs.cartas), ...Object.values(defs.chao).flatMap((o) => Object.values(o))])
+      if (!c.arte || !fs.existsSync(path.join(RAIZ, c.arte))) throw new Error("arte que não existe: " + c.id);
   });
   await conf("cartas da árvore no texto e no 3D: todo evento novo tem frase e entrada no 3D; toda carta tem frase com artigo e lance; o efeito de cada carta vira texto; a punição e o grogue entram no porquê", () => {
     const novos = ["lento", "rapido", "sangrou", "grogue", "tirouGrogue", "recuou"];

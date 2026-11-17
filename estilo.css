@@ -1619,6 +1619,30 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-c2 .jxj-c2-stat.dano.zero{opacity:.55}
 .jxj-c2 .jxj-c2-origem{position:absolute;left:0;top:2px;z-index:2;padding:1px 5px;background:#0b0b0d;color:var(--ouro);font-family:var(--f-ui);font-weight:800;font-size:calc(var(--w,150px)*.062);letter-spacing:.1em;text-transform:uppercase}
 .jxj-c2 .jxj-c2-img{width:100%;height:100%;object-fit:cover}
+/* Raridade da carta (cartas da árvore, 2026-11-17): a moldura é a cor da raridade.
+   Comum osso, rara aço azulado, épica vinho (nunca o vermelho do golpe), lendária ouro. */
+:root{--rar-comum:#E6E0D2;--rar-rara:#7FA0C4;--rar-epica:#6B1A3C;--rar-lendaria:#E3B23C}
+.jxj-carta.rar-comum{--rar:var(--rar-comum)}
+.jxj-carta.rar-rara{--rar:var(--rar-rara)}
+.jxj-carta.rar-epica{--rar:var(--rar-epica)}
+.jxj-carta.rar-lendaria{--rar:var(--rar-lendaria)}
+.jxj-carta.rar-comum,.jxj-carta.rar-rara,.jxj-carta.rar-epica,.jxj-carta.rar-lendaria{
+  box-shadow:inset 0 0 0 calc(var(--w,150px)*.026) var(--rar),inset 0 0 0 calc(var(--w,150px)*.036) rgba(0,0,0,.55)}
+.jxj-carta.rar-comum.f-pressao,.jxj-carta.rar-rara.f-pressao,.jxj-carta.rar-epica.f-pressao,.jxj-carta.rar-lendaria.f-pressao{
+  box-shadow:inset 0 0 0 calc(var(--w,150px)*.026) var(--rar),inset 0 0 0 calc(var(--w,150px)*.036) rgba(0,0,0,.55)}
+.jxj-carta.rar-epica .jxj-carta-fita{box-shadow:inset 0 -3px 0 var(--rar-epica)}
+.jxj-carta.rar-rara .jxj-carta-fita{box-shadow:inset 0 -3px 0 var(--rar-rara)}
+.jxj-carta.rar-lendaria .jxj-carta-fita{box-shadow:inset 0 -3px 0 var(--rar-lendaria)}
+.jxj-carta.rar-lendaria{animation:jxjCartaLendaria 3.2s ease-in-out infinite}
+@keyframes jxjCartaLendaria{
+  0%,100%{box-shadow:inset 0 0 0 calc(var(--w,150px)*.026) var(--rar),inset 0 0 0 calc(var(--w,150px)*.036) rgba(0,0,0,.55),inset 0 0 calc(var(--w,150px)*.06) rgba(227,178,60,.15)}
+  50%{box-shadow:inset 0 0 0 calc(var(--w,150px)*.026) var(--rar),inset 0 0 0 calc(var(--w,150px)*.036) rgba(0,0,0,.55),inset 0 0 calc(var(--w,150px)*.16) rgba(255,214,102,.65)}
+}
+@media (prefers-reduced-motion:reduce){.jxj-carta.rar-lendaria{animation:none}}
+/* a arte ocupa a área da gravura; as estrelas (nível do nó) ficam no canto de baixo */
+.jxj-c2 .carta2-arte{position:absolute;inset:0}
+.jxj-c2 .carta2-estrelas{position:absolute;left:3px;bottom:3px;z-index:2;display:inline-flex;gap:1px;padding:2px 3px;background:#0b0b0d}
+.jxj-c2 .carta2-estrelas .ico{width:calc(var(--w,150px)*.075);height:calc(var(--w,150px)*.075);color:var(--ouro);fill:var(--ouro);stroke:var(--ouro)}
 .jxj-c2 .jxj-carta-regra{font-size:calc(var(--w,150px)*.078)}
 .jxj-c2.mini .jxj-carta-regra{display:none}
 .jxj-c2.mini{height:calc(var(--w,150px) * 1.12)}
