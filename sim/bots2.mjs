@@ -15,12 +15,13 @@ export function gerador(n) {
   let s = n >>> 0;
   return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-/* jogador: {estilo, categoria, build}; bot: {estilo, categoria, build, pers, s};
+/* jogador: {estilo, categoria, build}; bot: {estilo, categoria, build, nivel, pers, s} (com nivel, o deck da faixa;
+   sem, o padrão);
    ladoBot "a" ou "b"; semente (texto) e n (número) decidem a luta.
    Devolve o fim da luta, quem é quem e as trocas. */
 export function lutaContraBot2({ jogador, bot, ladoBot = "b", semente, n }) {
   const ele = ladoBot, eu = ele === "a" ? "b" : "a", r = gerador(n * 7919 + 13);
-  const perfis = { [eu]: perfilLuta2(jogador), [ele]: perfilLuta2(bot) };
+  const perfis = { [eu]: perfilLuta2(jogador), [ele]: perfilLuta2({ ...bot, deck: bot.nivel ? B2.deckDoBot2(bot.estilo, bot.nivel, bot.build) : undefined }) };
   /* a roda do Inquieto: uma ordem das 4 categorias por luta */
   const rr = gerador(n * 104729 + 1), roda = [...C.CATEGORIAS_CARTA];
   for (let k = roda.length - 1; k > 0; k--) { const j = Math.floor(rr() * (k + 1)); [roda[k], roda[j]] = [roda[j], roda[k]]; }

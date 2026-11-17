@@ -86,7 +86,7 @@ function loteBot(job) {
   for (let i = 0; i < job.n; i++) {
     const { fim: f, eu, ele } = lutaContraBot2({
       jogador: { estilo: job.sA, categoria: job.catA, build: job.buildA || {} },
-      bot: { estilo: job.sB, categoria: job.catB, build: job.buildB || {}, pers: job.bot.pers, s: job.bot.s },
+      bot: { estilo: job.sB, categoria: job.catB, build: job.buildB || {}, nivel: job.nivelB, pers: job.bot.pers, s: job.bot.s },
       ladoBot: i % 2 === 1 ? "a" : "b", semente: `${job.sal}:${i}`, n: job.semente0 + i });
     out.lutas++;
     out.trocas += (f.round - 1) * 3 + f.troca;

@@ -12625,7 +12625,7 @@ async function testarJxJ() {
     });
     /* depois dos bots configurados (o teste de cima) */
     const BOT2 = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-bot2.js")).href);
-    await conf("combate v2 e bot (Fase 5): com a flag da conta do jogador, a luta contra bot nasce v2 (o bot com o deck padrão do estilo e a força FORCA_BOT2); a postura do bot é a da semente; cada carta gravada do bot é a que ele já tinha antes do jogador mandar a dele (prevista sem a carta do jogador, com a mão dele escondida); a lição do combate novo só no fim; sem a flag, a luta contra bot é a de antes", async () => {
+    await conf("combate v2 e bot (Fase 5): com a flag da conta do jogador, a luta contra bot nasce v2 (o bot com o deck da faixa e a força FORCA_BOT2); a postura do bot é a da semente; cada carta gravada do bot é a que ele já tinha antes do jogador mandar a dele (prevista sem a carta do jogador, com a mão dele escondida); a lição do combate novo só no fim; sem a flag, a luta contra bot é a de antes", async () => {
       await zerarLimites();
       const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
       await flagV2({ contas: [u] });
@@ -12633,7 +12633,7 @@ async function testarJxJ() {
         await ok(u, "filaEntrar", { lutadorId: l });
         const lid = (await ok(u, "bot", { lutadorId: l })).luta;
         const L0 = (await q("select estado, perfis, bot, nomes from jxj_lutas where id = $1", [lid]))[0];
-        if (L0.estado.cv !== 2 || JSON.stringify(L0.perfis.b.deck) !== JSON.stringify(CT.DECK_PADRAO[L0.bot.estilo]) || !L0.perfis.b.v2) throw new Error("luta contra bot não nasceu v2: " + JSON.stringify({ cv: L0.estado.cv }));
+        if (L0.estado.cv !== 2 || JSON.stringify(L0.perfis.b.deck) !== JSON.stringify(BOT2.deckDoBot2(L0.bot.estilo, L0.bot.nivel, L0.bot.build)) || !L0.perfis.b.v2) throw new Error("luta contra bot não nasceu v2: " + JSON.stringify({ cv: L0.estado.cv }));
         if (L0.bot.v !== BOT2.VERSAO_BOT2 || "mx" in L0.bot || L0.bot.rating !== BOT2.forcaDoBot2(L0.bot.pers, L0.bot.s) || L0.nomes.b.rating !== L0.bot.rating) throw new Error("dados do bot v2: " + JSON.stringify({ v: L0.bot.v, r: L0.bot.rating }));
         const previstas = [];
         for (let n = 0; n < 40; n++) {
@@ -15120,13 +15120,13 @@ async function testarJxJBot() {
       }
     }
   };
-  await conf("bot v2, montar: a mesma semente dá o mesmo bot de antes (nome, estilo, build, jeito, roda); o perfil é o da luta v2 (deck padrão do estilo); o rating é a FORCA_BOT2 do jeito pela habilidade; os dados da luta não levam misturas", () => {
+  await conf("bot v2, montar: a mesma semente dá o mesmo bot de antes (nome, estilo, build, jeito, roda); o perfil é o da luta v2 (deck da faixa de nível); o rating é a FORCA_BOT2 do jeito pela habilidade; os dados da luta não levam misturas", () => {
     for (let k = 0; k < 24; k++) {
       const arg = { nivel: 1 + k, categoria: "welterweight", rating: 1455 + (k % 5) * 26, semente: "m" + k, limitesRosto: LIM };
       const a = BOT.montarBot(arg), b = B2.montarBot2(arg);
       for (const x of ["nome", "estilo", "nivel", "pers", "s"]) if (a[x] !== b[x]) throw new Error(`${x}: ${a[x]} contra ${b[x]}`);
       if (JSON.stringify(a.build) !== JSON.stringify(b.build) || JSON.stringify(a.roda) !== JSON.stringify(b.roda) || JSON.stringify(a.rosto) !== JSON.stringify(b.rosto)) throw new Error("build, roda ou rosto");
-      if (JSON.stringify(b.perfil.deck) !== JSON.stringify(CT.DECK_PADRAO[b.estilo]) || !b.perfil.v2) throw new Error("perfil v2: " + JSON.stringify(b.perfil.deck));
+      if (JSON.stringify(b.perfil.deck) !== JSON.stringify(B2.deckDoBot2(b.estilo, b.nivel, b.build)) || !b.perfil.v2) throw new Error("perfil v2: " + JSON.stringify(b.perfil.deck));
       if (b.rating !== B2.forcaDoBot2(b.pers, b.s)) throw new Error("rating " + b.rating);
       const d = B2.dadosDaLuta2(b, { puro: k % 2 ? 9 : 0 });
       if (d.v !== B2.VERSAO_BOT2 || "mx" in d || "mm" in d || "pol" in d || d.pers !== b.pers || (k % 2 ? d.puro !== BOT.TROCAS_PURAS : "puro" in d)) throw new Error("dados: " + JSON.stringify(d));
@@ -15158,7 +15158,7 @@ async function testarJxJBot() {
     const st = {};
     for (const pers of BOT.PERSONALIDADES_IDS) {
       const x = st[pers] = { n: 0, ataque: 0, defesa: 0, repete: 0, nr: 0, responde: 0, nl: 0 };
-      estadosV2(pers, 0.5, 30, ({ e, dados, perfis, sem, trocas }) => {
+      estadosV2(pers, 0.5, 120, ({ e, dados, perfis, sem, trocas }) => {
         if (e.pos !== "pe") return null;
         const c = B2.cartaDoBot2({ estado: e, semente: sem, trocas, dados, perfis, lado: "b" }), k = catDe(c);
         x.n++;
@@ -15194,7 +15194,7 @@ async function testarJxJBot() {
         for (let i = 0; i < 80; i++) {
           const ej = A.ESTILOS_IDS[i % 4], eb = BOT.PERSONALIDADES[pers].estilo || A.ESTILOS_IDS[(i >> 2) % 4], nv = NIV[i % 3];
           const x = SB2.lutaContraBot2({ jogador: { estilo: ej, categoria: "middleweight", build: A.buildTipica(ej, nv) },
-            bot: { estilo: eb, categoria: "middleweight", build: A.buildTipica(eb, nv), pers, s }, ladoBot: i % 2 ? "a" : "b", semente: `f:${pers}:${s}:${i}`, n: 900000 + i });
+            bot: { estilo: eb, categoria: "middleweight", build: A.buildTipica(eb, nv), nivel: nv, pers, s }, ladoBot: i % 2 ? "a" : "b", semente: `f:${pers}:${s}:${i}`, n: 900000 + i });
           n++; v += x.fim.vencedor === x.eu ? 1 : x.fim.vencedor ? 0 : 0.5;
         }
         porS[is].v += v; porS[is].n += n;
@@ -15216,6 +15216,25 @@ async function testarJxJBot() {
     tempos.sort((x, y) => x - y);
     if (tempos[Math.floor(tempos.length * 0.95)] > 50) ruins.push(`decisão lenta: p95 ${tempos[Math.floor(tempos.length * 0.95)].toFixed(1)} ms`);
     if (ruins.length) throw new Error(ruins.join(" | "));
+  });
+
+  await conf("deck do bot v2 por nível: válido pra build típica do nível; o nível alto usa carta da árvore; o bot montado joga com o deck da faixa (mesmo com build sorteada, sem cair no padrão inteiro)", () => {
+    for (const s of A.ESTILOS_IDS) for (const nv of [1, 15, 30]) {
+      const d = B2.deckDoBot2(s, nv), lib = CT.cartasLiberadas(s, A.buildTipica(s, nv));
+      const v = CT.validarDeck(s, d, lib);
+      if (!v.ok) throw new Error(`${s} ${nv}: ${v.erro}`);
+    }
+    for (const s of A.ESTILOS_IDS) if (!B2.deckDoBot2(s, 30).some((id) => CT.CARTAS[id].no)) throw new Error("bot do 30 sem carta da árvore: " + s);
+    if (B2.faixaDoNivel(9) !== "baixo" || B2.faixaDoNivel(10) !== "medio" || B2.faixaDoNivel(19) !== "medio" || B2.faixaDoNivel(20) !== "alto") throw new Error("limites das faixas");
+    let comArvore = 0;
+    for (let k = 0; k < 80; k++) {
+      const nivel = 20 + (k % 11), b = B2.montarBot2({ nivel, categoria: "middleweight", rating: 1500, semente: "deck" + k, limitesRosto: {} });
+      const esperado = B2.deckDoBot2(b.estilo, nivel, b.build);
+      if (JSON.stringify(b.perfil.deck) !== JSON.stringify(esperado)) throw new Error("perfil do bot sem o deck da faixa: " + b.estilo + " " + nivel);
+      if (!CT.validarDeck(b.estilo, b.perfil.deck, CT.cartasLiberadas(b.estilo, b.build)).ok) throw new Error("deck do bot inválido: " + b.estilo);
+      if (b.perfil.deck.some((id) => CT.CARTAS[id].no)) comArvore++;
+    }
+    if (comArvore < 60) throw new Error(`só ${comArvore} de 80 bots do nível 20 a 30 jogam carta da árvore`);
   });
 
   const okTudo = !falhas.length;

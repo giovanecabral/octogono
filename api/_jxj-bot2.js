@@ -25,7 +25,8 @@
  */
 import { createHash } from "node:crypto";
 import * as C2 from "./_jxj-combate2.js";
-import { CARTAS, CATEGORIAS_CARTA } from "./_jxj-cartas.js";
+import { CARTAS, CATEGORIAS_CARTA, DECK_PADRAO, COPIAS, DECK, cartasLiberadas, validarDeck } from "./_jxj-cartas.js";
+import { buildTipica } from "./_jxj-arvores.js";
 import * as V2 from "./_jxj-luta2.js";
 import * as BOT from "./_jxj-bot.js";
 import { tabela, mistura, respostaDele, ganhos, colunaContra } from "./_jxj-leitura2.js";
@@ -94,12 +95,56 @@ export const LICAO2 = {
   caotico: "O Inquieto anda numa roda fixa das 4 categorias de carta e nunca repete a anterior: descubra a ordem e responda à próxima.",
 };
 
+/* ---------- deck por faixa de nível (cartas da árvore, 2026-11-16) ---------- */
+/* A faixa do nível do bot: baixo 1 a 9, medio 10 a 19, alto 20 a 30. Cada faixa tem o melhor
+   deck da busca (sim/busca-deck.mjs) pra build típica do nível NIVEL_DA_FAIXA (sim/decks-bot2.mjs:
+   baixo 5, medio 15, alto 30), com as cartas que a árvore libera nesse nível. Os números das
+   cartas mudam na calibragem: REFAZER com `node sim/decks-bot2.mjs --escrever` (muda o bloco
+   abaixo, entre as marcas) e depois medir a força nova (FORCA_BOT2, ver acima). */
+export const faixaDoNivel = (nivel) => (nivel >= 20 ? "alto" : nivel >= 10 ? "medio" : "baixo");
+/* DECKS_BOT2:inicio */
+export const DECKS_BOT2 = {
+  striker: {
+    baixo: DECK_PADRAO.striker,
+    medio: DECK_PADRAO.striker,
+    alto: ["jab","cruzado","cruzado","chute_alto","jab","chute_frontal","chute_corpo","contragolpe","contra_ataque","contra_ataque","clinch","queda"],
+  },
+  wrestler: {
+    baixo: DECK_PADRAO.wrestler,
+    medio: DECK_PADRAO.wrestler,
+    alto: ["queda","queda","clinch","antiqueda","double_leg","cotovelada_cima","peso_ombro","martelada","jab","jab","queda_contragolpe","single_leg"],
+  },
+  grappler: {
+    baixo: DECK_PADRAO.grappler,
+    medio: DECK_PADRAO.grappler,
+    alto: ["puxar_guarda","puxar_guarda","queda","antiqueda","kimura","kimura","mata_leao","bloqueio","bloqueio","jab","jab","triangulo"],
+  },
+  counter: {
+    baixo: DECK_PADRAO.counter,
+    medio: DECK_PADRAO.counter,
+    alto: ["contra_ataque","contra_ataque","bloqueio","antiqueda","leitura_queda","jab","jab","misericordia","saida_lado","contra_esquerda","clinch","queda"],
+  },
+};
+/* DECKS_BOT2:fim */
+/* O deck do bot: o da faixa. A build do bot (sorteada, às vezes híbrida) pode não liberar uma
+   carta dele: essa sai e entra uma do deck padrão no lugar, pra não cair no padrão inteiro.
+   Sem a build, vale a típica do nível. Se mesmo assim o servidor não aceitasse: o padrão. */
+export function deckDoBot2(estilo, nivel, build = buildTipica(estilo, nivel)) {
+  const lib = cartasLiberadas(estilo, build), set = new Set(lib), alvo = (DECKS_BOT2[estilo] || {})[faixaDoNivel(nivel)] || DECK_PADRAO[estilo];
+  if (validarDeck(estilo, alvo, lib).ok) return alvo.slice();
+  const limite = (id) => COPIAS[CARTAS[id].raridade] || DECK.copias, tem = (d, id) => d.filter((x) => x === id).length;
+  const d = [];
+  for (const id of alvo) if (set.has(id) && tem(d, id) < limite(id)) d.push(id);
+  for (const id of DECK_PADRAO[estilo]) if (d.length < DECK.tamanho && tem(d, id) < limite(id)) d.push(id);
+  return validarDeck(estilo, d, lib).ok ? d : DECK_PADRAO[estilo].slice();
+}
+
 /* ---------- montar ---------- */
 /* o bot de antes (mesma semente, mesmo bot na tela), com o perfil da luta v2
-   (deck padrão do estilo, a árvore pelo efeito v2) e a força do combate novo */
+   (deck da faixa de nível, a árvore pelo efeito v2) e a força do combate novo */
 export function montarBot2(arg) {
   const b = BOT.montarBot(arg);
-  return { ...b, perfil: V2.perfilLuta2({ estilo: b.estilo, categoria: b.categoria, build: b.build }), rating: forcaDoBot2(b.pers, b.s) ?? b.rating };
+  return { ...b, perfil: V2.perfilLuta2({ estilo: b.estilo, categoria: b.categoria, build: b.build, deck: deckDoBot2(b.estilo, b.nivel, b.build) }), rating: forcaDoBot2(b.pers, b.s) ?? b.rating };
 }
 /* o que a luta guarda do bot (coluna bot de jxj_lutas); a tela nunca recebe */
 export const dadosDaLuta2 = (bot, { puro = 0 } = {}) => ({

@@ -404,7 +404,7 @@ if (PARTES.includes("bots")) {
   for (const pers of BOT.PERSONALIDADES_IDS) for (const sk of SS) for (const nv of NIV) for (const s of ESTS)
     for (const sb of BOT.PERSONALIDADES[pers].estilo ? [BOT.PERSONALIDADES[pers].estilo] : ESTS)
       jobs.push({ chave: `bot:${pers}:${sk}:${nv}:${s}:${sb}`, sA: s, sB: sb, catA: "middleweight", catB: "middleweight",
-        buildA: buildTipica(s, nv), buildB: buildTipica(sb, nv), bot: { pers, s: sk }, n });
+        buildA: buildTipica(s, nv), buildB: buildTipica(sb, nv), nivelB: nv, bot: { pers, s: sk }, n });
   const r = await rodar(jobs);
   /* chance do jogador (empate vale meio) e a força do bot em rating: 1500 - 400 log10(p / (1 - p)) */
   const chance = (os) => { const t = os.reduce((a, o) => ({ v: a.v + o.vA + o.emp / 2, n: a.n + o.vA + o.vB + o.emp }), { v: 0, n: 0 }); return t.v / t.n; };
