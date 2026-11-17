@@ -58,6 +58,9 @@ const baixo = (tipo, ultimo, t, camera, clipe = DEITADO) => ({ tipo, clipe, arte
 /* raspagem programada: quem joga a carta está por baixo (preparo: queda do outro) e sobe por cima */
 const raspagemProg = (s, camera) => ({ tipo: "raspou", clipe: DEITADO, prog: "raspagem", arte: { clipe: DEITADO, t: { s }, camera, passos: [["queda", "B"], ["prog", "A", "raspagem"]] } });
 
+/* passagem de guarda programada: quem joga a carta está por cima (preparo: a queda dele) */
+const passagemProg = (s, camera) => ({ tipo: "controle", clipe: QUEDA, prog: "passagem", arte: { clipe: QUEDA, t: { s }, camera, passos: [["queda", "A"], ["prog", "A", "passagem"]] } });
+
 export const LANCES_CARTAS = {
   /* ---------- comuns (em pé) ---------- */
   jab: golpe("jab", cam("lado")),
@@ -101,7 +104,7 @@ export const LANCES_CARTAS = {
   suplex: quedaProg("suplex", 1.25, cam("baixo", -1)),
   peso_ombro: cima("controle", ["expulsar"], { s: 0.3 }, cam("chao")),
   cotovelada_cima: cima("gnp1", ["socos", "A", 1, false], { impacto: 1, depois: 0.02 }, cam("cima")),
-  passagem_joelho: cima("controle", ["socos", "A", 1, false], { s: 0.15 }, cam("tres", -1)),
+  passagem_joelho: passagemProg(1.0, cam("tres", -1)),
   martelada: (() => { const l = cima("gnp1", ["socos", "A", 2, true], { impacto: 2, depois: 0.02 }, cam("chao")); return { ...l, prog: "martelada", arte: { ...l.arte, t: { impacto: 1, depois: 0.02 }, passos: [["queda", "A"], ["prog", "A", "martelada"]] } }; })(),
   sprawl: defQuedaProg("sprawl", 0.75, cam("tres")),
   levantada_tecnica: baixo("levantou", ["expulsar"], { s: 3.3 }, cam("tres"), "Getting_Up"),
@@ -114,7 +117,7 @@ export const LANCES_CARTAS = {
   triangulo: baixo("sub", ["fin", "A", "triangulo"], { s: 1.6 }, cam("chao")),
   mata_leao: { tipo: "sub", clipe: "Strangling", arte: { clipe: "Strangling", t: { s: 1.0 }, camera: cam("tres"), passos: [["fin", "A", "mataLeao"]] } },
   cem_quilos: cima("controle", ["espera", 0.8], { s: 0.6 }, cam("tres", -1)),
-  passagem_guarda: cima("controle", ["espera", 1.4], { s: 1.0 }, cam("chao")),
+  passagem_guarda: passagemProg(1.0, cam("chao")),
   guarda_fechada: baixo("controle", ["socos", "B", 1, false], { impacto: 1, depois: 0.02 }, cam("chao", -1)),
   raspagem_gancho: raspagemProg(1.2, cam("chao")),
   defesa_finalizacao: baixo("controle", ["tentativa", "cima"], { s: 1.0 }, cam("chao")),

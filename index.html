@@ -7863,7 +7863,7 @@ const JXJ_3D2={
   },
   queda:(e,c)=>({tipo:"queda",quem:c.Q(e.quem),carta:e.carta,...(c.danoQueda[e.quem]?{alvo:c.outro(e.quem),dano:c.danoQueda[e.quem]}:{})}),
   puxouGuarda:(e,c)=>({tipo:"queda",quem:c.Q(c.outro(e.quem))}),
-  avancou:(e,c)=>({tipo:"controle",quem:c.Q(e.quem)}),
+  avancou:(e,c)=>({tipo:"controle",quem:c.Q(e.quem),prog:"passagem"}),
   raspou:(e,c)=>({tipo:"raspou",quem:c.Q(e.quem),prog:"raspagem"}),
   levantou:(e,c)=>({tipo:"levantou",quem:c.Q(e.quem)}),
   encaixou:(e,c)=>({tipo:"sub",quem:c.Q(e.quem)}),

@@ -17225,7 +17225,7 @@ async function testarLuta3d() {
     const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
     const bloco = diretor.slice(diretor.indexOf("const PROG = {"), diretor.indexOf("/* ---------- estudo"));
     const funcoes = new Set([...bloco.matchAll(/^  (?:async )?(\w+)\(/gm)].map((m) => m[1]));
-    const prontos = ["single_leg", "suplex", "bodylock", "sprawl", "superman", "martelada", "raspagem"];
+    const prontos = ["single_leg", "suplex", "bodylock", "sprawl", "superman", "martelada", "raspagem", "passagem"];
     for (const p of prontos) if (!funcoes.has(p)) throw new Error("lance programado sem função no PROG: " + p);
     for (const f of funcoes) if (!prontos.includes(f)) throw new Error("função no PROG fora da lista dos prontos: " + f);
     const usados = new Set(Object.values(L.LANCES_CARTAS).map((l) => l.prog).filter(Boolean));

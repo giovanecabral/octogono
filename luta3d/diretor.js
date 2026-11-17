@@ -1117,6 +1117,20 @@ const PROG = {
     def.extras.delete(f); def.raiz.position.sub(corr); def.raiz.rotation.z = 0; def.raiz.rotation.order = "XYZ";
     await montarPor(atk, def, false);
   },
+  /* passagem de guarda: as mãos prendem o quadril de baixo, o tronco desce e ele contorna as pernas pro lado */
+  async passagem(atk, def) {
+    if (!montada || montada.atk !== atk) { if (montada) await serieSocos(2); else await esperar(0.6); return; }
+    const { cima, baixo } = montada, lado = Math.random() < 0.5 ? 1 : -1;
+    baixo.st.livre = false; cima.limpar();
+    chamada("PASSOU A GUARDA!", { pequena: true }); som("sobe", 0.6);
+    await animar(0.3, (k) => { cima.st.apoio = suave(k); cima.st.inclina = 0.5 * suave(k); });
+    const p0 = atk.raiz.position.clone(), y0 = atk.raiz.rotation.y, eixo = esq0(def).multiplyScalar(lado);
+    await animar(0.7, (k) => { const w = suave(k); atk.raiz.position.copy(p0).addScaledVector(eixo, 0.36 * w); atk.raiz.rotation.y = y0 + 0.4 * lado * w; baixo.st.ponte = 0.4 * Math.sin(Math.PI * k); });
+    palco.tremor = Math.max(palco.tremor, 0.02); som("pesado", 0.5);
+    await animar(0.35, (k) => { cima.st.apoio = 1 - suave(k); cima.st.inclina = 0.5 * (1 - suave(k)); });
+    baixo.st.ponte = 0; baixo.st.livre = true;
+    await serieSocos(1);
+  },
   /* martelada: as duas mãos juntas lá no alto, o tronco arqueia e o golpe desce no rosto dele */
   async martelada(atk, def, ev) {
     if (!montada) await queda(atk, def, { soco: false });
