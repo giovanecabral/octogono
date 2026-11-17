@@ -363,7 +363,19 @@ if (PARTES.includes("busca")) {
   linha();
   linha(`Meta 45% a 55% no agregado: ${fora.length ? "FORA: " + fora.join(", ") : "todos dentro"}.`);
   linha();
-  linha("Melhor deck contra os decks padrão (nível 30, " + Math.round(N / 4) + " lutas por confronto):");
+  /* portão de deck aleatório no nível 30 (decisão 89): contra o campo dos melhores decks da volta 2 */
+  const rr2 = gerador(20261171), alea = {}, jobsA = [];
+  for (const s of ESTS) alea[s] = Array.from({ length: NDECKS }, () => deckAleatorio(s, rr2, B30[s]));
+  for (const s of ESTS) alea[s].forEach((d, k) => { for (let j = 0; j < 4; j++) jobsA.push({ chave: `al:${s}:${k}:${j}`, sA: s, sB: ESTS[j], deckA: d, deckB: v2[j].deck, buildA: B30[s], buildB: B30[ESTS[j]], catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta", n: 300 }); });
+  const ra = await rodar(jobsA);
+  linha("Deck aleatório no nível 30 contra o campo dos melhores decks (volta 2), " + NDECKS + " decks por estilo, 300 lutas por confronto. Portão: até 60% (decisão 89).");
+  linha();
+  const domA = [];
+  for (const s of ESTS) { const v = alea[s].map((_, k) => [0, 1, 2, 3].reduce((x, j) => x + vit(ra.get(`al:${s}:${k}:${j}`)), 0) / 4).sort((x, y) => y - x); if (v[0] > 60) domA.push(`${NOMES[s]} ${f1(v[0])}%`); linha(`- ${NOMES[s]}: melhor ${f1(v[0])}%, mediana ${f1(v[Math.floor(v.length / 2)])}%.`); }
+  linha();
+  linha(`Deck aleatório acima de 60% contra o campo de melhores: ${domA.length ? "SIM: " + domA.join(", ") : "nenhum"}.`);
+  linha();
+  linha("Melhor deck contra os decks padrão (só informação, nível 30, " + Math.round(N / 4) + " lutas por confronto):");
   linha();
   const dom = [];
   for (const s of ESTS) { const v = ESTS.reduce((a, o) => a + vit(r.get(`bp:${s}:${o}`)), 0) / 4; if (v > 60) dom.push(`${NOMES[s]} ${f1(v)}%`); linha(`- ${NOMES[s]}: ${f1(v)}% contra o campo.`); }
