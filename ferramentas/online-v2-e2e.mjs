@@ -14,7 +14,11 @@
    do boxe pela tela (a carta nova chegando, a aba Deck) e os dois lutam com deck de cartas da árvore
    (fotos extras `arvore-*` e `A-3d-*`).
 
-   Uso: [ARVORE=1] node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
+   Layout da luta v2 (2026-11-17): no celular (toque) a carta tocada sobe grande e o Confirmar manda;
+   fotos da etapa da postura, da carta, da carta tocada (celular), da revelação e do chão em cada aba.
+   Tamanhos: A_W x A_H (padrão 1280 x 800) e B_W x B_H (padrão 390 x 844).
+
+   Uso: [ARVORE=1] [B_W=360 B_H=780] node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
 import { spawn } from "node:child_process"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import * as ARV from "../api/_jxj-arvores.js"; import * as CARTAS from "../api/_jxj-cartas.js";
 const ARVORE = process.env.ARVORE === "1";
@@ -95,8 +99,8 @@ try {
   C = await chrome();
   const inicio = (ARVORE ? `window.ARVORE_NOMES=${JSON.stringify(["overhand", "chute rodado", "superman", "suplex", "martelada", "bodylock", "queda no contragolpe", "passagem de joelho", "contragolpe"])};` : `window.ARVORE_NOMES=[];`) + `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("luta:3d","1");`;
   const bloquear = ["*supabase.co*", "*octogono.fun/api*", "*draft-ufc.vercel.app*", "*vercel*"];
-  A = await C.aba({ width: 1360, height: 860 }, { bloquear, inicio });
-  B = await C.aba({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, { bloquear, inicio });
+  A = await C.aba({ width: Number(process.env.A_W || 1280), height: Number(process.env.A_H || 800) }, { bloquear, inicio });
+  B = await C.aba({ width: Number(process.env.B_W || 390), height: Number(process.env.B_H || 844), isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, { bloquear, inicio });
   /* cada aba entra como uma conta de teste (token "tok:<id>" do servidor local) e cria o lutador */
   const entrar = async (p, uid, nome, estilo, fila = true) => {
     await p.ir(BASE + "#/menu");
@@ -156,7 +160,8 @@ try {
         return { res: !!q(".jxj-resultado"), fimCena: !!q(".jxj-fim"), v2: !!(cb && cb.classList.contains("v2")), cheia: !!(cb && cb.classList.contains("tela-cheia")),
           assist: !!(cb && cb.classList.contains("assistindo")), linha: !!q(".v2-linha"), regua: !!q(".v2-regua"),
           velDano: mao.length && mao.every((c) => c.querySelector(".jxj-c2-stat.vel b") && c.querySelector(".jxj-c2-stat.dano b")),
-          chao: !!q(".jxj-na-mao .jxj-c2-origem"), cartas: document.querySelectorAll(".jxj-postura:not([disabled]),.jxj-acao:not([disabled])").length,
+          chao: !!q(".jxj-na-mao .jxj-c2-origem"), revelada: !!q(".jxj-revelada"), etapa: (q(".v2-comando") || { className: "" }).className.split(" ").find((c) => c.startsWith("etapa-")) || "",
+          largura: document.documentElement.scrollWidth > innerWidth + 1 ? document.documentElement.scrollWidth : 0, cartas: document.querySelectorAll(".jxj-postura:not([disabled]),.jxj-acao:not([disabled])").length,
           vida: [vida("a"), vida("b")], round: (q(".jxj-round") || {}).textContent || "" };
       });
       if (st.res) { fim[nome] = true; await p.foto(`${nome}-resultado.png`); log.push(`${nome}: resultado`); continue; }
@@ -170,10 +175,13 @@ try {
       if (st.cheia) viu.telaCheia++;
       if (st.velDano) viu.velDano++;
       if (st.vida.some((x) => x != null && x < 100)) viu.vidaDesceu = true;
+      if (st.largura) viu.rolagem = `${nome}: ${st.largura} px de largura`;
+      if (st.revelada && !st.assist && !fotos.has(nome + "revelacao")) { fotos.add(nome + "revelacao"); await p.foto(`${nome}-revelacao.png`); }
       if (st.linha) { viu.linha++; if (!fotos.has(nome + "porque")) { fotos.add(nome + "porque"); await p.foto(`${nome}-porque.png`); } }
       if (st.chao && !fotos.has(nome + "chao")) { fotos.add(nome + "chao"); viu.chao = true; await p.foto(`${nome}-chao.png`); }
       if (!st.assist && st.cartas) {
         if (!fotos.has(nome + "escolha")) { fotos.add(nome + "escolha"); await p.foto(`${nome}-escolha.png`); }
+        if (st.etapa && !fotos.has(nome + st.etapa)) { fotos.add(nome + st.etapa); await p.foto(`${nome}-${st.etapa === "etapa-sinal" ? "postura" : "carta"}.png`); }
         /* o deck dele, uma vez em cada aba */
         if (jogadas[nome] === 2 && !fotos.has(nome + "deck")) {
           fotos.add(nome + "deck");
@@ -183,12 +191,19 @@ try {
           await p.avaliar(() => { const b = document.querySelector(".v2-btn-deck"); b && b.click(); });
         }
         await p.avaliar((k, arv) => { const bs = [...document.querySelectorAll(".jxj-postura:not([disabled]), .jxj-acao:not([disabled])")]; const nova = ARVORE_NOMES.length ? bs.filter((b) => ARVORE_NOMES.some((n) => b.textContent.toLowerCase().includes(n))) : []; const l = nova.length ? nova : bs; if (l.length) l[k % l.length].click(); }, jogadas[nome]++);
+        /* no toque, o primeiro toque só mostra a carta grande: foto (uma da postura, uma da carta) e o Confirmar */
+        const focoAberto = await p.avaliar(() => { const f = document.querySelector(".v2-foco"); return !!(f && !f.hidden && f.querySelector(".v2-confirmar")); });
+        if (focoAberto) {
+          viu.foco = (viu.foco || 0) + 1;
+          if (!fotos.has(nome + "tocada" + st.etapa)) { fotos.add(nome + "tocada" + st.etapa); await esperar(300); await p.foto(`${nome}-tocada-${st.etapa === "etapa-sinal" ? "postura" : "carta"}.png`); }
+          await p.avaliar(() => { const b = document.querySelector(".v2-foco .v2-confirmar"); b && b.click(); });
+        }
       }
     }
     await esperar(600);
   }
-  log.push(`jogadas A ${jogadas.A}, B ${jogadas.B}; consultas v2 ${viu.v2}, tela cheia ${viu.telaCheia}, linha do porquê ${viu.linha}, cartas com vel e dano ${viu.velDano}; deck dele abriu ${viu.deck}; vida desceu ${viu.vidaDesceu}; carta do chão ${viu.chao}`);
-  const ok = fim.A && fim.B && viu.v2 > 0 && viu.linha > 0 && viu.velDano > 0 && viu.deck && viu.telaCheia > 0 && !A.erros.length && !B.erros.length;
+  log.push(`jogadas A ${jogadas.A}, B ${jogadas.B}; consultas v2 ${viu.v2}, tela cheia ${viu.telaCheia}, linha do porquê ${viu.linha}, cartas com vel e dano ${viu.velDano}; deck dele abriu ${viu.deck}; vida desceu ${viu.vidaDesceu}; carta do chão ${viu.chao}; carta grande no toque ${viu.foco || 0}; rolagem lateral ${viu.rolagem || "nenhuma"}`);
+  const ok = fim.A && fim.B && viu.v2 > 0 && viu.linha > 0 && viu.velDano > 0 && viu.deck && viu.telaCheia > 0 && viu.foco > 0 && !viu.rolagem && !A.erros.length && !B.erros.length;
   console.log(log.join("\n"));
   console.log(A.erros.length || B.erros.length ? "ERROS " + [...A.erros, ...B.erros].slice(0, 6).join(" | ") : "sem erro na página");
   console.log(ok ? "ok" : "REPROVOU");

@@ -13748,6 +13748,24 @@ async function testarJxJV2() {
     const mau = noJogo("jxjCarta2", { ...jab, nome: MAU, arte: '"><img src=x onerror=alert(1)>' });
     if (/<img src=x|onerror=alert\(1\)>/.test(mau.replace(/&[a-z#0-9]+;/g, "_"))) throw new Error("HTML cru: " + mau);
   });
+  await conf("carta v2 sem efeito (layout da luta, 2026-11-17): a caixa do efeito mostra a frase curta da categoria, nunca vazia; carta com efeito continua com o dela", () => {
+    const vazias = Object.values(defs.cartas).filter((c) => !(c.efeitos || []).length && !c.inanulavel);
+    if (!vazias.length) throw new Error("nenhuma carta sem efeito pra conferir");
+    for (const c of vazias) {
+      const h = noJogo("jxjCarta2", c);
+      const ef = (h.match(/<span class="jxj-carta-efeito">([^<]*)<\/span>/) || [])[1];
+      if (!ef || !ef.trim()) throw new Error("caixa do efeito vazia: " + c.id);
+      if (c.categoria === "golpes" && ef !== "Golpe simples: se acerta, causa o dano da carta.") throw new Error("frase do golpe: " + ef);
+    }
+    if (!noJogo("jxjCarta2", defs.cartas.jab).includes(">Se interrompe: recupera 1 de energia.<")) throw new Error("o Jab perdeu o efeito dele");
+    /* a etiqueta do chão com o artigo certo nas cartas da árvore */
+    X.run("JXJ_DEF={combate2:" + JSON.stringify(defs) + "}");
+    try {
+      const de = (id) => X.run(`jxjDeCarta2(${JSON.stringify(id)})`);
+      for (const [id, art] of [["queda_contragolpe", "da "], ["contra_queda", "da "], ["passagem_joelho", "da "], ["jab", "do "], ["suplex", "do "], ["misericordia", "do "]])
+        if (!de(id).startsWith(art)) throw new Error("artigo da etiqueta do chão: " + de(id));
+    } finally { X.run("JXJ_DEF=null"); }
+  });
   await conf("carta v2 com raridade, arte e estrelas: classe rar-x, imagem com caminho escapado, n ícones de estrela do sprite e nenhum caractere de estrela; sem estrelas, sem o bloco; toda carta das definições tem a arte no disco", () => {
     const base = defs.cartas.overhand;
     const html = noJogo("jxjCarta2", base, { raridade: "lendaria", arte: 'img/cartas/overhand.webp" onerror="x', estrelas: 3 });
@@ -16834,12 +16852,14 @@ async function testarJxJTelas() {
         /* ele joga: a mesa mostra só o verso; a carta dele (id) nunca aparece na mesa */
         const dele = w.mao[0].id;
         await api(u2, "acao", { lutaId: lidV2, round: w.round, troca: w.troca, carta: dele });
+        /* layout de 2026-11-17: enquanto eu escolho não tem mesa; que ele jogou aparece na etiqueta do nome dele */
         m = await abrir(`luta/${lidV2}`); h = mesaV2(desde(m));
-        if (!/jxj-verso/.test(vagaEle(h)) || /data-carta=/.test(vagaEle(h))) throw new Error("depois que ele jogou, a vaga dele: " + vagaEle(h).slice(0, 200));
+        if (h || desde(m).some((n) => tem(n, "jxj-mesa"))) throw new Error("mesa enquanto eu escolho: " + h.slice(0, 200));
+        if (!/já jogou/.test(htmlDe(desde(m).filter((n) => n.id === "jxj-card-ele")))) throw new Error("sem o aviso de que ele já jogou no nome dele");
         /* vazamento: mesmo se a vista trouxesse a carta dele, a mesa só desenha o verso */
         const vaz = String(vm.runInContext(`(() => { const v = JSON.parse(globalThis.__vista); v.cartaDele = ${JSON.stringify(dele)}; v.minhaCartaDele = ${JSON.stringify(dele)};
           const s = jxjMesa2(v, { eu: v.lado, ele: v.lado === "a" ? "b" : "a" }, null, {}); return s.children.map((c) => c.innerHTML).join("\\n"); })()`, Object.assign(env.sandbox, { __vista: JSON.stringify({ ...v, adversarioEscolheu: true }) })));
-        if (/data-carta=/.test(vagaEle(vaz))) throw new Error("a mesa desenhou a carta dele de um campo da vista: " + vagaEle(vaz).slice(0, 200));
+        if (!/jxj-verso/.test(vagaEle(vaz)) || /data-carta=/.test(vagaEle(vaz))) throw new Error("a mesa desenhou a carta dele de um campo da vista (ou sem o verso): " + vagaEle(vaz).slice(0, 200));
         /* a minha: tocar a carta manda acao com o id */
         const acoes = desde(m).filter((n) => tem(n, "jxj-acao") && tem(n, "jxj-na-mao"));
         if (acoes.length !== 5) throw new Error(`${acoes.length} cartas na etapa da ação`);
@@ -16921,6 +16941,112 @@ async function testarJxJTelas() {
         if (/<img src=x/.test(lin)) throw new Error("o porquê com o nome sem escapar");
       }
       semLixoV3(h, "desenho da v2");
+    });
+    await conf("layout da luta v2 (2026-11-17, plano aprovado pelo dono): barra de comando logo acima da mão com os passos 1 Postura e 2 Carta (o atual aceso), o relógio e a frase do que fazer, no lugar do 'Mostre uma postura' solto e da frase de ajuda; a mesa só com a carta jogada ou na revelação (nunca as caixas vazias, nunca vaga de postura); a postura dele vira etiqueta no nome dele; a régua de velocidade fechada atrás do botão Velocidade; uma linha de situação no topo (posição, round, troca, placar); no toque, a carta tocada sobe com nome e efeito e só o Confirmar (ou o segundo toque) manda; no mouse, o clique manda direto", async () => {
+      if (!lidV2) throw new Error("sem a luta v2");
+      await flagV2T({ contas: [u1, u2] });
+      let v;
+      try { v = await api(u1, "luta", { lutaId: lidV2 }); } finally { await flagV2T(false); }
+      const r = JSON.parse(vm.runInContext(`(() => {
+        const base = JSON.parse(globalThis.__vista), eu = base.lado, ele = eu === "a" ? "b" : "a", lados = { eu, ele };
+        if (!JXJ_DEF || !JXJ_DEF.combate2) throw new Error("sem as definições da v2");
+        const carta = (id, finta = null) => { const d = jxjCartaDef2(id); return { id, nome: d.nome, categoria: d.categoria, efetiva: { id, nome: d.nome, contexto: "pe" }, vel: d.vel, velBase: d.vel, dano: d.dano, danoBase: d.dano, custo: d.custo, finta, efeitos: d.efeitos || [] }; };
+        const agora = Date.parse(base.agora || new Date().toISOString());
+        const vb = { ...base, status: "andamento", round: 1, troca: 1, trocas: [], etapa: "sinal", meuSinal: null, adversarioSinalizou: false, sinais: null, minhaCarta: null, minhaAcao: null,
+          adversarioEscolheu: false, estado: { ...base.estado, pos: "pe", encaixe: null, a: { ...base.estado.a, grogue: false }, b: { ...base.estado.b, grogue: false } },
+          placarRound: { round: 1, pts: { a: 0, b: 0 }, cartao: {} }, prazoSinal: new Date(agora + 8000).toISOString(), prazo: new Date(agora + 26000).toISOString(), agora: new Date(agora).toISOString(),
+          mao: [carta("jab"), carta("cruzado"), carta("bloqueio"), carta("queda"), carta("clinch")] };
+        const acao = { ...vb, etapa: "acao", meuSinal: "defesa", sinais: { [eu]: "defesa", [ele]: "golpes" }, adversarioEscolheu: true,
+          prazoSinal: new Date(agora - 1000).toISOString(), mao: [carta("jab", 1.5), carta("cruzado", 1.5), carta("bloqueio"), carta("queda", 1.5), carta("clinch", 1.5)] };
+        const cls = (n) => String((n && n.className) || "").split(" ");
+        const lista = (no) => { const out = [], fila = [no]; while (fila.length) { const x = fila.shift(); out.push(x); fila.push(...(x.children || [])); } return out; };
+        const ach = (no, c) => lista(no).find((x) => cls(x).includes(c));
+        const html = (no) => lista(no).map((x) => String(x.innerHTML || "")).join("\\n");
+        const desenha = (v, op = {}) => { const env = []; const t = jxjDesenharCombate2(document.createElement("div"), v, lados, (a, b) => env.push([a, b]), op); return { t, env }; };
+        const resumo = (t) => {
+          const zona = ach(t, "jxj-zona-acao"), cmd = ach(t, "v2-comando"), cima = ach(t, "cima"), baixo = ach(t, "baixo");
+          const iCmd = zona ? zona.children.indexOf(cmd) : -1, iMao = zona ? zona.children.findIndex((x) => lista(x).some((y) => cls(y).includes("jxj-mao-luta"))) : -1;
+          const anel = lista(t).filter((x) => /id="jxj-anel"/.test(String(x.innerHTML || ""))), faixa = ach(t, "jxj-faixa-combate");
+          return { cmdNaZona: !!(cmd && iCmd >= 0 && (iMao > iCmd || (iMao < 0 && !lista(t).some((y) => cls(y).includes("jxj-na-mao"))))), temMao: iMao >= 0, cmd: cmd ? html(cmd) : "", aneis: anel.length, anelNoCmd: !!(cmd && anel.length === 1 && lista(cmd).includes(anel[0])),
+            tudo: html(t), mesa: lista(t).some((x) => cls(x).includes("jxj-mesa")), dica: lista(t).some((x) => cls(x).includes("jxj-dica-sinal")),
+            faixa: faixa ? String(faixa.innerHTML) : "", faixaEmCima: !!(faixa && (cima ? lista(cima).includes(faixa) : t.children.indexOf(faixa) === 1)), faixaEmBaixo: !!(faixa && baixo && lista(baixo).includes(faixa)),
+            ele: html(lista(t).find((x) => x.id === "jxj-card-ele") || {}), eu: html(lista(t).find((x) => x.id === "jxj-card-eu") || {}) };
+        };
+        const out = {};
+        /* 1. postura, no palco e sem ele */
+        let d = desenha(vb, { palco: true }); out.sinal = resumo(d.t);
+        const caixa = ach(d.t, "v2-regua-caixa"), bv = ach(d.t, "v2-btn-vel");
+        out.regua = { tem: !!ach(d.t, "v2-regua"), dentro: !!(caixa && ach(caixa, "v2-regua")), fechada: !!(caixa && caixa.hidden), aria: bv && bv.getAttribute("aria-expanded") };
+        if (bv) { bv.onclick(); out.regua.abriu = !caixa.hidden && bv.getAttribute("aria-expanded") === "true"; bv.onclick(); out.regua.fechou = !!caixa.hidden; }
+        out.sinalSemPalco = resumo(desenha(vb, {}).t);
+        /* 2. carta, com a postura dele; 3. carta jogada; 4. revelação */
+        out.acao = resumo(desenha(acao, { palco: true }).t);
+        out.jogada = resumo(desenha({ ...acao, minhaCarta: "bloqueio", minhaAcao: "defesa" }, { palco: true }).t);
+        out.revela = resumo(desenha(vb, { palco: true, revelar: { a: '<span class="jxj-revelada">ra</span>', b: '<span class="jxj-revelada">rb</span>' } }).t);
+        /* 5. mouse: o clique manda direto */
+        d = desenha(acao, { palco: true });
+        lista(d.t).filter((x) => cls(x).includes("jxj-acao") && cls(x).includes("jxj-na-mao"))[2].onclick();
+        out.mouse = d.env;
+        /* 6. toque: o primeiro toque mostra, o Confirmar manda; o segundo toque na mesma carta também */
+        const mm = window.matchMedia; window.matchMedia = (q) => ({ matches: /reduce/.test(q) });
+        try {
+          const toque = (v, tipo, k) => {
+            const { t, env } = desenha(v, { palco: true });
+            const bs = lista(t).filter((x) => cls(x).includes(tipo) && cls(x).includes("jxj-na-mao"));
+            const foco = ach(t, "v2-foco"), antes = !!(foco && foco.hidden);
+            bs[k].onclick();
+            const r = { antes, env1: env.length, aberto: !!(foco && !foco.hidden), foco: foco ? html(foco) : "", marcada: cls(bs[k]).includes("escolhida") };
+            const ok = foco && ach(foco, "v2-confirmar");
+            r.temConfirmar = !!ok; if (ok) ok.onclick(); r.env = env.slice();
+            const d2 = desenha(v, { palco: true }), bs2 = lista(d2.t).filter((x) => cls(x).includes(tipo) && cls(x).includes("jxj-na-mao"));
+            bs2[k].onclick(); bs2[k].onclick(); r.duplo = d2.env.slice();
+            return r;
+          };
+          out.toqueAcao = toque(acao, "jxj-acao", 1);
+          out.toqueSinal = toque(vb, "jxj-postura", 3);
+        } finally { window.matchMedia = mm; }
+        return JSON.stringify(out);
+      })()`, Object.assign(env.sandbox, { __vista: JSON.stringify(v) })));
+      const tira = (h) => h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      /* a barra de comando */
+      for (const [k, s] of [["postura", r.sinal], ["postura sem palco", r.sinalSemPalco], ["carta", r.acao], ["carta jogada", r.jogada]]) {
+        if (!s.cmdNaZona) throw new Error(`${k}: sem a barra de comando acima da mão`);
+        if (s.aneis !== 1 || !s.anelNoCmd) throw new Error(`${k}: o relógio tem que estar só na barra de comando (${s.aneis} anel)`);
+        if (/Mostre uma postura/.test(s.tudo) || s.dica) throw new Error(`${k}: ainda tem o texto solto ou a frase de ajuda`);
+        if (!/class="v2-passo[^"]*" data-passo="1"[\s\S]*>Postura</.test(s.cmd) || !/data-passo="2"[\s\S]*>Carta</.test(s.cmd)) throw new Error(`${k}: sem os passos: ` + tira(s.cmd));
+      }
+      const passo = (cmd, n) => ((cmd.match(new RegExp(`class="v2-passo ([a-z]+)" data-passo="${n}"`)) || [])[1]);
+      if (!r.sinal.temMao || !r.acao.temMao || r.jogada.temMao) throw new Error("a mão some só com a carta jogada");
+      if (passo(r.sinal.cmd, 1) !== "atual" || passo(r.sinal.cmd, 2) !== "espera") throw new Error("na postura, o passo 1 aceso: " + [passo(r.sinal.cmd, 1), passo(r.sinal.cmd, 2)]);
+      if (passo(r.acao.cmd, 1) !== "feito" || passo(r.acao.cmd, 2) !== "atual") throw new Error("na carta, o passo 2 aceso: " + [passo(r.acao.cmd, 1), passo(r.acao.cmd, 2)]);
+      if (passo(r.jogada.cmd, 2) !== "feito") throw new Error("carta jogada: o passo 2 feito");
+      if (!/Toque numa carta/.test(tira(r.sinal.cmd)) || !/Jogue uma carta/.test(tira(r.acao.cmd)) || !/Carta jogada: Bloqueio \. Ele também jogou\./.test(tira(r.jogada.cmd))) throw new Error("a frase do que fazer: " + [r.sinal.cmd, r.acao.cmd, r.jogada.cmd].map(tira).join(" | "));
+      /* a mesa: só com carta jogada ou na revelação; nunca vaga de postura */
+      if (r.sinal.mesa || r.acao.mesa || r.sinalSemPalco.mesa || /jxj-vaga/.test(r.sinal.tudo + r.acao.tudo)) throw new Error("mesa (ou caixa vazia) enquanto escolhe");
+      if (!r.jogada.mesa || !/id="jxj-vaga-acao-eu"[\s\S]*data-carta="bloqueio"/.test(r.jogada.tudo)) throw new Error("carta jogada sem a mesa com ela");
+      if (!r.revela.mesa || !/rb/.test(r.revela.tudo)) throw new Error("revelação sem a mesa");
+      if (/jxj-vaga-postura/.test(r.jogada.tudo + r.revela.tudo)) throw new Error("vaga de postura na mesa");
+      /* a postura dele no nome dele; a minha no meu */
+      if (!/v2-postura-tag/.test(r.acao.ele) || !/Peso na frente/.test(r.acao.ele) || !/já jogou/.test(tira(r.acao.ele))) throw new Error("a postura dele no topo: " + tira(r.acao.ele).slice(0, 300));
+      if (!/Guarda alta/.test(r.acao.eu)) throw new Error("a minha postura no meu nome");
+      if (/v2-postura-tag/.test(r.sinal.ele)) throw new Error("etiqueta de postura antes dele mostrar");
+      /* a régua fechada */
+      if (!r.regua.tem || !r.regua.dentro || !r.regua.fechada || r.regua.aria !== "false" || !r.regua.abriu || !r.regua.fechou) throw new Error("régua atrás do botão Velocidade: " + JSON.stringify(r.regua));
+      /* a linha de situação */
+      for (const [k, s] of [["palco", r.sinal], ["sem palco", r.sinalSemPalco]]) {
+        if (!s.faixaEmCima || s.faixaEmBaixo) throw new Error(`${k}: a linha de situação não está no topo`);
+        const f = tira(s.faixa);
+        if (!/Em pé/.test(f) || !/Round 1 de 3/.test(f) || !/Troca 1 de 3/.test(f) || !/0 a 0/.test(f)) throw new Error(`${k}: situação: ` + f);
+      }
+      /* toque e mouse */
+      if (JSON.stringify(r.mouse) !== '[["bloqueio","acao"]]') throw new Error("mouse: " + JSON.stringify(r.mouse));
+      for (const [k, t, esp] of [["carta", r.toqueAcao, '["cruzado","acao"]'], ["postura", r.toqueSinal, '["queda","sinal"]']]) {
+        if (!t.antes || t.env1 !== 0 || !t.aberto || !t.marcada) throw new Error(`toque na ${k}: o primeiro toque só mostra ` + JSON.stringify(t).slice(0, 300));
+        if (!/data-carta=/.test(t.foco) || !t.temConfirmar) throw new Error(`toque na ${k}: a carta grande sem o Confirmar`);
+        if (JSON.stringify(t.env) !== `[${esp}]` || JSON.stringify(t.duplo) !== `[${esp}]`) throw new Error(`toque na ${k}: envio ` + JSON.stringify([t.env, t.duplo]));
+      }
+      /* o Cruzado não tem efeito: a carta grande mostra a frase da categoria, nunca a caixa vazia */
+      if (!/Golpe simples: se acerta, causa o dano da carta\./.test(r.toqueAcao.foco)) throw new Error("o efeito na carta grande: " + tira(r.toqueAcao.foco).slice(0, 200));
     });
     await conf("JxJ desligado (JXJ_ATIVO diferente de true): a entrada mostra 'abre em breve' e nenhum botão de criar", async () => {
       process.env.JXJ_ATIVO = "false";
