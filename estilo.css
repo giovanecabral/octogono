@@ -1642,7 +1642,7 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 /* a arte ocupa a área da gravura; as estrelas (nível do nó) ficam no canto de baixo */
 .jxj-c2 .carta2-arte{position:absolute;inset:0}
 .jxj-c2 .carta2-estrelas{position:absolute;left:3px;bottom:3px;z-index:2;display:inline-flex;gap:1px;padding:2px 3px;background:#0b0b0d}
-.jxj-c2 .carta2-estrelas .ico{width:calc(var(--w,150px)*.075);height:calc(var(--w,150px)*.075);color:var(--ouro);fill:var(--ouro);stroke:var(--ouro)}
+.jxj-carta .jxj-carta-arte .carta2-estrelas .ico{width:calc(var(--w,150px)*.075);height:calc(var(--w,150px)*.075);color:var(--ouro);fill:var(--ouro);stroke:var(--ouro)}
 .jxj-c2 .jxj-carta-regra{font-size:calc(var(--w,150px)*.078)}
 .jxj-c2.mini .jxj-carta-regra{display:none}
 .jxj-c2.mini{height:calc(var(--w,150px) * 1.12)}
@@ -1678,7 +1678,7 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-deck-slot.travada .jxj-deck-tag{color:var(--ouro);max-width:110px;line-height:1.25}
 .jxj-deck-slot.cheio .jxj-carta{opacity:.45}
 /* selo Nova, contador na guia e filtro da aba Deck (cartas da árvore, 2026-11-17) */
-.jxj-deck-slot .selo-nova{position:absolute;top:-6px;left:50%;transform:translateX(-50%);z-index:5;padding:1px 8px;background:var(--ganho);color:#06140c;font-family:var(--f-ui);font-weight:800;font-size:12px;letter-spacing:.12em;text-transform:uppercase;box-shadow:0 0 0 2px var(--fundo)}
+.jxj-deck-slot .selo-nova{padding:1px 10px;background:var(--ganho);color:#06140c;font-family:var(--f-ui);font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase}
 .guia .guia-n{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;background:var(--ganho);color:#06140c;font-family:var(--f-ui);font-weight:800;font-size:13px;letter-spacing:0}
 .deck2-filtro{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0 0 14px}
 .deck2-filtro-grupo{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
