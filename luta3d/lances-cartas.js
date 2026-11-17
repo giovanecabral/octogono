@@ -106,7 +106,7 @@ export const LANCES_CARTAS = {
   bodylock: quedaProg("bodylock", 1.25, cam("perto", -1)),
 
   /* ---------- grappler ---------- */
-  kimura: cima("sub", ["fin", "A", "chave"], { s: 1.6 }, cam("chao")),
+  kimura: cima("sub", ["fin", "A", "kimura"], { s: 1.6 }, cam("chao")),
   rasteira: queda(0.6, cam("lado", -1)),
   triangulo: baixo("sub", ["fin", "A", "triangulo"], { s: 1.6 }, cam("chao")),
   mata_leao: { tipo: "sub", clipe: "Strangling", arte: { clipe: "Strangling", t: { s: 1.0 }, camera: cam("tres"), passos: [["fin", "A", "mataLeao"]] } },

@@ -7851,7 +7851,7 @@ const JXJ_3D2_CHAO=["ground_and_pound","golpes_por_baixo","cotovelada_cima","mar
 const JXJ_3D2={
   /* o dano da queda vai no lance da queda */
   dano:(e,c)=>JXJ_3D2_QUEDA.includes(e.carta)?null:JXJ_3D2_CHAO.includes(e.carta)
-    ?{tipo:"gnp1",quem:c.Q(e.quem),forte:(e.dano||0)>=3,alvo:e.alvo,dano:Number(e.dano)||0}
+    ?{tipo:"gnp1",quem:c.Q(e.quem),forte:(e.dano||0)>=3,alvo:e.alvo,dano:Number(e.dano)||0,carta:e.carta}
     :{tipo:"golpe1",quem:c.Q(e.quem),forca:e.dano||1,golpe:JXJ_3D2_GOLPE[e.carta],carta:e.carta,alvo:e.alvo,dano:Number(e.dano)||0},
   /* a carta anulada é o lance: golpe no bloqueio, queda defendida, controle de quem está por cima */
   anulou:(e,c)=>{
@@ -7861,7 +7861,7 @@ const JXJ_3D2={
     if(c.pos==="cima_"+e.quem)return {tipo:"controle",quem:c.Q(e.quem)};
     return {tipo:"estudo"};
   },
-  queda:(e,c)=>({tipo:"queda",quem:c.Q(e.quem),...(c.danoQueda[e.quem]?{alvo:c.outro(e.quem),dano:c.danoQueda[e.quem]}:{})}),
+  queda:(e,c)=>({tipo:"queda",quem:c.Q(e.quem),carta:e.carta,...(c.danoQueda[e.quem]?{alvo:c.outro(e.quem),dano:c.danoQueda[e.quem]}:{})}),
   puxouGuarda:(e,c)=>({tipo:"queda",quem:c.Q(c.outro(e.quem))}),
   avancou:(e,c)=>({tipo:"controle",quem:c.Q(e.quem)}),
   raspou:(e,c)=>({tipo:"raspou",quem:c.Q(e.quem)}),

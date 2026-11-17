@@ -632,7 +632,7 @@ async function separar({ narra = true } = {}) {
    (deitado de costas e ajoelhado), como a montada. Em todas, um corte de câmera leva pra
    posição já encaixada; quem está preso aperta, tenta sair e bate. */
 const VO = new THREE.Vector3(-0.11, 0, 2.54);
-const NOME_FIN = { mataLeao: "MATA-LEÃO!", chave: "CHAVE DE BRAÇO!", triangulo: "TRIÂNGULO!", guilhotina: "GUILHOTINA!" };
+const NOME_FIN = { mataLeao: "MATA-LEÃO!", chave: "CHAVE DE BRAÇO!", kimura: "KIMURA!", triangulo: "TRIÂNGULO!", guilhotina: "GUILHOTINA!" };
 
 /* pose parada de um clipe, aplicada já (sem fade) */
 function poseFixa(L, nome, t = 0) {
@@ -714,6 +714,33 @@ const FIN = {
       debate: () => { V.impacto("spine_01", esq0(V), (Math.random() - 0.5) * 0.3); V.impacto("Head", fr0(V), (Math.random() - 0.5) * 0.4); },
       vencedorDeitado: true, perdedorDeitado: false };
   },
+  /* kimura: quem está por cima ajoelha ao lado do peito, o braço de quem está no chão dobra ao lado da cabeça
+     e as duas mãos dele fecham o punho (figura quatro) e giram o braço pra trás */
+  kimura(S, V) {
+    const c = centroFin(S, V), longV = dirAleatoria();
+    poseFixa(S, "Montada"); poseFixa(V, "Laying_Idle");
+    colocar(V, c, longV, true);
+    const eV = () => eixosDeitado(V);
+    // o lado do braço esquerdo de quem está no chão é o lado de quem ajoelha
+    const sg = V.posMundo("upperarm_l").sub(V.posMundo("upperarm_r")).dot(eV().esq) >= 0 ? 1 : -1;
+    colocar(S, V.posMundo("spine_02").addScaledVector(eV().esq, 0.5 * sg), eV().esq.clone().multiplyScalar(-sg), false);
+    const st = { aperto: 0, tapa: 0, t: 0, curva: 0.7 };
+    S.extras.add((dt) => { st.t += dt; });
+    S.extras.add(curvarAjoelhado(S, st));
+    // o braço preso: cotovelo dobrado, mão ao lado da cabeça; com o aperto, o punho vai sendo puxado pro chão, atrás
+    V.ikFixo.hand_l = { peso: 1, alvo: () => V.posMundo("Head").addScaledVector(eV().esq, sg * (0.22 - 0.06 * st.aperto)).addScaledVector(eV().long, 0.1 + 0.1 * st.aperto).setY(0.1 - 0.02 * st.aperto),
+      polo: () => V.posMundo("upperarm_l").addScaledVector(eV().esq, 0.5 * sg).addScaledVector(eV().long, -0.1) };
+    S.ikFixo.hand_r = { peso: 1, alvo: () => V.posMundo("hand_l").add(V3(0, 0.03, 0)), polo: () => S.posMundo("upperarm_r").add(V3(0, -0.3, 0)).addScaledVector(eV().esq, -0.3 * sg) };
+    S.ikFixo.hand_l = { peso: 1, alvo: () => S.posMundo("hand_r").addScaledVector(eV().long, -0.07).add(V3(0, 0.01, 0)), polo: () => S.posMundo("upperarm_l").add(V3(0, -0.3, 0)).addScaledVector(eV().long, -0.3) };
+    // a outra mão dele bate no chão
+    V.ikFixo.hand_r = { peso: 1, alvo: () => {
+      const base = V.posMundo("pelvis").addScaledVector(eV().esq, -0.38 * sg).addScaledVector(eV().long, 0.15).setY(0.05);
+      return st.tapa ? base.add(V3(0, 0.07 * Math.max(0, Math.sin(st.t * 15)), 0)) : V.posMundo("spine_03").addScaledVector(eV().esq, -0.2 * sg).add(V3(0, 0.12, 0));
+    }, polo: () => V.posMundo("upperarm_r").addScaledVector(eV().esq, -0.4 * sg) };
+    return { st, centro: () => V.posMundo("spine_03").lerp(S.posMundo("pelvis"), 0.45).add(V3(0, 0.1, 0)), lado: () => eV().long.clone().multiplyScalar(0.7).addScaledVector(eV().esq, 0.7 * sg).normalize(), dist: 2.1, alt: 1.45,
+      debate: () => { V.impacto("thigh_l", eV().esq, (Math.random() - 0.5) * 0.5); V.impacto("Head", eV().long, (Math.random() - 0.5) * 0.4); S.impacto("spine_02", eV().esq, (Math.random() - 0.5) * 0.15); },
+      vencedorDeitado: false, perdedorDeitado: true };
+  },
   /* guilhotina: quem está embaixo senta, abraça o pescoço de quem está na guarda e fecha as pernas */
   guilhotina(S, V) {
     const c = centroFin(S, V), longS = dirAleatoria();
@@ -777,7 +804,7 @@ const FIN = {
 /* sorteia qual finalização, pelo lado de quem finaliza (em cima: chave ou mata-leão; embaixo: triângulo ou guilhotina) */
 function tipoDeFinalizacao(atk) {
   const deCima = !montada || montada.atk === atk;
-  return deCima ? sorteia(["chave", "mataLeao"]) : sorteia(["triangulo", "guilhotina"]);
+  return deCima ? sorteia(["chave", "mataLeao", "kimura"]) : sorteia(["triangulo", "guilhotina"]);
 }
 
 async function finalizacao(atk, def, texto, tipo = tipoDeFinalizacao(atk)) {
