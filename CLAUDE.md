@@ -253,6 +253,21 @@ metade). Regras do revamp que valem daqui pra frente:
   aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
   (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por
   segundo e esconde bug de animação).
+- **Cartas da árvore (2026-11-17, branch `cartas-integracao`; LEIA-ME
+  "Cartas da árvore", catálogo em `docs/combat-v2.md`).** No combate v2
+  (flag `combate_v2`) cada nó libera uma carta (`api/_jxj-cartas.js`). A
+  carta tem casa (em pé, por cima, por baixo): fora dela joga como a básica
+  da categoria ali. Cópia no deck só por `copiasDe` (épica e lendária 1;
+  carta de chão e finalização da árvore 1, decisão 90): nunca ler
+  `COPIAS` direto. Deck do bot por faixa de nível (`deckDoBot2`) e
+  `FORCA_BOT2` medida: mexeu em carta, cópia ou motor, refaz os dois
+  (`sim/decks-bot2.mjs`). **Decisão 91: a calibragem parou** (Wrestler 57,8%
+  e Counter 43,1% no melhor deck, chão fora do portão); não recomeçar sem o
+  dado do grupo de teste. **`luta3d/mx_cartas.glb` vem do Mixamo, fica fora
+  do git** (`.gitignore`) e só sobe no `vercel --prod`; sem ele os lances
+  caem na reserva. Mexeu em carta, árvore ou lance: `combate2`,
+  `cartasarte`, `luta3d`, `jxjbot` e `jxjtelas`, e
+  `ARVORE=1 node ferramentas/online-v2-e2e.mjs`.
 - **Online: 3 trocas por round e tela cheia (2026-11-10, motor v5).** A
   luta guarda `tpr` (luta sem ele, de antes, segue com 4 e os números de
   antes); o prazo da próxima troca soma `FORMATO.animacaoMs` (7 s, a etapa

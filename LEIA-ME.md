@@ -6552,6 +6552,90 @@ janela na luta nova e não na de antes; a vista diz 3 e 4), `jxjtelas`
 contra bot no servidor local: cartas escondidas durante a animação, Só as
 cartas e volta, histórico, cena do fim depois do anúncio).
 
+## Cartas da árvore (2026-11-17)
+
+No Online do combate v2 (atrás da flag `combate_v2`), cada nó da árvore libera
+uma carta. O nó não dá mais efeito solto: quem não põe a carta no deck não
+ganha nada com ele além do atributo. Spec:
+`docs/superpowers/specs/2026-11-13-cartas-colecao-design.md`; plano:
+`docs/superpowers/plans/2026-11-15-cartas-colecao.md`; catálogo final e
+números medidos: `docs/combat-v2.md`; decisões 80 a 91:
+`docs/combat-v2-decisions.md`.
+
+**Onde mora (`api/_jxj-cartas.js`).**
+- `CARTAS`: as comuns e as 48 da árvore, uma por nó (`CARTA_DO_NO`). Raridade
+  pelo andar do ramo (1 e 2 rara, 3 épica, 4 lendária).
+- Casa (`casa`: `pe`, `cima`, `baixo`): onde a carta joga como ela mesma.
+  Fora dela, joga como a básica da categoria ali (`BASICA_PE` em pé, `CHAO`
+  no chão).
+- Estrelas (`estrelasDe`): o nível do nó, de 1 a 3. A estrela 3 de cada carta
+  tem efeito próprio (`estrela3`).
+- Cópias (`copiasDe`, ponto único: validação, busca, bot, simulação e tela):
+  comum e rara 2, épica e lendária 1; carta de chão da árvore e finalização
+  da árvore (inclusive o Mata-leão) 1, qualquer que seja a raridade (decisão
+  90).
+- `cartasLiberadas(estilo, build)`: as comuns e as cartas dos nós que o
+  lutador tem (híbrido só nos andares que a árvore deixa).
+- Bots: `deckDoBot2` em `api/_jxj-bot2.js` dá o deck pela faixa de nível do
+  bot (baixo 1 a 9, médio 10 a 19, alto 20 a 30), de `DECKS_BOT2`, e a força
+  que entra no Glicko vem de `FORCA_BOT2`.
+
+**Como rodar a simulação e a busca de deck.**
+```bash
+node sim/simular.mjs 10000                      # relatório completo em sim/relatorio.md (inclui a busca de deck)
+SIM_PARTES=nos SIM_ESTILOS=grappler node sim/simular.mjs 1000    # só o valor dos nós de um estilo
+SIM_PARTES=busca node sim/simular.mjs 10000     # só a subida de encosta do melhor deck
+```
+A busca (`sim/busca-deck.mjs`) parte do deck padrão e troca uma carta não fixa
+por uma da árvore liberada, desde que o `validarDeck` aceite. Número de carta
+experimental sem mexer no arquivo: `SIM_AJUSTE` (ver `docs/combat-v2.md`).
+
+**Como refazer os decks dos bots e a `FORCA_BOT2`.** Mexeu em número de carta,
+em `copiasDe` ou no motor: `node sim/decks-bot2.mjs` mostra o bloco novo e
+`--escrever` troca o bloco entre as marcas `DECKS_BOT2` (só as faixas
+rodadas, `SIM_FAIXAS`). O deck muda a força do bot, então depois:
+`SIM_PARTES=bots SIM_SAIDA=relatorio-bots.md node sim/simular.mjs 10000` e
+copiar a "FORCA_BOT2 medida" pro `api/_jxj-bot2.js`. Suíte `jxjbot`.
+
+**Estado da calibragem (decisão 91, pedido do dono em 2026-11-17).** Seis
+rodadas, e a calibragem para aqui: os números da rodada 5 com a regra da
+decisão 90 valem pro grupo de teste. Ficam fora dos portões, e conhecidos:
+Wrestler 57,8% e Counter 43,1% no melhor deck contra melhor deck no nível
+30, Wrestler de 30 contra 1 com o melhor deck em 91,5%, Grappler contra
+Striker em 74,2%, 13 nós e as cartas de chão pela medida relativa. O peso
+vem da regra do chão (posição e finalização), não do número de carta. O
+dado de gente jogando vem do grupo de teste.
+
+**A arte das cartas.** `ferramentas/arte-cartas.mjs [pasta da prancha]
+[id,id,...]` fotografa cada carta com o próprio diretor do 3D
+(`luta3d/lances-cartas.js` diz o lance e a câmera de cada uma) e grava
+`img/cartas/<id>.webp` (512 x 640). Precisa de Chrome com a placa de vídeo
+(`--use-angle=metal --enable-gpu`, já dentro do script). Mudou lance, câmera
+ou clipe: rode de novo e confira a prancha; a suíte `cartasarte` confere os
+arquivos.
+
+**A conversão do Mixamo.** `ferramentas/converter-mixamo.mjs` passa os FBX do
+Mixamo (sem pele, 30 quadros) pro esqueleto do corpo do jogo e grava
+`luta3d/mx_cartas.glb`:
+`MIXAMO_THREE=<pasta com o FBXLoader do three r169> node
+ferramentas/converter-mixamo.mjs <lista.tsv> [saida.glb]`. A lista tem uma
+linha por clipe: `<arquivo.fbx><TAB><NomeDoClipe>`.
+
+**O `mx_cartas.glb` nunca vai pro git.** A licença do Mixamo deixa usar a
+animação no jogo, mas não redistribuir o arquivo, e o GitHub é público. Ele
+está no `.gitignore` (como o `mx_lutas.glb`) e só sobe pelo `vercel --prod`,
+que publica a pasta. O deploy do push na `master` sai sem ele: os lances
+novos caem na reserva (clipes do `mx_lutas.glb`) até o deploy do CLI. Num
+worktree, o `luta3d/mx_cartas.glb` é link pro arquivo da máquina.
+
+**Conferência de ponta a ponta.** `ARVORE=1 PORTA=8851 node
+ferramentas/online-v2-e2e.mjs <pasta>`: duas contas de teste no servidor
+local (PGlite), nível 30 com a árvore montada, a aba A salva o último nó do
+boxe pela tela (a carta nova chegando, depois a aba Deck) e as duas lutam com
+deck de cartas da árvore, preferindo essas cartas; fotos do 3D a cada troca.
+Sem `ARVORE=1`, é o teste de antes com o deck padrão. Suítes que cobrem a
+parte: `combate2`, `cartasarte`, `luta3d`, `jxjbot` e `jxjtelas`.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:

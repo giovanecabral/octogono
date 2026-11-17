@@ -10,8 +10,36 @@
    do sistema com a placa de vídeo (--use-angle=metal --enable-gpu; sem ela o 3D roda a 6 quadros).
    A IA de produção e o Supabase ficam bloqueados (Fetch.failRequest).
 
-   Uso: node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
+   ARVORE=1: os dois lutadores sobem pro nível 30 com a árvore montada, a aba A salva o último nó
+   do boxe pela tela (a carta nova chegando, a aba Deck) e os dois lutam com deck de cartas da árvore
+   (fotos extras `arvore-*` e `A-3d-*`).
+
+   Uso: [ARVORE=1] node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
 import { spawn } from "node:child_process"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { fileURLToPath } from "node:url";
+import * as ARV from "../api/_jxj-arvores.js"; import * as CARTAS from "../api/_jxj-cartas.js";
+const ARVORE = process.env.ARVORE === "1";
+/* build de nível 30: cada ramo do estilo em 3,3,3,1 (10 pontos); `segura` é o nó que fica de fora */
+function buildArvore(estilo, segura) {
+  const b = {};
+  for (const r of Object.values(ARV.RAMOS)) if (r.estilo === estilo) r.nos.forEach((no, i) => { if (no.id !== segura) b[no.id] = i < 3 ? 3 : 1; });
+  const v = ARV.validarBuild(estilo, b, 30); if (!v.ok) throw new Error("build: " + v.erro);
+  return b;
+}
+/* deck: as fixas do estilo e 8 cartas da árvore (raras antes), sem passar das cópias; vale pelo validarDeck */
+function deckArvore(estilo, build) {
+  const lib = CARTAS.cartasLiberadas(estilo, build), deck = [...CARTAS.FIXAS[estilo]];
+  const ordem = ["lendaria", "epica", "rara"];
+  const nova = lib.filter((id) => CARTAS.CARTAS[id].no).sort((a, b) => ordem.indexOf(CARTAS.CARTAS[a].raridade) - ordem.indexOf(CARTAS.CARTAS[b].raridade));
+  const cont = (id) => deck.filter((x) => x === id).length;
+  /* a categoria que falta e as 2 defesas entram primeiro (comuns); o resto é da árvore */
+  const cat = (c) => deck.filter((x) => CARTAS.CARTAS[x].categoria === c).length;
+  for (const [c, id] of [["queda", "queda"], ["pressao", "clinch"], ["golpes", "jab"]]) if (!cat(c) && !deck.includes(id)) deck.push(id);
+  while (cat("defesa") < 2) deck.push("bloqueio");
+  for (const id of nova) { if (deck.length >= 12) break; if (cont(id) < CARTAS.copiasDe(id) && !deck.includes(id)) deck.push(id); }
+  for (const id of ["bloqueio", "jab", "cruzado", "antiqueda", "queda", "clinch"]) { if (deck.length >= 12) break; if (cont(id) < CARTAS.copiasDe(id)) deck.push(id); }
+  const v = CARTAS.validarDeck(estilo, deck, lib); if (!v.ok) throw new Error("deck: " + v.erro + " " + deck.join());
+  return deck;
+}
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), PORTA = Number(process.env.PORTA || 8793), BASE = `http://127.0.0.1:${PORTA}/`;
 const OUT = path.resolve(process.argv[2] || "online-v2"); fs.mkdirSync(OUT, { recursive: true });
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -65,25 +93,49 @@ try {
   const ua = (await post("teste/usuario", { pro: true })).id, ub = (await post("teste/usuario", { pro: true })).id;
   await post("teste/sql", { sql: "update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", params: [JSON.stringify({ contas: [ua, ub] })] });
   C = await chrome();
-  const inicio = `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("luta:3d","1");`;
+  const inicio = (ARVORE ? `window.ARVORE_NOMES=${JSON.stringify(["overhand", "chute rodado", "superman", "suplex", "martelada", "bodylock", "queda no contragolpe", "passagem de joelho", "contragolpe"])};` : `window.ARVORE_NOMES=[];`) + `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("luta:3d","1");`;
   const bloquear = ["*supabase.co*", "*octogono.fun/api*", "*draft-ufc.vercel.app*", "*vercel*"];
   A = await C.aba({ width: 1360, height: 860 }, { bloquear, inicio });
   B = await C.aba({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, { bloquear, inicio });
   /* cada aba entra como uma conta de teste (token "tok:<id>" do servidor local) e cria o lutador */
-  const entrar = async (p, uid, nome, estilo) => {
+  const entrar = async (p, uid, nome, estilo, fila = true) => {
     await p.ir(BASE + "#/menu");
-    return p.avaliar(async (uid, nome, estilo) => {
+    return p.avaliar(async (uid, nome, estilo, fila) => {
       meuAccessToken = async () => "tok:" + uid;
       sessaoAtual = async () => { USUARIO_ID = uid; return { user: { id: uid, email: uid.slice(0, 6) + "@teste" }, access_token: "tok:" + uid }; };
       atualizarStatusPro = async () => { meuPro = true; }; if (typeof reconferirPro === "function") reconferirPro = async () => true; meuPro = true;
       await jxj("criar", { nome, estilo, categoria: "lightweight", rosto: { ...cfgPadrao(), cabelo: 2, barba: 3, entrada: 1 } });
       const l = (await jxj("estado")).lutadores[0];
-      await jxj("filaEntrar", { lutadorId: l.id });
+      if (fila) await jxj("filaEntrar", { lutadorId: l.id });
       return l.id;
-    }, uid, nome, estilo);
+    }, uid, nome, estilo, fila);
   };
-  await entrar(A, ua, "Kayo Brasa", "striker");
-  await entrar(B, ub, "Davi Rocha", "wrestler");
+  if (!ARVORE) { await entrar(A, ua, "Kayo Brasa", "striker"); await entrar(B, ub, "Davi Rocha", "wrestler"); }
+  else {
+    const la = await entrar(A, ua, "Kayo Brasa", "striker", false), lb = await entrar(B, ub, "Davi Rocha", "wrestler", false);
+    const noCarta = ARV.RAMOS.boxe.nos[3].id, bA = buildArvore("striker", noCarta), bB = buildArvore("wrestler");
+    for (const [id, b] of [[la, bA], [lb, bB]]) await post("teste/sql", { sql: "update jxj_lutadores set nivel = 30, build = $1::jsonb where id = $2", params: [JSON.stringify(b), id] });
+    /* a aba A abre a árvore, soma o último nó do boxe e salva: a carta chega */
+    await A.ir(BASE + "#/menu"); await A.avaliar((h) => { location.hash = h; }, `#/jxj/lutador/${la}/arvore`); await esperar(2500);
+    const clicou = await A.avaliar(async (nome) => {
+      const w = (ms) => new Promise((r) => setTimeout(r, ms)), bt = (t) => [...document.querySelectorAll("button")].find((b) => b.textContent.includes(t) && !b.disabled);
+      const no = [...document.querySelectorAll(".jxj-no")].find((b) => b.textContent.includes(nome)); if (!no) return "sem nó";
+      no.click(); await w(400); const mais = bt("Somar 1 nível"); if (!mais) return "sem botão somar"; mais.click(); await w(400);
+      const sv = bt("Salvar árvore"); if (!sv) return "sem botão salvar"; sv.click(); await w(1500); return "ok";
+    }, ARV.NOS[noCarta].nome);
+    log.push("árvore: " + clicou);
+    const chegou = await A.avaliar(() => { const c = document.querySelector(".carta-chegou"); return c ? c.innerText.replace(/\s+/g, " ").slice(0, 120) : ""; });
+    log.push("camada da carta nova: " + (chegou || "NÃO APARECEU"));
+    await esperar(1200); await A.foto("arvore-1-carta-chegando.png");
+    await A.avaliar(() => { const v = [...document.querySelectorAll(".carta-chegou button")].find((b) => b.textContent.includes("Ver no deck")); v && v.click(); }); await esperar(1500);
+    await A.foto("arvore-2-aba-deck.png");
+    const bFinal = { ...bA, [noCarta]: 1 };
+    const dA = deckArvore("striker", bFinal), dB = deckArvore("wrestler", bB);
+    log.push("deck A: " + dA.join(",")); log.push("deck B: " + dB.join(","));
+    await A.avaliar(async (lid, d) => jxj("deck", { lutadorId: lid, deck: d }), la, dA);
+    await B.avaliar(async (lid, d) => jxj("deck", { lutadorId: lid, deck: d }), lb, dB);
+    await A.avaliar(async (lid) => jxj("filaEntrar", { lutadorId: lid }), la); await B.avaliar(async (lid) => jxj("filaEntrar", { lutadorId: lid }), lb);
+  }
   const par = await A.avaliar(async () => jxj("fila"));
   const lid = par && par.luta && par.luta.id;
   if (!lid) throw new Error("o par não se formou: " + JSON.stringify(par).slice(0, 200));
@@ -92,7 +144,7 @@ try {
   for (const p of [A, B]) await p.avaliar((h) => { location.hash = h; }, "#/jxj/luta/" + lid);
   await esperar(5000);
   const viu = { v2: 0, linha: 0, velDano: 0, deck: false, telaCheia: 0, vidaDesceu: false, chao: false };
-  const jogadas = { A: 0, B: 0 }, fim = { A: false, B: false };
+  const n3d = {}, ult3d = {}, jogadas = { A: 0, B: 0 }, fim = { A: false, B: false };
   const t0 = Date.now();
   while (Date.now() - t0 < 600000 && !(fim.A && fim.B)) {
     for (const [nome, p] of [["A", A], ["B", B]]) {
@@ -109,6 +161,11 @@ try {
       });
       if (st.res) { fim[nome] = true; await p.foto(`${nome}-resultado.png`); log.push(`${nome}: resultado`); continue; }
       if (st.fimCena) { await esperar(700); await p.foto(`${nome}-cena-fim.png`); await p.avaliar(() => { const x = document.querySelector(".jxj-fim-seguir"); x && x.click(); }); await esperar(1500); continue; }
+      if (ARVORE && st.assist && !ult3d[nome] && (n3d[nome] || 0) < 5) { /* o 3D começou a trocar: 5 fotos seguidas, a cada 0,7 s */
+        ult3d[nome] = true; n3d[nome] = (n3d[nome] || 0) + 1;
+        for (let k = 1; k <= 5; k++) { await esperar(700); await p.foto(`${nome}-3d-r${n3d[nome]}-${k}.png`); }
+      }
+      if (!st.assist) ult3d[nome] = false;
       if (st.v2) viu.v2++;
       if (st.cheia) viu.telaCheia++;
       if (st.velDano) viu.velDano++;
@@ -125,7 +182,7 @@ try {
           await p.foto(`${nome}-deck-dele.png`);
           await p.avaliar(() => { const b = document.querySelector(".v2-btn-deck"); b && b.click(); });
         }
-        await p.avaliar((k) => { const bs = [...document.querySelectorAll(".jxj-postura:not([disabled]), .jxj-acao:not([disabled])")]; if (bs.length) bs[k % bs.length].click(); }, jogadas[nome]++);
+        await p.avaliar((k, arv) => { const bs = [...document.querySelectorAll(".jxj-postura:not([disabled]), .jxj-acao:not([disabled])")]; const nova = ARVORE_NOMES.length ? bs.filter((b) => ARVORE_NOMES.some((n) => b.textContent.toLowerCase().includes(n))) : []; const l = nova.length ? nova : bs; if (l.length) l[k % l.length].click(); }, jogadas[nome]++);
       }
     }
     await esperar(600);

@@ -1,8 +1,9 @@
 # Combate v2 do Online
 
-Status: Fases 1, 3 e 4 (motor, servidor atrás da flag, árvore), no branch
-`combate-v2`. A tela ainda não usa; o jogo no ar segue com o motor v5
-(`api/_jxj-motor.js`). Decisões: `docs/combat-v2-decisions.md`.
+Status (2026-11-17): motor, servidor atrás da flag, árvore com cartas, tela
+em cartas, 3D e bots, na branch `cartas-integracao`. O jogo no ar segue com
+o motor v5 (`api/_jxj-motor.js`) até o dono ligar a flag. Decisões:
+`docs/combat-v2-decisions.md`.
 
 ## Arquivos
 
@@ -19,7 +20,7 @@ Status: Fases 1, 3 e 4 (motor, servidor atrás da flag, árvore), no branch
 como hoje. Vida = 12 + (queixo − 50) × 0,2. Energia máxima = 10 +
 (cardio − 50) / 10.
 
-**Deck.** 12 cartas, no máximo 2 cópias de cada. 4 são fixas do estilo; as
+**Deck.** 12 cartas, no máximo 2 cópias de cada (`copiasDe`: 1 para épica, lendária, carta de chão da árvore e finalização da árvore). 4 são fixas do estilo; as
 outras 8 o jogador escolhe entre as liberadas. Pelo menos 2 cartas de
 defesa e pelo menos 1 de cada categoria (golpe, queda, defesa, pressão).
 O servidor valida (`validarDeck`). O adversário vê o deck antes da luta,
@@ -124,7 +125,7 @@ Valor de cada nó = vitória com o nó no nível 3 e a carta no deck padrão (no
 | eficiencia_golpes | Overhand | lendária | em pé | 2 | 4 | 3 | +2.9 | 49.3% |
 | chute_baixo | Chute na perna | rara | em pé | 4 | 0.5 | 2 | +6.0 | 56.0% |
 | chute_corpo | Chute no corpo | rara | em pé | 3 | 3 | 2 | +5.7 | 54.0% |
-| controle_distancia | Chute frontal | épica | em pé | 4 | 1 | 1 | +2.7 | 55.1% |
+| controle_distancia | Chute frontal | épica | em pé | 4 | 1 | 0 | +2.7 | 55.1% |
 | variedade | Chute rodado | lendária | em pé | 1 | 5 | 3 | +5.7 | 55.3% |
 | controle_ritmo | Passo lateral | rara | em pé | 5 | 0 | 0 | -3.9 | 40.7% |
 | combinacoes_pressao | Joelhada no clinch | rara | em pé | 3 | 1 | 2 | +2.9 | 52.1% |
@@ -133,18 +134,18 @@ Valor de cada nó = vitória com o nó no nível 3 e a carta no deck padrão (no
 | entradas | Single leg | rara | em pé | 3 | 1 | 1 | +2.8 | 56.8% |
 | correntes | Double leg | rara | em pé | 3 | 2 | 3 | +2.9 | 57.8% |
 | timing_queda | Queda no contragolpe | épica | em pé | 3 | 1.5 | 2 | +3.9 | 58.8% |
-| eficiencia_tentativas | Suplex | lendária | em pé | 3 | 3 | 2 | +2.3 | 57.5% |
+| eficiencia_tentativas | Suplex | lendária | em pé | 3 | 2 | 3 | +2.3 | 57.5% |
 | controle_posicional | Peso do ombro | rara | por cima | 4 | 0 | 0 | -0.3 | 73.3% |
-| dominio | Cotovelada por cima | rara | por cima | 3 | 0.5 | 2 | +9.6 | 77.5% |
+| dominio | Cotovelada por cima | rara | por cima | 2 | 0 | 3 | +9.6 | 77.5% |
 | transicoes_controle | Passagem de joelho | épica | por cima | 4 | 0 | 1 | +0.7 | 70.0% |
 | pressao_solo | Martelada | lendária | por cima | 3 | 1.5 | 3 | +9.5 | 77.4% |
 | equilibrio | Sprawl | rara | em pé | 4 | 0 | 0 | -2.1 | 45.1% |
 | recuperacao_posicao | Levantada técnica | rara | por baixo | 5 | 0 | 0 | +0.1 | 29.4% |
 | defesa_entradas | Contra-queda | épica | em pé | 4 | 0 | 0 | -1.7 | 44.3% |
 | retorno_distancia | Bodylock | lendária | em pé | 3 | 0 | 1 | +4.0 | 48.0% |
-| eficiencia_sub | Kimura | rara | por cima | 3 | 0 | 2 | +0.6 | 92.0% |
+| eficiencia_sub | Kimura | rara | por cima | 3 | 0 | 3 | +0.6 | 92.0% |
 | transicoes_sub | Rasteira | rara | em pé | 3 | 1 | 0 | -3.5 | 44.6% |
-| oportunidades | Triângulo | épica | por baixo | 1 | 0 | 3 | +3.4 | 67.8% |
+| oportunidades | Triângulo | épica | por baixo | 1 | 0 | 4 | +3.4 | 67.8% |
 | especializacao | Mata-leão | lendária | em pé | 4 | 0 | 3 | +4.8 | 60.0% |
 | controle_chao | Cem quilos | rara | por cima | 4 | 0 | 0 | -0.8 | 79.5% |
 | passagens | Passagem de guarda | rara | por cima | 4 | 0 | 1 | +0.6 | 77.1% |
@@ -167,6 +168,10 @@ Valor de cada nó = vitória com o nó no nível 3 e a carta no deck padrão (no
 | eficiencia_counter | Uppercut | épica | em pé | 3 | 3 | 2 | +3.7 | 55.0% |
 | aproveitamento | Golpe de misericórdia | lendária | em pé | 4 | 1 | 3 | +5.4 | 58.1% |
 
+Vel, Dano e Custo são os de `api/_jxj-cartas.js` (conferidos linha a linha em 2026-11-17). As colunas "Nó em pontos" e "Luta" são da rodada 4; as rodadas 5 e 6 mexeram em Chute frontal, Suplex, Cotovelada por cima, Kimura e Triângulo, e o relatório final está em `docs/combat-v2-decisions.md` (decisões 80 a 91).
+
+**Casa.** Onde a carta joga como ela mesma (em pé, por cima, por baixo). Fora da casa ela joga como a básica da categoria ali (`BASICA_PE` em pé, `CHAO` no chão). **Estrelas:** o nível do nó (1 a 3); a estrela 3 de cada carta tem efeito próprio (`estrela3`). **Cópias no deck** (`copiasDe`): comum e rara 2, épica e lendária 1; carta da árvore de chão (casa por cima ou por baixo) e finalização da árvore (inclusive a de pé, Mata-leão): 1, qualquer que seja a raridade (decisão 90).
+
 Calibragem em 3 tentativas e o que ficou fora dos portões: decisões 85 a 88 em `docs/combat-v2-decisions.md`.
 
 ### Resultado das simulações finais (2026-11-16)
@@ -181,7 +186,7 @@ Calibragem em 3 tentativas e o que ficou fora dos portões: decisões 85 a 88 em
 
 Com a flag valendo pra conta do jogador, a luta contra bot é do combate
 novo (`api/_jxj-bot2.js`). O bot é o mesmo da tela (nome, estilo, build e
-jeito pela semente), com o deck padrão do estilo. Ele joga cego: enxerga o
+jeito pela semente), com o deck da faixa de nível dele (`deckDoBot2`, cartas da árvore; achado pela busca de deck). Ele joga cego: enxerga o
 estado com a mão do jogador escondida (só quantas cartas), as trocas já
 resolvidas e a semente; a carta do jogador na troca nunca entra. A postura
 dele sai da semente. A habilidade (pelo rating do jogador, como antes)
