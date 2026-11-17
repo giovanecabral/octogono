@@ -22,3 +22,5 @@ node_modules/
 # luta em 3D: as animações vêm do Mixamo (Adobe) e não podem ser redistribuídas
 # como arquivo. Ficam só na pasta local e sobem no deploy (vercel --prod).
 luta3d/mx_lutas.glb
+# clipes das cartas (Mixamo, gerado por ferramentas/converter-mixamo.mjs): mesma licença, fora do git
+luta3d/mx_cartas.glb
