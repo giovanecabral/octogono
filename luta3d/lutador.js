@@ -17,17 +17,9 @@ const CADEIA = { hand_l: ["upperarm_l", "lowerarm_l", "hand_l"], hand_r: ["upper
 const suaveK = (k) => k * k * (3 - 2 * k);
 
 /* ---------- carga única ---------- */
-export async function carregarBase(dir = "./", abrir = null) {
-  const L = new GLTFLoader();
-  const ler = abrir ? (f) => abrir(L, f) : (f) => L.loadAsync(dir + f);
-  const arq = ["lutador.glb", "mx_lutas.glb", "hair_buzzed.glb", "hair_beard.glb", "hair_simpleparted.glb"];
-  const [corpo, anim, ...cabelos] = await Promise.all(arq.map(ler));
-  // espaço do pai da pelve (osso "root") no modelo em repouso
-  corpo.scene.updateMatrixWorld(true);
-  const pelve = corpo.scene.getObjectByName("pelvis");
-  const M = pelve.parent.matrixWorld.clone(), Mi = M.clone().invert();
-  const clips = {}, curvas = {};
-  for (const c of anim.animations) {
+/* clipes do Mixamo no formato do jogo: o deslocamento do quadril vira curva (root motion) e o osso fica no lugar */
+function juntarClipes(animacoes, M, Mi, clips, curvas) {
+  for (const c of animacoes) {
     const t = c.tracks.find((k) => k.name === "pelvis.position");
     const tracks = c.tracks.filter((k) => k !== t).map((k) => k.clone());
     const n = t.times.length, xs = new Float32Array(n), zs = new Float32Array(n);
@@ -44,12 +36,40 @@ export async function carregarBase(dir = "./", abrir = null) {
     clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
     curvas[c.name] = { tempos: t.times, xs, zs };
   }
+}
+/* Os clipes das cartas (mx_cartas.glb, fora do git como o mx_lutas.glb) chegam depois que a luta abre.
+   Se o arquivo faltar ou vier quebrado, nada muda: a luta usa o lance de reserva (lances-cartas.js,
+   clipeDoLance). Devolve quantos clipes entraram; nunca lança. */
+export async function carregarCartas(base, dir = "./", abrir = null) {
+  try {
+    const L = new GLTFLoader();
+    const anim = abrir ? await abrir(L, "mx_cartas.glb") : await L.loadAsync(dir + "mx_cartas.glb");
+    if (!anim || !Array.isArray(anim.animations)) return 0;
+    const M = base.matrizPai, Mi = M.clone().invert();
+    const clips = {}, curvas = {};
+    juntarClipes(anim.animations, M, Mi, clips, curvas);
+    Object.assign(base.clips, clips); Object.assign(base.curvas, curvas);
+    return Object.keys(clips).length;
+  } catch (e) { return 0; }
+}
+
+export async function carregarBase(dir = "./", abrir = null) {
+  const L = new GLTFLoader();
+  const ler = abrir ? (f) => abrir(L, f) : (f) => L.loadAsync(dir + f);
+  const arq = ["lutador.glb", "mx_lutas.glb", "hair_buzzed.glb", "hair_beard.glb", "hair_simpleparted.glb"];
+  const [corpo, anim, ...cabelos] = await Promise.all(arq.map(ler));
+  // espaço do pai da pelve (osso "root") no modelo em repouso
+  corpo.scene.updateMatrixWorld(true);
+  const pelve = corpo.scene.getObjectByName("pelvis");
+  const M = pelve.parent.matrixWorld.clone(), Mi = M.clone().invert();
+  const clips = {}, curvas = {};
+  juntarClipes(anim.animations, M, Mi, clips, curvas);
   // peças de cabelo e barba no espaço do osso da cabeça (aparencia.js) e o corpo em repouso (pra pintar a pele)
   const malhaDe = (gltf) => { let m = null; gltf.scene.traverse((o) => { if (o.isSkinnedMesh && !m) m = o; }); return m; };
   const pecas = { curto: geometriaNaCabeca(malhaDe(cabelos[0])), barba: geometriaNaCabeca(malhaDe(cabelos[1])), repartido: geometriaNaCabeca(malhaDe(cabelos[2])) };
   let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Superhero_Male") corpoPele = o; });
   const { info, orelha } = infoDoCorpo(corpoPele);
-  return { corpo, clips, curvas, pecas, info, orelha };
+  return { corpo, clips, curvas, pecas, info, orelha, matrizPai: M };
 }
 function amostrar(cv, t) {
   const T = cv.tempos, n = T.length;

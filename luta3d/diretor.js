@@ -6,7 +6,8 @@
 // esqueleto do corpo; o arquivo delas (mx_lutas.glb) não vai pro GitHub.
 import * as THREE from "./vendor/three.module.js";
 import { Palco } from "./palco.js";
-import { carregarBase, Lutador } from "./lutador.js";
+import { carregarBase, carregarCartas, Lutador } from "./lutador.js";
+import { clipeDoLance, LANCES_CARTAS, GOLPES_MX } from "./lances-cartas.js";
 import { modeloCinturao } from "./aparencia.js";
 
 /* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
@@ -22,6 +23,8 @@ raiz.append(elPalco, elVin, elFlash, elCham);
 const palco = new Palco(elPalco);
 if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
+/* clipes das cartas: chegam depois que a luta abre; sem o arquivo, o lance de reserva (lances-cartas.js) */
+const cartasProntas = carregarCartas(base, dir);
 /* guarda de luta: o gingado de boxe (pacote 2 do Mixamo, mais vivo que a guarda parada de antes) */
 const GUARDA = "Guarda_Gingando";
 const A = new Lutador(base, op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" });
@@ -174,6 +177,17 @@ const GOLPES = {
   chuteCabeca:  { clip: "Mma_Kick",       imp: 0.71, dist: 1.30, alvo: "cabeca", reacao: "Big_Hit_To_Head",    forca: 1.7, membro: "ball_r", nome: "chute alto" },
   chuteCorpo:   { clip: "Roundhouse_Kick",imp: 0.92, dist: 1.66, alvo: "corpo",  reacao: "Rib_Hit",            forca: 1.3, membro: "ball_r", nome: "chute no corpo" },
 };
+/* golpes dos clipes novos das cartas (mx_cartas.glb): imp e dist medidos em lances-cartas.js. Só valem
+   com o clipe carregado (golpeDaCarta); sem ele o lance de reserva (GOLPES de cima) segue valendo. */
+const REACAO_MX = { cabeca: "Reacao_Cabeca_Dir", corpo: "Reacao_Corpo", perna: "Reacao_Lado" };
+for (const [id, g] of Object.entries(GOLPES_MX))
+  GOLPES["mx_" + id] = { clip: id, imp: g.imp, dist: g.dist, alvo: g.alvo, reacao: REACAO_MX[g.alvo], forca: g.membro.startsWith("ball") ? 1.4 : 1.1, membro: g.membro, nome: id.replace(/_/g, " "), ik: g.ik };
+/* o golpe do lance de uma carta: o clipe novo se já chegou, senão o golpe de reserva (nome do GOLPES) */
+function golpeDaCarta(carta, reserva) {
+  const l = carta && LANCES_CARTAS[carta];
+  if (l && l.mx && GOLPES["mx_" + carta] && clipeDoLance(l, base.clips) === l.mx.clipe) return "mx_" + carta;
+  return reserva || (l && l.golpe) || null;
+}
 /* em que instante da reação o golpe "chega" (medido na velocidade da cabeça do clipe) */
 const REACAO_DE = { Reacao_Cabeca_Esq: 0.06, Reacao_Cabeca_Dir: 0.1, Reacao_Corpo: 0.13, Reacao_Lado: 0.16 };
 /* onde o golpe encosta: rosto (um pouco à frente da cabeça) ou costela */
@@ -206,7 +220,8 @@ async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarR
   const esquiva = bloqueio && g.alvo === "cabeca" && Math.random() < 0.5;
   const ondeEstava = def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(pelve(atk).sub(pelve(def)).normalize(), 0.1);
   atk.umaVez(g.clip, { fade: 0.14, volta: 0.35 });
-  atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo), g.imp);
+  /* joelho e cotovelo (ik: false) não estão na cadeia do IK: o golpe encosta pelo clipe, com a distância medida */
+  if (g.ik !== false) atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo), g.imp);
   if (g.antes && !bloqueio) atk.contato(g.antes.membro, alvoDe(atk, def, "cabeca"), g.antes.imp);
   let t = 0;
   if (g.antes && !bloqueio) { await esperar(g.antes.imp - 0.02); t = g.antes.imp - 0.02; acertar(atk, def, g.antes.membro, 0.6, "cabeca"); def.umaVez("Light_Hit_To_Head", { fade: 0.06, volta: 0.25, peso: 0.7 }); }
@@ -358,13 +373,13 @@ function ctrlCima(top, bot, baixo) {
     let pitch = MONTADA.tronco + 0.03 * Math.sin(st.t * 2.1) - 0.55 * st.recuo, twist = 0;
     const maos = { l: null, r: null };
     for (const s of st.socos.slice()) {
-      const k = top.relogio - s.t0, sg = s.lado === "r" ? 1 : -1;
+      const k = (top.relogio - s.t0) * (s.martelo ? 0.5 : 1), sg = s.lado === "r" ? 1 : -1;   // martelada: o golpe leva mais tempo
       if (k < 0) continue;
       // o quadro pode pular a janela do impacto (3x ou celular lento): o golpe conta assim que passa do instante
       if (k >= 0.13 && !s.desceu) { s.desceu = true; s.aoDescer(); }
       if (k >= 0.23 && !s.bateu) { s.bateu = true; s.aoBater(); }
       let w, de, para;
-      if (k < 0.13) { w = suave(k / 0.13); twist -= 0.18 * sg * w; pitch -= 0.04 * w; de = "guarda"; para = "carrega"; }
+      if (k < 0.13) { w = suave(k / 0.13); twist -= 0.18 * sg * w; pitch -= (s.martelo ? 0.32 : 0.04) * w; de = "guarda"; para = "carrega"; }
       else if (k < 0.23) {
         w = suave((k - 0.13) / 0.1); twist += sg * (-0.18 + 0.52 * w); pitch += -0.04 + 0.42 * w; de = "carrega"; para = "alvo";
       } else if (k < 0.29) {
@@ -394,12 +409,14 @@ function ctrlCima(top, bot, baixo) {
       guarda: (l) => queixo.clone().addScaledVector(frente, 0.012 * Math.sin(st.t * 1.7 + vai(l))).addScaledVector(esq, MONTADA.abre * sl(l))
         .addScaledVector(cima, 0.014 * Math.sin(st.t * 2.3 + vai(l))),
       // o soco arma perto do ombro (puxa o cotovelo pra trás), não em cima da cabeça
-      carrega: (l) => P.guarda(l).addScaledVector(frente, -0.08).addScaledVector(esq, 0.05 * sl(l)).addScaledVector(cima, -0.02),
+      carrega: (l, s) => s && s.martelo ? queixo.clone().addScaledVector(cima, 0.6).addScaledVector(frente, -0.1).addScaledVector(esq, 0.07 * sl(l))
+        : P.guarda(l).addScaledVector(frente, -0.08).addScaledVector(esq, 0.05 * sl(l)).addScaledVector(cima, -0.02),
       alvo: (l, s) => s.alvo(),
     };
     const POLO = {
       guarda: (l) => P.guarda(l).addScaledVector(cima, -0.55).addScaledVector(frente, 0.02).addScaledVector(esq, 0.06 * sl(l)),
-      carrega: (l) => ombro(l).addScaledVector(cima, -0.3).addScaledVector(frente, -0.25).addScaledVector(esq, 0.22 * sl(l)),
+      carrega: (l, s) => s && s.martelo ? ombro(l).addScaledVector(cima, 0.1).addScaledVector(frente, -0.2).addScaledVector(esq, 0.3 * sl(l))
+        : ombro(l).addScaledVector(cima, -0.3).addScaledVector(frente, -0.25).addScaledVector(esq, 0.22 * sl(l)),
       alvo: (l) => ombro(l).addScaledVector(esq, 0.35 * sl(l)).addScaledVector(frente, -0.12).addScaledVector(cima, -0.1),
     };
     for (const l of ["l", "r"]) {
@@ -409,7 +426,7 @@ function ctrlCima(top, bot, baixo) {
         alvo = P[m.de](l, m.s).lerp(P[m.para](l, m.s), m.w);
         // o punho faz um arco por cima (não atravessa o próprio corpo)
         if (m.de !== m.para) alvo.addScaledVector(cima, 0.07 * Math.sin(Math.PI * m.w));
-        polo = POLO[m.de](l).lerp(POLO[m.para](l), m.w);
+        polo = POLO[m.de](l, m.s).lerp(POLO[m.para](l, m.s), m.w);
       } else {
         alvo = P.guarda(l); polo = POLO.guarda(l);
         if (maos[l === "l" ? "r" : "l"]) alvo.addScaledVector(frente, -0.035);   // a outra mão cola no rosto enquanto esta soca
@@ -429,9 +446,9 @@ function ctrlCima(top, bot, baixo) {
   return {
     st,
     /* rosto: passa pela guarda e acerta; senão bate no antebraço */
-    soco(lado, atraso = 0, forca = 1, rosto = Math.random() < 0.6) {
-      return new Promise((ok) => st.socos.push({ lado, t0: top.relogio + atraso, fim: ok,
-        alvo: () => (rosto ? bot.posMundo("Head").add(V3(0, 0.11, 0)) : baixo.maoPerto(top.posMundo("hand_" + lado))[1].add(V3(0, 0.05, 0))),
+    soco(lado, atraso = 0, forca = 1, rosto = Math.random() < 0.6, martelo = false) {
+      return new Promise((ok) => st.socos.push({ lado, martelo, t0: top.relogio + atraso, fim: ok,
+        alvo: () => (rosto ? bot.posMundo("Head").add(V3(0, 0.11, 0)).addScaledVector(esq0(top), martelo ? 0.05 * (lado === "r" ? 1 : -1) : 0) : baixo.maoPerto(top.posMundo("hand_" + lado))[1].add(V3(0, 0.05, 0))),
         aoDescer: () => { if (rosto) baixo.abrirGuarda(top.posMundo("hand_" + lado)); },
         aoBater: () => {
           const mao = top.posMundo("hand_" + lado), dir = bot.posMundo("Head").sub(mao).normalize();
@@ -447,7 +464,7 @@ function ctrlCima(top, bot, baixo) {
   };
 }
 
-async function queda(atk, def, { soco = true } = {}) {
+async function queda(atk, def, { soco = true, antes = null } = {}) {
   cam.modo = "tv";
   await ajustarDist(1.2, 0.45);
   travado = true;
@@ -457,14 +474,20 @@ async function queda(atk, def, { soco = true } = {}) {
   narrar(`${nomeDe(atk)} entra nas pernas...`);
   atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 2.6 });
   def.umaVez("Double_Leg_Takedown___Victim", { fade: 0.12, segurar: true });
+  const limpaAntes = antes ? antes(atk, def) : null;   // lance programado: o que se vê enquanto ele entra
   await esperar(1.15);
+  if (limpaAntes) limpaAntes();
   chamada("QUEDA!"); som("queda", 0.9); som("sobe", 0.5);
   narrar(`Queda de ${nomeDe(atk)}. Levou pro chão.`, true);
   palco.tremor = Math.max(palco.tremor, 0.04); efeitoGolpe(1.0, def);
   cam.chaoEixo = V3(-u.z, 0, u.x); cam.modo = "chao";
   await esperar(0.7);
+  await montarPor(atk, def, soco);
+}
+/* quem derrubou (ou raspou) fica por cima: quem caiu assenta de costas e quem está por cima monta */
+async function montarPor(atk, def, soco) {
   // quem caiu assenta de costas (pose mais parecida do Laying_Idle, sem salto)
-  def.umaVez("Laying_Idle", { casar: [0, 8], fade: 0.6, segurar: true, mover: false });
+  if (def.nomeEstado !== "Laying_Idle") def.umaVez("Laying_Idle", { casar: [0, 8], fade: 0.6, segurar: true, mover: false });   // já deitado (raspagem): não reinicia o clipe
   await esperar(0.6);
   // quem derrubou monta: o quadril vai pra cima da barriga de quem está embaixo, de frente pra cabeça dele
   const long = horiz(def.posMundo("Head").sub(def.posMundo("pelvis")));
@@ -613,7 +636,7 @@ async function separar({ narra = true } = {}) {
    (deitado de costas e ajoelhado), como a montada. Em todas, um corte de câmera leva pra
    posição já encaixada; quem está preso aperta, tenta sair e bate. */
 const VO = new THREE.Vector3(-0.11, 0, 2.54);
-const NOME_FIN = { mataLeao: "MATA-LEÃO!", chave: "CHAVE DE BRAÇO!", triangulo: "TRIÂNGULO!", guilhotina: "GUILHOTINA!" };
+const NOME_FIN = { mataLeao: "MATA-LEÃO!", chave: "CHAVE DE BRAÇO!", kimura: "KIMURA!", triangulo: "TRIÂNGULO!", guilhotina: "GUILHOTINA!" };
 
 /* pose parada de um clipe, aplicada já (sem fade) */
 function poseFixa(L, nome, t = 0) {
@@ -695,6 +718,33 @@ const FIN = {
       debate: () => { V.impacto("spine_01", esq0(V), (Math.random() - 0.5) * 0.3); V.impacto("Head", fr0(V), (Math.random() - 0.5) * 0.4); },
       vencedorDeitado: true, perdedorDeitado: false };
   },
+  /* kimura: quem está por cima ajoelha ao lado do peito, o braço de quem está no chão dobra ao lado da cabeça
+     e as duas mãos dele fecham o punho (figura quatro) e giram o braço pra trás */
+  kimura(S, V) {
+    const c = centroFin(S, V), longV = dirAleatoria();
+    poseFixa(S, "Montada"); poseFixa(V, "Laying_Idle");
+    colocar(V, c, longV, true);
+    const eV = () => eixosDeitado(V);
+    // o lado do braço esquerdo de quem está no chão é o lado de quem ajoelha
+    const sg = V.posMundo("upperarm_l").sub(V.posMundo("upperarm_r")).dot(eV().esq) >= 0 ? 1 : -1;
+    colocar(S, V.posMundo("spine_02").addScaledVector(eV().esq, 0.5 * sg), eV().esq.clone().multiplyScalar(-sg), false);
+    const st = { aperto: 0, tapa: 0, t: 0, curva: 0.7 };
+    S.extras.add((dt) => { st.t += dt; });
+    S.extras.add(curvarAjoelhado(S, st));
+    // o braço preso: cotovelo dobrado, mão ao lado da cabeça; com o aperto, o punho vai sendo puxado pro chão, atrás
+    V.ikFixo.hand_l = { peso: 1, alvo: () => V.posMundo("Head").addScaledVector(eV().esq, sg * (0.22 - 0.06 * st.aperto)).addScaledVector(eV().long, 0.1 + 0.1 * st.aperto).setY(0.1 - 0.02 * st.aperto),
+      polo: () => V.posMundo("upperarm_l").addScaledVector(eV().esq, 0.5 * sg).addScaledVector(eV().long, -0.1) };
+    S.ikFixo.hand_r = { peso: 1, alvo: () => V.posMundo("hand_l").add(V3(0, 0.03, 0)), polo: () => S.posMundo("upperarm_r").add(V3(0, -0.3, 0)).addScaledVector(eV().esq, -0.3 * sg) };
+    S.ikFixo.hand_l = { peso: 1, alvo: () => S.posMundo("hand_r").addScaledVector(eV().long, -0.07).add(V3(0, 0.01, 0)), polo: () => S.posMundo("upperarm_l").add(V3(0, -0.3, 0)).addScaledVector(eV().long, -0.3) };
+    // a outra mão dele bate no chão
+    V.ikFixo.hand_r = { peso: 1, alvo: () => {
+      const base = V.posMundo("pelvis").addScaledVector(eV().esq, -0.38 * sg).addScaledVector(eV().long, 0.15).setY(0.05);
+      return st.tapa ? base.add(V3(0, 0.07 * Math.max(0, Math.sin(st.t * 15)), 0)) : V.posMundo("spine_03").addScaledVector(eV().esq, -0.2 * sg).add(V3(0, 0.12, 0));
+    }, polo: () => V.posMundo("upperarm_r").addScaledVector(eV().esq, -0.4 * sg) };
+    return { st, centro: () => V.posMundo("spine_03").lerp(S.posMundo("pelvis"), 0.45).add(V3(0, 0.1, 0)), lado: () => eV().long.clone().multiplyScalar(0.7).addScaledVector(eV().esq, 0.7 * sg).normalize(), dist: 2.1, alt: 1.45,
+      debate: () => { V.impacto("thigh_l", eV().esq, (Math.random() - 0.5) * 0.5); V.impacto("Head", eV().long, (Math.random() - 0.5) * 0.4); S.impacto("spine_02", eV().esq, (Math.random() - 0.5) * 0.15); },
+      vencedorDeitado: false, perdedorDeitado: true };
+  },
   /* guilhotina: quem está embaixo senta, abraça o pescoço de quem está na guarda e fecha as pernas */
   guilhotina(S, V) {
     const c = centroFin(S, V), longS = dirAleatoria();
@@ -758,7 +808,7 @@ const FIN = {
 /* sorteia qual finalização, pelo lado de quem finaliza (em cima: chave ou mata-leão; embaixo: triângulo ou guilhotina) */
 function tipoDeFinalizacao(atk) {
   const deCima = !montada || montada.atk === atk;
-  return deCima ? sorteia(["chave", "mataLeao"]) : sorteia(["triangulo", "guilhotina"]);
+  return deCima ? sorteia(["chave", "mataLeao", "kimura"]) : sorteia(["triangulo", "guilhotina"]);
 }
 
 async function finalizacao(atk, def, texto, tipo = tipoDeFinalizacao(atk)) {
@@ -994,6 +1044,191 @@ async function quedaDefendida(atk, def) {
   await esperar(0.8);
   await ajustarDist(1.7, 0.6);
 }
+/* ---------- lances programados das cartas (Tarefa 19) ----------
+   Quadros-chave por IK e por pose da raiz, no estilo da MONTADA: cada lance é uma função do PROG
+   (a carta aponta pra ela em `prog`, lances-cartas.js) e termina no mesmo estado que o lance de
+   antes (montada ou em pé, `travado` solto), pra o resto da luta não notar. Sem o lance, cai no case. */
+/* o corpo na pose do clipe, mas com a pelve mandada pra `onde` e o tronco girado: pitch (pra frente)
+   e roll (de lado) em torno da pelve. Serve pra erguer, virar e jogar quem está sendo levantado. */
+function poseRigida(L, onde, yaw, pitch = 0, roll = 0) {
+  L.raiz.rotation.order = "YXZ";
+  L.raiz.rotation.set(pitch, yaw, roll);
+  L.raiz.position.set(0, 0, 0); L.raiz.updateMatrixWorld(true);
+  const p = L.ossos.pelvis.getWorldPosition(V3());
+  L.raiz.position.copy(onde).sub(p);
+  L.raiz.updateMatrixWorld(true);
+}
+/* queda em que quem derruba ergue o outro antes de bater no chão (suplex, bodylock): as duas mãos
+   fecham na cintura dele, o corpo dele sobe e vira (x: pra trás, z: de lado) e desce na batida */
+function levantaEDerruba(altura, tomba, gira, arco) {
+  return (atk, def) => {
+    const st = { t: 0 }, W = () => { const s = Math.min(1, st.t / 1.15); return Math.sin(Math.PI * Math.pow(s, 0.8)); };
+    const cintura = () => def.posMundo("pelvis").add(V3(0, 0.02, 0)).addScaledVector(fr0(def), -0.12);
+    for (const l of ["l", "r"]) {
+      const s = l === "l" ? 1 : -1;
+      def.ossos && (atk.ikFixo["hand_" + l] = { peso: 0, alvo: () => cintura().addScaledVector(esq0(def), 0.13 * s), polo: () => atk.posMundo("upperarm_" + l).addScaledVector(esq0(atk), 0.5 * s) });
+    }
+    def.raiz.rotation.order = "YXZ";
+    /* o corpo gira em torno da pelve (não dos pés): a correção sai da posição da raiz a cada quadro */
+    const h = Math.max(0.6, def.posMundo("pelvis").y - def.raiz.position.y), corr = V3();
+    const f = (dt) => {
+      st.t += dt; const w = W();
+      for (const k of Object.values(atk.ikFixo)) if (k) k.peso = Math.min(1, st.t / 0.3);
+      def.raiz.position.sub(corr);
+      def.raiz.rotation.x = tomba * w; def.raiz.rotation.z = gira * w;
+      corr.set(0, h, 0).sub(V3(0, h, 0).applyEuler(def.raiz.rotation)); corr.y += altura * w; corr.addScaledVector(fr0(def), 0.32 * w);   // vem pro peito de quem ergue
+      def.raiz.position.add(corr); def.raiz.updateMatrixWorld(true);
+    };
+    f.corr = corr;
+    const g = () => { const w = W(); for (const [o, p] of [["spine_01", 0.3], ["spine_02", 0.4], ["spine_03", 0.3]]) atk.girarMundo(atk.ossos[o], esq0(atk), arco * p * w); atk.modelo.updateMatrixWorld(true); };
+    def.extras.add(f); atk.extras.add(g);
+    return () => {
+      def.extras.delete(f); atk.extras.delete(g); delete atk.ikFixo.hand_l; delete atk.ikFixo.hand_r;
+      def.raiz.position.sub(corr); def.raiz.rotation.x = 0; def.raiz.rotation.z = 0; def.raiz.rotation.order = "XYZ";
+    };
+  };
+}
+const PROG = {
+  /* raspagem: quem está embaixo faz a ponte, o peso de quem está em cima tomba pro lado e ele vai pro chão,
+     e quem raspou sobe na montada. Sem estar embaixo, é a queda comum. */
+  async raspagem(atk, def) {
+    if (!montada || montada.def !== atk) { if (montada) await separar({ narra: false }); await queda(atk, def, { soco: false }); return; }
+    const { cima, baixo } = montada;
+    baixo.st.livre = false; cima.limpar();
+    const st = { z: 0, m: 0 }, lado = Math.random() < 0.5 ? 1 : -1;
+    def.raiz.rotation.order = "YXZ";
+    const h = Math.max(0.5, def.posMundo("pelvis").y - def.raiz.position.y), corr = V3();
+    const f = () => {   // o corpo tomba em torno da pelve, não dos pés (e a altura da pelve desce quando ele deita)
+      const hh = h * (1 - st.m) + 0.22 * st.m;
+      def.raiz.position.sub(corr); def.raiz.rotation.z = st.z * lado;
+      corr.set(0, hh, 0).sub(V3(0, hh, 0).applyEuler(def.raiz.rotation));
+      def.raiz.position.add(corr); def.raiz.updateMatrixWorld(true);
+    };
+    def.extras.add(f);
+    chamada("RASPAGEM!", { pequena: true }); som("sobe", 0.7);
+    await animar(0.5, (k) => { baixo.st.ponte = 1.1 * Math.sin(Math.PI * Math.min(1, k * 1.1)); cima.st.recuo = 0.6 * suave(k); });
+    som("queda", 0.7); palco.tremor = Math.max(palco.tremor, 0.03);
+    montada = null; cima.parar(); baixo.parar();
+    let la = 0;
+    await animar(0.4, (k) => { st.z = 1.3 * suave(k); const d = 0.3 * suave(k) - la; la += d; def.raiz.position.addScaledVector(esq0(def), -d * lado); });
+    // deitado de lado, ele se ajeita de costas no chão e só então quem raspou sobe
+    def.umaVez("Laying_Idle", { fade: 0.3, segurar: true, mover: false });
+    await animar(0.35, (k) => { st.z = 1.3 * (1 - suave(k)); st.m = suave(k); });
+    def.extras.delete(f); def.raiz.position.sub(corr); def.raiz.rotation.z = 0; def.raiz.rotation.order = "XYZ";
+    await montarPor(atk, def, false);
+  },
+  /* passagem de guarda: as mãos prendem o quadril de baixo, o tronco desce e ele contorna as pernas pro lado */
+  async passagem(atk, def) {
+    if (!montada || montada.atk !== atk) { if (montada) await serieSocos(2); else await esperar(0.6); return; }
+    const { cima, baixo } = montada, lado = Math.random() < 0.5 ? 1 : -1;
+    baixo.st.livre = false; cima.limpar();
+    chamada("PASSOU A GUARDA!", { pequena: true }); som("sobe", 0.6);
+    await animar(0.3, (k) => { cima.st.apoio = suave(k); cima.st.inclina = 0.5 * suave(k); });
+    const p0 = atk.raiz.position.clone(), y0 = atk.raiz.rotation.y, eixo = esq0(def).multiplyScalar(lado);
+    await animar(0.7, (k) => { const w = suave(k); atk.raiz.position.copy(p0).addScaledVector(eixo, 0.36 * w); atk.raiz.rotation.y = y0 + 0.4 * lado * w; baixo.st.ponte = 0.4 * Math.sin(Math.PI * k); });
+    palco.tremor = Math.max(palco.tremor, 0.02); som("pesado", 0.5);
+    await animar(0.35, (k) => { cima.st.apoio = 1 - suave(k); cima.st.inclina = 0.5 * (1 - suave(k)); });
+    baixo.st.ponte = 0; baixo.st.livre = true;
+    await serieSocos(1);
+  },
+  /* martelada: as duas mãos juntas lá no alto, o tronco arqueia e o golpe desce no rosto dele */
+  async martelada(atk, def, ev) {
+    if (!montada) await queda(atk, def, { soco: false });
+    const { cima } = montada;
+    narrar("", true);
+    await Promise.all([cima.soco("r", 0, 1.8, true, true), cima.soco("l", 0, 1.8, true, true)]);
+    await esperar(0.3);
+  },
+  /* superman: o direto sai num salto, com o corpo esticado no ar e as pernas pra trás */
+  async superman(atk, def, ev) {
+    if (montada) await separar({ narra: false });
+    await ajustarDist(2.0, 0.3);
+    const st = { w: 0 }, fr = () => fr0(atk), esq = () => esq0(atk);
+    const f = () => {
+      const w = suave(st.w); if (w < 0.001) return;
+      for (const [o, p] of [["spine_01", 0.3], ["spine_02", 0.4], ["spine_03", 0.3]]) atk.girarMundo(atk.ossos[o], esq(), 0.7 * p * w);
+      atk.modelo.updateMatrixWorld(true);
+    };
+    atk.extras.add(f);
+    for (const l of ["l", "r"]) {
+      const s = l === "l" ? 1 : -1;
+      atk.ikFixo["ball_" + l] = { peso: 0, alvo: () => atk.posMundo("pelvis").addScaledVector(fr(), -0.75 * suave(st.w)).addScaledVector(esq(), 0.12 * s).add(V3(0, -0.28 + 0.1 * s * suave(st.w), 0)), polo: () => atk.posMundo("thigh_" + l).addScaledVector(esq(), 0.5 * s).add(V3(0, 0.3, 0)) };
+    }
+    const peso = () => { for (const k of Object.values(atk.ikFixo)) if (k) k.peso = suave(st.w); };
+    atk.extras.add(peso);
+    const g = golpe(atk, def, golpeDaCarta(ev && ev.carta, "direto") || "direto", { narra: false });
+    const y0 = atk.raiz.position.y;
+    await esperar(0.5);   // chega na distância e só então salta: o soco encosta no alto do salto
+    let ja = 0;
+    await animar(0.72, (k) => {
+      st.w = Math.sin(Math.PI * Math.min(1, k * 1.15)); atk.raiz.position.y = y0 + 0.38 * st.w;
+      const d = 0.3 * suave(k) - ja; ja += d; atk.raiz.position.addScaledVector(fr0(atk), d);   // o salto avança
+    });
+    atk.raiz.position.y = y0; st.w = 0;
+    await g;
+    atk.extras.delete(f); atk.extras.delete(peso); delete atk.ikFixo.ball_l; delete atk.ikFixo.ball_r;
+  },
+  /* bodylock: abraça a cintura, ergue de lado e derruba torcendo */
+  async bodylock(atk, def) {
+    if (montada) await separar({ narra: false });
+    await queda(atk, def, { soco: false, antes: levantaEDerruba(0.22, -0.1, 1.5, -0.15) });
+    await serieSocos(2);
+  },
+  /* suplex: ele ergue quem tem pela cintura, arqueia pra trás e joga por cima */
+  async suplex(atk, def) {
+    if (montada) await separar({ narra: false });
+    await queda(atk, def, { soco: false, antes: levantaEDerruba(0.42, -1.1, 0, -0.5) });
+    await serieSocos(2);
+  },
+  /* single leg: ele pega uma perna só e a ergue (a outra segue no chão) enquanto entra, depois cai igual */
+  async single_leg(atk, def) {
+    if (montada) await separar({ narra: false });
+    await queda(atk, def, { soco: false, antes: (atk, def) => {
+      const st = { t: 0 }, k = { peso: 0, alvo: () => atk.posMundo("hand_l").lerp(atk.posMundo("hand_r"), 0.5).add(V3(0, 0.06, 0)),
+        polo: () => def.posMundo("thigh_r").addScaledVector(esq0(def), -0.5).addScaledVector(fr0(def), 0.2) };
+      def.ikFixo.ball_r = k;
+      const f = (dt) => { st.t += dt; k.peso = st.t < 0.35 ? 0 : st.t < 0.75 ? suave((st.t - 0.35) / 0.4) : Math.max(0, 1 - (st.t - 0.75) / 0.3); };
+      def.extras.add(f);
+      return () => { def.extras.delete(f); delete def.ikFixo.ball_r; };
+    } });
+    await serieSocos(2);
+  },
+  /* sprawl: quem defende joga as pernas pra trás e o quadril desce, o peito cai sobre as costas de quem atirou */
+  async sprawl(atk, def) {
+    await ajustarDist(1.25, 0.4);
+    const st = { w: 0 };
+    const fr = () => fr0(def), esq = () => esq0(def);
+    const pe = (s) => () => def.raiz.position.clone().setY(0.07).addScaledVector(fr(), -0.1 - 0.75 * suave(st.w)).addScaledVector(esq(), 0.2 * s);
+    const f = () => {
+      const w = suave(st.w); if (w < 0.001) return;
+      const pel = def.ossos.pelvis, wp = pel.getWorldPosition(V3());
+      wp.addScaledVector(fr(), -0.2 * w).y -= 0.4 * w; pel.parent.worldToLocal(wp); pel.position.copy(wp);
+      def.modelo.updateMatrixWorld(true);
+      for (const [o, p] of [["spine_01", 0.35], ["spine_02", 0.35], ["spine_03", 0.3]]) def.girarMundo(def.ossos[o], esq(), 0.9 * p * w);
+      def.modelo.updateMatrixWorld(true);
+    };
+    def.extras.add(f);
+    /* quem atirou é achatado pelo peso: o tronco vai pra frente e pra baixo */
+    const aperta = () => { const w = suave(st.w); for (const [o, p] of [["spine_01", 0.3], ["spine_02", 0.4], ["spine_03", 0.3]]) atk.girarMundo(atk.ossos[o], esq0(atk), 0.8 * p * w); atk.modelo.updateMatrixWorld(true); };
+    atk.extras.add(aperta);
+    for (const l of ["l", "r"]) {
+      const s = l === "l" ? 1 : -1;
+      def.ikFixo["ball_" + l] = { peso: 0, alvo: pe(s), polo: () => def.posMundo("thigh_" + l).addScaledVector(esq(), 0.5 * s).add(V3(0, -0.2, 0)) };
+      def.ikFixo["hand_" + l] = { peso: 0, alvo: () => atk.posMundo("spine_03").add(V3(0, 0.05, 0)).addScaledVector(esq(), 0.14 * s), polo: () => def.posMundo("upperarm_" + l).addScaledVector(esq(), 0.5 * s) };
+    }
+    const peso = () => { for (const k of Object.values(def.ikFixo)) if (k) k.peso = suave(st.w); };
+    def.extras.add(peso);
+    atk.umaVez("Double_Leg_Takedown___Attacker", { ate: 1.05, vel: 1.1, fade: 0.12, volta: 0.5, mover: false });
+    await esperar(0.3);
+    await animar(0.25, (k) => { st.w = k; });
+    palco.tremor = Math.max(palco.tremor, 0.02); som("leve", 0.6); atk.impacto("spine_02", esq0(atk), 0.3);
+    await esperar(0.5);
+    await animar(0.4, (k) => { st.w = 1 - k; });
+    def.extras.delete(f); def.extras.delete(peso); atk.extras.delete(aperta); delete def.ikFixo.ball_l; delete def.ikFixo.ball_r; delete def.ikFixo.hand_l; delete def.ikFixo.hand_r;
+    await ajustarDist(1.7, 0.6);
+  },
+};
+
 /* ---------- estudo: fintas enquanto ninguém está num lance ---------- */
 let estudo = 1.5;
 function estudar(dt) {
@@ -1064,6 +1299,8 @@ async function lance(L) {
   const [atk, def] = de(ev.quem);
   ocupadoLance = true;
   try {
+    const prog = PROG[ev.prog || (ev.carta && LANCES_CARTAS[ev.carta] && LANCES_CARTAS[ev.carta].prog)];
+    if (prog && !ev.bloqueio) { await prog(atk, def, ev); return; }
     switch (ev.tipo) {
       case "inicio":
         if (montada) await separar({ narra: false });
@@ -1092,7 +1329,7 @@ async function lance(L) {
       case "golpe1": {
         if (montada) await separar({ narra: false });
         const f = ev.forca || 3, lista = f >= 8 ? ["gancho", "upper", "chuteCabeca", "direto"] : f >= 4 ? ["direto", "umDois", "cruzadoFrente", "chuteBaixo", "chuteCorpo"] : ["jab", "jab", "jabCorpo", "chuteBaixo"];
-        await golpe(atk, def, ev.golpe || sorteia(lista), { bloqueio: !!ev.bloqueio, narra: false }); break;
+        await golpe(atk, def, golpeDaCarta(ev.carta, ev.golpe) || sorteia(lista), { bloqueio: !!ev.bloqueio, narra: false }); break;
       }
       case "gnp1": if (!montada) await queda(atk, def, { soco: false }); await serieSocos(ev.forte ? 2 : 1, !!ev.forte); break;
       case "grogue": {   // quem ficou tonto é o "quem" (não quem bateu)
@@ -1154,8 +1391,10 @@ return {
   pularEntrada() { if (cortarEntrada) cortarEntrada(); },
   /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera, o palco e os
      lances um a um (a arte das cartas, ferramentas/arte-cartas.mjs, fotografa o lance de cada carta) */
-  _dev: { A, B, cam, palco, THREE, MONTADA, get montada() { return montada; },
-    lances: { golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
+  _dev: { A, B, base, cartasProntas, cam, palco, THREE, MONTADA, get montada() { return montada; },
+    lances: { prog: (nome, atk, def, ev) => PROG[nome](atk, def, ev || {}), golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
+  /* o clipe que a carta toca: o do mx_cartas.glb se já chegou, senão a reserva (nunca trava a luta) */
+  clipeDaCarta(lance) { return clipeDoLance(lance, base.clips); },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },
   destruir() {
     vivo = false; cancelAnimationFrame(quadro); clearTimeout(timerCham);

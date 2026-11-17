@@ -45,11 +45,21 @@ const contra = (gDele, gMeu, camera) => ({
 });
 /* queda de quem joga a carta (foto em s segundos) */
 const queda = (s, camera, passos = [["queda", "A"]]) => ({ tipo: "queda", clipe: QUEDA, arte: { clipe: QUEDA, t: { s }, camera, passos } });
+/* a queda de quem joga a carta com o lance programado do diretor (PROG) */
+const quedaProg = (prog, s, camera) => ({ ...queda(s, camera), prog, arte: { clipe: QUEDA, t: { s }, camera, passos: [["prog", "A", prog]] } });
 /* queda dele defendida (antiqueda e afins) */
 const defQueda = (s, camera) => ({ tipo: "quedaDefendida", clipe: "Passo_Tras", arte: { clipe: "Passo_Tras", t: { s }, camera, passos: [["defendida", "B"]] } });
+/* o mesmo, com o lance programado do diretor (PROG) no lugar do passo pra trás */
+const defQuedaProg = (prog, s, camera) => ({ ...defQueda(s, camera), prog, arte: { clipe: "Passo_Tras", t: { s }, camera, passos: [["prog", "B", prog]] } });
 /* no chão: quem joga a carta por cima (preparo: queda dele) ou por baixo (preparo: queda do outro) */
 const cima = (tipo, ultimo, t, camera, clipe = QUEDA) => ({ tipo, clipe, arte: { clipe, t, camera, passos: [["queda", "A"], ultimo] } });
 const baixo = (tipo, ultimo, t, camera, clipe = DEITADO) => ({ tipo, clipe, arte: { clipe, t, camera, passos: [["queda", "B"], ultimo] } });
+
+/* raspagem programada: quem joga a carta está por baixo (preparo: queda do outro) e sobe por cima */
+const raspagemProg = (s, camera) => ({ tipo: "raspou", clipe: DEITADO, prog: "raspagem", arte: { clipe: DEITADO, t: { s }, camera, passos: [["queda", "B"], ["prog", "A", "raspagem"]] } });
+
+/* passagem de guarda programada: quem joga a carta está por cima (preparo: a queda dele) */
+const passagemProg = (s, camera) => ({ tipo: "controle", clipe: QUEDA, prog: "passagem", arte: { clipe: QUEDA, t: { s }, camera, passos: [["queda", "A"], ["prog", "A", "passagem"]] } });
 
 export const LANCES_CARTAS = {
   /* ---------- comuns (em pé) ---------- */
@@ -69,7 +79,7 @@ export const LANCES_CARTAS = {
   segurar: cima("controle", ["espera", 1.0], { s: 0.6 }, cam("costas")),
   avancar: cima("controle", ["espera", 1.2], { s: 0.8 }, cam("chao", -1)),
   golpes_por_baixo: baixo("controle", ["tentativa", "baixo"], { s: 0.9 }, cam("chao")),
-  raspar: baixo("raspou", ["expulsar"], { s: 1.15 }, cam("chao", -1)),
+  raspar: raspagemProg(1.4, cam("chao", -1)),
   guarda: baixo("controle", ["socos", "B", 1, false], { impacto: 1, depois: 0.02 }, cam("chao")),
   levantar: baixo("levantou", ["expulsar"], { impacto: 1, depois: 0.02 }, cam("chao")),
 
@@ -85,35 +95,35 @@ export const LANCES_CARTAS = {
   passo_lateral: defesa("gancho", "Esquiva_Recua", cam("costas")),
   joelhada: golpe("jabCorpo", cam("baixo")),
   cotovelada: golpe("cruzadoFrente", cam("perto")),
-  superman: golpe("direto", cam("baixo", -1)),
+  superman: (() => { const l = golpe("direto", cam("baixo", -1)); return { ...l, prog: "superman", arte: { ...l.arte, passos: [["prog", "A", "superman"]] } }; })(),
 
   /* ---------- wrestler ---------- */
-  single_leg: queda(0.75, cam("tres")),
+  single_leg: quedaProg("single_leg", 0.75, cam("tres")),
   double_leg: queda(1.05, cam("baixo")),
   queda_contragolpe: queda(0.95, cam("costas")),
-  suplex: queda(1.25, cam("baixo", -1)),
+  suplex: quedaProg("suplex", 1.25, cam("baixo", -1)),
   peso_ombro: cima("controle", ["expulsar"], { s: 0.3 }, cam("chao")),
   cotovelada_cima: cima("gnp1", ["socos", "A", 1, false], { impacto: 1, depois: 0.02 }, cam("cima")),
-  passagem_joelho: cima("controle", ["socos", "A", 1, false], { s: 0.15 }, cam("tres", -1)),
-  martelada: cima("gnp1", ["socos", "A", 2, true], { impacto: 2, depois: 0.02 }, cam("chao")),
-  sprawl: defQueda(0.55, cam("tres")),
+  passagem_joelho: passagemProg(1.0, cam("tres", -1)),
+  martelada: (() => { const l = cima("gnp1", ["socos", "A", 2, true], { impacto: 2, depois: 0.02 }, cam("chao")); return { ...l, prog: "martelada", arte: { ...l.arte, t: { impacto: 1, depois: 0.02 }, passos: [["queda", "A"], ["prog", "A", "martelada"]] } }; })(),
+  sprawl: defQuedaProg("sprawl", 0.75, cam("tres")),
   levantada_tecnica: baixo("levantou", ["expulsar"], { s: 3.3 }, cam("tres"), "Getting_Up"),
   contra_queda: defQueda(0.8, cam("tres", -1)),
-  bodylock: queda(1.25, cam("perto", -1)),
+  bodylock: quedaProg("bodylock", 1.25, cam("perto", -1)),
 
   /* ---------- grappler ---------- */
-  kimura: cima("sub", ["fin", "A", "chave"], { s: 1.6 }, cam("chao")),
+  kimura: cima("sub", ["fin", "A", "kimura"], { s: 1.6 }, cam("chao")),
   rasteira: queda(0.6, cam("lado", -1)),
   triangulo: baixo("sub", ["fin", "A", "triangulo"], { s: 1.6 }, cam("chao")),
   mata_leao: { tipo: "sub", clipe: "Strangling", arte: { clipe: "Strangling", t: { s: 1.0 }, camera: cam("tres"), passos: [["fin", "A", "mataLeao"]] } },
   cem_quilos: cima("controle", ["espera", 0.8], { s: 0.6 }, cam("tres", -1)),
-  passagem_guarda: cima("controle", ["espera", 1.4], { s: 1.0 }, cam("chao")),
+  passagem_guarda: passagemProg(1.0, cam("chao")),
   guarda_fechada: baixo("controle", ["socos", "B", 1, false], { impacto: 1, depois: 0.02 }, cam("chao", -1)),
-  raspagem_gancho: baixo("raspou", ["expulsar"], { s: 1.0 }, cam("chao")),
+  raspagem_gancho: raspagemProg(1.2, cam("chao")),
   defesa_finalizacao: baixo("controle", ["tentativa", "cima"], { s: 1.0 }, cam("chao")),
   fuga_quadril: baixo("levantou", ["expulsar"], { s: 1.3 }, cam("cima")),
   recomposicao: baixo("levantou", ["expulsar"], { s: 0.8 }, cam("chao", -1)),
-  berimbolo: baixo("raspou", ["tentativa", "baixo"], { s: 0.6 }, cam("cima", -1)),
+  berimbolo: raspagemProg(1.0, cam("cima", -1)),
 
   /* ---------- counter ---------- */
   esquiva: defesa("gancho", "Esquiva_Recua", cam("tres")),
@@ -130,3 +140,39 @@ export const LANCES_CARTAS = {
   misericordia: { tipo: "kd", golpe: "gancho", clipe: "Cruzado_Tras",
     arte: { clipe: "Cruzado_Tras", t: { impacto: 1, depois: 0.3 }, camera: cam("baixo"), passos: [["kd", "A"]] } },
 };
+
+/* Golpes novos do mx_cartas.glb (Mixamo, fora do git). Medidos com ferramentas/medir-golpes-cartas.mjs
+   (o mesmo método dos golpes do GOLPES do diretor: jab e direto saem com 0,01 de diferença no imp):
+   imp = instante do alcance máximo do membro; dist = esse alcance mais o quanto o alvo fica à frente
+   (rosto 0,10, corpo 0,15, perna 0,08). ik: false = o membro não está na CADEIA do lutador.js
+   (joelho e cotovelo), então o contato vale só pro efeito, sem puxar o osso. Rasteira e validação
+   ainda não são lance de nenhuma carta (a rasteira é queda e a validação não existe no catálogo):
+   ficam medidas pra Tarefa 19. */
+export const GOLPES_MX = {
+  overhand:      { membro: "hand_r",     alvo: "cabeca", imp: 0.42, dist: 0.99, ik: true },
+  chute_frontal: { membro: "ball_l",     alvo: "corpo",  imp: 1.28, dist: 1.12, ik: true },
+  chute_rodado:  { membro: "ball_r",     alvo: "cabeca", imp: 0.98, dist: 1.31, ik: true },
+  validacao:     { membro: "ball_r",     alvo: "cabeca", imp: 0.75, dist: 1.51, ik: true },
+  rasteira:      { membro: "ball_r",     alvo: "perna",  imp: 1.43, dist: 1.56, ik: true },
+  joelhada:      { membro: "calf_r",     alvo: "corpo",  imp: 0.85, dist: 0.92, ik: false },
+  cotovelada:    { membro: "lowerarm_l", alvo: "cabeca", imp: 0.33, dist: 0.65, ik: false },
+  uppercut:      { membro: "hand_l",     alvo: "cabeca", imp: 0.47, dist: 0.87, ik: true },
+  misericordia:  { membro: "hand_l",     alvo: "cabeca", imp: 0.97, dist: 1.52, ik: true },
+};
+/* a carta que toca o clipe novo: o lance de hoje vira a reserva (clipe e golpe seguem como estão) */
+for (const [id, l] of Object.entries(LANCES_CARTAS)) {
+  const g = GOLPES_MX[id];
+  if (!g || l.tipo === "queda") continue;
+  l.reserva = l.clipe;
+  l.mx = { clipe: id, ...g };
+}
+
+/* O clipe que o lance toca: o principal quando ele existe nos clipes carregados (o mx_cartas.glb chega
+   depois que a luta abre e fica fora do git), senão a reserva do mx_lutas.glb. null: nem um nem outro. */
+export function clipeDoLance(lance, clips) {
+  const tem = (c) => c && (clips instanceof Set ? clips.has(c) : !!clips[c]);
+  const c = lance.mx ? lance.mx.clipe : lance.clipe;
+  if (tem(c)) return c;
+  if (tem(lance.reserva)) return lance.reserva;
+  return tem(lance.clipe) ? lance.clipe : null;
+}

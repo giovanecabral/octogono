@@ -13498,7 +13498,7 @@ async function testarCartasArte() {
   const golpes = new Set([...diretor.matchAll(/^\s{2}(\w+):\s*\{ clip:/gm)].map((m) => m[1]));
   const glb = path.join(RAIZ, "luta3d", "mx_lutas.glb");
   const clipes = fs.existsSync(glb) ? (() => { const b = fs.readFileSync(glb); return new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name)); })() : null;
-  const PASSOS = ["golpe", "queda", "defendida", "socos", "tentativa", "expulsar", "fin", "kd", "espera"];
+  const PASSOS = ["golpe", "queda", "defendida", "socos", "tentativa", "expulsar", "fin", "kd", "espera", "prog"];
   const CAMERAS = ["lado", "tres", "baixo", "perto", "costas", "chao", "cima"];
   await conf("toda carta (as comuns, as 48 da árvore e as 8 do chão) tem lance e foto, e o lance não sobra pra carta que não existe", () => {
     if (ids.length !== 65) throw new Error("cartas: " + ids.length);
@@ -13513,6 +13513,7 @@ async function testarCartasArte() {
       const a = l.arte;
       if (!Array.isArray(a.passos) || !a.passos.length || a.passos.some((p) => !PASSOS.includes(p[0]))) throw new Error(`${id}: passos ${JSON.stringify(a.passos)}`);
       for (const p of a.passos) if (p[0] === "golpe" && !golpes.has(p[2])) throw new Error(`${id}: golpe do passo ${p[2]}`);
+      for (const p of a.passos) if (p[0] === "prog" && p[2] !== l.prog) throw new Error(`${id}: o passo prog ${p[2]} não é o prog da carta (${l.prog})`);
       if (!a.camera || !CAMERAS.includes(a.camera.tipo)) throw new Error(`${id}: câmera ${JSON.stringify(a.camera)}`);
       if (!a.t || (!(a.t.impacto >= 1) && !(a.t.s > 0))) throw new Error(`${id}: instante ${JSON.stringify(a.t)}`);
     }
@@ -17285,6 +17286,88 @@ async function testarLuta3d() {
     if (tira.length) throw new Error(".vercelignore tira o 3D do deploy: " + tira);
     if (!/carregarBase\(dir\)/.test(diretor) || !/mx_lutas\.glb/.test(fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8")))
       throw new Error("o 3D não carrega luta3d/mx_lutas.glb");
+  });
+  /* Review Focus 5: o mx_cartas.glb chega depois que a luta abre e fica fora do git; sem ele a luta toca a reserva e não trava */
+  await conf("sem o mx_cartas.glb (faltando, quebrado ou vazio) a carga devolve 0 sem lançar e toda carta com clipe novo toca a reserva do mx_lutas.glb", async () => {
+    const url = require("url");
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const LC = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
+    const base = { clips: { Jab: 1 }, curvas: { Jab: 1 }, matrizPai: null };
+    for (const [nome, abrir] of [["faltando", async () => { throw new Error("404"); }], ["vazio", async () => ({ animations: [] })], ["sem animações", async () => ({})], ["quebrado", async () => ({ animations: [{ tracks: [], name: "x", duration: 1 }] })]]) {
+      const n = await LU.carregarCartas(base, "./", abrir);
+      if (n !== 0 || Object.keys(base.clips).join() !== "Jab") throw new Error(`${nome}: devolveu ${n} e mexeu nos clipes: ${Object.keys(base.clips)}`);
+    }
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "mx_lutas.glb"));
+    const lutas = new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name));
+    let com = 0;
+    for (const [id, l] of Object.entries(LC.LANCES_CARTAS)) {
+      if (!l.mx) continue;
+      com++;
+      const c = LC.clipeDoLance(l, lutas);
+      if (!c || !lutas.has(c) || c === l.mx.clipe) throw new Error(`${id}: sem o arquivo tocou ${c}`);
+      if (LC.clipeDoLance(l, new Set([...lutas, l.mx.clipe])) !== l.mx.clipe) throw new Error(`${id}: com o arquivo não tocou o clipe novo`);
+    }
+    if (com < 7) throw new Error("poucas cartas com clipe novo: " + com);
+  });
+  await conf("o diretor carrega o mx_cartas.glb sem esperar (a luta abre antes) e expõe o clipe da carta com reserva", () => {
+    const d = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    if (!/const cartasProntas = carregarCartas\(base, dir\);/.test(d)) throw new Error("diretor não dispara carregarCartas");
+    if (/await carregarCartas/.test(d)) throw new Error("a luta espera o mx_cartas.glb");
+    if (!/clipeDaCarta\(lance\) \{ return clipeDoLance\(lance, base\.clips\); \}/.test(d)) throw new Error("sem clipeDaCarta com reserva");
+  });
+  /* Tarefa 17: o lance do Online v2 leva a carta e o diretor toca o lance dela (clipe novo ou reserva) */
+  await conf("todo lance de carta o diretor conhece (tipo com case, golpe no GOLPES, clipe no mx_lutas.glb ou reserva); o lance do Online v2 leva a carta, no golpe e no bloqueio", async () => {
+    const L = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
+    const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map((m) => m[1]));
+    const golpes = new Set([...diretor.matchAll(/^\s{2}(\w+):\s*\{ clip:/gm)].map((m) => m[1]));
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "mx_lutas.glb"));
+    const clipes = new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name));
+    for (const [id, l] of Object.entries(L.LANCES_CARTAS)) {
+      if (!casos.has(l.tipo)) throw new Error(`${id}: lance ${l.tipo} sem case no diretor`);
+      if (l.golpe && !golpes.has(l.golpe)) throw new Error(`${id}: golpe ${l.golpe} fora do GOLPES`);
+      if (!L.clipeDoLance(l, clipes)) throw new Error(`${id}: sem clipe nem reserva no mx_lutas.glb`);
+    }
+    const X2 = sandboxCarreira();
+    const t = { round: 1, troca: 1, cartaA: "overhand", cartaB: "jab", resolucao: { posicao: { antes: { pos: "pe" }, depois: { pos: "pe" } } },
+      ev: [{ tipo: "dano", quem: "a", alvo: "b", carta: "overhand", dano: 4 }, { tipo: "anulou", quem: "b", alvo: "uppercut", carta: "bloqueio" }] };
+    X2.sb.__args = JSON.stringify([t, "a"]);
+    const ls = JSON.parse(X2.run("JSON.stringify(jxjLinhas3d2(...JSON.parse(globalThis.__args)).map(L=>L.ev))"));
+    if (!ls.some((ev) => ev.carta === "overhand" && !ev.bloqueio)) throw new Error("o golpe não leva a carta: " + JSON.stringify(ls));
+    if (!ls.some((ev) => ev.carta === "uppercut" && ev.bloqueio)) throw new Error("o bloqueio não leva a carta do golpe: " + JSON.stringify(ls));
+    if (!/golpeDaCarta\(ev\.carta, ev\.golpe\)/.test(diretor)) throw new Error("o diretor não usa a carta do lance");
+    if (!/if \(g\.ik !== false\) atk\.contato/.test(diretor)) throw new Error("joelho e cotovelo (ik: false) iriam pro IK e quebrariam");
+  });
+  /* Tarefa 19: lances programados (quadros-chave no diretor, como a MONTADA). Cada carta com `prog` tem a
+     função no PROG e o diretor despacha por ela; a lista abaixo é a dos lances prontos (cada um passou por print) */
+  await conf("lances programados: a carta com prog tem a função no PROG do diretor, o diretor despacha por ela e a lista dos prontos bate", async () => {
+    const L = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
+    const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    const bloco = diretor.slice(diretor.indexOf("const PROG = {"), diretor.indexOf("/* ---------- estudo"));
+    const funcoes = new Set([...bloco.matchAll(/^  (?:async )?(\w+)\(/gm)].map((m) => m[1]));
+    const prontos = ["single_leg", "suplex", "bodylock", "sprawl", "superman", "martelada", "raspagem", "passagem"];
+    for (const p of prontos) if (!funcoes.has(p)) throw new Error("lance programado sem função no PROG: " + p);
+    for (const f of funcoes) if (!prontos.includes(f)) throw new Error("função no PROG fora da lista dos prontos: " + f);
+    const usados = new Set(Object.values(L.LANCES_CARTAS).map((l) => l.prog).filter(Boolean));
+    for (const p of prontos) if (!usados.has(p)) throw new Error("nenhuma carta toca o lance " + p);
+    for (const [id, l] of Object.entries(L.LANCES_CARTAS)) if (l.prog && !funcoes.has(l.prog)) throw new Error(`${id}: prog ${l.prog} sem função`);
+    if (!/PROG\[ev\.prog \|\|/.test(diretor)) throw new Error("o diretor não despacha pelo PROG");
+    /* finalizações programadas (FIN): a cena existe, o sorteio do fim a usa e a carta fotografa a cena */
+    const fin = diretor.slice(diretor.indexOf("const FIN = {"), diretor.indexOf("function tipoDeFinalizacao"));
+    for (const [carta, cena] of [["kimura", "kimura"]]) {
+      if (!new RegExp("^  " + cena + "\\(S, V\\) \\{", "m").test(fin)) throw new Error("sem FIN." + cena);
+      if (!diretor.includes('"' + cena + '"]')) throw new Error("o fim não sorteia " + cena);
+      if (!JSON.stringify(L.LANCES_CARTAS[carta].arte.passos).includes('"fin","A","' + cena + '"')) throw new Error(carta + ": a arte não fotografa a cena " + cena);
+    }
+  });
+  await conf("os golpes novos têm imp e dist medidos e o clipe existe no mx_cartas.glb (quando o arquivo está na pasta)", async () => {
+    const LC = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
+    const f = path.join(__dirname, "luta3d", "mx_cartas.glb");
+    const nomes = fs.existsSync(f) ? (() => { const b = fs.readFileSync(f); return new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name)); })() : null;
+    for (const [id, g] of Object.entries(LC.GOLPES_MX)) {
+      if (!(g.imp > 0.1 && g.imp < 2) || !(g.dist > 0.5 && g.dist < 2)) throw new Error(`${id}: imp ${g.imp} dist ${g.dist}`);
+      if (nomes && !nomes.has(id)) throw new Error(`${id}: sem clipe no mx_cartas.glb`);
+    }
   });
   console.log("\n" + (falhas.length ? vermelho(`luta3d: ${falhas.length} falha(s)`) : verde("luta3d ok")) + "\n");
   return !falhas.length;

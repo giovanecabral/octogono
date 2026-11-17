@@ -134,6 +134,7 @@ const PASSOS = {
   fin: (D, a, d, p) => D.lances.finalizacao(a, d, "", p[2]),
   kd: (D, a, d) => D.lances.knockdown(a, d),
   espera: (D, a, d, p) => D.lances.esperar(p[1]),
+  prog: (D, a, d, p) => D.lances.prog(p[2], a, d),
 };
 
 async function fotoUma(id, raridade, semente) {
