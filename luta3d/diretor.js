@@ -482,8 +482,12 @@ async function queda(atk, def, { soco = true, antes = null } = {}) {
   palco.tremor = Math.max(palco.tremor, 0.04); efeitoGolpe(1.0, def);
   cam.chaoEixo = V3(-u.z, 0, u.x); cam.modo = "chao";
   await esperar(0.7);
+  await montarPor(atk, def, soco);
+}
+/* quem derrubou (ou raspou) fica por cima: quem caiu assenta de costas e quem está por cima monta */
+async function montarPor(atk, def, soco) {
   // quem caiu assenta de costas (pose mais parecida do Laying_Idle, sem salto)
-  def.umaVez("Laying_Idle", { casar: [0, 8], fade: 0.6, segurar: true, mover: false });
+  if (def.nomeEstado !== "Laying_Idle") def.umaVez("Laying_Idle", { casar: [0, 8], fade: 0.6, segurar: true, mover: false });   // já deitado (raspagem): não reinicia o clipe
   await esperar(0.6);
   // quem derrubou monta: o quadril vai pra cima da barriga de quem está embaixo, de frente pra cabeça dele
   const long = horiz(def.posMundo("Head").sub(def.posMundo("pelvis")));
@@ -1085,6 +1089,34 @@ function levantaEDerruba(altura, tomba, gira, arco) {
   };
 }
 const PROG = {
+  /* raspagem: quem está embaixo faz a ponte, o peso de quem está em cima tomba pro lado e ele vai pro chão,
+     e quem raspou sobe na montada. Sem estar embaixo, é a queda comum. */
+  async raspagem(atk, def) {
+    if (!montada || montada.def !== atk) { if (montada) await separar({ narra: false }); await queda(atk, def, { soco: false }); return; }
+    const { cima, baixo } = montada;
+    baixo.st.livre = false; cima.limpar();
+    const st = { z: 0, m: 0 }, lado = Math.random() < 0.5 ? 1 : -1;
+    def.raiz.rotation.order = "YXZ";
+    const h = Math.max(0.5, def.posMundo("pelvis").y - def.raiz.position.y), corr = V3();
+    const f = () => {   // o corpo tomba em torno da pelve, não dos pés (e a altura da pelve desce quando ele deita)
+      const hh = h * (1 - st.m) + 0.22 * st.m;
+      def.raiz.position.sub(corr); def.raiz.rotation.z = st.z * lado;
+      corr.set(0, hh, 0).sub(V3(0, hh, 0).applyEuler(def.raiz.rotation));
+      def.raiz.position.add(corr); def.raiz.updateMatrixWorld(true);
+    };
+    def.extras.add(f);
+    chamada("RASPAGEM!", { pequena: true }); som("sobe", 0.7);
+    await animar(0.5, (k) => { baixo.st.ponte = 1.1 * Math.sin(Math.PI * Math.min(1, k * 1.1)); cima.st.recuo = 0.6 * suave(k); });
+    som("queda", 0.7); palco.tremor = Math.max(palco.tremor, 0.03);
+    montada = null; cima.parar(); baixo.parar();
+    let la = 0;
+    await animar(0.4, (k) => { st.z = 1.3 * suave(k); const d = 0.3 * suave(k) - la; la += d; def.raiz.position.addScaledVector(esq0(def), -d * lado); });
+    // deitado de lado, ele se ajeita de costas no chão e só então quem raspou sobe
+    def.umaVez("Laying_Idle", { fade: 0.3, segurar: true, mover: false });
+    await animar(0.35, (k) => { st.z = 1.3 * (1 - suave(k)); st.m = suave(k); });
+    def.extras.delete(f); def.raiz.position.sub(corr); def.raiz.rotation.z = 0; def.raiz.rotation.order = "XYZ";
+    await montarPor(atk, def, false);
+  },
   /* martelada: as duas mãos juntas lá no alto, o tronco arqueia e o golpe desce no rosto dele */
   async martelada(atk, def, ev) {
     if (!montada) await queda(atk, def, { soco: false });

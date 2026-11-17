@@ -55,6 +55,9 @@ const defQuedaProg = (prog, s, camera) => ({ ...defQueda(s, camera), prog, arte:
 const cima = (tipo, ultimo, t, camera, clipe = QUEDA) => ({ tipo, clipe, arte: { clipe, t, camera, passos: [["queda", "A"], ultimo] } });
 const baixo = (tipo, ultimo, t, camera, clipe = DEITADO) => ({ tipo, clipe, arte: { clipe, t, camera, passos: [["queda", "B"], ultimo] } });
 
+/* raspagem programada: quem joga a carta está por baixo (preparo: queda do outro) e sobe por cima */
+const raspagemProg = (s, camera) => ({ tipo: "raspou", clipe: DEITADO, prog: "raspagem", arte: { clipe: DEITADO, t: { s }, camera, passos: [["queda", "B"], ["prog", "A", "raspagem"]] } });
+
 export const LANCES_CARTAS = {
   /* ---------- comuns (em pé) ---------- */
   jab: golpe("jab", cam("lado")),
@@ -73,7 +76,7 @@ export const LANCES_CARTAS = {
   segurar: cima("controle", ["espera", 1.0], { s: 0.6 }, cam("costas")),
   avancar: cima("controle", ["espera", 1.2], { s: 0.8 }, cam("chao", -1)),
   golpes_por_baixo: baixo("controle", ["tentativa", "baixo"], { s: 0.9 }, cam("chao")),
-  raspar: baixo("raspou", ["expulsar"], { s: 1.15 }, cam("chao", -1)),
+  raspar: raspagemProg(1.4, cam("chao", -1)),
   guarda: baixo("controle", ["socos", "B", 1, false], { impacto: 1, depois: 0.02 }, cam("chao")),
   levantar: baixo("levantou", ["expulsar"], { impacto: 1, depois: 0.02 }, cam("chao")),
 
@@ -113,11 +116,11 @@ export const LANCES_CARTAS = {
   cem_quilos: cima("controle", ["espera", 0.8], { s: 0.6 }, cam("tres", -1)),
   passagem_guarda: cima("controle", ["espera", 1.4], { s: 1.0 }, cam("chao")),
   guarda_fechada: baixo("controle", ["socos", "B", 1, false], { impacto: 1, depois: 0.02 }, cam("chao", -1)),
-  raspagem_gancho: baixo("raspou", ["expulsar"], { s: 1.0 }, cam("chao")),
+  raspagem_gancho: raspagemProg(1.2, cam("chao")),
   defesa_finalizacao: baixo("controle", ["tentativa", "cima"], { s: 1.0 }, cam("chao")),
   fuga_quadril: baixo("levantou", ["expulsar"], { s: 1.3 }, cam("cima")),
   recomposicao: baixo("levantou", ["expulsar"], { s: 0.8 }, cam("chao", -1)),
-  berimbolo: baixo("raspou", ["tentativa", "baixo"], { s: 0.6 }, cam("cima", -1)),
+  berimbolo: raspagemProg(1.0, cam("cima", -1)),
 
   /* ---------- counter ---------- */
   esquiva: defesa("gancho", "Esquiva_Recua", cam("tres")),
