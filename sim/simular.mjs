@@ -302,19 +302,23 @@ if (PARTES.includes("nos")) {
   const r = await rodar(jobs);
   linha("## Quanto vale cada nó (nível 3, sozinho)");
   linha();
-  linha(`Vitória com o nó menos a vitória sem ele, média contra os 4 estilos (${n} lutas por confronto). Meta: de 0,5 a 6,5 pontos. Carta = a que o nó libera, com 3 estrelas; Luta = lutas vencidas por quem jogou a carta pelo menos uma vez (meta 40% a 60%, com mais de 200 jogadas).`);
+  linha(`Vitória com o nó menos a vitória sem ele, média contra os 4 estilos (${n} lutas por confronto). Meta: de 0,5 a 6,5 pontos. Carta = a que o nó libera, com 3 estrelas; Luta = lutas vencidas por quem jogou a carta pelo menos uma vez (meta 40% a 60% em pé; carta de chão pela relativa à posição, até 10 pontos, decisão 9; só com mais de 200 jogadas).`);
   linha();
-  linha("| Estilo | Nó | Carta | Raridade | Pontos | Jogadas | Escolha | Luta |");
-  linha("|---|---|---|---|---|---|---|---|");
+  linha("| Estilo | Nó | Carta | Raridade | Pontos | Jogadas | Escolha | Luta | Relativa |");
+  linha("|---|---|---|---|---|---|---|---|---|");
   const fora = [], foraCarta = [];
+  /* a média de luta vencida de quem joga carta de cada posição (as lutas sem nó): quem joga carta de cima já está por cima, e isso pesa seja qual for a carta (decisão 9) */
+  const mediaPos = {};
+  for (const [k, o] of r) if (k.includes(":-:")) for (const [id, c] of Object.entries(o.cartas)) { const p = C.CARTAS[id] ? "pe" : C.CARTA_DO_CHAO[id].contexto, x = (mediaPos[p] ||= { v: 0, n: 0 }); x.v += c.lutasVencidas; x.n += c.lutas; }
   for (const s of ESTS_NOS) for (const ramo of ESTILOS[s].ramos) for (const no of RAMOS[ramo].nos) {
     const v = ESTS.reduce((a, o) => a + vit(r.get(`no:${s}:${no.id}:${o}`)) - vit(r.get(`no:${s}:-:${o}`)), 0) / 4;
     if (v < 0.5 || v > 6.5) fora.push(`${no.nome} ${f1(v)}`);
     const id = C.CARTA_DO_NO[no.id], c = { naMao: 0, jogadas: 0, lutas: 0, lutasVencidas: 0 };
     if (id) for (const o of ESTS) { const x = r.get(`no:${s}:${no.id}:${o}`).cartas[id]; if (x) for (const k of Object.keys(c)) c[k] += x[k]; }
     const lu = pct(c.lutasVencidas, c.lutas);
-    if (c.jogadas > 200 && (lu < 40 || lu > 60)) foraCarta.push(`${C.CARTAS[id].nome} ${f1(lu)}%`);
-    linha(`| ${NOMES[s]} | ${no.nome} | ${id ? C.CARTAS[id].nome : "-"} | ${id ? C.NOME_RARIDADE[C.CARTAS[id].raridade] : "-"} | ${v >= 0 ? "+" : ""}${f1(v)} | ${c.jogadas} | ${f1(pct(c.jogadas, c.naMao))}% | ${c.lutas ? f1(lu) + "%" : "-"} |`);
+    const pos = id ? C.CARTAS[id].casa : "pe", relPos = lu - pct(mediaPos[pos].v, mediaPos[pos].n);
+    if (c.jogadas > 200 && (pos === "pe" ? lu < 40 || lu > 60 : Math.abs(relPos) > 10)) foraCarta.push(`${C.CARTAS[id].nome} ${f1(lu)}%${pos === "pe" ? "" : " (relativa " + f1(relPos) + ")"}`);
+    linha(`| ${NOMES[s]} | ${no.nome} | ${id ? C.CARTAS[id].nome : "-"} | ${id ? C.NOME_RARIDADE[C.CARTAS[id].raridade] : "-"} | ${v >= 0 ? "+" : ""}${f1(v)} | ${c.jogadas} | ${f1(pct(c.jogadas, c.naMao))}% | ${c.lutas ? f1(lu) + "%" : "-"} | ${c.lutas ? (relPos > 0 ? "+" : "") + f1(relPos) : "-"} |`);
   }
   linha();
   linha(`Nó fora de 0,5 a 6,5: ${fora.length ? fora.join(", ") : "nenhum"}. Carta fora de 40% a 60%: ${foraCarta.length ? foraCarta.join(", ") : "nenhuma"}.`);
@@ -365,6 +369,18 @@ if (PARTES.includes("busca")) {
   for (const s of ESTS) { const v = ESTS.reduce((a, o) => a + vit(r.get(`bp:${s}:${o}`)), 0) / 4; if (v > 60) dom.push(`${NOMES[s]} ${f1(v)}%`); linha(`- ${NOMES[s]}: ${f1(v)}% contra o campo.`); }
   linha();
   linha(`Dominância (acima de 60%): ${dom.length ? "SIM: " + dom.join(", ") : "nenhuma"}.`);
+  linha();
+  /* evolução com o melhor deck do nível 30 (o deck padrão não leva nenhuma carta da árvore, então o nível 30 só pesa com o deck montado) */
+  const jobsE = [];
+  for (const s of ESTS) for (const [alto, baixo] of [[30, 1], [30, 20]])
+    jobsE.push({ chave: `eb:${s}:${alto}:${baixo}`, sA: s, sB: s, catA: "middleweight", catB: "middleweight", polA: "atenta", polB: "atenta",
+      buildA: B30[s], buildB: buildTipica(s, baixo), deckA: v2[ESTS.indexOf(s)].deck, n: Math.round(N / 4) });
+  const re = await rodar(jobsE);
+  linha("Evolução (mesmo estilo): o nível 30 com o melhor deck contra o nível 1 e o nível 20 com o deck padrão. Meta: 30 contra 1 de 62% a 85%; 30 contra 20 acima de 50%.");
+  linha();
+  linha("| Estilo | 30 contra 1 | 30 contra 20 |");
+  linha("|---|---|---|");
+  for (const s of ESTS) linha(`| ${NOMES[s]} | ${f1(vit(re.get(`eb:${s}:30:1`)))}% | ${f1(vit(re.get(`eb:${s}:30:20`)))}% |`);
   linha();
 }
 
