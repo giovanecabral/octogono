@@ -373,13 +373,13 @@ function ctrlCima(top, bot, baixo) {
     let pitch = MONTADA.tronco + 0.03 * Math.sin(st.t * 2.1) - 0.55 * st.recuo, twist = 0;
     const maos = { l: null, r: null };
     for (const s of st.socos.slice()) {
-      const k = top.relogio - s.t0, sg = s.lado === "r" ? 1 : -1;
+      const k = (top.relogio - s.t0) * (s.martelo ? 0.5 : 1), sg = s.lado === "r" ? 1 : -1;   // martelada: o golpe leva mais tempo
       if (k < 0) continue;
       // o quadro pode pular a janela do impacto (3x ou celular lento): o golpe conta assim que passa do instante
       if (k >= 0.13 && !s.desceu) { s.desceu = true; s.aoDescer(); }
       if (k >= 0.23 && !s.bateu) { s.bateu = true; s.aoBater(); }
       let w, de, para;
-      if (k < 0.13) { w = suave(k / 0.13); twist -= 0.18 * sg * w; pitch -= 0.04 * w; de = "guarda"; para = "carrega"; }
+      if (k < 0.13) { w = suave(k / 0.13); twist -= 0.18 * sg * w; pitch -= (s.martelo ? 0.32 : 0.04) * w; de = "guarda"; para = "carrega"; }
       else if (k < 0.23) {
         w = suave((k - 0.13) / 0.1); twist += sg * (-0.18 + 0.52 * w); pitch += -0.04 + 0.42 * w; de = "carrega"; para = "alvo";
       } else if (k < 0.29) {
@@ -409,12 +409,14 @@ function ctrlCima(top, bot, baixo) {
       guarda: (l) => queixo.clone().addScaledVector(frente, 0.012 * Math.sin(st.t * 1.7 + vai(l))).addScaledVector(esq, MONTADA.abre * sl(l))
         .addScaledVector(cima, 0.014 * Math.sin(st.t * 2.3 + vai(l))),
       // o soco arma perto do ombro (puxa o cotovelo pra trás), não em cima da cabeça
-      carrega: (l) => P.guarda(l).addScaledVector(frente, -0.08).addScaledVector(esq, 0.05 * sl(l)).addScaledVector(cima, -0.02),
+      carrega: (l, s) => s && s.martelo ? queixo.clone().addScaledVector(cima, 0.6).addScaledVector(frente, -0.1).addScaledVector(esq, 0.07 * sl(l))
+        : P.guarda(l).addScaledVector(frente, -0.08).addScaledVector(esq, 0.05 * sl(l)).addScaledVector(cima, -0.02),
       alvo: (l, s) => s.alvo(),
     };
     const POLO = {
       guarda: (l) => P.guarda(l).addScaledVector(cima, -0.55).addScaledVector(frente, 0.02).addScaledVector(esq, 0.06 * sl(l)),
-      carrega: (l) => ombro(l).addScaledVector(cima, -0.3).addScaledVector(frente, -0.25).addScaledVector(esq, 0.22 * sl(l)),
+      carrega: (l, s) => s && s.martelo ? ombro(l).addScaledVector(cima, 0.1).addScaledVector(frente, -0.2).addScaledVector(esq, 0.3 * sl(l))
+        : ombro(l).addScaledVector(cima, -0.3).addScaledVector(frente, -0.25).addScaledVector(esq, 0.22 * sl(l)),
       alvo: (l) => ombro(l).addScaledVector(esq, 0.35 * sl(l)).addScaledVector(frente, -0.12).addScaledVector(cima, -0.1),
     };
     for (const l of ["l", "r"]) {
@@ -424,7 +426,7 @@ function ctrlCima(top, bot, baixo) {
         alvo = P[m.de](l, m.s).lerp(P[m.para](l, m.s), m.w);
         // o punho faz um arco por cima (não atravessa o próprio corpo)
         if (m.de !== m.para) alvo.addScaledVector(cima, 0.07 * Math.sin(Math.PI * m.w));
-        polo = POLO[m.de](l).lerp(POLO[m.para](l), m.w);
+        polo = POLO[m.de](l, m.s).lerp(POLO[m.para](l, m.s), m.w);
       } else {
         alvo = P.guarda(l); polo = POLO.guarda(l);
         if (maos[l === "l" ? "r" : "l"]) alvo.addScaledVector(frente, -0.035);   // a outra mão cola no rosto enquanto esta soca
@@ -444,9 +446,9 @@ function ctrlCima(top, bot, baixo) {
   return {
     st,
     /* rosto: passa pela guarda e acerta; senão bate no antebraço */
-    soco(lado, atraso = 0, forca = 1, rosto = Math.random() < 0.6) {
-      return new Promise((ok) => st.socos.push({ lado, t0: top.relogio + atraso, fim: ok,
-        alvo: () => (rosto ? bot.posMundo("Head").add(V3(0, 0.11, 0)) : baixo.maoPerto(top.posMundo("hand_" + lado))[1].add(V3(0, 0.05, 0))),
+    soco(lado, atraso = 0, forca = 1, rosto = Math.random() < 0.6, martelo = false) {
+      return new Promise((ok) => st.socos.push({ lado, martelo, t0: top.relogio + atraso, fim: ok,
+        alvo: () => (rosto ? bot.posMundo("Head").add(V3(0, 0.11, 0)).addScaledVector(esq0(top), martelo ? 0.05 * (lado === "r" ? 1 : -1) : 0) : baixo.maoPerto(top.posMundo("hand_" + lado))[1].add(V3(0, 0.05, 0))),
         aoDescer: () => { if (rosto) baixo.abrirGuarda(top.posMundo("hand_" + lado)); },
         aoBater: () => {
           const mao = top.posMundo("hand_" + lado), dir = bot.posMundo("Head").sub(mao).normalize();
@@ -1056,6 +1058,43 @@ function levantaEDerruba(altura, tomba, gira, arco) {
   };
 }
 const PROG = {
+  /* martelada: as duas mãos juntas lá no alto, o tronco arqueia e o golpe desce no rosto dele */
+  async martelada(atk, def, ev) {
+    if (!montada) await queda(atk, def, { soco: false });
+    const { cima } = montada;
+    narrar("", true);
+    await Promise.all([cima.soco("r", 0, 1.8, true, true), cima.soco("l", 0, 1.8, true, true)]);
+    await esperar(0.3);
+  },
+  /* superman: o direto sai num salto, com o corpo esticado no ar e as pernas pra trás */
+  async superman(atk, def, ev) {
+    if (montada) await separar({ narra: false });
+    await ajustarDist(2.0, 0.3);
+    const st = { w: 0 }, fr = () => fr0(atk), esq = () => esq0(atk);
+    const f = () => {
+      const w = suave(st.w); if (w < 0.001) return;
+      for (const [o, p] of [["spine_01", 0.3], ["spine_02", 0.4], ["spine_03", 0.3]]) atk.girarMundo(atk.ossos[o], esq(), 0.7 * p * w);
+      atk.modelo.updateMatrixWorld(true);
+    };
+    atk.extras.add(f);
+    for (const l of ["l", "r"]) {
+      const s = l === "l" ? 1 : -1;
+      atk.ikFixo["ball_" + l] = { peso: 0, alvo: () => atk.posMundo("pelvis").addScaledVector(fr(), -0.75 * suave(st.w)).addScaledVector(esq(), 0.12 * s).add(V3(0, -0.28 + 0.1 * s * suave(st.w), 0)), polo: () => atk.posMundo("thigh_" + l).addScaledVector(esq(), 0.5 * s).add(V3(0, 0.3, 0)) };
+    }
+    const peso = () => { for (const k of Object.values(atk.ikFixo)) if (k) k.peso = suave(st.w); };
+    atk.extras.add(peso);
+    const g = golpe(atk, def, golpeDaCarta(ev && ev.carta, "direto") || "direto", { narra: false });
+    const y0 = atk.raiz.position.y;
+    await esperar(0.5);   // chega na distância e só então salta: o soco encosta no alto do salto
+    let ja = 0;
+    await animar(0.72, (k) => {
+      st.w = Math.sin(Math.PI * Math.min(1, k * 1.15)); atk.raiz.position.y = y0 + 0.38 * st.w;
+      const d = 0.3 * suave(k) - ja; ja += d; atk.raiz.position.addScaledVector(fr0(atk), d);   // o salto avança
+    });
+    atk.raiz.position.y = y0; st.w = 0;
+    await g;
+    atk.extras.delete(f); atk.extras.delete(peso); delete atk.ikFixo.ball_l; delete atk.ikFixo.ball_r;
+  },
   /* bodylock: abraça a cintura, ergue de lado e derruba torcendo */
   async bodylock(atk, def) {
     if (montada) await separar({ narra: false });

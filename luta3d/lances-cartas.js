@@ -89,7 +89,7 @@ export const LANCES_CARTAS = {
   passo_lateral: defesa("gancho", "Esquiva_Recua", cam("costas")),
   joelhada: golpe("jabCorpo", cam("baixo")),
   cotovelada: golpe("cruzadoFrente", cam("perto")),
-  superman: golpe("direto", cam("baixo", -1)),
+  superman: (() => { const l = golpe("direto", cam("baixo", -1)); return { ...l, prog: "superman", arte: { ...l.arte, passos: [["prog", "A", "superman"]] } }; })(),
 
   /* ---------- wrestler ---------- */
   single_leg: quedaProg("single_leg", 0.75, cam("tres")),
@@ -99,7 +99,7 @@ export const LANCES_CARTAS = {
   peso_ombro: cima("controle", ["expulsar"], { s: 0.3 }, cam("chao")),
   cotovelada_cima: cima("gnp1", ["socos", "A", 1, false], { impacto: 1, depois: 0.02 }, cam("cima")),
   passagem_joelho: cima("controle", ["socos", "A", 1, false], { s: 0.15 }, cam("tres", -1)),
-  martelada: cima("gnp1", ["socos", "A", 2, true], { impacto: 2, depois: 0.02 }, cam("chao")),
+  martelada: (() => { const l = cima("gnp1", ["socos", "A", 2, true], { impacto: 2, depois: 0.02 }, cam("chao")); return { ...l, prog: "martelada", arte: { ...l.arte, t: { impacto: 1, depois: 0.02 }, passos: [["queda", "A"], ["prog", "A", "martelada"]] } }; })(),
   sprawl: defQuedaProg("sprawl", 0.75, cam("tres")),
   levantada_tecnica: baixo("levantou", ["expulsar"], { s: 3.3 }, cam("tres"), "Getting_Up"),
   contra_queda: defQueda(0.8, cam("tres", -1)),
