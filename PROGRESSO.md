@@ -1,6 +1,6 @@
 # Progresso: combate v2 e cartas da árvore
 
-Atualizado em 2026-11-16. Branch principal deste trabalho: `combate-v2` (atrás da
+Atualizado em 2026-11-17. Branch principal deste trabalho: `combate-v2` (atrás da
 flag `combate_v2` em `jxj_config`). Nada disso está no ar.
 
 ## Feito
@@ -27,42 +27,42 @@ flag `combate_v2` em `jxj_config`). Nada disso está no ar.
   `claudeInChromeDefaultEnabled` `false` em `~/.claude.json` (ligar com `/chrome`
   quando precisar). Backups em `.bak`. Valem a partir da próxima sessão.
 
-## Agentes parados (não retomar sem o dono pedir)
+## Estado em 2026-11-17 (manhã)
 
-Os dois eram do tipo `fork` (rodam no modelo da sessão). Pararam no limite de uso.
-A próxima tarefa vai pro `executor-cartas`, que o dono escolhe.
+Tudo junto na branch local `cartas-integracao` (worktree
+`.claude/worktrees/cartas-integracao`, sem push): etapa 1 (tarefas 1 a 10), Tarefa 11
+em parte (`71c6b4d`), Tarefa 12 e tela (13 a 15, `cartas-servidor`), conversor, 17 e
+19 (`cartas-conversor`). Bateria completa `TUDO CERTO` antes do `71c6b4d`;
+`jxjtelas` 6 de 6 verde com o processador livre (a intermitência vista com a
+simulação rodando é de tempo).
 
-- **Etapa 1** (tarefas 1 a 12 do plano)
-  - Worktree: `.claude/worktrees/agent-aa1bb64be53cd0fdd`, branch `cartas-etapa1`, sem push.
-  - Commits: `1880144` (T1), `55a0779` (T2), `2d40e10` (T3), `f4e979c` (T4),
-    `0856dcf` (T5), `9462147` (T6), `5e01240` (T7), `1aebc85` (T8), `06abc9c` (T9).
-  - Em andamento: Tarefa 10 (simulação, portões, busca de deck e calibragem).
-    Arquivo sem commit: `sim/busca-deck.mjs` (38 linhas). Faltavam as partes da
-    simulação: deck do nó, cartas no nível 30, busca e matriz do melhor deck.
-  - Falta depois: Tarefa 11 (decks dos bots por faixa) e 12 (servidor: deck salvo
-    que deixou de valer, definições), com a bateria verde.
-- **Conversor** (parte das tarefas 17 e 18)
-  - Worktree: `.claude/worktrees/agent-abab6c677f379f538`, branch `cartas-conversor`, sem push.
-  - O merge do `combate-v2` já está feito (HEAD `edffcd1`, igual ao `combate-v2`).
-  - Existe um `luta3d/mx_cartas.glb` de teste (173 KB, só 3 clipes: Joelhada,
-    ChuteFrontal, Pendulo). Fora do git, como deve ser.
-  - Falta: converter os 22 FBX pro `mx_cartas.glb`, carregamento depois que a luta
-    abre com reserva quando falta, teste, `imp` e `dist` de cada golpe em
-    `lances-cartas.js`, prints, estresse em 3x e refazer a arte (`prancha2.png`).
+- Calibragem: 5 rodadas, a última sem fechar. Os números da rodada 5 estão SEM
+  commit em `api/_jxj-cartas.js`, `docs/combat-v2.md`, `docs/combat-v2-decisions.md`
+  (decisões 80 a 89) e 2 linhas do `testar.js`, no worktree da etapa 1 e copiados
+  pra integração. Relatório final: `sim/relatorio-r5-final.md` (worktree da etapa 1).
+  Fora: melhor contra melhor no nível 30 (Wrestler 57,6%, Counter 42,8%; Grappler
+  contra Striker 76,2%), Wrestler 30 contra 1 em 92,2%, 14 nós, cartas de chão
+  (Kimura +28, Triângulo +31 de relativa). Dentro: nível 1 idêntico, nível 30 com o
+  deck padrão, deck aleatório contra o campo de melhores (decisão 89).
+- Tarefa 11: `deckDoBot2` e faixas feitos; baixo e médio com o deck padrão.
+  Falta `SIM_FAIXAS=baixo,medio node sim/decks-bot2.mjs --escrever` (o
+  classificador negou ao agente; precisa do dono) e medir `FORCA_BOT2`
+  (`SIM_PARTES=bots SIM_SAIDA=relatorio-bots.md node sim/simular.mjs 10000`). Até lá
+  a `jxjbot` reprova "habilidade e força" (1526 contra 1448).
+- 3D: joelhada e cotovelada sem IK (não é ponta de cadeia); suplex e raspagem
+  aproximados.
+- Agentes travam esperando processo em background (o aviso não chega pra eles):
+  rodar o que passa de 9 minutos pela sessão principal.
 
 ## Falta
 
-1. Etapa 1: tarefas 10, 11 e 12.
-2. Conversor: os 22 FBX e o resto da lista acima.
-3. Etapa 2, a tela: tarefas 13 (carta com raridade, arte e estrelas), 14 (aba Deck
-   com as cartas da árvore) e 15 (carta nova chegando, árvore com a carta).
-4. Tarefa 17 (o 3D toca o lance da carta) e 19 (lances programados: sprawl, suplex,
-   superman, chão; arte final).
-5. Merge de tudo no `combate-v2`, bateria completa (`node testar.js`), ponta a ponta,
-   push do `combate-v2`. Sem deploy.
-6. Fase 7 do combate v2: grupo de teste com a flag. Migração
-   `supabase_jxj_combate2.sql` e a flag são do dono.
-7. Antes de qualquer deploy: este arquivo entra no `.vercelignore`.
+1. Dono: decidir a calibragem (aceitar, regra nova pro chão, ou limite de
+   finalização por deck) e aprovar os números; liberar o comando da Tarefa 11.
+2. Commit dos números, decks dos bots e `FORCA_BOT2`; bateria completa.
+3. Fechamento do plano: merge no `combate-v2`, ponta a ponta
+   (`ferramentas/online-v2-e2e.mjs`), LEIA-ME "Cartas da árvore", push do `combate-v2`.
+4. Fase 7 do combate v2 (flag, migração `supabase_jxj_combate2.sql`): do dono.
+5. Antes de qualquer deploy: este arquivo entra no `.vercelignore`.
 
 ## Decisões importantes
 
