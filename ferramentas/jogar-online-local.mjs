@@ -41,6 +41,11 @@ if (!subiu) { console.log(`o servidor local não subiu na porta ${PORTA} (outra 
 /* conta dos bots: precisa existir pra a fila oferecer bot */
 const contaBots = (await post("teste/usuario", { pro: false })).id;
 await post("teste/sql", { sql: "select public.jxj_bot_configurar($1) as r", params: [contaBots.slice(0, 8) + "@teste"] });
+/* V2=1: o combate v2 (cartas) ligado pra todos no banco local */
+if (process.env.V2 === "1") {
+  const r = await post("teste/sql", { sql: "update jxj_config set valor = 'true'::jsonb where chave = 'combate_v2' returning chave" });
+  if (!JSON.stringify(r).includes("combate_v2")) throw new Error("não liguei o combate v2: " + JSON.stringify(r));
+}
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: false, defaultViewport: null,
   args: ["--window-size=1280,900", "--no-first-run", "--no-default-browser-check"] });
