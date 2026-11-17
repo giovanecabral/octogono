@@ -15475,8 +15475,9 @@ async function testarJxJTelas() {
         const nos = desde(m).filter((n) => tem(n, "jxj-no"));
         const ultimoNo = (nome) => nos.filter((n) => String(n.innerHTML).includes(`<b>${nome}</b>`)).pop();   // do último desenho
         const prec = ultimoNo("Precisão");
-        const txt = def.combate2.arvore.precisao_maos.join(" ");
-        if (!prec || !String(prec.innerHTML).includes(`<em>Com cartas</em>${txt.replace(/'/g, "&#39;")}`)) throw new Error("linha do nó: " + (prec && prec.innerHTML));
+        /* o nó que libera carta desenha a carta (mini, com a raridade) no lugar da linha Com cartas */
+        if (!prec || !String(prec.innerHTML).includes('data-carta="direto"') || !String(prec.innerHTML).includes("com-carta") || String(prec.innerHTML).includes("<em>Com cartas</em>")) throw new Error("o nó não desenhou a carta: " + (prec && prec.innerHTML));
+        if (!String(prec.innerHTML).includes("rar-" + def.combate2.cartas.direto.raridade)) throw new Error("a carta do nó sem a raridade");
         if (nos.some((n) => !String(n.innerHTML).includes("jxj-no-v2"))) throw new Error("nó sem a linha");
         if (!desde(m).some((n) => tem(n, "jxj-arvore-aviso2"))) throw new Error("sem o aviso do atributo");
         semLixoV3T(htmlDe(desde(m)), "árvore v2");
@@ -15490,6 +15491,37 @@ async function testarJxJTelas() {
         m = await abrir(`lutador/${l1}/deck`);
         semLixoV3T(htmlDe(desde(m)), "aba Deck");
       } finally { await flagV2T(false); }
+    });
+    await conf("carta nova chegando e árvore com a carta: Somar e Salvar no nó Precisão mostra o Direto chegando (1 estrela); de novo, a 2ª estrela; sem animação com reduzir movimento; 'Ver no deck' abre a aba Deck; o nó desenha a carta com as estrelas do nível; nome escapado", async () => {
+      await flagV2T({ contas: [u1] });
+      try {
+        await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]);
+        const raridade = CT2.CARTAS.direto.raridade;
+        const somarESalvar = async () => {
+          const m = await abrir(`lutador/${l1}/arvore`);
+          const no = desde(m).filter((n) => tem(n, "jxj-no") && String(n.innerHTML).includes("<b>Precisão</b>")).pop();
+          const m2 = env.todos.length;
+          await no.onclick(); await assentar(10);
+          await botao(desde(m2), "Somar 1 nível").onclick(); await assentar(10);
+          const m3 = env.todos.length;
+          await botao(desde(m), "Salvar árvore").onclick(); await assentar();
+          return { c: env.todos.slice(m3).filter((n) => tem(n, "carta-chegou")).pop(), m3 };
+        };
+        let { c, m3 } = await somarESalvar();
+        const h = String(c && c.innerHTML);
+        if (!c || !h.includes('data-carta="direto"') || !h.includes("rar-" + raridade) || (h.match(/#estrela"/g) || []).length !== 1) throw new Error("carta chegando: " + h.slice(0, 400));
+        if (!h.includes("Carta nova")) throw new Error("título da carta nova");
+        if (tem(c, "anima")) throw new Error("animação com reduzir movimento");
+        ({ c, m3 } = await somarESalvar());
+        const h2 = String(c.innerHTML);
+        if ((h2.match(/#estrela"/g) || []).length !== 2 || !h2.includes("Carta melhorou") || !h2.includes("segunda estrela")) throw new Error("segunda estrela: " + h2.slice(0, 400));
+        semLixoV3T(h + h2, "carta chegando");
+        await botao(desde(m3), "Ver no deck").onclick(); await assentar();
+        if (!desde(m3).some((n) => tem(n, "jxj-deck-cartas"))) throw new Error("Ver no deck não abriu a aba Deck");
+        const m = await abrir(`lutador/${l1}/arvore`);
+        const noCarta = desde(m).filter((n) => tem(n, "jxj-no") && String(n.innerHTML).includes('data-carta="direto"')).pop();
+        if (!noCarta || (String(noCarta.innerHTML).match(/#estrela"/g) || []).length !== 2) throw new Error("o nó não desenhou a carta com as 2 estrelas: " + (noCarta && noCarta.innerHTML));
+      } finally { await flagV2T(false); await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]); }
     });
     await conf("treino, o roteiro (2026-10-28; round de 3 trocas desde 2026-11-10): a mão do estilo; nas 3 guiadas só a carta certa joga; a lição 3 cobra a finta pela metade (iniciativa) e derruba; a troca 3 fecha o round 1 com o cartão; a 4 começa em pé, com a mão cheia e sem iniciativa; a vista passa pela tela sem lixo e diz 3 trocas por round", async () => {
       await vm.runInContext("jxjDef()", env.sandbox);

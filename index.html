@@ -8598,7 +8598,8 @@ function jxjAbaArvore(c,def,est,l){
           const teste={...build,[no.id]:nv+1},pode=nv<A.nivelMaxNo&&jxjValidar(def,l.estilo,teste,l.nivel).ok;
           const b=el("button","jxj-no"+(nv?" ativo":"")+(aberto?"":" travado")+(escolhido===no.id?" on":""),
             `${aberto?"":ICONE("cadeado")}<b>${no.nome}</b>${jxjPips(nv,A.nivelMaxNo)}<small>${custo} ${custo>1?"pontos":"ponto"} por nível${aberto?"":` · pede ${A.pedidoPorTier[i]} no ramo`}</small>`
-            +(v2Txt(no.id)?`<span class="jxj-no-v2"><em>Com cartas</em>${jxjEsc(v2Txt(no.id))}</span>`:""));
+            +(v2Carta(no.id)?`<span class="jxj-no-v2 com-carta">${jxjCarta2(v2Carta(no.id),{w:72,mini:true,estrelas:nv,estado:nv?"":"apagada"})}</span>`
+              :v2Txt(no.id)?`<span class="jxj-no-v2"><em>Com cartas</em>${jxjEsc(v2Txt(no.id))}</span>`:""));
           b.type="button"; if(b.setAttribute)b.setAttribute("aria-label",`${no.nome}, nível ${nv} de ${A.nivelMaxNo}`);
           b.onclick=()=>{ SOM.toque(); escolhido=no.id; mostrar(NOS[no.id],pode,nv); desenhar();
             /* o detalhe fica depois da árvore: no celular, fora da tela sem isto */
@@ -8626,7 +8627,7 @@ function jxjAbaArvore(c,def,est,l){
     detalhe.innerHTML=`<p class="jxj-rotulo">${jxjEsc(def.ramos[no.ramo].nome)} · nó ${no.tier}</p><h3 class="jxj-subtitulo">${no.nome}</h3>
       <p>${no.desc}</p><ul class="jxj-lista-simples">${no.efeitos.map(e=>`<li>${jxjTxtEfeito(def,e)}</li>`).join("")}</ul>
       <p class="jxj-nota">Somar habilidades no mesmo atributo ou efeito rende cada vez menos: atributo tem teto suave de ${A.tetoBonus} pontos e cada efeito tem o teto dele.</p>`
-      +(v2Txt(no.id)?jxjNoV2Detalhe(v2Txt(no.id),v2Carta(no.id)):"");
+      +(v2Txt(no.id)?jxjNoV2Detalhe(v2Txt(no.id),v2Carta(no.id),build[no.id]||0):"");
     const linha=el("div","jxj-acoes");
     const mais=el("button","botao",`${ICONE("mais")}<span>Somar 1 nível</span>`); mais.type="button"; mais.disabled=!pode;
     mais.onclick=()=>{ SOM.toque(); build={...build,[no.id]:(build[no.id]||0)+1}; desenhar(); mostrar(no,jxjValidar(def,l.estilo,{...build,[no.id]:build[no.id]+1},l.nivel).ok&&build[no.id]<A.nivelMaxNo,build[no.id]); };
@@ -8638,7 +8639,13 @@ function jxjAbaArvore(c,def,est,l){
   };
   salvar.onclick=async()=>{
     SOM.toque(); salvar.disabled=true;
-    try{ const r=await jxj("build",{lutadorId:l.id,rev,build}); rev=r.buildRev; l.build={...build}; l.buildRev=rev; irPara("jxj","lutador/"+l.id+"/arvore",{substituir:true}); }
+    try{
+      const antes={...(l.build||{})};
+      const r=await jxj("build",{lutadorId:l.id,rev,build}); rev=r.buildRev; l.build={...build}; l.buildRev=rev;
+      const chegando=v2?jxjCartasChegando2(v2,antes,build):[];
+      irPara("jxj","lutador/"+l.id+"/arvore",{substituir:true});
+      if(chegando.length)jxjCartaChegou2(chegando,{aoVer:()=>irPara("jxj","lutador/"+l.id+"/deck")});
+    }
     catch(e){ msg.textContent=e.erro; msg.hidden=false; salvar.disabled=false; }
   };
   desfazer.onclick=()=>{ SOM.toque(); build=JSON.parse(salvo); desenhar(); detalhe.hidden=true; };
@@ -8655,12 +8662,48 @@ function jxjAbaArvore(c,def,est,l){
   };
   desenhar();
 }
+/* Carta nova chegando (2026-11-17): quais cartas da árvore a build salva trouxe, comparando o nível de
+   cada nó antes e depois. Item: {c: carta das definições, estrelas: nível novo, subiu: já tinha a carta}. */
+function jxjCartasChegando2(d,antes,depois){
+  const out=[];
+  for(const c of Object.values(d.cartas)){
+    if(!c.no)continue;
+    const a=Math.min(3,Number((antes||{})[c.no])||0),n=Math.min(3,Number((depois||{})[c.no])||0);
+    if(n>a)out.push({c,estrelas:n,subiu:a>=1});
+  }
+  return out;
+}
+/* A camada da carta que chegou: a carta vira e brilha pela raridade (parada com "reduzir movimento"),
+   "Ver no deck" leva à aba Deck e "Continuar" fecha. lista = jxjCartasChegando2. */
+const JXJ_ORDINAL_ESTRELA=["","primeira","segunda","terceira"];
+const JXJ_RARIDADE_NOME={comum:"Comum",rara:"Rara",epica:"Épica",lendaria:"Lendária"};
+function jxjCartaChegou2(lista,{aoVer=null}={}){
+  const camada=el("div","carta-chegou"+(reduceMotion()?"":" anima"));
+  if(camada.setAttribute){ camada.setAttribute("role","dialog"); camada.setAttribute("aria-modal","true"); camada.setAttribute("aria-label","Carta nova"); }
+  const so=lista.length===1&&lista[0].subiu;
+  const cartas=lista.map(x=>`<div class="carta-chegou-item rar-${jxjEsc(x.c.raridade||"comum")}">${jxjCarta2(x.c,{w:lista.length>2?104:148,estrelas:x.estrelas})}`
+    +`<p><b>${jxjEsc(x.c.nome)}</b><small>${jxjEsc(JXJ_RARIDADE_NOME[x.c.raridade]||"")}${x.subiu?`, ${JXJ_ORDINAL_ESTRELA[x.estrelas]||x.estrelas} estrela`:""}</small></p></div>`).join("");
+  camada.innerHTML=`<div class="carta-chegou-corpo"><p class="jxj-rotulo">${ICONE("cards")} ${so?"Carta melhorou":lista.length>1?"Cartas novas":"Carta nova"}</p>`
+    +`<div class="carta-chegou-lista">${cartas}</div>`
+    +`<p class="carta-chegou-nota">${so?"Ela já estava liberada e ganhou uma estrela.":"Ela não entra sozinha no deck. Ponha na aba Deck."}</p></div>`;
+  const acoes=el("div","jxj-acoes");
+  const ver=el("button","botao",`${ICONE("cards")}<span>Ver no deck</span>`),cont=el("button","botao botao-sec","Continuar");
+  ver.type=cont.type="button";
+  const fechar=()=>{ try{ camada.remove(); }catch(e){} };
+  cont.onclick=()=>{ SOM.toque(); fechar(); };
+  ver.onclick=()=>{ SOM.toque(); fechar(); if(aoVer)aoVer(); };
+  acoes.append(ver,cont);
+  const corpo=camada.querySelector?camada.querySelector(".carta-chegou-corpo"):null;
+  (corpo||camada).appendChild(acoes);
+  try{ document.body.appendChild(camada); if(cont.focus)cont.focus(); }catch(e){}
+  return camada;
+}
 /* combate v2: o detalhe do nó com o que ele dá no combate novo; o nó que libera
    carta mostra a carta (layout aprovado, 2026-11-13) */
 const JXJ_CAT2_NOME={golpes:"Golpe",queda:"Queda",defesa:"Defesa",pressao:"Pressão"};
-function jxjNoV2Detalhe(txt,carta){
+function jxjNoV2Detalhe(txt,carta,estrelas=0){
   const nota=carta?`<p class="jxj-nota">${JXJ_CAT2_NOME[carta.categoria]||carta.categoria} de velocidade ${carta.vel} e dano ${jxjNum2(carta.dano)}.${carta.estiloExclusivo?` Só o ${jxjEsc(jxjEstilo(carta.estiloExclusivo))} usa.`:""} Depois de liberar, ela aparece na aba Deck.</p>`:"";
-  return `<div class="jxj-no-v2-detalhe${carta?" com-carta":""}">${carta?jxjCarta2(carta,{w:96}):""}<div><p class="jxj-rotulo">Com cartas</p><p>${jxjEsc(txt)}</p>${nota}</div></div>`;
+  return `<div class="jxj-no-v2-detalhe${carta?" com-carta":""}">${carta?jxjCarta2(carta,{w:96,estrelas}):""}<div><p class="jxj-rotulo">Com cartas</p><p>${jxjEsc(txt)}</p>${nota}</div></div>`;
 }
 /* ---------- combate v2: aba Deck (2026-11-13, layout aprovado pelo dono) ----------
    12 cartas: as fixas do estilo (travadas) e as escolhidas entre as liberadas. A tela

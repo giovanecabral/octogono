@@ -1693,6 +1693,23 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-no.travado .jxj-no-v2{color:var(--cinza)}
 .jxj-arvore-aviso2{display:flex;gap:8px;align-items:center;margin:0;font-size:14px;color:var(--osso-2)}
 .jxj-arvore-aviso2 .ico{width:16px;height:16px;color:var(--ouro);flex:none}
+/* a carta no nó da árvore (mini, com a raridade e as estrelas do nível) */
+.jxj-no .jxj-no-v2.com-carta{display:flex;justify-content:center;padding-top:8px}
+/* a carta que chegou: a camada por cima da tela, com a carta virando e o brilho da raridade */
+.carta-chegou{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(7,8,11,.92);overflow:auto}
+.carta-chegou-corpo{display:flex;flex-direction:column;align-items:center;gap:16px;max-width:560px;text-align:center}
+.carta-chegou-lista{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+.carta-chegou-item{display:flex;flex-direction:column;align-items:center;gap:8px}
+.carta-chegou-item p{margin:0;display:flex;flex-direction:column;gap:2px}
+.carta-chegou-item b{font-family:var(--f-titulo);font-weight:400;font-size:22px;letter-spacing:.02em;text-transform:uppercase}
+.carta-chegou-item small{font-family:var(--f-ui);font-weight:700;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--osso-2)}
+.carta-chegou-item.rar-comum small{color:var(--rar-comum)}.carta-chegou-item.rar-rara small{color:var(--rar-rara)}
+.carta-chegou-item.rar-epica small{color:#C0507F}.carta-chegou-item.rar-lendaria small{color:var(--rar-lendaria)}
+.carta-chegou-nota{margin:0;color:var(--osso-2);font-size:15px}
+.carta-chegou.anima .carta-chegou-item .jxj-carta{animation:jxjCartaChega .9s var(--ease-soco) both}
+.carta-chegou.anima .carta-chegou-item.rar-lendaria .jxj-carta{animation:jxjCartaChega .9s var(--ease-soco) both,jxjCartaLendaria 3.2s ease-in-out .9s infinite}
+@keyframes jxjCartaChega{0%{transform:perspective(700px) rotateY(90deg) scale(.8);opacity:0}60%{transform:perspective(700px) rotateY(-12deg) scale(1.06);opacity:1}100%{transform:perspective(700px) rotateY(0) scale(1)}}
+@media (prefers-reduced-motion:reduce){.carta-chegou.anima .carta-chegou-item .jxj-carta{animation:none}}
 .jxj-no-v2-detalhe{display:flex;gap:16px;align-items:center;margin:8px 0;padding:12px;border:1px solid rgba(212,160,23,.35);background:rgba(212,160,23,.06)}
 .jxj-no-v2-detalhe p{margin:0}
 .jxj-no-v2-detalhe>div{display:flex;flex-direction:column;gap:6px}
