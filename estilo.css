@@ -1677,6 +1677,14 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-deck-slot.travada .jxj-deck-cadeado .ico{width:26px;height:26px}
 .jxj-deck-slot.travada .jxj-deck-tag{color:var(--ouro);max-width:110px;line-height:1.25}
 .jxj-deck-slot.cheio .jxj-carta{opacity:.45}
+/* selo Nova, contador na guia e filtro da aba Deck (cartas da árvore, 2026-11-17) */
+.jxj-deck-slot .selo-nova{position:absolute;top:-6px;left:50%;transform:translateX(-50%);z-index:5;padding:1px 8px;background:var(--ganho);color:#06140c;font-family:var(--f-ui);font-weight:800;font-size:12px;letter-spacing:.12em;text-transform:uppercase;box-shadow:0 0 0 2px var(--fundo)}
+.guia .guia-n{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;background:var(--ganho);color:#06140c;font-family:var(--f-ui);font-weight:800;font-size:13px;letter-spacing:0}
+.deck2-filtro{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0 0 14px}
+.deck2-filtro-grupo{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.deck2-filtro-grupo small{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);margin-right:2px}
+.deck2-chip{padding:6px 12px;min-height:34px;background:transparent;color:var(--osso-2);border:1px solid var(--linha-forte);cursor:pointer;font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+.deck2-chip.on{background:var(--osso);color:#14161c;border-color:var(--osso)}
 .jxj-deck-conta{font-family:var(--f-ui);font-weight:700;font-size:12px;letter-spacing:.06em;color:var(--osso-2)}
 @media (hover:hover) and (pointer:fine){.jxj-deck-tirar:hover{border-color:var(--sangue)}.jxj-deck-por:hover{filter:brightness(1.15)}}
 /* árvore: o que o nó dá no combate novo */

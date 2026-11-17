@@ -163,7 +163,7 @@ export function definicoes2() {
     cartas: Object.fromEntries(Object.values(C.CARTAS).map((c) => [c.id, carta(c)])),
     chao: Object.fromEntries(Object.entries(C.CHAO).map(([ctx, cats]) => [ctx, Object.fromEntries(Object.entries(cats).map(([cat, c]) => [cat, carta(c)]))])),
     passivas: Object.fromEntries(Object.entries(C.PASSIVAS).map(([id, p]) => [id, { nome: p.nome, desc: p.desc }])),
-    fixas: C.FIXAS, deckPadrao: C.DECK_PADRAO, deck: C.DECK,
+    fixas: C.FIXAS, deckPadrao: C.DECK_PADRAO, deck: C.DECK, copiasPorRaridade: C.COPIAS,
     liberadas: Object.fromEntries(Object.keys(C.FIXAS).map((s) => [s, C.cartasLiberadas(s)])),
     /* o que cada nó da árvore dá no combate novo: a carta dele */
     arvore: Object.fromEntries(Object.values(C.CARTAS).filter((c) => c.no).map((c) => [c.no, [`Libera a carta ${c.nome} (${C.NOME_RARIDADE[c.raridade]}).`]])),

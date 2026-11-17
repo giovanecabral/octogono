@@ -7518,8 +7518,8 @@ function montarTela({fundo=null,vivo=false,titulo=null,voltar="menu",classe=""}=
    o conteúdo sem refazer a tela inteira. abas=[[id,rótulo,ícone?],...] */
 function montarGuias(abas,atual,aoTrocar){
   const nav=el("nav","guias");
-  abas.forEach(([id,rot,ico])=>{
-    const b=el("button","guia"+(id===atual?" on":""),(ico?ICONE(ico):"")+`<span>${rot}</span>`);
+  abas.forEach(([id,rot,ico,n])=>{
+    const b=el("button","guia"+(id===atual?" on":""),(ico?ICONE(ico):"")+`<span>${rot}</span>`+(n?`<b class="guia-n">${n}</b>`:""));
     b.type="button"; b.dataset.aba=id;
     b.onclick=()=>{
       SOM.toque();
@@ -8532,7 +8532,7 @@ async function jxjTelaLutador(param){
   const corpo=el("div","jxj-aba");
   const abas=[["perfil","Atributos","grafico"],["arvore","Árvore","arvore"],["historico","Histórico","historico"],["aparencia","Aparência","camera"],["gerenciar","Gerenciar","engrenagem"]];
   /* combate v2: a aba do deck, só pra conta que joga o combate novo */
-  if(est.combateV2&&def.combate2)abas.splice(2,0,["deck","Deck","cards"]);
+  if(est.combateV2&&def.combate2)abas.splice(2,0,["deck","Deck","cards",jxjNovas2(l,def).length]);
   const abrir=id=>{ try{ history.replaceState(null,"","#/jxj/lutador/"+l.id+"/"+id); }catch(e){}
     corpo.innerHTML=""; ({perfil:jxjAbaPerfil,arvore:jxjAbaArvore,deck:jxjAbaDeck,historico:jxjAbaHistorico,aparencia:jxjAbaAparencia,gerenciar:jxjAbaGerenciar})[id](corpo,def,est,l); };
   const atual=abas.some(a=>a[0]===abaIni)?abaIni:"perfil";
@@ -8668,6 +8668,23 @@ function jxjNoV2Detalhe(txt,carta){
 /* as cartas que o lutador pode pôr no deck (a mesma conta de cartasLiberadas no servidor) */
 const jxjLiberadas2=(d,estilo,build)=>Object.values(d.cartas).filter(c=>(!c.estiloExclusivo||c.estiloExclusivo===estilo)
   &&(!c.desbloqueio||Number((build||{})[c.desbloqueio])>=1)).map(c=>c.id);
+/* quantas cópias de uma carta cabem no deck (a raridade manda; o servidor valida a mesma conta) */
+const jxjCopias2=(d,id)=>(d.copiasPorRaridade&&d.copiasPorRaridade[(d.cartas[id]||{}).raridade])||d.deck.copias;
+/* Cartas novas (2026-11-17): as liberadas da árvore que ainda não entraram em nenhum deck salvo e que a
+   pessoa ainda não pôs no deck na tela. As vistas ficam só no navegador (jxj:vistas:<lutador>); sem
+   localStorage (aba privada, bloqueado) tudo continua funcionando, só a lembrança some. */
+function jxjVistas2(lutadorId){
+  try{ const v=JSON.parse(localStorage.getItem("jxj:vistas:"+lutadorId)||"[]"); return Array.isArray(v)?v.filter(x=>typeof x==="string"):[]; }catch(e){ return []; }
+}
+function jxjMarcarVista2(lutadorId,cartaId){
+  try{ const v=jxjVistas2(lutadorId); if(!v.includes(cartaId)){ v.push(cartaId); localStorage.setItem("jxj:vistas:"+lutadorId,JSON.stringify(v)); } }catch(e){}
+}
+function jxjNovas2(l,def){
+  const d=(def||JXJ_DEF||{}).combate2; if(!d||!d.cartas||!l)return [];
+  const lib=Array.isArray(l.liberadas)?l.liberadas:jxjLiberadas2(d,l.estilo,l.build);
+  const naoDeck=new Set(l.deckMontado&&Array.isArray(l.deck)?l.deck:[]),vistas=new Set(jxjVistas2(l.id));
+  return lib.filter(id=>d.cartas[id]&&d.cartas[id].no&&!naoDeck.has(id)&&!vistas.has(id));
+}
 /* os selos das regras do deck: [{ok, txt}] */
 function jxjRegrasDeck2(d,deck){
   const R=d.deck,conta={},cat={};
@@ -8677,7 +8694,7 @@ function jxjRegrasDeck2(d,deck){
     {ok:deck.length===R.tamanho,txt:deck.length===R.tamanho?`${R.tamanho} cartas`:`${deck.length} de ${R.tamanho} cartas`},
     {ok:(cat.defesa||0)>=R.minDefesa,txt:`Defesa: ${cat.defesa||0} (mínimo ${R.minDefesa})`},
     {ok:!faltam.length,txt:faltam.length?`Falta ${faltam.join(", ")}`:"Golpe, Queda, Defesa e Pressão"},
-    {ok:Object.values(conta).every(n=>n<=R.copias),txt:`Até ${R.copias} de cada`},
+    {ok:Object.entries(conta).every(([id,n])=>n<=jxjCopias2(d,id)),txt:`Até ${R.copias} de cada, uma só das épicas e lendárias`},
   ];
 }
 /* quais posições do deck são as fixas do estilo (as primeiras cópias de cada fixa) */
@@ -8701,7 +8718,25 @@ function jxjAbaDeck(c,def,est,l){
   const desfazer=el("button","botao botao-sec","Desfazer"); desfazer.type="button";
   const usarPadrao=el("button","botao botao-sec",`${ICONE("reenviar")}<span>Usar o deck padrão</span>`); usarPadrao.type="button";
   c.append(topo,msg,regras,passiva,grade);
-  const carta=id=>jxjCarta2(d.cartas[id],{w:84,mini:true});
+  const carta=id=>jxjCarta2(d.cartas[id],{w:84,mini:true,estrelas:d.cartas[id].no?Math.min(3,Number((l.build||{})[d.cartas[id].no])||0):0});
+  /* filtro por raridade e por casa, só quando a lista passa de uma tela (mais de 16 liberadas) */
+  const filtro={rar:"",casa:""},FILTRO_LIM=16;
+  const NOME_RAR={comum:"Comum",rara:"Rara",epica:"Épica",lendaria:"Lendária"},NOME_CASA={pe:"Em pé",cima:"Por cima",baixo:"Por baixo"};
+  const barraFiltro=()=>{
+    const f=el("div","deck2-filtro");
+    const grupo=(chave,rotulo,opcoes)=>{
+      const g=el("div","deck2-filtro-grupo",`<small>${rotulo}</small>`);
+      for(const [v,nome] of [["","Todas"],...opcoes]){
+        const b=el("button","deck2-chip"+(filtro[chave]===v?" on":""),nome); b.type="button"; b.dataset.filtro=chave; b.dataset.valor=v;
+        if(b.setAttribute)b.setAttribute("aria-pressed",filtro[chave]===v?"true":"false");
+        b.onclick=()=>{ SOM.toque(); filtro[chave]=v; desenhar(); };
+        g.appendChild(b);
+      }
+      return g;
+    };
+    f.append(grupo("rar","Raridade",JXJ_RARIDADES.map(r=>[r,NOME_RAR[r]])),grupo("casa","Casa",Object.entries(NOME_CASA)));
+    return f;
+  };
   const desenhar=()=>{
     const fixa=jxjFixasNoDeck2(d,l.estilo,deck),nf=fixa.filter(Boolean).length;
     const sel=jxjRegrasDeck2(d,deck),mudou=JSON.stringify(deck)!==salvo;
@@ -8734,22 +8769,30 @@ function jxjAbaDeck(c,def,est,l){
     secLib.innerHTML=`<p class="jxj-rotulo jxj-deck-titulo"><span>${ICONE("lista")} Cartas liberadas</span><small>toque pra pôr no deck</small></p>`;
     const pool=el("div","jxj-deck-cartas");
     const conta={}; for(const id of deck)conta[id]=(conta[id]||0)+1;
+    const novas=new Set(jxjNovas2({...l,deck,deckMontado:true,liberadas:lib}));
+    try{ const g=document.querySelector('.guia[data-aba="deck"]'); if(g){ const n=g.querySelector(".guia-n"); if(n){ if(novas.size)n.textContent=String(novas.size); else n.remove(); } } }catch(e){}
+    const mostradas=Object.values(d.cartas).filter(x=>!(x.no?(x.estilo&&x.estilo!==l.estilo&&!lib.includes(x.id)):(x.estiloExclusivo&&x.estiloExclusivo!==l.estilo)));
+    const comFiltro=mostradas.filter(x=>lib.includes(x.id)).length>FILTRO_LIM;
+    if(comFiltro)secLib.appendChild(barraFiltro());
     for(const x of Object.values(d.cartas)){
+      if(comFiltro&&((filtro.rar&&x.raridade!==filtro.rar)||(filtro.casa&&(x.casa||x.contexto)!==filtro.casa)))continue;
       /* carta de nó de outro estilo só aparece quando o híbrido já tem o nó (travada, não) */
       if(x.no?(x.estilo&&x.estilo!==l.estilo&&!lib.includes(x.id)):(x.estiloExclusivo&&x.estiloExclusivo!==l.estilo))continue;
       if(!lib.includes(x.id)){
         const no=NOS[x.desbloqueio],ramo=no&&def.ramos[no.ramo];
-        pool.appendChild(el("div","jxj-deck-slot travada",`<span class="jxj-deck-face">${carta(x.id)}</span><span class="jxj-deck-cadeado">${ICONE("cadeado")}</span>`
-          +`<span class="jxj-deck-tag">Libera no nó ${jxjEsc(no?no.nome:x.desbloqueio)}${ramo?` (${jxjEsc(ramo.nome)})`:""}</span>`));
+        const t=el("div","jxj-deck-slot travada",`<span class="jxj-deck-face">${carta(x.id)}</span><span class="jxj-deck-cadeado">${ICONE("cadeado")}</span>`
+          +`<span class="jxj-deck-tag">Libera no nó ${jxjEsc(no?no.nome:x.desbloqueio)}${ramo?` (${jxjEsc(ramo.nome)})`:""}</span>`);
+        t.dataset.carta=x.id; pool.appendChild(t);
         continue;
       }
-      const q=conta[x.id]||0,cheio=q>=R.copias;
-      const s=el("div","jxj-deck-slot"+(cheio?" cheio":""));
+      const max=jxjCopias2(d,x.id),q=conta[x.id]||0,cheio=q>=max;
+      const s=el("div","jxj-deck-slot"+(cheio?" cheio":"")+(novas.has(x.id)?" nova":"")); s.dataset.carta=x.id;
       const b=el("button","jxj-deck-por",ICONE("mais")); b.type="button"; b.dataset.carta=x.id;
       b.disabled=cheio||deck.length>=R.tamanho;
       if(b.setAttribute)b.setAttribute("aria-label",`Pôr ${x.nome} no deck`);
-      b.onclick=()=>{ SOM.toque(); if(b.disabled)return; deck=[...deck,x.id]; msg.hidden=true; desenhar(); };
-      s.append(b,el("span","jxj-deck-face",carta(x.id)),el("span","jxj-deck-conta",`${q} de ${R.copias} no deck`));
+      b.onclick=()=>{ SOM.toque(); if(b.disabled)return; deck=[...deck,x.id]; jxjMarcarVista2(l.id,x.id); msg.hidden=true; desenhar(); };
+      s.append(b,el("span","jxj-deck-face",carta(x.id)),el("span","jxj-deck-conta",`${q} no deck, até ${max}`));
+      if(novas.has(x.id))s.appendChild(el("span","selo-nova","Nova"));
       pool.appendChild(s);
     }
     secLib.appendChild(pool);

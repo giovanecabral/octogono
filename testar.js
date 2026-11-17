@@ -15419,6 +15419,54 @@ async function testarJxJTelas() {
         if (L.deckMontado || JSON.stringify(L.deck) !== JSON.stringify(CT2.DECK_PADRAO.striker)) throw new Error("não voltou pro padrão: " + JSON.stringify(L.deck));
       } finally { await flagV2T(false); await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]); }
     });
+    await conf("aba Deck com as cartas da árvore: selo Nova nas liberadas da árvore fora do deck e não vistas, contador na guia; pôr no deck marca como vista; localStorage quebrado não derruba a aba; filtro com mais de 16 liberadas (raridade e casa); a de 1 cópia diz 'até 1' e o botão fecha com ela no deck", async () => {
+      await flagV2T({ contas: [u1] });
+      const ls = env.sandbox.localStorage;
+      try {
+        ls.removeItem("jxj:vistas:" + l1);   // as vistas de testes anteriores
+        const b = { precisao_maos: 3, combinacoes: 3, contra_maos: 3, eficiencia_golpes: 3, chute_baixo: 3, chute_corpo: 3, controle_distancia: 3, variedade: 3, controle_ritmo: 3, combinacoes_pressao: 3 };
+        await db.query("update jxj_lutadores set deck = null, build = $2::jsonb where id = $1", [l1, JSON.stringify(b)]);
+        let m = await abrir(`lutador/${l1}/deck`);
+        const novas = () => grades().lib.children.filter((s) => (s.children || []).some((x) => tem(x, "selo-nova"))).map((s) => s.dataset.carta);
+        const daArvore = Object.keys(b).map((no) => CT2.CARTA_DO_NO[no]);
+        const noSlot = (id) => grades().lib.children.find((s) => s.dataset.carta === id);
+        const contaDe = (id) => String(noSlot(id).children.filter((x) => tem(x, "jxj-deck-conta")).map((x) => x.innerHTML).join(""));
+        if (JSON.stringify(novas().sort()) !== JSON.stringify(daArvore.slice().sort())) throw new Error("novas: " + novas());
+        const guia = () => desde(m).filter((n) => tem(n, "guia") && n.dataset.aba === "deck").pop();
+        if (!String(guia().innerHTML).includes(">" + daArvore.length + "<")) throw new Error("contador na guia: " + guia().innerHTML);
+        if (!desde(m).some((n) => tem(n, "deck2-filtro"))) throw new Error("sem filtro com mais de 16 liberadas");
+        /* pela estrutura: a de 1 cópia e uma de 2 */
+        const uma = daArvore.find((id) => CT2.COPIAS[CT2.CARTAS[id].raridade] === 1), duas = daArvore.find((id) => CT2.COPIAS[CT2.CARTAS[id].raridade] === 2);
+        if (!uma || !duas) throw new Error("o catálogo perdeu uma raridade");
+        if (!contaDe(uma).includes("até 1") || !contaDe(duas).includes("até 2")) throw new Error("cópias por raridade: " + contaDe(uma) + " / " + contaDe(duas));
+        /* filtro: só as da raridade pedida (os chips estão fora da grade) */
+        const raridadeDe = (id) => CT2.CARTAS[id].raridade;
+        const chip = (chave, valor) => desde(m).filter((n) => tem(n, "deck2-chip") && n.dataset.filtro === chave && n.dataset.valor === valor).pop();
+        await chip("rar", raridadeDe(uma)).onclick(); await assentar(5);
+        const visiveis = grades().lib.children.map((s) => s.dataset.carta);
+        if (!visiveis.length || visiveis.some((id) => raridadeDe(id) !== raridadeDe(uma)) || !visiveis.includes(uma)) throw new Error("filtro de raridade: " + visiveis);
+        await chip("rar", "").onclick(); await assentar(5);
+        if (grades().lib.children.length < 18) throw new Error("Todas não devolveu a lista");
+        /* tira um Bloqueio e põe a de 1 cópia: marca como vista, fecha o botão (uma só) */
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "bloqueio").onclick(); await assentar(5);
+        await botaoCarta(grades().lib, "jxj-deck-por", uma).onclick(); await assentar(5);
+        if (novas().includes(uma) || novas().length !== daArvore.length - 1) throw new Error("pôr no deck não marcou como vista: " + novas());
+        if (!botaoCarta(grades().lib, "jxj-deck-por", uma).disabled) throw new Error("a carta de 1 cópia aceitou a segunda");
+        const vistas = JSON.parse(ls.getItem("jxj:vistas:" + l1) || "[]");
+        if (!vistas.includes(uma)) throw new Error("vista não gravada: " + JSON.stringify(vistas));
+        /* o deck salvo não tem selo: salva e reabre */
+        m = await abrir(`lutador/${l1}/deck`);
+        if (novas().includes(uma)) throw new Error("a vista não voltou depois de reabrir");
+        /* localStorage quebrado: a aba abre e todas as liberadas da árvore voltam a ser novas */
+        env.sandbox.localStorage = { getItem: () => { throw new Error("bloqueado"); }, setItem: () => { throw new Error("bloqueado"); }, removeItem: () => {} };
+        m = await abrir(`lutador/${l1}/deck`);
+        if (!grades().lib || novas().length !== daArvore.length) throw new Error("com o localStorage quebrado: " + novas().length);
+        await botaoCarta(grades().meu, "jxj-deck-tirar", "bloqueio").onclick(); await assentar(5);
+        await botaoCarta(grades().lib, "jxj-deck-por", duas).onclick(); await assentar(5);
+        if (!grades().lib) throw new Error("pôr com o localStorage quebrado derrubou a aba");
+        semLixoV3T(htmlDe(desde(m)), "aba Deck com a árvore");
+      } finally { env.sandbox.localStorage = ls; ls.removeItem("jxj:vistas:" + l1); await flagV2T(false); await db.query("update jxj_lutadores set deck = null, build = '{}'::jsonb where id = $1", [l1]); }
+    });
     await conf("combate v2, árvore: cada nó com a linha Com cartas (o texto do combate novo), o aviso do atributo, e o nó que libera carta mostra a carta no detalhe; a tela do deck e da árvore sem lixo", async () => {
       await flagV2T({ contas: [u1] });
       try {
