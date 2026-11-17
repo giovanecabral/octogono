@@ -17233,7 +17233,7 @@ async function testarLuta3d() {
     for (const [id, l] of Object.entries(L.LANCES_CARTAS)) if (l.prog && !funcoes.has(l.prog)) throw new Error(`${id}: prog ${l.prog} sem função`);
     if (!/PROG\[ev\.prog \|\|/.test(diretor)) throw new Error("o diretor não despacha pelo PROG");
     /* finalizações programadas (FIN): a cena existe, o sorteio do fim a usa e a carta fotografa a cena */
-    const fin = diretor.slice(diretor.indexOf("const FIN = {"), diretor.indexOf("function encarar"));
+    const fin = diretor.slice(diretor.indexOf("const FIN = {"), diretor.indexOf("function tipoDeFinalizacao"));
     for (const [carta, cena] of [["kimura", "kimura"]]) {
       if (!new RegExp("^  " + cena + "\\(S, V\\) \\{", "m").test(fin)) throw new Error("sem FIN." + cena);
       if (!diretor.includes('"' + cena + '"]')) throw new Error("o fim não sorteia " + cena);
