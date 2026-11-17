@@ -462,7 +462,7 @@ function ctrlCima(top, bot, baixo) {
   };
 }
 
-async function queda(atk, def, { soco = true } = {}) {
+async function queda(atk, def, { soco = true, antes = null } = {}) {
   cam.modo = "tv";
   await ajustarDist(1.2, 0.45);
   travado = true;
@@ -472,7 +472,9 @@ async function queda(atk, def, { soco = true } = {}) {
   narrar(`${nomeDe(atk)} entra nas pernas...`);
   atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 2.6 });
   def.umaVez("Double_Leg_Takedown___Victim", { fade: 0.12, segurar: true });
+  const limpaAntes = antes ? antes(atk, def) : null;   // lance programado: o que se vê enquanto ele entra
   await esperar(1.15);
+  if (limpaAntes) limpaAntes();
   chamada("QUEDA!"); som("queda", 0.9); som("sobe", 0.5);
   narrar(`Queda de ${nomeDe(atk)}. Levou pro chão.`, true);
   palco.tremor = Math.max(palco.tremor, 0.04); efeitoGolpe(1.0, def);
@@ -1023,7 +1025,62 @@ function poseRigida(L, onde, yaw, pitch = 0, roll = 0) {
   L.raiz.position.copy(onde).sub(p);
   L.raiz.updateMatrixWorld(true);
 }
+/* queda em que quem derruba ergue o outro antes de bater no chão (suplex, bodylock): as duas mãos
+   fecham na cintura dele, o corpo dele sobe e vira (x: pra trás, z: de lado) e desce na batida */
+function levantaEDerruba(altura, tomba, gira, arco) {
+  return (atk, def) => {
+    const st = { t: 0 }, W = () => { const s = Math.min(1, st.t / 1.15); return Math.sin(Math.PI * Math.pow(s, 0.8)); };
+    const cintura = () => def.posMundo("pelvis").add(V3(0, 0.02, 0)).addScaledVector(fr0(def), -0.12);
+    for (const l of ["l", "r"]) {
+      const s = l === "l" ? 1 : -1;
+      def.ossos && (atk.ikFixo["hand_" + l] = { peso: 0, alvo: () => cintura().addScaledVector(esq0(def), 0.13 * s), polo: () => atk.posMundo("upperarm_" + l).addScaledVector(esq0(atk), 0.5 * s) });
+    }
+    def.raiz.rotation.order = "YXZ";
+    /* o corpo gira em torno da pelve (não dos pés): a correção sai da posição da raiz a cada quadro */
+    const h = Math.max(0.6, def.posMundo("pelvis").y - def.raiz.position.y), corr = V3();
+    const f = (dt) => {
+      st.t += dt; const w = W();
+      for (const k of Object.values(atk.ikFixo)) if (k) k.peso = Math.min(1, st.t / 0.3);
+      def.raiz.position.sub(corr);
+      def.raiz.rotation.x = tomba * w; def.raiz.rotation.z = gira * w;
+      corr.set(0, h, 0).sub(V3(0, h, 0).applyEuler(def.raiz.rotation)); corr.y += altura * w; corr.addScaledVector(fr0(def), 0.32 * w);   // vem pro peito de quem ergue
+      def.raiz.position.add(corr); def.raiz.updateMatrixWorld(true);
+    };
+    f.corr = corr;
+    const g = () => { const w = W(); for (const [o, p] of [["spine_01", 0.3], ["spine_02", 0.4], ["spine_03", 0.3]]) atk.girarMundo(atk.ossos[o], esq0(atk), arco * p * w); atk.modelo.updateMatrixWorld(true); };
+    def.extras.add(f); atk.extras.add(g);
+    return () => {
+      def.extras.delete(f); atk.extras.delete(g); delete atk.ikFixo.hand_l; delete atk.ikFixo.hand_r;
+      def.raiz.position.sub(corr); def.raiz.rotation.x = 0; def.raiz.rotation.z = 0; def.raiz.rotation.order = "XYZ";
+    };
+  };
+}
 const PROG = {
+  /* bodylock: abraça a cintura, ergue de lado e derruba torcendo */
+  async bodylock(atk, def) {
+    if (montada) await separar({ narra: false });
+    await queda(atk, def, { soco: false, antes: levantaEDerruba(0.22, -0.1, 1.5, -0.15) });
+    await serieSocos(2);
+  },
+  /* suplex: ele ergue quem tem pela cintura, arqueia pra trás e joga por cima */
+  async suplex(atk, def) {
+    if (montada) await separar({ narra: false });
+    await queda(atk, def, { soco: false, antes: levantaEDerruba(0.42, -1.1, 0, -0.5) });
+    await serieSocos(2);
+  },
+  /* single leg: ele pega uma perna só e a ergue (a outra segue no chão) enquanto entra, depois cai igual */
+  async single_leg(atk, def) {
+    if (montada) await separar({ narra: false });
+    await queda(atk, def, { soco: false, antes: (atk, def) => {
+      const st = { t: 0 }, k = { peso: 0, alvo: () => atk.posMundo("hand_l").lerp(atk.posMundo("hand_r"), 0.5).add(V3(0, 0.06, 0)),
+        polo: () => def.posMundo("thigh_r").addScaledVector(esq0(def), -0.5).addScaledVector(fr0(def), 0.2) };
+      def.ikFixo.ball_r = k;
+      const f = (dt) => { st.t += dt; k.peso = st.t < 0.35 ? 0 : st.t < 0.75 ? suave((st.t - 0.35) / 0.4) : Math.max(0, 1 - (st.t - 0.75) / 0.3); };
+      def.extras.add(f);
+      return () => { def.extras.delete(f); delete def.ikFixo.ball_r; };
+    } });
+    await serieSocos(2);
+  },
   /* sprawl: quem defende joga as pernas pra trás e o quadril desce, o peito cai sobre as costas de quem atirou */
   async sprawl(atk, def) {
     await ajustarDist(1.25, 0.4);

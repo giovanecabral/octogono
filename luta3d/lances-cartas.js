@@ -45,6 +45,8 @@ const contra = (gDele, gMeu, camera) => ({
 });
 /* queda de quem joga a carta (foto em s segundos) */
 const queda = (s, camera, passos = [["queda", "A"]]) => ({ tipo: "queda", clipe: QUEDA, arte: { clipe: QUEDA, t: { s }, camera, passos } });
+/* a queda de quem joga a carta com o lance programado do diretor (PROG) */
+const quedaProg = (prog, s, camera) => ({ ...queda(s, camera), prog, arte: { clipe: QUEDA, t: { s }, camera, passos: [["prog", "A", prog]] } });
 /* queda dele defendida (antiqueda e afins) */
 const defQueda = (s, camera) => ({ tipo: "quedaDefendida", clipe: "Passo_Tras", arte: { clipe: "Passo_Tras", t: { s }, camera, passos: [["defendida", "B"]] } });
 /* o mesmo, com o lance programado do diretor (PROG) no lugar do passo pra trás */
@@ -90,10 +92,10 @@ export const LANCES_CARTAS = {
   superman: golpe("direto", cam("baixo", -1)),
 
   /* ---------- wrestler ---------- */
-  single_leg: queda(0.75, cam("tres")),
+  single_leg: quedaProg("single_leg", 0.75, cam("tres")),
   double_leg: queda(1.05, cam("baixo")),
   queda_contragolpe: queda(0.95, cam("costas")),
-  suplex: queda(1.25, cam("baixo", -1)),
+  suplex: quedaProg("suplex", 1.25, cam("baixo", -1)),
   peso_ombro: cima("controle", ["expulsar"], { s: 0.3 }, cam("chao")),
   cotovelada_cima: cima("gnp1", ["socos", "A", 1, false], { impacto: 1, depois: 0.02 }, cam("cima")),
   passagem_joelho: cima("controle", ["socos", "A", 1, false], { s: 0.15 }, cam("tres", -1)),
@@ -101,7 +103,7 @@ export const LANCES_CARTAS = {
   sprawl: defQuedaProg("sprawl", 0.75, cam("tres")),
   levantada_tecnica: baixo("levantou", ["expulsar"], { s: 3.3 }, cam("tres"), "Getting_Up"),
   contra_queda: defQueda(0.8, cam("tres", -1)),
-  bodylock: queda(1.25, cam("perto", -1)),
+  bodylock: quedaProg("bodylock", 1.25, cam("perto", -1)),
 
   /* ---------- grappler ---------- */
   kimura: cima("sub", ["fin", "A", "chave"], { s: 1.6 }, cam("chao")),
