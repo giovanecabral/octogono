@@ -6,12 +6,18 @@ import * as C from "../api/_jxj-cartas.js";
 
 const chave = (d) => d.slice().sort().join(",");
 
-/* o deck padrão com a carta do nó no lugar de uma não fixa da mesma categoria
-   (se não houver, no lugar da última não fixa que tem 2 cópias) */
+/* o deck padrão com a carta do nó no lugar de uma não fixa da MESMA CASA (em pé, por cima, por baixo;
+   decisão 86, resposta do dono): entre as da mesma casa, a última da mesma categoria; se não houver
+   da categoria, a última com 2 cópias. Se o deck padrão não tem carta da casa da carta (o padrão só
+   tem carta em pé: por cima e por baixo não têm), vale a regra de antes: a última da mesma
+   categoria e, na falta, a última com 2 cópias */
 export function deckDoNo(estilo, no) {
-  const id = C.CARTA_DO_NO[no], d = C.DECK_PADRAO[estilo].slice(), fixas = C.FIXAS[estilo].length, cat = C.CARTAS[id].categoria;
-  let i = d.findLastIndex((x, k) => k >= fixas && C.CARTAS[x].categoria === cat);
-  if (i < 0) i = d.findLastIndex((x, k) => k >= fixas && d.filter((y) => y === x).length === 2);
+  const id = C.CARTA_DO_NO[no], d = C.DECK_PADRAO[estilo].slice(), fixas = C.FIXAS[estilo].length, c = C.CARTAS[id];
+  const livre = (x, k) => k >= fixas;
+  const daCasa = (x, k) => livre(x, k) && C.CARTAS[x].casa === c.casa;
+  const pool = d.some(daCasa) ? daCasa : livre;
+  let i = d.findLastIndex((x, k) => pool(x, k) && C.CARTAS[x].categoria === c.categoria);
+  if (i < 0) i = d.findLastIndex((x, k) => pool(x, k) && d.filter((y) => y === x).length === 2);
   d[i] = id;
   return d;
 }
