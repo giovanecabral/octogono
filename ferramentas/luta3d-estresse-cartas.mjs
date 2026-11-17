@@ -41,9 +41,33 @@ for (const comArquivo of [true, false]) {
         out.lances.push({ id, quem, bloqueio, s: +((performance.now() - t0) / 1000).toFixed(1), tocou, tocouReserva });
       }
     }
+    /* lances programados (Tarefa 19): cada um dos dois lados, no estado em que a carta aparece (em pé, por cima, por baixo);
+       depois de cada um a luta tem que seguir (um golpe e a separação) sem NaN nos corpos */
+    out.prog = [];
+    const preparo = { martelada: (q) => [{ tipo: "queda", quem: q }], passagem: (q) => [{ tipo: "queda", quem: q }], raspagem: (q) => [{ tipo: "queda", quem: q === "A" ? "B" : "A" }] };
+    const EV = { sprawl: "quedaDefendida", single_leg: "queda", suplex: "queda", bodylock: "queda", superman: "golpe1", martelada: "gnp1", raspagem: "raspou", passagem: "controle" };
+    for (const [prog, tipo] of Object.entries(EV)) for (const quem of ["A", "B"]) {
+      const t0 = performance.now();
+      for (const ev of (preparo[prog] ? preparo[prog](quem) : [])) await l.lance({ ev });
+      const carta = Object.entries(L.LANCES_CARTAS).find(([, x]) => x.prog === prog)[0];
+      await l.lance({ ev: { tipo, quem, prog, carta, forca: 4, forte: true } });
+      await l.lance({ ev: { tipo: "separa", quem } });
+      await l.lance({ ev: { tipo: "golpe1", quem, golpe: "jab", forca: 2 } });
+      const ok = [l._dev.A, l._dev.B].every((L2) => ["x", "y", "z"].every((e) => Number.isFinite(L2.raiz.position[e])) && Math.abs(L2.raiz.rotation.x) < 0.01 && Math.abs(L2.raiz.rotation.z) < 0.01);
+      out.prog.push({ id: prog, quem, s: +((performance.now() - t0) / 1000).toFixed(1), ok });
+    }
+    for (const quem of ["A", "B"]) {
+      const t0 = performance.now();
+      await l.lance({ ev: { tipo: "inicio", quem, round: 1 } });
+      await l._dev.lances.finalizacao(quem === "A" ? l._dev.A : l._dev.B, quem === "A" ? l._dev.B : l._dev.A, "", "kimura");
+      out.prog.push({ id: "kimura", quem, s: +((performance.now() - t0) / 1000).toFixed(1), ok: true });
+    }
     l.destruir(); div.remove(); return out;
   });
   const rot = comArquivo ? "com o arquivo" : "sem o arquivo";
+  const lentosProg = r.prog.filter((x) => x.s > 25 || !x.ok);
+  console.log(`  lances programados: ${r.prog.length} (mais lento ${Math.max(...r.prog.map((x) => x.s))} s)`);
+  if (lentosProg.length) falhas.push(rot + " lance programado preso ou torto: " + JSON.stringify(lentosProg));
   const lentos = r.lances.filter((x) => x.s > 20);
   const errados = r.lances.filter((x) => (comArquivo ? !x.tocou : x.tocou || !x.tocouReserva));
   console.log(`${rot}: ${r.clipes} clipes carregados, ${r.lances.length} lances, mais lento ${Math.max(...r.lances.map((x) => x.s))} s, erros ${erros.length}`);

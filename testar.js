@@ -13474,7 +13474,7 @@ async function testarCartasArte() {
   const golpes = new Set([...diretor.matchAll(/^\s{2}(\w+):\s*\{ clip:/gm)].map((m) => m[1]));
   const glb = path.join(RAIZ, "luta3d", "mx_lutas.glb");
   const clipes = fs.existsSync(glb) ? (() => { const b = fs.readFileSync(glb); return new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name)); })() : null;
-  const PASSOS = ["golpe", "queda", "defendida", "socos", "tentativa", "expulsar", "fin", "kd", "espera"];
+  const PASSOS = ["golpe", "queda", "defendida", "socos", "tentativa", "expulsar", "fin", "kd", "espera", "prog"];
   const CAMERAS = ["lado", "tres", "baixo", "perto", "costas", "chao", "cima"];
   await conf("toda carta (as comuns, as 48 da árvore e as 8 do chão) tem lance e foto, e o lance não sobra pra carta que não existe", () => {
     if (ids.length !== 65) throw new Error("cartas: " + ids.length);
@@ -13489,6 +13489,7 @@ async function testarCartasArte() {
       const a = l.arte;
       if (!Array.isArray(a.passos) || !a.passos.length || a.passos.some((p) => !PASSOS.includes(p[0]))) throw new Error(`${id}: passos ${JSON.stringify(a.passos)}`);
       for (const p of a.passos) if (p[0] === "golpe" && !golpes.has(p[2])) throw new Error(`${id}: golpe do passo ${p[2]}`);
+      for (const p of a.passos) if (p[0] === "prog" && p[2] !== l.prog) throw new Error(`${id}: o passo prog ${p[2]} não é o prog da carta (${l.prog})`);
       if (!a.camera || !CAMERAS.includes(a.camera.tipo)) throw new Error(`${id}: câmera ${JSON.stringify(a.camera)}`);
       if (!a.t || (!(a.t.impacto >= 1) && !(a.t.s > 0))) throw new Error(`${id}: instante ${JSON.stringify(a.t)}`);
     }
