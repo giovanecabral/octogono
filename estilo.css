@@ -2532,7 +2532,10 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
   .v2-linha-lado .quem b{font-size:14px}
   /* 360 px: o nome já está na carta pequena; com ele ao lado a linha passava da tela (2026-11-17) */
   .v2-linha-lado .quem b{display:none}
-  .v2-linha-tempo{grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto}
+  .v2-linha-tempo{grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto;gap:4px}
+  .v2-linha-lado{gap:4px}
+  .v2-linha .v2-linha-carta .jxj-carta{--w:56px!important}
+  .v2-linha .v2-selo{white-space:normal;max-width:64px;text-align:center;line-height:1.15}
   .v2-linha-lado .ordem{font-size:20px}
   .v2-selo{font-size:10px;padding:3px 6px}
   .v2-porque{font-size:13px}

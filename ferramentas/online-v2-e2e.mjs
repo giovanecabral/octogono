@@ -178,7 +178,7 @@ try {
       if (st.largura) viu.rolagem = `${nome}: ${st.largura} px de largura`;
       if (st.revelada && !st.assist && !fotos.has(nome + "revelacao")) { fotos.add(nome + "revelacao"); await p.foto(`${nome}-revelacao.png`); }
       if (st.linha) { viu.linha++; if (!fotos.has(nome + "porque")) { fotos.add(nome + "porque"); await p.foto(`${nome}-porque.png`); } }
-      if (st.chao && !fotos.has(nome + "chao")) { fotos.add(nome + "chao"); viu.chao = true; await p.foto(`${nome}-chao.png`); }
+      if (st.chao && !st.assist && !fotos.has(nome + "chao")) { fotos.add(nome + "chao"); viu.chao = true; await p.foto(`${nome}-chao.png`); }
       if (!st.assist && st.cartas) {
         if (!fotos.has(nome + "escolha")) { fotos.add(nome + "escolha"); await p.foto(`${nome}-escolha.png`); }
         if (st.etapa && !fotos.has(nome + st.etapa)) { fotos.add(nome + st.etapa); await p.foto(`${nome}-${st.etapa === "etapa-sinal" ? "postura" : "carta"}.png`); }
