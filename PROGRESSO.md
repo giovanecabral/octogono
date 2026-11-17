@@ -27,42 +27,32 @@ flag `combate_v2` em `jxj_config`). Nada disso está no ar.
   `claudeInChromeDefaultEnabled` `false` em `~/.claude.json` (ligar com `/chrome`
   quando precisar). Backups em `.bak`. Valem a partir da próxima sessão.
 
-## Estado em 2026-11-17 (manhã)
+## Estado em 2026-11-17 (fim do dia)
 
-Tudo junto na branch local `cartas-integracao` (worktree
-`.claude/worktrees/cartas-integracao`, sem push): etapa 1 (tarefas 1 a 10), Tarefa 11
-em parte (`71c6b4d`), Tarefa 12 e tela (13 a 15, `cartas-servidor`), conversor, 17 e
-19 (`cartas-conversor`). Bateria completa `TUDO CERTO` antes do `71c6b4d`;
-`jxjtelas` 6 de 6 verde com o processador livre (a intermitência vista com a
-simulação rodando é de tempo).
+O plano das cartas está completo (tarefas 1 a 19 e o fechamento), junto no
+`combate-v2`, sem deploy. Bateria completa `TUDO CERTO`; ponta a ponta com deck
+da árvore (`ARVORE=1 PORTA=8851 node ferramentas/online-v2-e2e.mjs <pasta>`) ok.
 
-- Calibragem: 5 rodadas, a última sem fechar. Os números da rodada 5 estão SEM
-  commit em `api/_jxj-cartas.js`, `docs/combat-v2.md`, `docs/combat-v2-decisions.md`
-  (decisões 80 a 89) e 2 linhas do `testar.js`, no worktree da etapa 1 e copiados
-  pra integração. Relatório final: `sim/relatorio-r5-final.md` (worktree da etapa 1).
-  Fora: melhor contra melhor no nível 30 (Wrestler 57,6%, Counter 42,8%; Grappler
-  contra Striker 76,2%), Wrestler 30 contra 1 em 92,2%, 14 nós, cartas de chão
-  (Kimura +28, Triângulo +31 de relativa). Dentro: nível 1 idêntico, nível 30 com o
-  deck padrão, deck aleatório contra o campo de melhores (decisão 89).
-- Tarefa 11: `deckDoBot2` e faixas feitos; baixo e médio com o deck padrão.
-  Falta `SIM_FAIXAS=baixo,medio node sim/decks-bot2.mjs --escrever` (o
-  classificador negou ao agente; precisa do dono) e medir `FORCA_BOT2`
-  (`SIM_PARTES=bots SIM_SAIDA=relatorio-bots.md node sim/simular.mjs 10000`). Até lá
-  a `jxjbot` reprova "habilidade e força" (1526 contra 1448).
-- 3D: joelhada e cotovelada sem IK (não é ponta de cadeia); suplex e raspagem
-  aproximados.
+- Calibragem parada na decisão 91 (6 rodadas): números da rodada 5 mais a regra
+  de 1 cópia pra carta de chão e finalização (decisão 90). Fora dos portões,
+  conhecido: Wrestler 57,8% e Counter 43,1% no melhor contra melhor do nível 30,
+  Wrestler 91,5% de 30 contra 1, Grappler contra Striker 74,2%, cartas de chão.
+  Não recomeçar sem o dado do grupo de teste.
+- Bots: deck por faixa (`deckDoBot2`) e `FORCA_BOT2` medida de novo (1403 a 1576).
+- Tela e lances 3D aprovados pelo dono "por enquanto" (2026-11-17): ele diz o que
+  incomoda depois de jogar. Pendências conhecidas: joelhada e cotovelada sem IK,
+  suplex e raspagem aproximados; no computador, a faixa "Mostre uma postura"
+  fica semitransparente sobre o palco parado.
 - Agentes travam esperando processo em background (o aviso não chega pra eles):
   rodar o que passa de 9 minutos pela sessão principal.
 
 ## Falta
 
-1. Dono: decidir a calibragem (aceitar, regra nova pro chão, ou limite de
-   finalização por deck) e aprovar os números; liberar o comando da Tarefa 11.
-2. Commit dos números, decks dos bots e `FORCA_BOT2`; bateria completa.
-3. Fechamento do plano: merge no `combate-v2`, ponta a ponta
-   (`ferramentas/online-v2-e2e.mjs`), LEIA-ME "Cartas da árvore", push do `combate-v2`.
-4. Fase 7 do combate v2 (flag, migração `supabase_jxj_combate2.sql`): do dono.
-5. Antes de qualquer deploy: este arquivo entra no `.vercelignore`.
+1. Fase 7 do combate v2: grupo de teste com a flag. Migração
+   `supabase_jxj_combate2.sql` e a flag são do dono.
+2. Antes de qualquer deploy: este arquivo entra no `.vercelignore`, e o
+   `luta3d/mx_cartas.glb` precisa estar na pasta do `vercel --prod`.
+3. Depois do grupo de teste: regra nova pro chão, se o dado pedir.
 
 ## Decisões importantes
 
