@@ -7,7 +7,7 @@
 import * as THREE from "./vendor/three.module.js";
 import { Palco } from "./palco.js";
 import { carregarBase, carregarCartas, Lutador } from "./lutador.js";
-import { clipeDoLance } from "./lances-cartas.js";
+import { clipeDoLance, LANCES_CARTAS, GOLPES_MX } from "./lances-cartas.js";
 import { modeloCinturao } from "./aparencia.js";
 
 /* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
@@ -177,6 +177,17 @@ const GOLPES = {
   chuteCabeca:  { clip: "Mma_Kick",       imp: 0.71, dist: 1.30, alvo: "cabeca", reacao: "Big_Hit_To_Head",    forca: 1.7, membro: "ball_r", nome: "chute alto" },
   chuteCorpo:   { clip: "Roundhouse_Kick",imp: 0.92, dist: 1.66, alvo: "corpo",  reacao: "Rib_Hit",            forca: 1.3, membro: "ball_r", nome: "chute no corpo" },
 };
+/* golpes dos clipes novos das cartas (mx_cartas.glb): imp e dist medidos em lances-cartas.js. Só valem
+   com o clipe carregado (golpeDaCarta); sem ele o lance de reserva (GOLPES de cima) segue valendo. */
+const REACAO_MX = { cabeca: "Reacao_Cabeca_Dir", corpo: "Reacao_Corpo", perna: "Reacao_Lado" };
+for (const [id, g] of Object.entries(GOLPES_MX))
+  GOLPES["mx_" + id] = { clip: id, imp: g.imp, dist: g.dist, alvo: g.alvo, reacao: REACAO_MX[g.alvo], forca: g.membro.startsWith("ball") ? 1.4 : 1.1, membro: g.membro, nome: id.replace(/_/g, " "), ik: g.ik };
+/* o golpe do lance de uma carta: o clipe novo se já chegou, senão o golpe de reserva (nome do GOLPES) */
+function golpeDaCarta(carta, reserva) {
+  const l = carta && LANCES_CARTAS[carta];
+  if (l && l.mx && GOLPES["mx_" + carta] && clipeDoLance(l, base.clips) === l.mx.clipe) return "mx_" + carta;
+  return reserva || (l && l.golpe) || null;
+}
 /* em que instante da reação o golpe "chega" (medido na velocidade da cabeça do clipe) */
 const REACAO_DE = { Reacao_Cabeca_Esq: 0.06, Reacao_Cabeca_Dir: 0.1, Reacao_Corpo: 0.13, Reacao_Lado: 0.16 };
 /* onde o golpe encosta: rosto (um pouco à frente da cabeça) ou costela */
@@ -209,7 +220,8 @@ async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarR
   const esquiva = bloqueio && g.alvo === "cabeca" && Math.random() < 0.5;
   const ondeEstava = def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(pelve(atk).sub(pelve(def)).normalize(), 0.1);
   atk.umaVez(g.clip, { fade: 0.14, volta: 0.35 });
-  atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo), g.imp);
+  /* joelho e cotovelo (ik: false) não estão na cadeia do IK: o golpe encosta pelo clipe, com a distância medida */
+  if (g.ik !== false) atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo), g.imp);
   if (g.antes && !bloqueio) atk.contato(g.antes.membro, alvoDe(atk, def, "cabeca"), g.antes.imp);
   let t = 0;
   if (g.antes && !bloqueio) { await esperar(g.antes.imp - 0.02); t = g.antes.imp - 0.02; acertar(atk, def, g.antes.membro, 0.6, "cabeca"); def.umaVez("Light_Hit_To_Head", { fade: 0.06, volta: 0.25, peso: 0.7 }); }
@@ -1095,7 +1107,7 @@ async function lance(L) {
       case "golpe1": {
         if (montada) await separar({ narra: false });
         const f = ev.forca || 3, lista = f >= 8 ? ["gancho", "upper", "chuteCabeca", "direto"] : f >= 4 ? ["direto", "umDois", "cruzadoFrente", "chuteBaixo", "chuteCorpo"] : ["jab", "jab", "jabCorpo", "chuteBaixo"];
-        await golpe(atk, def, ev.golpe || sorteia(lista), { bloqueio: !!ev.bloqueio, narra: false }); break;
+        await golpe(atk, def, golpeDaCarta(ev.carta, ev.golpe) || sorteia(lista), { bloqueio: !!ev.bloqueio, narra: false }); break;
       }
       case "gnp1": if (!montada) await queda(atk, def, { soco: false }); await serieSocos(ev.forte ? 2 : 1, !!ev.forte); break;
       case "grogue": {   // quem ficou tonto é o "quem" (não quem bateu)

@@ -17195,6 +17195,29 @@ async function testarLuta3d() {
     if (/await carregarCartas/.test(d)) throw new Error("a luta espera o mx_cartas.glb");
     if (!/clipeDaCarta\(lance\) \{ return clipeDoLance\(lance, base\.clips\); \}/.test(d)) throw new Error("sem clipeDaCarta com reserva");
   });
+  /* Tarefa 17: o lance do Online v2 leva a carta e o diretor toca o lance dela (clipe novo ou reserva) */
+  await conf("todo lance de carta o diretor conhece (tipo com case, golpe no GOLPES, clipe no mx_lutas.glb ou reserva); o lance do Online v2 leva a carta, no golpe e no bloqueio", async () => {
+    const L = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
+    const diretor = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    const casos = new Set([...diretor.matchAll(/case "(\w+)"/g)].map((m) => m[1]));
+    const golpes = new Set([...diretor.matchAll(/^\s{2}(\w+):\s*\{ clip:/gm)].map((m) => m[1]));
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "mx_lutas.glb"));
+    const clipes = new Set((JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString()).animations || []).map((a) => a.name));
+    for (const [id, l] of Object.entries(L.LANCES_CARTAS)) {
+      if (!casos.has(l.tipo)) throw new Error(`${id}: lance ${l.tipo} sem case no diretor`);
+      if (l.golpe && !golpes.has(l.golpe)) throw new Error(`${id}: golpe ${l.golpe} fora do GOLPES`);
+      if (!L.clipeDoLance(l, clipes)) throw new Error(`${id}: sem clipe nem reserva no mx_lutas.glb`);
+    }
+    const X2 = sandboxCarreira();
+    const t = { round: 1, troca: 1, cartaA: "overhand", cartaB: "jab", resolucao: { posicao: { antes: { pos: "pe" }, depois: { pos: "pe" } } },
+      ev: [{ tipo: "dano", quem: "a", alvo: "b", carta: "overhand", dano: 4 }, { tipo: "anulou", quem: "b", alvo: "uppercut", carta: "bloqueio" }] };
+    X2.sb.__args = JSON.stringify([t, "a"]);
+    const ls = JSON.parse(X2.run("JSON.stringify(jxjLinhas3d2(...JSON.parse(globalThis.__args)).map(L=>L.ev))"));
+    if (!ls.some((ev) => ev.carta === "overhand" && !ev.bloqueio)) throw new Error("o golpe não leva a carta: " + JSON.stringify(ls));
+    if (!ls.some((ev) => ev.carta === "uppercut" && ev.bloqueio)) throw new Error("o bloqueio não leva a carta do golpe: " + JSON.stringify(ls));
+    if (!/golpeDaCarta\(ev\.carta, ev\.golpe\)/.test(diretor)) throw new Error("o diretor não usa a carta do lance");
+    if (!/if \(g\.ik !== false\) atk\.contato/.test(diretor)) throw new Error("joelho e cotovelo (ik: false) iriam pro IK e quebrariam");
+  });
   await conf("os golpes novos têm imp e dist medidos e o clipe existe no mx_cartas.glb (quando o arquivo está na pasta)", async () => {
     const LC = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lances-cartas.js")).href);
     const f = path.join(__dirname, "luta3d", "mx_cartas.glb");
