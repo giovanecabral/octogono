@@ -12045,6 +12045,30 @@ async function testarJxJ() {
         await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
       } finally { await flagV2(false); }
     });
+    await conf("cartas da árvore pelo servidor: a épica em 1 cópia passa; com 2, recusada; deck salvo antes que deixou de valer (2 cópias da épica) volta pro padrão com deckMontado false; o estado manda as liberadas", async () => {
+      await zerarLimites();
+      const u1 = await novoUsuario({ pro: true }), l1 = (await criar(u1)).id;
+      /* pela estrutura, não pelo número: uma épica de defesa do estilo (1 cópia por deck), com o nó dela */
+      const epica = Object.values(CT.CARTAS).find((c) => c.no && c.raridade === "epica" && c.casa === "pe" && c.categoria === "defesa" && ARV.NOS[c.no] && ARV.NOS[c.no].estilo === "striker");
+      if (!epica || CT.COPIAS.epica !== 1) throw new Error("sem épica de defesa do striker no catálogo");
+      await q("update jxj_lutadores set build = $1::jsonb where id = $2", [JSON.stringify({ [epica.no]: 1 }), l1]);
+      await flagV2({ contas: [u1] });
+      try {
+        const um = CT.DECK_PADRAO.striker.slice(), dois = CT.DECK_PADRAO.striker.slice();
+        const i = um.indexOf("bloqueio"), j = um.lastIndexOf("bloqueio");
+        if (i === j) throw new Error("o deck padrão perdeu as 2 cópias de bloqueio");
+        um[i] = epica.id; dois[i] = epica.id; dois[j] = epica.id;
+        await ok(u1, "deck", { lutadorId: l1, deck: um });
+        await erro(u1, "deck", { lutadorId: l1, deck: dois }, /cópia/);
+        let L1 = (await ok(u1, "estado")).lutadores.find((l) => l.id === l1);
+        if (JSON.stringify(L1.deck) !== JSON.stringify(um) || !L1.deckMontado) throw new Error("o deck válido não ficou montado");
+        /* gravado direto no banco: o que um catálogo antigo deixou passar */
+        await q("update jxj_lutadores set deck = $1::jsonb where id = $2", [JSON.stringify(dois), l1]);
+        L1 = (await ok(u1, "estado")).lutadores.find((l) => l.id === l1);
+        if (JSON.stringify(L1.deck) !== JSON.stringify(CT.DECK_PADRAO.striker) || L1.deckMontado) throw new Error("deck inválido não voltou pro padrão: " + JSON.stringify({ m: L1.deckMontado }));
+        if (!Array.isArray(L1.liberadas) || !L1.liberadas.includes(epica.id) || JSON.stringify(L1.liberadas) !== JSON.stringify(CT.cartasLiberadas("striker", { [epica.no]: 1 }))) throw new Error("estado sem liberadas");
+      } finally { await flagV2(false); }
+    });
     await conf("sem a migração do combate v2: a flag não existe, a luta nasce na v1 e salvar deck responde 503", async () => {
       const db2 = await B.novoBanco({ combate2: false });
       const fetchAntes = globalThis.fetch;

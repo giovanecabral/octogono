@@ -677,7 +677,7 @@ async function executar(acao, c, uid) {
         let decks = {};
         try { decks = (await rpc("jxj_decks", { uid })) || {}; } catch (e) { if (e.codigo !== "PGRST202") throw e; }
         /* o montado que não vale mais (a reconfiguração tirou o nó da carta) fica guardado, mas a luta usa o padrão: deckMontado false */
-        for (const l of est.lutadores || []) { const montado = decks[String(l.id)]; l.deck = V2.deckDo({ ...l, deck: montado }); l.deckMontado = !!montado && JSON.stringify(l.deck) === JSON.stringify(montado); }
+        for (const l of est.lutadores || []) { const montado = decks[String(l.id)]; l.deck = V2.deckDo({ ...l, deck: montado }); l.deckMontado = !!montado && JSON.stringify(l.deck) === JSON.stringify(montado); l.liberadas = CARTAS.cartasLiberadas(l.estilo, l.build || {}); }
       }
       return est;
     }
