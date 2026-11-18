@@ -2308,17 +2308,22 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.86em;color:var(--osso-2
 .jxj-selo-treino{background:var(--ouro);color:#16120a}
 .jxj-selo-treino .ico{color:#16120a}
 /* treino: o balão em cima da mão, a seta na carta certa, as cartas fora do roteiro e o fim */
-.jxj-treino-balao{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 auto 8px;max-width:680px;padding:10px 14px;background:rgba(212,160,23,.12);border:1px solid rgba(212,160,23,.55);color:var(--osso)}
+.jxj-treino-balao{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 auto 8px;max-width:680px;padding:10px 14px;background:linear-gradient(rgba(212,160,23,.12),rgba(212,160,23,.12)),#0b0c10;border:1px solid rgba(212,160,23,.55);color:var(--osso)}
 .jxj-treino-balao > .ico{width:20px;height:20px;color:var(--ouro);flex:none}
 .jxj-treino-balao p{margin:0;flex:1;min-width:200px;font-size:15px;line-height:1.4}
 .jxj-treino-balao .botao{flex:none}
 .jxj-treino-seta{position:absolute;left:50%;top:-34px;transform:translateX(-50%);z-index:8;color:var(--ouro);animation:jxjTreinoSeta 1s ease-in-out infinite}
 .jxj-treino-seta .ico{width:26px;height:26px}
+/* a carta pedida com a marca da finta (treino de cartas): a seta sobe acima da marca e a mão abre espaço */
+.jxj-na-mao.finta .jxj-treino-seta{top:-46px}
+.jxj-mao-luta:has(.jxj-na-mao.finta .jxj-treino-seta){padding-top:24px}
 @keyframes jxjTreinoSeta{0%,100%{translate:0 0}50%{translate:0 8px}}
 .jxj-na-mao.fora-do-treino .jxj-carta{filter:grayscale(.8) brightness(.45)}
 .jxj-treino-lista{margin:12px 0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--osso-2);font-size:15px}
 .jxj-treino-lista b{color:var(--osso)}
-@media (max-width:720px){.jxj-treino-balao{padding:8px 10px}.jxj-treino-balao p{font-size:13px;min-width:0}.jxj-treino-seta{top:-28px}.jxj-treino-seta .ico{width:20px;height:20px}}
+@media (max-width:720px){.jxj-treino-balao{padding:8px 10px}.jxj-treino-balao p{font-size:13px;min-width:0}.jxj-treino-seta{top:-28px}.jxj-treino-seta .ico{width:20px;height:20px}.jxj-na-mao.finta .jxj-treino-seta{top:-40px}
+  /* no celular a frase fica com a largura toda e o botão desce, menor (2026-11-18, treino de cartas: o botão grande espremia a frase) */
+  .jxj-treino-balao p{flex:1 1 calc(100% - 40px)}.jxj-treino-balao .botao{margin-left:auto;min-height:38px;padding:0 16px;font-size:14px}}
 @media (prefers-reduced-motion:reduce){.jxj-treino-seta{animation:none}}
 
 /* ---------- quem ganha de quem (2026-10-29) ---------- */
@@ -2599,6 +2604,8 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .v2-comando .v2-anel{grid-area:anel;width:56px;height:56px}
 .v2-comando .v2-anel::before{inset:5px}
 .v2-comando .v2-anel .jxj-relogio{font-size:21px}
+/* o treino de cartas (sem relógio): "livre" cabe no anel */
+.v2-comando .v2-anel.livre .jxj-relogio{font-size:12px;letter-spacing:.04em}
 .v2-btn-vel{grid-area:vel;display:inline-flex;align-items:center;gap:6px;padding:7px 11px;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid var(--linha-forte);color:var(--osso);
   font-family:var(--f-ui);font-weight:800;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 .v2-btn-vel .ico{width:14px;height:14px;color:var(--ouro)}
@@ -2714,13 +2721,19 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .v2-regras header b{display:inline-flex;align-items:center;gap:7px;font-family:var(--f-titulo);font-weight:400;font-size:22px;line-height:1;text-transform:uppercase;color:var(--osso)}
 .v2-regras header b .ico{width:18px;height:18px;color:var(--ouro)}
 .v2-regras header small{font-size:12.5px;color:var(--osso-2)}
-.v2-regras ol{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.v2-regras ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0;padding:0;list-style:none}
 .v2-regras li{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .v2-regras li>.ico{flex:none;width:18px;height:18px;margin-top:1px;color:var(--ouro)}
 .v2-regras li b{display:block;margin-bottom:3px;font-family:var(--f-ui);font-weight:800;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--osso)}
 .v2-regras li p{margin:0;font-size:13px;line-height:1.38;color:var(--osso-2)}
 .v2-regras li p b{display:inline;margin:0;font-family:inherit;font-size:inherit;letter-spacing:0;text-transform:none;color:var(--osso)}
-.v2-regras-fechar{position:absolute;top:8px;right:10px;padding:6px 12px;font-size:13px}
+.v2-regras-fechar{position:absolute;top:8px;right:10px;min-height:32px;padding:6px 12px;font-size:13px}
+/* fora da luta (treino feito e a tela antes da luta, 2026-11-18): o mesmo painel, sem o teto de altura da zona da mão */
+.v2-regras.v2-regras-solta{max-height:none;margin-top:12px;text-align:left}
+.v2-regras.v2-regras-solta ol{grid-template-columns:minmax(0,1fr)}
+.jxj-link-regras{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:6px 0;background:none;border:0;cursor:pointer;color:var(--ouro);font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.jxj-link-regras .ico{width:15px;height:15px}
+.jxj-link-regras:focus-visible{outline:2px solid var(--osso);outline-offset:2px}
 .v2-regras-fechar .ico{width:14px;height:14px}
 @media (max-width:1100px){.v2-regras ol{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}
 @media (max-width:720px){
@@ -2735,6 +2748,12 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
   .v2-energia-rot b{font-size:12px}
   .v2-energia-rot em{font-size:9.5px;padding:0 4px}
   .v2-energia-barra{height:6px}
+  /* sem o palco (cartas só), cada lado tem meia tela: o rótulo e a barra em linhas próprias, e o "cansado"
+     quebra em vez de passar por cima do outro lado (achado nas fotos do treino de cartas em 360, 2026-11-18) */
+  .jxj-hud .v2-energia{flex-wrap:wrap;row-gap:4px}
+  .jxj-hud .v2-energia-rot{flex:1 1 100%;flex-wrap:wrap;row-gap:2px;white-space:normal}
+  .jxj-hud .jxj-hud-lado.ele .v2-energia-rot{justify-content:flex-end}
+  .jxj-hud .v2-energia-barra{flex:1 1 100%}
   .jxj-na-mao .v2-sob{top:calc(100% - 2px);max-width:calc(100% + 4px)}
   .v2-pista,.v2-aviso-en{font-size:9px;padding:1px 4px;letter-spacing:.02em;line-height:1.1}
   .v2-pista{flex-direction:column;gap:0;text-align:center}

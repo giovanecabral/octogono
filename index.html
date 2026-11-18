@@ -7995,27 +7995,26 @@ function jxjGastoTroca2(t,eu,nomes,defs,depois){
   }
   return fr;
 }
-/* "Como ganhar": a regra antes de lutar, em 5 blocos, com os números das definições (nunca escritos
-   aqui). Abre sozinho na primeira luta v2 do navegador e pelo botão da barra de comando; não tranca a
-   mão nem para o relógio (o texto avisa) */
-let JXJ_V2_REGRAS=false,JXJ_V2_REGRAS_AUTO=false;
-function jxjComoGanhar2(defs){
-  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{},P=R.pts||{},n=jxjNum2;
+/* "Como ganhar": a referência curta da regra (2026-11-18, spec online-v2-treino: o dono tinha 5 s pra ler
+   o painel de 5 blocos e "era muito texto para pouco tempo"). Quem ensina é o treino de cartas; aqui ficam
+   3 blocos de uma linha, com os números das definições (nunca escritos aqui). Não abre sozinho: abre pelo
+   botão da barra de comando na luta e pelo link da tela antes da luta (fora do relógio). fechar: quem abriu
+   acerta o próprio botão quando o jogador fecha no Entendi */
+let JXJ_V2_REGRAS=false;
+function jxjComoGanhar2(defs,{fechar=null}={}){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{},n=jxjNum2;
   const fi=jxjR2((Number(R.custoFinta)||0)*(R.fatorFintaIniciativa!=null?R.fatorFintaIniciativa:1));
   const caixa=el("section","v2-regras"); caixa.id="jxj-regras2";
   if(caixa.setAttribute){ caixa.setAttribute("role","region"); caixa.setAttribute("aria-label","Como ganhar"); }
-  const bloco=(ico,tit,txt)=>`<li>${ICONE(ico)}<div><b>${tit}</b><p>${txt}</p></div></li>`;
-  caixa.innerHTML=`<header><b>${ICONE("info")}<span>Como ganhar</span></b><small>O relógio da troca continua correndo. O botão Como ganhar abre isto de novo.</small></header><ol>`
-    +bloco("cards","A troca","Primeiro a postura: você mostra a categoria de uma carta da mão e vê a dele. Depois, a carta.")
-    +bloco("espadas","Três jeitos de levar a troca","<b>Anular</b>: a reação contra a categoria dele anula a carta dele em qualquer velocidade. <b>Ser mais rápido</b>: a carta mais rápida resolve primeiro e, se der dano, interrompe a dele. <b>Velocidade igual</b>: as duas resolvem juntas.")
-    +bloco("busca","Ler ele",`A postura dele diz a categoria. Fintar custa ${n(R.custoFinta)} de energia (${n(fi)} com a iniciativa): sem energia pra fintar, a postura dele é verdade. Em Deck dele, as cartas dele e o que ele já jogou no round. Os atributos mudam até 1 a velocidade dele.`)
-    +bloco("energia","Energia",`Cada carta custa energia. Com ${n(R.cansado)} ou menos no começo da troca, a carta sai 1 mais lenta. Sem energia pra pagar, sai exausta: ${n(R.exaustaVel)} mais lenta, metade do dano e sem efeito. No fim do round voltam ${n(R.recuperacaoRound)}, mais ${n(R.energiaPorSobra)} por carta que sobrou na mão.`)
-    +bloco("bandeira","Pontos",`Cada ponto de dano vale ${n(P.dano)}; queda ${n(P.queda)}; knockdown ${n(P.kd)}; anular ${n(P.anula)}; interromper ${n(P.interrompe)}. Quem faz mais pontos leva o round; nocaute e finalização acabam a luta.`)
+  const bloco=(ico,txt)=>`<li>${ICONE(ico)}<p>${txt}</p></li>`;
+  caixa.innerHTML=`<header><b>${ICONE("info")}<span>Como ganhar</span></b></header><ol>`
+    +bloco("espadas","<b>Anular</b> vale em qualquer velocidade. <b>Mais rápida</b> com dano interrompe. <b>Velocidade igual</b>: as duas juntas.")
+    +bloco("energia",`Cada carta custa energia. Fintar custa ${n(R.custoFinta)} (${n(fi)} com a iniciativa). Com ${n(R.cansado)} ou menos, a carta sai 1 mais lenta.`)
+    +bloco("busca","A postura dele diz a categoria. Sem energia pra fintar, ela é verdade.")
     +`</ol>`;
-  const fechar=el("button","botao v2-regras-fechar",`${ICONE("check")}<span>Entendi</span>`); fechar.type="button";
-  fechar.onclick=()=>{ if(typeof SOM!=="undefined"&&SOM.toque)SOM.toque(); JXJ_V2_REGRAS=false; caixa.hidden=true;
-    const b=document.getElementById("jxj-btn-regras2"); if(b){ b.classList.remove("on"); if(b.setAttribute)b.setAttribute("aria-expanded","false"); } };
-  caixa.appendChild(fechar);
+  const fe=el("button","botao v2-regras-fechar",`${ICONE("check")}<span>Entendi</span>`); fe.type="button";
+  fe.onclick=()=>{ if(typeof SOM!=="undefined"&&SOM.toque)SOM.toque(); caixa.hidden=true; if(fechar)fechar(); };
+  caixa.appendChild(fe);
   return caixa;
 }
 /* a energia no placar: barra com o rótulo, "7,9 de 10", a marca da faixa do cansado e a cor que muda nela */
@@ -8026,16 +8025,6 @@ function jxjEnergia2(st,defs){
   return `<span class="v2-energia${cans?" cansado":""}" role="img" aria-label="Energia ${jxjNum2(en)} de ${jxjNum2(max)}${cans?", cansado":""}">`
     +`<span class="v2-energia-rot">${ICONE("energia")}<span>Energia</span> <b>${jxjNum2(en)}</b> de ${jxjNum2(max)}${cans?`<em>cansado: 1 mais lento</em>`:""}</span>`
     +`<span class="v2-energia-barra" style="--en:${pct}%;--marca:${marca}%" title="Com ${jxjNum2(lim)} ou menos, a carta sai 1 mais lenta"><i class="nivel"></i><i class="marca"></i></span></span>`;
-}
-/* abre sozinho uma vez: a primeira luta v2 deste navegador (jxj:regras2); sem storage, abre e não quebra */
-function jxjRegrasPrimeiraVez2(){
-  if(JXJ_V2_REGRAS_AUTO)return false;
-  JXJ_V2_REGRAS_AUTO=true;
-  let viu=false;
-  try{ viu=localStorage.getItem("jxj:regras2")==="1"; }catch(_){}
-  if(viu)return false;
-  try{ localStorage.setItem("jxj:regras2","1"); }catch(_){}
-  return true;
 }
 /* o duelo das cartas (decisão 92 do combate v2, 2026-11-17, cena desenhada pelo dono): o resultado de
    cada carta na troca, só dos eventos que o servidor manda (os mesmos do porquê). "deu_certo" quando a
@@ -8491,6 +8480,8 @@ function jxjPainel(area,def,est){
   slots.onclick=()=>{SOM.toque();irPara("jxj","lutadores");};
   acoes.append(buscar,...(botAgora?[botAgora]:[]),treinoB,arv,slots);
   hero.querySelector(".jxj-principal-info").appendChild(acoes);
+  /* combate v2 (2026-11-18): a regra curta fora do relógio, perto da busca e do bot */
+  if(est.combateV2&&def.combate2){ const cg=jxjLinkRegras2(def.combate2); hero.querySelector(".jxj-principal-info").append(cg.link,cg.painel); }
   if(soBot||botAgora)hero.querySelector(".jxj-principal-info").appendChild(msgBot);
   if(!podeFila)hero.querySelector(".jxj-principal-info").appendChild(el("p","jxj-nota",
     !principal.utilizavel?"Este lutador está num slot extra e o Pro venceu. Escolha o lutador do slot 1 como principal ou renove o Pro."
@@ -9648,6 +9639,9 @@ const jxjTreinoFeito=()=>{ try{ return localStorage.getItem("jxj:treino")==="1";
 /* obrigatório pra quem ainda não lutou: nenhuma luta no cartel de nenhum
    lutador da conta e sem a marca (sem localStorage, manda até a 1ª luta) */
 function jxjPrecisaTreino(est){
+  /* combate v2 (2026-11-18): uma vez, o treino de cartas (jxj:treino2), mesmo pra quem já lutou; sem
+     storage, pela regra de antes (até a primeira luta) */
+  if(est&&est.combateV2){ const f=jxjTreino2Feito(); if(f!==null)return !f; }
   if(jxjTreinoFeito())return false;
   return !((est&&est.lutadores)||[]).some(l=>jxjCartel(l).total>0);
 }
@@ -9665,6 +9659,8 @@ async function jxjTelaTreino(id){
   try{ def=await jxjDef(); est=await jxj("estado"); }catch(e){ return jxjErro(area,e,()=>jxjTelaTreino(id)); }
   const lutadores=(est&&est.lutadores)||[];
   const lut=lutadores.find(l=>String(l.id)===String(id))||lutadores.find(l=>l.id===est.principalEfetivo)||lutadores[0]||{nome:"Você",estilo:"striker",cartel:[0,0,0]};
+  /* a conta no combate v2: o treino de cartas */
+  if(est&&est.combateV2&&def.combate2)return jxjTelaTreino2(area,lut,def);
   const tk=JXJ_TOKEN;
   let st=jxjTreinoNovo(lut,def),fase="fala",fala=0,depois="",revelacao=null,prazo=null,timer=null,tick=null,roundVisto=1;
   const relogio=()=>{
@@ -9742,6 +9738,162 @@ async function jxjTelaTreino(id){
     if(jogando)armarPrazo();
   };
   desenhar();
+}
+/* ---------- treino de cartas (combate v2, 2026-11-18, spec docs/superpowers/specs/2026-11-18-online-v2-treino-design.md) ----------
+   Pedido do dono: "era muito texto para pouco tempo, eu tinha 5 s até a decisão da carta". A regra se
+   aprende jogando, sem relógio, antes da primeira luta. Só na tela, como o treino de antes: um roteiro fixo
+   de 3 trocas contra o Treinador (fictício), desenhado pela mesma jxjDesenharCombate2 com vistas no formato
+   do servidor. Nada vai pro servidor; o passo só anda quando o jogador joga a carta pedida ou toca no botão.
+   O roteiro é do motor: os estados e as trocas abaixo saem do resolverTroca2 de verdade (o aluno sem
+   passiva, deck fixo; o Treinador wrestler, cardio 0, energia máxima 5; atributos iguais). A suíte jxjv2
+   refaz tudo pelo motor e reprova se mudar; quando reprova, imprime o novo pra colar aqui. Nos textos das
+   trocas, {a} é o aluno e {b} o Treinador. */
+const JXJ_TREINO2={
+  estados:[
+    {"cv":2,"tpr":3,"round":1,"troca":1,"pos":"pe","nivelPos":0,"encaixe":null,"iniciativa":null,"a":{"vida":12,"vidaMax":12,"energia":10,"energiaMax":10,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":null,"lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":0,"acertos":0,"dano":0,"quedas":0,"interrupcoes":0,"anulacoes":0,"knockdowns":0}},"b":{"vida":12,"vidaMax":12,"energia":5,"energiaMax":5,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":null,"lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":0,"acertos":0,"dano":0,"quedas":0,"interrupcoes":0,"anulacoes":0,"knockdowns":0}},"deck":{"a":["jab","jab","cruzado","cruzado","chute_alto","bloqueio","bloqueio","antiqueda","antiqueda","queda","clinch","contra_ataque"],"b":["queda","queda","clinch","antiqueda","clinch","antiqueda","bloqueio","bloqueio","cruzado","cruzado","contra_ataque","contra_ataque"]},"mao":{"a":["jab","cruzado","chute_alto","bloqueio","antiqueda"],"b":["cruzado","cruzado","queda","bloqueio","clinch"]},"jogadas":{"a":[],"b":[]},"pontos":[{"a":0,"b":0}],"cartoes":[],"fim":null},
+    {"cv":2,"tpr":3,"round":1,"troca":2,"pos":"pe","nivelPos":0,"encaixe":null,"iniciativa":"a","a":{"vida":12,"vidaMax":12,"energia":10,"energiaMax":10,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":"defesa","lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":1,"acertos":1,"dano":0,"quedas":0,"interrupcoes":0,"anulacoes":1,"knockdowns":0}},"b":{"vida":12,"vidaMax":12,"energia":3,"energiaMax":5,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":"golpes","lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":1,"acertos":0,"dano":0,"quedas":0,"interrupcoes":0,"anulacoes":0,"knockdowns":0}},"deck":{"a":["jab","jab","cruzado","cruzado","chute_alto","bloqueio","bloqueio","antiqueda","antiqueda","queda","clinch","contra_ataque"],"b":["queda","queda","clinch","antiqueda","clinch","antiqueda","bloqueio","bloqueio","cruzado","cruzado","contra_ataque","contra_ataque"]},"mao":{"a":["jab","cruzado","chute_alto","antiqueda"],"b":["cruzado","queda","bloqueio","clinch"]},"jogadas":{"a":["bloqueio"],"b":["cruzado"]},"pontos":[{"a":1,"b":0}],"cartoes":[],"fim":null},
+    {"cv":2,"tpr":3,"round":1,"troca":3,"pos":"pe","nivelPos":0,"encaixe":null,"iniciativa":"a","a":{"vida":12,"vidaMax":12,"energia":9.25,"energiaMax":10,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":"golpes","lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":2,"acertos":2,"dano":1,"quedas":0,"interrupcoes":1,"anulacoes":1,"knockdowns":0}},"b":{"vida":11,"vidaMax":12,"energia":1,"energiaMax":5,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":"golpes","lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":2,"acertos":0,"dano":0,"quedas":0,"interrupcoes":0,"anulacoes":0,"knockdowns":0}},"deck":{"a":["jab","jab","cruzado","cruzado","chute_alto","bloqueio","bloqueio","antiqueda","antiqueda","queda","clinch","contra_ataque"],"b":["queda","queda","clinch","antiqueda","clinch","antiqueda","bloqueio","bloqueio","cruzado","cruzado","contra_ataque","contra_ataque"]},"mao":{"a":["cruzado","chute_alto","antiqueda"],"b":["queda","bloqueio","clinch"]},"jogadas":{"a":["bloqueio","jab"],"b":["cruzado","cruzado"]},"pontos":[{"a":2.5,"b":0}],"cartoes":[],"fim":null},
+    {"cv":2,"tpr":3,"round":2,"troca":1,"pos":"pe","nivelPos":0,"encaixe":null,"iniciativa":null,"a":{"vida":12,"vidaMax":12,"energia":10,"energiaMax":10,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":"defesa","lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":3,"acertos":3,"dano":1,"quedas":0,"interrupcoes":1,"anulacoes":2,"knockdowns":0}},"b":{"vida":11,"vidaMax":12,"energia":4,"energiaMax":5,"grogue":false,"kds":0,"ausentesSeguidas":0,"ultima":"queda","lento":0,"lentoProx":0,"rapido":0,"rapidoProx":0,"sangra":false,"total":{"jogadas":3,"acertos":0,"dano":0,"quedas":0,"interrupcoes":0,"anulacoes":0,"knockdowns":0}},"deck":{"a":["jab","jab","cruzado","cruzado","chute_alto","bloqueio","bloqueio","antiqueda","antiqueda","queda","clinch","contra_ataque"],"b":["queda","queda","clinch","antiqueda","clinch","antiqueda","bloqueio","bloqueio","cruzado","cruzado","contra_ataque","contra_ataque"]},"mao":{"a":["antiqueda","jab","queda","cruzado","chute_alto"],"b":["bloqueio","cruzado","contra_ataque","antiqueda","bloqueio"]},"jogadas":{"a":[],"b":[]},"pontos":[{"a":3.5,"b":0},{"a":0,"b":0}],"cartoes":[{"a":10,"b":9}],"fim":null}],
+  trocas:[
+    {"round":1,"troca":1,"cartaA":"bloqueio","cartaB":"cruzado","acaoA":"defesa","acaoB":"golpes","resolucao":{"cartas":{"a":{"id":"bloqueio","efetiva":"bloqueio","categoria":"defesa","vel":4,"custo":0,"finta":0,"exausta":false},"b":{"id":"cruzado","efetiva":"cruzado","categoria":"golpes","vel":3,"custo":2,"finta":0,"exausta":false}},"ordem":"a","reacoes":[{"quem":"a","carta":"bloqueio","anulou":"b","cartaAnulada":"cruzado"}],"interrupcoes":[],"dano":{"a":0,"b":0},"energia":{"a":{"antes":10,"depois":10},"b":{"antes":5,"depois":3}},"posicao":{"antes":{"pos":"pe","nivelPos":0},"depois":{"pos":"pe","nivelPos":0}},"pontos":{"a":1,"b":0},"vencedor":"a"},"ev":[{"tipo":"anulou","quem":"a","alvo":"cruzado","carta":"bloqueio","metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"resolveu","quem":"a","alvo":null,"carta":"bloqueio","metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"iniciativa","quem":"a","alvo":null,"carta":null,"metodo":null,"dano":null,"como":null,"punicao":false}],"eventos":["{a} anulou o cruzado com o bloqueio."]},
+    {"round":1,"troca":2,"cartaA":"jab","cartaB":"cruzado","acaoA":"golpes","acaoB":"golpes","resolucao":{"cartas":{"a":{"id":"jab","efetiva":"jab","categoria":"golpes","vel":5,"custo":1.75,"finta":0.75,"exausta":false},"b":{"id":"cruzado","efetiva":"cruzado","categoria":"golpes","vel":3,"custo":2,"finta":0,"exausta":false}},"ordem":"a","reacoes":[],"interrupcoes":[{"quem":"a","carta":"jab","interrompeu":"b","cartaInterrompida":"cruzado"}],"dano":{"a":1,"b":0},"energia":{"a":{"antes":10,"depois":9.25},"b":{"antes":3,"depois":1}},"posicao":{"antes":{"pos":"pe","nivelPos":0},"depois":{"pos":"pe","nivelPos":0}},"pontos":{"a":1.5,"b":0},"vencedor":"a"},"ev":[{"tipo":"finta","quem":"a","alvo":null,"carta":null,"metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"resolveu","quem":"a","alvo":null,"carta":"jab","metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"dano","quem":"a","alvo":"b","carta":"jab","metodo":null,"dano":1,"como":null,"punicao":false},{"tipo":"interrompeu","quem":"a","alvo":"cruzado","carta":"jab","metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"energia","quem":"a","alvo":null,"carta":"jab","metodo":null,"dano":null,"como":null,"punicao":false}],"eventos":["{a} mostrou Guarda alta e jogou golpe.","{a} acertou o jab (1 de dano).","{a} interrompeu o cruzado com o jab."]},
+    {"round":1,"troca":3,"cartaA":"antiqueda","cartaB":"queda","acaoA":"defesa","acaoB":"queda","resolucao":{"cartas":{"a":{"id":"antiqueda","efetiva":"antiqueda","categoria":"defesa","vel":4,"custo":0,"finta":0,"exausta":false},"b":{"id":"queda","efetiva":"queda","categoria":"queda","vel":2,"custo":1,"finta":0,"exausta":false}},"ordem":"a","reacoes":[{"quem":"a","carta":"antiqueda","anulou":"b","cartaAnulada":"queda"}],"interrupcoes":[],"dano":{"a":0,"b":0},"energia":{"a":{"antes":9.25,"depois":9.25},"b":{"antes":1,"depois":0}},"posicao":{"antes":{"pos":"pe","nivelPos":0},"depois":{"pos":"pe","nivelPos":0}},"pontos":{"a":1,"b":0},"vencedor":"a"},"ev":[{"tipo":"anulou","quem":"a","alvo":"queda","carta":"antiqueda","metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"resolveu","quem":"a","alvo":null,"carta":"antiqueda","metodo":null,"dano":null,"como":null,"punicao":false},{"tipo":"fimRound","quem":null,"alvo":null,"carta":null,"metodo":null,"dano":null,"como":null,"punicao":false}],"eventos":["{a} anulou a queda com a antiqueda.","{a} levou o round 1, 10 a 9."]}],
+  sinais:[{"a":"defesa","b":"golpes"},{"a":"defesa","b":"golpes"},{"a":"defesa","b":"queda"}]};
+/* os passos: k é a troca; etapa sinal (mostrar a postura), acao (jogar a carta) ou depois (a troca
+   resolvida); sinal ou carta é a jogada pedida, botao é o Continuar. Uma ideia por passo, frase curta. A
+   ordem da spec com um ajuste: Mais lenta e Juntas antes de Mais rápida (a jogada fica no fim da troca), e a
+   finta na troca 2, pra barra de energia descer antes do fim do round */
+const JXJ_TREINO2_PASSOS=[
+  {k:0,etapa:"sinal",botao:"Continuar",txt:()=>"Treino de cartas: 3 trocas, sem relógio. Aqui ninguém perde nada."},
+  {k:0,etapa:"sinal",sinal:"defesa",txt:()=>"Primeiro a postura: ele vê só a categoria da carta que você tocar. Toque numa Defesa."},
+  {k:0,etapa:"acao",carta:"bloqueio",txt:({v})=>`Ele mostrou ${JXJ_POSTURAS[v.sinais.b]}, que é Golpe. Selo Anula: o Bloqueio para golpe em qualquer velocidade. Jogue o Bloqueio.`},
+  {k:0,etapa:"depois",botao:"Continuar",txt:()=>"O Bloqueio anulou o Cruzado: a carta dele não fez nada. Anular vale ponto."},
+  {k:1,etapa:"sinal",sinal:"defesa",txt:()=>"Mostre Defesa de novo."},
+  {k:1,etapa:"acao",botao:"Continuar",txt:()=>"Ele mostrou Golpe outra vez. Veja os selos. Mais lenta: a dele sai antes. Juntas: as duas resolvem."},
+  {k:1,etapa:"acao",botao:"Continuar",txt:()=>"Mais rápida: a sua sai antes e, com dano, interrompe a dele."},
+  {k:1,etapa:"acao",carta:"jab",txt:({v,n})=>`Você mostrou Guarda alta. Jogar Golpe é finta: custa ${n(jxjTreino2Finta(v,"jab"))} a mais (metade, com a iniciativa). Jogue o Jab.`},
+  {k:1,etapa:"depois",botao:"Continuar",txt:({t,n})=>`O Jab interrompeu o Cruzado. A finta custou ${n(t.resolucao.cartas.a.finta)}: veja a sua energia.`},
+  {k:2,etapa:"sinal",sinal:"defesa",txt:()=>"Mostre Defesa."},
+  {k:2,etapa:"acao",botao:"Continuar",txt:({v,R,n})=>`Ele mostrou ${JXJ_POSTURAS[v.sinais.b]}, que é Queda. Ele tem ${n(v.estado.b.energia)} de energia e fintar custa ${n(R.custoFinta)}: a postura é verdade.`},
+  {k:2,etapa:"acao",carta:"antiqueda",txt:()=>"A Antiqueda anula queda. Jogue a Antiqueda."},
+  {k:2,etapa:"depois",botao:"Terminar",txt:({v})=>{ const c=(v.estado.cartoes||[])[0]||{}; return `A Antiqueda anulou a Queda. Você levou o round, ${c.a} a ${c.b}.`; }},
+];
+/* a finta de uma carta da mão na vista (0 é a da postura) */
+const jxjTreino2Finta=(v,id)=>{ const x=(v.mao||[]).find(c=>c.id===id); return x?Number(x.finta)||0:0; };
+/* a carta da minha mão como o servidor manda (cartaVista): em pé, sem passiva, atributos iguais (sem o
+   duelo) e sem grogue no roteiro; velocidade com lento, rápido e cansado */
+function jxjTreino2Carta(e,id,finta,d){
+  const c=d.cartas[id],x=e.a,R=d.regras||{};
+  return {id,nome:c.nome,categoria:c.categoria,efetiva:{id:c.id,nome:c.nome,contexto:c.contexto},
+    vel:c.vel-(x.lento||0)+(x.rapido||0)-(x.energia<=R.cansado?1:0),velBase:c.vel,dano:c.dano>0?Math.round(c.dano*10)/10:0,danoBase:c.dano,custo:c.custo,finta,efeitos:c.efeitos};
+}
+/* a vista do passo i: o formato da vista do servidor (vistaDaLutaV2 com vistaV2). No passo "depois", o
+   estado da troca seguinte (a etapa da postura, como na luta) com a troca nova; depois da última, o round
+   novo (o fim do round com a recuperação) */
+function jxjTreino2Vista(i,lut,defs){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{},T=JXJ_TREINO2,P=JXJ_TREINO2_PASSOS[i];
+  const depois=P.etapa==="depois",k=depois?P.k+1:P.k,e=T.estados[k];
+  const etapa=depois?(k<T.trocas.length?"sinal":null):P.etapa,sn=etapa==="acao"?T.sinais[k]:null;
+  const nome=(lut&&lut.nome)||"Você";
+  const lado=x=>({vida:Math.round(x.vida*10)/10,vidaMax:x.vidaMax,energia:Math.round(x.energia*100)/100,energiaMax:x.energiaMax,grogue:!!x.grogue,kds:x.kds,
+    ausentes:x.ausentesSeguidas,cansado:x.energia<=R.cansado,total:x.total,lento:x.lento||0,rapido:x.rapido||0});
+  const p=e.pontos[e.round-1],dif=p?p.a-p.b:0;
+  const finta=id=>sn?(d.cartas[id].categoria===sn.a?0:jxjR2((Number(R.custoFinta)||0)*(e.iniciativa==="a"?R.fatorFintaIniciativa:1))):null;
+  const agora=new Date().toISOString(),F=(JXJ_DEF&&JXJ_DEF.formato)||{};
+  return {id:"treino2",tipo:"treino",treino:true,bot:false,status:"andamento",lado:"a",
+    nomes:{a:{nome,rosto:(lut&&lut.rosto)||null,estilo:lut&&lut.estilo,nivel:(lut&&lut.nivel)||1,cartel:(lut&&lut.cartel)||[0,0,0],rating:(lut&&lut.rating)||1500},b:{...JXJ_TREINADOR}},
+    round:e.round,troca:e.troca,agora,prazo:agora,prazoSinal:agora,semRelogio:true,
+    formato:{...F,rounds:F.rounds||3,trocasPorRound:e.tpr,animacaoMs:0},
+    combate:2,
+    estado:{pos:e.pos,nivelPos:e.nivelPos,iniciativa:e.iniciativa||null,encaixe:null,a:lado(e.a),b:lado(e.b),pontos:e.pontos,cartoes:e.cartoes},
+    placarRound:p?{round:e.round,pts:{a:Math.round(p.a*10)/10,b:Math.round(p.b*10)/10},cartao:Math.abs(dif)<0.01?{a:10,b:10}:dif>0?{a:10,b:9}:{a:9,b:10}}:null,
+    papel:jxjPapel2(e,"a"),
+    decks:{a:e.deck.a.slice(),b:e.deck.b.slice()},jogadas:{a:e.jogadas.a.slice(),b:e.jogadas.b.slice()},
+    mao:e.mao.a.map(id=>jxjTreino2Carta(e,id,finta(id),d)),maoDele:e.mao.b.length,
+    minhaAcao:null,minhaCarta:null,adversarioEscolheu:false,etapa,
+    meuSinal:sn?sn.a:null,adversarioSinalizou:!!sn,sinais:sn?{a:sn.a,b:sn.b}:null,
+    trocas:T.trocas.slice(0,depois?P.k+1:P.k).map(t=>({...t,eventos:t.eventos.map(f=>f.replace(/\{([ab])\}/g,(_,l)=>l==="a"?nome:JXJ_TREINADOR.nome))}))};
+}
+/* o texto do passo (cru: a tela escapa) */
+function jxjTreino2Texto(i,lut,defs){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),v=jxjTreino2Vista(i,lut,d);
+  return JXJ_TREINO2_PASSOS[i].txt({v,R:(d&&d.regras)||{},t:(v.trocas||[])[v.trocas.length-1]||null,n:jxjNum2});
+}
+/* feito: a marca do navegador (jxj:treino2) ou o fim nesta página; null quando o navegador não guarda nada */
+let JXJ_TREINO2_SESSAO=false;
+function jxjTreino2Feito(){
+  if(JXJ_TREINO2_SESSAO)return true;
+  try{ return localStorage.getItem("jxj:treino2")==="1"; }catch(e){ return null; }
+}
+/* a tela do treino de cartas: o passo desenha a vista dele; o balão diz a frase; só a carta pedida liga */
+function jxjTelaTreino2(area,lut,def){
+  const tk=JXJ_TOKEN,d=def.combate2,lados={eu:"a",ele:"b"},N=JXJ_TREINO2_PASSOS.length;
+  let i=0,revelado=-1;
+  const avancar=()=>{ if(tk!==JXJ_TOKEN)return; i++; if(i>=N)return fim(); desenhar(); };
+  /* a jogada fora do roteiro não muda nada (o botão dela já vem desligado) */
+  const jogar=(x,tipo="acao")=>{
+    if(tk!==JXJ_TOKEN||i>=N)return;
+    const P=JXJ_TREINO2_PASSOS[i];
+    /* a mão já se desligou ao mandar: desenha de novo, no mesmo passo */
+    if(tipo==="sinal"?(P.etapa!=="sinal"||P.sinal!==x):(P.etapa!=="acao"||P.carta!==x))return desenhar();
+    avancar();
+  };
+  const desenhar=()=>{
+    if(tk!==JXJ_TOKEN)return;
+    const P=JXJ_TREINO2_PASSOS[i],v=jxjTreino2Vista(i,lut,d),certa=P.sinal||P.carta||null;
+    const depois=P.etapa==="depois",t=depois?v.trocas[v.trocas.length-1]:null,primeira=depois&&revelado!==i;
+    const revelar=depois?jxjRevelar2(t,primeira):null;
+    const danoAntes=primeira?jxjDanoAntes2(jxjComDano2(v).estado,t):null;
+    area.innerHTML="";
+    /* depois da troca, sem a mão nem a barra de comando (as cartas ficam desligadas até o Continuar): o
+       duelo, o porquê e o balão, sem nada da zona da mão por cima do porquê */
+    jxjDesenharCombate2(area,v,lados,jogar,{nova:primeira,revelar,danoAntes,final:depois,
+      treino:{certa,travado:!certa,semPorque:!depois,balao:{texto:jxjEsc(jxjTreino2Texto(i,lut,d)),botao:P.botao||null,onclick:avancar}}});
+    if(primeira){
+      revelado=i;
+      jxjSonsDuelo2(revelar.res,"a",tk);
+      jxjEfeitos2([t],lados,tk,{antes:danoAntes,estado:v.estado,inicio:JXJ_DUELO_RESULTADO_MS+650});
+      setTimeout(()=>{ if(tk===JXJ_TOKEN)jxjTreino2Rolar(true); },60);
+      setTimeout(()=>{ if(tk===JXJ_TOKEN)jxjTreino2Rolar(false); },900);
+    }
+  };
+  const fim=()=>{
+    JXJ_TREINO2_SESSAO=true;
+    try{ localStorage.setItem("jxj:treino2","1"); }catch(e){}
+    area.innerHTML="";
+    const sec=el("section","jxj-treino-fim jxj-resultado vit entra");
+    sec.innerHTML=`<p class="jxj-rotulo">${ICONE("check")} Treino de cartas</p><h2 class="jxj-resultado-titulo">Treino feito</h2>
+      <p class="jxj-meta">O botão Como ganhar resume a regra.</p>`;
+    const a=el("div","jxj-acoes");
+    const cg=jxjLinkRegras2(d);
+    const bus=el("button","botao",`${ICONE("espadas")}<span>Buscar adversário</span>`); bus.type="button"; bus.onclick=()=>{ SOM.toque(); irPara("jxj","fila"); };
+    a.appendChild(bus);
+    if(lut.id){ const arv=el("button","botao botao-sec",`${ICONE("arvore")}<span>Montar a árvore</span>`); arv.type="button"; arv.onclick=()=>{ SOM.toque(); irPara("jxj","lutador/"+lut.id+"/arvore"); }; a.appendChild(arv); }
+    const rev=el("button","botao botao-sec",`${ICONE("reenviar")}<span>Rever o treino</span>`); rev.type="button"; rev.onclick=()=>{ SOM.toque(); irPara("jxj","treino"+(lut.id?"/"+lut.id:""),{substituir:true}); };
+    a.appendChild(rev);
+    sec.append(a,cg.link,cg.painel); area.appendChild(sec);
+  };
+  desenhar();
+}
+/* depois da troca do treino: a página desce até o porquê ficar acima do balão (preso no pé da tela), sem
+   tirar o topo do duelo da tela */
+function jxjTreino2Rolar(suave){
+  if(typeof window==="undefined"||typeof window.scrollBy!=="function")return;
+  const m=document.querySelector(".jxj-mesa.v2-duelo"),l=document.querySelector(".jxj-combate.v2 .v2-linha"),z=document.querySelector(".jxj-combate.v2 .jxj-zona-acao");
+  const alvo=l||m; if(!alvo||!z||!alvo.getBoundingClientRect)return;
+  const ra=alvo.getBoundingClientRect(),rz=z.getBoundingClientRect(),rm=(m||alvo).getBoundingClientRect();
+  const falta=Math.min(ra.bottom-rz.top+8,rm.top-8);
+  if(falta>0)window.scrollBy({top:falta,behavior:suave&&!reduceMotion()?"smooth":"auto"});
+}
+/* o link "Como ganhar" fora da luta (o painel do treino e a tela antes da luta): abre o mesmo painel,
+   sem relógio */
+function jxjLinkRegras2(defs){
+  const link=el("button","jxj-link-regras",`${ICONE("info")}<span>Como ganhar</span>`); link.type="button"; link.id="jxj-link-regras2";
+  const marcar=ab=>{ link.className="jxj-link-regras"+(ab?" on":""); if(link.setAttribute)link.setAttribute("aria-expanded",String(ab)); };
+  const painel=jxjComoGanhar2(defs,{fechar:()=>marcar(false)});
+  painel.className+=" v2-regras-solta"; painel.id="jxj-regras2-solta"; painel.hidden=true; marcar(false);
+  link.onclick=()=>{ SOM.toque(); painel.hidden=!painel.hidden; marcar(!painel.hidden); };
+  return {link,painel};
 }
 /* a mão por extenso ("3 Golpes, 2 Quedas, 3 Defesas, 1 Pressão"); família sem carta fica de fora */
 const JXJ_FAMILIA_PLURAL={golpes:["Golpe","Golpes"],queda:["Queda","Quedas"],defesa:["Defesa","Defesas"],pressao:["Pressão","Pressões"]};
@@ -10607,7 +10759,9 @@ function jxjTagPostura2(v,l,souEu,{situacao=false}={}){
   if(!partes.length)return"";
   return `<span class="v2-postura-tag${situacao?" v2-tag-situacao":""}${cat?" f-"+cat:""}"${situacao?' aria-hidden="true"':""}>${cat?ICONE(JXJ_ICONE_ACAO[cat]||"luta"):""}<span>${situacao?"Ele: ":""}${partes.join(" · ")}</span></span>`;
 }
-function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,danoAntes=null,final=false,abandonar=null,palco=false}={}){
+/* treino (o treino de cartas, 2026-11-18): {certa, travado, balao} como no treino de antes; certa é a
+   categoria na etapa da postura e o id da carta na etapa da carta */
+function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,danoAntes=null,final=false,abandonar=null,palco=false,treino=null}={}){
   jxjComDano2(v);
   const F=v.formato,e=v.estado,nomes=v.nomes;
   /* duelando: no palco, o duelo das cartas fica no meio e a mão sai (o 3D toca a troca depois do duelo) */
@@ -10697,10 +10851,12 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   if(duelando&&mesaEl)palcoEl.appendChild(mesaEl);
   /* o porquê da troca que acabou de ser resolvida (opção B) */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
-  const linha=ult?jxjLinha2(ult,{eu,ele},nomes,{nova,depois:e}):null;
+  /* no treino de cartas, o porquê só no passo da troca resolvida (depois o balão e a mão cobriam ele) */
+  const linha=ult&&!(treino&&treino.semPorque)?jxjLinha2(ult,{eu,ele},nomes,{nova,depois:e}):null;
   if(linha)(palcoEl||tela).appendChild(linha);
   /* as cartas (a troca que acabou a luta, na cena do fim, vem sem a mão) */
   const zona=el("section","jxj-zona-acao");
+  if(treino&&treino.balao)zona.appendChild(jxjTreinoBalao(treino));
   if(palco&&momEl)zona.appendChild(momEl);
   let maoPosta=false;
   const poeMao=g=>{
@@ -10730,12 +10886,12 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
     const cmd=el("div","v2-comando "+(jogou?"jogou":sinal?"etapa-sinal":"etapa-carta"));
     cmd.innerHTML=`<span class="v2-passos">${passo(1,p1,"Postura")}${passo(2,p2,"Carta")}</span><p class="v2-frase">${frase}${fintaTxt?`<span class="v2-finta-linha${pista.podeFintar===false&&!pista.semPostura?" verdade":""}">${ICONE(pista.semPostura?"alerta":"busca")}${fintaTxt}</span>`:""}</p>`
       +`<div class="jxj-anel v2-anel${v.semRelogio?" livre":""}" id="jxj-anel"><span class="jxj-relogio" id="jxj-relogio">${v.semRelogio?"livre":`${jxjSeg(jxjTotalEtapa(v))}s`}</span></div>`;
-    /* "Como ganhar": abre sozinho na primeira luta v2 do navegador e pelo botão; não tranca a mão */
-    if(v.status==="andamento"&&jxjRegrasPrimeiraVez2())JXJ_V2_REGRAS=true;
-    const regrasEl=jxjComoGanhar2(); regrasEl.hidden=!JXJ_V2_REGRAS;
+    /* "Como ganhar": só pelo botão (o treino de cartas ensina antes da luta); não tranca a mão */
     const br=el("button","v2-btn-regras"+(JXJ_V2_REGRAS?" on":""),`${ICONE("info")}<span>Como ganhar</span>`); br.type="button"; br.id="jxj-btn-regras2";
+    const pintarBr=()=>{ br.className="v2-btn-regras"+(JXJ_V2_REGRAS?" on":""); if(br.setAttribute)br.setAttribute("aria-expanded",String(JXJ_V2_REGRAS)); };
+    const regrasEl=jxjComoGanhar2(null,{fechar:()=>{ JXJ_V2_REGRAS=false; pintarBr(); }}); regrasEl.hidden=!JXJ_V2_REGRAS;
     if(br.setAttribute){ br.setAttribute("aria-expanded",String(JXJ_V2_REGRAS)); br.setAttribute("aria-label","Como ganhar"); }
-    br.onclick=()=>{ SOM.toque(); JXJ_V2_REGRAS=!JXJ_V2_REGRAS; regrasEl.hidden=!JXJ_V2_REGRAS; br.className="v2-btn-regras"+(JXJ_V2_REGRAS?" on":""); if(br.setAttribute)br.setAttribute("aria-expanded",String(JXJ_V2_REGRAS)); };
+    br.onclick=()=>{ SOM.toque(); JXJ_V2_REGRAS=!JXJ_V2_REGRAS; regrasEl.hidden=!JXJ_V2_REGRAS; pintarBr(); };
     cmd.appendChild(br);
     /* na zona da mão, acima da barra de comando: nunca cobre as cartas */
     zona.appendChild(regrasEl);
@@ -10782,6 +10938,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
         const k=jxjCartaMao2(x);
         const b=el("button","jxj-postura jxj-na-mao",jxjCarta2(k.c,{...k.o,w:JXJ_TAM_CARTA.mao}));
         b.type="button"; b.title=`Mostrar ${JXJ_POSTURAS[x.categoria]}: ele vê antes de escolher`;
+        jxjTreinoMarcar(b,x.categoria,treino);
         g.appendChild(b);
         montar(g,b,x.id+"#"+i,k,{rotulo:`Mostrar ${JXJ_POSTURAS[x.categoria]}`,nota:`Ele vê só a categoria: <b>${JXJ_POSTURAS[x.categoria]}</b>. A carta você escolhe depois.`,
           manda:()=>{ SOM.toque(); g.querySelectorAll(".jxj-postura").forEach(y=>{y.disabled=true;}); Array.from(g.children).forEach(y=>{y.disabled=true;}); enviar(x.categoria,"sinal"); }});
@@ -10806,6 +10963,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
         const notaEn=exausta?` Sai exausta: ${jxjNum2(R2.exaustaVel!=null?R2.exaustaVel:2)} mais lenta, metade do dano e sem efeito.`:cansa?` Fica cansado: depois dela você fica com ${jxjNum2(lim)} ou menos de energia e a próxima carta do round sai 1 mais lenta.`:"";
         b.type="button"; b.title=cartaTitulo(k,(finta?` Finta: mais ${jxjNum2(x.finta)} de energia.`:"")+notaEn+(sp?` Contra ${JXJ_POSTURAS[pista.categoria]||"a postura dele"}: ${sp.detalhe}`:""));
         if(semEnergia){ b.disabled=true; b.title="Sem energia pra fintar."; }
+        else jxjTreinoMarcar(b,x.id,treino);
         g.appendChild(b);
         const nota=[finta?`Finta: gasta mais ${jxjNum2(x.finta)} de energia.`:"",notaEn.trim(),sp?`<b>Contra ${JXJ_POSTURAS[pista.categoria]||"a postura dele"}:</b> ${jxjEsc(sp.detalhe)}`:""].filter(Boolean).join(" ");
         montar(g,b,x.id+"#"+i,k,{rotulo:finta?"Jogar com finta":"Jogar a carta",nota,

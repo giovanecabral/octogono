@@ -14072,15 +14072,113 @@ async function testarJxJV2() {
     if (!/Anulou a carta dele/.test(gAn) || !/v2-gasto/.test(gAn)) throw new Error("linha do porquê sem o anular ou sem o gasto: " + gAn.slice(0, 400));
     const gIn = String(X.run(`jxjLinha2(${JSON.stringify(troca(MAO, MAO, "jab", "cruzado"))}, { eu: "a", ele: "b" }, ${JSON.stringify(N)}).innerHTML`));
     if (!/Interrompeu a carta dele/.test(gIn)) throw new Error("linha do porquê sem o interromper: " + gIn.slice(0, 400));
-    /* o Como ganhar: os 5 blocos, números das definições */
+    /* o Como ganhar (curto desde o treino de cartas, 2026-11-18): no máximo 3 blocos de uma linha com ícone, números das definições */
     const como = (d) => String(X.run(`jxjComoGanhar2(${JSON.stringify(d)}).innerHTML`));
     const h = como(defs);
-    for (const re of [/A troca/, /Três jeitos de levar a troca/, /Ler ele/, /Energia/, /Pontos/, /relógio/, /Deck dele/, /1,5 de energia/, /0,75 com a iniciativa/, /2 ou menos/, /2 mais lenta/, /voltam 2/, /mais 1 por carta que sobrou/, /queda 3/, /knockdown 4/])
+    for (const re of [/Anular/, /qualquer velocidade/, /Mais rápida/, /interrompe/, /Velocidade igual/, /juntas/, /Fintar custa 1,5 /, /\(0,75 com a iniciativa\)/, /2 ou menos/, /postura dele/, /verdade/])
       if (!re.test(h)) throw new Error(`Como ganhar sem ${re}: ` + h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 600));
-    if ((h.match(/<svg class="ico/g) || []).length < 5 || /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(h)) throw new Error("Como ganhar sem ícone do sprite (ou com emoji)");
+    const blocos = (h.match(/<li>/g) || []).length, linhas = (h.match(/<li>[^]*?<\/li>/g) || []).map((x) => x.replace(/<[^>]+>/g, " ").trim().split(/\s+/).length);
+    if (blocos < 1 || blocos > 3 || linhas.some((n) => n > 22) || /Pontos|knockdown|relógio/.test(h)) throw new Error(`Como ganhar comprido: ${blocos} blocos, palavras ${linhas}`);
+    if ((h.match(/<svg class="ico/g) || []).length < blocos + 1 || /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(h)) throw new Error("Como ganhar sem ícone do sprite (ou com emoji)");
     limpo([h.replace(/<[^>]+>/g, " ")]);
-    const outro = como({ ...defs, regras: { ...defs.regras, cansado: 3, recuperacaoRound: 4, custoFinta: 2, pts: { ...defs.regras.pts, queda: 7 } } });
-    if (!/3 ou menos/.test(outro) || !/voltam 4/.test(outro) || !/2 de energia/.test(outro) || !/queda 7/.test(outro)) throw new Error("o Como ganhar não leu os números das definições");
+    const outro = como({ ...defs, regras: { ...defs.regras, cansado: 3, custoFinta: 2 } });
+    if (!/3 ou menos/.test(outro) || !/Fintar custa 2 /.test(outro) || !/\(1 com a iniciativa\)/.test(outro)) throw new Error("o Como ganhar não leu os números das definições: " + outro.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "));
+  });
+  /* treino de cartas (2026-11-18, spec online-v2-treino): o roteiro é do motor. O mesmo começo e as mesmas
+     jogadas, pelo resolverTroca2 de verdade, dão os mesmos estados e as mesmas trocas que o index.html guarda.
+     Os nomes ficam como {a} e {b} no texto (a tela troca pelo nome do jogador e pelo Treinador) */
+  const roteiroTreino2 = () => {
+    const atr = (x = {}) => ({ ...Object.fromEntries(A.ATRIBUTOS.map((k) => [k, 50])), ...x });
+    /* o aluno sem passiva (o deck do treino é fixo, não o do estilo dele); o Treinador é wrestler com cardio 0 (energia máxima 5) */
+    const P = { a: { estilo: null, atr: atr() }, b: { estilo: "wrestler", atr: atr({ cardio: 0 }) } };
+    const lado = (p) => ({ vida: M.vidaMax(p), vidaMax: M.vidaMax(p), energia: M.energiaMax2(p), energiaMax: M.energiaMax2(p), grogue: false, kds: 0, ausentesSeguidas: 0, ultima: null,
+      lento: 0, lentoProx: 0, rapido: 0, rapidoProx: 0, sangra: false, total: { jogadas: 0, acertos: 0, dano: 0, quedas: 0, interrupcoes: 0, anulacoes: 0, knockdowns: 0 } });
+    let e = { cv: M.VERSAO_COMBATE, tpr: M.FORMATO2.trocasPorRound, round: 1, troca: 1, pos: "pe", nivelPos: 0, encaixe: null, iniciativa: null, a: lado(P.a), b: lado(P.b),
+      deck: { a: ["jab", "jab", "cruzado", "cruzado", "chute_alto", "bloqueio", "bloqueio", "antiqueda", "antiqueda", "queda", "clinch", "contra_ataque"],
+        b: ["queda", "queda", "clinch", "antiqueda", "clinch", "antiqueda", "bloqueio", "bloqueio", "cruzado", "cruzado", "contra_ataque", "contra_ataque"] },
+      mao: { a: ["jab", "cruzado", "chute_alto", "bloqueio", "antiqueda"], b: ["cruzado", "cruzado", "queda", "bloqueio", "clinch"] },
+      jogadas: { a: [], b: [] }, pontos: [{ a: 0, b: 0 }], cartoes: [], fim: null };
+    const jog = [{ a: "bloqueio", b: "cruzado", sinais: { a: "defesa", b: "golpes" } }, { a: "jab", b: "cruzado", sinais: { a: "defesa", b: "golpes" } },
+      { a: "antiqueda", b: "queda", sinais: { a: "defesa", b: "queda" } }];
+    const estados = [structuredClone(e)], trocas = [], res = [];
+    for (const j of jog) {
+      const r = M.resolverTroca2(e, P, j, "treino");
+      trocas.push(V2.trocaVista({ round: e.round, troca: e.troca, acao_a: j.a, acao_b: j.b, eventos: [{ tipo: "resolucao", ...r.resolucao }, ...r.eventos] }, { a: "{a}", b: "{b}" }));
+      res.push(r.resolucao); e = r.estado; estados.push(structuredClone(e));
+    }
+    return { P, estados, trocas, sinais: jog.map((j) => j.sinais), res };
+  };
+  await conf("treino de cartas, o roteiro é do motor: o começo e as 3 jogadas pelo resolverTroca2 de verdade dão os estados e as trocas que o index.html guarda; a troca 1 anula, a 2 sai mais rápida e interrompe com finta, a 3 anula a Queda de quem não tinha energia pra fintar e fecha o round", () => {
+    const m = roteiroTreino2(), g = JSON.parse(X.run("JSON.stringify(JXJ_TREINO2)"));
+    const esperado = { estados: m.estados, trocas: m.trocas, sinais: m.sinais };
+    for (const k of Object.keys(esperado)) if (JSON.stringify(g[k]) !== JSON.stringify(esperado[k]))
+      throw new Error(`JXJ_TREINO2.${k} não bate com o motor. Gerado agora:\n${JSON.stringify(esperado[k])}`);
+    const [r1, r2, r3] = m.res;
+    if (!(r1.reacoes.length === 1 && r1.reacoes[0].quem === "a")) throw new Error("troca 1 sem o Bloqueio anulando: " + JSON.stringify(r1.reacoes));
+    if (!(r2.ordem === "a" && r2.interrupcoes.length === 1 && r2.cartas.a.finta > 0 && r2.cartas.a.vel > r2.cartas.b.vel)) throw new Error("troca 2: " + JSON.stringify(r2));
+    if (!(r3.reacoes.length === 1 && r3.cartas.b.categoria === "queda" && m.estados[2].b.energia < V2.custoFinta(m.estados[2], "b", m.P.b))) throw new Error("troca 3: " + JSON.stringify(r3));
+    if (m.estados.slice(0, 3).some((x) => x.pos !== "pe" || x.a.grogue || x.b.grogue) || JSON.stringify(m.estados[3].cartoes) !== JSON.stringify([{ a: 10, b: 9 }])) throw new Error("o roteiro saiu do pé, teve grogue ou não fechou o round 10 a 9");
+  });
+  await conf("treino de cartas, a vista de cada passo é a do servidor (vistaV2 e trocaVista no estado do motor), o selo da pista bate com o que o motor resolveu, cada passo tem uma frase curta e o roteiro inteiro passa pela tela da luta v2 sem lixo", () => {
+    X.run("JXJ_DEF={combate2:" + JSON.stringify(defs) + ",estilos:{striker:{nome:'Striker'},wrestler:{nome:'Wrestler'}}}");
+    try {
+    const m = roteiroTreino2(), lut = { id: 7, nome: "Aluno <b>", estilo: "striker", rosto: null, cartel: [3, 1, 0] };
+    const passos = JSON.parse(X.run("JSON.stringify(JXJ_TREINO2_PASSOS.map((p, i) => ({ k: p.k, etapa: p.etapa, sinal: p.sinal || null, carta: p.carta || null, botao: p.botao || null, texto: jxjTreino2Texto(i, " + JSON.stringify(lut) + ") })))"));
+    if (passos.length < 8 || passos[passos.length - 1].etapa !== "depois" || passos[passos.length - 1].k !== 2) throw new Error("passos: " + JSON.stringify(passos.map((p) => p.k + p.etapa)));
+    const nomes = { a: "{a}", b: "{b}" };
+    const campos = ["combate", "estado", "placarRound", "papel", "decks", "jogadas", "mao", "maoDele"];
+    const R = defs.regras;
+    for (const [i, p] of passos.entries()) {
+      const pal = p.texto.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
+      if (pal > 22) throw new Error(`passo ${i}: ${pal} palavras (${p.texto})`);
+      if (problemasDeTexto(p.texto).length || /<img|<b>/.test(p.texto)) throw new Error(`passo ${i}: texto ${problemasDeTexto(p.texto)} ${p.texto}`);
+      if (!p.botao && !p.sinal && !p.carta) throw new Error(`passo ${i} sem jogada nem botão`);
+      const v = noJogo("jxjTreino2Vista", i, lut, defs);
+      const depois = p.etapa === "depois", k = depois ? p.k + 1 : p.k, etapa = depois ? (k < 3 ? "sinal" : null) : p.etapa;
+      const L = { estado: m.estados[k], perfis: m.P, status: "andamento" };
+      const sv = V2.vistaV2(L, "a", { sinais: etapa === "acao" ? m.sinais[k] : null, etapa });
+      for (const c of campos) if (JSON.stringify(v[c]) !== JSON.stringify(sv[c])) throw new Error(`passo ${i}, ${c}: tela ${JSON.stringify(v[c])}\n         servidor ${JSON.stringify(sv[c])}`);
+      if (v.combate !== 2 || v.lado !== "a" || !v.semRelogio || v.status !== "andamento" || v.nomes.b.nome !== "Treinador" || v.nomes.a.nome !== lut.nome) throw new Error(`passo ${i}: vista ${JSON.stringify({ combate: v.combate, lado: v.lado, semRelogio: v.semRelogio, nomes: v.nomes })}`);
+      const tr = m.trocas.slice(0, depois ? p.k + 1 : p.k).map((t) => ({ ...t, eventos: t.eventos.map((f) => f.replace(/\{a\}/g, lut.nome).replace(/\{b\}/g, "Treinador")) }));
+      if (JSON.stringify(v.trocas) !== JSON.stringify(tr)) throw new Error(`passo ${i}: trocas ${JSON.stringify(v.trocas).slice(0, 300)}`);
+      if (p.etapa === "acao" && (JSON.stringify(v.sinais) !== JSON.stringify(m.sinais[k]) || !v.adversarioSinalizou || v.meuSinal !== m.sinais[k].a)) throw new Error(`passo ${i}: sinais ${JSON.stringify(v.sinais)}`);
+      if (p.etapa === "sinal" && (v.sinais || v.meuSinal)) throw new Error(`passo ${i}: sinal revelado antes da hora`);
+      /* a jogada pedida é a do roteiro */
+      if (p.sinal && p.sinal !== m.sinais[k].a) throw new Error(`passo ${i}: pede ${p.sinal}, o roteiro mostra ${m.sinais[k].a}`);
+      if (p.carta && p.carta !== m.trocas[k].cartaA) throw new Error(`passo ${i}: pede ${p.carta}, o roteiro joga ${m.trocas[k].cartaA}`);
+      /* o selo da carta jogada bate com o que o motor resolveu (a carta dele de verdade é uma das possíveis) */
+      if (p.carta) {
+        const pista = noJogo("jxjPrevisao2", v, "a", defs), ix = v.mao.findIndex((x) => x.id === p.carta), c = pista.cartas[ix];
+        const r = m.res[k], dele = c.contra.find((y) => y.efetiva === r.cartas.b.efetiva);
+        const doMotor = r.reacoes.some((x) => x.quem === "a") ? "anula" : r.ordem === "a" ? "rapida" : r.ordem === "empate" ? "juntas" : "lenta";
+        if (!dele || dele.res !== doMotor || dele.vel !== r.cartas.b.vel) throw new Error(`passo ${i}: a pista diz ${JSON.stringify(dele)}, o motor ${doMotor} (vel dele ${r.cartas.b.vel})`);
+        const linha = noJogo("jxjLinhaFinta2", pista);
+        const pode = m.estados[k].b.energia >= V2.custoFinta(m.estados[k], "b", m.P.b);
+        if (linha !== (pode ? "Ele tem energia pra fintar." : "Ele não tem energia pra fintar: a postura dele é verdade.")) throw new Error(`passo ${i}: linha de fintar ${linha}`);
+      }
+    }
+    /* os passos do Mais lenta e do Juntas acontecem numa troca em que a mão tem os dois selos */
+    const sel = (i) => { const v = noJogo("jxjTreino2Vista", i, lut, defs), p = noJogo("jxjPrevisao2", v, "a", defs); return p.cartas.map((c) => (noJogo("jxjSeloPrevisao2", c) || {}).texto); };
+    const iJab = passos.findIndex((p) => p.carta === "jab"), sj = sel(iJab);
+    for (const s of ["Mais rápida", "Juntas", "Mais lenta"]) if (!sj.includes(s)) throw new Error("a troca do Jab sem o selo " + s + ": " + JSON.stringify(sj));
+    const iBl = passos.findIndex((p) => p.carta === "bloqueio"), sb = sel(iBl);
+    if (sb[noJogo("jxjTreino2Vista", iBl, lut, defs).mao.findIndex((x) => x.id === "bloqueio")] !== "Anula") throw new Error("o Bloqueio sem o selo Anula: " + JSON.stringify(sb));
+    for (const [palavra, re] of [["postura", /postura/i], ["Anula", /Anula/], ["Mais lenta", /Mais lenta/], ["Juntas", /Juntas/], ["Mais rápida", /Mais rápida/], ["finta", /finta/i], ["energia", /energia/i], ["verdade", /verdade/]])
+      if (!passos.some((p) => re.test(p.texto))) throw new Error("nenhum passo ensina " + palavra);
+    /* o roteiro inteiro pela tela da luta v2 (a mesma jxjDesenharCombate2), com o balão e a carta pedida ligada */
+    const h = String(X.run(`(() => { const lut = ${JSON.stringify(lut)}, out = [];
+      JXJ_TREINO2_PASSOS.forEach((p, i) => {
+        const v = jxjTreino2Vista(i, lut, JXJ_DEF.combate2), area = document.createElement("div"), certa = p.sinal || p.carta || null;
+        const t = jxjDesenharCombate2(area, v, { eu: "a", ele: "b" }, () => {}, { treino: { certa, travado: !certa, balao: { texto: jxjEsc(jxjTreino2Texto(i, lut)), botao: p.botao || null, onclick() {} } },
+          revelar: p.etapa === "depois" ? jxjRevelar2(v.trocas[v.trocas.length - 1], false) : null, final: p.etapa === "depois" });
+        const fila = [t]; while (fila.length) { const x = fila.shift(); out.push('<' + (x.className || "") + '> ' + String(x.innerHTML || "")); fila.push(...(x.children || [])); }
+      });
+      return out.join("\\n"); })()`));
+    const lixo = h.match(/undefined|NaN|\[object Object\]/);
+    if (lixo) throw new Error(`lixo na tela do treino: ${h.slice(Math.max(0, lixo.index - 80), lixo.index + 30)}`);
+    if (/Aluno <b>/.test(h) || !/Aluno &lt;b&gt;/.test(h)) throw new Error("o nome do aluno não passou pelo jxjEsc");
+    if (!/jxj-treino-balao/.test(h) || !/jxj-treino-seta/.test(h) || !/v2-pista/.test(h)) throw new Error("a tela do treino sem o balão, a seta ou o selo");
+    } finally { X.run("JXJ_DEF=null"); }
   });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
@@ -15627,7 +15725,8 @@ async function testarJxJTelas() {
     const env = criarAmbiente({ contarNos: true });
     env.sandbox.window.supabase = supabaseFalsoComSessao({
       sessao: { user: { id: u1, email: "a1@teste" }, access_token: "tok:" + u1 }, assinatura: { pro: true, expira_em: null } });
-    const dadosLS = {};
+    /* o treino de cartas (2026-11-18) já feito neste navegador: as telas da v2 abrem direto (o teste do treino tira a marca) */
+    const dadosLS = { "jxj:treino2": "1" };
     env.sandbox.localStorage = { getItem: (k) => (k in dadosLS ? dadosLS[k] : null), setItem: (k, v) => { dadosLS[k] = String(v); }, removeItem: (k) => { delete dadosLS[k]; } };
     let pendentes = 0;
     env.sandbox.fetch = async (u, op) => {
@@ -16064,6 +16163,100 @@ async function testarJxJTelas() {
       m = await abrir("fila");
       if (noTreino(m)) throw new Error("com a marca, a busca ainda manda pro treino");
       await api(u1, "filaSair");
+    });
+    await conf("treino de cartas (2026-11-18, spec online-v2-treino): conta no combate v2 sem jxj:treino2 cai no treino de cartas ao abrir a busca (mesmo com luta no cartel); o roteiro inteiro pela tela: o balão com a frase do passo, Continuar onde não tem jogada, só a carta pedida ligada (com a seta), a revelação e o porquê depois de cada troca, sem relógio; o fim grava a marca e tem o Como ganhar; nada vai pro servidor; com a marca, a busca abre; Rever o treino e o botão Treino abrem o de cartas; sem a flag, o treino de antes", async () => {
+      await db.query("delete from jxj_limites");
+      await flagV2T({ contas: [u1] });
+      const acoesServidor = [], fetchAntes = env.sandbox.fetch;
+      try {
+        delete dadosLS["jxj:treino2"]; vm.runInContext("JXJ_TREINO2_SESSAO=false", env.sandbox);
+        const r0 = JSON.parse(vm.runInContext(`JSON.stringify([jxjPrecisaTreino({combateV2:true,lutadores:[{cartel:[4,1,0]}]}), jxjPrecisaTreino({lutadores:[{cartel:[4,1,0]}]}), jxjRotaDepoisDeCriar({combateV2:true,lutadores:[{cartel:[2,0,0]}]}, 7)])`, env.sandbox));
+        if (JSON.stringify(r0) !== JSON.stringify([true, false, "treino/7"])) throw new Error("regra da v2: " + JSON.stringify(r0));
+        env.sandbox.fetch = async (u, op) => { try { acoesServidor.push(JSON.parse(op.body).acao); } catch (e) {} return fetchAntes(u, op); };
+        let m = await abrir("fila");
+        const ultimo = (cls) => desde(m).filter((n) => tem(n, cls)).pop();
+        const balao = () => { const b = ultimo("jxj-treino-balao"); return b ? String(b.innerHTML) : ""; };
+        const combateV2 = () => { const c = ultimo("jxj-combate"); return !!c && tem(c, "v2"); };
+        if (!combateV2() || !balao()) throw new Error("a busca não mandou pro treino de cartas: " + htmlDe(desde(m)).replace(/\s+/g, " ").slice(0, 200));
+        const passos = JSON.parse(vm.runInContext(`JSON.stringify(JXJ_TREINO2_PASSOS.map((p, i) => ({ etapa: p.etapa, k: p.k, sinal: p.sinal || null, carta: p.carta || null, botao: p.botao || null, texto: jxjEsc(jxjTreino2Texto(i, {})) })))`, env.sandbox));
+        const catDe = JSON.parse(vm.runInContext(`JSON.stringify(Object.fromEntries(Object.values(JXJ_DEF.combate2.cartas).map((c) => [c.id, c.categoria])))`, env.sandbox));
+        const cartas = () => { const ns = desde(m), i = ns.map((n) => tem(n, "jxj-mao-luta")).lastIndexOf(true); return i < 0 ? [] : ns.slice(i).filter((n) => tem(n, "jxj-na-mao")); };
+        const idDe = (b) => (String(b.innerHTML).match(/data-carta="([a-z_]+)"/) || [])[1];
+        for (const [i, p] of passos.entries()) {
+          if (!balao().includes(p.texto)) throw new Error(`passo ${i}: balão ${balao().replace(/<[^>]+>/g, " ").slice(0, 200)} (esperava ${p.texto})`);
+          if (/jxj-relogio[^>]*>\d/.test(htmlDe(desde(m))) || !/>livre</.test(htmlDe(desde(m)))) throw new Error(`passo ${i}: com relógio`);
+          if (p.etapa === "depois") {
+            const cols = desde(m).filter((n) => tem(n, "jxj-mesa-lado")).slice(-2).map((n) => String(n.innerHTML)).join(" ");
+            if (!/jxj-revelada/.test(cols) || !desde(m).some((n) => tem(n, "v2-linha"))) throw new Error(`passo ${i}: sem a revelação ou sem o porquê`);
+          }
+          const ligadas = cartas().filter((b) => !b.disabled);
+          if (p.botao) {
+            if (ligadas.length) throw new Error(`passo ${i}: carta ligada num passo de Continuar`);
+            const b = desde(m).filter((n) => tem(n, "jxj-treino-continuar")).pop();
+            if (!b || !String(b.innerHTML).includes(p.botao)) throw new Error(`passo ${i}: sem o botão ${p.botao}`);
+            await b.onclick(); await assentar(10); continue;
+          }
+          const certa = (b) => (p.sinal ? catDe[idDe(b)] === p.sinal : idDe(b) === p.carta);
+          if (!ligadas.length || ligadas.some((b) => !certa(b))) throw new Error(`passo ${i}: ligadas ${ligadas.map(idDe).join(",")} (pede ${p.sinal || p.carta})`);
+          if (!ligadas.every((b) => /jxj-treino-seta/.test(String(b.innerHTML)))) throw new Error(`passo ${i}: sem a seta`);
+          if (cartas().filter((b) => b.disabled).some((b) => !tem(b, "fora-do-treino"))) throw new Error(`passo ${i}: carta errada sem a marca`);
+          if (p.carta && !/v2-pista/.test(cartas().map((b) => String(b.innerHTML)).join(" "))) throw new Error(`passo ${i}: sem o selo da pista`);
+          /* a carta fora do roteiro não muda nada, mesmo chamada */
+          const errada = cartas().find((b) => !certa(b));
+          if (errada) { errada.disabled = false; await errada.onclick(); await assentar(10); if (!balao().includes(p.texto)) throw new Error(`passo ${i}: a carta errada andou o treino`); }
+          const lig = cartas().filter((b) => !b.disabled && certa(b));
+          await lig[0].onclick(); await assentar(10);
+        }
+        const fim = ultimo("jxj-treino-fim"), hf = htmlDe(desde(m));
+        if (!fim || !/Treino feito/.test(hf) || !/O botão Como ganhar resume a regra\./.test(hf)) throw new Error("sem o fim do treino de cartas");
+        if (dadosLS["jxj:treino2"] !== "1") throw new Error("o fim não gravou jxj:treino2");
+        const link = desde(m).filter((n) => tem(n, "jxj-link-regras")).pop(), painel = desde(m).filter((n) => tem(n, "v2-regras")).pop();
+        if (!link || !painel || !painel.hidden) throw new Error("o fim sem o link Como ganhar (ou com o painel aberto)");
+        await link.onclick(); if (painel.hidden) throw new Error("o link Como ganhar não abriu o painel");
+        const proibidas = acoesServidor.filter((a) => !["definicoes", "estado"].includes(a));
+        if (proibidas.length) throw new Error("o treino de cartas chamou o servidor: " + proibidas.join(","));
+        semLixoV3T(htmlDe(desde(m)), "treino de cartas");
+        env.sandbox.fetch = fetchAntes;
+        /* Rever o treino: o de cartas de novo, do começo */
+        const rev = botao(desde(m), "Rever o treino"); await rev.onclick(); await assentar();
+        if (!combateV2() || !balao().includes(passos[0].texto)) throw new Error("Rever o treino não abriu o de cartas do começo");
+        /* com a marca: a busca abre; o botão Treino do painel abre o de cartas */
+        vm.runInContext("JXJ_TREINO2_SESSAO=false", env.sandbox);
+        m = await abrir("fila");
+        if (balao()) throw new Error("com a marca, a busca ainda manda pro treino");
+        await api(u1, "filaSair");
+        m = await abrir("");
+        const treinoBtn = desde(m).filter((n) => n.tagName === "button" && /<span>Treino<\/span>/.test(String(n.innerHTML))).pop();
+        if (!treinoBtn) throw new Error("sem o botão Treino no painel");
+        const m2 = env.todos.length; await treinoBtn.onclick(); await assentar(); m = m2;
+        if (!combateV2() || !balao().includes(passos[0].texto)) throw new Error("o botão Treino não abriu o de cartas");
+        /* sem a flag: o treino de antes, mesmo sem jxj:treino2 */
+        delete dadosLS["jxj:treino2"];
+        await flagV2T(false);
+        m = await abrir("treino");
+        if (combateV2() || !/Treino rápido: 4 trocas/.test(balao())) throw new Error("sem a flag, o treino não é o de antes: " + balao().slice(0, 120));
+      } finally { env.sandbox.fetch = fetchAntes; dadosLS["jxj:treino2"] = "1"; await flagV2T(false); }
+    });
+    await conf("Como ganhar fora do relógio (2026-11-18): na tela antes da luta, com o combate v2, o link Como ganhar perto de Buscar adversário abre o mesmo painel curto (3 blocos) e o Entendi fecha; sem a flag, nada de link", async () => {
+      await db.query("delete from jxj_limites");
+      await flagV2T({ contas: [u1] });
+      try {
+        let m = await abrir("");
+        const link = desde(m).filter((n) => tem(n, "jxj-link-regras")).pop(), painel = desde(m).filter((n) => tem(n, "v2-regras")).pop();
+        if (!link || !String(link.innerHTML).includes("Como ganhar") || !painel) throw new Error("sem o link Como ganhar no painel");
+        if (!botao(desde(m), "Buscar adversário")) throw new Error("o link fora da tela da busca");
+        if (!painel.hidden) throw new Error("o painel abriu sozinho");
+        await link.onclick();
+        if (painel.hidden) throw new Error("o link não abriu o painel");
+        const h = String(painel.innerHTML);
+        if ((h.match(/<li>/g) || []).length > 3 || !/Fintar custa/.test(h) || !/qualquer velocidade/.test(h)) throw new Error("o painel não é o curto: " + h.replace(/<[^>]+>/g, " ").slice(0, 300));
+        const fe = painel.children.find((n) => tem(n, "v2-regras-fechar")); await fe.onclick();
+        if (!painel.hidden || tem(link, "on")) throw new Error("o Entendi não fechou");
+        semLixoV3T(htmlDe(desde(m)), "painel com o Como ganhar");
+        await flagV2T(false);
+        m = await abrir("");
+        if (desde(m).some((n) => tem(n, "jxj-link-regras"))) throw new Error("o link aparece sem o combate v2");
+      } finally { await flagV2T(false); }
     });
     await conf("fila sem tela antes (2026-10-20): abrir a busca já entra na fila com a última diferença de rating (padrão 400); os 4 botões ficam na busca e trocar grava no banco sem perder a espera", async () => {
       await db.query("delete from jxj_fila");
@@ -17320,7 +17513,7 @@ async function testarJxJTelas() {
       /* o Cruzado não tem efeito: a carta grande mostra a frase da categoria, nunca a caixa vazia */
       if (!/Golpe simples: se acerta, causa o dano da carta\./.test(r.toqueAcao.foco)) throw new Error("o efeito na carta grande: " + tira(r.toqueAcao.foco).slice(0, 200));
     });
-    await conf("clareza da luta v2 (2026-11-18, pedido do dono: 'coloco as cartas e torço'): o Como ganhar abre sozinho na primeira luta v2 do navegador (e sem storage abre sem quebrar), fecha no Entendi, não volta sozinho e abre pelo botão; fica na zona da mão, acima da barra de comando; na etapa da carta, cada carta da mão tem o selo da pista contra a postura dele (o mesmo de jxjPrevisao2) e a linha de fintar; sem a postura dele, nada de selo; os dois placares com a vida e a energia (rótulo, 'x de y', marca do cansado), a dele no palco tão grande quanto a minha; a carta que sai exausta ou deixa cansado diz isso; a linha do porquê traz o gasto", async () => {
+    await conf("clareza da luta v2 (2026-11-18, pedido do dono: 'coloco as cartas e torço'): o Como ganhar não abre sozinho (nem na primeira luta v2, nem sem storage: o treino de cartas ensina antes), abre pelo botão e fecha no Entendi; fica na zona da mão, acima da barra de comando; na etapa da carta, cada carta da mão tem o selo da pista contra a postura dele (o mesmo de jxjPrevisao2) e a linha de fintar; sem a postura dele, nada de selo; os dois placares com a vida e a energia (rótulo, 'x de y', marca do cansado), a dele no palco tão grande quanto a minha; a carta que sai exausta ou deixa cansado diz isso; a linha do porquê traz o gasto", async () => {
       if (!lidV2) throw new Error("sem a luta v2");
       await flagV2T({ contas: [u1, u2] });
       let v;
@@ -17347,17 +17540,17 @@ async function testarJxJTelas() {
         const lsOrig = globalThis.localStorage;
         if (${lsQuebrado ? "true" : "false"}) globalThis.localStorage = { getItem() { throw new Error("bloqueado"); }, setItem() { throw new Error("bloqueado"); } };
         try {
-          JXJ_V2_REGRAS = false; JXJ_V2_REGRAS_AUTO = false;
+          JXJ_V2_REGRAS = false;
           let t = desenha(vb, { palco: true });
           const rg = ach(t, "v2-regras"), zona = ach(t, "jxj-zona-acao"), cmd = ach(t, "v2-comando");
           out.auto = { tem: !!rg, aberto: !!(rg && !rg.hidden), naZona: !!(zona && rg && lista(zona).includes(rg) && zona.children.indexOf(rg) < zona.children.indexOf(cmd)), html: rg ? html(rg) : "" };
-          const fe = rg && ach(rg, "v2-regras-fechar"); if (fe) fe.onclick();
-          out.fechou = !!(rg && rg.hidden);
-          t = desenha(vb, { palco: true });
-          out.depois = !ach(t, "v2-regras").hidden;
           const br = ach(t, "v2-btn-regras"); out.botaoNoCmd = !!(br && lista(ach(t, "v2-comando")).includes(br));
           if (br) br.onclick();
           out.botao = !ach(t, "v2-regras").hidden;
+          const fe = ach(rg, "v2-regras-fechar"); if (fe) fe.onclick();
+          out.fechou = !!(rg && rg.hidden) && !String(br.className).split(" ").includes("on");
+          t = desenha(vb, { palco: true });
+          out.depois = !ach(t, "v2-regras").hidden;
           JXJ_V2_REGRAS = false;
         } finally { globalThis.localStorage = lsOrig; }
         /* a etapa da carta: os selos e a linha de fintar */
@@ -17382,16 +17575,13 @@ async function testarJxJTelas() {
       })()`, Object.assign(env.sandbox, { __vista: JSON.stringify(v) })));
       const tira = (h) => h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
       const r = rodar(false);
-      if (!r.auto.tem || !r.auto.aberto || !r.auto.naZona) throw new Error("Como ganhar não abriu sozinho na zona da mão: " + JSON.stringify({ ...r.auto, html: undefined }));
-      if (dadosLS["jxj:regras2"] !== "1") throw new Error("não marcou o Como ganhar como visto");
-      if (!/Três jeitos de levar a troca/.test(r.auto.html) || !/relógio/.test(r.auto.html)) throw new Error("Como ganhar sem os blocos: " + tira(r.auto.html).slice(0, 300));
-      if (!r.fechou || r.depois) throw new Error(`Entendi: fechou ${r.fechou}, voltou sozinho ${r.depois}`);
+      if (!r.auto.tem || r.auto.aberto || !r.auto.naZona) throw new Error("Como ganhar abriu sozinho ou fora da zona da mão: " + JSON.stringify({ ...r.auto, html: undefined }));
+      if ("jxj:regras2" in dadosLS) throw new Error("ainda grava jxj:regras2");
+      if (!/qualquer velocidade/.test(r.auto.html) || !/Fintar custa/.test(r.auto.html) || (r.auto.html.match(/<li>/g) || []).length > 3) throw new Error("Como ganhar sem os 3 blocos curtos: " + tira(r.auto.html).slice(0, 300));
       if (!r.botaoNoCmd || !r.botao) throw new Error("o botão Como ganhar na barra de comando não abre");
-      const r2 = rodar(false);
-      if (r2.auto.aberto) throw new Error("abriu de novo num navegador que já viu");
-      delete dadosLS["jxj:regras2"];
+      if (!r.fechou || r.depois) throw new Error(`Entendi: fechou ${r.fechou}, voltou sozinho ${r.depois}`);
       const r3 = rodar(true);
-      if (!r3.auto.aberto) throw new Error("sem storage, o Como ganhar não abriu");
+      if (r3.auto.aberto) throw new Error("sem storage, o Como ganhar abriu sozinho");
       /* os selos */
       if (r.selos.length !== 5 || r.selos.some((x) => !x) || JSON.stringify(r.selos) !== JSON.stringify(r.esperado.map((x) => x && x.replace(/&/g, "&amp;")))) throw new Error("selos da mão: " + JSON.stringify([r.selos, r.esperado]));
       if (!/Anula/.test(r.selos[2])) throw new Error("o Bloqueio contra a postura de golpe devia anular (menos o Overhand): " + r.selos[2]);

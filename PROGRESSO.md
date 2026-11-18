@@ -53,10 +53,9 @@ da árvore (`ARVORE=1 PORTA=8851 node ferramentas/online-v2-e2e.mjs <pasta>`) ok
 2. Antes de qualquer deploy: este arquivo entra no `.vercelignore`, e o
    `luta3d/mx_cartas.glb` precisa estar na pasta do `vercel --prod`.
 3. Depois do grupo de teste: regra nova pro chão, se o dado pedir.
-4. Antes de ligar a flag `combate_v2` pra todos: o treino guiado obrigatório
-   (`JXJ_TREINO`, `jxjPrecisaTreino`) ensina o jogo de antes (v1), não o de
-   cartas. Precisa da versão de cartas (spec da clareza, 2026-11-18). O
-   "Como ganhar" (decisão 93) ajuda, mas não substitui o treino.
+4. Feito na branch `treino-v2` (decisão 94, 2026-11-18): o treino de cartas
+   (`JXJ_TREINO2`, obrigatório uma vez pra conta v2 sem `jxj:treino2`) e o
+   Como ganhar curto, que não abre mais sozinho. Falta o dono avaliar.
 
 ## Decisões importantes
 
