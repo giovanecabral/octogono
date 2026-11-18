@@ -22,7 +22,7 @@
    com a conferência de que as cartas não cobrem a linha de situação nem saem da tela. DUELO_MS=6000
    deixa o duelo mais tempo na tela, pra pegar mais casos. SEM3D=1: a luta só nas cartas (o duelo na mesa).
 
-   Uso: [ARVORE=1] [B_W=360 B_H=780] [DUELO_MS=6000] [SEM3D=1] node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
+   Uso: [ARVORE=1] [B_W=360 B_H=780] [DUELO_MS=6000] [SEM3D=1] [CARTAS=bloqueio,guarda] node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
 import { spawn } from "node:child_process"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import * as ARV from "../api/_jxj-arvores.js"; import * as CARTAS from "../api/_jxj-cartas.js";
 const ARVORE = process.env.ARVORE === "1";
@@ -101,7 +101,8 @@ try {
   const ua = (await post("teste/usuario", { pro: true })).id, ub = (await post("teste/usuario", { pro: true })).id;
   await post("teste/sql", { sql: "update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", params: [JSON.stringify({ contas: [ua, ub] })] });
   C = await chrome();
-  const inicio = (ARVORE ? `window.ARVORE_NOMES=${JSON.stringify(["overhand", "chute rodado", "superman", "suplex", "martelada", "bodylock", "queda no contragolpe", "passagem de joelho", "contragolpe"])};` : `window.ARVORE_NOMES=[];`) + `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("luta:3d",${JSON.stringify(process.env.SEM3D === "1" ? "0" : "1")});`;
+  /* CARTAS="bloqueio,guarda": as abas jogam essas cartas quando têm (força um caso do duelo, como o de nenhuma) */
+  const inicio = (process.env.CARTAS ? `window.ARVORE_NOMES=${JSON.stringify(process.env.CARTAS.split(","))};` : ARVORE ? `window.ARVORE_NOMES=${JSON.stringify(["overhand", "chute rodado", "superman", "suplex", "martelada", "bodylock", "queda no contragolpe", "passagem de joelho", "contragolpe"])};` : `window.ARVORE_NOMES=[];`) + `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("luta:3d",${JSON.stringify(process.env.SEM3D === "1" ? "0" : "1")});`;
   const bloquear = ["*supabase.co*", "*octogono.fun/api*", "*draft-ufc.vercel.app*", "*vercel*"];
   A = await C.aba({ width: Number(process.env.A_W || 1280), height: Number(process.env.A_H || 800) }, { bloquear, inicio });
   B = await C.aba({ width: Number(process.env.B_W || 390), height: Number(process.env.B_H || 844), isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, { bloquear, inicio });
