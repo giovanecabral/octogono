@@ -2527,6 +2527,12 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .jxj-mesa.v2-duelo .jxj-mesa-lado.ele{justify-self:start}
 .jxj-combate.v2 .jxj-mesa.v2-duelo .vira,.jxj-combate.v2 .jxj-mesa.v2-duelo .acao .jxj-carta,.jxj-combate.v2 .jxj-mesa.v2-duelo .acao .jxj-verso{--w:var(--wd)!important}
 .v2-duelo-carta{position:relative;display:block}
+/* o rótulo (sua carta, carta dele) embaixo, longe da carta que sobe e da que cai */
+.jxj-mesa.v2-duelo .jxj-mesa-slot{flex-direction:column-reverse;gap:22px}
+.jxj-mesa.v2-duelo .jxj-rotulo-mesa{color:var(--osso-2);text-shadow:0 1px 6px #000}
+/* sem a caixa do efeito (o porquê diz o que aconteceu): a arte ocupa o lugar, sem área vazia */
+.jxj-mesa.v2-duelo .jxj-c2 .jxj-carta-regra{display:none}
+.jxj-mesa.v2-duelo .jxj-c2 .jxj-carta-arte{flex:1 1 auto}
 .v2-duelo-pose{display:block;transform-origin:50% 100%;transition:none}
 .v2-duelo-carta.prevaleceu .v2-duelo-pose{transform:translateY(-16px) scale(1.08);filter:drop-shadow(0 0 16px rgba(212,160,23,.85))}
 .v2-duelo-carta.prevaleceu.juntas .v2-duelo-pose{transform:translateY(-8px) scale(1.04);filter:drop-shadow(0 0 10px rgba(212,160,23,.6))}
@@ -2548,8 +2554,9 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .jxj-combate.tela-cheia.duelando .jxj-zona-acao{transform:translateY(45%);opacity:0;visibility:hidden;pointer-events:none}
 @media (max-width:720px){
   .jxj-mesa.v2-duelo{--wd:104px;column-gap:18px;padding:30px 4px 22px}
-  .jxj-combate.tela-cheia .jxj-palco .jxj-mesa.v2-duelo{--wd:100px;padding:26px 4px 18px}
+  .jxj-combate.tela-cheia .jxj-palco .jxj-mesa.v2-duelo{--wd:100px;column-gap:28px;padding:26px 4px 18px}
   .jxj-mesa.v2-duelo .jxj-mesa-lado,.jxj-mesa.v2-duelo .jxj-mesa-lado.ele{flex-direction:column-reverse}
+  .jxj-mesa.v2-duelo .jxj-mesa-slot{gap:18px}
 }
 @media (prefers-reduced-motion:reduce){.jxj-mesa.v2-duelo .v2-duelo-carta,.jxj-mesa.v2-duelo .v2-duelo-pose,.jxj-mesa.v2-duelo .vira .gira{animation:none!important}}
 

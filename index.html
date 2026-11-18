@@ -9736,6 +9736,13 @@ async function jxjTelaLuta(id){
           try{ await ciclo("abandonar"); }finally{ enviando=false; }
         }:null});
       ultimaAndamento=vista;
+      /* sem o 3D, o duelo inteiro acima da mão presa no pé da tela: a cada desenho (o redesenho no meio
+         do duelo volta a página pra cima), suave só no primeiro */
+      if(v2&&revelar&&!palcoAgora){
+        const suave=novas.length>0; setTimeout(()=>{ if(tk===JXJ_TOKEN)jxjMostrarDuelo2(suave); },60);
+        /* a rolagem suave pode não acontecer (aba em segundo plano): confere de novo, sem animação */
+        if(suave)setTimeout(()=>{ if(tk===JXJ_TOKEN)jxjMostrarDuelo2(false); },900);
+      }
       if(com3d){ botao3d.hidden=false; pintar3d(); }
       jxjPalcoTela(c,com3d&&!!JXJ_3D);
       marcarAssistindo();
@@ -9756,8 +9763,8 @@ async function jxjTelaLuta(id){
       soltarDuelo3d();
       if(JXJ_3D)jxj3dTrocas(caixa3d,vista,lados(),novas.length?novas:[ultT]);
       (v2?jxjDesenharCombate2:jxjDesenharCombate)(area,vf,lados(),()=>{},{nova:true,revelar:(v2?jxjRevelar2:jxjRevelar)(ultT,true),danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:antes,final:true,palco:!!JXJ_3D});
-      /* sem o 3D, o duelo da troca final tem o som dele também */
-      if(v2&&!JXJ_3D)jxjSonsDuelo2(jxjResultadoDuelo2(ultT),lados().eu,tk);
+      /* sem o 3D, o duelo da troca final tem o som dele também, e a página desce até ele */
+      if(v2&&!JXJ_3D){ jxjSonsDuelo2(jxjResultadoDuelo2(ultT),lados().eu,tk); setTimeout(()=>{ if(tk===JXJ_TOKEN)jxjMostrarDuelo2(); },60); }
       jxjPalcoTela(c,!!JXJ_3D);
       jxj3dPosicionar(c,caixa3d,area);
       const dur=(v2?jxjEfeitos2:jxjEfeitos)([ultT],lados(),tk,{antes,semVida:!!JXJ_3D,estado:vista.estado,inicio:v2&&!JXJ_3D?JXJ_DUELO_RESULTADO_MS+650:null})||0;
@@ -10305,6 +10312,16 @@ function jxjRevelar2(t,animar){
       +(x.finta>0?`<span class="jxj-carimbo-finta${anima}">FINTA</span>`:"")+`</span></span>`;
   };
   return {a:lado("a"),b:lado("b"),res,anima:mexe};
+}
+/* sem o 3D, a mão fica presa no pé da tela e cobria o duelo (achado nas fotos de 360 e 1280): na
+   primeira vez, a página desce até as duas cartas ficarem inteiras acima da mão (sem passar do topo) */
+function jxjMostrarDuelo2(suave=true){
+  if(typeof window==="undefined"||typeof window.scrollBy!=="function")return;
+  const m=document.querySelector(".jxj-mesa.v2-duelo"),z=document.querySelector(".jxj-combate.v2 .jxj-zona-acao");
+  if(!m||!z||!m.getBoundingClientRect)return;
+  const rm=m.getBoundingClientRect(),rz=z.getBoundingClientRect();
+  const falta=Math.min(rm.bottom-rz.top+8,rm.top-8);
+  if(falta>0)window.scrollBy({top:falta,behavior:suave&&!reduceMotion()?"smooth":"auto"});
 }
 /* o som do duelo: a virada agora e o resultado quando as cartas sobem ou caem (com reduzir movimento,
    logo depois da virada, que já aparece pronta). Com o 3D, os dois acabam antes do 3D começar a troca
