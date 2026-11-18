@@ -263,7 +263,7 @@ metade). Regras do revamp que valem daqui pra frente:
   `FORCA_BOT2` medida: mexeu em carta, cópia ou motor, refaz os dois
   (`sim/decks-bot2.mjs`). **Decisão 91: a calibragem parou** (Wrestler 57,8%
   e Counter 43,1% no melhor deck, chão fora do portão); não recomeçar sem o
-  dado do grupo de teste. **`luta3d/mx_cartas.glb` vem do Mixamo, fica fora
+  dado do grupo de teste. **Clareza e treino (2026-11-18, decisões 93 e 94):** a pista de cada carta é `jxjPrevisao2` (igual ao motor, teste com 4.000 trocas; nunca diz qual jogar); o treino de cartas `JXJ_TREINO2` sai do motor (mudou número ou carta, a `jxjv2` reprova e imprime o roteiro novo) e é obrigatório uma vez pra conta com `combateV2` (`jxj:treino2`); o Como ganhar não abre sozinho na luta. **`luta3d/mx_cartas.glb` vem do Mixamo, fica fora
   do git** (`.gitignore`) e só sobe no `vercel --prod`; sem ele os lances
   caem na reserva. Mexeu em carta, árvore ou lance: `combate2`,
   `cartasarte`, `luta3d`, `jxjbot` e `jxjtelas`, e
