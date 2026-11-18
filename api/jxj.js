@@ -357,7 +357,7 @@ function vistaDaLutaV2(d, uid) {
     id: L.id, tipo: L.tipo, bot: !!L.bot, status: L.status, lado, nomes: L.nomes, compromisso: L.compromisso,
     confirmacaoAte: L.confirmacao_ate, confirmado: { a: L.confirmado_a, b: L.confirmado_b },
     round: L.round, troca: L.troca, prazo: L.prazo, agora: d.agora, comRating: L.com_rating,
-    formato: { ...MOTOR.FORMATO, prazoMs: EST.prazosDaLuta(L.estado).prazoMs, trocasPorRound: C2.FORMATO2.trocasPorRound, animacaoMs: MOTOR.FORMATO.animacaoMs },
+    formato: { ...MOTOR.FORMATO, prazoMs: EST.prazosDaLuta(L.estado).prazoMs, trocasPorRound: C2.FORMATO2.trocasPorRound, animacaoMs: EST.prazosDaLuta(L.estado).animacaoMs },
     ...V2.vistaV2(L, lado, { sinais: sn ? sinaisRevelados(L, sn) : null, etapa }),
     /* a minha carta da troca aberta (a dele, nunca): a família e a carta */
     minhaAcao: lado && abertas[lado] ? abertas[lado].familia : null,

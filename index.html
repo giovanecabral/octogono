@@ -3743,13 +3743,14 @@ function carregaAudio(){
 /* Toca um efeito real; devolve false se ele não existe ainda (carregando
    ou falhou) e quem chamou toca o sintetizado. A variação entre golpes usa
    Math.random: som não é jogo, nunca toca um gerador da carreira. */
-function toca(k,ganho=1){
+function toca(k,ganho=1,taxa=1){
   const a=ctx(); if(!a)return false;
   const lista=EFEITOS[k]; if(!lista)return false;
   const nome=lista[Math.floor(Math.random()*lista.length)];
   const b=BUF[nome];
   if(!b){ if(!(nome in BUF))carregarEfeito(nome); return false; }
   const s=a.createBufferSource(); s.buffer=b;
+  if(taxa!==1&&s.playbackRate)s.playbackRate.value=taxa;
   const g=a.createGain(); g.gain.value=ganho;
   s.connect(g).connect(BUS); s.start();
   return true;
@@ -7838,6 +7839,49 @@ function jxjPorQue2(t,eu,nomes,defs){
   if(!fr.length)fr.push(r.vencedor?`${quem(r.vencedor)} fez mais pontos na troca.`:"Nenhuma das duas cartas mudou a troca.");
   return fr.slice(0,3);
 }
+/* o duelo das cartas (decisão 92 do combate v2, 2026-11-17, cena desenhada pelo dono): o resultado de
+   cada carta na troca, só dos eventos que o servidor manda (os mesmos do porquê). "deu_certo" quando a
+   carta fez alguma coisa: dano (inclusive a punição do contra), a reação anulou, mudou a posição (queda,
+   puxar a guarda, avançar, raspar, levantar, recuar), encaixou, finalizou ou nocauteou, escapou do encaixe,
+   ou um efeito dela (energia, iniciativa, mais rápido, tirar o grogue; lento, sangra ou grogue nele).
+   "falhou" no resto: interrompida, anulada por reação, a posição mudou antes, ou resolveu sem efeito. As
+   duas que se anularam: as duas falharam. caso: "a" ou "b" (só aquela deu certo), "dois" ou "nenhum".
+   Troca sem resolução (W.O. antes da troca): null. A tela (jxjRevelar2, jxjMesa2, o som) e os testes leem
+   só daqui. */
+const JXJ_DUELO_PROPRIOS=["anulou","queda","puxouGuarda","avancou","raspou","levantou","recuou","encaixou","escapou","rapido","tirouGrogue","knockdown"],
+  JXJ_DUELO_NELE=["lento","sangrou","grogue"];
+function jxjResultadoDuelo2(t){
+  const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return null;
+  const ev=t.ev||[],outro=l=>l==="a"?"b":"a",carta=l=>r.cartas[l].efetiva;
+  /* evento com a carta e quem recebe: a mesma carta dos dois lados não diz de quem foi, vale a de quem recebe */
+  const daCarta=(e,l)=>!!e.carta&&e.carta===carta(l);
+  const fez=l=>r.ordem!=="anuladas"&&ev.some(e=>
+    (e.tipo==="dano"&&e.quem===l&&Number(e.dano)>0)
+    ||(JXJ_DUELO_PROPRIOS.includes(e.tipo)&&e.quem===l)
+    ||(e.tipo==="fim"&&e.quem===l&&["KO","TKO","FIN"].includes(e.metodo))
+    ||((e.tipo==="energia"||e.tipo==="iniciativa")&&e.quem===l&&daCarta(e,l))
+    ||(e.tipo==="energia"&&e.quem===outro(l)&&daCarta(e,l)&&carta(l)!==carta(outro(l)))
+    ||(JXJ_DUELO_NELE.includes(e.tipo)&&e.quem===outro(l)&&daCarta(e,l)));
+  const a=fez("a")?"deu_certo":"falhou",b=fez("b")?"deu_certo":"falhou";
+  return {a,b,caso:a==="deu_certo"&&b==="deu_certo"?"dois":a==="deu_certo"?"a":b==="deu_certo"?"b":"nenhum"};
+}
+/* o caso visto por quem joga (eu): "meu", "dele", "dois" ou "nenhum" */
+const jxjCasoDuelo2=(res,eu)=>!res?null:res.caso==="dois"||res.caso==="nenhum"?res.caso:res.caso===eu?"meu":"dele";
+/* o tempo do duelo: as cartas viram, o resultado entra e, com o 3D, a troca toca depois de JXJ_DUELO_MS
+   (a janela da luta v2 no servidor, prazosDaLuta, soma este tempo aos 7 s do 3D) */
+let JXJ_DUELO_MS=2500;
+const JXJ_DUELO_RESULTADO_MS=1150;
+/* o som do duelo, pelo lado de quem vê (pedido do dono): os efeitos de audio/ que já existem
+   (audio/LICENCAS.md). A minha falhou ainda não tem arquivo que sirva (null: sem som; o dono decide
+   o download). Cada um tem menos de 0,7 s: acaba antes do 3D começar. */
+const JXJ_SOM_DUELO2={vira:{chave:"carta",ganho:.55},meu:{chave:"conquista",ganho:.6},dele:null,
+  dois:{chave:"conquista",ganho:.4,taxa:.8},nenhum:{chave:"aba",ganho:.45}};
+function jxjSomDuelo2(res,eu){
+  const c=jxjCasoDuelo2(res,eu); if(!c)return null;
+  return {vira:JXJ_SOM_DUELO2.vira,resultado:JXJ_SOM_DUELO2[c]||null};
+}
+/* toca um som do duelo pelo sistema de sempre (toca respeita o mudo e o volume dos efeitos) */
+function jxjTocarSom2(s){ return !!s&&!mudo&&toca(s.chave,s.ganho,s.taxa||1); }
 /* troca da v2 no 3D: cada evento de trocaVista tem entrada aqui; null = sem lance
    próprio (só dado, ou já mostrado por outro lance: o golpe mostra a interrupção, e a
    linha do round o jxj3dTrocas põe sozinho). A suíte jxjv2 reprova tipo sem entrada. */
@@ -9191,7 +9235,7 @@ function jxjTotalEtapa(v){
 /* Carta do Online (2026-10-28, protótipo aprovado pelo dono): cor sólida da
    família, gema em octógono com o custo, ícone grande, faixa com o nome e
    as cópias, caixa de regra. Uma só pra mão, mesa e treino. */
-const JXJ_TAM_CARTA={mao:150,mesa:118,postura:84};
+const JXJ_TAM_CARTA={mao:150,mesa:118,postura:84,duelo:132};
 const jxjNum2=x=>String(Math.round(Number(x||0)*100)/100).replace(".",",");
 const jxjCustoTxt=c=>c<0?`+${jxjNum2(-c)}`:jxjNum2(c);
 function jxjCarta(a,{tam="mao",postura=false,estado=""}={}){
@@ -9571,6 +9615,13 @@ async function jxjTelaLuta(id){
   let escolha=null,envios=0;
   /* cena do fim (2026-10-29): a última vista em andamento, pra mostrar a troca que acabou a luta antes do resultado */
   let ultimaAndamento=null,cenaFim=null;
+  /* duelo das cartas com o 3D (decisão 92): as trocas novas esperam o duelo (JXJ_DUELO_MS) pra ir pro palco */
+  let duelo3d=[],timerDuelo3d=null;
+  const soltarDuelo3d=()=>{
+    clearTimeout(timerDuelo3d); const l=duelo3d.splice(0);
+    if(tk!==JXJ_TOKEN||!l.length||!vista||!JXJ_3D)return;
+    jxj3dTrocas(caixa3d,vista,lados(),l,cair3d); marcarAssistindo();
+  };
   /* tela cheia (2026-11-10): o botão do 3D mora na barra de cima; o 3D que
      não carregou volta pra tela de cartas */
   let botaoNaBarra=false;
@@ -9639,15 +9690,22 @@ async function jxjTelaLuta(id){
     let revelar=null,danoAntes=null;
     /* 3D ligado: a troca nova vai pra fila do palco antes de desenhar, pra o placar já sair na vida que o 3D mostrou */
     const com3d=vista.status==="andamento"&&typeof window!=="undefined"&&typeof window.WebGL2RenderingContext==="function";
-    if(com3d)jxj3dTrocas(caixa3d,vista,lados(),novas,cair3d);
-    if(revelacao&&vista.status==="andamento"&&Date.now()-revelacao.desde<JXJ_REVELACAO_MS){
+    /* v2 (decisão 92): o duelo das cartas primeiro e o 3D depois; o palco nasce agora (sem troca) */
+    if(com3d&&v2&&novas.length){ jxj3dTrocas(caixa3d,vista,lados(),[],cair3d); duelo3d.push(...novas); clearTimeout(timerDuelo3d); timerDuelo3d=setTimeout(soltarDuelo3d,JXJ_DUELO_MS); }
+    else if(com3d)jxj3dTrocas(caixa3d,vista,lados(),novas,cair3d);
+    /* o redesenho do fim: no palco, quando o 3D entra; sem ele, depois dos golpes do duelo */
+    const palcoAgora=com3d&&!!JXJ_3D,durRev=v2?(palcoAgora?JXJ_DUELO_MS:JXJ_DUELO_MS+1500):JXJ_REVELACAO_MS;
+    /* sem o 3D, o duelo da v2 fica até a próxima etapa: a etapa da postura da troca seguinte, até eu mostrar a minha */
+    const segue=v2&&!palcoAgora&&!!revelacao&&revelacao.i===todas.length-1&&vista.etapa==="sinal"&&!vista.meuSinal&&!(escolha&&escolha.tipo==="sinal");
+    if(revelacao&&vista.status==="andamento"&&(Date.now()-revelacao.desde<durRev||segue)){
       revelar=(v2?jxjRevelar2:jxjRevelar)(todas[revelacao.i],!revelacao.animou);
       /* 2026-10-29: o primeiro desenho da troca nova parte do dano de antes dela */
       if(!revelacao.animou&&novas.length&&vista.estado)danoAntes=(v2?jxjDanoAntes2:jxjDanoAntes)(vista.estado,todas[todas.length-1]);
+      if(v2&&revelar&&!revelacao.animou)jxjSonsDuelo2(revelar.res,lados().eu,tk);
       revelacao.animou=true;
       /* um redesenho só, no fim da revelação (armado uma vez: redesenhar no meio não rearma) */
       if(!revelacao.fim){ clearTimeout(fimRevelacao); revelacao.fim=true;
-        fimRevelacao=setTimeout(()=>{ if(tk===JXJ_TOKEN&&vista&&vista.status==="andamento")desenhar(); },Math.max(0,JXJ_REVELACAO_MS-(Date.now()-revelacao.desde))+20); }
+        fimRevelacao=setTimeout(()=>{ if(tk===JXJ_TOKEN&&vista&&vista.status==="andamento")desenhar(); },Math.max(0,durRev-(Date.now()-revelacao.desde))+20); }
     }
     const soltou=vista.status==="andamento"&&!!vista.adversarioEscolheu&&!escolheuVisto;
     escolheuVisto=vista.status==="andamento"&&!!vista.adversarioEscolheu;
@@ -9683,7 +9741,9 @@ async function jxjTelaLuta(id){
       marcarAssistindo();
       jxj3dPosicionar(c,caixa3d,area);
       if(comecou)SOM.sinoInicio();
-      return (v2?jxjEfeitos2:jxjEfeitos)(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes,semVida:!!JXJ_3D,estado:vista.estado});
+      return (v2?jxjEfeitos2:jxjEfeitos)(novas,lados(),tk,{fechouRound:maoNova,antes:danoAntes,semVida:!!JXJ_3D,estado:vista.estado,
+        /* v2: os golpes depois do resultado do duelo; com o 3D, na mesma distância de antes do começo do 3D */
+        inicio:v2&&novas.length?(palcoAgora?JXJ_DUELO_MS+JXJ_VIRA_MS:JXJ_DUELO_RESULTADO_MS+650):null});
     }
     /* a luta acabou com a tela aberta: a troca final na mesa, a barra e a cena;
        W.O. e anulada (sem troca final de luta) vão direto pro resultado */
@@ -9693,11 +9753,14 @@ async function jxjTelaLuta(id){
       const antes=(v2?jxjDanoAntes2:jxjDanoAntes)(vista.estado,ultT);
       const vf={...ultimaAndamento,status:"andamento",estado:vista.estado,trocas:todas,minhaAcao:null,minhaCarta:null,meuSinal:null,etapa:null,sinais:null,
         adversarioEscolheu:false,adversarioSinalizou:false,momentoDecisivo:null};
+      soltarDuelo3d();
       if(JXJ_3D)jxj3dTrocas(caixa3d,vista,lados(),novas.length?novas:[ultT]);
       (v2?jxjDesenharCombate2:jxjDesenharCombate)(area,vf,lados(),()=>{},{nova:true,revelar:(v2?jxjRevelar2:jxjRevelar)(ultT,true),danoAntes:JXJ_3D?{...JXJ_3D.mostrado}:antes,final:true,palco:!!JXJ_3D});
+      /* sem o 3D, o duelo da troca final tem o som dele também */
+      if(v2&&!JXJ_3D)jxjSonsDuelo2(jxjResultadoDuelo2(ultT),lados().eu,tk);
       jxjPalcoTela(c,!!JXJ_3D);
       jxj3dPosicionar(c,caixa3d,area);
-      const dur=(v2?jxjEfeitos2:jxjEfeitos)([ultT],lados(),tk,{antes,semVida:!!JXJ_3D,estado:vista.estado})||0;
+      const dur=(v2?jxjEfeitos2:jxjEfeitos)([ultT],lados(),tk,{antes,semVida:!!JXJ_3D,estado:vista.estado,inicio:v2&&!JXJ_3D?JXJ_DUELO_RESULTADO_MS+650:null})||0;
       jxjCenaFim(area,vista,lados(),()=>{
         if(tk!==JXJ_TOKEN)return;
         cenaFim="visto"; desenhar();
@@ -10206,7 +10269,9 @@ function jxjRegua2(mao,{regras=true}={}){
    layout de 2026-11-17). A carta dele só de costas quando a vista diz que ele escolheu, e de frente
    só na revelação (revelar: {a, b}) */
 function jxjMesa2(v,{eu,ele},revelar,{soltou=false}={}){
-  const mesa=el("section","jxj-mesa v2-mesa");
+  /* o duelo (decisão 92): só as duas cartas, a minha na esquerda e a dele na direita, sem nada no meio */
+  const caso=revelar&&revelar.res?jxjCasoDuelo2(revelar.res,eu):null;
+  const mesa=el("section","jxj-mesa v2-mesa"+(revelar?` v2-duelo duelo-${caso||"nenhum"}${revelar.anima?" anima":""}`:""));
   const vaga=(id,txt,tam,html)=>html?`<span class="jxj-vaga cheia" id="${id}">${html}</span>`
     :`<span class="jxj-vaga" id="${id}" style="--w:${JXJ_TAM_CARTA[tam]}px">${txt?`<small>${txt}</small>`:""}</span>`;
   const minha=v.minhaCarta?(v.mao||[]).find(x=>x.id===v.minhaCarta):null;
@@ -10220,41 +10285,46 @@ function jxjMesa2(v,{eu,ele},revelar,{soltou=false}={}){
     c.innerHTML=`<span class="jxj-mesa-slot acao"><span class="jxj-rotulo-mesa">${souEu?"sua carta":"carta dele"}</span>${vaga(souEu?"jxj-vaga-acao-eu":"jxj-vaga-acao-ele","","mesa",acao)}</span>`;
     return c;
   };
-  mesa.append(coluna(eu),el("span","jxj-mesa-vs",""),coluna(ele));
+  if(revelar)mesa.append(coluna(eu),coluna(ele));
+  else mesa.append(coluna(eu),el("span","jxj-mesa-vs",""),coluna(ele));
   return mesa;
 }
-/* a troca que acabou nas vagas de carta: as duas viram juntas (só no primeiro desenho), a de quem
-   levou a troca brilha, a outra apanha; carimbo na finta */
+/* o duelo das cartas (decisão 92, cena do dono): as duas entram viradas e viram juntas (só no primeiro
+   desenho); depois de uma pausa, a que deu certo cresce e sobe, a que falhou fica cinza e cai; as duas
+   que deram certo sobem menos; nenhuma: as duas ficam como estão. O estado final está nas classes
+   (prevaleceu, prevaleceu juntas, falhou, neutra): com "reduzir movimento", aparece direto. res é o
+   jxjResultadoDuelo2 da troca; carimbo na finta */
 function jxjRevelar2(t,animar){
   const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return null;
-  const anima=animar&&!reduceMotion()?" anima":"";
+  const res=jxjResultadoDuelo2(t),mexe=!!animar&&!reduceMotion(),anima=mexe?" anima":"",W=JXJ_TAM_CARTA.duelo;
+  const estado=l=>res.caso==="dois"?"prevaleceu juntas":res.caso==="nenhum"?"neutra":res[l]==="deu_certo"?"prevaleceu":"falhou";
   const lado=l=>{
-    const x=r.cartas[l],res=r.vencedor?(r.vencedor===l?" venceu":" perdeu"):"";
-    const frente=jxjCarta2(jxjCartaDef2(x.efetiva),{w:JXJ_TAM_CARTA.mesa,vel:x.vel,velBase:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0)),origem:x.efetiva!==x.id?x.id:null});
-    return `<span class="jxj-revelada${res}"><span class="vira aberta${anima}" style="--w:${JXJ_TAM_CARTA.mesa}px"><span class="gira"><span class="face verso">${jxjVerso("mesa")}</span><span class="face frente">${frente}</span></span></span>`
-      +(x.finta>0?`<span class="jxj-carimbo-finta${anima}">FINTA</span>`:"")+`</span>`;
+    const x=r.cartas[l];
+    const frente=jxjCarta2(jxjCartaDef2(x.efetiva),{w:W,vel:x.vel,velBase:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0)),origem:x.efetiva!==x.id?x.id:null});
+    return `<span class="jxj-revelada v2-duelo-carta ${estado(l)}"><span class="v2-duelo-pose${anima}"><span class="vira aberta${anima}" style="--w:${W}px"><span class="gira"><span class="face verso">${jxjVerso("duelo")}</span><span class="face frente">${frente}</span></span></span>`
+      +(x.finta>0?`<span class="jxj-carimbo-finta${anima}">FINTA</span>`:"")+`</span></span>`;
   };
-  return {a:lado("a"),b:lado("b")};
+  return {a:lado("a"),b:lado("b"),res,anima:mexe};
 }
-/* o porquê da troca na linha do tempo (opção B aprovada): quem resolveu primeiro, o que aconteceu, quem
-   veio depois (riscado, se não saiu), a frase de jxjPorQue2 e os selos do resultado */
-function jxjLinha2(t,{eu,ele},nomes,{nova=false,tam=70}={}){
+/* o som do duelo: a virada agora e o resultado quando as cartas sobem ou caem (com reduzir movimento,
+   logo depois da virada, que já aparece pronta). Com o 3D, os dois acabam antes do 3D começar a troca
+   (JXJ_DUELO_MS): o som do golpe do 3D não pisa no do duelo */
+function jxjSonsDuelo2(res,eu,tk){
+  const s=jxjSomDuelo2(res,eu); if(!s)return;
+  jxjTocarSom2(s.vira);
+  if(s.resultado)setTimeout(()=>{ if(tk===JXJ_TOKEN)jxjTocarSom2(s.resultado); },reduceMotion()?300:JXJ_DUELO_RESULTADO_MS);
+}
+/* o porquê da troca (opção B aprovada): o selo do que decidiu, a frase de jxjPorQue2 e os selos do
+   resultado. As cartas saíram daqui em 2026-11-17 (decisão 92, pedido do dono: "não quero mais a
+   seta"): quem mostra as duas cartas é o duelo, a sua na esquerda e a dele na direita */
+function jxjLinha2(t,{eu,ele},nomes,{nova=false}={}){
   const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return null;
   const outro=l=>l==="a"?"b":"a",ev=t.ev||[];
   const prim=r.ordem==="a"||r.ordem==="b"?r.ordem:eu,seg=outro(prim);
-  const interrompido=l=>(r.interrupcoes||[]).some(x=>x.interrompeu===l),anulado=l=>(r.reacoes||[]).some(x=>x.anulou===l);
   const falhou=l=>ev.some(x=>x.tipo==="falhou"&&x.quem===l);
-  const juntos=r.ordem==="empate"||r.ordem==="anuladas"||r.ordem==="encaixe";
   const selo=r.ordem==="encaixe"?"encaixe":r.ordem==="anuladas"?"se anularam":r.ordem==="empate"?"juntas"
     :(r.reacoes||[]).length?"anulou":(r.interrupcoes||[]).length?"interrompeu":falhou(seg)?"mudou a posição":"depois";
   const dano=r.dano||{};
-  const lado=(l,pos,qual)=>{
-    const x=r.cartas[l],k=jxjCartaDef2(x.efetiva);
-    const risca=interrompido(l)||anulado(l)||falhou(l)||r.ordem==="anuladas";
-    const levou=Number(dano[outro(l)])||0;
-    return `<span class="v2-linha-lado ${qual} ${l===eu?"eu":"ele"}"><span class="ordem">${juntos?"1º":pos}</span><span class="quem"><small>${l===eu?"você":"ele"}</small><b>${jxjEsc(k.nome)}</b></span>`
-      +`<span class="v2-linha-carta"><span class="${risca?"riscada":"inteira"}">${jxjCarta2(k,{w:tam,mini:true,vel:x.vel,velBase:x.vel,custo:Math.max(0,(x.custo||0)-(x.finta||0))})}</span>${levou?`<em class="jxj-dano">−${jxjNum(levou)}</em>`:""}</span></span>`;
-  };
   const g=[];
   if(Number(dano[eu])>0)g.push(`<span class="bom">${ICONE("lesao")}${jxjNum(dano[eu])} de dano nele</span>`);
   if(Number(dano[ele])>0)g.push(`<span class="ruim">${ICONE("lesao")}${jxjNum(dano[ele])} de dano em você</span>`);
@@ -10262,8 +10332,7 @@ function jxjLinha2(t,{eu,ele},nomes,{nova=false,tam=70}={}){
   if(en>0)g.push(`<span class="bom">${ICONE("energia")}+${jxjNum(en)} de energia</span>`);
   if(r.pontos)g.push(`<span>${ICONE("bandeira")}Pontos na troca: ${jxjNum(r.pontos[eu])} a ${jxjNum(r.pontos[ele])}</span>`);
   const sec=el("section","v2-linha"+(nova?" nova":""));
-  sec.innerHTML=`<div class="v2-linha-tempo">${lado(prim,"1º","primeiro")}<span class="v2-seta"></span><span class="v2-selo">${selo}</span><span class="v2-seta"></span>${lado(seg,"2º","segundo")}</div>`
-    +`<p class="v2-porque"><b>Por quê</b>${jxjPorQue2(t,eu,nomes).join(" ")}</p>`+(g.length?`<div class="v2-ganhos">${g.join("")}</div>`:"");
+  sec.innerHTML=`<p class="v2-porque"><span class="v2-selo">${selo}</span><b>Por quê</b>${jxjPorQue2(t,eu,nomes).join(" ")}</p>`+(g.length?`<div class="v2-ganhos">${g.join("")}</div>`:"");
   return sec;
 }
 /* o momento decisivo da v2 (grogue, finalização encaixada), com as regras da v2 */
@@ -10322,7 +10391,9 @@ function jxjTagPostura2(v,l,souEu,{situacao=false}={}){
 function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,revelar=null,soltou=false,danoAntes=null,final=false,abandonar=null,palco=false}={}){
   jxjComDano2(v);
   const F=v.formato,e=v.estado,nomes=v.nomes;
-  const tela=el("div","jxj-combate v2"+(palco?" tela-cheia":"")); tela.id="jxj-combate";
+  /* duelando: no palco, o duelo das cartas fica no meio e a mão sai (o 3D toca a troca depois do duelo) */
+  const duelando=!!(palco&&revelar&&!final);
+  const tela=el("div","jxj-combate v2"+(palco?" tela-cheia":"")+(duelando?" duelando":"")); tela.id="jxj-combate";
   const hud=el("section","jxj-hud");
   const lado=(l,souEu)=>{
     const n=nomes[l],st=e[l];
@@ -10399,6 +10470,8 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   const jogou=!!(v.minhaCarta||v.minhaAcao);
   const mesaEl=revelar||(jogou&&!final)?jxjMesa2(v,{eu,ele},revelar,{soltou}):null;
   if(!palco&&mesaEl){ const areaMesa=el("div","jxj-mesa-area"); areaMesa.appendChild(mesaEl); tela.appendChild(areaMesa); }
+  /* no palco, o duelo fica no meio dele (decisão 92), fora da grade da mão */
+  if(duelando&&mesaEl)palcoEl.appendChild(mesaEl);
   /* o porquê da troca que acabou de ser resolvida (opção B) */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
   const linha=ult?jxjLinha2(ult,{eu,ele},nomes,{nova}):null;
@@ -10409,7 +10482,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   let maoPosta=false;
   const poeMao=g=>{
     if(!palco){ zona.appendChild(g); return; }
-    const grade=el("div","jxj-palco-mao"); if(mesaEl)grade.appendChild(mesaEl); grade.appendChild(g); zona.appendChild(grade); maoPosta=true;
+    const grade=el("div","jxj-palco-mao"); if(mesaEl&&!duelando)grade.appendChild(mesaEl); grade.appendChild(g); zona.appendChild(grade); maoPosta=true;
   };
   const cartaTitulo=(k,extra="")=>{ const ef=jxjEfeitoTexto2(k.c); return `${k.c.nome}: velocidade ${jxjNum(k.c.vel)}, dano ${jxjNum(k.c.dano)}, custa ${jxjNum(k.c.custo)} de energia.${ef?" "+ef:""}${extra}`; };
   const noChao=v.papel&&v.papel!=="pe";
@@ -10501,7 +10574,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
     }
   }
   /* palco sem mão na tela (carta jogada, esperando): a mesa continua, com a minha carta e o verso da dele */
-  if(palco&&!maoPosta&&!final&&mesaEl){ const grade=el("div","jxj-palco-mao so-mesa"); grade.appendChild(mesaEl); zona.appendChild(grade); }
+  if(palco&&!maoPosta&&!final&&mesaEl&&!duelando){ const grade=el("div","jxj-palco-mao so-mesa"); grade.appendChild(mesaEl); zona.appendChild(grade); }
   (palcoEl||tela).appendChild(zona);
   /* histórico: gaveta fechada, com tudo dentro */
   const todas=[...(v.trocas||[])].reverse();
@@ -10524,11 +10597,12 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
 /* som e animação da troca v2 que acabou de ser resolvida: os eventos do motor v2 (dano com alvo e
    carta, knockdown, posição, encaixe, fim). Mesmo jeito do jxjEfeitos da luta de antes; a barra anda
    na escala da barra (estado traz a vidaMax de cada lado). */
-function jxjEfeitos2(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null,semVida=false,estado=null}={}){
+function jxjEfeitos2(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null,semVida=false,estado=null,inicio=null}={}){
   if(!novas.length&&!fim)return;
   const card=l=>document.getElementById(l===eu?"jxj-card-eu":"jxj-card-ele");
   const anima=(no,cls)=>{ if(!no||reduceMotion())return; no.classList.remove(cls); void no.offsetWidth; no.classList.add(cls); };
-  let t=antes?JXJ_VIRA_MS:120;
+  /* inicio: com o duelo das cartas (decisão 92), os golpes entram depois do resultado do duelo */
+  let t=inicio!=null?inicio:antes?JXJ_VIRA_MS:120;
   const depois=(fn,passo=340)=>{ setTimeout(()=>{ if(tk===JXJ_TOKEN)fn(); },t); t+=passo; };
   const ult=novas[novas.length-1],dano=antes?{...antes}:null;
   for(const e of (ult&&ult.ev)||[]){

@@ -16,14 +16,14 @@ export const VERSAO_MOTOR = 5;   // 2: variantes de ação por round (2026-10-04
 /* Formato (ajustado pela suíte jxjmotor; valores finais no LEIA-ME). O
    prazo da troca vem da configuração da estratégia: o sinal (5 s) e a ação
    (12 s), um prazo só (fase 2). */
-export const FORMATO = { rounds: 3, trocasPorRound: 3, prazoMs: ESTRATEGIA.prazos.sinalMs + ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000, animacaoMs: 7000 };
+export const FORMATO = { rounds: 3, trocasPorRound: 3, prazoMs: ESTRATEGIA.prazos.sinalMs + ESTRATEGIA.prazos.acaoMs, toleranciaMs: 3000, animacaoMs: ESTRATEGIA.prazos.animacaoMs };
 /* Trocas por round (2026-11-10, pedido do dono): a troca resolvida passa no 3D antes das cartas
    voltarem, e o round fica com o mesmo tempo de antes com 3 trocas em vez de 4 (3 × (7 s + 20 s)
    = 81 s contra 4 × 20 s = 80 s). A luta guarda o número (tpr); luta de antes, sem tpr, segue
    com 4 até o fim e sem a animação no prazo. */
 export const trocasDoRound = (e) => (e && e.tpr) || 4;
 /* prazo da próxima troca: a animação da troca que acabou de resolver entra antes do sinal */
-export const prazoDaProxima = (e) => prazosDaLuta(e).prazoMs + (e && e.tpr ? FORMATO.animacaoMs : 0);
+export const prazoDaProxima = (e) => { const p = prazosDaLuta(e); return p.prazoMs + (e && e.tpr ? p.animacaoMs : 0); };
 export const FAMILIAS = ["golpes", "queda", "defesa", "pressao"];
 export const AUSENCIAS_WO = 3;
 

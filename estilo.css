@@ -2479,25 +2479,11 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .v2-deck-dele p{margin:10px 0 0;font-size:12.5px;color:var(--osso-2)}
 .v2-qtd{position:absolute;right:-4px;top:-6px;z-index:3;padding:0 5px;background:var(--osso);color:#0b0b0d;font-family:var(--f-titulo);font-size:13px;line-height:18px}
 .v2-cel{position:relative;display:flex;justify-content:center}
-/* o porquê da troca (opção B): a linha do tempo de quem resolveu primeiro */
+/* o porquê da troca (opção B): o selo e a frase (as cartas da troca ficam no duelo, decisão 92) */
 .v2-linha{display:grid;gap:6px;max-width:820px;margin:0 auto;padding:12px 16px;background:rgba(7,8,11,.86);border:1px solid rgba(255,255,255,.1)}
 .jxj-combate.tela-cheia .v2-linha{position:absolute;top:12px;left:12px;right:12px;z-index:2}
-.v2-linha-tempo{display:grid;grid-template-columns:auto 1fr auto 1fr auto;align-items:center;gap:12px}
-.v2-linha-lado{display:flex;align-items:center;gap:10px}
-.v2-linha-lado.segundo{flex-direction:row-reverse;text-align:right}
-.v2-linha-lado .quem{display:flex;flex-direction:column;gap:2px}
-.v2-linha-lado .quem small{font-family:var(--f-ui);font-weight:800;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--cinza)}
-.v2-linha-lado .quem b{font-family:var(--f-titulo);font-weight:400;font-size:20px;letter-spacing:.01em;text-transform:uppercase}
-.v2-linha-lado .ordem{font-family:var(--f-titulo);font-size:28px;line-height:1;color:var(--ouro)}
-.v2-linha-lado.ele .ordem{color:var(--cinza)}
-.v2-linha-carta{position:relative;display:inline-flex}
-.v2-seta{position:relative;height:2px;background:linear-gradient(90deg,var(--ouro),rgba(212,160,23,.15))}
-.v2-seta::after{content:"";position:absolute;right:-2px;top:-5px;border:6px solid transparent;border-left-color:rgba(212,160,23,.5)}
+.v2-porque .v2-selo{display:inline-block;margin-right:10px;vertical-align:1px}
 .v2-selo{padding:4px 10px;font-family:var(--f-ui);font-weight:800;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:#0b0b0d;background:var(--ouro);transform:rotate(-3deg);white-space:nowrap}
-.v2-linha .riscada{position:relative;display:inline-flex;filter:grayscale(.7) brightness(.6)}
-.v2-linha .riscada::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;height:3px;background:var(--sangue-vivo);transform:rotate(-24deg)}
-.v2-linha .inteira{display:inline-flex}
-.v2-linha .jxj-dano{position:absolute;top:-8px;right:-10px;z-index:4;font-style:normal;font-family:var(--f-titulo);font-size:20px;color:var(--sangue-vivo);text-shadow:0 2px 6px #000}
 .v2-porque{margin:4px 0 0;text-align:center;font-size:15px;line-height:1.4;color:var(--osso)}
 .v2-porque b{font-family:var(--f-ui);font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:var(--ouro);margin-right:6px}
 .v2-ganhos{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
@@ -2527,20 +2513,45 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
   .v2-deck-dele .grade{grid-template-columns:repeat(4,minmax(0,1fr))}
   .v2-linha{padding:8px 10px}
   .jxj-combate.tela-cheia .v2-linha{top:8px;left:8px;right:8px}
-  .v2-linha-tempo{gap:6px}
-  .v2-linha-lado{gap:6px}
-  .v2-linha-lado .quem b{font-size:14px}
-  /* 360 px: o nome já está na carta pequena; com ele ao lado a linha passava da tela (2026-11-17) */
-  .v2-linha-lado .quem b{display:none}
-  .v2-linha-tempo{grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto;gap:4px}
-  .v2-linha-lado{gap:4px}
-  .v2-linha .v2-linha-carta .jxj-carta{--w:56px!important}
-  .v2-linha .v2-selo{white-space:normal;max-width:64px;text-align:center;line-height:1.15}
-  .v2-linha-lado .ordem{font-size:20px}
   .v2-selo{font-size:10px;padding:3px 6px}
   .v2-porque{font-size:13px}
 }
 @media (prefers-reduced-motion:reduce){.v2-linha.nova{animation:none}}
+/* ---------- o duelo das cartas (decisão 92, 2026-11-17, cena desenhada pelo dono) ----------
+   As duas cartas da troca, a sua na esquerda e a dele na direita, sem nada no meio. Entram viradas,
+   viram juntas e, depois de uma pausa, a que prevaleceu cresce e sobe; a que falhou fica cinza e cai;
+   as duas que deram certo sobem menos; nenhuma: as duas ficam como estão. O estado final mora nas
+   classes (com "reduzir movimento" aparece direto); a animação (classe anima) só leva até ele. */
+.jxj-mesa.v2-duelo{--wd:132px;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:clamp(16px,6vw,72px);padding-top:34px;padding-bottom:30px}
+.jxj-mesa.v2-duelo .jxj-mesa-lado.eu{justify-self:end}
+.jxj-mesa.v2-duelo .jxj-mesa-lado.ele{justify-self:start}
+.jxj-combate.v2 .jxj-mesa.v2-duelo .vira,.jxj-combate.v2 .jxj-mesa.v2-duelo .acao .jxj-carta,.jxj-combate.v2 .jxj-mesa.v2-duelo .acao .jxj-verso{--w:var(--wd)!important}
+.v2-duelo-carta{position:relative;display:block}
+.v2-duelo-pose{display:block;transform-origin:50% 100%;transition:none}
+.v2-duelo-carta.prevaleceu .v2-duelo-pose{transform:translateY(-16px) scale(1.08);filter:drop-shadow(0 0 16px rgba(212,160,23,.85))}
+.v2-duelo-carta.prevaleceu.juntas .v2-duelo-pose{transform:translateY(-8px) scale(1.04);filter:drop-shadow(0 0 10px rgba(212,160,23,.6))}
+.v2-duelo-carta.falhou .v2-duelo-pose{transform:translateY(12px);filter:grayscale(1);opacity:.5}
+.jxj-mesa.v2-duelo.anima .v2-duelo-carta{animation:jxjDueloEntra .3s var(--ease-soco) both}
+.jxj-mesa.v2-duelo .vira.anima .gira{animation:jxjDueloVira .55s var(--ease-soco) .3s both}
+.v2-duelo-carta.prevaleceu .v2-duelo-pose.anima{animation:jxjDueloSobe .4s var(--ease-soco) 1.15s both}
+.v2-duelo-carta.prevaleceu.juntas .v2-duelo-pose.anima{animation:jxjDueloSobeJuntas .4s var(--ease-soco) 1.15s both}
+.v2-duelo-carta.falhou .v2-duelo-pose.anima{animation:jxjDueloCai .45s ease-out 1.15s both}
+@keyframes jxjDueloEntra{from{translate:0 26px;opacity:0}to{translate:0 0;opacity:1}}
+@keyframes jxjDueloVira{from{transform:rotateY(0)}to{transform:rotateY(180deg)}}
+@keyframes jxjDueloSobe{from{transform:none;filter:none}to{transform:translateY(-16px) scale(1.08);filter:drop-shadow(0 0 16px rgba(212,160,23,.85))}}
+@keyframes jxjDueloSobeJuntas{from{transform:none;filter:none}to{transform:translateY(-8px) scale(1.04);filter:drop-shadow(0 0 10px rgba(212,160,23,.6))}}
+@keyframes jxjDueloCai{from{transform:none;filter:none;opacity:1}to{transform:translateY(12px);filter:grayscale(1);opacity:.5}}
+/* no palco (3D): o duelo no meio do palco, a mão fora até o 3D tocar a troca */
+.jxj-combate.tela-cheia .jxj-palco .jxj-mesa.v2-duelo{--wd:120px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;width:min(560px,calc(100% - 24px));min-height:0;
+  background:radial-gradient(ellipse at 50% 50%,rgba(7,8,11,.78),rgba(7,8,11,0) 70%)}
+.jxj-combate.tela-cheia .jxj-palco .jxj-mesa.v2-duelo::before{display:none}
+.jxj-combate.tela-cheia.duelando .jxj-zona-acao{transform:translateY(45%);opacity:0;visibility:hidden;pointer-events:none}
+@media (max-width:720px){
+  .jxj-mesa.v2-duelo{--wd:104px;column-gap:18px;padding:30px 4px 22px}
+  .jxj-combate.tela-cheia .jxj-palco .jxj-mesa.v2-duelo{--wd:100px;padding:26px 4px 18px}
+  .jxj-mesa.v2-duelo .jxj-mesa-lado,.jxj-mesa.v2-duelo .jxj-mesa-lado.ele{flex-direction:column-reverse}
+}
+@media (prefers-reduced-motion:reduce){.jxj-mesa.v2-duelo .v2-duelo-carta,.jxj-mesa.v2-duelo .v2-duelo-pose,.jxj-mesa.v2-duelo .vira .gira{animation:none!important}}
 
 /* ---------- layout da luta v2 (2026-11-17, plano aprovado pelo dono) ----------
    Situação numa linha no topo, barra de comando acima da mão (passos, frase, relógio, Velocidade),

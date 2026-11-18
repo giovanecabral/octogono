@@ -11962,7 +11962,7 @@ async function testarJxJ() {
         if (canon(e) !== canon(fim.estado)) throw new Error("a luta refeita pela semente ficou diferente");
         if (crypto.createHash("sha256").update(fim.semente).digest("hex") !== v.compromisso) throw new Error("compromisso não é o sha256 da semente");
         const ms = Number((await q("select extract(epoch from (prazo - now())) * 1000 as ms from jxj_lutas where id = $1", [lid]))[0].ms);
-        if (Math.abs(ms - (EST.prazosDaLuta({ cv: 2 }).prazoMs + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(ms));
+        if (Math.abs(ms - (EST.prazosDaLuta({ cv: 2 }).prazoMs + EST.prazosDaLuta({ cv: 2 }).animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(ms));
         await q("update jxj_lutas set status = 'cancelada' where id = $1", [lid]);
         await q("update jxj_contas set luta_aberta_id = null where user_id in ($1, $2)", [u1, u2]);
       } finally { await flagV2(false); }
@@ -11977,10 +11977,12 @@ async function testarJxJ() {
         await flagV2(v2);
         try {
           const lid = await parear(u1, l1, u2, l2);
-          const acaoEsperada = v2 ? 18000 : 12000, total = 8000 + acaoEsperada;
+          /* a janela da animação: v2 9,5 s (o duelo das cartas, 2,5 s, antes do 3D; decisão 92); v1 segue com 7 s */
+          const acaoEsperada = v2 ? 18000 : 12000, total = 8000 + acaoEsperada, anim = v2 ? 9500 : 7000;
           const v = await ok(u1, "luta", { lutaId: lid });
           if (!!(await estadoDb(lid)).estado.cv !== v2) throw new Error("versão da luta");
           if (v.formato.prazoMs !== total) throw new Error(`formato.prazoMs ${v.formato.prazoMs} (esperado ${total})`);
+          if (v.formato.animacaoMs !== anim) throw new Error(`formato.animacaoMs ${v.formato.animacaoMs} (esperado ${anim})`);
           if (Math.abs((await ms(lid)) - total) > 1500) throw new Error("prazo da luta nova: " + Math.round(await ms(lid)));
           const sinalMs = Date.parse(v.prazoSinal) - Date.parse(v.agora);
           if (v.etapa !== "sinal" || Math.abs(sinalMs - 8000) > 1500) throw new Error("etapa do sinal: " + JSON.stringify({ etapa: v.etapa, sinalMs }));
@@ -11990,9 +11992,9 @@ async function testarJxJ() {
           const a1 = v2 ? { carta: pega(v) } : { familia: "golpes" }, a2 = v2 ? { carta: pega(w) } : { familia: "defesa" };
           await ok(u1, "acao", { lutaId: lid, round: 1, troca: 1, ...a1 });
           await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, ...a2 });
-          if (Math.abs((await ms(lid)) - (total + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("prazo da próxima: " + Math.round(await ms(lid)));
+          if (Math.abs((await ms(lid)) - (total + anim)) > 1500) throw new Error("prazo da próxima: " + Math.round(await ms(lid)));
           const v3 = await ok(u1, "luta", { lutaId: lid });
-          if (v3.troca !== 2 || Math.abs((Date.parse(v3.prazoSinal) - Date.parse(v3.agora)) - (8000 + MOTOR.FORMATO.animacaoMs)) > 1500) throw new Error("sinal da próxima: " + JSON.stringify({ t: v3.troca, p: v3.prazoSinal, a: v3.agora }));
+          if (v3.troca !== 2 || Math.abs((Date.parse(v3.prazoSinal) - Date.parse(v3.agora)) - (8000 + anim)) > 1500) throw new Error("sinal da próxima: " + JSON.stringify({ t: v3.troca, p: v3.prazoSinal, a: v3.agora }));
           /* o banco recusa sinal depois da etapa do sinal: faltam 15 s (v2: 18 s de carta) */
           await q("update jxj_lutas set prazo = now() + make_interval(secs => $2::double precision / 1000) where id = $1", [lid, acaoEsperada - 1000]);
           const antes = await ok(u1, "luta", { lutaId: lid });
@@ -13655,6 +13657,93 @@ async function testarJxJV2() {
       ["clinch", "jab", /saiu na força e você emendou: sair na força ganha de emendar/], ["queda", "jab", /^Você apertou e .* não defendeu: o aperto finaliza/]];
     for (const [a, b, re] of casos) { const f = enc(a, b); if (f.length !== 1 || !re.test(f[0])) throw new Error(`encaixe ${a} contra ${b}: ` + JSON.stringify(f)); limpo(f); }
   });
+  /* duelo das cartas (decisão 92, 2026-11-17, pedido do dono): o resultado de cada carta, o estado final
+     das duas na mesa (com "reduzir movimento", que o sandbox tem ligado), a sua sempre na esquerda e o som */
+  const chaoA = { pos: "cima_a", nivelPos: 0 };
+  const CASOS_DUELO = [
+    ["o jab interrompe o cruzado (acertou dano; interrompida)", () => troca(MAO, MAO, "jab", "cruzado"), "a", "deu_certo", "falhou"],
+    ["o cruzado interrompido pelo jab (do outro lado)", () => troca(MAO, MAO, "cruzado", "jab"), "b", "falhou", "deu_certo"],
+    ["o bloqueio anula o cruzado (a reação anulou; anulada por reação)", () => troca(MAO, MAO, "bloqueio", "cruzado"), "a", "deu_certo", "falhou"],
+    ["a queda entra depois do bloqueio, que não tinha golpe pra anular (sem efeito)", () => troca(MAO, MAO, "bloqueio", "queda"), "b", "falhou", "deu_certo"],
+    ["velocidade igual, os dois cruzados acertam", () => troca(MAO, MAO, "cruzado", "cruzado"), "dois", "deu_certo", "deu_certo"],
+    ["dois bloqueios: nenhuma fez nada", () => troca(MAO, MAO, "bloqueio", "bloqueio"), "nenhum", "falhou", "falhou"],
+    ["no chão, ele levantou antes e a finalização não serviu mais (a posição mudou)", () => troca(MAO, MAO, "queda", "clinch", chaoA), "b", "falhou", "deu_certo"],
+    ["encaixe: a defesa segura o aperto", () => troca(MAO, MAO, "queda", "bloqueio", { ...chaoA, encaixe: { quem: "a" } }), "b", "falhou", "deu_certo"],
+    ["encaixe: o aperto finaliza", () => troca(MAO, MAO, "queda", "jab", { ...chaoA, encaixe: { quem: "a" } }), "a", "deu_certo", "falhou"],
+  ];
+  await conf("duelo das cartas (decisão 92): jxjResultadoDuelo2 diz deu_certo ou falhou pra cada carta pelos eventos da troca; os 4 casos (só A, só B, as duas, nenhuma) e os exemplos de falha (interrompida, anulada, a posição mudou, sem efeito) e de acerto (dano, reação, queda, defesa do encaixe, finalização)", () => {
+    for (const [nome, mk, caso, a, b] of CASOS_DUELO) {
+      const r = noJogo("jxjResultadoDuelo2", mk());
+      if (!r || r.caso !== caso || r.a !== a || r.b !== b) throw new Error(`${nome}: ${JSON.stringify(r)} (esperado ${caso}, a ${a}, b ${b})`);
+    }
+    /* as duas se anularam: ninguém prevalece; troca sem log (W.O. antes da troca): nada */
+    const anul = noJogo("jxjResultadoDuelo2", { resolucao: { cartas: { a: { efetiva: "bloqueio" }, b: { efetiva: "bloqueio" } }, ordem: "anuladas" }, ev: [{ tipo: "anulou", quem: "a" }, { tipo: "anulou", quem: "b" }] });
+    if (!anul || anul.caso !== "nenhum") throw new Error("as duas anuladas: " + JSON.stringify(anul));
+    if (noJogo("jxjResultadoDuelo2", { resolucao: null, ev: [] }) !== null) throw new Error("troca sem resolução devia dar null");
+  });
+  await conf("duelo das cartas: o estado final das duas cartas nos 4 casos (com reduzir movimento, sem animação): a que prevaleceu sobe, a que falhou fica cinza e cai, as duas que deram certo sobem juntas, nenhuma fica neutra; sem a seta do meio; a da esquerda é sempre a minha (eu A e eu B)", () => {
+    const umaDe = (caso) => CASOS_DUELO.find((c) => c[2] === caso)[1]();
+    for (const caso of ["a", "b", "dois", "nenhum"]) for (const eu of ["a", "b"]) {
+      X.sb.__t = JSON.stringify(umaDe(caso)); X.sb.__eu = eu;
+      const r = JSON.parse(X.run(`(() => { const t = JSON.parse(globalThis.__t), eu = globalThis.__eu, ele = eu === "a" ? "b" : "a";
+        const rv = jxjRevelar2(t, true); const m = jxjMesa2({ mao: [] }, { eu, ele }, rv);
+        return JSON.stringify({ cls: String(m.className), filhos: m.children.map((c) => ({ cls: String(c.className), id: c.id, html: String(c.innerHTML) })), cartas: t.resolucao.cartas }); })()`));
+      const tag = `caso ${caso}, eu ${eu}`;
+      const cls = r.cls.split(" ");
+      if (!cls.includes("v2-duelo")) throw new Error(`${tag}: a mesa sem a classe do duelo: ${r.cls}`);
+      if (r.filhos.length !== 2 || r.filhos.some((f) => f.cls.split(" ").includes("jxj-mesa-vs"))) throw new Error(`${tag}: a mesa tem que ter só as duas cartas, sem o meio: ` + r.filhos.map((f) => f.cls).join(" | "));
+      const [esq, dir] = r.filhos;
+      if (!esq.cls.split(" ").includes("eu") || esq.id !== "jxj-mesa-eu" || !dir.cls.split(" ").includes("ele")) throw new Error(`${tag}: a esquerda não é a minha`);
+      const ele = eu === "a" ? "b" : "a";
+      if (!esq.html.includes(`data-carta="${r.cartas[eu].efetiva}"`) || !dir.html.includes(`data-carta="${r.cartas[ele].efetiva}"`)) throw new Error(`${tag}: a carta da esquerda não é a minha`);
+      const estado = (h) => ((h.match(/class="jxj-revelada v2-duelo-carta ([a-z ]+)"/) || [])[1] || "").trim();
+      const meu = caso === "dois" ? "prevaleceu juntas" : caso === "nenhum" ? "neutra" : caso === eu ? "prevaleceu" : "falhou";
+      const dele = caso === "dois" ? "prevaleceu juntas" : caso === "nenhum" ? "neutra" : caso === ele ? "prevaleceu" : "falhou";
+      if (estado(esq.html) !== meu || estado(dir.html) !== dele) throw new Error(`${tag}: estado das cartas ${estado(esq.html)} / ${estado(dir.html)} (esperado ${meu} / ${dele})`);
+      const caixa = { a: "meu", b: "dele" }[caso === eu ? "a" : caso === ele ? "b" : ""] || caso;
+      if (!cls.includes("duelo-" + caixa)) throw new Error(`${tag}: a mesa sem duelo-${caixa}: ${r.cls}`);
+      /* reduzir movimento: nada anima, a carta já está de frente */
+      if (/\banima\b/.test(esq.html + dir.html)) throw new Error(`${tag}: animação com reduzir movimento`);
+      if (/[←-⇿➔-➿]|v2-seta/.test(esq.html + dir.html)) throw new Error(`${tag}: seta no duelo`);
+    }
+    /* com movimento: as duas entram viradas e viram juntas (classe anima nas duas) */
+    X.sb.__t = JSON.stringify(umaDe("a"));
+    const comMov = X.run(`(() => { const mm = window.matchMedia; window.matchMedia = (q) => ({ matches: !/reduce/.test(q) }); try { const rv = jxjRevelar2(JSON.parse(globalThis.__t), true); return rv.a + rv.b; } finally { window.matchMedia = mm; } })()`);
+    if ((comMov.match(/vira aberta anima/g) || []).length !== 2) throw new Error("com movimento, as duas viram juntas");
+  });
+  await conf("duelo das cartas com o 3D: a janela da animação da luta v2 (prazosDaLuta) cabe o duelo (JXJ_DUELO_MS) e o 3D de antes (7 s da v1); a v1 segue com 7 s; o resultado aparece depois da virada e antes do fim do duelo", async () => {
+    const EST = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-estrategia.js")).href);
+    const duelo = Number(X.run("JXJ_DUELO_MS")), res = Number(X.run("JXJ_DUELO_RESULTADO_MS")), v1 = EST.prazosDaLuta(null).animacaoMs, v2 = EST.prazosDaLuta({ cv: 2 }).animacaoMs;
+    if (v1 !== 7000 || v2 < v1 + duelo) throw new Error(`janela: v1 ${v1}, v2 ${v2}, duelo ${duelo}`);
+    if (!(duelo >= 2000 && duelo <= 3000) || !(res > 500 && res < duelo - 800)) throw new Error(`tempos do duelo: ${duelo} e o resultado em ${res}`);
+  });
+  await conf("duelo das cartas, o som (pedido do dono): jxjSomDuelo2 escolhe pelo resultado e pelo lado de quem vê (a minha prevaleceu: positivo; a minha falhou: o de falha; as duas; nenhuma) e a virada das cartas; tocar usa os efeitos de audio/; com o mudo ligado, nenhum som", () => {
+    const res = (caso) => noJogo("jxjResultadoDuelo2", CASOS_DUELO.find((c) => c[2] === caso)[1]());
+    const som = (caso, eu) => noJogo("jxjSomDuelo2", res(caso), eu);
+    const meu = som("a", "a"), meuB = som("b", "b"), dele = som("b", "a"), deleB = som("a", "b"), dois = som("dois", "a"), nenhum = som("nenhum", "b");
+    for (const s of [meu, meuB, dele, deleB, dois, nenhum]) if (!s || !s.vira || s.vira.chave !== "carta") throw new Error("a virada das cartas sem o som da carta: " + JSON.stringify(s));
+    if (JSON.stringify(meu) !== JSON.stringify(meuB) || JSON.stringify(dele) !== JSON.stringify(deleB)) throw new Error("o som não segue o lado de quem vê: " + JSON.stringify({ meu, meuB, dele, deleB }));
+    if (!meu.resultado || meu.resultado.chave !== "conquista") throw new Error("a minha prevaleceu: " + JSON.stringify(meu));
+    if (dele.resultado !== null) throw new Error("a minha falhou: sem arquivo de falha em audio/ ainda (o dono decide o download), esperado null: " + JSON.stringify(dele));
+    if (!dois.resultado || dois.resultado.chave !== "conquista" || !(dois.resultado.taxa < 1) || !(dois.resultado.ganho < meu.resultado.ganho)) throw new Error("as duas: " + JSON.stringify(dois));
+    if (!nenhum.resultado || nenhum.resultado.chave !== "aba") throw new Error("nenhuma: " + JSON.stringify(nenhum));
+    if (noJogo("jxjSomDuelo2", null, "a") !== null) throw new Error("sem resultado, sem som");
+    const efeitos = JSON.parse(X.run("JSON.stringify(EFEITOS)"));
+    for (const s of [meu.vira, meu.resultado, dois.resultado, nenhum.resultado]) for (const f of efeitos[s.chave] || ["(sem arquivo)"]) if (!fs.existsSync(path.join(RAIZ, "audio", f + ".mp3"))) throw new Error("som sem arquivo em audio/: " + s.chave);
+    /* tocar de verdade num AudioContext falso: o arquivo certo; com o mudo, nada */
+    X.run(`globalThis.__fontes = []; window.AudioContext = class { constructor() { this.state = "running"; this.currentTime = 0; this.destination = {}; }
+      createGain() { return { gain: { value: 1, setValueAtTime() {}, cancelScheduledValues() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} }, connect(x) { return x; } }; }
+      createBufferSource() { const s = { buffer: null, playbackRate: { value: 1 }, connect(x) { return x; }, start() { globalThis.__fontes.push({ buf: s.buffer && s.buffer.nome, taxa: s.playbackRate.value }); } }; return s; }
+      resume() {} }; for (const k of ["carta", "conquista", "ui-aba"]) BUF[k] = { nome: k };`);
+    try {
+      X.sb.__s = JSON.stringify([meu.vira, meu.resultado, dois.resultado, nenhum.resultado, dele.resultado]);
+      const tocou = JSON.parse(X.run(`(() => { mudo = false; const r = JSON.parse(globalThis.__s).map((s) => jxjTocarSom2(s)); return JSON.stringify({ r, f: globalThis.__fontes.splice(0) }); })()`));
+      if (JSON.stringify(tocou.r) !== "[true,true,true,true,false]" || tocou.f.map((x) => x.buf).join() !== "carta,conquista,conquista,ui-aba" || tocou.f[2].taxa !== dois.resultado.taxa)
+        throw new Error("tocar: " + JSON.stringify(tocou));
+      const mudoR = JSON.parse(X.run(`(() => { mudo = true; const r = JSON.parse(globalThis.__s).map((s) => jxjTocarSom2(s)); return JSON.stringify({ r, f: globalThis.__fontes.splice(0) }); })()`));
+      if (mudoR.f.length || mudoR.r.some(Boolean)) throw new Error("som com o mudo ligado: " + JSON.stringify(mudoR));
+    } finally { X.run(`mudo = false; AC = null; delete window.AudioContext; for (const k of ["carta", "conquista", "ui-aba"]) delete BUF[k];`); }
+  });
   await conf("escapou: a troca do servidor manda o como (saiu na força ou defendeu), e o 3D usa o como (saiu: levanta; defendeu: segue no chão)", () => {
     const chao = { pos: "cima_a", nivelPos: 0, encaixe: { quem: "a" } };
     const saiu = troca(MAO, MAO, "clinch", "jab", chao), defendeu = troca(MAO, MAO, "queda", "bloqueio", chao);
@@ -13685,6 +13774,17 @@ async function testarJxJV2() {
       limpo(f); n++;
     }
     if (n < 1000) throw new Error("poucas trocas: " + n);
+  });
+  await conf("duelo das cartas em lutas inteiras: toda troca com resolução dá um dos 4 casos, coerente com o estado das duas cartas, e os 4 aparecem", () => {
+    let n = 0; const vistos = new Set();
+    for (const L of lutas) for (const t of L) {
+      if (!t.resolucao) continue;
+      const r = noJogo("jxjResultadoDuelo2", t);
+      const esp = r.a === "deu_certo" && r.b === "deu_certo" ? "dois" : r.a === "deu_certo" ? "a" : r.b === "deu_certo" ? "b" : "nenhum";
+      if (r.caso !== esp || ![r.a, r.b].every((x) => x === "deu_certo" || x === "falhou")) throw new Error("resultado incoerente: " + JSON.stringify(r));
+      vistos.add(r.caso); n++;
+    }
+    if (n < 1000 || vistos.size !== 4) throw new Error(`lutas inteiras: ${n} trocas, casos vistos ${[...vistos]}`);
   });
   await conf("troca da v2 no 3D: todo tipo de evento das lutas tem entrada na tabela; todo lance existe no diretor; A é quem vê; o knockdown vira um lance só; o nocaute fica no lance do fim", () => {
     const tabela = new Set(JSON.parse(X.run("JSON.stringify(Object.keys(JXJ_3D2))")));
@@ -13874,6 +13974,9 @@ async function testarJxJMotor() {
     for (let i = 0; i < 3; i++) { x = M.resolverTroca(x, P, { a: "defesa", b: "defesa" }, "tp" + i).estado; y = M.resolverTroca(y, P, { a: "defesa", b: "defesa" }, "tp" + i).estado; }
     if (x.fim || y.fim || x.round !== 2 || x.troca !== 1 || y.round !== 1 || y.troca !== 4) throw new Error("rounds: " + JSON.stringify([x.round, x.troca, y.round, y.troca]));
     if (M.prazoDaProxima(e) !== M.FORMATO.prazoMs + M.FORMATO.animacaoMs || M.prazoDaProxima(y0) !== M.FORMATO.prazoMs || !(M.FORMATO.animacaoMs > 0)) throw new Error("prazo da próxima");
+    /* a janela da animação por versão (decisão 92 do combate v2): só a luta v2 ganha o duelo das cartas antes do 3D; a v1 não muda (20 s + 7 s) */
+    if (M.FORMATO.animacaoMs !== 7000 || M.prazoDaProxima(e) !== 27000 || M.prazoDaProxima({ cv: 2, tpr: 3 }) !== 26000 + 9500 || M.prazoDaProxima({ cv: 2 }) !== 26000)
+      throw new Error("janela da animação por versão: " + JSON.stringify({ v1: M.prazoDaProxima(e), v2: M.prazoDaProxima({ cv: 2, tpr: 3 }), F: M.FORMATO.animacaoMs }));
     for (const k of ["energiaPorCartaGuardada", "bonusDefesaQueLe"]) {
       if (JSON.stringify(EST.regraDaLuta(e, k)) !== JSON.stringify(EST.ESTRATEGIA.porTrocas[3][k]) || JSON.stringify(EST.regraDaLuta(y0, k)) !== JSON.stringify(EST.ESTRATEGIA[k])) throw new Error("regraDaLuta " + k);
     }
@@ -16836,7 +16939,7 @@ async function testarJxJTelas() {
         if (depois.meuSinal !== cat) throw new Error(`postura no servidor: ${depois.meuSinal}, a carta era ${cat}`);
       } finally { await flagV2T(false); }
     });
-    await conf("combate v2 na tela: a mesa nunca mostra a carta dele antes da revelação (nem depois que ele joga: só o verso); tocar a carta manda acao com o id da carta; depois da troca, o porquê na linha do tempo (1º, o selo, 2º, a frase de jxjPorQue2) e a barra pela vida", async () => {
+    await conf("combate v2 na tela: a mesa nunca mostra a carta dele antes da revelação (nem depois que ele joga: só o verso); tocar a carta manda acao com o id da carta; depois da troca, o porquê (o selo e a frase de jxjPorQue2, sem carta e sem seta: as cartas ficam no duelo) e a barra pela vida", async () => {
       if (!lidV2) throw new Error("sem a luta v2 do teste anterior");
       await flagV2T({ contas: [u1, u2] });
       try {
@@ -16881,7 +16984,9 @@ async function testarJxJTelas() {
         const hl = String(lin.innerHTML);
         const frases = JSON.parse(vm.runInContext(`JSON.stringify(jxjPorQue2(${JSON.stringify(t)}, ${JSON.stringify(eu)}, ${JSON.stringify(vf.nomes)}))`, env.sandbox));
         if (!frases.length || !hl.includes(frases.join(" ")) || !/>Por quê</.test(hl)) throw new Error("o porquê: " + hl.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300));
-        if (!/class="v2-selo">(interrompeu|anulou|juntas|depois|se anularam|encaixe|mudou a posição)</.test(hl) || !/1º/.test(hl)) throw new Error("linha do tempo sem a ordem ou o selo: " + hl.slice(0, 300));
+        if (!/class="v2-selo">(interrompeu|anulou|juntas|depois|se anularam|encaixe|mudou a posição)</.test(hl)) throw new Error("o porquê sem o selo: " + hl.slice(0, 300));
+        /* decisão 92 (pedido do dono, "não quero mais a seta"): as cartas da troca ficam no duelo, a linha não tem carta nem seta */
+        if (/v2-seta|data-carta=|v2-linha-tempo/.test(hl)) throw new Error("a linha do porquê ainda tem carta ou seta: " + hl.slice(0, 300));
         /* a barra pela vida: metade da vida de um lado e um quarto do outro (a troca do teste pode não
            ter dado dano); abrir de novo: sem troca nova, o placar já vem no valor de agora */
         await db.query(`update jxj_lutas set estado = jsonb_set(jsonb_set(estado, '{a,vida}', to_jsonb((estado->'a'->>'vidaMax')::numeric * 0.5)),
