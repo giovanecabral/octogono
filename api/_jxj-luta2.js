@@ -112,6 +112,9 @@ function cartaVista(estado, perfis, lado, id, finta) {
 const ladoVisto = (x) => ({
   vida: Math.round(x.vida * 10) / 10, vidaMax: x.vidaMax, energia: Math.round(x.energia * 100) / 100, energiaMax: x.energiaMax,
   grogue: !!x.grogue, kds: x.kds, ausentes: x.ausentesSeguidas, cansado: x.energia <= C2.K2.cansado, total: x.total,
+  /* mais lento ou mais rápido nesta troca (efeito da troca anterior): público, a frase da troca já conta;
+     a pista da tela soma na velocidade da carta dele (clareza, 2026-11-18) */
+  lento: x.lento || 0, rapido: x.rapido || 0,
 });
 /* as peças da vista que só a v2 tem. Nunca a mão do outro: dele, só quantas cartas ele tem */
 export function vistaV2(L, lado, { sinais = null, etapa = null } = {}) {
@@ -162,12 +165,19 @@ export function definicoes2() {
     versao: C2.VERSAO_COMBATE,
     cartas: Object.fromEntries(Object.values(C.CARTAS).map((c) => [c.id, carta(c)])),
     chao: Object.fromEntries(Object.entries(C.CHAO).map(([ctx, cats]) => [ctx, Object.fromEntries(Object.entries(cats).map(([cat, c]) => [cat, carta(c)]))])),
-    passivas: Object.fromEntries(Object.entries(C.PASSIVAS).map(([id, p]) => [id, { nome: p.nome, desc: p.desc }])),
+    /* mods: o que a passiva mexe (custo, velocidade, dano), público como a frase dela; a pista da tela
+       usa na carta dele (clareza, 2026-11-18) */
+    passivas: Object.fromEntries(Object.entries(C.PASSIVAS).map(([id, p]) => [id, { nome: p.nome, desc: p.desc, mods: p.mods }])),
+    /* fora da casa, em pé, a carta joga como a básica da categoria (no chão, a do chão) */
+    basicaPe: { ...C.BASICA_PE },
     fixas: C.FIXAS, deckPadrao: C.DECK_PADRAO, deck: C.DECK, copiasPorRaridade: C.COPIAS,
     liberadas: Object.fromEntries(Object.keys(C.FIXAS).map((s) => [s, C.cartasLiberadas(s)])),
     /* o que cada nó da árvore dá no combate novo: a carta dele */
     arvore: Object.fromEntries(Object.values(C.CARTAS).filter((c) => c.no).map((c) => [c.no, [`Libera a carta ${c.nome} (${C.NOME_RARIDADE[c.raridade]}).`]])),
     regras: { vidaBase: C2.K2.vidaBase, custoFinta: C2.K2.custoFinta, fatorFintaIniciativa: C2.K2.fatorFintaIniciativa,
-      kdDano: C2.K2.kdDano, koGrogue: C2.K2.koGrogue, limiarVel: C2.K2.limiarVel, finalizaNivel: C2.K2.finalizaNivel },
+      kdDano: C2.K2.kdDano, koGrogue: C2.K2.koGrogue, limiarVel: C2.K2.limiarVel, finalizaNivel: C2.K2.finalizaNivel,
+      /* o "Como ganhar" e a pista da tela (clareza, 2026-11-18): a energia, o grogue e os pontos */
+      cansado: C2.K2.cansado, exaustaVel: C2.K2.exaustaVel, recuperacaoRound: C2.K2.recuperacaoRound, energiaPorSobra: C2.K2.energiaPorSobra,
+      grogueVel: C2.K2.grogueVel, pts: { ...C2.K2.pts } },
   };
 }

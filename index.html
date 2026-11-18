@@ -7840,6 +7840,192 @@ function jxjPorQue2(t,eu,nomes,defs){
   if(!fr.length)fr.push(r.vencedor?`${quem(r.vencedor)} fez mais pontos na troca.`:"Nenhuma das duas cartas mudou a troca.");
   return fr.slice(0,3);
 }
+/* ---------- clareza da mecânica (2026-11-18, spec docs/superpowers/specs/2026-11-18-online-v2-clareza-design.md) ----------
+   Pedido do dono depois de jogar: "coloco as cartas e torço para que dê certo". A regra antes de lutar
+   (jxjComoGanhar2), a pista na hora de escolher (jxjPrevisao2, opção B do dono) e a energia clara
+   (jxjGastoTroca2, o placar com a barra de energia).
+   A pista: o que cada carta da minha mão faz contra as cartas que ele pode ter na categoria que mostrou.
+   Nunca diz qual jogar nem marca a melhor (palavras do dono: "se o jogo falar qual carta é para ele
+   jogar, o jogador realmente não vai pensar"): só o resultado de cada par. As cartas dele: o deck menos
+   o que ele já jogou no round, só da categoria da postura, como jogam na posição de agora (a carta
+   efetiva do motor, com a passiva do estilo dele, que é pública; sem as estrelas, a árvore dele é
+   secreta). A velocidade dele: a da carta mais o que é público (grogue, cansado, exausta, lento,
+   rápido). Nunca os atributos dele (o duelo pode mudar 1 a velocidade da carta dele, e a pista avisa)
+   nem a mão dele. A conta é a do motor (api/_jxj-combate2.js, resolverNormal); a suíte jxjv2 compara as
+   duas em trocas sorteadas. Resultado de cada par: anula, anulada (ele anula), anuladas, rapida,
+   juntas, lenta. */
+const JXJ_PISTA_ORDEM=["anula","anulada","anuladas","rapida","juntas","lenta"];
+const JXJ_PISTA_TXT={anula:"Anula",anulada:"Ele anula",anuladas:"Se anulam",rapida:"Mais rápida",juntas:"Juntas",lenta:"Mais lenta"};
+const jxjR2=x=>Math.round(Number(x||0)*100)/100;
+const jxjPapel2=(e,l)=>e.pos==="pe"?"pe":e.pos==="cima_"+l?"cima":"baixo";
+/* a condição de um efeito contra a carta dele (o casaCond do motor); alvoGrogue: quem recebe está grogue */
+function jxjCasaCond2(cond,cOp,e,alvoGrogue){
+  if(!cond)return true;
+  if(cond.categoria&&!cond.categoria.includes(cOp.categoria))return false;
+  if(cond.carta&&!cond.carta.includes(cOp.id)&&!cond.carta.includes(cOp.origem))return false;
+  if(cond.nivelPos!=null&&!(e.pos!=="pe"&&e.nivelPos>=cond.nivelPos))return false;
+  if(cond.grogue&&!alvoGrogue)return false;
+  if(cond.danoMin!=null&&!(cOp.danoBase>=cond.danoMin))return false;
+  if(cond.danoMax!=null&&!(cOp.danoBase<=cond.danoMax))return false;
+  return true;
+}
+/* a carta c reage e anula a cOp (a exausta não reage; a inanulável passa por qualquer reação) */
+const jxjAnula2=(c,cOp,e,alvoGrogue)=>!c.exausta&&!cOp.inanulavel&&(c.efeitos||[]).some(ef=>ef.quando==="contra"&&ef.acao&&ef.acao.anula&&jxjCasaCond2(ef.condicao,cOp,e,alvoGrogue));
+/* a carta efetiva dele (o cartaEfetiva do motor): na casa, ela mesma; fora, a básica da categoria (em
+   pé) ou a do chão; depois a passiva do estilo dele */
+function jxjCartaEfetiva2(id,pp,estilo,d){
+  const o=d.cartas&&d.cartas[id]; if(!o)return null;
+  const naCasa=(o.casa||"pe")===pp;
+  const base=naCasa?o:pp==="pe"?d.cartas[(d.basicaPe||{})[o.categoria]]:d.chao&&d.chao[pp]&&d.chao[pp][o.categoria];
+  if(!base)return null;
+  const c={id:base.id,origem:id,categoria:base.categoria,contexto:base.contexto,vel:base.vel,dano:base.dano,custo:base.custo,danoBase:base.dano,efeitos:(base.efeitos||[]).slice(),inanulavel:!!base.inanulavel};
+  const pas=d.passivas&&d.passivas[estilo];
+  for(const m of (pas&&pas.mods)||[]){
+    const a=m.alvo||{};
+    if(a.carta&&a.carta!==c.id)continue;
+    if(a.categoria&&a.categoria!==c.categoria)continue;
+    if(a.contexto&&!(Array.isArray(a.contexto)?a.contexto:[a.contexto]).includes(c.contexto))continue;
+    if(m.vel)c.vel+=m.vel;
+    if(m.dano)c.dano+=m.dano;
+    if(m.custo)c.custo=Math.max(0,c.custo+m.custo);
+    if(m.efeitos)c.efeitos.push(...m.efeitos);
+  }
+  return c;
+}
+/* a pista da troca: {leitura, categoria, semPostura, encaixe, podeFintar, custoFinta, cartas}; cada carta
+   da minha mão (na ordem da mão) com contra: [{id, n, efetiva, vel, res, perto}] (n: as cópias dele).
+   Lê só da vista o que é público; nunca espalha objeto da vista (o espião da suíte pega leitura de atr) */
+function jxjPrevisao2(v,eu,defs){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{};
+  const ele=eu==="a"?"b":"a",e=v&&v.estado;
+  const mao=v&&Array.isArray(v.mao)?v.mao:[];
+  const out={leitura:false,categoria:null,semPostura:false,encaixe:false,podeFintar:null,custoFinta:null,
+    cartas:mao.map(m=>({id:m.id,contra:[],total:0,dano:Number(m.dano)||0}))};
+  if(!d||!d.cartas||!e||!e[ele]||!e[eu])return out;
+  const x=e[ele],meu=e[eu];
+  out.custoFinta=jxjR2((Number(R.custoFinta)||0)*(e.iniciativa===ele&&R.fatorFintaIniciativa!=null?R.fatorFintaIniciativa:1));
+  out.podeFintar=Number(x.energia)>=out.custoFinta;
+  if(v.etapa!=="acao"||!v.sinais)return out;
+  if(!v.adversarioSinalizou){ out.semPostura=true; return out; }
+  const cat=v.sinais[ele]; out.categoria=cat||null;
+  if(!cat)return out;
+  if(e.encaixe){ out.encaixe=true; return out; }
+  out.leitura=true;
+  const cansado=R.cansado!=null?R.cansado:2,exV=R.exaustaVel!=null?R.exaustaVel:2,grV=R.grogueVel!=null?R.grogueVel:1;
+  /* as cartas possíveis dele: o deck menos o que ele já jogou no round, só da categoria que ele mostrou */
+  const resto=((v.decks&&v.decks[ele])||[]).slice();
+  for(const id of (v.jogadas&&v.jogadas[ele])||[]){ const i=resto.indexOf(id); if(i>=0)resto.splice(i,1); }
+  const conta=new Map();
+  for(const id of resto)if(d.cartas[id]&&d.cartas[id].categoria===cat)conta.set(id,(conta.get(id)||0)+1);
+  const estiloEle=v.nomes&&v.nomes[ele]&&v.nomes[ele].estilo,pp=jxjPapel2(e,ele),en=Number(x.energia)||0;
+  const dele=[];
+  for(const [id,n] of conta){
+    const c=jxjCartaEfetiva2(id,pp,estiloEle,d); if(!c)continue;
+    c.exausta=en+1e-9<jxjR2(c.custo);
+    c.velAgora=c.vel-(Number(x.lento)||0)+(Number(x.rapido)||0)-(x.grogue?grV:0)-(en<=cansado?1:0)-(c.exausta?exV:0);
+    dele.push({id,n,c});
+  }
+  const enMeu=Number(meu.energia)||0;
+  out.cartas=mao.map(m=>{
+    const ef=m.efetiva||{},dm=d.cartas[ef.id];
+    const c={id:ef.id||m.id,origem:m.id,categoria:m.categoria,danoBase:Number(m.danoBase)||0,efeitos:m.efeitos||[],inanulavel:!!(dm&&dm.inanulavel)};
+    c.exausta=enMeu+1e-9<jxjR2((Number(m.custo)||0)+(Number(m.finta)||0));
+    /* a velocidade da vista já tem grogue, cansado, lento e rápido (o servidor calcula); exausta, daqui */
+    const vel=(Number(m.vel)||0)-(c.exausta?exV:0);
+    const contra=dele.map(({id,n,c:o})=>{
+      const anulo=jxjAnula2(c,o,e,!!x.grogue),anulado=jxjAnula2(o,c,e,!!meu.grogue);
+      const res=anulo&&anulado?"anuladas":anulo?"anula":anulado?"anulada":vel>o.velAgora?"rapida":vel===o.velAgora?"juntas":"lenta";
+      return {id,n,efetiva:o.id,vel:o.velAgora,res,perto:!anulo&&!anulado&&Math.abs(vel-o.velAgora)<=1};
+    });
+    return {id:m.id,contra,total:contra.reduce((s,y)=>s+y.n,0),dano:Number(m.dano)||0,vel,exausta:c.exausta};
+  });
+  return out;
+}
+/* o selo de uma carta da mão: {tipo, texto, detalhe}. Um resultado só: o rótulo ("Anula"); resultados
+   diferentes: o mais comum com a conta ("Anula 2 de 3") e todos no detalhe (título e carta tocada) */
+function jxjSeloPrevisao2(c){
+  if(!c||!c.contra||!c.contra.length)return null;
+  const conta={},quais={};
+  for(const y of c.contra){ conta[y.res]=(conta[y.res]||0)+y.n; (quais[y.res]=quais[y.res]||[]).push(y.efetiva||y.id); }
+  const T=c.total||c.contra.reduce((s,y)=>s+y.n,0);
+  const tipos=JXJ_PISTA_ORDEM.filter(k=>conta[k]).sort((p,q)=>conta[q]-conta[p]);
+  const top=tipos[0],semDano=top==="rapida"&&!(Number(c.dano)>0);
+  const texto=tipos.length===1?(semDano?"Mais rápida, sem dano":JXJ_PISTA_TXT[top]):`${JXJ_PISTA_TXT[top]} ${conta[top]} de ${T}`;
+  const nomes=k=>[...new Set(quais[k])].map(id=>jxjNomeCarta2(id)).join(", ");
+  let detalhe=tipos.map(k=>`${JXJ_PISTA_TXT[k]}: ${nomes(k)} (${conta[k]} de ${T})`).join("; ")+".";
+  if(c.contra.some(y=>y.res==="rapida")&&!(Number(c.dano)>0))detalhe+=" Ela não tem dano: sai antes, mas não interrompe.";
+  if(c.contra.some(y=>y.perto))detalhe+=" Os atributos podem mudar 1 a velocidade da carta dele.";
+  return {tipo:top,texto,detalhe};
+}
+/* a linha de fintar na barra de comando: sem energia pra fintar, a postura dele é verdade */
+function jxjLinhaFinta2(p){
+  if(!p)return "";
+  if(p.semPostura)return "Ele não mostrou a postura a tempo: sem leitura nesta troca.";
+  if(p.encaixe||p.podeFintar==null)return "";
+  return p.podeFintar?"Ele tem energia pra fintar.":"Ele não tem energia pra fintar: a postura dele é verdade.";
+}
+/* o que cada um gastou na troca (o meu primeiro), cansado e exausta quando aconteceu e, no fim do round,
+   a recuperação com o total de verdade (depois: a energia de cada lado no estado de agora, que já tem a
+   recuperação; a da resolução é a de antes dela). "Ele", nunca o nome: o nome de outra pessoa não entra aqui */
+function jxjGastoTroca2(t,eu,nomes,defs,depois){
+  const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return [];
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{};
+  const ele=eu==="a"?"b":"a",ev=t.ev||[],fr=[];
+  for(const l of [eu,ele]){
+    const c=r.cartas[l],en=r.energia&&r.energia[l],partes=[];
+    const finta=jxjR2(c.finta),custo=jxjR2(c.custo),carta=jxjR2(custo-finta);
+    if(c.exausta)partes.push(`sem energia pra pagar, a carta saiu exausta (${jxjNum2(R.exaustaVel!=null?R.exaustaVel:2)} mais lenta, metade do dano)`);
+    else if(custo>0)partes.push(`−${jxjNum2(custo)} de energia (carta ${jxjNum2(carta)}${finta>0?`, finta ${jxjNum2(finta)}`:""})`);
+    else partes.push("carta sem custo");
+    if(en){
+      const liquido=jxjR2(en.depois-(c.exausta?0:en.antes-custo));
+      if(liquido>0)partes.push(`+${jxjNum2(liquido)} de volta`);
+      else if(liquido<0)partes.push(`−${jxjNum2(-liquido)} tirados por ${l===eu?"ele":"você"}`);
+      if(R.cansado!=null&&en.antes<=R.cansado)partes.push("cansado: 1 mais lento");
+    }
+    fr.push(`${l===eu?"Você":"Ele"}: ${partes.join(", ")}.`);
+  }
+  const fimR=ev.some(x=>x.tipo==="fimRound"),acabou=ev.some(x=>x.tipo==="fim");
+  if(fimR&&!acabou&&depois&&depois[eu]&&r.energia&&r.energia[eu]&&R.recuperacaoRound!=null){
+    const porSobra=Number(R.energiaPorSobra)||0,sobra=Math.max(0,((d.deck&&d.deck.compra)||5)-(Number(t.troca)||0));
+    const ganho=jxjR2(depois[eu].energia-r.energia[eu].depois),nominal=jxjR2(R.recuperacaoRound+sobra*porSobra);
+    fr.push(`Fim do round: +${jxjNum2(R.recuperacaoRound)} de recuperação e +${jxjNum2(porSobra)} por carta que sobrou (${sobra} ${sobra===1?"carta":"cartas"}). Você ganhou +${jxjNum2(ganho)} de energia${ganho<nominal-0.005?" (chegou no máximo)":""}.`);
+  }
+  return fr;
+}
+/* "Como ganhar": a regra antes de lutar, em 5 blocos, com os números das definições (nunca escritos
+   aqui). Abre sozinho na primeira luta v2 do navegador e pelo botão da barra de comando; não tranca a
+   mão nem para o relógio (o texto avisa) */
+let JXJ_V2_REGRAS=false,JXJ_V2_REGRAS_AUTO=false;
+function jxjComoGanhar2(defs){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{},P=R.pts||{},n=jxjNum2;
+  const fi=jxjR2((Number(R.custoFinta)||0)*(R.fatorFintaIniciativa!=null?R.fatorFintaIniciativa:1));
+  const caixa=el("section","v2-regras"); caixa.id="jxj-regras2";
+  if(caixa.setAttribute){ caixa.setAttribute("role","region"); caixa.setAttribute("aria-label","Como ganhar"); }
+  const bloco=(ico,tit,txt)=>`<li>${ICONE(ico)}<div><b>${tit}</b><p>${txt}</p></div></li>`;
+  caixa.innerHTML=`<header><b>${ICONE("info")}<span>Como ganhar</span></b><small>O relógio da troca continua correndo. O botão Como ganhar abre isto de novo.</small></header><ol>`
+    +bloco("cards","A troca","Primeiro a postura: você mostra a categoria de uma carta da mão e vê a dele. Depois, a carta.")
+    +bloco("espadas","Três jeitos de levar a troca","<b>Anular</b>: a reação contra a categoria dele anula a carta dele em qualquer velocidade. <b>Ser mais rápido</b>: a carta mais rápida resolve primeiro e, se der dano, interrompe a dele. <b>Velocidade igual</b>: as duas resolvem juntas.")
+    +bloco("busca","Ler ele",`A postura dele diz a categoria da carta. Jogar outra categoria é finta e custa ${n(R.custoFinta)} de energia (${n(fi)} com a iniciativa): sem energia pra fintar, a postura dele é verdade. O botão Deck dele mostra as cartas dele e o que ele já jogou no round. Os atributos podem mudar 1 a velocidade da carta dele.`)
+    +bloco("energia","Energia",`Cada carta custa energia. Com ${n(R.cansado)} ou menos no começo da troca, a carta sai 1 mais lenta. Sem energia pra pagar, sai exausta: ${n(R.exaustaVel)} mais lenta, metade do dano e sem efeito. No fim do round voltam ${n(R.recuperacaoRound)}, mais ${n(R.energiaPorSobra)} por carta que sobrou na mão.`)
+    +bloco("bandeira","Pontos",`Cada ponto de dano vale ${n(P.dano)}; queda ${n(P.queda)}; knockdown ${n(P.kd)}; anular ${n(P.anula)}; interromper ${n(P.interrompe)}. Quem faz mais pontos leva o round; nocaute e finalização acabam a luta.`)
+    +`</ol>`;
+  const fechar=el("button","botao v2-regras-fechar",`${ICONE("check")}<span>Entendi</span>`); fechar.type="button";
+  fechar.onclick=()=>{ if(typeof SOM!=="undefined"&&SOM.toque)SOM.toque(); JXJ_V2_REGRAS=false; caixa.hidden=true;
+    const b=document.getElementById("jxj-btn-regras2"); if(b){ b.classList.remove("on"); if(b.setAttribute)b.setAttribute("aria-expanded","false"); } };
+  caixa.appendChild(fechar);
+  return caixa;
+}
+/* abre sozinho uma vez: a primeira luta v2 deste navegador (jxj:regras2); sem storage, abre e não quebra */
+function jxjRegrasPrimeiraVez2(){
+  if(JXJ_V2_REGRAS_AUTO)return false;
+  JXJ_V2_REGRAS_AUTO=true;
+  let viu=false;
+  try{ viu=localStorage.getItem("jxj:regras2")==="1"; }catch(_){}
+  if(viu)return false;
+  try{ localStorage.setItem("jxj:regras2","1"); }catch(_){}
+  return true;
+}
 /* o duelo das cartas (decisão 92 do combate v2, 2026-11-17, cena desenhada pelo dono): o resultado de
    cada carta na troca, só dos eventos que o servidor manda (os mesmos do porquê). "deu_certo" quando a
    carta fez alguma coisa: dano (inclusive a punição do contra), a reação anulou, mudou a posição (queda,
@@ -10335,7 +10521,7 @@ function jxjSonsDuelo2(res,eu,tk){
 /* o porquê da troca (opção B aprovada): o selo do que decidiu, a frase de jxjPorQue2 e os selos do
    resultado. As cartas saíram daqui em 2026-11-17 (decisão 92, pedido do dono: "não quero mais a
    seta"): quem mostra as duas cartas é o duelo, a sua na esquerda e a dele na direita */
-function jxjLinha2(t,{eu,ele},nomes,{nova=false}={}){
+function jxjLinha2(t,{eu,ele},nomes,{nova=false,depois=null}={}){
   const r=t&&t.resolucao; if(!r||!r.cartas||!r.cartas.a||!r.cartas.b)return null;
   const outro=l=>l==="a"?"b":"a",ev=t.ev||[];
   const prim=r.ordem==="a"||r.ordem==="b"?r.ordem:eu,seg=outro(prim);
@@ -10346,11 +10532,15 @@ function jxjLinha2(t,{eu,ele},nomes,{nova=false}={}){
   const g=[];
   if(Number(dano[eu])>0)g.push(`<span class="bom">${ICONE("lesao")}${jxjNum(dano[eu])} de dano nele</span>`);
   if(Number(dano[ele])>0)g.push(`<span class="ruim">${ICONE("lesao")}${jxjNum(dano[ele])} de dano em você</span>`);
-  const en=r.energia&&r.energia[eu]&&!r.cartas[eu].exausta?Math.round((r.energia[eu].depois-r.energia[eu].antes+(r.cartas[eu].custo||0))*10)/10:0;
-  if(en>0)g.push(`<span class="bom">${ICONE("energia")}+${jxjNum(en)} de energia</span>`);
+  /* o que a escolha rendeu (clareza, 2026-11-18): anular e interromper, além do dano e dos pontos; a
+     energia (gasto, devolvida, cansado, exausta, fim do round) vai na linha do gasto, embaixo */
+  if((r.reacoes||[]).some(x=>x.quem===eu))g.push(`<span class="bom">${ICONE("escudo")}Anulou a carta dele</span>`);
+  if((r.interrupcoes||[]).some(x=>x.quem===eu))g.push(`<span class="bom">${ICONE("raio")}Interrompeu a carta dele</span>`);
   if(r.pontos)g.push(`<span>${ICONE("bandeira")}Pontos na troca: ${jxjNum(r.pontos[eu])} a ${jxjNum(r.pontos[ele])}</span>`);
+  const gasto=jxjGastoTroca2(t,eu,nomes,null,depois);
   const sec=el("section","v2-linha"+(nova?" nova":""));
-  sec.innerHTML=`<p class="v2-porque"><span class="v2-selo">${selo}</span><b>Por quê</b>${jxjPorQue2(t,eu,nomes).join(" ")}</p>`+(g.length?`<div class="v2-ganhos">${g.join("")}</div>`:"");
+  sec.innerHTML=`<p class="v2-porque"><span class="v2-selo">${selo}</span><b>Por quê</b>${jxjPorQue2(t,eu,nomes).join(" ")}</p>`+(g.length?`<div class="v2-ganhos">${g.join("")}</div>`:"")
+    +(gasto.length?`<p class="v2-gasto">${ICONE("energia")}<span>${gasto.map(f=>`<span>${f}</span>`).join(" ")}</span></p>`:"");
   return sec;
 }
 /* o momento decisivo da v2 (grogue, finalização encaixada), com as regras da v2 */

@@ -13529,6 +13529,22 @@ async function testarCombate2() {
     if (JSON.stringify(V2.deckDo({ estilo: "striker", build: { combinacoes: 1 }, deck: d })) !== JSON.stringify(d)) throw new Error("deck com o nó");
     if (JSON.stringify(V2.deckDo({ estilo: "striker", build: {}, deck: d })) !== JSON.stringify(C.DECK_PADRAO.striker)) throw new Error("deck sem o nó não voltou pro padrão");
   });
+  /* clareza da mecânica (2026-11-18, spec online-v2-clareza): os números que a tela lê pro "Como ganhar"
+     e pra pista na hora de escolher saem das definições, nunca escritos à mão no index.html */
+  await conf("definições da v2 pra tela (clareza, 2026-11-18): as regras trazem cansado, exausta, recuperação, energia por carta que sobrou, grogue e os pontos, iguais aos do motor; a básica em pé e o que a passiva de cada estilo mexe; a vista manda lento e rápido dos dois (públicos: a frase da troca já conta) e nada da mão nem dos atributos dele", () => {
+    const d = V2.definicoes2(), R = d.regras;
+    for (const k of ["cansado", "exaustaVel", "recuperacaoRound", "energiaPorSobra", "grogueVel", "custoFinta", "fatorFintaIniciativa", "limiarVel", "kdDano"])
+      if (R[k] !== M.K2[k]) throw new Error(`regras.${k}: ${R[k]} (motor ${M.K2[k]})`);
+    if (JSON.stringify(R.pts) !== JSON.stringify(M.K2.pts)) throw new Error("regras.pts: " + JSON.stringify(R.pts));
+    if (JSON.stringify(d.basicaPe) !== JSON.stringify(C.BASICA_PE)) throw new Error("basicaPe: " + JSON.stringify(d.basicaPe));
+    for (const [s, p] of Object.entries(C.PASSIVAS)) if (JSON.stringify(d.passivas[s].mods) !== JSON.stringify(p.mods)) throw new Error("passiva sem o que ela mexe: " + s);
+    const P = { a: neutro("wrestler"), b: neutro("striker") };
+    const e = M.novaLuta2(P.a, P.b, "t"); e.a.lento = 1; e.b.rapido = 1;
+    const v = V2.vistaV2({ estado: e, perfis: P, status: "andamento" }, "a", {});
+    const x = v.estado;
+    if (x.a.lento !== 1 || x.a.rapido !== 0 || x.b.rapido !== 1 || x.b.lento !== 0) throw new Error("lento e rápido na vista: " + JSON.stringify({ a: [x.a.lento, x.a.rapido], b: [x.b.lento, x.b.rapido] }));
+    if (JSON.stringify(v).includes('"atr"') || JSON.stringify(v).includes(JSON.stringify(e.mao.b))) throw new Error("a vista vazou os atributos ou a mão dele");
+  });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  combate2 ok") : vermelho(`  ${falhas.length} falha(s) no combate2`)));
   return okTudo;
@@ -13914,6 +13930,157 @@ async function testarJxJV2() {
     if (!porQue(sup).some((f) => /entrou no contra/.test(f))) throw new Error("porquê da punição: " + JSON.stringify(porQue(sup)));
     const sp = tr(["suplex", "jab", "cruzado", "bloqueio", "queda"], MAO, "suplex", "bloqueio");
     if (!porQue(sp).some((f) => /grogue/.test(f))) throw new Error("porquê do grogue: " + JSON.stringify(porQue(sp)));
+  });
+
+  /* ---------- clareza da mecânica (2026-11-18, spec docs/superpowers/specs/2026-11-18-online-v2-clareza-design.md) ----------
+     A pista na hora de escolher (opção B do dono): o que cada carta da minha mão faz contra as cartas que
+     ele pode ter na categoria que ele mostrou. Comparada com o motor de verdade em trocas sorteadas, com
+     os dois lutadores de atributos iguais e sem estrelas (a passiva do estilo entra: ela é pública) */
+  const IDS = Object.keys(C.CARTAS), CATS = ["golpes", "queda", "defesa", "pressao"];
+  /* a vista de quem joga do lado a, na etapa da ação, como o servidor monta (api/jxj.js, vistaDaLutaV2) */
+  const vistaAcao = (e, P, sinais, extra = {}) => ({
+    ...V2.vistaV2({ estado: e, perfis: P, status: "andamento" }, "a", { sinais, etapa: "acao" }),
+    lado: "a", status: "andamento", etapa: "acao", sinais, meuSinal: sinais.a, adversarioSinalizou: true, round: e.round, troca: e.troca,
+    nomes: { a: { nome: "Ana", estilo: P.a.estilo }, b: { nome: MAU, estilo: P.b.estilo } }, ...extra,
+  });
+  /* o que o motor fez com a minha carta (a) contra a dele (b), na régua da pista */
+  const doMotor = (res) => {
+    const reac = res.reacoes || [], euAnulei = reac.some((x) => x.quem === "a"), eleAnulou = reac.some((x) => x.quem === "b");
+    if (res.ordem === "anuladas") return "anuladas";
+    if (euAnulei) return "anula";
+    if (eleAnulou) return "anulada";
+    return { a: "rapida", b: "lenta", empate: "juntas" }[res.ordem] || null;
+  };
+  const sortearTroca = (rng) => {
+    const pega = (l) => l[Math.floor(rng() * l.length)];
+    const estilos = ["striker", "wrestler", "grappler", "counter"];
+    const P = { a: neutro(pega(estilos)), b: neutro(pega(estilos)) };
+    const e = M.novaLuta2(P.a, P.b, "t");
+    const pos = pega(["pe", "pe", "pe", "cima_a", "cima_b"]);
+    Object.assign(e, { pos, nivelPos: pos === "pe" ? 0 : Math.floor(rng() * 3), iniciativa: pega([null, "a", "b"]) });
+    for (const l of ["a", "b"]) Object.assign(e[l], { energia: pega([0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 6, 10]), grogue: rng() < 0.15, lento: rng() < 0.15 ? 1 : 0, rapido: rng() < 0.15 ? 1 : 0 });
+    const deckB = Array.from({ length: 12 }, () => pega(IDS)), jogB = deckB.slice(0, Math.floor(rng() * 3));
+    const resto = deckB.slice(jogB.length), dele = pega(resto);
+    const mao = Array.from({ length: 5 }, () => pega(IDS)), minha = pega(mao);
+    e.deck.b = deckB; e.jogadas.b = jogB; e.troca = jogB.length + 1;
+    e.mao = { a: mao.slice(), b: [dele, ...resto.filter((x) => x !== dele).slice(0, 4 - jogB.length)] };
+    const sinais = { a: rng() < 0.7 ? C.CARTAS[minha].categoria : pega(CATS), b: C.CARTAS[dele].categoria };
+    return { e, P, sinais, minha, dele };
+  };
+  await conf("pista na hora de escolher (opção B): jxjPrevisao2 bate com o motor (resolverTroca2) em 4.000 trocas sorteadas: anula, ele anula, as duas se anulam, mais rápida, juntas e mais lenta, com posição, energia (cansado, exausta, finta), grogue, lento, rápido, iniciativa, carta inanulável e a passiva do estilo dele", () => {
+    X.run("JXJ_DEF={combate2:" + JSON.stringify(defs) + "}");
+    try {
+      const rng = M.gerador2(20261118), visto = {}, erros = [];
+      let n = 0;
+      for (let k = 0; k < 4000; k++) {
+        const { e, P, sinais, minha, dele } = sortearTroca(rng);
+        const v = vistaAcao(e, P, sinais);
+        const i = v.mao.findIndex((x) => x.id === minha), x = v.mao[i];
+        /* finta sem energia: o servidor recusa (a tela tranca a carta) */
+        if (x.finta > 0 && e.a.energia < x.finta) continue;
+        const r = M.resolverTroca2(e, P, { a: minha, b: dele, sinais }, "t");
+        const real = doMotor(r.resolucao);
+        if (!real) continue;
+        const p = noJogo("jxjPrevisao2", v, "a", defs);
+        const c = p.cartas[i], par = c && c.contra.find((y) => y.id === dele);
+        if (!p.leitura || !par) { erros.push(`sem pista pra ${minha} contra ${dele}`); continue; }
+        n++; visto[real] = (visto[real] || 0) + 1;
+        if (par.res !== real) erros.push(`${minha} contra ${dele} (${JSON.stringify({ pos: e.pos, en: [e.a.energia, e.b.energia], g: [e.a.grogue, e.b.grogue], l: [e.a.lento, e.b.lento], r: [e.a.rapido, e.b.rapido], s: sinais, est: [P.a.estilo, P.b.estilo] })}): pista ${par.res}, motor ${real}`);
+      }
+      if (erros.length) throw new Error(`${erros.length} de ${n} trocas erradas, ex.: ` + erros.slice(0, 3).join(" | "));
+      /* "as duas se anulam" não sai com as cartas de hoje (nenhuma reação casa com a carta de reação dele); a conta existe e a tela trata */
+      for (const k of ["anula", "anulada", "rapida", "juntas", "lenta"]) if (!(visto[k] >= 20)) throw new Error(`poucas trocas de "${k}" no sorteio: ` + JSON.stringify(visto));
+    } finally { X.run("JXJ_DEF=null"); }
+  });
+  await conf("pista: as cartas possíveis dele são o deck menos o que ele já jogou no round, só da categoria que ele mostrou, com as cópias; no chão, a carta do chão da categoria (a da casa dele joga como ela mesma); a pista não lê os atributos dele, a mão dele, os perfis nem a semente (um espião na vista reprova a leitura)", () => {
+    const P = { a: neutro("striker"), b: neutro("wrestler") };
+    const e = M.novaLuta2(P.a, P.b, "t");
+    e.deck.b = ["jab", "jab", "cruzado", "chute_alto", "bloqueio", "bloqueio", "queda", "queda", "clinch", "antiqueda", "overhand", "peso_ombro"];
+    e.jogadas.b = ["jab"]; e.troca = 2; e.mao.a = ["bloqueio", "jab", "cruzado", "queda", "clinch"];
+    const v = vistaAcao(e, P, { a: "defesa", b: "golpes" });
+    const p = noJogo("jxjPrevisao2", v, "a", defs);
+    const ids = (c) => c.contra.map((y) => `${y.id} x${y.n}`).sort().join(",");
+    if (p.categoria !== "golpes" || ids(p.cartas[0]) !== "chute_alto x1,cruzado x1,jab x1,overhand x1") throw new Error("cartas possíveis dele em pé: " + ids(p.cartas[0]));
+    if (p.cartas[0].total !== 4) throw new Error("total: " + p.cartas[0].total);
+    /* o Bloqueio anula o jab, o cruzado e o chute alto; o Overhand é inanulável e passa */
+    const blq = Object.fromEntries(p.cartas[0].contra.map((y) => [y.id, y.res]));
+    if (blq.jab !== "anula" || blq.cruzado !== "anula" || blq.chute_alto !== "anula" || blq.overhand === "anula") throw new Error("bloqueio contra os golpes dele: " + JSON.stringify(blq));
+    /* no chão (ele por cima): golpe vira Ground and pound; defesa por cima, o Peso do ombro (a casa dele) joga como ele mesmo */
+    const ch = { ...v, papel: "baixo", estado: { ...v.estado, pos: "cima_b", nivelPos: 1 }, sinais: { a: "defesa", b: "defesa" } };
+    const pc = noJogo("jxjPrevisao2", ch, "a", defs);
+    const efet = pc.cartas[0].contra.map((y) => y.efetiva).sort().join(",");
+    if (efet !== "peso_ombro,segurar,segurar") throw new Error("cartas dele no chão: " + efet);
+    /* o espião: a vista com os atributos, a mão e os perfis dele que lança erro se alguém ler */
+    X.run("JXJ_DEF={combate2:" + JSON.stringify(defs) + "}");
+    try {
+      X.sb.__v = JSON.stringify({ ...v, perfis: { a: P.a, b: P.b }, maos: e.mao, semente: "t", estado: { ...v.estado, b: { ...v.estado.b, atr: P.b.atr, mao: e.mao.b } } });
+      const r = X.run(`(() => { const PROIBIDO = /^(atr|perfis|maos|mao|semente)$/;
+        const espiao = (o, cam) => new Proxy(o, {
+          get(t, k) { if (typeof k === "string" && PROIBIDO.test(k) && cam !== "v") throw new Error("leu " + cam + "." + k);
+            if (typeof k === "string" && /^(atr|perfis|maos|semente)$/.test(k)) throw new Error("leu " + cam + "." + k);
+            const x = t[k]; return x && typeof x === "object" ? espiao(x, cam + "." + k) : x; },
+          has(t, k) { if (typeof k === "string" && /^(atr|perfis|maos|semente)$/.test(k)) throw new Error("perguntou " + cam + "." + k); return k in t; } });
+        try { return JSON.stringify(jxjPrevisao2(espiao(JSON.parse(globalThis.__v), "v"), "a")); } catch (err) { return "ERRO " + err.message; } })()`);
+      if (String(r).startsWith("ERRO")) throw new Error("a pista leu o que não devia: " + r);
+      if (JSON.stringify(JSON.parse(r).cartas) !== JSON.stringify(p.cartas)) throw new Error("com o espião, outra pista");
+    } finally { X.run("JXJ_DEF=null"); }
+  });
+  await conf("pista: o selo diz o resultado (Anula, Ele anula, Se anulam, Mais rápida, Mais rápida sem dano, Juntas, Mais lenta) e, quando as cartas dele dão resultados diferentes, a mistura curta (\"Anula 2 de 3\"); nunca diz qual jogar nem marca a melhor; sem a postura dele (prazo) ou com a finalização encaixada, nada de selo; a linha de fintar pela energia dele (metade com a iniciativa)", () => {
+    const selo = (contra) => noJogo("jxjSeloPrevisao2", { contra, total: contra.reduce((s, y) => s + y.n, 0), dano: 1 });
+    const um = (res, n = 1) => ({ id: "x" + res + n, n, res });
+    for (const [res, txt] of [["anula", "Anula"], ["anulada", "Ele anula"], ["anuladas", "Se anulam"], ["rapida", "Mais rápida"], ["juntas", "Juntas"], ["lenta", "Mais lenta"]])
+      if (selo([um(res)]).texto !== txt) throw new Error(`selo de ${res}: ${JSON.stringify(selo([um(res)]))}`);
+    if (noJogo("jxjSeloPrevisao2", { contra: [um("rapida")], total: 1, dano: 0 }).texto !== "Mais rápida, sem dano") throw new Error("mais rápida sem dano");
+    const mix = selo([um("anula", 2), um("lenta", 1)]);
+    if (mix.texto !== "Anula 2 de 3" || mix.tipo !== "anula" || !/Mais lenta: [^;]*\(1 de 3\)/.test(mix.detalhe) || !/Anula: [^;]*\(2 de 3\)/.test(mix.detalhe)) throw new Error("mistura: " + JSON.stringify(mix));
+    for (const s of [mix, selo([um("anula")]), selo([um("lenta")])]) if (/jogue|melhor|escolha esta|use esta/i.test(s.texto + " " + s.detalhe)) throw new Error("o selo manda jogar: " + JSON.stringify(s));
+    const P = { a: neutro("striker"), b: neutro("wrestler") };
+    const e = M.novaLuta2(P.a, P.b, "t");
+    const v = vistaAcao(e, P, { a: "golpes", b: "queda" });
+    const sem = noJogo("jxjPrevisao2", { ...v, adversarioSinalizou: false }, "a", defs);
+    if (sem.leitura || sem.cartas.some((c) => c.contra.length)) throw new Error("selo sem a postura dele");
+    if (!/não mostrou a postura/.test(noJogo("jxjLinhaFinta2", sem))) throw new Error("linha sem leitura: " + noJogo("jxjLinhaFinta2", sem));
+    const enc = noJogo("jxjPrevisao2", { ...v, estado: { ...v.estado, pos: "cima_a", encaixe: { quem: "a" } } }, "a", defs);
+    if (enc.leitura) throw new Error("selo com a finalização encaixada");
+    const fin = (energia, ini) => noJogo("jxjLinhaFinta2", noJogo("jxjPrevisao2", { ...v, estado: { ...v.estado, iniciativa: ini, b: { ...v.estado.b, energia } } }, "a", defs));
+    if (fin(10, null) !== "Ele tem energia pra fintar.") throw new Error("pode fintar: " + fin(10, null));
+    if (fin(1, null) !== "Ele não tem energia pra fintar: a postura dele é verdade.") throw new Error("não pode: " + fin(1, null));
+    if (fin(0.75, "b") !== "Ele tem energia pra fintar.") throw new Error("com a iniciativa a finta custa metade: " + fin(0.75, "b"));
+    if (fin(0.74, "b") === "Ele tem energia pra fintar.") throw new Error("0,74 com a iniciativa não paga 0,75");
+  });
+  await conf("energia clara: o porquê diz o que cada um gastou (\"Você: −2,5 de energia (carta 1, finta 1,5)\" e o dele), cansado e exausta quando aconteceu, o que a escolha rendeu (anular, interromper) e, no fim do round, a recuperação com o total; o \"Como ganhar\" lê os números das definições (mudou a regra, mudou o texto), com ícone do sprite e sem travessão", () => {
+    const N = { a: "Ana", b: MAU };
+    const gasto = (t) => noJogo("jxjGastoTroca2", t, "a", N, defs, null);
+    const fin = gasto(troca(MAO, MAO, "cruzado", "jab", {}, undefined, { a: "defesa", b: "golpes" }));
+    if (!fin.some((f) => f === "Você: −3,5 de energia (carta 2, finta 1,5).")) throw new Error("gasto com finta: " + JSON.stringify(fin));
+    if (!fin.some((f) => f === "Ele: −1 de energia (carta 1), +1 de volta.")) throw new Error("gasto dele (o Jab que interrompe devolve 1): " + JSON.stringify(fin));
+    const base = M.novaLuta2(neutro(), neutro(), "t");
+    const cans = gasto(troca(MAO, MAO, "bloqueio", "cruzado", { a: { ...base.a, energia: 2 }, b: { ...base.b, energia: 1 } }));
+    if (!cans.some((f) => /^Você: carta sem custo, \+2 de volta, cansado: 1 mais lento\.$/.test(f))) throw new Error("cansado: " + JSON.stringify(cans));
+    if (!cans.some((f) => /^Ele: sem energia pra pagar, a carta saiu exausta \(2 mais lenta, metade do dano\), cansado: 1 mais lento\.$/.test(f))) throw new Error("exausta: " + JSON.stringify(cans));
+    /* o fim do round: recuperação e 1 por carta que sobrou, com o total de verdade (o estado depois) */
+    const e0 = M.novaLuta2(neutro(), neutro(), "t"); e0.mao = { a: MAO.slice(0, 3), b: MAO.slice(0, 3) }; e0.troca = 3; e0.a.energia = 3; e0.b.energia = 9;
+    const r = M.resolverTroca2(e0, { a: neutro(), b: neutro() }, { a: "jab", b: "bloqueio" }, "t");
+    const t3 = vista(r, e0);
+    const fimR = noJogo("jxjGastoTroca2", t3, "a", N, defs, { a: { energia: r.estado.a.energia, energiaMax: r.estado.a.energiaMax }, b: { energia: r.estado.b.energia, energiaMax: r.estado.b.energiaMax } });
+    const tot = String(Math.round((r.estado.a.energia - r.resolucao.energia.a.depois) * 100) / 100).replace(".", ",");
+    if (!fimR.some((f) => f === `Fim do round: +2 de recuperação e +1 por carta que sobrou (2 cartas). Você ganhou +${tot} de energia.`)) throw new Error("fim do round: " + JSON.stringify(fimR));
+    limpo([...fin, ...cans, ...fimR]);
+    if ([...fin, ...cans].some((f) => /&lt;img|<img/.test(f))) throw new Error("o gasto usa o nome dele (devia ser Ele)");
+    /* os ganhos: anular e interromper viram selo do que a escolha rendeu */
+    const gAn = String(X.run(`jxjLinha2(${JSON.stringify(troca(MAO, MAO, "bloqueio", "cruzado"))}, { eu: "a", ele: "b" }, ${JSON.stringify(N)}).innerHTML`));
+    if (!/Anulou a carta dele/.test(gAn) || !/v2-gasto/.test(gAn)) throw new Error("linha do porquê sem o anular ou sem o gasto: " + gAn.slice(0, 400));
+    const gIn = String(X.run(`jxjLinha2(${JSON.stringify(troca(MAO, MAO, "jab", "cruzado"))}, { eu: "a", ele: "b" }, ${JSON.stringify(N)}).innerHTML`));
+    if (!/Interrompeu a carta dele/.test(gIn)) throw new Error("linha do porquê sem o interromper: " + gIn.slice(0, 400));
+    /* o Como ganhar: os 5 blocos, números das definições */
+    const como = (d) => String(X.run(`jxjComoGanhar2(${JSON.stringify(d)}).innerHTML`));
+    const h = como(defs);
+    for (const re of [/A troca/, /Três jeitos de levar a troca/, /Ler ele/, /Energia/, /Pontos/, /relógio/, /Deck dele/, /1,5 de energia/, /0,75 com a iniciativa/, /2 ou menos/, /2 mais lenta/, /voltam 2/, /mais 1 por carta que sobrou/, /queda 3/, /knockdown 4/])
+      if (!re.test(h)) throw new Error(`Como ganhar sem ${re}: ` + h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 600));
+    if ((h.match(/<svg class="ico/g) || []).length < 5 || /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(h)) throw new Error("Como ganhar sem ícone do sprite (ou com emoji)");
+    limpo([h.replace(/<[^>]+>/g, " ")]);
+    const outro = como({ ...defs, regras: { ...defs.regras, cansado: 3, recuperacaoRound: 4, custoFinta: 2, pts: { ...defs.regras.pts, queda: 7 } } });
+    if (!/3 ou menos/.test(outro) || !/voltam 4/.test(outro) || !/2 de energia/.test(outro) || !/queda 7/.test(outro)) throw new Error("o Como ganhar não leu os números das definições");
   });
   const okTudo = !falhas.length;
   console.log("\n" + (okTudo ? verde("  jxjv2 ok") : vermelho(`  ${falhas.length} falha(s) no jxjv2`)));
