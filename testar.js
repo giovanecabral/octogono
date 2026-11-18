@@ -13724,25 +13724,25 @@ async function testarJxJV2() {
     for (const s of [meu, meuB, dele, deleB, dois, nenhum]) if (!s || !s.vira || s.vira.chave !== "carta") throw new Error("a virada das cartas sem o som da carta: " + JSON.stringify(s));
     if (JSON.stringify(meu) !== JSON.stringify(meuB) || JSON.stringify(dele) !== JSON.stringify(deleB)) throw new Error("o som não segue o lado de quem vê: " + JSON.stringify({ meu, meuB, dele, deleB }));
     if (!meu.resultado || meu.resultado.chave !== "conquista") throw new Error("a minha prevaleceu: " + JSON.stringify(meu));
-    if (dele.resultado !== null) throw new Error("a minha falhou: sem arquivo de falha em audio/ ainda (o dono decide o download), esperado null: " + JSON.stringify(dele));
-    if (!dois.resultado || dois.resultado.chave !== "conquista" || !(dois.resultado.taxa < 1) || !(dois.resultado.ganho < meu.resultado.ganho)) throw new Error("as duas: " + JSON.stringify(dois));
+    if (!dele.resultado || dele.resultado.chave !== "dueloFalhou") throw new Error("a minha falhou: " + JSON.stringify(dele));
+    if (!dois.resultado || dois.resultado.chave !== "dueloDois" || !(dois.resultado.ganho < meu.resultado.ganho)) throw new Error("as duas: " + JSON.stringify(dois));
     if (!nenhum.resultado || nenhum.resultado.chave !== "aba") throw new Error("nenhuma: " + JSON.stringify(nenhum));
     if (noJogo("jxjSomDuelo2", null, "a") !== null) throw new Error("sem resultado, sem som");
     const efeitos = JSON.parse(X.run("JSON.stringify(EFEITOS)"));
-    for (const s of [meu.vira, meu.resultado, dois.resultado, nenhum.resultado]) for (const f of efeitos[s.chave] || ["(sem arquivo)"]) if (!fs.existsSync(path.join(RAIZ, "audio", f + ".mp3"))) throw new Error("som sem arquivo em audio/: " + s.chave);
+    for (const s of [meu.vira, meu.resultado, dele.resultado, dois.resultado, nenhum.resultado]) for (const f of efeitos[s.chave] || ["(sem arquivo)"]) if (!fs.existsSync(path.join(RAIZ, "audio", f + ".mp3"))) throw new Error("som sem arquivo em audio/: " + s.chave);
     /* tocar de verdade num AudioContext falso: o arquivo certo; com o mudo, nada */
     X.run(`globalThis.__fontes = []; window.AudioContext = class { constructor() { this.state = "running"; this.currentTime = 0; this.destination = {}; }
       createGain() { return { gain: { value: 1, setValueAtTime() {}, cancelScheduledValues() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} }, connect(x) { return x; } }; }
       createBufferSource() { const s = { buffer: null, playbackRate: { value: 1 }, connect(x) { return x; }, start() { globalThis.__fontes.push({ buf: s.buffer && s.buffer.nome, taxa: s.playbackRate.value }); } }; return s; }
-      resume() {} }; for (const k of ["carta", "conquista", "ui-aba"]) BUF[k] = { nome: k };`);
+      resume() {} }; for (const k of ["carta", "conquista", "ui-aba", "duelo-falhou", "duelo-dois"]) BUF[k] = { nome: k };`);
     try {
       X.sb.__s = JSON.stringify([meu.vira, meu.resultado, dois.resultado, nenhum.resultado, dele.resultado]);
       const tocou = JSON.parse(X.run(`(() => { mudo = false; const r = JSON.parse(globalThis.__s).map((s) => jxjTocarSom2(s)); return JSON.stringify({ r, f: globalThis.__fontes.splice(0) }); })()`));
-      if (JSON.stringify(tocou.r) !== "[true,true,true,true,false]" || tocou.f.map((x) => x.buf).join() !== "carta,conquista,conquista,ui-aba" || tocou.f[2].taxa !== dois.resultado.taxa)
+      if (JSON.stringify(tocou.r) !== "[true,true,true,true,true]" || tocou.f.map((x) => x.buf).join() !== "carta,conquista,duelo-dois,ui-aba,duelo-falhou")
         throw new Error("tocar: " + JSON.stringify(tocou));
       const mudoR = JSON.parse(X.run(`(() => { mudo = true; const r = JSON.parse(globalThis.__s).map((s) => jxjTocarSom2(s)); return JSON.stringify({ r, f: globalThis.__fontes.splice(0) }); })()`));
       if (mudoR.f.length || mudoR.r.some(Boolean)) throw new Error("som com o mudo ligado: " + JSON.stringify(mudoR));
-    } finally { X.run(`mudo = false; AC = null; delete window.AudioContext; for (const k of ["carta", "conquista", "ui-aba"]) delete BUF[k];`); }
+    } finally { X.run(`mudo = false; AC = null; delete window.AudioContext; for (const k of ["carta", "conquista", "ui-aba", "duelo-falhou", "duelo-dois"]) delete BUF[k];`); }
   });
   await conf("escapou: a troca do servidor manda o como (saiu na força ou defendeu), e o 3D usa o como (saiu: levanta; defendeu: segue no chão)", () => {
     const chao = { pos: "cima_a", nivelPos: 0, encaixe: { quem: "a" } };

@@ -94,6 +94,8 @@ SAIDAS = [
     dict(arq="carta.mp3", fonte="kenney-casino", entrada="card-slide-1.ogg", tipo="s", pico=-6, papel="Carta entrando"),
     dict(arq="caixa.mp3", fonte="kenney-casino", entrada="chips-stack-1.ogg", tipo="s", pico=-4, papel="Compra na loja (fichas)"),
     dict(arq="conquista.mp3", fonte="kenney-interface", entrada="confirmation_002.ogg", tipo="s", pico=-4, papel="Conquista desbloqueada"),
+    dict(arq="duelo-falhou.mp3", fonte="kenney-interface", entrada="error_006.ogg", tipo="s", pico=-6, papel="Duelo das cartas do Online: a minha carta falhou"),
+    dict(arq="duelo-dois.mp3", fonte="kenney-interface", entrada="confirmation_001.ogg", tipo="s", pico=-6, papel="Duelo das cartas do Online: as duas prevaleceram"),
 ]
 
 

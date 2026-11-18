@@ -1885,7 +1885,7 @@ ouvir e aprovar.**
 **Como os arquivos nascem.** `python3 audio/preparar.py` (precisa de ffmpeg)
 baixa as fontes pra `audio/bruto/` (fora do git) conferindo a licença na
 página de cada uma, corta, faz fade, normaliza (música em -18 LUFS, efeito
-por pico) e codifica 27 MP3 (7,7 MB, orçamento de 8 MB). Rodar de novo refaz
+por pico) e codifica 29 MP3 (7,7 MB, orçamento de 8 MB). Rodar de novo refaz
 tudo igual e reescreve o `LICENCAS.md`.
 
 **Trilha por tela.** `contextoTrilha()` é pura: menu e páginas tocam o menu;

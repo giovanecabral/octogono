@@ -34,6 +34,8 @@ configurações do jogo, a engrenagem, e aqui; a página Créditos saiu em
 | `carta.mp3` | Carta entrando | Casino Audio (card-slide-1.ogg) | Kenney (kenney.nl) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://kenney.nl/assets/casino-audio |
 | `caixa.mp3` | Compra na loja (fichas) | Casino Audio (chips-stack-1.ogg) | Kenney (kenney.nl) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://kenney.nl/assets/casino-audio |
 | `conquista.mp3` | Conquista desbloqueada | Interface Sounds (confirmation_002.ogg) | Kenney (kenney.nl) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://kenney.nl/assets/interface-sounds |
+| `duelo-falhou.mp3` | Duelo das cartas do Online: a minha carta falhou | Interface Sounds (error_006.ogg) | Kenney (kenney.nl) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://kenney.nl/assets/interface-sounds |
+| `duelo-dois.mp3` | Duelo das cartas do Online: as duas prevaleceram | Interface Sounds (confirmation_001.ogg) | Kenney (kenney.nl) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://kenney.nl/assets/interface-sounds |
 
 Cortes, fades, normalização e mixagem são obra derivada feita para o jogo;
 as licenças acima permitem isso (CC0 sem condição; CC BY com crédito).

@@ -3720,7 +3720,8 @@ const EFEITOS={clique:["ui-clique"],hover:["ui-hover"],aba:["ui-aba"],carta:["ca
   conquista:["conquista"],flashes:["flashes"],vaia:["vaia"],vitoria:["vinheta-vitoria"],derrota:["vinheta-derrota"],
   golpeLeve:["golpe-leve-1","golpe-leve-2","golpe-leve-3"],golpePesado:["golpe-pesado-1","golpe-pesado-2","golpe-pesado-3"],
   queda:["queda-1","queda-2"],sinoInicio:["sino-inicio"],sinoFim:["sino-fim"],
-  torcidaExplode:["torcida-explode"],torcidaSobe:["torcida-sobe"]};
+  torcidaExplode:["torcida-explode"],torcidaSobe:["torcida-sobe"],
+  dueloFalhou:["duelo-falhou"],dueloDois:["duelo-dois"]};
 const BUF={};          // nome do arquivo -> AudioBuffer, ou false se falhou
 const CARREGANDO={};
 function carregarEfeito(nome){
@@ -7871,11 +7872,11 @@ const jxjCasoDuelo2=(res,eu)=>!res?null:res.caso==="dois"||res.caso==="nenhum"?r
    (a janela da luta v2 no servidor, prazosDaLuta, soma este tempo aos 7 s do 3D) */
 let JXJ_DUELO_MS=2500;
 const JXJ_DUELO_RESULTADO_MS=1150;
-/* o som do duelo, pelo lado de quem vê (pedido do dono): os efeitos de audio/ que já existem
-   (audio/LICENCAS.md). A minha falhou ainda não tem arquivo que sirva (null: sem som; o dono decide
-   o download). Cada um tem menos de 0,7 s: acaba antes do 3D começar. */
-const JXJ_SOM_DUELO2={vira:{chave:"carta",ganho:.55},meu:{chave:"conquista",ganho:.6},dele:null,
-  dois:{chave:"conquista",ganho:.4,taxa:.8},nenhum:{chave:"aba",ganho:.45}};
+/* o som do duelo, pelo lado de quem vê (pedido do dono): efeitos de audio/ (audio/LICENCAS.md).
+   A minha falhou e as duas têm arquivo próprio desde 2026-11-18 (Kenney, Interface Sounds, liberado
+   pelo dono). Cada um tem menos de 0,7 s: acaba antes do 3D começar. */
+const JXJ_SOM_DUELO2={vira:{chave:"carta",ganho:.55},meu:{chave:"conquista",ganho:.6},dele:{chave:"dueloFalhou",ganho:.5},
+  dois:{chave:"dueloDois",ganho:.5},nenhum:{chave:"aba",ganho:.45}};
 function jxjSomDuelo2(res,eu){
   const c=jxjCasoDuelo2(res,eu); if(!c)return null;
   return {vira:JXJ_SOM_DUELO2.vira,resultado:JXJ_SOM_DUELO2[c]||null};
