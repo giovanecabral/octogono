@@ -17363,7 +17363,7 @@ async function testarJxJTelas() {
         /* a etapa da carta: os selos e a linha de fintar */
         const t2 = desenha(acao, { palco: true });
         const p = jxjPrevisao2(acao, eu);
-        out.selos = lista(t2).filter((x) => cls(x).includes("jxj-acao") && cls(x).includes("jxj-na-mao")).map((b) => ((String(b.innerHTML).match(/class="v2-pista p-[a-z]+">([^<]*)</) || [])[1] || null));
+        out.selos = lista(t2).filter((x) => cls(x).includes("jxj-acao") && cls(x).includes("jxj-na-mao")).map((b) => { const m = String(b.innerHTML).match(/class="v2-pista p-[a-z]+">([^]*?)<.span>/); return m ? m[1].replace(/<[^>]+>/g, " ").replace(/ +/g, " ").trim() : null; });
         out.esperado = p.cartas.map((c) => { const s = jxjSeloPrevisao2(c); return s ? s.texto : null; });
         out.cmd = html(ach(t2, "v2-comando"));
         out.sinal = html(desenha(vb, { palco: true }));

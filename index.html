@@ -7957,6 +7957,8 @@ function jxjSeloPrevisao2(c){
   if(c.contra.some(y=>y.perto))detalhe+=" Os atributos podem mudar 1 a velocidade da carta dele.";
   return {tipo:top,texto,detalhe};
 }
+/* o texto do selo em duas partes ("Mais rápida" e "3 de 7"): no celular a conta desce pra segunda linha */
+const jxjSeloHtml2=t=>{ const m=String(t).match(/^(.*?)( \d+ de \d+)$/); return m?`<b>${jxjEsc(m[1])}</b><small>${jxjEsc(m[2].trim())}</small>`:`<b>${jxjEsc(t)}</b>`; };
 /* a linha de fintar na barra de comando: sem energia pra fintar, a postura dele é verdade */
 function jxjLinhaFinta2(p){
   if(!p)return "";
@@ -8006,7 +8008,7 @@ function jxjComoGanhar2(defs){
   caixa.innerHTML=`<header><b>${ICONE("info")}<span>Como ganhar</span></b><small>O relógio da troca continua correndo. O botão Como ganhar abre isto de novo.</small></header><ol>`
     +bloco("cards","A troca","Primeiro a postura: você mostra a categoria de uma carta da mão e vê a dele. Depois, a carta.")
     +bloco("espadas","Três jeitos de levar a troca","<b>Anular</b>: a reação contra a categoria dele anula a carta dele em qualquer velocidade. <b>Ser mais rápido</b>: a carta mais rápida resolve primeiro e, se der dano, interrompe a dele. <b>Velocidade igual</b>: as duas resolvem juntas.")
-    +bloco("busca","Ler ele",`A postura dele diz a categoria da carta. Jogar outra categoria é finta e custa ${n(R.custoFinta)} de energia (${n(fi)} com a iniciativa): sem energia pra fintar, a postura dele é verdade. O botão Deck dele mostra as cartas dele e o que ele já jogou no round. Os atributos podem mudar 1 a velocidade da carta dele.`)
+    +bloco("busca","Ler ele",`A postura dele diz a categoria. Fintar custa ${n(R.custoFinta)} de energia (${n(fi)} com a iniciativa): sem energia pra fintar, a postura dele é verdade. Em Deck dele, as cartas dele e o que ele já jogou no round. Os atributos mudam até 1 a velocidade dele.`)
     +bloco("energia","Energia",`Cada carta custa energia. Com ${n(R.cansado)} ou menos no começo da troca, a carta sai 1 mais lenta. Sem energia pra pagar, sai exausta: ${n(R.exaustaVel)} mais lenta, metade do dano e sem efeito. No fim do round voltam ${n(R.recuperacaoRound)}, mais ${n(R.energiaPorSobra)} por carta que sobrou na mão.`)
     +bloco("bandeira","Pontos",`Cada ponto de dano vale ${n(P.dano)}; queda ${n(P.queda)}; knockdown ${n(P.kd)}; anular ${n(P.anula)}; interromper ${n(P.interrompe)}. Quem faz mais pontos leva o round; nocaute e finalização acabam a luta.`)
     +`</ol>`;
@@ -10800,7 +10802,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
         const b=el("button","jxj-acao jxj-na-mao"+(finta?" finta":"")+(semEnergia?" sem-energia":"")+(exausta?" exausta":"")+(sp?" com-pista":""),
           `${finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${jxjNum2(x.finta)} de energia">−${jxjNum2(x.finta)} finta</em>`:""}${jxjCarta2(k.c,{...k.o,w:JXJ_TAM_CARTA.mao,estado:semEnergia?"apagada":""})}`
           +`${semEnergia?`<span class="jxj-carta-tranca">${ICONE("cadeado")}</span>`:""}`
-          +(sp||aviso?`<span class="v2-sob">${sp?`<span class="v2-pista p-${sp.tipo}">${jxjEsc(sp.texto)}</span>`:""}${aviso}</span>`:""));
+          +(sp||aviso?`<span class="v2-sob">${sp?`<span class="v2-pista p-${sp.tipo}">${jxjSeloHtml2(sp.texto)}</span>`:""}${aviso}</span>`:""));
         const notaEn=exausta?` Sai exausta: ${jxjNum2(R2.exaustaVel!=null?R2.exaustaVel:2)} mais lenta, metade do dano e sem efeito.`:cansa?` Fica cansado: depois dela você fica com ${jxjNum2(lim)} ou menos de energia e a próxima carta do round sai 1 mais lenta.`:"";
         b.type="button"; b.title=cartaTitulo(k,(finta?` Finta: mais ${jxjNum2(x.finta)} de energia.`:"")+notaEn+(sp?` Contra ${JXJ_POSTURAS[pista.categoria]||"a postura dele"}: ${sp.detalhe}`:""));
         if(semEnergia){ b.disabled=true; b.title="Sem energia pra fintar."; }

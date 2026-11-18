@@ -2681,6 +2681,8 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .jxj-hud .jxj-hud-lado.ele .v2-tags{justify-content:flex-end}
 /* a pista (opção B) e o aviso de energia embaixo da carta da mão: o resultado, nunca qual jogar */
 .jxj-na-mao .v2-sob{position:absolute;left:50%;top:calc(100% - 10px);transform:translateX(-50%);z-index:6;display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none}
+.v2-pista small{font:inherit}
+.v2-pista b{font-weight:inherit}
 .v2-pista,.v2-aviso-en{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;white-space:nowrap;font-family:var(--f-ui);font-weight:800;font-size:11px;letter-spacing:.05em;text-transform:uppercase;background:#0b0b0d;border:1px solid currentColor}
 .v2-pista{color:var(--osso)}
 .v2-pista.p-anula,.v2-pista.p-rapida{color:var(--ganho)}
@@ -2690,6 +2692,10 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .v2-aviso-en.exausta{color:var(--sangue-vivo)}
 .v2-aviso-en .ico{width:11px;height:11px}
 .jxj-combate.v2 .jxj-mao-luta:not(.jxj-mao-postura){padding-bottom:40px}
+/* o gasto de energia da troca, embaixo dos ganhos do porquê */
+.v2-gasto{display:flex;align-items:flex-start;justify-content:center;gap:6px;margin:0;font-family:var(--f-ui);font-weight:600;font-size:13px;line-height:1.35;letter-spacing:.02em;color:var(--osso-2);text-align:center}
+.v2-gasto>.ico{flex:none;width:14px;height:14px;margin-top:2px;color:var(--ouro)}
+.v2-gasto>span>span+span{margin-left:6px}
 /* a linha de fintar, na frase da barra de comando */
 .v2-finta-linha{display:flex;align-items:center;gap:6px;margin-top:3px;font-family:var(--f-ui);font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--osso-2)}
 .v2-finta-linha .ico{flex:none;width:14px;height:14px;color:var(--ouro)}
@@ -2703,8 +2709,8 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .v2-btn-regras.on{border-color:var(--ouro);background:rgba(212,160,23,.14)}
 .v2-btn-regras:focus-visible{outline:2px solid var(--osso);outline-offset:2px}
 /* o Como ganhar: na zona da mão, acima da barra de comando (nunca cobre as cartas) */
-.v2-regras{position:relative;display:grid;gap:10px;padding:12px 14px;background:rgba(11,12,16,.97);border:1px solid var(--ouro);border-left:3px solid var(--ouro);overflow:auto;max-height:max(170px,calc(100dvh - 590px))}
-.v2-regras header{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 14px;padding-right:110px}
+.v2-regras{position:relative;display:grid;gap:10px;padding:10px 14px;background:rgba(11,12,16,.97);border:1px solid var(--ouro);border-left:3px solid var(--ouro);overflow:auto;max-height:max(170px,calc(100dvh - 550px))}
+.v2-regras header{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;min-height:34px;padding-right:120px}
 .v2-regras header b{display:inline-flex;align-items:center;gap:7px;font-family:var(--f-titulo);font-weight:400;font-size:22px;line-height:1;text-transform:uppercase;color:var(--osso)}
 .v2-regras header b .ico{width:18px;height:18px;color:var(--ouro)}
 .v2-regras header small{font-size:12.5px;color:var(--osso-2)}
@@ -2714,7 +2720,7 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
 .v2-regras li b{display:block;margin-bottom:3px;font-family:var(--f-ui);font-weight:800;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--osso)}
 .v2-regras li p{margin:0;font-size:13px;line-height:1.38;color:var(--osso-2)}
 .v2-regras li p b{display:inline;margin:0;font-family:inherit;font-size:inherit;letter-spacing:0;text-transform:none;color:var(--osso)}
-.v2-regras-fechar{position:absolute;top:10px;right:12px;padding:6px 12px;font-size:13px}
+.v2-regras-fechar{position:absolute;top:8px;right:10px;padding:6px 12px;font-size:13px}
 .v2-regras-fechar .ico{width:14px;height:14px}
 @media (max-width:1100px){.v2-regras ol{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}
 @media (max-width:720px){
@@ -2729,18 +2735,21 @@ body.jxj-clarao::after{content:"";position:fixed;inset:0;z-index:200;background:
   .v2-energia-rot b{font-size:12px}
   .v2-energia-rot em{font-size:9.5px;padding:0 4px}
   .v2-energia-barra{height:6px}
-  .v2-pista,.v2-aviso-en{font-size:9px;padding:1px 4px;letter-spacing:.02em}
+  .jxj-na-mao .v2-sob{top:calc(100% - 2px);max-width:calc(100% + 4px)}
+  .v2-pista,.v2-aviso-en{font-size:9px;padding:1px 4px;letter-spacing:.02em;line-height:1.1}
+  .v2-pista{flex-direction:column;gap:0;text-align:center}
   .jxj-combate.v2 .jxj-mao-luta:not(.jxj-mao-postura){padding-bottom:34px}
   .v2-finta-linha{font-size:11.5px;margin-top:2px}
+  .v2-gasto{font-size:11.5px}
   .v2-comando{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"passos vel anel" "frase regras anel"}
-  .v2-btn-regras{padding:5px;align-self:end}
+  .v2-btn-regras{padding:5px;align-self:end;justify-self:end}
   .v2-btn-regras span{display:none}
   .v2-regras{padding:10px;gap:8px;max-height:max(200px,calc(100dvh - 540px))}
-  .v2-regras header{padding-right:96px}
   .v2-regras header b{font-size:18px}
   .v2-regras header small{font-size:11.5px}
   .v2-regras ol{grid-template-columns:minmax(0,1fr);gap:8px}
   .v2-regras li p{font-size:12.5px}
+  .v2-regras header{padding-right:100px}
   .v2-regras-fechar{top:8px;right:8px;padding:5px 10px;font-size:12px}
 }
 

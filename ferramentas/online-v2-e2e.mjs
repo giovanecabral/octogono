@@ -22,6 +22,12 @@
    com a conferência de que as cartas não cobrem a linha de situação nem saem da tela. DUELO_MS=6000
    deixa o duelo mais tempo na tela, pra pegar mais casos. SEM3D=1: a luta só nas cartas (o duelo na mesa).
 
+   Clareza (2026-11-18, spec online-v2-clareza): foto do Como ganhar aberto (`X-como-ganhar.png`, depois
+   fecha no Entendi) e da etapa da carta com os selos da pista (`X-selos.png`); confere os selos em
+   todas as cartas, a linha de fintar, os dois placares com a energia, a barra dele com pelo menos 60%
+   da largura da minha, o gasto de energia no porquê, que os selos não descem pra tarja de baixo e que
+   o Como ganhar não cobre a mão.
+
    Uso: [ARVORE=1] [B_W=360 B_H=780] [DUELO_MS=6000] [SEM3D=1] [CARTAS=bloqueio,guarda] node ferramentas/online-v2-e2e.mjs <pasta das fotos> */
 import { spawn } from "node:child_process"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import * as ARV from "../api/_jxj-arvores.js"; import * as CARTAS from "../api/_jxj-cartas.js";
@@ -102,7 +108,7 @@ try {
   await post("teste/sql", { sql: "update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", params: [JSON.stringify({ contas: [ua, ub] })] });
   C = await chrome();
   /* CARTAS="bloqueio,guarda": as abas jogam essas cartas quando têm (força um caso do duelo, como o de nenhuma) */
-  const inicio = (process.env.CARTAS ? `window.ARVORE_NOMES=${JSON.stringify(process.env.CARTAS.split(","))};` : ARVORE ? `window.ARVORE_NOMES=${JSON.stringify(["overhand", "chute rodado", "superman", "suplex", "martelada", "bodylock", "queda no contragolpe", "passagem de joelho", "contragolpe"])};` : `window.ARVORE_NOMES=[];`) + `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("luta:3d",${JSON.stringify(process.env.SEM3D === "1" ? "0" : "1")});`;
+  const inicio = (process.env.CARTAS ? `window.ARVORE_NOMES=${JSON.stringify(process.env.CARTAS.split(","))};` : ARVORE ? `window.ARVORE_NOMES=${JSON.stringify(["overhand", "chute rodado", "superman", "suplex", "martelada", "bodylock", "queda no contragolpe", "passagem de joelho", "contragolpe"])};` : `window.ARVORE_NOMES=[];`) + `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");(()=>{const P=Storage.prototype,g=P.getItem,s=P.setItem;P.getItem=function(k){return k==="jxj:regras2"&&this===localStorage?g.call(sessionStorage,k):g.call(this,k);};P.setItem=function(k,v){return k==="jxj:regras2"&&this===localStorage?s.call(sessionStorage,k,v):s.call(this,k,v);};})();localStorage.setItem("luta:3d",${JSON.stringify(process.env.SEM3D === "1" ? "0" : "1")});`;
   const bloquear = ["*supabase.co*", "*octogono.fun/api*", "*draft-ufc.vercel.app*", "*vercel*"];
   A = await C.aba({ width: Number(process.env.A_W || 1280), height: Number(process.env.A_H || 800) }, { bloquear, inicio });
   B = await C.aba({ width: Number(process.env.B_W || 390), height: Number(process.env.B_H || 844), isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, { bloquear, inicio });
@@ -170,7 +176,13 @@ try {
           chao: !!q(".jxj-na-mao .jxj-c2-origem"), revelada: !!q(".jxj-revelada"), etapa: (q(".v2-comando") || { className: "" }).className.split(" ").find((c) => c.startsWith("etapa-")) || "",
           largura: document.documentElement.scrollWidth > innerWidth + 1 ? document.documentElement.scrollWidth : 0, cartas: document.querySelectorAll(".jxj-postura:not([disabled]),.jxj-acao:not([disabled])").length,
           vida: [vida("a"), vida("b")], round: (q(".jxj-round") || {}).textContent || "",
-          duelo: ((q(".jxj-mesa.v2-duelo") || { className: "" }).className.split(" ").find((c) => c.startsWith("duelo-")) || "") };
+          duelo: ((q(".jxj-mesa.v2-duelo") || { className: "" }).className.split(" ").find((c) => c.startsWith("duelo-")) || ""),
+          /* clareza: o Como ganhar, os selos, a linha de fintar, os placares e o gasto */
+          regras: !!(q(".v2-regras") && !q(".v2-regras").hidden), selos: document.querySelectorAll(".jxj-acao.jxj-na-mao .v2-pista").length,
+          acoes: document.querySelectorAll(".jxj-acao.jxj-na-mao").length, finta: !!q(".v2-finta-linha"), energias: document.querySelectorAll(".v2-energia").length, gasto: !!q(".v2-gasto"),
+          barras: (() => { const w = (l) => { const b = document.getElementById("jxj-vida-" + l); return b ? b.getBoundingClientRect().width : 0; }; return [w("a"), w("b")]; })(),
+          selosFora: (() => { const tb = q(".jxj-tarja.baixo"), lim = tb ? tb.getBoundingClientRect().top : innerHeight;
+            return [...document.querySelectorAll(".jxj-na-mao .v2-sob")].some((x) => { const r = x.getBoundingClientRect(); return r.height > 0 && (r.bottom > lim + 1 || r.left < 0 || r.right > innerWidth); }); })() };
       });
       /* o duelo das cartas (decisão 92): espera a animação acabar e tira a foto do estado final, uma por caso;
          confere que as cartas não cobrem a linha de situação nem saem da tela */
@@ -200,6 +212,24 @@ try {
           if (fim.cobre || fim.cobreMao || fim.fora || fim.setas || fim.lados[0] !== "jxj-mesa-eu") viu.dueloRuim = `${nome} ${st.duelo}: ${JSON.stringify(fim)}`;
         }
       }
+      if (st.regras && !fotos.has(nome + "regras")) {
+        fotos.add(nome + "regras"); viu.regras = (viu.regras || 0) + 1;
+        await esperar(400); await p.foto(`${nome}-como-ganhar.png`);
+        const cobre = await p.avaliar(() => { const g = document.querySelector(".v2-regras").getBoundingClientRect(), c = document.querySelector(".v2-comando"), m = document.querySelector(".jxj-mao-luta");
+          return [c, m].filter(Boolean).some((x) => { const r = x.getBoundingClientRect(); return r.height > 0 && g.bottom > r.top + 1 && g.top < r.bottom; }) || g.top < 0; });
+        if (cobre) viu.regrasCobre = nome;
+        await p.avaliar(() => { const b = document.querySelector(".v2-regras-fechar"); b && b.click(); }); await esperar(300);
+      }
+      if (st.acoes && !st.assist) {
+        if (st.selos) { viu.selos = (viu.selos || 0) + 1; if (st.selos !== st.acoes) viu.selosFaltando = `${nome}: ${st.selos} selos em ${st.acoes} cartas`; if (!fotos.has(nome + "selos")) { fotos.add(nome + "selos"); await esperar(300); await p.foto(`${nome}-selos.png`); } }
+        if (st.finta) viu.finta = (viu.finta || 0) + 1;
+      }
+      /* fora em 3 consultas seguidas (a mão nova entra de baixo, animada) */
+      viu.fora = viu.fora || {}; viu.fora[nome] = st.selosFora && !st.assist ? (viu.fora[nome] || 0) + 1 : 0;
+      if (viu.fora[nome] >= 3) viu.selosFora = nome;
+      if (st.energias >= 2) viu.energia = true;
+      if (st.gasto) viu.gasto = (viu.gasto || 0) + 1;
+      if (st.barras[0] > 0 && st.barras[1] > 0 && !st.assist) { const r = Math.min(...st.barras) / Math.max(...st.barras); viu.barraMin = Math.min(viu.barraMin == null ? 1 : viu.barraMin, r); }
       if (st.res) { fim[nome] = true; await p.foto(`${nome}-resultado.png`); log.push(`${nome}: resultado`); continue; }
       if (st.fimCena) { await esperar(700); await p.foto(`${nome}-cena-fim.png`); await p.avaliar(() => { const x = document.querySelector(".jxj-fim-seguir"); x && x.click(); }); await esperar(1500); continue; }
       if (ARVORE && st.assist && !ult3d[nome] && (n3d[nome] || 0) < 5) { /* o 3D começou a trocar: 5 fotos seguidas, a cada 0,7 s */
@@ -239,7 +269,9 @@ try {
     await esperar(600);
   }
   log.push(`jogadas A ${jogadas.A}, B ${jogadas.B}; consultas v2 ${viu.v2}, tela cheia ${viu.telaCheia}, linha do porquê ${viu.linha}, cartas com vel e dano ${viu.velDano}; deck dele abriu ${viu.deck}; vida desceu ${viu.vidaDesceu}; carta do chão ${viu.chao}; carta grande no toque ${viu.foco || 0}; rolagem lateral ${viu.rolagem || "nenhuma"}; duelos fotografados ${viu.duelo || 0}${viu.dueloRuim ? "; DUELO RUIM " + viu.dueloRuim : ""}`);
-  const ok = fim.A && fim.B && viu.v2 > 0 && viu.linha > 0 && viu.velDano > 0 && viu.deck && (viu.telaCheia > 0 || process.env.SEM3D === "1") && viu.foco > 0 && !viu.rolagem && viu.duelo > 0 && !viu.dueloRuim && !A.erros.length && !B.erros.length;
+  log.push(`clareza: Como ganhar ${viu.regras || 0}${viu.regrasCobre ? " (COBRE A MÃO em " + viu.regrasCobre + ")" : ""}; selos ${viu.selos || 0}${viu.selosFaltando ? " (" + viu.selosFaltando + ")" : ""}${viu.selosFora ? " (SELOS FORA em " + viu.selosFora + ")" : ""}; linha de fintar ${viu.finta || 0}; energia nos dois placares ${!!viu.energia}; gasto no porquê ${viu.gasto || 0}; barra menor/maior ${viu.barraMin == null ? "?" : viu.barraMin.toFixed(2)}`);
+  const ok = fim.A && fim.B && viu.v2 > 0 && viu.linha > 0 && viu.velDano > 0 && viu.deck && (viu.telaCheia > 0 || process.env.SEM3D === "1") && viu.foco > 0 && !viu.rolagem && viu.duelo > 0 && !viu.dueloRuim
+    && viu.regras === 2 && !viu.regrasCobre && viu.selos > 0 && !viu.selosFaltando && !viu.selosFora && viu.finta > 0 && viu.energia && viu.gasto > 0 && viu.barraMin >= 0.6 && !A.erros.length && !B.erros.length;
   console.log(log.join("\n"));
   console.log(A.erros.length || B.erros.length ? "ERROS " + [...A.erros, ...B.erros].slice(0, 6).join(" | ") : "sem erro na página");
   console.log(ok ? "ok" : "REPROVOU");
