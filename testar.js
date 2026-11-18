@@ -17320,6 +17320,99 @@ async function testarJxJTelas() {
       /* o Cruzado não tem efeito: a carta grande mostra a frase da categoria, nunca a caixa vazia */
       if (!/Golpe simples: se acerta, causa o dano da carta\./.test(r.toqueAcao.foco)) throw new Error("o efeito na carta grande: " + tira(r.toqueAcao.foco).slice(0, 200));
     });
+    await conf("clareza da luta v2 (2026-11-18, pedido do dono: 'coloco as cartas e torço'): o Como ganhar abre sozinho na primeira luta v2 do navegador (e sem storage abre sem quebrar), fecha no Entendi, não volta sozinho e abre pelo botão; fica na zona da mão, acima da barra de comando; na etapa da carta, cada carta da mão tem o selo da pista contra a postura dele (o mesmo de jxjPrevisao2) e a linha de fintar; sem a postura dele, nada de selo; os dois placares com a vida e a energia (rótulo, 'x de y', marca do cansado), a dele no palco tão grande quanto a minha; a carta que sai exausta ou deixa cansado diz isso; a linha do porquê traz o gasto", async () => {
+      if (!lidV2) throw new Error("sem a luta v2");
+      await flagV2T({ contas: [u1, u2] });
+      let v;
+      try { v = await api(u1, "luta", { lutaId: lidV2 }); } finally { await flagV2T(false); }
+      delete dadosLS["jxj:regras2"];
+      const rodar = (lsQuebrado) => JSON.parse(vm.runInContext(`(() => {
+        const base = JSON.parse(globalThis.__vista), eu = base.lado, ele = eu === "a" ? "b" : "a", lados = { eu, ele };
+        const carta = (id, finta = null) => { const d = jxjCartaDef2(id); return { id, nome: d.nome, categoria: d.categoria, efetiva: { id, nome: d.nome, contexto: "pe" }, vel: d.vel, velBase: d.vel, dano: d.dano, danoBase: d.dano, custo: d.custo, finta, efeitos: d.efeitos || [] }; };
+        const agora = Date.parse(base.agora || new Date().toISOString());
+        const est = (l, x) => ({ ...base.estado[l], grogue: false, lento: 0, rapido: 0, ...x });
+        const vb = { ...base, status: "andamento", round: 1, troca: 1, trocas: base.trocas || [], etapa: "sinal", meuSinal: null, adversarioSinalizou: false, sinais: null, minhaCarta: null, minhaAcao: null,
+          adversarioEscolheu: false, estado: { ...base.estado, pos: "pe", encaixe: null, iniciativa: null, [eu]: est(eu, { energia: 10, energiaMax: 10 }), [ele]: est(ele, { energia: 1, energiaMax: 10 }) },
+          decks: { ...base.decks, [ele]: ["jab", "jab", "cruzado", "cruzado", "bloqueio", "bloqueio", "queda", "queda", "clinch", "antiqueda", "overhand", "chute_alto"] }, jogadas: { a: [], b: [] },
+          placarRound: { round: 1, pts: { a: 0, b: 0 }, cartao: {} }, prazoSinal: new Date(agora + 8000).toISOString(), prazo: new Date(agora + 26000).toISOString(), agora: new Date(agora).toISOString(),
+          mao: [carta("jab"), carta("cruzado"), carta("bloqueio"), carta("queda"), carta("clinch")] };
+        const acao = { ...vb, etapa: "acao", meuSinal: "defesa", sinais: { [eu]: "defesa", [ele]: "golpes" }, adversarioSinalizou: true, adversarioEscolheu: false,
+          prazoSinal: new Date(agora - 1000).toISOString(), mao: [carta("jab", 1.5), carta("cruzado", 1.5), carta("bloqueio", 0), carta("queda", 1.5), carta("clinch", 1.5)] };
+        const cls = (n) => String((n && n.className) || "").split(" ");
+        const lista = (no) => { const out = [], fila = [no]; while (fila.length) { const x = fila.shift(); out.push(x); fila.push(...(x.children || [])); } return out; };
+        const ach = (no, c) => lista(no).find((x) => cls(x).includes(c));
+        const html = (no) => lista(no).map((x) => String(x.innerHTML || "")).join("\\n");
+        const desenha = (v, op = {}) => jxjDesenharCombate2(document.createElement("div"), v, lados, () => {}, op);
+        const out = {};
+        const lsOrig = globalThis.localStorage;
+        if (${lsQuebrado ? "true" : "false"}) globalThis.localStorage = { getItem() { throw new Error("bloqueado"); }, setItem() { throw new Error("bloqueado"); } };
+        try {
+          JXJ_V2_REGRAS = false; JXJ_V2_REGRAS_AUTO = false;
+          let t = desenha(vb, { palco: true });
+          const rg = ach(t, "v2-regras"), zona = ach(t, "jxj-zona-acao"), cmd = ach(t, "v2-comando");
+          out.auto = { tem: !!rg, aberto: !!(rg && !rg.hidden), naZona: !!(zona && rg && lista(zona).includes(rg) && zona.children.indexOf(rg) < zona.children.indexOf(cmd)), html: rg ? html(rg) : "" };
+          const fe = rg && ach(rg, "v2-regras-fechar"); if (fe) fe.onclick();
+          out.fechou = !!(rg && rg.hidden);
+          t = desenha(vb, { palco: true });
+          out.depois = !ach(t, "v2-regras").hidden;
+          const br = ach(t, "v2-btn-regras"); out.botaoNoCmd = !!(br && lista(ach(t, "v2-comando")).includes(br));
+          if (br) br.onclick();
+          out.botao = !ach(t, "v2-regras").hidden;
+          JXJ_V2_REGRAS = false;
+        } finally { globalThis.localStorage = lsOrig; }
+        /* a etapa da carta: os selos e a linha de fintar */
+        const t2 = desenha(acao, { palco: true });
+        const p = jxjPrevisao2(acao, eu);
+        out.selos = lista(t2).filter((x) => cls(x).includes("jxj-acao") && cls(x).includes("jxj-na-mao")).map((b) => ((String(b.innerHTML).match(/class="v2-pista p-[a-z]+">([^<]*)</) || [])[1] || null));
+        out.esperado = p.cartas.map((c) => { const s = jxjSeloPrevisao2(c); return s ? s.texto : null; });
+        out.cmd = html(ach(t2, "v2-comando"));
+        out.sinal = html(desenha(vb, { palco: true }));
+        out.semPostura = html(desenha({ ...acao, adversarioSinalizou: false }, { palco: true }));
+        /* o placar: os dois com a vida e a energia; a dele, no palco, na tarja de cima */
+        /* o DOM falso não lê o innerHTML: o placar mora no HTML do jxj-card de cada lado */
+        const cima = ach(t2, "cima"), ce = lista(t2).find((x) => x.id === "jxj-card-ele"), cu = lista(t2).find((x) => x.id === "jxj-card-eu");
+        const so = (h, l) => (h.match(new RegExp('<div class="v2-placar ' + l + '">[^]*?</div>')) || [""])[0];
+        out.placar = { eleEmCima: !!(cima && ce && lista(cima).includes(ce)) && /class="v2-placar ele"/.test(html(ce)), ele: so(html(ce), "ele"), eu: so(html(cu), "eu"), cardEle: html(ce) };
+        /* a mão com a energia curta: 3 de energia, a finta do Cruzado (2 + 1,5) sai exausta, o Jab (1 + 1,5) deixa cansado */
+        const curta = { ...acao, estado: { ...acao.estado, [eu]: { ...acao.estado[eu], energia: 3 } } };
+        out.mao = lista(desenha(curta, { palco: true })).filter((x) => cls(x).includes("jxj-acao") && cls(x).includes("jxj-na-mao")).map((b) => ({ h: String(b.innerHTML), title: b.title }));
+        /* a linha do porquê com o gasto */
+        out.linha = (base.trocas || []).length ? html(desenha({ ...acao, trocas: base.trocas }, { palco: true })) : null;
+        return JSON.stringify(out);
+      })()`, Object.assign(env.sandbox, { __vista: JSON.stringify(v) })));
+      const tira = (h) => h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      const r = rodar(false);
+      if (!r.auto.tem || !r.auto.aberto || !r.auto.naZona) throw new Error("Como ganhar não abriu sozinho na zona da mão: " + JSON.stringify({ ...r.auto, html: undefined }));
+      if (dadosLS["jxj:regras2"] !== "1") throw new Error("não marcou o Como ganhar como visto");
+      if (!/Três jeitos de levar a troca/.test(r.auto.html) || !/relógio/.test(r.auto.html)) throw new Error("Como ganhar sem os blocos: " + tira(r.auto.html).slice(0, 300));
+      if (!r.fechou || r.depois) throw new Error(`Entendi: fechou ${r.fechou}, voltou sozinho ${r.depois}`);
+      if (!r.botaoNoCmd || !r.botao) throw new Error("o botão Como ganhar na barra de comando não abre");
+      const r2 = rodar(false);
+      if (r2.auto.aberto) throw new Error("abriu de novo num navegador que já viu");
+      delete dadosLS["jxj:regras2"];
+      const r3 = rodar(true);
+      if (!r3.auto.aberto) throw new Error("sem storage, o Como ganhar não abriu");
+      /* os selos */
+      if (r.selos.length !== 5 || r.selos.some((x) => !x) || JSON.stringify(r.selos) !== JSON.stringify(r.esperado.map((x) => x && x.replace(/&/g, "&amp;")))) throw new Error("selos da mão: " + JSON.stringify([r.selos, r.esperado]));
+      if (!/Anula/.test(r.selos[2])) throw new Error("o Bloqueio contra a postura de golpe devia anular (menos o Overhand): " + r.selos[2]);
+      if (!/class="v2-finta-linha[^"]*"/.test(r.cmd) || !/Ele não tem energia pra fintar: a postura dele é verdade\./.test(tira(r.cmd))) throw new Error("linha de fintar: " + tira(r.cmd));
+      if (/v2-pista|v2-finta-linha/.test(r.sinal)) throw new Error("selo ou linha de fintar na etapa da postura");
+      if (/v2-pista/.test(r.semPostura) || !/não mostrou a postura/.test(tira(r.semPostura))) throw new Error("sem a postura dele: selo ou sem o aviso");
+      if (/melhor|jogue est/i.test(tira(r.cmd + r.selos.join(" ")))) throw new Error("a pista manda jogar");
+      /* o placar */
+      if (!r.placar.eleEmCima) throw new Error("o placar dele fora da tarja de cima");
+      for (const [k, h, en] of [["dele", r.placar.ele, "1"], ["meu", r.placar.eu, "10"]]) {
+        if (!/class="jxj-vida"/.test(h) || !/class="v2-energia/.test(h) || !/>Energia</.test(h) || !new RegExp(`<b>${en}</b> de 10`).test(h) || !/--marca:20%/.test(h)) throw new Error(`placar ${k}: ` + h.slice(0, 500));
+      }
+      if (!/class="v2-energia cansado"/.test(r.placar.ele) || /class="v2-energia cansado"/.test(r.placar.eu) || !/cansado: 1 mais lento/.test(r.placar.ele)) throw new Error("a cor do cansado no placar");
+      if (!/id="jxj-vida-[ab]"/.test(r.placar.cardEle)) throw new Error("a barra dele saiu de dentro do jxj-card-ele (o 3D e o teste da vida leem dali)");
+      /* a mão com a energia curta */
+      const cz = r.mao[1], jb = r.mao[0];
+      if (!/Sai exausta/.test(cz.h) || !/Sai exausta: 2 mais lenta/.test(cz.title)) throw new Error("a carta que sai exausta: " + tira(cz.h));
+      if (!/Fica cansado/.test(jb.h) || !/próxima carta do round sai 1 mais lenta/.test(jb.title)) throw new Error("a carta que deixa cansado: " + tira(jb.h));
+      if (/Fica cansado|Sai exausta/.test(r.mao[2].h)) throw new Error("o Bloqueio (sem custo) com aviso de energia");
+      if (r.linha != null && !/class="v2-gasto"/.test(r.linha)) throw new Error("a linha do porquê sem o gasto de energia");
+    });
     await conf("JxJ desligado (JXJ_ATIVO diferente de true): a entrada mostra 'abre em breve' e nenhum botão de criar", async () => {
       process.env.JXJ_ATIVO = "false";
       UI.zerarDef();

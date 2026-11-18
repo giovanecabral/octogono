@@ -8016,6 +8016,15 @@ function jxjComoGanhar2(defs){
   caixa.appendChild(fechar);
   return caixa;
 }
+/* a energia no placar: barra com o rótulo, "7,9 de 10", a marca da faixa do cansado e a cor que muda nela */
+function jxjEnergia2(st,defs){
+  const d=defs||(JXJ_DEF&&JXJ_DEF.combate2),R=(d&&d.regras)||{},lim=R.cansado!=null?R.cansado:2;
+  const max=Number(st&&st.energiaMax)||10,en=Math.max(0,Number(st&&st.energia)||0),cans=en<=lim+1e-9;
+  const pct=Math.round(Math.max(0,Math.min(1,en/max))*1000)/10,marca=Math.round(Math.min(1,lim/max)*1000)/10;
+  return `<span class="v2-energia${cans?" cansado":""}" role="img" aria-label="Energia ${jxjNum2(en)} de ${jxjNum2(max)}${cans?", cansado":""}">`
+    +`<span class="v2-energia-rot">${ICONE("energia")}<span>Energia</span> <b>${jxjNum2(en)}</b> de ${jxjNum2(max)}${cans?`<em>cansado: 1 mais lento</em>`:""}</span>`
+    +`<span class="v2-energia-barra" style="--en:${pct}%;--marca:${marca}%" title="Com ${jxjNum2(lim)} ou menos, a carta sai 1 mais lenta"><i class="nivel"></i><i class="marca"></i></span></span>`;
+}
 /* abre sozinho uma vez: a primeira luta v2 deste navegador (jxj:regras2); sem storage, abre e não quebra */
 function jxjRegrasPrimeiraVez2(){
   if(JXJ_V2_REGRAS_AUTO)return false;
@@ -10605,14 +10614,18 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   const hud=el("section","jxj-hud");
   const lado=(l,souEu)=>{
     const n=nomes[l],st=e[l];
-    const vida=jxjVida(danoAntes?danoAntes[l]:st.dano),ener=st.energiaMax?Math.max(0,Math.min(1,st.energia/st.energiaMax)):0;
+    const vida=jxjVida(danoAntes?danoAntes[l]:st.dano);
     const d=el("div","jxj-hud-lado "+(souEu?"eu":"ele")); d.id=souEu?"jxj-card-eu":"jxj-card-ele";
+    /* o placar (clareza, 2026-11-18, pedido do dono): a vida e a energia com a mesma leitura dos dois lados;
+       a barra dele no topo do tamanho da minha (no celular, numa linha só dela) */
+    const tags=[st.grogue?`<i class="jxj-tag grogue">grogue</i>`:"",e.encaixe&&e.encaixe.quem!==l?`<i class="jxj-tag preso">${ICONE("cadeado")}preso</i>`:"",st.ausentes?`<i class="jxj-tag jxj-ausente">${st.ausentes} sem ação</i>`:""].join("");
     d.innerHTML=`${jxjRetrato(n,56)}<div class="jxj-hud-info">
       <b class="jxj-hud-nome"><span>${jxjEsc(n.nome)}</span>${souEu?"<small>você</small>":""}${n.bot?jxjSeloBot():""}${palco&&n.bot&&n.alcunha?`<small class="jxj-alcunha">${jxjEsc(n.alcunha)}</small>`:""}${final?"":jxjTagPostura2(v,l,souEu)}</b>
       ${!palco&&n.bot&&n.alcunha?`<small class="jxj-alcunha">${jxjEsc(n.alcunha)}</small>`:""}
-      <span class="jxj-vida" id="jxj-vida-${l}" data-vida="${vida}" data-nivel="${jxjNivelVida(vida)}" role="img" aria-label="Vida ${vida} de 100" style="--vida:${vida}%;--rastro:${vida}%"><i class="rastro"></i><i class="flash"></i><i class="atual"></i></span>
-      <span class="jxj-folego" role="img" aria-label="Energia ${jxjNum(st.energia)} de ${jxjNum(st.energiaMax)}"><i style="width:${Math.round(ener*100)}%"></i></span>
-      <span class="jxj-hud-num"><i>${ICONE("lesao")}<b class="jxj-vida-num" id="jxj-vida-num-${l}">${vida}</b></i><i>${ICONE("energia")}${jxjNum(st.energia)}</i>${st.ausentes?`<i class="jxj-ausente">${st.ausentes} sem ação</i>`:""}${jxjEtiquetas(e,l)}</span>
+      <div class="v2-placar ${souEu?"eu":"ele"}">
+        <span class="v2-vida-linha"><span class="jxj-vida" id="jxj-vida-${l}" data-vida="${vida}" data-nivel="${jxjNivelVida(vida)}" role="img" aria-label="Vida ${vida} de 100" style="--vida:${vida}%;--rastro:${vida}%"><i class="rastro"></i><i class="flash"></i><i class="atual"></i></span><b class="v2-vida-num">${ICONE("lesao")}<span class="jxj-vida-num" id="jxj-vida-num-${l}">${vida}</span></b></span>
+        ${jxjEnergia2(st)}${tags?`<span class="v2-tags">${tags}</span>`:""}
+      </div>
       ${souEu?`<span class="jxj-mao v2-mao-eu"><small>Mão ${(v.mao||[]).length}</small></span>`:""}
     </div>`;
     if(!souEu){
@@ -10682,7 +10695,7 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   if(duelando&&mesaEl)palcoEl.appendChild(mesaEl);
   /* o porquê da troca que acabou de ser resolvida (opção B) */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
-  const linha=ult?jxjLinha2(ult,{eu,ele},nomes,{nova}):null;
+  const linha=ult?jxjLinha2(ult,{eu,ele},nomes,{nova,depois:e}):null;
   if(linha)(palcoEl||tela).appendChild(linha);
   /* as cartas (a troca que acabou a luta, na cena do fim, vem sem a mão) */
   const zona=el("section","jxj-zona-acao");
@@ -10710,9 +10723,20 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
     else if(v.sinais&&!v.meuSinal&&v.sinais[eu])frase=`${novaMao}Sua postura não chegou a tempo: ele viu <b>${JXJ_POSTURAS[v.sinais[eu]]}</b>. Jogue uma carta.`;
     else frase=`${novaMao}Jogue uma carta.${noChao?" No chão, cada uma vira a carta do chão da categoria dela.":" Carta de outra categoria é finta e gasta mais energia."}`;
     const passo=(n,est,nome)=>`<span class="v2-passo ${est}" data-passo="${n}"><i>${est==="feito"?ICONE("check"):n}</i><b>${nome}</b></span>`;
+    /* a pista (opção B) e a linha de fintar: só na etapa da carta, com a postura dele revelada */
+    const pista=!jogou&&!sinal?jxjPrevisao2(v,eu):null,fintaTxt=pista?jxjLinhaFinta2(pista):"";
     const cmd=el("div","v2-comando "+(jogou?"jogou":sinal?"etapa-sinal":"etapa-carta"));
-    cmd.innerHTML=`<span class="v2-passos">${passo(1,p1,"Postura")}${passo(2,p2,"Carta")}</span><p class="v2-frase">${frase}</p>`
+    cmd.innerHTML=`<span class="v2-passos">${passo(1,p1,"Postura")}${passo(2,p2,"Carta")}</span><p class="v2-frase">${frase}${fintaTxt?`<span class="v2-finta-linha${pista.podeFintar===false&&!pista.semPostura?" verdade":""}">${ICONE(pista.semPostura?"alerta":"busca")}${fintaTxt}</span>`:""}</p>`
       +`<div class="jxj-anel v2-anel${v.semRelogio?" livre":""}" id="jxj-anel"><span class="jxj-relogio" id="jxj-relogio">${v.semRelogio?"livre":`${jxjSeg(jxjTotalEtapa(v))}s`}</span></div>`;
+    /* "Como ganhar": abre sozinho na primeira luta v2 do navegador e pelo botão; não tranca a mão */
+    if(v.status==="andamento"&&jxjRegrasPrimeiraVez2())JXJ_V2_REGRAS=true;
+    const regrasEl=jxjComoGanhar2(); regrasEl.hidden=!JXJ_V2_REGRAS;
+    const br=el("button","v2-btn-regras"+(JXJ_V2_REGRAS?" on":""),`${ICONE("info")}<span>Como ganhar</span>`); br.type="button"; br.id="jxj-btn-regras2";
+    if(br.setAttribute){ br.setAttribute("aria-expanded",String(JXJ_V2_REGRAS)); br.setAttribute("aria-label","Como ganhar"); }
+    br.onclick=()=>{ SOM.toque(); JXJ_V2_REGRAS=!JXJ_V2_REGRAS; regrasEl.hidden=!JXJ_V2_REGRAS; br.className="v2-btn-regras"+(JXJ_V2_REGRAS?" on":""); if(br.setAttribute)br.setAttribute("aria-expanded",String(JXJ_V2_REGRAS)); };
+    cmd.appendChild(br);
+    /* na zona da mão, acima da barra de comando: nunca cobre as cartas */
+    zona.appendChild(regrasEl);
     /* a régua de velocidade fechada atrás do botão (a velocidade continua em cada carta) */
     if((v.mao||[]).length){
       const caixa=el("div","v2-regua-caixa"); caixa.hidden=!JXJ_V2_REGUA; caixa.appendChild(jxjRegua2(v.mao));
@@ -10768,13 +10792,20 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
         /* finta: carta de outra categoria que a minha postura (sem energia pra fintar, não dá); sem
            energia pro custo, a carta sai exausta (2 mais lenta, metade do dano, sem efeitos) */
         const finta=x.finta>0,semEnergia=finta&&e[eu].energia<x.finta,exausta=!semEnergia&&e[eu].energia+1e-9<(x.custo||0)+(x.finta||0);
-        const b=el("button","jxj-acao jxj-na-mao"+(finta?" finta":"")+(semEnergia?" sem-energia":"")+(exausta?" exausta":""),
+        /* fica cansado: depois de pagar, a energia cai pra faixa do cansado e a próxima carta do round sai 1 mais lenta */
+        const R2=(JXJ_DEF&&JXJ_DEF.combate2&&JXJ_DEF.combate2.regras)||{},lim=R2.cansado!=null?R2.cansado:2;
+        const cansa=!semEnergia&&!exausta&&v.troca<F.trocasPorRound&&e[eu].energia>lim&&e[eu].energia-(x.custo||0)-(x.finta||0)<=lim+1e-9;
+        const sp=pista&&pista.leitura?jxjSeloPrevisao2(pista.cartas[i]):null;
+        const aviso=exausta?`<span class="v2-aviso-en exausta">${ICONE("alerta")}Sai exausta</span>`:cansa?`<span class="v2-aviso-en cansa">${ICONE("energia")}Fica cansado</span>`:"";
+        const b=el("button","jxj-acao jxj-na-mao"+(finta?" finta":"")+(semEnergia?" sem-energia":"")+(exausta?" exausta":"")+(sp?" com-pista":""),
           `${finta?`<em class="jxj-finta" aria-label="Finta: gasta mais ${jxjNum2(x.finta)} de energia">−${jxjNum2(x.finta)} finta</em>`:""}${jxjCarta2(k.c,{...k.o,w:JXJ_TAM_CARTA.mao,estado:semEnergia?"apagada":""})}`
-          +`${semEnergia?`<span class="jxj-carta-tranca">${ICONE("cadeado")}</span>`:""}${exausta?`<span class="v2-exausta">sai exausta</span>`:""}`);
-        b.type="button"; b.title=cartaTitulo(k,finta?` Finta: mais ${jxjNum2(x.finta)} de energia.`:"");
+          +`${semEnergia?`<span class="jxj-carta-tranca">${ICONE("cadeado")}</span>`:""}`
+          +(sp||aviso?`<span class="v2-sob">${sp?`<span class="v2-pista p-${sp.tipo}">${jxjEsc(sp.texto)}</span>`:""}${aviso}</span>`:""));
+        const notaEn=exausta?` Sai exausta: ${jxjNum2(R2.exaustaVel!=null?R2.exaustaVel:2)} mais lenta, metade do dano e sem efeito.`:cansa?` Fica cansado: depois dela você fica com ${jxjNum2(lim)} ou menos de energia e a próxima carta do round sai 1 mais lenta.`:"";
+        b.type="button"; b.title=cartaTitulo(k,(finta?` Finta: mais ${jxjNum2(x.finta)} de energia.`:"")+notaEn+(sp?` Contra ${JXJ_POSTURAS[pista.categoria]||"a postura dele"}: ${sp.detalhe}`:""));
         if(semEnergia){ b.disabled=true; b.title="Sem energia pra fintar."; }
         g.appendChild(b);
-        const nota=[finta?`Finta: gasta mais ${jxjNum2(x.finta)} de energia.`:"",exausta?"Sai exausta: 2 mais lenta, metade do dano e sem efeito.":""].filter(Boolean).join(" ");
+        const nota=[finta?`Finta: gasta mais ${jxjNum2(x.finta)} de energia.`:"",notaEn.trim(),sp?`<b>Contra ${JXJ_POSTURAS[pista.categoria]||"a postura dele"}:</b> ${jxjEsc(sp.detalhe)}`:""].filter(Boolean).join(" ");
         montar(g,b,x.id+"#"+i,k,{rotulo:finta?"Jogar com finta":"Jogar a carta",nota,
           manda:()=>{ SOM.toque(); Array.from(g.children).forEach(y=>{y.disabled=true;}); enviar(x.id,"acao"); }});
       });
