@@ -1867,7 +1867,7 @@ const BENEFICIOS_PRO=[
   {ic:"microfone",t:"Coletiva antes da luta",d:"Provoque o adversário na coletiva. A reação dele muda o hype e a pressão da luta seguinte."},
   {ic:"jornal",t:"Entrevista depois da luta",d:"O repórter pergunta sobre o que aconteceu; sua resposta muda fã, seguidor e patrocínio."},
   {ic:"luta",t:"Modo Rival",d:"Escolha um nome e crie um rival que volta ao longo da carreira, com histórico e revanches."},
-  {ic:"espadas",t:"Online sem limite",d:"Fila contra gente e lutas contra bot sem limite, revanche, torneios com cinturão e até 3 lutadores. Nenhuma vantagem de atributo."},
+  {ic:"espadas",t:"Online sem limite",d:"Fila contra gente e lutas contra bot sem limite, revanche, torneios com cinturão e até 3 lutadores. Nenhuma vantagem de carta ou de atributo."},
   {ic:"cards",t:"Cards exclusivos",d:"Corte de canto e selo no card de resultado e no card de momento."},
 ];
 function montarBeneficiosPro(container){
@@ -8334,7 +8334,7 @@ function jxjSparkline(pontos,{w=280,h=64}={}){
 /* ---------- entrada e painel (#/jxj) ---------- */
 async function jxjTelaEntrada(){
   const c=jxjTela({titulo:"Online",fundo:"arena",nav:""});
-  c.appendChild(el("p","tela-sub","Seu lutador contra os lutadores de outros jogadores, em tempo real. A cada troca, os dois escolhem a ação ao mesmo tempo, sem ver a do outro."));
+  c.appendChild(el("p","tela-sub","Seu lutador contra os lutadores de outros jogadores, em tempo real. A cada troca, os dois jogam uma carta ao mesmo tempo, sem ver a do outro."));
   const area=el("div","jxj-area"); c.appendChild(area);
   jxjCarregando(area);
   let def;
@@ -8391,10 +8391,11 @@ function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=n
   hero.innerHTML=`<p class="jxj-rotulo">Jogador contra Jogador</p>
     <h2 class="jxj-hero-titulo">Seu lutador contra os lutadores dos outros jogadores</h2>
     <p class="jxj-hero-txt">Você cria um lutador, escolhe estilo e categoria e monta a árvore de habilidades.
-      Cada luta é decidida por troca: os dois escolhem a ação ao mesmo tempo, sem ver a do outro, e o servidor resolve.</p>`;
+      Cada luta é decidida por troca: os dois jogam uma carta ao mesmo tempo, sem ver a do outro, e o servidor resolve.</p>`;
   const passos=el("ol","jxj-passos");
   [["espadas","Lute","Vitória e derrota mexem no rating. Perder nunca tira nível nem ponto de habilidade."],
-   ["arvore","Evolua","Cada nível dá um ponto pra árvore do seu estilo. O nível vai até 30, com teto em cada atributo."],
+   ["arvore","Evolua",est&&est.combateV2?"Cada nível dá um ponto pra árvore do seu estilo, e cada nó libera uma carta pro seu deck. O nível vai até 30."
+     :"Cada nível dá um ponto pra árvore do seu estilo. O nível vai até 30, com teto em cada atributo."],
    ["trofeu","Suba","O ranking mostra o principal de cada conta. Temporadas de 8 semanas e torneios de 8 com cinturão."]]
     .forEach(([ico,t,d])=>{ const li=el("li","jxj-passo",`${ICONE(ico)}<b>${t}</b><span>${d}</span>`); passos.appendChild(li); });
   hero.appendChild(passos);
@@ -8415,7 +8416,7 @@ function jxjApresentacao(area,def,{entrar=false,criar=false,semBotao=false,est=n
       <li>${R.slotsFree} lutador</li><li>${est&&est.gratisPorDia?"1 luta por dia contra gente":"1 luta competitiva grátis"}</li>${bots?`<li>${R.botFreeDia} lutas por dia contra bot</li>`:""}<li>Ranking, perfis, torneios e Hall abertos pra ver</li></ul></div>
     <div class="jxj-plano jxj-plano-pro"><b>Pro</b><ul>
       <li>${R.slotsPro} lutadores, cada um com rating e cartel próprios</li><li>${bots?"Fila, lutas contra bot, revanche e torneios":"Fila, revanche e torneios"} sem limite de acesso</li>
-      <li>Nenhuma vantagem de atributo: o Pro libera acesso, não vitória</li></ul></div>`;
+      <li>Nenhuma vantagem de carta ou de atributo: o Pro libera acesso, não vitória</li></ul></div>`;
   area.appendChild(planos);
   if(est&&!est.pro&&est.lutaGratisUsada)area.appendChild(el("p","jxj-nota",est.gratisPorDia?"A luta de hoje contra gente já foi usada. Amanhã tem outra.":"A luta grátis desta conta já foi usada."));
 }
@@ -8651,14 +8652,20 @@ async function jxjTelaCriar(passo){
   }
   if(n===3){
     if(!JXJ_NOVO.categoria)return ir(2);
+    /* Online de cartas (2026-11-19): quem joga cartas vê a passiva e as cartas fixas do estilo, não a mão do combate de antes */
+    let est=null; try{ est=await jxj("estado"); }catch(e){}
+    const v2=est&&est.combateV2&&def.combate2?def.combate2:null;
     const c=montarPasso(3,4,{titulo:"Estilo principal",fundo:"academia",voltar});
     c.appendChild(el("p","tela-sub","O estilo define o ponto de partida e a árvore principal. Os quatro somam os mesmos pontos de atributo: nenhum é melhor em tudo."));
     const g=el("div","jxj-estilos");
     for(const [id,e] of Object.entries(def.estilos)){
       const barras=Object.entries(e.base).map(([k,v])=>`<li><span>${def.atributos[k]}</span>${jxjBarra(v,92)}<b>${v}</b></li>`).join("");
       const ramos=e.ramos.map(r=>def.ramos[r].nome).join(", ");
-      /* fase 4: a mão do round muda com o estilo */
-      const mao=(e.mao?`<small class="jxj-estilo-mao">Mão por round: ${jxjMaoTexto(e.mao)}</small>`:"")
+      /* fase 4: a mão do round muda com o estilo; nas cartas, a passiva e as fixas do deck */
+      const pas=v2&&v2.passivas[id],fixas=v2?[...new Set(v2.fixas[id]||[])].map(x=>(v2.cartas[x]||{}).nome).filter(Boolean):[];
+      const mao=v2?(pas?`<small class="jxj-estilo-mao">Passiva, ${jxjEsc(pas.nome)}: ${jxjEsc(pas.desc)}</small>`:"")
+        +(fixas.length?`<small class="jxj-estilo-mao">Cartas fixas no deck: ${jxjEsc(fixas.join(", "))}.</small>`:"")
+        :(e.mao?`<small class="jxj-estilo-mao">Mão por round: ${jxjMaoTexto(e.mao)}</small>`:"")
         +(e.bonusDefesaQueLe>0?`<small class="jxj-estilo-mao">Defender e acertar a leitura vale ${String(e.bonusDefesaQueLe).replace(".",",")} ponto a mais com os juízes.</small>`:"");
       const b=el("button","jxj-estilo"+(JXJ_NOVO.estilo===id?" on":""),
         `<b class="jxj-estilo-nome">${e.nome}</b><span class="jxj-estilo-resumo">${e.resumo}</span><ul class="jxj-atr">${barras}</ul>${mao}<small>Ramos: ${ramos}</small>`);
@@ -8773,7 +8780,10 @@ async function jxjTelaLutador(param){
   abrir(atual);
 }
 function jxjAbaPerfil(c,def,est,l){
-  const p=l.perfil||jxjPerfilPrevia(def,l.estilo,l.categoria,l.build);
+  /* Online de cartas (2026-11-19): a luta de cartas usa os atributos do estilo e da categoria, sem os da
+     árvore (perfilLuta2 no servidor); a árvore dá cartas. O perfil de antes (l.perfil) somava a árvore. */
+  const v2=est&&est.combateV2&&def.combate2?def.combate2:null;
+  const p=v2?jxjPerfilPrevia(def,l.estilo,l.categoria,{}):(l.perfil||jxjPerfilPrevia(def,l.estilo,l.categoria,l.build));
   const base=def.estilos[l.estilo].base,nv=l.nivelInfo||{nivel:l.nivel,noNivel:0,proximo:0},cart=jxjCartel(l);
   const atr=Object.keys(base).map(k=>{
     const v=p.atr[k],b=base[k]+((def.categorias[l.categoria]||{ajuste:{}}).ajuste[k]||0);
@@ -8781,9 +8791,15 @@ function jxjAbaPerfil(c,def,est,l){
   }).join("");
   const mecs=Object.entries(p.mec||{}).filter(([,v])=>v>0).map(([k,v])=>`<li>${def.mecanicas[k].desc}: ${JXJ_ENERGIA.has(k)?String(Math.round(v*100)/100).replace(".",",")+" de energia":def.mecanicas[k].teto>2?String(Math.round(v*10)/10).replace(".",",")+" pontos":Math.round(v*100)+"%"}</li>`).join("");
   const g=el("div","jxj-grade");
-  g.innerHTML=`<section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("grafico")} Atributos</p><ul class="jxj-atr">${atr}</ul>
+  const cartasArv=v2?Object.values(v2.cartas).filter(x=>x.no&&Number((l.build||{})[x.no])>=1)
+    .map(x=>{ const n=Math.min(3,Number(l.build[x.no])||0); return `<li>${jxjEsc(x.nome)}: ${n} ${n===1?"estrela":"estrelas"}</li>`; }).join(""):"";
+  g.innerHTML=(v2?`<section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("grafico")} Atributos</p><ul class="jxj-atr">${atr}</ul>
+      <p class="jxj-nota">Na luta de cartas valem os atributos do estilo e da categoria. A árvore não soma atributo: ela libera cartas.</p></section>
+    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("cards")} Cartas da árvore</p>${cartasArv?`<ul class="jxj-lista-simples">${cartasArv}</ul><p class="jxj-nota">Só valem na luta as que estão no deck.</p>`:`<p class="jxj-nota">Nenhuma ainda. Cada nó da árvore libera uma carta.</p>`}</section>`
+    :`<section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("grafico")} Atributos</p><ul class="jxj-atr">${atr}</ul>
       <p class="jxj-nota">O número pequeno é o que a árvore somou. Cada atributo tem teto de ${def.arvore.atributoMax}.</p></section>
-    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("raio")} Habilidades em uso</p>${mecs?`<ul class="jxj-lista-simples">${mecs}</ul>`:`<p class="jxj-nota">Nenhuma ainda. Os pontos da árvore ligam habilidades.</p>`}</section>
+    <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("raio")} Habilidades em uso</p>${mecs?`<ul class="jxj-lista-simples">${mecs}</ul>`:`<p class="jxj-nota">Nenhuma ainda. Os pontos da árvore ligam habilidades.</p>`}</section>`)
+    +`
     <section class="painel-n jxj-card"><p class="jxj-rotulo">${ICONE("medalha")} Carreira no Online</p>
       <dl class="jxj-numeros"><div><dt>Cartel</dt><dd>${cart.txt}<small>${jxjTaxa(l)} de vitórias</small></dd></div>
       <div><dt>Nocautes</dt><dd>${l.kos||0}</dd></div><div><dt>Finalizações</dt><dd>${l.finalizacoes||0}</dd></div>
@@ -8844,7 +8860,7 @@ function jxjAbaArvore(c,def,est,l){
       return lin;
     };
     corpo.appendChild(el("h3","jxj-subtitulo",`Árvore de ${jxjEstilo(l.estilo)}`));
-    if(v2)corpo.appendChild(el("p","jxj-arvore-aviso2",`${ICONE("info")}<span>No Online com cartas, cada nó vale pelo que está em "Com cartas". O atributo que ele dá continua só no combate de antes.</span>`));
+    if(v2)corpo.appendChild(el("p","jxj-arvore-aviso2",`${ICONE("info")}<span>No Online de cartas, cada nó libera a carta que aparece nele. Cada nível do nó é uma estrela da carta, e a terceira estrela dá um efeito a mais. A carta só vale na luta se estiver no deck.</span>`));
     corpo.appendChild(blocoRamos(l.estilo,false));
     const hib=el("details","jxj-hibrido");
     hib.appendChild(el("summary","",`Habilidades de outros estilos (custam ${A.custoHibrido} pontos por nível, só os ${A.tiersHibridos} primeiros nós de cada ramo)`));
@@ -8857,10 +8873,11 @@ function jxjAbaArvore(c,def,est,l){
   };
   const mostrar=(no,pode,nv)=>{
     detalhe.hidden=false;
-    detalhe.innerHTML=`<p class="jxj-rotulo">${jxjEsc(def.ramos[no.ramo].nome)} · nó ${no.tier}</p><h3 class="jxj-subtitulo">${no.nome}</h3>
-      <p>${no.desc}</p><ul class="jxj-lista-simples">${no.efeitos.map(e=>`<li>${jxjTxtEfeito(def,e)}</li>`).join("")}</ul>
-      <p class="jxj-nota">Somar habilidades no mesmo atributo ou efeito rende cada vez menos: atributo tem teto suave de ${A.tetoBonus} pontos e cada efeito tem o teto dele.</p>`
-      +(v2Txt(no.id)?jxjNoV2Detalhe(v2Txt(no.id),v2Carta(no.id),build[no.id]||0):"");
+    /* Online de cartas (2026-11-19): o nó vale só pela carta (o atributo dele é do combate de antes e não entra na luta de cartas) */
+    detalhe.innerHTML=`<p class="jxj-rotulo">${jxjEsc(def.ramos[no.ramo].nome)} · nó ${no.tier}</p><h3 class="jxj-subtitulo">${no.nome}</h3>`
+      +(v2&&v2Txt(no.id)?jxjNoV2Detalhe(v2Txt(no.id),v2Carta(no.id),build[no.id]||0)
+        :`<p>${no.desc}</p><ul class="jxj-lista-simples">${no.efeitos.map(e=>`<li>${jxjTxtEfeito(def,e)}</li>`).join("")}</ul>
+      <p class="jxj-nota">Somar habilidades no mesmo atributo ou efeito rende cada vez menos: atributo tem teto suave de ${A.tetoBonus} pontos e cada efeito tem o teto dele.</p>`);
     const linha=el("div","jxj-acoes");
     const mais=el("button","botao",`${ICONE("mais")}<span>Somar 1 nível</span>`); mais.type="button"; mais.disabled=!pode;
     mais.onclick=()=>{ SOM.toque(); build={...build,[no.id]:(build[no.id]||0)+1}; desenhar(); mostrar(no,jxjValidar(def,l.estilo,{...build,[no.id]:build[no.id]+1},l.nivel).ok&&build[no.id]<A.nivelMaxNo,build[no.id]); };
@@ -9208,7 +9225,7 @@ async function jxjTelaFila(){
     /* o que tem do outro lado do cadeado (2026-11-06, pedido do dono: o Pro mais atraente) */
     area.appendChild(el("section","painel-n jxj-card jxj-pro-libera",`<p class="jxj-rotulo">${ICONE("coroa")} O que o Pro libera no Online</p>
       <ul><li>Fila contra gente sem limite</li><li>Lutas contra bot sem limite</li><li>Revanche na hora, com o mesmo adversário</li><li>Torneios com cinturão da categoria</li><li>Até ${def.regras.slotsPro||3} lutadores</li></ul>
-      <p class="jxj-nota">Nenhuma vantagem de atributo: o Pro libera acesso, não vitória.</p>`));
+      <p class="jxj-nota">Nenhuma vantagem de carta ou de atributo: o Pro libera acesso, não vitória.</p>`));
     /* bot direto, sem fila: o limite do dia vem do servidor */
     if(jxjBotLigado(est)){
       const l=usaveis.find(x=>x.id===est.principalEfetivo)||usaveis[0];
@@ -9274,7 +9291,7 @@ async function jxjTelaFila(){
     ?`Se só você estiver na fila, ou se ninguém aparecer em ${ESPERA_BOT} segundos, dá pra lutar contra um bot, sempre marcado como bot.`
     :"Ninguém é inventado: se não houver adversário agora, a busca continua."}`));
   const regras=el("details","jxj-regras-busca");
-  regras.innerHTML=`<summary>Regras da luta</summary><ul class="jxj-lista-simples">${def.regras.ausencia.map(t=>`<li>${t}</li>`).join("")}
+  regras.innerHTML=`<summary>Regras da luta</summary><ul class="jxj-lista-simples">${(est.combateV2&&def.regras.ausencia2||def.regras.ausencia).map(t=>`<li>${t}</li>`).join("")}
     <li>O par encontrado tem 20 segundos pra confirmar. Quem recusa espera um minuto pra voltar.</li>
     <li>O mesmo par vale rating no máximo ${def.regras.parRating24h} vezes em 24 horas.</li>${!est.pro?"<li>A primeira luta contra gente é a luta grátis do plano grátis.</li>":""}
     ${jxjBotLigado(est)?`<li>Luta contra bot vale rating${!est.pro?` e não gasta a luta grátis (${def.regras.botFreeDia} por dia no plano grátis)`:""}.</li>`:""}</ul>`;
@@ -11234,7 +11251,8 @@ function jxjDesenharResultado(area,v,{eu,ele},ciclo){
     if(a)a.innerHTML=ok?`${ICONE("check")} O sha256 da semente bate com o compromisso mostrado antes da luta.`:ok===false?"A semente não bate com o compromisso.":"Este navegador não confere sha256."; });
   area.appendChild(g);
   const acoes=el("div","jxj-acoes");
-  if(!espectador&&v.tipo!=="torneio"&&v.revanche&&Date.parse(v.revanche.ate)>Date.parse(v.agora)&&r.metodo!=="ANULADA"){
+  /* a revanche é do Pro (o servidor recusa o pedido de quem não tem): sem o Pro, nada de botão (2026-11-19) */
+  if(!espectador&&meuPro&&v.tipo!=="torneio"&&v.revanche&&Date.parse(v.revanche.ate)>Date.parse(v.agora)&&r.metodo!=="ANULADA"){
     const pedi=v.revanche[eu],ele2=v.revanche[ele];
     const rb=el("button","botao",`${ICONE("reenviar")}<span>${pedi?"Revanche pedida, esperando":ele2?"Aceitar a revanche":"Pedir revanche"}</span>`); rb.type="button"; rb.disabled=pedi;
     const erroR=el("p","jxj-erro"); erroR.hidden=true;
@@ -11737,7 +11755,7 @@ function screenMenu(){
     Object.assign(cartaoMenu({rota:"continuar",tamanho:"grande",foto:"vestiario",rotulo:"Carreira salva",titulo:"Continuar",
       texto:`<span id="continuar-txt">Entre para ver suas carreiras.</span>`,acao:"Ver carreiras",i:1,apagado:true}),{id:"card-continuar"}),
     cartaoMenu({rota:"jxj",tamanho:"faixa",foto:"arena-alto",rotulo:"Competitivo",titulo:"Online",
-      texto:"Crie seu lutador e enfrente outros jogadores em tempo real: a cada troca, os dois escolhem a ação ao mesmo tempo. Ranking, temporadas e torneios com cinturão.",
+      texto:"Crie seu lutador e enfrente outros jogadores em tempo real: a cada troca, os dois jogam uma carta ao mesmo tempo. Ranking, temporadas e torneios com cinturão.",
       acao:"Jogar online",i:2}),
     cartaoMenu({rota:"ranking",tamanho:"medio",foto:"cinturao",rotulo:"Placar",titulo:"Ranking",
       extra:`<span class="previa" id="previa-ranking"><span class="carregando">Carregando</span></span>`,

@@ -4,6 +4,7 @@
    jxj confere. Nenhum número aqui vem do cliente. */
 import { ESTRATEGIA } from "./_jxj-estrategia.js";
 import { nomeAceito } from "./_placar-regras.js";
+import { K2 } from "./_jxj-combate2.js";
 
 export const NIVEL_MAX = 30;
 export const SLOTS_FREE = 1, SLOTS_PRO = 3;
@@ -141,5 +142,14 @@ export const REGRA_AUSENCIA = [
   "Prazo perdido vira Defender automático (sem Defesa na mão, a próxima ação que sobrou).",
   "Dois prazos perdidos seguidos: a troca conta pro adversário.",
   "Três seguidos: derrota por W.O., com rating e histórico.",
+  "Sair da página não cancela a luta: ela continua e você pode voltar.",
+];
+/* a mesma regra no Online de cartas (combate v2, 2026-11-19): o prazo da ação da v2 e a carta que joga
+   sozinha (cartaPadrao: a Defesa da mão, sem Defesa a primeira carta) */
+export const REGRA_AUSENCIA_V2 = [
+  `Cada troca tem ${ESTRATEGIA.prazosV2.acaoMs / 1000} segundos pra jogar a carta.`,
+  "Prazo perdido joga a Defesa da mão (sem Defesa, a primeira carta da mão).",
+  `Dois prazos perdidos seguidos: ${K2.pts.ausencia} pontos pro adversário nos cartões.`,
+  `Três seguidos: derrota por W.O., com rating e histórico.`,
   "Sair da página não cancela a luta: ela continua e você pode voltar.",
 ];

@@ -11483,8 +11483,18 @@ async function testarJxJ() {
       await lutar(lid, f1, f2);
       await erro(f1, "filaEntrar", { lutadorId: l1 }, /luta grátis já foi usada/);
       await erro(f1, "torneioInscrever", { lutadorId: l1 }, /Pro/);
-      await ok(f1, "revanche", { lutaId: lid }); const r = await api(f2, "revanche", { lutaId: lid });
-      if (r.status !== 400 || !/Pro/.test(r.json.erro)) throw new Error("revanche grátis: " + JSON.stringify(r));
+      /* 2026-11-19 (e2e do Online pra todos): o pedido do grátis é recusado na hora; antes ele ficava
+         "esperando" uma revanche que o banco nunca criaria */
+      for (const f of [f1, f2]) { const r = await api(f, "revanche", { lutaId: lid }); if (r.status !== 400 || !/Pro/.test(r.json.erro)) throw new Error("revanche grátis: " + JSON.stringify(r)); }
+      if ((await q("select revanche_a, revanche_b from jxj_lutas where id = $1", [lid])).some((x) => x.revanche_a || x.revanche_b)) throw new Error("gravou o pedido de revanche do grátis");
+    });
+    await conf("revanche entre um Pro e um grátis: o pedido do Pro também é recusado na hora (o banco nunca criaria a luta)", async () => {
+      const p1 = await novoUsuario({ pro: true }), f2 = await novoUsuario();
+      const l1 = (await criar(p1)).id, l2 = (await criar(f2)).id;
+      const lid = await parear(p1, l1, f2, l2);
+      await lutar(lid, p1, f2);
+      const r = await api(p1, "revanche", { lutaId: lid });
+      if (r.status !== 400 || !/Pro/.test(r.json.erro)) throw new Error("revanche Pro contra grátis: " + JSON.stringify(r));
     });
     await conf("recusa antes de confirmar: luta cancelada, a luta grátis não é gasta, quem recusou espera 60 s e quem confirmou volta pra fila", async () => {
       const f1 = await novoUsuario(), f2 = await novoUsuario();
@@ -12718,6 +12728,35 @@ async function testarJxJ() {
       const L2 = (await q("select estado, bot from jxj_lutas where id = $1", [lid2]))[0];
       if (L2.estado.cv || !L2.bot.mx || L2.bot.v !== BOT.VERSAO_BOT) throw new Error("sem a flag, a luta contra bot não é a de antes");
       await lutarBot(lid2, u);
+    });
+    /* achado no e2e do Online pra todos (2026-11-19): o bot montava o perfil com o lutador do jxj_estado,
+       que não traz o deck, e a luta contra bot saía sempre com o deck padrão */
+    await conf("combate v2 pra todos e bot: o deck montado (e salvo) do jogador é o deck dele na luta contra bot; com o padrão, o padrão", async () => {
+      await zerarLimites();
+      const u = await novoUsuario({ pro: true }), l = (await criar(u)).id;
+      await flagV2(true);
+      try {
+        const est = (await ok(u, "estado")).lutadores.find((x) => x.id === l);
+        const pad = CT.DECK_PADRAO[est.estilo], lib = CT.cartasLiberadas(est.estilo, {});
+        let montado = null;
+        for (let i = pad.length - 1; i >= 0 && !montado; i--) for (const id of lib) {
+          const d = pad.slice(); d[i] = id;
+          if (JSON.stringify(d) !== JSON.stringify(pad) && CT.validarDeck(est.estilo, d, lib).ok) { montado = d; break; }
+        }
+        if (!montado) throw new Error("não achei um deck montado válido");
+        await ok(u, "deck", { lutadorId: l, deck: montado });
+        await ok(u, "filaEntrar", { lutadorId: l });
+        const lid = (await ok(u, "bot", { lutadorId: l })).luta;
+        const L = (await q("select estado, perfis from jxj_lutas where id = $1", [lid]))[0];
+        if (L.estado.cv !== 2 || JSON.stringify(L.perfis.a.deck) !== JSON.stringify(montado)) throw new Error("deck na luta contra bot: " + JSON.stringify(L.perfis.a.deck) + " (montado " + JSON.stringify(montado) + ")");
+        await ok(u, "abandonar", { lutaId: lid });
+        await ok(u, "deck", { lutadorId: l, deck: null });
+        await ok(u, "filaEntrar", { lutadorId: l });
+        const lid2 = (await ok(u, "bot", { lutadorId: l })).luta;
+        const L2 = (await q("select perfis from jxj_lutas where id = $1", [lid2]))[0];
+        if (JSON.stringify(L2.perfis.a.deck) !== JSON.stringify(pad)) throw new Error("com o padrão: " + JSON.stringify(L2.perfis.a.deck));
+        await ok(u, "abandonar", { lutaId: lid2 });
+      } finally { await flagV2(false); }
     });
     await conf("Pro sozinho na fila (2026-10-20): fora da fila o servidor pede pra entrar; na fila, sem mais ninguém, o bot sai na hora", async () => {
       await zerarLimites();
@@ -15963,6 +16002,44 @@ async function testarJxJTelas() {
         m = await abrir(`lutador/${l1}/deck`);
         semLixoV3T(htmlDe(desde(m)), "aba Deck");
       } finally { await flagV2T(false); }
+    });
+    /* Online de cartas pra todos (2026-11-19, pedido do dono: "coloque ele"): com a flag em true, nenhum texto
+       do combate de antes fala com quem joga cartas */
+    await conf("combate v2 pra todos (flag true): painel, criação, árvore e busca sem os textos do combate de antes; a criação mostra a passiva e as cartas fixas do estilo; o detalhe do nó sem o atributo de antes; a busca com o prazo e a carta padrão da v2", async () => {
+      await flagV2T(true);
+      try {
+        const VELHAS = [/escolhem a ação/, /Mão por round/, /acertar a leitura vale/, /continua só no combate de antes/, /Defender automático/, /teto suave/, /com teto em cada atributo/];
+        const velha = (h, onde) => { const v = VELHAS.filter((r) => r.test(h)); if (v.length) throw new Error(onde + ": " + v.join(", ")); };
+        const def = await api(u1, "definicoes");
+        if (!Array.isArray(def.regras.ausencia2) || !def.regras.ausencia2.some((t) => t.includes(`${def.combate2 ? 18 : 0} segundos`)) || def.regras.ausencia2.some((t) => /Defender automático/.test(t)))
+          throw new Error("regra de ausência da v2: " + JSON.stringify(def.regras.ausencia2));
+        let m = await abrir("");
+        velha(htmlDe(desde(m)), "painel");
+        m = await abrir("criar/2");
+        const op = desde(m).filter((n) => tem(n, "jxj-opcao")).pop();
+        await op.onclick(); await assentar();
+        const h3 = htmlDe(desde(m));
+        velha(h3, "criação, estilo");
+        if (!h3.includes(def.combate2.passivas.striker.nome) || !h3.includes(def.combate2.cartas[def.combate2.fixas.striker[0]].nome)) throw new Error("criação sem a passiva ou sem as fixas: " + h3.replace(/\s+/g, " ").slice(0, 300));
+        m = await abrir(`lutador/${l1}/arvore`);
+        velha(htmlDe(desde(m)), "árvore");
+        const prec = desde(m).filter((n) => tem(n, "jxj-no") && String(n.innerHTML).includes("<b>Precisão</b>")).pop();
+        await prec.onclick(); await assentar(10);
+        const det = String(env.todos.filter((n) => tem(n, "jxj-no-detalhe")).pop().innerHTML);
+        velha(det, "detalhe do nó");
+        if (/\+\d+(,\d+)? por nível/.test(det) || !det.includes("Direto")) throw new Error("detalhe do nó na v2: " + det.replace(/\s+/g, " ").slice(0, 300));
+        /* a aba Atributos: os do estilo e da categoria (a árvore não soma na luta de cartas) e as cartas da árvore */
+        await db.query("update jxj_lutadores set build = '{\"precisao_maos\": 1}'::jsonb where id = $1", [l1]);
+        m = await abrir(`lutador/${l1}/perfil`);
+        const hp = htmlDe(desde(m));
+        if (/Habilidades em uso|o que a árvore somou/.test(hp) || /<b>\d+ <small>\+\d+<\/small><\/b>/.test(hp) || !hp.includes("Cartas da árvore") || !hp.includes("Direto: 1 estrela"))
+          throw new Error("aba Atributos na v2: " + hp.replace(/\s+/g, " ").slice(0, 400));
+        m = await abrir("fila");
+        const hf = htmlDe(desde(m));
+        velha(hf, "busca");
+        if (!hf.includes("18 segundos pra jogar a carta")) throw new Error("busca sem o prazo da v2: " + hf.replace(/\s+/g, " ").slice(0, 300));
+        await api(u1, "filaSair");
+      } finally { await flagV2T(false); await db.query("update jxj_lutadores set build = '{}'::jsonb where id = $1", [l1]); }
     });
     await conf("carta nova chegando e árvore com a carta: Somar e Salvar no nó Precisão mostra o Direto chegando (1 estrela); de novo, a 2ª estrela; sem animação com reduzir movimento; 'Ver no deck' abre a aba Deck; o nó desenha a carta com as estrelas do nível; nome escapado", async () => {
       await flagV2T({ contas: [u1] });

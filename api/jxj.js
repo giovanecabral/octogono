@@ -573,7 +573,7 @@ function definicoes(ativo) {
       variantes: Object.fromEntries(Object.entries(MOTOR.VARIANTE_POR_ID).map(([id, v]) => [id, { rotulo: v.rotulo, desc: v.desc, papel: v.papel, familia: v.familia, frase: v.frase }])) },
     formato: MOTOR.FORMATO,
     regras: { nivelMax: REG.NIVEL_MAX, slotsFree: REG.SLOTS_FREE, slotsPro: REG.SLOTS_PRO, trocaPrincipalHoras: REG.TROCA_PRINCIPAL_HORAS,
-      custoRespec: REG.CUSTO_RESPEC, tetoFichasDia: REG.TETO_FICHAS_DIA, parRating24h: REG.PAR_RATING_24H, ausencia: REG.REGRA_AUSENCIA,
+      custoRespec: REG.CUSTO_RESPEC, tetoFichasDia: REG.TETO_FICHAS_DIA, parRating24h: REG.PAR_RATING_24H, ausencia: REG.REGRA_AUSENCIA, ausencia2: REG.REGRA_AUSENCIA_V2,
       temporadaDias: REG.TEMPORADA_DIAS, torneioVagas: REG.TORNEIO_VAGAS, torneioJanelaH: REG.TORNEIO_JANELA_H, torneioLutasMin: REG.TORNEIO_LUTAS_MIN,
       lutasPraClassificar: RAT.LUTAS_PRA_CLASSIFICAR, reset: RAT.RESET, fichasTorneio: REG.FICHAS_TORNEIO, xpTorneio: REG.XP_TORNEIO,
       raios: REG.RAIOS, raioPadrao: REG.RAIO_PADRAO, tolerancia: REG.TOLERANCIA,
@@ -855,6 +855,12 @@ async function executar(acao, c, uid) {
       const lid = idDe(c.lutaId, "luta");
       const d0 = await rpc("jxj_luta", { lid });
       if (d0 && d0.luta && d0.luta.bot) throw new ErroJxJ("luta contra bot não tem revanche");
+      /* a revanche é do Pro dos dois (jxj_revanche_criar recusa no fim): sem o Pro de um deles, recusa já no
+         pedido, sem gravar; antes o pedido ficava esperando uma luta que nunca sairia (2026-11-19) */
+      if (d0 && d0.luta && (d0.luta.a_user === uid || d0.luta.b_user === uid)) {
+        const pros = await Promise.all([d0.luta.a_user, d0.luta.b_user].map((u) => rpc("jxj_pro_ativo", { uid: u })));
+        if (pros.some((p) => p !== true)) throw new ErroJxJ("A revanche é do Pro: os dois lutadores precisam ter o Pro.");
+      }
       const r = await rpc("jxj_revanche_pedir", { uid, lid });
       if (r.luta) return { luta: r.luta };
       if (!r.pronta) return { esperando: true };
@@ -902,6 +908,13 @@ async function executar(acao, c, uid) {
       const sozinho = !!mov && Number(mov.fila) <= 1;
       /* Fase 5: com a flag combate_v2 da conta do jogador, a luta contra bot é do combate novo (o bot joga com cartas) */
       const v2 = await combateV2Para([uid]);
+      /* o jxj_estado não traz o deck: o montado vem do jxj_decks (sem ele, a luta contra bot saía sempre
+         com o deck padrão; achado no e2e do Online pra todos, 2026-11-19). deckDo confere e cai no padrão */
+      if (v2) {
+        let decks = {};
+        try { decks = (await rpc("jxj_decks", { uid })) || {}; } catch (e) { if (e.codigo !== "PGRST202") throw e; }
+        l.deck = decks[String(l.id)] || null;
+      }
       const bot = (v2 ? BOT2.montarBot2 : BOT.montarBot)({ nivel: l.nivel, categoria: l.categoria, rating: l.rating, semente: novaSemente(), limitesRosto: LIMITES_ROSTO });
       /* primeira luta contra bot da conta: o jeito sai limpo nas primeiras trocas (BOT.TROCAS_PURAS) */
       const primeira = await primeiraContraBot(est);
