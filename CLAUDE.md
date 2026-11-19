@@ -32,6 +32,7 @@ supabase_jxj_motor3.sql  Sexta (motor v3, 2026-10-20): só a versão de balancea
 supabase_jxj_fase5.sql  Sétima (2026-10-21): torneio só com lutas contra gente e nível na fila. Depois da sexta, com aprovação do dono.
 supabase_jxj_gratis_pesos.sql  Nona (2026-11-06): pesos diferentes na fila e a luta grátis contra gente por dia. Depois de todas, com aprovação do dono.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
+supabase_jxj_v2_todos.sql  Online de cartas pra todos (2026-11-19): guarda a flag de antes e liga combate_v2 = true. Depois da combate2, com aprovação do dono.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 luta3d/             Luta da carreira em 3D (2026-11-09): diretor.js, palco.js, lutador.js, three.js em vendor/.
                     mx_lutas.glb (animações do Mixamo) fica FORA do git e só sobe no vercel --prod.

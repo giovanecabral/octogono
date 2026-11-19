@@ -11901,6 +11901,30 @@ async function testarJxJ() {
     const CT = await import(url.pathToFileURL(path.join(RAIZ, "api", "_jxj-cartas.js")).href);
     const flagV2 = (v) => q("update jxj_config set valor = $1::jsonb where chave = 'combate_v2'", [JSON.stringify(v)]);
     const estadoDb = async (lid) => (await q("select estado, perfis, semente, a_user from jxj_lutas where id = $1", [lid]))[0];
+    /* supabase_jxj_v2_todos.sql (2026-11-19): liga o combate de cartas pra todos, guarda o valor de antes e volta */
+    await conf("supabase_jxj_v2_todos.sql: guarda a flag de antes (só na primeira vez), liga pra todos (conta nova joga cartas), a conferência devolve true, rodar de novo não estraga o guardado e o comando comentado volta pro só-dono", async () => {
+      await zerarLimites();
+      const dono = await novoUsuario({ pro: true }), nova = await novoUsuario();
+      const arq = fs.readFileSync(path.join(RAIZ, "supabase_jxj_v2_todos.sql"), "utf8");
+      await flagV2({ contas: [dono] });
+      try {
+        await criar(nova);
+        if ((await ok(nova, "estado")).combateV2 !== false) throw new Error("antes do SQL a conta nova já jogava cartas");
+        const r1 = await db.exec(arq);
+        if (r1[r1.length - 1].rows[0].ligado !== true) throw new Error("conferência: " + JSON.stringify(r1[r1.length - 1].rows));
+        if ((await ok(nova, "estado")).combateV2 !== true) throw new Error("depois do SQL a conta nova não joga cartas");
+        await db.exec(arq);
+        const antes = (await q("select valor from jxj_config where chave = 'combate_v2_antes'"))[0];
+        if (!antes || JSON.stringify(antes.valor) !== JSON.stringify({ contas: [dono] })) throw new Error("valor guardado: " + JSON.stringify(antes));
+        /* o comando de voltar, do jeito que está no comentário */
+        const i = arq.indexOf("-- Voltar pro só-dono"), f = arq.indexOf("-- Desligar pra todo mundo");
+        const volta = arq.slice(i, f).split("\n").filter((l) => l.startsWith("--   ")).map((l) => l.slice(5)).join("\n");
+        if (!/^update jxj_config/.test(volta)) throw new Error("sem o comando de voltar: " + volta);
+        await db.exec(volta);
+        const v = (await q("select valor from jxj_config where chave = 'combate_v2'"))[0].valor;
+        if (JSON.stringify(v) !== JSON.stringify({ contas: [dono] }) || (await ok(nova, "estado")).combateV2 !== false) throw new Error("a volta: " + JSON.stringify(v));
+      } finally { await flagV2(false); await q("delete from jxj_config where chave = 'combate_v2_antes'"); }
+    });
     await conf("combate v2 desligado (o padrão da migração): a luta nova é a de antes; as definições trazem as cartas, o chão, as passivas e os decks padrão; o estado diz combateV2 false e não manda deck", async () => {
       await zerarLimites();
       if ((await q("select valor from jxj_config where chave = 'combate_v2'"))[0].valor !== false) throw new Error("a migração não entra desligada");
