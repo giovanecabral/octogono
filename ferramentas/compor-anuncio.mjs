@@ -61,9 +61,9 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#07080B}
 #cartaz .raios{position:absolute;inset:-30%;background:repeating-conic-gradient(from 0deg at 50% 50%,rgba(215,38,30,.16) 0deg 6deg,transparent 6deg 18deg)}
 #cartaz img.simb{width:${Math.round(W * .34)}px;position:relative}
 #cartaz img.pal{width:${Math.round(W * .7)}px;position:relative}
-#cartaz .frase{position:relative;font-size:${Math.round(W * .052)}px;color:#F2EEE6}
+#cartaz .frase{position:relative;font-size:${Math.round(W * .058)}px;color:#F2EEE6;text-align:center;line-height:1.15;padding:0 ${Math.round(W * .06)}px}
 #cartaz .frase b{color:#E8362D;font-weight:800}
-#cartaz .botao{position:relative;margin-top:${Math.round(H * .012)}px;background:#D7261E;color:#F2EEE6;font-size:${Math.round(W * .068)}px;padding:.32em 1.1em .26em;
+#cartaz .botao{position:relative;margin-top:${Math.round(H * .012)}px;background:#D7261E;color:#F2EEE6;font-size:${Math.round(W * .082)}px;padding:.32em 1.1em .26em;
   clip-path:polygon(0 0,100% 0,100% 70%,92% 100%,0 100%);box-shadow:0 0 ${Math.round(W * .06)}px rgba(232,54,45,.55)}
 #cartaz .url{position:relative;font-size:${Math.round(W * .044)}px;color:#C9CBD2;letter-spacing:.12em}
 </style></head><body><div id="palco"><img id="fundo"><div id="janela"><div class="cam" id="cam"><img id="q0"><img id="q1"></div></div></div>
