@@ -12332,7 +12332,9 @@ async function testarJxJ() {
         if ((await ok(u1, "luta", { lutaId: lid })).minhaCarta !== minha[0]) throw new Error("a minha carta não volta pra mim");
         await ok(u2, "acao", { lutaId: lid, round: 1, troca: 1, carta: dele[0] });
         const v = await ok(u1, "luta", { lutaId: lid }), t = v.trocas[0];
-        if (!t || t[eu === "a" ? "cartaA" : "cartaB"] !== minha[0] || t[ele === "a" ? "cartaA" : "cartaB"] !== dele[0] || !t.resolucao || !t.resolucao.cartas || !t.eventos.length)
+        if (!t || t[eu === "a" ? "cartaA" : "cartaB"] !== minha[0] || t[ele === "a" ? "cartaA" : "cartaB"] !== dele[0] || !t.resolucao || !t.resolucao.cartas || !Array.isArray(t.eventos)
+          /* troca sem nada pra narrar (Bloqueio contra Bloqueio: só o empate de velocidade, que não vira texto) vem com eventos vazio */
+          || (!t.eventos.length && t.resolucao.ordem !== "empate" && t.resolucao.ordem !== "anuladas"))
           throw new Error("troca: " + JSON.stringify(t).slice(0, 300));
         if (t.resolucao.cartas[eu].id !== minha[0] || typeof t.resolucao.cartas[eu].vel !== "number") throw new Error("log de resolução: " + JSON.stringify(t.resolucao));
         /* refazer pela semente: as duas mandaram a carta na etapa do sinal (compromisso honesto), então a postura é a categoria da carta */
