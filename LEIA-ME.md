@@ -6552,6 +6552,40 @@ janela na luta nova e não na de antes; a vista diz 3 e 4), `jxjtelas`
 contra bot no servidor local: cartas escondidas durante a animação, Só as
 cartas e volta, histórico, cena do fim depois do anúncio).
 
+## Funil do lançamento (2026-11-19)
+
+O lançamento vai por anúncio pago e o Vercel Hobby não grava os eventos
+customizados do Vercel Analytics (`evento()` continua mandando, mas nada
+aparece). O funil passou a ser contado no nosso banco, sem dado pessoal.
+
+- **Banco:** `supabase_funil.sql` (só aditiva; desfazer com
+  `supabase_funil_rollback.sql`). Tabela `funil_eventos` (sessão uuid,
+  evento, dia de São Paulo, criado_em), chave primária sessão + evento:
+  cada sessão conta cada etapa uma vez. RLS ligada e nenhum grant pra
+  anon e authenticated. `funil_registrar(sessao, evento)` (chave pública)
+  aceita só a lista fechada e corta o evento em 40 caracteres, com teto
+  de 50 mil linhas por dia; `funil_por_dia(dias)` só pra chave de serviço.
+- **Navegador:** `funil(evento)` no index.html, ao lado de `evento()`.
+  Sessão sorteada em `funil:sessao` (localStorage; sem ele, vale pela
+  página), `funil:feitos` evita chamada repetida. Só grava em octogono.fun
+  e draft-ufc.vercel.app e nunca com `navigator.webdriver` (testes, prints
+  e ponta a ponta não gravam em produção). Sem a migração, PGRST202 e a
+  página para de tentar.
+- **Eventos:** abriu, criou_conta, terminou_draft, terminou_luta_1,
+  terminou_carreira (`screenReport`, inclui aposentadoria), abriu_online
+  (rota `jxj`), terminou_treino_online (a marca `jxj:treino`/`jxj:treino2`
+  lida a cada troca de rota, de fora da tela do Online), luta_online_1
+  (resposta de luta encerrada em `jxj()`), viu_pro (aba do Pro ou
+  `bloqueioPro`), iniciou_pagamento (cobrança criada) e pagou, que sai do
+  servidor em `ativarPro` (`api/_pro.js`) com a sessão tirada do id do
+  pagamento (`sessaoDoPagamento`): cada pagamento conta uma vez.
+- **Painel:** aba Funil do `#/admin` (ação `funil` do `api/admin.js`,
+  grava no `admin_log`): os degraus com o total de 14 dias e a conversão
+  sobre o degrau de onde ele vem (`FUNIL_DEGRAUS` em `api/_funil.js`) e a
+  tabela por dia.
+- **Mexeu na lista:** as três cópias (SQL, `api/_funil.js`, index.html)
+  e `node testar.js funil`, que roda o SQL no PGlite.
+
 ## Cartas da árvore (2026-11-17)
 
 No Online do combate v2 (atrás da flag `combate_v2`), cada nó da árvore libera

@@ -8,6 +8,8 @@
  * Nenhuma vai pro código.
  */
 
+import { sessaoDoPagamento } from "./_funil.js";
+
 export const SUPABASE_URL = "https://kapdpipwqkumzschctnj.supabase.co";
 export const ASAAS_URL = "https://api.asaas.com/v3";
 /* trava contra cobrança de teste/valor errado. O plano custa R$ 11,99
@@ -170,7 +172,24 @@ export async function ativarPro(userId, customerId, paymentId) {
     }),
   });
   if (!r.ok) throw new Error("ativação do Pro falhou (" + r.status + ")");
+  await registrarPagouNoFunil(paymentId);
   return novaExpiracao;
+}
+
+/* Funil do lançamento (2026-11-19, supabase_funil.sql): o "pagou" sai
+   daqui, no ponto em que o pagamento ativa (depois da reserva, uma
+   execução só por pagamento). A sessão vem do id do pagamento
+   (sessaoDoPagamento), então nem a reativação depois de uma falha conta
+   duas vezes. Nunca derruba a ativação: sem a migração (PGRST202), banco
+   fora ou rede caída, segue em silêncio. */
+export async function registrarPagouNoFunil(paymentId) {
+  try {
+    const r = await supabaseServiceRole("rpc/funil_registrar", {
+      method: "POST",
+      body: JSON.stringify({ sessao: sessaoDoPagamento(paymentId), evento: "pagou" }),
+    });
+    if (!r.ok && r.status !== 404) console.error("funil_registrar", r.status);
+  } catch { /* o funil nunca atrapalha o pagamento */ }
 }
 
 export async function desativarPro(userId) {

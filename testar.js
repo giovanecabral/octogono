@@ -8600,7 +8600,7 @@ async function testarPagamento() {
   const logOriginal = console.log;
   let banco, asaas, usuarios, falharEscrita, falharAssinatura;
   const zerar = () => {
-    banco = { assinaturas: {}, processados: [], upsertsPro: 0 };
+    banco = { assinaturas: {}, processados: [], upsertsPro: 0, funil: [] };
     asaas = {};           // id -> cobrança
     usuarios = { "tok-u1": { id: "u1", email: "a@a.com" } };
     falharEscrita = false; falharAssinatura = false;
@@ -8637,6 +8637,8 @@ async function testarPagamento() {
       const ev = decodeURIComponent(m[1]).split(",");
       return ok(banco.processados.filter(x => x.asaas_payment_id === id && ev.includes(x.evento)));
     }
+    /* funil do lançamento (2026-11-19): o pagou que api/_pro.js registra na ativação */
+    if (u.includes("/rest/v1/rpc/funil_registrar")) { banco.funil.push(JSON.parse(op.body)); return ok(true); }
     if (u.includes("/rest/v1/assinaturas")) {
       await espera();
       if (op.method === "POST") {
@@ -8673,6 +8675,7 @@ async function testarPagamento() {
       const rs = await Promise.all(Array.from({ length: 10 }, () => confirmar("tok-u1")));
       if (rs.some(r => r.cod !== 200)) throw new Error("status " + rs.map(r => r.cod));
       if (banco.upsertsPro !== 1 || Math.round(diasDePro()) !== 30) throw new Error(`${banco.upsertsPro} ativações, ${diasDePro().toFixed(1)} dias`);
+      if (banco.funil.length !== 1 || banco.funil[0].evento !== "pagou") throw new Error("funil: " + JSON.stringify(banco.funil));
     });
     await conf("webhook e volta ao jogo ao mesmo tempo: 30 dias, não 60", async () => {
       zerar(); cobranca("pay_dois");
@@ -9528,12 +9531,27 @@ async function testarAdmin() {
     if (!env.todos.some(n => tem(n, "erro-num"))) throw new Error("não mostrou a 404");
     if (env.todos.some(n => n.dataset && n.dataset.aba === "jogadores")) throw new Error("mostrou aba do painel");
   });
-  await conf("tela: admin vê Jogadores, Ranking e Registro (Admins só pro dono) e a lista vem do servidor", async () => {
+  await conf("tela: admin vê Jogadores, Ranking, Funil e Registro (Admins só pro dono) e a lista vem do servidor", async () => {
     const lista = [{ id: U, email: "u@x.com", criado_em: "2026-09-01T00:00:00Z", ultimo_acesso: null, pro: false, banido: false, admin: false, carreiras: 2, no_placar: 1 }];
     const { env, chamadas } = await tela(b => b.acao === "eu" ? { admin: true, dono: false } : b.acao === "listar" ? { jogadores: lista, pagina: 0, porPagina: 50 } : {});
     const abas = env.todos.filter(n => n.dataset && n.dataset.aba).map(n => n.dataset.aba);
-    if (abas.join(",") !== "jogadores,ranking,registro") throw new Error("abas: " + abas);
+    if (abas.join(",") !== "jogadores,ranking,funil,registro") throw new Error("abas: " + abas);
     if (!chamadas.includes("listar") || !env.todos.some(n => tem(n, "admin-quem") && /u@x\.com/.test(n.innerHTML))) throw new Error("lista não apareceu");
+  });
+  await conf("tela: aba Funil desenha os degraus com a conversão que vem do servidor; sem a migração, avisa", async () => {
+    const funil = { eventos: ["abriu", "criou_conta"], dias: [{ dia: "2026-11-19", n: { abriu: 8, criou_conta: 2 } }],
+      degraus: [{ evento: "abriu", anterior: null, total: 8, doAnterior: null, deAbriu: null }, { evento: "criou_conta", anterior: "abriu", total: 2, doAnterior: 25, deAbriu: 25 }] };
+    const { env, chamadas } = await tela(b => b.acao === "eu" ? { admin: true } : b.acao === "funil" ? funil : { jogadores: [], pagina: 0, porPagina: 50 });
+    const aba = env.todos.find(n => n.dataset && n.dataset.aba === "funil");
+    aba.onclick(); for (let k = 0; k < 4; k++) await new Promise(r => setImmediate(r));
+    if (!chamadas.includes("funil")) throw new Error("não pediu o funil");
+    const conta = env.todos.find(n => tem(n, "admin-funil-degrau") && n.dataset.evento === "criou_conta");
+    if (!conta || !/Criou a conta/.test(conta.innerHTML) || !/25%/.test(conta.innerHTML) || !/>2</.test(conta.innerHTML)) throw new Error("degrau: " + (conta && conta.innerHTML));
+    const tab = env.todos.find(n => tem(n, "admin-funil-rolagem"));
+    if (!tab || !/19\/11/.test(tab.innerHTML) || !/<td>8<\/td>/.test(tab.innerHTML)) throw new Error("tabela por dia: " + (tab && tab.innerHTML));
+    const s = await tela(b => b.acao === "eu" ? { admin: true } : b.acao === "funil" ? { semMigracao: true } : { jogadores: [], pagina: 0, porPagina: 50 });
+    s.env.todos.find(n => n.dataset && n.dataset.aba === "funil").onclick(); for (let k = 0; k < 4; k++) await new Promise(r => setImmediate(r));
+    if (!s.env.todos.some(n => tem(n, "vazio") && /supabase_funil\.sql/.test(n.innerHTML))) throw new Error("não avisou da migração");
   });
   await conf("tela: banir pede confirmação (1º clique não chama o servidor, 2º chama)", async () => {
     const lista = [{ id: U, email: "u@x.com", criado_em: "2026-09-01T00:00:00Z", pro: false, banido: false, admin: false, carreiras: 0, no_placar: 0 }];
@@ -9547,6 +9565,337 @@ async function testarAdmin() {
   });
   const ok = !falhas.length;
   console.log("\n" + (ok ? verde("admin ok") : vermelho(`${falhas.length} falha(s) no admin`)));
+  return ok;
+}
+
+/* ================================================================== *
+ * FUNIL do lançamento (2026-11-19): supabase_funil.sql num Postgres de
+ * verdade (PGlite), a ação funil do painel de admin, o "pagou" do
+ * servidor, a função funil() do navegador (nunca grava fora do site de
+ * verdade, nunca quebra o jogo) e a prévia do link (og:*).
+ * ================================================================== */
+async function testarFunil() {
+  console.log("\n" + cinza("funil: SQL no PGlite, painel de admin, pagou do servidor, funil() do navegador, prévia do link"));
+  const url = require("url"), crypto = require("crypto");
+  const falhas = [];
+  const conf = async (nome, fn) => {
+    try { await fn(); console.log(verde("  ok    ") + nome); }
+    catch (e) { falhas.push(nome); console.log(vermelho("  falha ") + nome + "\n         " + e.message); }
+  };
+  const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  const sqlFunil = fs.readFileSync(path.join(RAIZ, "supabase_funil.sql"), "utf8");
+  const sqlRollback = fs.readFileSync(path.join(RAIZ, "supabase_funil_rollback.sql"), "utf8");
+  const F = await import(url.pathToFileURL(path.join(RAIZ, "api", "_funil.js")).href);
+  const listaHtml = (() => { const m = html.match(/const FUNIL_EVENTOS=\[([^\]]*)\]/); return m ? [...m[1].matchAll(/"(\w+)"/g)].map(x => x[1]) : []; })();
+
+  /* ---------- 1. as listas ---------- */
+  await conf("a lista fechada de eventos é a mesma no SQL (check e função), em api/_funil.js e no index.html", () => {
+    const blocos = [...sqlFunil.matchAll(/in \(\s*((?:'\w+',?\s*)+)\)/g)].map(m => [...m[1].matchAll(/'(\w+)'/g)].map(x => x[1]));
+    const esperada = ["abriu", "criou_conta", "terminou_draft", "terminou_luta_1", "terminou_carreira", "abriu_online",
+      "terminou_treino_online", "luta_online_1", "viu_pro", "iniciou_pagamento", "pagou"];
+    if (blocos.length !== 2) throw new Error("esperava 2 listas no SQL, achei " + blocos.length);
+    for (const [nome, l] of [["check", blocos[0]], ["funil_registrar", blocos[1]], ["_funil.js", F.FUNIL_EVENTOS], ["index.html", listaHtml]])
+      if (JSON.stringify(l) !== JSON.stringify(esperada)) throw new Error(nome + ": " + JSON.stringify(l));
+  });
+  await conf("cada evento tem quem chame: funil(\"x\") no index.html pra todos menos o pagou, que sai de api/_pro.js", () => {
+    const pro = fs.readFileSync(path.join(RAIZ, "api", "_pro.js"), "utf8");
+    const chamados = new Set([...html.matchAll(/\bfunil\("(\w+)"\)/g)].map(m => m[1]));
+    const faltam = F.FUNIL_EVENTOS.filter(e => e !== "pagou" && !chamados.has(e));
+    if (faltam.length) throw new Error("sem chamada: " + faltam.join(", "));
+    const fora = [...chamados].filter(e => !F.FUNIL_EVENTOS.includes(e));
+    if (fora.length) throw new Error("chamada com evento fora da lista: " + fora.join(", "));
+    if (chamados.has("pagou")) throw new Error("o navegador não pode mandar pagou");
+    if (!/evento: "pagou"/.test(pro) || !/registrarPagouNoFunil\(paymentId\)/.test(pro)) throw new Error("api/_pro.js não registra o pagou na ativação");
+  });
+
+  /* ---------- 2. SQL no PGlite ---------- */
+  let B;
+  try { B = await import(url.pathToFileURL(path.join(RAIZ, "ferramentas", "banco-teste.mjs")).href); }
+  catch (e) {
+    console.log(vermelho("  falha ") + "o teste do funil precisa do PGlite: rode `npm install --prefix ferramentas` uma vez (" + String(e.message).slice(0, 90) + ")");
+    return false;
+  }
+  const db = await B.novoBanco({ jxj: false });
+  /* o Supabase dá select/insert/update/delete em tabela nova pros papéis
+     do cliente: aqui igual, pra provar que a migração tira */
+  await db.exec("alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated;");
+  const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+  const comoPapel = async (papel, sql, params = []) => {
+    await db.exec(`set role ${papel};`);
+    try { return await q(sql, params); } finally { await db.exec("reset role;"); }
+  };
+  const recusa = async (papel, sql, params = []) => {
+    try { await comoPapel(papel, sql, params); } catch (e) { return String(e.message); }
+    throw new Error(`${papel} conseguiu: ${sql}`);
+  };
+  const reg = async (papel, sessao, evento) => (await comoPapel(papel, "select public.funil_registrar($1::uuid, $2::text) as r", [sessao, evento]))[0].r;
+  const S1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", S2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", S3 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  await conf("migração roda e roda de novo sem erro", async () => {
+    await db.exec(sqlFunil); await db.exec(sqlFunil);
+  });
+  await conf("funil_registrar (chave pública): grava evento da lista uma vez por sessão; recusa evento fora da lista, comprido ou sem sessão", async () => {
+    if (await reg("anon", S1, "abriu") !== true) throw new Error("1ª vez não gravou");
+    if (await reg("anon", S1, "abriu") !== false) throw new Error("2ª vez gravou de novo");
+    if (await reg("authenticated", S2, "abriu") !== true) throw new Error("logado não gravou");
+    if (await reg("anon", S1, "inventado") !== false) throw new Error("aceitou evento fora da lista");
+    if (await reg("anon", S1, "abriu" + "x".repeat(5000)) !== false) throw new Error("aceitou evento comprido");
+    if (await reg("anon", null, "abriu") !== false) throw new Error("aceitou sessão vazia");
+    const n = (await q("select count(*)::int as n from funil_eventos"))[0].n;
+    if (n !== 2) throw new Error(n + " linhas");
+  });
+  await conf("o dia gravado é o de São Paulo", async () => {
+    const d = (await q("select dia::text as d from funil_eventos limit 1"))[0].d;
+    if (d !== F.diaSaoPaulo()) throw new Error(d + " contra " + F.diaSaoPaulo());
+  });
+  await conf("ninguém de fora lê nem grava a tabela direto, nem lê o funil (anon e logado); RLS ligada", async () => {
+    for (const papel of ["anon", "authenticated"]) {
+      await recusa(papel, "select * from funil_eventos");
+      await recusa(papel, `insert into funil_eventos (sessao, evento) values ('${S3}', 'abriu')`);
+      await recusa(papel, "delete from funil_eventos");
+      await recusa(papel, "select * from public.funil_por_dia(14)");
+    }
+    const rls = (await q("select relrowsecurity as r from pg_class where relname = 'funil_eventos'"))[0].r;
+    if (rls !== true) throw new Error("RLS desligada");
+  });
+  await conf("funil_por_dia (chave de serviço): sessões distintas por dia e evento, só dos últimos 14 dias", async () => {
+    await reg("anon", S3, "abriu"); await reg("anon", S1, "criou_conta"); await reg("anon", S1, "criou_conta");
+    await q(`insert into funil_eventos (sessao, evento, dia) values ('${S2}', 'pagou', (now() at time zone 'America/Sao_Paulo')::date - 20)`);
+    const l = await comoPapel("service_role", "select dia::text as dia, evento, sessoes::int as sessoes from public.funil_por_dia(14)");
+    const hoje = F.diaSaoPaulo();
+    const de = ev => (l.find(x => x.evento === ev && x.dia === hoje) || {}).sessoes;
+    if (de("abriu") !== 3 || de("criou_conta") !== 1) throw new Error(JSON.stringify(l));
+    if (l.some(x => x.evento === "pagou")) throw new Error("trouxe dia de fora da janela");
+  });
+  await conf("teto de 50 mil linhas por dia: depois dele a função recusa", async () => {
+    await q(`insert into funil_eventos (sessao, evento) select gen_random_uuid(), 'abriu' from generate_series(1, 50000)`);
+    if (await reg("anon", "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "abriu") !== false) throw new Error("passou do teto");
+    await q("delete from funil_eventos where sessao not in ($1, $2, $3)", [S1, S2, S3]);
+    if (await reg("anon", "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "abriu") !== true) throw new Error("abaixo do teto recusou");
+  });
+
+  /* ---------- 3. painel de admin ---------- */
+  let H;
+  try { H = (await import(url.pathToFileURL(path.join(RAIZ, "api", "admin.js")).href)).default; }
+  catch (e) { console.log(vermelho("  não carregou api/admin.js: " + e.message)); return false; }
+  const A = "22222222-2222-4222-8222-222222222222", U = "33333333-3333-4333-8333-333333333333";
+  const tokens = { "tok-adm": { id: A, email: "adm@x.com" }, "tok-comum": { id: U, email: "u@x.com" } };
+  let log = [], rpcs = [], semMigracao = false;
+  const fetchOriginal = globalThis.fetch, envOriginal = { ...process.env }, logOriginal = console.log, erroOriginal = console.error;
+  const resp = (corpo, status = 200) => ({ ok: status < 300, status, json: async () => corpo, text: async () => JSON.stringify(corpo) });
+  globalThis.fetch = async (u, op = {}) => {
+    u = String(u); const m = op.method || "GET";
+    if (u.endsWith("/auth/v1/user")) { const t = tokens[String((op.headers || {}).Authorization || "").replace("Bearer ", "")]; return t ? resp(t) : resp({}, 401); }
+    if (u.includes("/rest/v1/admins?user_id=eq.")) return resp(u.includes(A) ? [{ user_id: A }] : []);
+    if (u.includes("/rest/v1/admin_log") && m === "POST") { log.push(JSON.parse(op.body)); return resp(null, 201); }
+    const rpc = u.match(/\/rest\/v1\/rpc\/(funil_\w+)$/);
+    if (rpc) {
+      rpcs.push([rpc[1], JSON.parse(op.body || "{}")]);
+      if (semMigracao) return resp({ code: "PGRST202", message: "Could not find the function" }, 404);
+      const a = JSON.parse(op.body || "{}");
+      if (rpc[1] === "funil_por_dia") return resp(await comoPapel("service_role", "select dia::text as dia, evento, sessoes::int as sessoes from public.funil_por_dia($1)", [a.dias]));
+      if (rpc[1] === "funil_registrar") return resp(await reg("service_role", a.sessao, a.evento));
+    }
+    if (/\/rest\/v1\/assinaturas/.test(u)) return m === "POST" ? resp(null, semMigracao === "falhaPro" ? 500 : 201) : resp([]);
+    return resp({}, 404);
+  };
+  Object.assign(process.env, { SUPABASE_SERVICE_ROLE_KEY: "service-falsa", ADMIN_DONO_EMAIL: "dono@x.com" });
+  console.log = (...a) => { if (String(a[0]) !== "admin") logOriginal(...a); };
+  console.error = () => {};
+  const resposta = () => ({ cod: 0, corpo: null, setHeader() {}, status(c) { this.cod = c; return this; }, json(b) { this.corpo = b; return this; }, end() { return this; } });
+  const chamar = async (token, acao) => { const res = resposta(); await H({ method: "POST", headers: {}, body: { token, acao } }, res); return res; };
+  try {
+    await conf("admin, ação funil: conta comum recebe 403 e o banco nem é consultado", async () => {
+      log = []; rpcs = [];
+      const r = await chamar("tok-comum", "funil");
+      if (r.cod !== 403 || rpcs.length || log.length) throw new Error(r.cod + " " + JSON.stringify(rpcs));
+      if ((await chamar("tok-x", "funil")).cod !== 401) throw new Error("sem sessão não deu 401");
+    });
+    await conf("admin, ação funil: 14 dias (hoje primeiro, dia vazio com zero), degraus com conversão, e vai pro admin_log", async () => {
+      log = []; rpcs = [];
+      const r = await chamar("tok-adm", "funil");
+      if (r.cod !== 200) throw new Error(r.cod + " " + JSON.stringify(r.corpo));
+      const f = r.corpo;
+      if (f.dias.length !== 14 || f.dias[0].dia !== F.diaSaoPaulo()) throw new Error("dias: " + f.dias.map(d => d.dia));
+      if (f.dias[0].n.abriu !== 4 || f.dias[0].n.criou_conta !== 1 || f.dias[1].n.abriu !== 0) throw new Error("hoje: " + JSON.stringify(f.dias[0].n));
+      const d = Object.fromEntries(f.degraus.map(x => [x.evento, x]));
+      if (d.criou_conta.doAnterior !== 25 || d.criou_conta.deAbriu !== 25 || d.abriu.doAnterior !== null) throw new Error("conversão: " + JSON.stringify(d.criou_conta));
+      if (d.terminou_draft.doAnterior !== 0 || d.pagou.doAnterior !== null || d.pagou.total !== 0) throw new Error("sem base: " + JSON.stringify([d.terminou_draft, d.pagou]));
+      if (rpcs[0][0] !== "funil_por_dia" || rpcs[0][1].dias !== 14) throw new Error("rpc: " + JSON.stringify(rpcs));
+      if (log.length !== 1 || log[0].acao !== "funil" || log[0].admin_id !== A) throw new Error("admin_log: " + JSON.stringify(log));
+    });
+    await conf("admin, ação funil sem a migração (PGRST202): avisa semMigracao, não quebra", async () => {
+      semMigracao = true;
+      const r = await chamar("tok-adm", "funil");
+      semMigracao = false;
+      if (r.cod !== 200 || r.corpo.semMigracao !== true) throw new Error(r.cod + " " + JSON.stringify(r.corpo));
+    });
+    await conf("montarFunil: dia de fora da janela e evento desconhecido ficam de fora; somar os dias dá o total", () => {
+      const hoje = "2026-11-19";
+      const f = F.montarFunil([{ dia: "2026-11-19", evento: "abriu", sessoes: 5 }, { dia: "2026-11-06", evento: "abriu", sessoes: 2 },
+        { dia: "2026-11-05", evento: "abriu", sessoes: 99 }, { dia: "2026-11-19", evento: "hackeado", sessoes: 7 },
+        { dia: "2026-11-18", evento: "terminou_draft", sessoes: 2 }], hoje, 14);
+      const ab = f.degraus.find(x => x.evento === "abriu");
+      if (f.dias[13].dia !== "2026-11-06" || ab.total !== 7) throw new Error(JSON.stringify(ab) + " " + f.dias[13].dia);
+      if (f.degraus.find(x => x.evento === "terminou_draft").doAnterior !== null) throw new Error("dividiu por zero");
+    });
+
+    /* ---------- 4. pagou do servidor ---------- */
+    const Pro = await import(url.pathToFileURL(path.join(RAIZ, "api", "_pro.js")).href);
+    await conf("pagou: ativarPro registra no funil, com a sessão do pagamento; reativar o mesmo pagamento não conta de novo", async () => {
+      await q("delete from funil_eventos");
+      await Pro.ativarPro("u1", "cus_1", "pay_1");
+      await Pro.ativarPro("u1", "cus_1", "pay_1");
+      await Pro.ativarPro("u1", "cus_1", "pay_2");
+      const l = await q("select sessao::text as s, evento from funil_eventos");
+      if (l.length !== 2 || l.some(x => x.evento !== "pagou")) throw new Error(JSON.stringify(l));
+      if (!l.some(x => x.s === F.sessaoDoPagamento("pay_1")) || F.sessaoDoPagamento("pay_1") === F.sessaoDoPagamento("pay_2")) throw new Error("sessão do pagamento");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/.test(F.sessaoDoPagamento("pay_1"))) throw new Error("não é uuid: " + F.sessaoDoPagamento("pay_1"));
+    });
+    await conf("pagou: sem a migração ou com a rede caída o Pro ativa igual; Pro que não gravou não conta pagou", async () => {
+      semMigracao = true;
+      const ate = await Pro.ativarPro("u1", "cus_1", "pay_3");
+      if (!ate) throw new Error("não ativou sem a migração");
+      const f0 = globalThis.fetch;
+      globalThis.fetch = async (u, op) => /funil_registrar/.test(String(u)) ? Promise.reject(new Error("rede")) : f0(u, op);
+      try { if (!(await Pro.ativarPro("u1", "cus_1", "pay_4"))) throw new Error("não ativou com a rede caída"); }
+      finally { globalThis.fetch = f0; }
+      semMigracao = "falhaPro"; rpcs = [];
+      let falhou = false;
+      try { await Pro.ativarPro("u1", "cus_1", "pay_5"); } catch { falhou = true; }
+      semMigracao = false;
+      if (!falhou || rpcs.some(r => r[0] === "funil_registrar")) throw new Error("contou pagou sem ativar");
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    for (const k of ["SUPABASE_SERVICE_ROLE_KEY", "ADMIN_DONO_EMAIL"]) { if (envOriginal[k] === undefined) delete process.env[k]; else process.env[k] = envOriginal[k]; }
+    console.log = logOriginal; console.error = erroOriginal;
+  }
+
+  /* ---------- 5. rollback ---------- */
+  await conf("rollback: some só o que é do funil, as tabelas do jogo ficam; roda duas vezes; a migração instala de novo", async () => {
+    await db.exec(sqlRollback); await db.exec(sqlRollback);
+    const resto = await q(`select (select count(*)::int from pg_class where relname = 'funil_eventos') as tab,
+      (select count(*)::int from pg_proc where proname like 'funil\\_%') as fns,
+      (select count(*)::int from pg_class where relname in ('placar', 'assinaturas', 'admin_log', 'uso_ia')) as jogo`);
+    if (resto[0].tab || resto[0].fns || resto[0].jogo !== 4) throw new Error(JSON.stringify(resto[0]));
+    await db.exec(sqlFunil);
+    if (await reg("anon", S1, "abriu") !== true) throw new Error("não instalou de novo");
+  });
+  await conf(".vercelignore deixa a migração e o rollback fora do site e a imagem da prévia dentro", () => {
+    const vi = fs.readFileSync(path.join(RAIZ, ".vercelignore"), "utf8").split("\n").map(l => l.trim());
+    for (const f of ["supabase_funil.sql", "supabase_funil_rollback.sql"]) if (!vi.includes(f)) throw new Error("falta " + f);
+    if (vi.some(l => /^img\/logo\/?(\*|compartilhar)/.test(l) && !/\.mjs$/.test(l))) throw new Error("a imagem da prévia ficou de fora do deploy");
+  });
+
+  /* ---------- 6. funil() no navegador ---------- */
+  const pagina = ({ host = "octogono.fun", semHost = false, ls = {}, semLS = false, webdriver = false, responder = null, statusLuta = "encerrada" } = {}) => {
+    const env = criarAmbiente({ contarNos: true });
+    const envios = [];
+    if (!semHost) env.sandbox.location.hostname = host;
+    if (webdriver) env.sandbox.navigator = { webdriver: true };
+    if (semLS) Object.defineProperty(env.sandbox, "localStorage", { get() { throw new Error("bloqueado"); } });
+    else env.sandbox.localStorage = { getItem: k => (k in ls ? ls[k] : null), setItem: (k, v) => { ls[k] = String(v); }, removeItem: k => { delete ls[k]; } };
+    env.sandbox.window.supabase = supabaseFalsoComSessao({ sessao: null });
+    env.sandbox.fetch = async (u, op = {}) => {
+      u = String(u);
+      if (/\/rest\/v1\/rpc\/funil_registrar$/.test(u)) {
+        envios.push({ u, op, corpo: JSON.parse(op.body) });
+        return responder ? responder() : { ok: true, status: 200, json: async () => true };
+      }
+      if (u === "/api/jxj") return { ok: true, status: 200, json: async () => ({ status: statusLuta, lado: "a", trocas: [] }) };
+      throw new Error("offline");
+    };
+    vm.createContext(env.sandbox);
+    vm.runInContext(exportar(lerScript(), ["funil", "irPara", "bloqueioPro", "jxj", "ready", "ROTAS"]) + "\ntry{globalThis.__x.pagina=()=>FUNIL_PAGINA;}catch(e){}", env.sandbox, { filename: "index.html" });
+    return { env, envios, ls, F: env.sandbox.__x };
+  };
+  const respirar = () => new Promise(r => setImmediate(r));
+  await conf("funil() no site: manda sessao + evento pra funil_registrar com a chave pública; a mesma sessão volta na página seguinte; evento feito não sai de novo", async () => {
+    const ls = {};
+    const p1 = pagina({ ls });
+    p1.F.funil("abriu"); await respirar(); await respirar();
+    if (p1.envios.length !== 1) throw new Error(p1.envios.length + " envios");
+    const e = p1.envios[0];
+    if (!e.u.startsWith("https://kapdpipwqkumzschctnj.supabase.co/rest/v1/rpc/") || !/^eyJ/.test(e.op.headers.apikey)) throw new Error("endereço ou chave: " + e.u);
+    if (Object.keys(e.corpo).sort().join(",") !== "evento,sessao" || e.corpo.evento !== "abriu" || !/^[0-9a-f-]{36}$/.test(e.corpo.sessao)) throw new Error("corpo: " + JSON.stringify(e.corpo));
+    p1.F.funil("abriu"); await respirar();
+    const p2 = pagina({ ls });
+    p2.F.funil("abriu"); p2.F.funil("criou_conta"); await respirar();
+    if (p1.envios.length !== 1 || p2.envios.length !== 1 || p2.envios[0].corpo.sessao !== e.corpo.sessao) throw new Error("repetiu ou trocou de sessão: " + JSON.stringify(p2.envios.map(x => x.corpo)));
+  });
+  await conf("funil() não manda evento fora da lista nem o pagou (que é do servidor)", async () => {
+    const p = pagina();
+    p.F.funil("inventado"); p.F.funil("pagou"); p.F.funil(); await respirar();
+    if (p.envios.length) throw new Error(JSON.stringify(p.envios.map(x => x.corpo)));
+  });
+  await conf("funil() fora do site de verdade (localhost, preview, DOM falso dos testes) ou em navegador de script (webdriver) não grava nada", async () => {
+    for (const op of [{ host: "localhost" }, { host: "draft-ufc-git-x.vercel.app" }, { semHost: true }, { webdriver: true }]) {
+      const p = pagina(op);
+      p.F.funil("abriu"); await respirar();
+      if (p.envios.length) throw new Error("gravou com " + JSON.stringify(op));
+    }
+  });
+  await conf("funil() nunca quebra: sem localStorage manda com sessão da página; rede caída não lança; sem a migração (PGRST202) a página para de tentar", async () => {
+    const p = pagina({ semLS: true });
+    p.F.funil("abriu"); p.F.funil("terminou_draft"); await respirar();
+    if (p.envios.length !== 2 || p.envios[0].corpo.sessao !== p.envios[1].corpo.sessao) throw new Error("sem localStorage: " + JSON.stringify(p.envios.map(x => x.corpo)));
+    const r = pagina({ responder: () => { throw new Error("rede"); } });
+    r.F.funil("abriu"); await respirar();
+    const s = pagina({ responder: () => ({ ok: false, status: 404, json: async () => ({ code: "PGRST202" }) }) });
+    s.F.funil("abriu"); await respirar(); await respirar();
+    s.F.funil("criou_conta"); await respirar();
+    if (s.envios.length !== 1 || !s.F.pagina().parado) throw new Error("continuou tentando sem a migração: " + s.envios.length);
+  });
+  await conf("ganchos: abrir o Online, a trava do Pro, o treino feito (marca do navegador) e o fim de uma luta do Online", async () => {
+    const p = pagina({ ls: { "jxj:treino2": "1" } });
+    p.F.ready(lerLutadores()); p.env.drenar(); await respirar();
+    p.F.ROTAS.jxj.tela = () => {};   // a tela do Online sem servidor não importa aqui: só a troca de rota
+    p.F.irPara("jxj");
+    p.F.bloqueioPro(p.env.sandbox.document.createElement("div"));
+    await p.F.jxj("luta", { lutaId: "l1" });
+    await respirar(); await respirar();
+    const ev = p.envios.map(x => x.corpo.evento);
+    for (const e of ["abriu_online", "terminou_treino_online", "viu_pro", "luta_online_1"]) if (!ev.includes(e)) throw new Error("faltou " + e + ": " + ev);
+    /* luta em andamento, outra rota sem treino e Pro de verdade: nada disso conta */
+    const n = pagina({ statusLuta: "andamento" });
+    n.F.ready(lerLutadores()); n.env.drenar(); await respirar();
+    n.F.irPara("ranking");
+    await n.F.jxj("luta", { lutaId: "l1" });
+    await respirar(); await respirar();
+    if (n.envios.length) throw new Error("contou sem acontecer: " + n.envios.map(x => x.corpo.evento));
+  });
+
+  /* ---------- 7. prévia do link e privacidade ---------- */
+  const head = html.slice(0, html.indexOf("</head>"));
+  const meta = (attr, nome) => { const m = head.match(new RegExp(`<meta ${attr}="${nome}" content="([^"]*)">`)); return m ? m[1] : null; };
+  await conf("prévia do link: og:title, og:description, og:image (absoluta, 1200x630, existe), og:url e twitter:card no <head>", () => {
+    const img = meta("property", "og:image");
+    if (!meta("property", "og:title") || !meta("property", "og:description")) throw new Error("falta título ou descrição");
+    if (img !== "https://octogono.fun/img/logo/compartilhar.png" || meta("name", "twitter:image") !== img) throw new Error("og:image: " + img);
+    if (meta("property", "og:url") !== "https://octogono.fun/") throw new Error("og:url");
+    if (meta("name", "twitter:card") !== "summary_large_image") throw new Error("twitter:card");
+    if (meta("property", "og:image:width") !== "1200" || meta("property", "og:image:height") !== "630") throw new Error("tamanho declarado");
+    const png = fs.readFileSync(path.join(RAIZ, "img", "logo", "compartilhar.png"));
+    if (png.readUInt32BE(16) !== 1200 || png.readUInt32BE(20) !== 630) throw new Error("a imagem não tem 1200x630");
+  });
+  await conf("prévia do link: texto sem \"UFC\", sem nome de lutador real e sem travessão; nenhum <script> sem atributo no <head>", () => {
+    const textos = [...head.matchAll(/<meta (?:property|name)="(?:og:|twitter:)?(?:title|description|image:alt)" content="([^"]*)">/g)].map(m => m[1]);
+    if (textos.length < 6) throw new Error("só " + textos.length + " textos");
+    const nomes = lerLutadores().map(l => l.name || l.nome).filter(n => n && n.length > 3);
+    for (const t of textos) {
+      if (/ufc/i.test(t) || /[—–]/.test(t)) throw new Error("texto proibido: " + t);
+      const real = nomes.find(n => t.includes(n));
+      if (real) throw new Error("nome de lutador real: " + real);
+    }
+    if (/<script>/.test(head)) throw new Error("<script> sem atributo no <head>");
+  });
+  await conf("política de privacidade diz que as etapas do jogo são contadas de forma anônima", () => {
+    const m = html.match(/<li id="priv-funil">([\s\S]*?)<\/li>/);
+    if (!m || !/anônima/.test(m[1]) || !/sem e-mail/.test(m[1])) throw new Error("sem a frase do funil na política");
+  });
+
+  const ok = !falhas.length;
+  console.log("\n" + (ok ? verde("funil ok") : vermelho(`${falhas.length} falha(s) no funil`)));
   return ok;
 }
 
@@ -18653,6 +19002,7 @@ try {
   else if (cmd === "placar") ok = await testarPlacar();
   else if (cmd === "pagamento") ok = await testarPagamento();
   else if (cmd === "admin") ok = await testarAdmin();
+  else if (cmd === "funil") ok = await testarFunil();
   else if (cmd === "amostra") ok = await testarAmostra();
   else if (cmd === "diversidade") ok = await testarDiversidade(Number(div) || 6);
   else if (cmd === "entrevista") ok = await testarEntrevista();
@@ -18749,6 +19099,7 @@ try {
         ["placar", () => testarPlacar()],
         ["pagamento", () => testarPagamento()],
         ["admin", () => testarAdmin()],
+        ["funil", () => testarFunil()],
         ["amostra", () => testarAmostra()],
         ["diversidade", () => testarDiversidade(6)],
         ["entrevista", () => testarEntrevista()],
