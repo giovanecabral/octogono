@@ -33,6 +33,9 @@ supabase_jxj_fase5.sql  Sétima (2026-10-21): torneio só com lutas contra gente
 supabase_jxj_gratis_pesos.sql  Nona (2026-11-06): pesos diferentes na fila e a luta grátis contra gente por dia. Depois de todas, com aprovação do dono.
 img/logo/           Logo aprovada (2026-10-04): gerar.py faz os SVG, rasterizar.mjs os PNG. No site, só o ícone da aba.
 supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
+supabase_funil.sql  Funil do lançamento (2026-11-19): etapas anônimas por sessão e a leitura do painel. Só aditiva, o dono roda com aprovação.
+supabase_funil_rollback.sql  Desfaz só o funil.
+api/_funil.js       Lista e degraus do funil, sessão do "pagou" e os números da aba Funil do admin.
 luta3d/             Luta da carreira em 3D (2026-11-09): diretor.js, palco.js, lutador.js, three.js em vendor/.
                     mx_lutas.glb (animações do Mixamo) fica FORA do git e só sobe no vercel --prod.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.

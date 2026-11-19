@@ -4,6 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Octógono</title>
+<!-- Prévia do link (2026-11-19, lançamento): o card que aparece quando
+     alguém manda o endereço (WhatsApp, X, Discord, Facebook). Só <meta>:
+     script novo aqui quebra o testar.js (ver CLAUDE.md). Texto sem "UFC" e
+     sem nome de lutador real (regra dos anúncios); a imagem é a da logo
+     (img/logo/rasterizar.mjs). Suíte funil confere as tags. -->
+<meta name="description" content="Jogo de carreira de MMA no navegador: monte o seu lutador, escolha os adversários e dispute o cinturão em 22 lutas. No modo Online, lute contra outros jogadores com cartas.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Octógono">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:url" content="https://octogono.fun/">
+<meta property="og:title" content="Octógono: carreira de MMA e modo Online">
+<meta property="og:description" content="Monte o seu lutador, escolha os adversários e dispute o cinturão em 22 lutas. No modo Online, lute contra outros jogadores com cartas. Grátis no navegador.">
+<meta property="og:image" content="https://octogono.fun/img/logo/compartilhar.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Logo do Octógono: carreira de MMA e modo Online">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Octógono: carreira de MMA e modo Online">
+<meta name="twitter:description" content="Monte o seu lutador, escolha os adversários e dispute o cinturão em 22 lutas. No modo Online, lute contra outros jogadores com cartas. Grátis no navegador.">
+<meta name="twitter:image" content="https://octogono.fun/img/logo/compartilhar.png">
 <!-- Vercel Web Analytics — sem backend, sem SDK (o projeto não tem build step).
      O stub deixa chamar va(...) antes do script real carregar (fila em vaq);
      script.js só existe/funciona se Analytics estiver ligado no projeto na
@@ -1065,7 +1085,7 @@ function avisarContaNovaGoogle(u){
   if(!(Date.now()-new Date(u.created_at).getTime()<12e4))return;
   const chave="criouConta:"+u.id;
   try{ if(localStorage.getItem(chave))return; localStorage.setItem(chave,"1"); }catch(e){}
-  evento("criou_conta",{via:"google"});
+  evento("criou_conta",{via:"google"});funil("criou_conta");
 }
 /* Funil: a volta do link de confirmação traz type=signup no hash, antes
    do Supabase ler e limpar. Chamada uma vez, no boot. */
@@ -1165,7 +1185,7 @@ async function criarConta(email,senha){
        (o Supabase manda o e-mail de novo) e segue pra confirmação. */
     const u=data&&data.user;
     if(u&&Array.isArray(u.identities)&&u.identities.length===0)return{ok:false,erro:"User already registered",jaCadastrado:true};
-    evento("criou_conta",{via:"email"});
+    evento("criou_conta",{via:"email"});funil("criou_conta");
     /* Supabase devolve sessão nula quando confirmação de e-mail está
        ligada (o normal) — cadastro funcionou, só falta confirmar. */
     return{ok:true,precisaConfirmar:!data.session};
@@ -1522,7 +1542,7 @@ function screenConta(aba){
     const abrir=id=>{
       corpo.innerHTML="";
       ({perfil:()=>montarPerfil(corpo,email,session),
-        pro:()=>{ const v=el("div","painel-n conta-vitrine"); corpo.appendChild(v); montarVitrinePro(v,session); },
+        pro:()=>{ funil("viu_pro"); const v=el("div","painel-n conta-vitrine"); corpo.appendChild(v); montarVitrinePro(v,session); },
         carreiras:()=>montarCarreirasEncerradas(corpo),
         conquistas:()=>montarConquistasConta(corpo)})[id]();
     };
@@ -1584,14 +1604,14 @@ function screenAdmin(aba){
       const aviso=el("div","painel-n admin-aviso",`<b>O painel não consegue falar com o banco.</b><p>${dica}</p><p class="admin-info">Chave do Supabase: formato ${d.formato}${d.papel?", papel "+d.papel:""}, ${d.tamanho} caracteres. Chave da Asaas: formato ${d.asaas}${d.tinhaEspaco?", tinha espaço ou quebra de linha (já é ignorado)":""}. Banco respondeu ${d.rest}, login respondeu ${d.auth}.</p>`);
       area.insertBefore?area.insertBefore(aviso,area.firstChild):area.appendChild(aviso);
     });
-    const abas=[["jogadores","Jogadores","usuario"],["ranking","Ranking","trofeu"],["registro","Registro","lista"]];
-    if(eu.dono)abas.splice(2,0,["admins","Admins","chave"]);
+    const abas=[["jogadores","Jogadores","usuario"],["ranking","Ranking","trofeu"],["funil","Funil","grafico"],["registro","Registro","lista"]];
+    if(eu.dono)abas.splice(3,0,["admins","Admins","chave"]);
     const atual=abas.some(a=>a[0]===aba)?aba:"jogadores";
     const corpo=el("div","guia-corpo");
     const abrir=id=>{
       corpo.innerHTML="";
       ({jogadores:()=>adminJogadores(corpo),ranking:()=>adminRanking(corpo),
-        admins:()=>adminAdmins(corpo),registro:()=>adminRegistro(corpo)})[id]();
+        admins:()=>adminAdmins(corpo),funil:()=>adminFunil(corpo),registro:()=>adminRegistro(corpo)})[id]();
     };
     area.append(montarGuias(abas,atual,id=>{ try{ history.replaceState(null,"","#/admin/"+id); }catch(e){} abrir(id); }),corpo);
     abrir(atual);
@@ -1719,7 +1739,39 @@ function adminAdmins(corpo){
   carregar();
 }
 const ROTULO_ACAO_ADMIN={darPro:"deu Pro",tirarPro:"tirou o Pro",banir:"baniu",desbanir:"desbaniu",
-  apagarRanking:"apagou do ranking",addAdmin:"adicionou admin",removerAdmin:"tirou admin"};
+  apagarRanking:"apagou do ranking",addAdmin:"adicionou admin",removerAdmin:"tirou admin",funil:"abriu o funil"};
+/* Funil do lançamento (2026-11-19): sessões anônimas que chegaram a cada
+   etapa nos últimos 14 dias (api/admin.js, ação funil, supabase_funil.sql).
+   Os números e a conversão vêm prontos do servidor; a tela só desenha. */
+const ROTULO_FUNIL={abriu:"Abriu o jogo",criou_conta:"Criou a conta",terminou_draft:"Terminou o draft",
+  terminou_luta_1:"Terminou a 1ª luta",terminou_carreira:"Terminou a carreira",abriu_online:"Abriu o Online",
+  terminou_treino_online:"Terminou o treino do Online",luta_online_1:"Terminou a 1ª luta no Online",
+  viu_pro:"Viu o Pro",iniciou_pagamento:"Iniciou o pagamento",pagou:"Pagou"};
+const fmtPct=v=>v==null?"":String(v).replace(".",",")+"%";
+function adminFunil(corpo){
+  const p=el("div","painel-n admin-painel admin-funil");
+  corpo.appendChild(p);
+  p.appendChild(el("p","carregando","Carregando o funil"));
+  chamarAdmin("funil").then(r=>{
+    p.innerHTML="";
+    if(r.erro){ p.appendChild(el("p","hint msg-erro",r.erro)); return; }
+    if(r.semMigracao){ p.appendChild(vazio("grafico","O funil ainda não está no banco","Rode supabase_funil.sql no Supabase para começar a contar.")); return; }
+    p.appendChild(el("p","admin-info","Sessões anônimas que chegaram a cada etapa nos últimos 14 dias. Cada sessão conta uma vez por etapa. A conversão é sobre a etapa de onde ela vem."));
+    const deg=el("div","admin-funil-degraus");
+    r.degraus.forEach(d=>{
+      const conv=d.anterior?`<span class="admin-info">${d.doAnterior==null?"sem base":fmtPct(d.doAnterior)+" de "+ROTULO_FUNIL[d.anterior].toLowerCase()}</span>`:"";
+      const linha=el("div","admin-linha admin-funil-degrau",`<div class="admin-quem"><b>${ROTULO_FUNIL[d.evento]||d.evento}</b><span class="admin-funil-n">${d.total}</span></div>${conv}`);
+      linha.dataset.evento=d.evento;
+      deg.appendChild(linha);
+    });
+    p.appendChild(deg);
+    const rol=el("div","admin-funil-rolagem");
+    const cab=r.eventos.map(e=>`<th scope="col">${ROTULO_FUNIL[e]||e}</th>`).join("");
+    const linhas=r.dias.map(d=>`<tr><th scope="row">${d.dia.slice(8,10)}/${d.dia.slice(5,7)}</th>${r.eventos.map(e=>`<td>${d.n[e]}</td>`).join("")}</tr>`).join("");
+    rol.innerHTML=`<table class="admin-funil-tabela"><thead><tr><th scope="col">Dia</th>${cab}</tr></thead><tbody>${linhas}</tbody></table>`;
+    p.appendChild(rol);
+  });
+}
 function adminRegistro(corpo){
   const p=el("div","painel-n admin-painel");
   const lista=el("div","admin-lista");
@@ -2080,6 +2132,7 @@ async function renderPlanoPro(container,session,{conferido=false}={}){
     if(r.status===503){ falhar("Pagamento ainda não está disponível nesta versão."); return; }
     if(!r.ok||!j.invoiceUrl){ falhar("Não deu pra criar o pagamento agora. Tenta de novo em instantes."); return; }
     marcarPagamentoPendente();
+    funil("iniciou_pagamento");
     let abriu=false;
     if(aba&&!aba.closed){ try{ aba.location.href=j.invoiceUrl; abriu=true; }catch(e){} }
     esperarPagamento(box,j.invoiceUrl,abriu,redesenhar);
@@ -2340,7 +2393,7 @@ function screenTermos(){
 }
 function screenPrivacidade(){
   screenPaginaLegal("Política de Privacidade",`
-    <p class="rev">Versão 4. Última revisão: 22 de setembro de 2026.</p>
+    <p class="rev">Versão 5. Última revisão: 19 de novembro de 2026.</p>
 
     <p>Esta Política de Privacidade descreve, em conformidade com a Lei
     nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais, "LGPD"),
@@ -2407,6 +2460,12 @@ function screenPrivacidade(){
       cookie, via Vercel Analytics. Finalidade: entender uso do Jogo em
       caráter estatístico. Base legal: legítimo interesse (art. 7º, IX),
       por não haver tratamento de dado pessoal identificável.</li>
+      <li id="priv-funil"><b>Etapas do jogo, contadas de forma anônima</b> (ex.: se o
+      aparelho abriu o jogo, terminou o draft, a primeira luta ou o
+      treino do Online, ou abriu o Plano Pro): cada etapa conta uma vez,
+      ligada só a um código aleatório guardado no navegador, sem e-mail,
+      conta, IP ou cookie, no banco do Jogo (Supabase). Finalidade e base
+      legal: as mesmas das métricas agregadas acima.</li>
     </ul>
 
     <h3>3. Dados que permanecem apenas no dispositivo do usuário</h3>
@@ -2815,6 +2874,74 @@ const lim=(v,lo,hi,def)=>{if(v==null)return def;const n=Number(v);
    sendo o stub que só enfileira sem nunca ler — sem custo, sem quebra. */
 function evento(nome,dados){
   try{window.va&&window.va("event",{name:nome,data:dados});}catch(e){}
+}
+/* Funil do lançamento (2026-11-19, supabase_funil.sql): o Vercel Hobby
+   não grava os eventos acima, então as etapas também são contadas no
+   nosso banco. Sem dado pessoal: a sessão é um uuid sorteado aqui e
+   guardado no localStorage (funil:sessao), nada de e-mail, conta ou IP.
+   Cada sessão conta cada evento uma vez (o banco garante; funil:feitos só
+   evita a chamada repetida). Nunca bloqueia nem quebra o jogo: sem
+   localStorage a sessão vale pela página, sem a migração (PGRST202) a
+   página para de tentar, erro de rede some. Só grava no site de verdade
+   (octogono.fun e draft-ufc.vercel.app) e nunca em navegador controlado
+   por script (navigator.webdriver): teste, print e ponta a ponta rodam
+   em localhost ou no DOM falso e não gravam em produção. O "pagou" sai
+   do servidor (api/_pro.js). A lista é a mesma de supabase_funil.sql e
+   api/_funil.js (suíte funil). */
+const FUNIL_EVENTOS=["abriu","criou_conta","terminou_draft","terminou_luta_1","terminou_carreira",
+  "abriu_online","terminou_treino_online","luta_online_1","viu_pro","iniciou_pagamento","pagou"];
+const FUNIL_HOSTS=["octogono.fun","www.octogono.fun","draft-ufc.vercel.app"];
+const FUNIL_PAGINA={sessao:null,feitos:new Set(),parado:false};
+function funilLigado(){
+  try{
+    if(typeof navigator!=="undefined"&&navigator&&navigator.webdriver)return false;
+    return FUNIL_HOSTS.includes(String(location.hostname||""));
+  }catch(e){ return false; }
+}
+function funilUuid(){
+  try{ if(typeof crypto!=="undefined"&&crypto.randomUUID)return crypto.randomUUID(); }catch(e){}
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0; return (c==="x"?r:(r&3|8)).toString(16);
+  });
+}
+const FUNIL_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function funilSessao(){
+  try{
+    let s=localStorage.getItem("funil:sessao");
+    if(!FUNIL_UUID.test(String(s||""))){ s=FUNIL_PAGINA.sessao||funilUuid(); localStorage.setItem("funil:sessao",s); }
+    return s;
+  }catch(e){ return FUNIL_PAGINA.sessao||(FUNIL_PAGINA.sessao=funilUuid()); }
+}
+function funilJaFeito(ev){
+  if(FUNIL_PAGINA.feitos.has(ev))return true;
+  try{ return JSON.parse(localStorage.getItem("funil:feitos")||"[]").includes(ev); }catch(e){ return false; }
+}
+function funilMarcar(ev){
+  try{
+    const l=JSON.parse(localStorage.getItem("funil:feitos")||"[]");
+    if(Array.isArray(l)&&!l.includes(ev)){ l.push(ev); localStorage.setItem("funil:feitos",JSON.stringify(l)); }
+  }catch(e){}
+}
+function funil(ev){
+  try{
+    if(!FUNIL_EVENTOS.includes(ev)||ev==="pagou"||FUNIL_PAGINA.parado||!funilLigado()||funilJaFeito(ev))return;
+    FUNIL_PAGINA.feitos.add(ev);
+    const p=fetch(SUPABASE_URL+"/rest/v1/rpc/funil_registrar",{method:"POST",
+      headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:"Bearer "+SUPABASE_ANON_KEY},
+      body:JSON.stringify({sessao:funilSessao(),evento:ev})});
+    Promise.resolve(p).then(async r=>{
+      if(r&&r.ok){ funilMarcar(ev); return; }
+      let j=null; try{ j=await r.json(); }catch(e){}
+      if(j&&j.code==="PGRST202")FUNIL_PAGINA.parado=true;   // migração não rodou: a página para de tentar
+    }).catch(()=>{});
+  }catch(e){}
+}
+/* As marcas que o Online já grava no navegador (o treino feito), lidas de
+   fora da tela do Online: cada troca de rota confere. */
+function funilMarcasOnline(){
+  try{
+    if(localStorage.getItem("jxj:treino")==="1"||localStorage.getItem("jxj:treino2")==="1")funil("terminou_treino_online");
+  }catch(e){}
 }
 /* Marca de tempo no carregamento do script — praticamente o mesmo instante
    de evento("abriu") em boot(), sem depender do await de fetch() lá dentro
@@ -7457,6 +7584,8 @@ function mostrarRota(nome,param){
   jxjParar();   // consulta periódica do JxJ não segue em outra tela
   const r=ROTAS[nome]?nome:"404";
   rotaAtual=r;
+  if(r==="jxj")funil("abriu_online");
+  funilMarcasOnline();   // treino do Online feito (a marca do navegador)
   transicao(()=>ROTAS[r].tela(param));
 }
 /* Corte diagonal vermelho: cobre a tela em ~170ms, troca o conteúdo
@@ -7556,6 +7685,7 @@ function montarPasso(n,total,{titulo,fundo,voltar}){
    isto é só a interface não oferecer o que a pessoa não tem. */
 function bloqueioPro(elemento){
   if(meuPro)return elemento;
+  funil("viu_pro");   // a trava do Pro apareceu
   elemento.className=(elemento.className?elemento.className+" ":"")+"bloqueado";
   elemento.onclick=null;
   elemento.inert=true;   // o miolo (campo, botão) também sai do teclado, não só do mouse
@@ -8254,6 +8384,7 @@ async function jxj(acao,dados={}){
     try{ j=await r.json(); }catch(e){}
   }catch(e){ throw{status:0,erro:"Sem conexão com o servidor do modo Online. Confira a internet e tente de novo."}; }
   if(!r.ok)throw{status:r.status,erro:(j&&j.erro)||"O servidor do modo Online não respondeu. Tente de novo.",desligado:!!(j&&j.desligado)};
+  if(dados&&dados.lutaId&&acao!=="replay"&&j&&j.status==="encerrada")funil("luta_online_1");   // funil: a primeira luta do Online acabou
   return j;
 }
 async function jxjDef(){ if(!JXJ_DEF)JXJ_DEF=await jxj("definicoes"); return JXJ_DEF; }
@@ -11551,6 +11682,22 @@ registrarRota("404",screen404);
    com um commit). Mais recente primeiro. A entrada de 26/09 descreve o
    revamp e é revisada na fase 8 pra bater com o que saiu de fato. */
 const ATUALIZACOES=[
+  {data:"2026-11-19",titulo:"Online de cartas",itens:[
+    "A luta do Online agora é de cartas: cada carta tem velocidade, e a mais rápida resolve primeiro.",
+    "Cada nó da árvore libera uma carta. Você monta o seu deck na aba Deck com as cartas que liberou.",
+    "Na hora de escolher, cada carta mostra o que ela faz contra a postura que ele mostrou. A escolha continua sendo sua.",
+    "Antes da primeira luta, um treino curto ensina as cartas, sem relógio. O botão Como ganhar resume a regra."]},
+  {data:"2026-11-10",titulo:"Online em 3D",itens:[
+    "A luta do Online também aparece em 3D, em tela cheia. As cartas somem enquanto a troca passa e voltam no fim.",
+    "Cada round tem 3 trocas em vez de 4, com tempo pra ver a troca acontecer."]},
+  {data:"2026-11-09",titulo:"Luta em 3D",itens:[
+    "A luta da carreira começa em 3D: o seu lutador, do jeito que você montou, entra com a roupa e luta no octógono.",
+    "A vida só desce quando o golpe encosta. No fim, o árbitro anuncia o vencedor, e quem ganha a disputa recebe o cinturão.",
+    "Rever luta mostra a luta de novo. Sem 3D no aparelho, a luta segue no texto, como antes."]},
+  {data:"2026-10-20",titulo:"Bots no Online",itens:[
+    "Sem adversário na fila, você luta contra um bot na hora. A luta contra bot vale rating.",
+    "Cada bot tem um jeito de lutar que dá pra ler: o Provocador, o Paciente, o Observador e o Inquieto.",
+    "Pra entrar no torneio, contam só as lutas contra outros jogadores."]},
   {data:"2026-10-05",titulo:"Lutas mais duras",itens:[
     "Carreira nova: ninguém estreia no topo. Na montagem, atributo acima do teto de estreante entra no teto, e a carta mostra isso.",
     "Sem ranking, os adversários partem do seu nível. Antes, quem jogava bem vencia quatro de cada cinco lutas no começo da carreira.",
@@ -12265,7 +12412,7 @@ async function boot(){
      Primeira linha de propósito: conta toda visita, mesmo as que falham
      depois (fetch do fighters.json caindo em askForFile()) — "abriu" não
      deveria depender de nada dar certo depois. */
-  evento("abriu");
+  evento("abriu");funil("abriu");
   avisarConfirmacaoEmail();
   app.innerHTML=`<p class="hint" style="margin-top:30px">Carregando os lutadores…</p>`;
   let data=null;
@@ -13010,7 +13157,7 @@ function startCareer(){
      startCareer() só roda quando as 4 cartas já foram escolhidas
      (remaining.length===0 em pick()) — é o ponto exato de conclusão, não
      "escolheu mais uma". */
-  evento("terminou_draft");
+  evento("terminou_draft");funil("terminou_draft");
   /* Plano Pro — dispara sem esperar (fire-and-forget): meuPro é só cache
      de UI (ver comentário em atualizarStatusPro()), a carreira não pode
      travar esperando uma consulta de rede que pode nem existir sessão
@@ -14978,7 +15125,7 @@ function finishFight(opp,r,titleFight,td0,tdt0,ehRival){
      etapa da luta (a próxima começa em 1,1 s); dilema desliga o
      automático antes daqui, então ele sempre aparece no pós-luta. */
   if(!auto)mostrarResultado(reg,{delta,rk:rkDepois,mov:st.rankAnt!=null&&rkDepois?st.rankAnt-rkDepois.n:0,coletiva:coletivaNaLuta});
-  if(fightNo===1)evento("terminou_luta_1",{segundos:Math.round((Date.now()-TEMPO_ABERTURA)/1000)});
+  if(fightNo===1){evento("terminou_luta_1",{segundos:Math.round((Date.now()-TEMPO_ABERTURA)/1000)});funil("terminou_luta_1");}
   if(fightNo===5)evento("terminou_luta_5");
   if(fightNo>=TOTAL_FIGHTS)evento("terminou_22");
 
@@ -15059,6 +15206,7 @@ function grade(){
     partes:brutas.map(([rot],i)=>({rot,v:partes[i]}))};
 }
 function screenReport(){
+  funil("terminou_carreira");   // fim natural ou aposentadoria: as duas passam por aqui
   const g=grade();
   /* Histórico (2026-09-09): salva local sempre (mesmo sem conta, mesmo
      padrão de conquistas), sincroniza com a nuvem embaixo se tiver

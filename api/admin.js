@@ -20,11 +20,15 @@
  *   addAdmin {email}          → só o dono
  *   removerAdmin {userId}     → só o dono
  *   registro                  → últimas 100 ações
+ *   funil                     → sessões por dia e evento dos últimos 14 dias e a
+ *                               conversão de cada degrau (supabase_funil.sql;
+ *                               sem a migração, {semMigracao: true})
  * Toda ação que muda algo vai pro admin_log (quem, o quê, em quem, quando).
  *
  * Variáveis de ambiente: SUPABASE_SERVICE_ROLE_KEY, ADMIN_DONO_EMAIL.
  */
 import { SUPABASE_URL, supabaseServiceRole, cabecalhoServico, chaveServico } from "./_pro.js";
+import { montarFunil, diaSaoPaulo, FUNIL_DIAS } from "./_funil.js";
 
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcGRwaXB3cWt1bXpzY2hjdG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzM5OTcsImV4cCI6MjEwNDQwOTk5N30.OSGFGA98NiuWdb6wzF-NJUIxSwClgG3ZA0PnHvJC6Ug";
@@ -230,6 +234,18 @@ export default async function handler(req, res) {
         const r = await supabaseServiceRole("admin_log?select=admin_email,acao,alvo_email,detalhe,criado_em&order=criado_em.desc&limit=100");
         if (!r.ok) throw new Error("registro falhou (" + r.status + ")");
         return res.status(200).json({ registro: await r.json() });
+      }
+      case "funil": {
+        const r = await supabaseServiceRole("rpc/funil_por_dia", { method: "POST", body: JSON.stringify({ dias: FUNIL_DIAS }) });
+        if (!r.ok) {
+          let j = null;
+          try { j = await r.json(); } catch { j = null; }
+          if (j && j.code === "PGRST202") return res.status(200).json({ semMigracao: true });
+          throw new Error("funil falhou (" + r.status + ")");
+        }
+        const funil = montarFunil(await r.json(), diaSaoPaulo(), FUNIL_DIAS);
+        await registrar(eu, "funil", null, null);
+        return res.status(200).json(funil);
       }
       default:
         return res.status(400).json({ erro: "ação desconhecida" });
