@@ -8,8 +8,12 @@
      POST /teste/sql {sql, params} -> roda SQL no banco local (preparar cenário)
    O token de uma conta falsa é "tok:<id>".
 
-   Uso: node ferramentas/servidor-local.mjs [porta]  (padrão 8766) */
+   GZIP=1: arquivo de texto (html, js, css, json, svg) sai comprimido, perto do que a Vercel manda
+   (ferramentas/medir-carga.mjs mede assim).
+
+   Uso: [GZIP=1] node ferramentas/servidor-local.mjs [porta]  (padrão 8766) */
 import http from "node:http";
+import zlib from "node:zlib";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -50,7 +54,12 @@ http.createServer(async (req, res) => {
     }
     let arq = path.normalize(path.join(RAIZ, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname)));
     if (!arq.startsWith(RAIZ) || !fs.existsSync(arq) || fs.statSync(arq).isDirectory()) { res.writeHead(404); return res.end("404"); }
-    res.writeHead(200, { "Content-Type": TIPOS[path.extname(arq)] || "application/octet-stream" });
+    const tipo = TIPOS[path.extname(arq)] || "application/octet-stream";
+    if (process.env.GZIP === "1" && /html|javascript|css|json|svg/.test(tipo) && /gzip/.test(req.headers["accept-encoding"] || "")) {
+      res.writeHead(200, { "Content-Type": tipo, "Content-Encoding": "gzip" });
+      return res.end(zlib.gzipSync(fs.readFileSync(arq)));
+    }
+    res.writeHead(200, { "Content-Type": tipo });
     fs.createReadStream(arq).pipe(res);
   } catch (e) {
     json(res, 500, { erro: String(e.message).slice(0, 200) });
