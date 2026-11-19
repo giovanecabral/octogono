@@ -17235,6 +17235,8 @@ async function testarJxJTelas() {
         [{ round: 3, troca: 2, vencedor: "a", metodo: "FIN" }, { varA: idDe("Mata-leão"), varB: idDe("Levantar") }, "Finalização", `Rafa Lima venceu com ${fr("Mata-leão")}`, "Round 3 · troca 2", "Rafa Lima venceu por finalização."],
         [{ round: 3, troca: 4, vencedor: "a", metodo: "DEC" }, { varA: idDe("Cruzado"), varB: idDe("Cruzado") }, "Decisão", "Rafa Lima venceu por decisão", "Fim do round 3", "Rafa Lima venceu por decisão."],
         [{ round: 3, troca: 4, vencedor: null, metodo: "EMPATE" }, { varA: idDe("Cruzado"), varB: idDe("Cruzado") }, "Empate", "Os juízes deram empate", "Fim do round 3", "A luta terminou empatada."],
+        /* nocaute duplo (combate v2: os dois caem na mesma troca com o mesmo dano; achado gravando o anúncio, 2026-11-19): não é decisão dos juízes */
+        [{ round: 1, troca: 2, vencedor: null, metodo: "EMPATE" }, { varA: idDe("Cruzado"), varB: idDe("Cruzado") }, "Nocaute duplo", "Os dois caíram juntos", "Round 1 · troca 2", "A luta terminou empatada."],
       ];
       for (const [r, t, palavra, quem, faixa, narra] of casos) {
         const v = { resultado: r, nomes: { a: { nome: "Rafa Lima" }, b: { nome: "Bot Jatobá", bot: true } }, formato: { rounds: 3 },

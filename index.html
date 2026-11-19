@@ -11275,12 +11275,14 @@ function jxjFagulhas(no){
    existia: nenhuma chamada nova). Nada passa sozinho: "Ver o resultado". */
 function jxjCenaFim(alvo,v,{eu,ele},aoSeguir,{espera=0}={}){
   const r=v.resultado||{},ult=(v.trocas||[])[(v.trocas||[]).length-1]||{};
-  const ko=r.metodo==="KO"||r.metodo==="TKO",fin=r.metodo==="FIN";
-  const palavra=r.metodo==="EMPATE"?"Empate":ko||fin?jxjMetodo(r.metodo):"Decisão";
+  /* nocaute duplo (combate v2): os dois caem na mesma troca com o mesmo dano, antes do fim da luta; não é decisão dos juízes */
+  const fmt=v.formato||{},duplo=r.metodo==="EMPATE"&&!!r.round&&(r.round<(fmt.rounds||3)||(!!r.troca&&r.troca<(fmt.trocasPorRound||3)));
+  const ko=r.metodo==="KO"||r.metodo==="TKO"||duplo,fin=r.metodo==="FIN";
+  const palavra=duplo?"Nocaute duplo":r.metodo==="EMPATE"?"Empate":ko||fin?jxjMetodo(r.metodo):"Decisão";
   const nome=l=>jxjEsc(((v.nomes||{})[l]||{}).nome||"");
   const idV=r.vencedor==="a"?ult.varA:r.vencedor==="b"?ult.varB:null;
   const V=idV&&JXJ_DEF.acoes.variantes?JXJ_DEF.acoes.variantes[idV]:null;
-  const quem=jxjFrase(!r.vencedor?"Os juízes deram empate"
+  const quem=jxjFrase(duplo?"Os dois caíram juntos":!r.vencedor?"Os juízes deram empate"
     :!(ko||fin)?`${nome(r.vencedor)} venceu por decisão`
     :V&&V.familia==="defesa"?`${nome(r.vencedor)} venceu no contra-ataque`
     :V&&V.frase?`${nome(r.vencedor)} venceu com ${jxjEsc(V.frase)}`:`${nome(r.vencedor)} venceu`);
