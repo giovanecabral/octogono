@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Bancada do 3D (2026-11-19): dois lutadores e uma sequência fixa de lances, pra comparar luz, material e câmera
+     antes e depois de mexer (ferramentas/bancada3d.mjs tira as fotos). Fora do deploy (ferramentas/). -->
+<link rel="stylesheet" href="../estilo.css">
+<style>html,body{margin:0;height:100%;background:#000}#caixa{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;aspect-ratio:auto!important;max-height:none!important}</style></head>
+<body><div id="caixa" class="luta3d-caixa"></div>
+<script type="module">
+import { criarLuta3d } from "../luta3d/diretor.js";
+const caixa = document.getElementById("caixa");
+const eu = { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14", porte: "médio" };
+const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia", porte: "pesado" };
+const inst = await criarLuta3d(caixa, { eu, ele, nomes: { a: "KAYO BRASA", b: "TITO VARGAS" }, som: () => {} });
+const L = (round, ev) => ({ round, kind: "", text: "", ev });
+const seq = [L(1, { tipo: "inicio" }), L(1, { tipo: "golpe1", quem: "A", forca: 5 }), L(1, { tipo: "golpe1", quem: "B", forca: 4 }),
+  L(1, { tipo: "kd", quem: "A" }), L(1, { tipo: "golpe1", quem: "A", forca: 8 }), L(1, { tipo: "fim", quem: "A", metodo: "Nocaute" })];
+window.__marcas = [];
+window.__pronto = true;
+for (const x of seq) { window.__marcas.push([x.ev.tipo, performance.now()]); await inst.lance(x); }
+window.__fim = true;
+</script></body></html>

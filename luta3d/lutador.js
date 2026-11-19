@@ -124,7 +124,7 @@ export class Lutador {
           this.corpo = o;
           const marcas = (opt.tatuagem && opt.tatuagem !== "nenhuma") || (opt.cicatriz && opt.cicatriz !== "nenhuma") || opt.nariz === "quebrado"
             ? (c, w, h) => pintarPele(c, w, h, base.info, opt) : null;
-          o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao, marcas); o.material.roughness = 0.8; o.material.envMapIntensity = 0.3;
+          o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao, marcas); o.material.roughness = 0.62; o.material.envMapIntensity = 0.55;   // brilho de suor (2026-11-19)
         }
         if (o.name === "Eyebrows" && opt.corCabelo) o.material.color = new THREE.Color(opt.corCabelo);
       }

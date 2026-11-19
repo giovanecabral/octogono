@@ -13,28 +13,31 @@ const RAIO = 4.6;           // raio do octógono (até o meio da grade), em metr
 export { RAIO };
 
 function texturaLona() {
-  const s = 1024, cv = document.createElement("canvas"); cv.width = cv.height = s;
-  const c = cv.getContext("2d");
+  /* desenhada em 1024 e guardada em 2048 (2026-11-19: de perto a linha e a logo serrilhavam) */
+  const s = 1024, cv = document.createElement("canvas"); cv.width = cv.height = s * 2;
+  const c = cv.getContext("2d"); c.scale(2, 2);
   const g = c.createRadialGradient(s / 2, s / 2, 40, s / 2, s / 2, s * 0.62);
-  g.addColorStop(0, "#3b3f4a"); g.addColorStop(1, "#23262e");
+  g.addColorStop(0, "#2a2c33"); g.addColorStop(1, "#131418");   // lona escura (2026-11-19): o lutador iluminado se destaca
   c.fillStyle = g; c.fillRect(0, 0, s, s);
   // textura de lona
   for (let i = 0; i < 26000; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * 0.025})`; c.fillRect(Math.random() * s, Math.random() * s, 2, 2); }
   // linha vermelha do octógono, perto da grade
   const oct = (r) => { c.beginPath(); for (let k = 0; k <= 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4, x = s / 2 + Math.cos(a) * r, y = s / 2 + Math.sin(a) * r; k ? c.lineTo(x, y) : c.moveTo(x, y); } };
   oct(s * 0.455); c.strokeStyle = "rgba(215,38,30,.85)"; c.lineWidth = 7; c.stroke();
-  oct(s * 0.12); c.strokeStyle = "rgba(242,238,230,.10)"; c.lineWidth = 4; c.stroke();
-  // símbolo no centro: anel cortado por um golpe vermelho
-  c.save(); c.translate(s / 2, s / 2); c.globalAlpha = 0.16;
-  c.strokeStyle = "#f2eee6"; c.lineWidth = 26; oct(0); c.beginPath();
-  for (let k = 0; k <= 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4, x = Math.cos(a) * 92, y = Math.sin(a) * 92; k ? c.lineTo(x, y) : c.moveTo(x, y); }
-  c.stroke(); c.globalAlpha = 0.32; c.strokeStyle = "#d7261e"; c.lineWidth = 18;
-  c.beginPath(); c.moveTo(-70, 95); c.lineTo(70, -95); c.stroke(); c.restore();
-  // escrita
-  c.fillStyle = "rgba(242,238,230,.12)"; c.font = "700 54px 'Arial Narrow', Arial, sans-serif"; c.textAlign = "center";
-  c.fillText("OCTÓGONO", s / 2, s * 0.78);
+  oct(s * 0.44); c.strokeStyle = "rgba(242,238,230,.10)"; c.lineWidth = 3; c.stroke();
+  // símbolo no centro (o da logo): anel octogonal cortado por um golpe vermelho, que fica dentro do anel
+  c.save(); c.translate(s / 2, s / 2);
+  const anel = (r) => { c.beginPath(); for (let k = 0; k <= 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4, x = Math.cos(a) * r, y = Math.sin(a) * r; k ? c.lineTo(x, y) : c.moveTo(x, y); } };
+  c.globalAlpha = 0.3; c.strokeStyle = "#f2eee6"; c.lineWidth = 26; anel(110); c.stroke();
+  c.globalAlpha = 1; c.strokeStyle = "#25272e"; c.lineWidth = 40;   // o corte do anel, na cor da lona
+  c.beginPath(); c.moveTo(-62, 92); c.lineTo(62, -92); c.stroke();
+  c.globalAlpha = 0.8; c.strokeStyle = "#d7261e"; c.lineWidth = 16;
+  c.beginPath(); c.moveTo(-62, 92); c.lineTo(62, -92); c.stroke(); c.restore();
+  // escrita dos dois lados do centro
+  c.fillStyle = "rgba(242,238,230,.26)"; c.font = "700 64px 'Anton', Impact, 'Arial Narrow', sans-serif"; c.textAlign = "center";
+  c.fillText("OCTÓGONO", s / 2, s * 0.74); c.save(); c.translate(s / 2, s * 0.26); c.rotate(Math.PI); c.fillText("OCTÓGONO", 0, 22); c.restore();
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-  t.wrapS = THREE.RepeatWrapping; t.repeat.x = -1;   // a geometria espelha; desespelha a escrita
+  /* sem espelhar (2026-11-19): o repeat.x = -1 de antes deixava a escrita ao contrário, apagada demais pra notar */
   return t;
 }
 function texturaGrade() {
@@ -83,16 +86,19 @@ function geometriaTorcedor() {
 export class Palco {
   constructor(alvo) {
     this.alvo = alvo;
-    const r = this.r = new THREE.WebGLRenderer({ antialias: devicePixelRatio < 1.5, powerPreference: "high-performance" });
-    r.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.25 : 1.5));   // menos pixel, mais quadro por segundo
+    /* luta3d:max (gravação dos anúncios, 2026-11-19): resolução cheia, antialias e a qualidade nunca cai */
+    let max = false; try { max = localStorage.getItem("luta3d:max") === "1"; } catch (e) {}
+    this.max = max;
+    const r = this.r = new THREE.WebGLRenderer({ antialias: max || devicePixelRatio < 1.5, powerPreference: "high-performance" });
+    r.setPixelRatio(max ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, innerWidth < 700 ? 1.25 : 1.5));   // menos pixel, mais quadro por segundo
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.9;
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;   // sombra suave (2026-11-19: a dura saía em degraus)
     alvo.appendChild(r.domElement);
 
     const cena = this.cena = new THREE.Scene();
     cena.background = new THREE.Color(0x05060a);
-    cena.fog = new THREE.Fog(0x0a0d17, 11, 44);
+    cena.fog = new THREE.Fog(0x06070b, 9, 34);   // a torcida afunda no escuro (2026-11-19: os recortes apareciam demais)
     const pm = new THREE.PMREMGenerator(r);
     cena.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
     cena.environmentIntensity = 0.3;
@@ -181,12 +187,12 @@ export class Palco {
     // luz principal de cima, branca e forte como a da transmissão; só ela faz sombra
     const chave = new THREE.SpotLight(0xfff6ea, 240, 24, Math.PI / 4.2, 0.55, 1.5);
     chave.position.set(0.6, 9.2, 1.2); chave.target.position.set(0, 0, 0);
-    chave.castShadow = true; chave.shadow.mapSize.set(1024, 1024); chave.shadow.bias = -0.0004; chave.shadow.radius = 4;
+    chave.castShadow = true; chave.shadow.mapSize.set(2048, 2048); chave.shadow.bias = -0.0004; chave.shadow.radius = 4;
     chave.shadow.camera.near = 4; chave.shadow.camera.far = 14;
     cena.add(chave, chave.target);
     // contraluz colorida (vermelho e azul de transmissão)
-    const rim1 = new THREE.SpotLight(0xff3a2e, 26, 18, Math.PI / 6, 0.7, 1.5); rim1.position.set(-6, 4.5, -5); rim1.target.position.set(0, 1, 0);
-    const rim2 = new THREE.SpotLight(0x4a7dff, 28, 18, Math.PI / 6, 0.7, 1.5); rim2.position.set(6, 4.5, -5); rim2.target.position.set(0, 1, 0);
+    const rim1 = new THREE.SpotLight(0xff3a2e, 48, 18, Math.PI / 6, 0.7, 1.5); rim1.position.set(-6, 4.5, -5); rim1.target.position.set(0, 1, 0);
+    const rim2 = new THREE.SpotLight(0x4a7dff, 52, 18, Math.PI / 6, 0.7, 1.5); rim2.position.set(6, 4.5, -5); rim2.target.position.set(0, 1, 0);
     // canhão que segue o lutador na entrada (fora do octógono a arena é escura); desligado na luta
     this.seguidor = new THREE.SpotLight(0xfff2e0, 0, 16, Math.PI / 14, 0.5, 1.4); this.seguidor.position.set(0, 9, 12);
     cena.add(this.seguidor, this.seguidor.target);
@@ -301,8 +307,8 @@ export class Palco {
       mt.compose(s.pos, q, e);
       this.torcida.base.push({ p: s.pos.clone(), q: q.clone(), e: esc });
       this.torcida.corpo.setMatrixAt(i, mt); this.torcida.cabeca.setMatrixAt(i, mt);
-      this.torcida.corpo.setColorAt(i, cor.setHex(ROUPA[Math.floor(Math.random() * ROUPA.length)]));
-      this.torcida.cabeca.setColorAt(i, cor.setHex(PELE[Math.floor(Math.random() * PELE.length)]));
+      this.torcida.corpo.setColorAt(i, cor.setHex(ROUPA[Math.floor(Math.random() * ROUPA.length)]).multiplyScalar(0.55));
+      this.torcida.cabeca.setColorAt(i, cor.setHex(PELE[Math.floor(Math.random() * PELE.length)]).multiplyScalar(0.45));
       this.torcida.fase[i] = Math.random() * 100;
     });
     this.cena.add(this.torcida.corpo, this.torcida.cabeca);
@@ -360,6 +366,7 @@ export class Palco {
   /* qualidade automática (o diretor mede os quadros por segundo): 1 = menos pixel,
      2 = sem sombra, 3 = sem torcida. Só desce, pra não ficar trocando. */
   qualidade(nivel) {
+    if (this.max && !this.semPlaca) return;   // a gravação dos anúncios fica no máximo
     if (!(nivel > (this.nivel || 0)) || nivel > 3) return;
     this.nivel = nivel;
     if (nivel === 1) { this.r.setPixelRatio(1); this.redimensionar(); }
