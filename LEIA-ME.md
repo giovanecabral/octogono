@@ -6460,6 +6460,31 @@ texto e volta, resultado desmonta o palco, Rever luta abre e fecha;
 e `ferramentas/luta3d-estresse.mjs` (muitas lutas do motor em 3x, reprova
 erro e lance preso).
 
+**Visual de 2026-11-19 (pedido do dono: "bonecos e arena" e "3D borrado").**
+Lona escura com a logo nítida (textura desenhada em 1024 e guardada em 2048)
+e a escrita OCTÓGONO no sentido certo (o `repeat.x = -1` de antes espelhava
+a escrita, apagada demais pra alguém notar), sombra suave (PCFSoft, mapa de
+2048), contraluz vermelha e azul quase o dobro, torcida mais escura e
+afundada na neblina (os recortes chapados apareciam), brilho de suor na pele
+(rugosidade 0,62). Medido na bancada sem o teto de 60 quadros (405 x 720,
+escala 2,67): 363 contra 357 quadros por segundo de antes, sem custo. A
+bancada é `ferramentas/bancada3d.mjs` (dois lutadores e uma sequência fixa
+de lances, fotos a cada passo; `SEMTETO=1` mede o custo). `luta3d:max` no
+localStorage (só a gravação dos anúncios liga) dá resolução cheia, antialias
+e a qualidade nunca cai.
+
+**Anúncios (2026-11-19).** `ferramentas/gravar-anuncio.mjs` (luta do Online
+contra o bot; `CINEMA=1` só o 3D em tela cheia, `MAX=1`, `SCREENCAST=1` com
+escala 1: 30 a 45 quadros por segundo em 1080 x 1920, contra 17 a 19 da foto),
+`ferramentas/gravar-carreira.mjs` (`ui`: draft, painel, adversário, camp e
+coletiva no celular; `luta`: a disputa do cinturão em 3D com entrada e
+cerimônia; os 1.527 nomes trocados por nomes inventados só na gravação; a IA
+de verdade com o token de `ferramentas/pegar-token.mjs`, em que o dono entra
+com as próprias mãos) e `ferramentas/compor-anuncio.mjs` (roteiro com cenas,
+janelas, texto animado, flash, câmera lenta, música e efeitos). Música do
+anúncio só CC0 (a torcida é CC BY e pediria crédito). Nada disso vai pro
+deploy.
+
 ## Online: 3 trocas por round e a luta em tela cheia (2026-11-10)
 
 Pedido do dono: o 3D na tela inteira, a barra de vida dele em cima e a sua

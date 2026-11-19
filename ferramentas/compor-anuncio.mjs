@@ -93,12 +93,15 @@ for(const [i,x] of R.textos.entries()){
 }
 window.render=async function(t){
   const cena=R.cenas.find(c=>t>=c.ini&&t<c.fim)||R.cenas[R.cenas.length-1];
-  const c=R.clipes[cena.clipe],tc=tempoClipe(cena,t),fq=cl(tc*QPS,0,c.n-1),i0=Math.floor(fq),fr=fq-i0;
   const q0=document.getElementById("q0"),q1=document.getElementById("q1");
+  /* cena sem clipe: tela preta (o texto sozinho) */
+  document.getElementById("palco").style.visibility=cena.clipe?"visible":"hidden";
+  if(!cena.clipe){ renderResto(t); await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); return; }
+  const c=R.clipes[cena.clipe],tc=tempoClipe(cena,t),fq=cl(tc*QPS,0,c.n-1),i0=Math.floor(fq),fr=fq-i0;
   const src=i=>"c_"+cena.clipe+"/"+String(Math.min(c.n,i+1)).padStart(5,"0")+".jpg";
   q0.src=src(i0); q1.src=src(Math.min(c.n-1,i0+1)); q1.style.opacity=fr.toFixed(3);
   /* janela (caixa: [x, y, l, a] em fração da tela): o trecho nítido num quadro, o mesmo desfocado no fundo */
-  const jan=document.getElementById("janela"),fun=document.getElementById("fundo");
+  var jan=document.getElementById("janela"),fun=document.getElementById("fundo");
   if(cena.caixa){ const [x,y,l,a]=cena.caixa,e=ease((t-cena.ini)/.25);
     jan.className="caixa"; jan.style.cssText="left:"+x*W+"px;top:"+(y*H+lerp(H*.04,0,e))+"px;width:"+l*W+"px;height:"+a*H+"px;opacity:"+cl((t-cena.ini)/.12);
     fun.src=q0.src; fun.style.opacity=1; }
@@ -107,6 +110,14 @@ window.render=async function(t){
   const tr=tremorEm(cena,t),sx=tr?Math.sin(t*97)*tr*W*.02:0,sy=tr?Math.cos(t*83)*tr*W*.02:0;
   const jw=cena.caixa?cena.caixa[2]*W:W,jh=cena.caixa?cena.caixa[3]*H:H;
   document.getElementById("cam").style.transform="translate("+((.5-f[0])*(z-1)*jw+sx)+"px,"+((.5-f[1])*(z-1)*jh+sy)+"px) scale("+z+")";
+  renderResto(t);
+  await Promise.all([q0,q1,fun].map(im=>im.decode().catch(()=>{})));
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+};
+function renderResto(t){
+  /* escurecer: [ini, fim, força] (a câmera lenta do silêncio) */
+  let es=0; for(const [a,b,f] of (R.escuros||[])) if(t>=a&&t<b) es=Math.max(es,f*Math.min(1,(t-a)/.3,(b-t)/.15));
+  document.getElementById("escuro").style.opacity=es.toFixed(3);
   /* flashes: cor e duração */
   let fo=0,fc="#fff"; for(const fl of R.flashes){ const d=t-fl.t; if(d>=0&&d<fl.dur){ const o=(fl.forca||1)*(1-d/fl.dur); if(o>fo){fo=o;fc=fl.cor||"#fff";} } }
   const fe=document.getElementById("flash"); fe.style.opacity=fo.toFixed(3); fe.style.background=fc;
@@ -135,9 +146,7 @@ window.render=async function(t){
       else { s.style.transform="translateY("+lerp(W*.06,0,ease(aj/.22))+"px)"; s.style.opacity=cl(aj/.15); }
     });
   }
-  await Promise.all([q0,q1,fun].map(im=>im.decode().catch(()=>{})));
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-};
+}
 </script></body></html>`;
 fs.writeFileSync(path.join(TRAB, "index.html"), pagina);
 

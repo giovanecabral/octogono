@@ -256,7 +256,10 @@ metade). Regras do revamp que valem daqui pra frente:
   diretor: `ferramentas/luta3d-estresse.mjs` (lance preso em 3x já
   aconteceu) e `luta3d-e2e.mjs`, com a placa de vídeo ligada
   (`--use-angle=metal --enable-gpu`; sem ela o Chrome roda a 6 quadros por
-  segundo e esconde bug de animação).
+  segundo e esconde bug de animação). Visual de 2026-11-19 (lona escura,
+  sombra suave, suor; LEIA-ME "Luta em 3D"): mexeu em luz, material ou lona,
+  compare na `ferramentas/bancada3d.mjs` (e `SEMTETO=1` pro custo).
+  `luta3d:max` é só da gravação dos anúncios.
 - **Cartas da árvore (2026-11-17, branch `cartas-integracao`; LEIA-ME
   "Cartas da árvore", catálogo em `docs/combat-v2.md`).** No combate v2
   (flag `combate_v2`) cada nó libera uma carta (`api/_jxj-cartas.js`). A

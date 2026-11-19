@@ -17,7 +17,7 @@
      [FORMATO=9x16|1x1] [PORTA=8871] node ferramentas/gravar-anuncio.mjs gravar <pasta da luta>
      9x16: 405 x 720 com escala 8/3 (toque: a carta tocada sobe grande e o Confirmar manda) = 1080 x 1920.
      1x1: 900 x 900 com escala 1,2 (mouse, o clique manda) = 1080 x 1080; em 540 x 540 no toque o 3D virava
-     uma faixa fina. VP_W, VP_H, VP_DSF e TOQUE=1 trocam a janela. CINEMA=1: só o 3D, em tela cheia (pros cortes de ação). MAX=1: o 3D na qualidade máxima.
+     uma faixa fina. VP_W, VP_H, VP_DSF e TOQUE=1 trocam a janela. CINEMA=1: só o 3D, em tela cheia (pros cortes de ação). MAX=1: o 3D na qualidade máxima. SCREENCAST=1 (com VP_DSF=1): quadros pelo screencast, bem mais rápido.
      A luta contra o bot é sorteada: grave algumas e fique com a que tem knockdown e nocaute do jogador
      (luta.json diz o método, o vencedor e o segundo de cada knockdown; linha.json, o que a tela mostrava).
      Sai na pasta: quadros/*.jpg (apagados depois da completa.mp4; MANTER=1 guarda), quadros.txt (lista do ffmpeg com a duração de cada quadro), linha.json
@@ -137,7 +137,26 @@ function tamJpeg(b) {
   return [0, 0];
 }
 const LARG = Math.round(VP.width * VP.deviceScaleFactor), ALT = Math.round(VP.height * VP.deviceScaleFactor);
+/* SCREENCAST=1 (só com escala 1, em que o screencast já vem em pixel do aparelho): o Chrome empurra cada quadro
+   do compositor, bem mais rápido que a foto em 1080 x 1920 (17 a 19 quadros por segundo); o horário de cada
+   quadro é o do compositor */
+async function gravarScreencast() {
+  let n = 0;
+  const ouvir = (d) => {
+    if (d.sessionId !== S || d.method !== "Page.screencastFrame") return;
+    const { data, sessionId: sid, metadata } = d.params, b = Buffer.from(data, "base64"), [w, h] = tamJpeg(b);
+    enviar("Page.screencastFrameAck", { sessionId: sid }, S).catch(() => {});
+    if (w !== LARG || h !== ALT) { foraDoTamanho++; return; }
+    const arq = `${String(++n).padStart(6, "0")}.jpg`; fs.writeFileSync(path.join(QD, arq), b); quadros.push({ arq, t: metadata.timestamp });
+  };
+  ouvintes.push(ouvir);
+  await enviar("Page.startScreencast", { format: "jpeg", quality: 90, maxWidth: LARG, maxHeight: ALT, everyNthFrame: 1 }, S);
+  while (gravando) await esperar(50);
+  await enviar("Page.stopScreencast", {}, S).catch(() => {});
+  ouvintes.splice(ouvintes.indexOf(ouvir), 1);
+}
 async function gravar() {
+  if (process.env.SCREENCAST === "1" && VP.deviceScaleFactor === 1) return gravarScreencast();
   const passo = 1000 / 30; let prox = performance.now(), n = 0;
   while (gravando) {
     const fs1 = fotoSess.find((x) => x.livre);
