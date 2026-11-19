@@ -6636,6 +6636,72 @@ deck de cartas da árvore, preferindo essas cartas; fotos do 3D a cada troca.
 Sem `ARVORE=1`, é o teste de antes com o deck padrão. Suítes que cobrem a
 parte: `combate2`, `cartasarte`, `luta3d`, `jxjbot` e `jxjtelas`.
 
+## Online de cartas pra todos (2026-11-19)
+
+Pedido do dono: "o online que está só pra mim está melhor, então coloque ele".
+O combate de cartas (combate v2) estava ligado só pra conta dele
+(`combate_v2` em `jxj_config` = `{"contas": [uuid]}`); ligar pra todos é
+`true` (`combateV2Para` em `api/jxj.js`). A calibragem continua parada na
+decisão 91: nenhum número, carta, motor, deck do bot ou `FORCA_BOT2` mudou.
+
+**Ligar.** `supabase_jxj_v2_todos.sql`, depois da `supabase_jxj_combate2.sql`,
+com o backup e a aprovação do dono. Só mexe numa chave: guarda o valor de agora
+em `combate_v2_antes` (só na primeira vez) e grava `combate_v2 = true`; o
+select do fim devolve `ligado = true`. O comentário do arquivo tem o comando
+que volta pro só-dono (lê o `combate_v2_antes`) e o que desliga pra todos.
+Luta que já começou termina na versão em que nasceu. A suíte `jxj` roda o
+arquivo no PGlite e a volta pelo comentário.
+
+**O caminho de ponta a ponta.** `FASE=nova|fila|antigo PORTA=8861 node
+ferramentas/online-v2-todos-e2e.mjs <pasta>`, com a flag em `true` e contas
+novas (sem lista): `nova` é a conta Pro pela tela (criação nos 4 passos, o
+treino de cartas, o deck padrão, a árvore liberando a carta, o deck montado,
+a luta contra bot até o fim, rating e XP, voltar ao painel, o deck padrão de
+volta); `fila` é uma conta Pro e uma grátis na busca, a luta inteira nas
+duas abas, a revanche e o limite do grátis (5 lutas contra bot, a sexta
+recusada, o botão travado, o cadeado da busca); `antigo` é um lutador criado
+com a flag desligada, com build de nível 6 e uma luta da v1 no histórico,
+abrindo na v2 (treino de cartas uma vez, cartas dos nós dele, deck padrão
+válido, replay da v1, luta contra bot v2 e Abandonar). Cada fase leva de 1 a
+2 minutos; `SEM3D=0` liga o 3D.
+
+**O que o caminho achou (com teste que reprova antes):**
+- A luta contra bot saía sempre com o deck padrão: o `bot` montava o perfil
+  com o lutador do `jxj_estado`, que não traz o deck. Agora lê o montado do
+  `jxj_decks` (`deckDo` confere e cai no padrão). Fila, revanche e torneio já
+  liam o deck (o `jxj_luta` manda a linha inteira). Suíte `jxj`.
+- A revanche com um lado sem Pro ficava "esperando" uma luta que o banco
+  nunca cria (`jxj_revanche_criar` exige os dois Pro). Agora o pedido é
+  recusado na hora, sem gravar, e o grátis não vê o botão. Suíte `jxj`.
+- Textos do combate de antes pra quem joga cartas: "os dois escolhem a ação"
+  (entrada, apresentação, card do menu) virou "jogam uma carta"; o estilo na
+  criação mostra a passiva e as cartas fixas no lugar da mão do round e do
+  bônus de leitura; a árvore diz que o nó libera a carta (nível = estrela,
+  a terceira dá efeito a mais) e o detalhe do nó não mostra mais o atributo;
+  a aba Atributos mostra os do estilo e da categoria (os da luta de cartas)
+  e as cartas da árvore no lugar das habilidades; a busca mostra a regra de
+  ausência da v2 (`REGRA_AUSENCIA_V2`: 18 segundos pra jogar a carta, a
+  Defesa da mão no prazo perdido, 5 pontos pro adversário em dois
+  seguidos); o Pro diz "nenhuma vantagem de carta ou de atributo". Suíte
+  `jxjtelas`. O "Como jogar" (`TUTORIAIS`) só tem o draft e a luta da
+  carreira: nada do Online ali, nenhum print mudou.
+
+**Quanto pesa (`node ferramentas/medir-carga.mjs`).** Celular, CPU 4x mais
+lenta, a "Slow 4G" do Lighthouse, cache vazio, texto com gzip (o servidor
+local com `GZIP=1`, perto do brotli da Vercel). Medido em 2026-11-19: primeira
+pintura 2,1 a 2,4 s, load 3,2 s, menu desenhado 6,9 a 7,1 s; primeira tela
+baixa 23 arquivos e 1,2 MB (index.html 314 KB e fighters.json 81 KB com
+gzip, o resto é fundo .webp). A luta contra bot aberta pelo endereço mostra
+as cartas em 2,3 s e o 3D monta em 28,5 a 28,9 s, baixando mais 5,7 MB
+(mx_lutas.glb 2,6 MB, mx_cartas.glb 1,1 MB, lutador.glb 0,9 MB e
+three.module.js 257 KB com gzip). As cartas jogam enquanto o 3D carrega.
+
+**Fica com o dono.** Rodar o SQL (backup antes). Lutador com árvore montada
+no combate de antes não ganha o "refazer de graça" com a troca: ele só vem
+quando a `VERSAO_BALANCEAMENTO` sobe (SQL, e a fila passa a juntar só a mesma
+versão). O deploy do CLI leva o `mx_cartas.glb`; o do push na `master` cai nas
+animações de reserva.
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:
