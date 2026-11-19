@@ -14462,6 +14462,29 @@ async function testarJxJV2() {
     if (fin(0.75, "b") !== "Ele tem energia pra fintar.") throw new Error("com a iniciativa a finta custa metade: " + fin(0.75, "b"));
     if (fin(0.74, "b") === "Ele tem energia pra fintar.") throw new Error("0,74 com a iniciativa não paga 0,75");
   });
+  await conf("3D atrasado (2026-11-19, achado no vídeo do anúncio): o selo do knockdown sai quando o golpe encosta no 3D, nunca pelo relógio dos efeitos; o porquê do palco explica a troca que o 3D está mostrando e volta pra última quando o 3D acaba a fila", () => {
+    const selos = (id) => X.run(`(document.getElementById(${JSON.stringify(id)}).children||[]).filter(c=>String(c.className).split(" ").includes("jxj-selo-kd")).length`);
+    const kd = { round: 1, troca: 1, ev: [{ tipo: "knockdown", quem: "a", alvo: "b" }] };
+    X.sb.__kd = JSON.stringify(kd);
+    X.run(`document.getElementById("jxj-card-ele").children=[]; jxjEfeitos2([JSON.parse(globalThis.__kd)],{eu:"a",ele:"b"},JXJ_TOKEN,{semVida:true,antes:{a:0,b:0}})`); X.drenar();
+    if (selos("jxj-card-ele") !== 0) throw new Error("com o 3D, o selo do knockdown saiu pelo relógio dos efeitos");
+    X.run(`jxjEfeitos2([JSON.parse(globalThis.__kd)],{eu:"a",ele:"b"},JXJ_TOKEN,{antes:{a:0,b:0}})`); X.drenar();
+    if (selos("jxj-card-ele") !== 1) throw new Error("sem o 3D, o selo do knockdown sumiu");
+    X.run(`document.getElementById("jxj-card-ele").children=[]; jxj3dGolpe({eu:"a",ele:"b",mostrado:{a:0,b:0},linha:{ev:{tipo:"kd",alvo:"b",dano:5}}},"B")`);
+    if (selos("jxj-card-ele") !== 1) throw new Error("o golpe do knockdown no 3D não pôs o selo");
+    /* o porquê: duas trocas, o 3D ainda na primeira */
+    const t1 = troca(MAO, MAO, "jab", "cruzado"), t2 = { ...troca(MAO, MAO, "bloqueio", "cruzado"), troca: 2 };
+    X.sb.__v = JSON.stringify({ combate: 2, trocas: [t1, t2], nomes, estado: null });
+    const doPalco = (x) => X.run(`(()=>{const t=jxj3dTrocaDoPorque(${x},JSON.parse(globalThis.__v));return t.round+"."+t.troca;})()`);
+    if (doPalco(`{pendentes:1,noPalco:{round:1,troca:1}}`) !== "1.1") throw new Error("3D na troca 1: o porquê devia ser da troca 1");
+    if (doPalco(`{pendentes:0,noPalco:{round:1,troca:1}}`) !== "1.2" || doPalco("null") !== "1.2") throw new Error("3D parado: o porquê devia ser da última troca");
+    X.run(`globalThis.__x={vista:JSON.parse(globalThis.__v),eu:"a",ele:"b",pendentes:1,noPalco:{round:1,troca:1}}; const p=document.getElementById("v2-linha-palco"); p.dataset={troca:"1.2"}; p.innerHTML="velho"; jxj3dPorque(globalThis.__x)`);
+    const h1 = String(X.run(`document.getElementById("v2-linha-palco").innerHTML`)), k1 = X.run(`document.getElementById("v2-linha-palco").dataset.troca`);
+    if (k1 !== "1.1" || !/Interrompeu a carta dele/.test(h1)) throw new Error("o porquê não trocou pra troca do 3D: " + k1 + " " + h1.slice(0, 200));
+    X.run(`globalThis.__x.pendentes=0; jxj3dPorque(globalThis.__x)`);
+    const h2 = String(X.run(`document.getElementById("v2-linha-palco").innerHTML`));
+    if (X.run(`document.getElementById("v2-linha-palco").dataset.troca`) !== "1.2" || !/Anulou a carta dele/.test(h2)) throw new Error("com o 3D parado o porquê não voltou pra última troca");
+  });
   await conf("energia clara: o porquê diz o que cada um gastou (\"Você: −2,5 de energia (carta 1, finta 1,5)\" e o dele), cansado e exausta quando aconteceu, o que a escolha rendeu (anular, interromper) e, no fim do round, a recuperação com o total; o \"Como ganhar\" lê os números das definições (mudou a regra, mudou o texto), com ícone do sprite e sem travessão", () => {
     const N = { a: "Ana", b: MAU };
     const gasto = (t) => noJogo("jxjGastoTroca2", t, "a", N, defs, null);

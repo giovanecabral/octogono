@@ -17,7 +17,7 @@
      [FORMATO=9x16|1x1] [PORTA=8871] node ferramentas/gravar-anuncio.mjs gravar <pasta da luta>
      9x16: 405 x 720 com escala 8/3 (toque: a carta tocada sobe grande e o Confirmar manda) = 1080 x 1920.
      1x1: 900 x 900 com escala 1,2 (mouse, o clique manda) = 1080 x 1080; em 540 x 540 no toque o 3D virava
-     uma faixa fina. VP_W, VP_H, VP_DSF e TOQUE=1 trocam a janela.
+     uma faixa fina. VP_W, VP_H, VP_DSF e TOQUE=1 trocam a janela. CINEMA=1: só o 3D, em tela cheia (pros cortes de ação).
      A luta contra o bot é sorteada: grave algumas e fique com a que tem knockdown e nocaute do jogador
      (luta.json diz o método, o vencedor e o segundo de cada knockdown; linha.json, o que a tela mostrava).
      Sai na pasta: quadros/*.jpg (apagados depois da completa.mp4; MANTER=1 guarda), quadros.txt (lista do ffmpeg com a duração de cada quadro), linha.json
@@ -169,6 +169,8 @@ await enviar("Fetch.enable", { patterns: ["*supabase.co*", "*octogono.fun/api*",
 await enviar("Emulation.setDeviceMetricsOverride", { width: VP.width, height: VP.height, deviceScaleFactor: VP.deviceScaleFactor, mobile: VP.isMobile }, S);
 if (VP.hasTouch) await enviar("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }, S);
 await enviar("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem("tutorial:draft","1");localStorage.setItem("tutorial:luta","1");localStorage.setItem("jxj:treino","1");localStorage.setItem("jxj:treino2","1");localStorage.setItem("luta:3d","1");` }, S);
+/* CINEMA=1: o 3D cobre a tela inteira (sem placar, cartas nem porquê) e não pega toque; o jogo continua por baixo */
+if (process.env.CINEMA === "1") await enviar("Page.addScriptToEvaluateOnNewDocument", { source: `document.addEventListener("DOMContentLoaded",()=>{const s=document.createElement("style");s.textContent="#jxj3dCaixa{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;z-index:2147483000!important;pointer-events:none!important}";document.head.appendChild(s);});` }, S);
 const ir = async (url) => { await enviar("Page.navigate", { url }, S); await esperar(400); for (let i = 0; i < 100; i++) { const r = await avaliar(() => document.readyState).catch(() => ""); if (r === "complete") break; await esperar(150); } };
 
 const linha = [], log = [];

@@ -8324,6 +8324,24 @@ function jxj3dGolpe(x,lado){
   ev.aplicado=true;
   if(ev.zera){ x.mostrado[l]=Infinity; jxjPintarVida(l,0,{ko:true}); return; }
   x.mostrado[l]+=ev.dano||0; jxjPintarVida(l,jxjVida(x.mostrado[l]));
+  /* o selo do knockdown também espera a queda no 3D (2026-11-19, achado no vídeo do anúncio: saía segundos antes) */
+  if(ev.tipo==="kd")jxjSeloKD(document.getElementById(l===x.eu?"jxj-card-eu":"jxj-card-ele"));
+}
+/* o porquê no palco (combate v2) explica a troca que o 3D está mostrando (2026-11-19, achado no vídeo do
+   anúncio: com o 3D atrasado, o knockdown da troca 1 passava com o porquê da troca final). Sem o 3D
+   ocupado, a última troca. */
+function jxj3dTrocaDoPorque(x,v){
+  const todas=(v&&v.trocas)||[],ult=todas[todas.length-1],p=x&&x.noPalco;
+  if(!p||!(x.pendentes>0))return ult;
+  return todas.find(t=>t.round===p.round&&t.troca===p.troca)||ult;
+}
+/* troca o porquê na tela quando o 3D começa outra troca (ou acaba a fila) */
+function jxj3dPorque(x){
+  const v=x&&x.vista; if(!v||v.combate!==2)return;
+  const velho=document.getElementById("v2-linha-palco"),t=jxj3dTrocaDoPorque(x,v); if(!velho||!t)return;
+  const chave=t.round+"."+t.troca; if(velho.dataset&&velho.dataset.troca===chave)return;
+  const todas=v.trocas||[],novo=jxjLinha2(t,{eu:x.eu,ele:x.ele},v.nomes,{nova:true,depois:t===todas[todas.length-1]?v.estado:null}); if(!novo)return;
+  velho.className=novo.className; velho.innerHTML=novo.innerHTML; if(velho.dataset)velho.dataset.troca=chave;
 }
 function jxj3dAlcancou(x){
   if(!x||x.pendentes>0||!x.vista||!x.vista.estado)return;
@@ -8348,21 +8366,24 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas,aoCair=null){
       .catch(e=>{ console.warn("Online em 3D indisponível:",e&&e.message); if(JXJ_3D===x){ jxj3dParar(); if(aoCair)aoCair(); } });
     JXJ_3D=x;
   }
-  const x=JXJ_3D,linhas=[];
+  const x=JXJ_3D,linhas=[],marcas=new Map();
   x.vista=v;
   for(const t of novas||[]){
+    const i0=linhas.length;
     if(t.round!==x.round){
       if(x.round!=null)linhas.push(comEvento({round:x.round,kind:"rd",text:""},{tipo:"fimRound"}));
       linhas.push(comEvento({round:t.round,kind:"rd",text:""},{tipo:"inicio"}));
       x.round=t.round;
     }
     linhas.push(...(v.combate===2?jxj3dEscala2(jxjLinhas3d2(t,eu),v.estado):jxjLinhas3d(t,eu)));
+    if(linhas.length>i0)marcas.set(linhas[i0],{round:t.round,troca:t.troca});
   }
   if(!linhas.length)return;
   x.pendentes++;
   x.fila=x.fila.then(async()=>{
     for(const L of linhas){
       if(!x.vivo||!x.inst)break;
+      if(marcas.has(L)){ x.noPalco=marcas.get(L); jxj3dPorque(x); }
       x.inst.velocidade(x.pendentes>1?2:1);   // atrasado (troca nova chegou antes de acabar a outra): anda em 2x
       x.linha=L;
       /* o fim da luta tem a cerimônia (suspense, juiz e cinturão): espera mais */
@@ -8372,7 +8393,7 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas,aoCair=null){
       if(x.vivo&&L.ev&&L.ev.alvo&&!L.ev.aplicado)jxj3dGolpe(x,L.ev.alvo===x.eu?"A":"B");
     }
     x.linha=null; x.pendentes--;
-    jxj3dAlcancou(x);
+    jxj3dAlcancou(x); jxj3dPorque(x);
   }).catch(()=>{ x.pendentes=Math.max(0,x.pendentes-1); });
 }
 async function jxj(acao,dados={}){
@@ -11000,7 +11021,10 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   /* o porquê da troca que acabou de ser resolvida (opção B) */
   const ult=(v.trocas||[])[(v.trocas||[]).length-1];
   /* no treino de cartas, o porquê só no passo da troca resolvida (depois o balão e a mão cobriam ele) */
-  const linha=ult&&!(treino&&treino.semPorque)?jxjLinha2(ult,{eu,ele},nomes,{nova,depois:e}):null;
+  /* no palco, a troca que o 3D está mostrando (jxj3dPorque troca quando o 3D anda) */
+  const tPq=palco?jxj3dTrocaDoPorque(JXJ_3D,v):ult;
+  const linha=tPq&&!(treino&&treino.semPorque)?jxjLinha2(tPq,{eu,ele},nomes,{nova,depois:tPq===ult?e:null}):null;
+  if(linha&&palcoEl){ linha.id="v2-linha-palco"; if(linha.dataset)linha.dataset.troca=tPq.round+"."+tPq.troca; }
   if(linha)(palcoEl||tela).appendChild(linha);
   /* as cartas (a troca que acabou a luta, na cena do fim, vem sem a mão) */
   const zona=el("section","jxj-zona-acao");
@@ -11163,7 +11187,8 @@ function jxjEfeitos2(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null,se
         if(vida!=null&&!semVida){ jxjPintarVida(alvo,vida); jxjPopVida(card(alvo),menos,pesado); }
         jxjFaixaGolpe(ladoAlvo,nome,menos); },JXJ_GOLPE_MS);
     }
-    else if(e.tipo==="knockdown")depois(()=>{ SOM.knockdown(); jxjClarao(); anima(card(alvo),"jxj-caiu"); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte"); jxjSeloKD(card(alvo)); },900);
+    /* com o 3D (semVida), o knockdown é do 3D: a queda, o grito e o selo quando o golpe encosta (jxj3dGolpe) */
+    else if(e.tipo==="knockdown"&&!semVida)depois(()=>{ SOM.knockdown(); jxjClarao(); anima(card(alvo),"jxj-caiu"); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte"); jxjSeloKD(card(alvo)); },900);
     else if(["queda","puxouGuarda","raspou","levantou","avancou"].includes(e.tipo))
       depois(()=>{ if(e.tipo==="queda"||e.tipo==="puxouGuarda")SOM.queda(); anima(document.getElementById("jxj-posicao"),"jxj-muda"); });
     else if(e.tipo==="encaixou")depois(()=>{ SOM.quaseFinalizacao(); anima(card(alvo),"jxj-apertado"); },600);
@@ -11217,7 +11242,7 @@ function jxjEfeitos(novas,{eu,ele},tk,{fechouRound=false,fim=null,antes=null,sem
         if(vida!=null&&!semVida){ jxjPintarVida(alvo,vida); jxjPopVida(card(alvo),menos,pesado); }
         jxjFaixaGolpe(ladoAlvo,nome,menos); },JXJ_GOLPE_MS);
     }
-    else if(e.tipo==="knockdown"){
+    else if(e.tipo==="knockdown"&&!semVida){
       let vida=null;
       if(dano){ dano[alvo]+=5; vida=jxjVida(dano[alvo]); }
       depois(()=>{ SOM.knockdown(); jxjClarao(); anima(card(alvo),"jxj-caiu"); anima(document.getElementById("jxj-combate"),"jxj-tremor-forte");
