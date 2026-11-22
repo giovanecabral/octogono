@@ -6437,7 +6437,11 @@ roupa").**
   dono viu, no nocaute, quem venceu na frente de quem perdeu e o árbitro de
   lado, com os braços cruzando): um lutador de cada lado, o lado sorteado,
   o árbitro no meio; todo mundo parado e de pé antes (o que estava tocando
-  para), e cada um dá a mão do lado do árbitro.
+  para), e cada um dá a mão do lado do árbitro. O árbitro não usa luva (`semLuva`,
+  2026-11-21: no print do dono ele aparecia de luva de MMA com os dedos
+  abertos) e fecha a mão no punho que segura (`fecharMaos`: os dedos
+  dobram no x local, medido nas fotos; roda depois do mixer, que devolve a
+  pose limpa a cada quadro, então não acumula) e abre quando solta.
 - *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
   ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
   ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).

@@ -343,6 +343,8 @@ export class Lutador {
         if (o.material.name === "MI_Calcao") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b"), roughness: 0.7 }, comTrama(90, 0.35));
         if (o.material.name === "MI_Faixa") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b").multiplyScalar(0.25), roughness: 0.85 }, comTrama(160, 0.8));
         if (o.material.name === "MI_Luva") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Luva", color: new THREE.Color(opt.luva || "#141416"), roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.45 });
+        // o árbitro não usa luva (semLuva): a mão do corpo aparece (2026-11-21, print do dono: o árbitro de luva de MMA)
+        if (opt.semLuva && (o.material.name === "MI_Luva" || o.material.name === "MI_Punho")) o.visible = false;
         if (o.material.name === "MI_Punho") Object.assign(o.material, { color: new THREE.Color(opt.luva || "#141416").lerp(new THREE.Color("#4a4b52"), 0.35), roughness: 0.92 }, comTrama(200, 0.5));   // velcro um tom mais claro
       }
     });

@@ -25,7 +25,7 @@ if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
 const OP_A = op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" };
 const OP_B = op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" };
-const OP_C = { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro" };
+const OP_C = { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro", semLuva: true };
 await carregarPecas(base, [OP_A, OP_B, OP_C]);   // corpo realista: só os cortes e as roupas desta luta
 /* clipes das cartas: chegam depois que a luta abre; sem o arquivo, o lance de reserva (lances-cartas.js) */
 const cartasProntas = carregarCartas(base, dir);
@@ -895,6 +895,21 @@ async function mataLeao(atk, def, texto) {
    esperando a resposta"). Nocaute, nocaute técnico e finalização: o árbitro vem e levanta a mão
    na hora. Disputa de cinturão que o jogador ganha: ele levanta o cinturão. */
 function segurar(L, mao, alvo) { L.ikFixo["hand_" + mao] = { alvo, peso: 1 }; }
+/* a mão do árbitro fecha no punho que segura (2026-11-21, print do dono: aberta, com os dedos esticados, não
+   agarrava nada). Roda depois do mixer, que devolve a pose limpa a cada quadro (não acumula) */
+const DEDOS = ["index", "middle", "ring", "pinky"];
+function fecharMaos(L) {
+  // os dedos dobram em torno do x local nos dois lados (medido nas fotos da cerimônia: y e z torciam a mão)
+  const q = new THREE.Quaternion(), e = new THREE.Vector3(1, 0, 0);
+  const f = () => {
+    for (const l of "lr") {
+      for (const d of DEDOS) for (const n of ["01", "02", "03"]) { const o = L.ossos[`${d}_${n}_${l}`]; if (o) o.quaternion.multiply(q.setFromAxisAngle(e, n === "01" ? 1.1 : 1.3)); }
+      for (const n of ["02", "03"]) { const o = L.ossos[`thumb_${n}_${l}`]; if (o) o.quaternion.multiply(q.setFromAxisAngle(e, 0.6)); }
+    }
+  };
+  L.extras.add(f);
+  return () => L.extras.delete(f);
+}
 async function cerimonia(venc, perd, { suspense = false } = {}) {
   if (montada) await separar({ narra: false });
   travado = true; ocupadoLance = true;
@@ -923,6 +938,7 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
     const ponto = () => baixo.clone().lerp(alto, L === sobe.quem ? suave(sobe.k) : 0);
     segurar(L, mL, ponto); segurar(C, mC, () => ponto().add(V(0, 0.03, 0.02)));
   }
+  const abrirMaos = fecharMaos(C);
   cam.modo = "cerimonia"; cam.cerFov = 42; palco.iniciado = false;
   if (suspense) {
     chamada("DECISÃO DOS JUÍZES", { pequena: true }); som("sobe", 0.8);
@@ -938,6 +954,7 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   await esperar(1.4);
   // solta: quem venceu comemora, quem perdeu lamenta (se estiver em pé), o árbitro dá um passo
   for (const L of [A, B, C]) L.ikFixo = {};
+  abrirMaos();
   venc.umaVez(Math.random() < 0.5 ? "Vitoria_Boxe" : "Comemora", { fade: 0.35, segurar: true, mover: false });
   perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
   const c0 = C.raiz.position.clone(); animar(0.8, (k) => { C.raiz.position.z = c0.z - 0.7 * suave(k); });
