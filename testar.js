@@ -17990,6 +17990,49 @@ async function testarJxJTelas() {
       /* o Cruzado não tem efeito: a carta grande mostra a frase da categoria, nunca a caixa vazia */
       if (!/Golpe simples: se acerta, causa o dano da carta\./.test(r.toqueAcao.foco)) throw new Error("o efeito na carta grande: " + tira(r.toqueAcao.foco).slice(0, 200));
     });
+    await conf("a carta da postura dele (2026-11-21, pedido do dono: 'está escrito mas tá muito pequeno'): a carta grande aparece só depois que ele mostrou (nunca na etapa da postura, nem sem ele mostrar, nem no duelo, nem no fim) e fica até a troca acabar; sem o palco mora na linha de situação, no palco no canto de cima do 3D; diz o nome, a categoria e se é verdade (sem energia pra fintar) ou pode ser finta; a etiqueta pequena dele deixa de repetir a postura", async () => {
+      if (!lidV2) throw new Error("sem a luta v2");
+      await flagV2T({ contas: [u1, u2] });
+      let v;
+      try { v = await api(u1, "luta", { lutaId: lidV2 }); } finally { await flagV2T(false); }
+      const r = JSON.parse(vm.runInContext(`(() => {
+        const base = JSON.parse(globalThis.__vista), eu = base.lado, ele = eu === "a" ? "b" : "a", lados = { eu, ele };
+        const carta = (id) => { const d = jxjCartaDef2(id); return { id, nome: d.nome, categoria: d.categoria, efetiva: { id, nome: d.nome, contexto: "pe" }, vel: d.vel, velBase: d.vel, dano: d.dano, danoBase: d.dano, custo: d.custo, finta: null, efeitos: d.efeitos || [] }; };
+        const agora = Date.parse(base.agora || new Date().toISOString());
+        const est = (l, x) => ({ ...base.estado[l], grogue: false, lento: 0, rapido: 0, ...x });
+        const vb = { ...base, status: "andamento", round: 1, troca: 1, trocas: [], etapa: "sinal", meuSinal: null, adversarioSinalizou: true, sinais: null, minhaCarta: null, minhaAcao: null, adversarioEscolheu: false,
+          estado: { ...base.estado, pos: "pe", encaixe: null, iniciativa: null, [eu]: est(eu, { energia: 10, energiaMax: 10 }), [ele]: est(ele, { energia: 10, energiaMax: 10 }) },
+          placarRound: { round: 1, pts: { a: 0, b: 0 }, cartao: {} }, prazoSinal: new Date(agora + 8000).toISOString(), prazo: new Date(agora + 26000).toISOString(), agora: new Date(agora).toISOString(),
+          mao: [carta("jab"), carta("cruzado"), carta("bloqueio"), carta("queda"), carta("clinch")] };
+        const acao = { ...vb, etapa: "acao", meuSinal: "defesa", sinais: { [eu]: "defesa", [ele]: "queda" }, adversarioSinalizou: true, prazoSinal: new Date(agora - 1000).toISOString() };
+        const cls = (n) => String((n && n.className) || "").split(" ");
+        const lista = (no) => { const out = [], fila = [no]; while (fila.length) { const x = fila.shift(); out.push(x); fila.push(...(x.children || [])); } return out; };
+        const html = (no) => lista(no).map((x) => String(x.innerHTML || "")).join("\\n");
+        const ver = (v, op = {}) => {
+          const t = jxjDesenharCombate2(document.createElement("div"), v, lados, () => {}, op);
+          const c = lista(t).find((x) => cls(x).includes("v2-postura-dele")), pai = c ? lista(t).find((x) => (x.children || []).includes(c)) : null;
+          return { tem: !!c, html: c ? html(c) : "", cls: c ? cls(c) : [], naFaixa: !!(pai && cls(pai).includes("v2-situacao")), naTela: !!(pai && cls(pai).includes("jxj-palco")), etiqueta: html(lista(t).find((x) => x.id === "jxj-card-ele") || {}) };
+        };
+        return JSON.stringify({
+          sinal: ver(vb), naoMostrou: ver({ ...acao, adversarioSinalizou: false }), carta: ver(acao), palco: ver(acao, { palco: true }),
+          jogada: ver({ ...acao, minhaCarta: "bloqueio", minhaAcao: "defesa", adversarioEscolheu: true }),
+          verdade: ver({ ...acao, estado: { ...acao.estado, [ele]: est(ele, { energia: 0, energiaMax: 10 }) } }),
+          duelo: ver(vb, { palco: true, revelar: { a: "<span>ra</span>", b: "<span>rb</span>" } }), fim: ver(acao, { final: true }),
+        });
+      })()`, Object.assign(env.sandbox, { __vista: JSON.stringify(v) })));
+      const tira = (h) => h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      for (const k of ["sinal", "naoMostrou", "duelo", "fim"]) if (r[k].tem) throw new Error(`a carta da postura dele aparece onde não devia (${k})`);
+      for (const k of ["carta", "palco", "jogada", "verdade"]) if (!r[k].tem) throw new Error(`sem a carta da postura dele (${k})`);
+      const txt = tira(r.carta.html);
+      if (!/Postura dele/.test(txt) || !/Base baixa/.test(txt) || !/vai de Queda/.test(txt) || !r.carta.cls.includes("f-queda") || !/class="jxj-carta f-queda/.test(r.carta.html)) throw new Error("a carta não diz a postura: " + txt);
+      if (!r.carta.naFaixa || r.carta.naTela) throw new Error("sem o palco, a carta mora na linha de situação");
+      if (!r.palco.naTela || r.palco.naFaixa) throw new Error("no palco, a carta fica no canto do 3D");
+      if (!/Pode ser finta/.test(txt) || /É verdade/.test(txt)) throw new Error("com energia, pode ser finta: " + txt);
+      if (!/É verdade: sem energia pra fintar/.test(tira(r.verdade.html)) || !/v2-pd-ver verdade/.test(r.verdade.html)) throw new Error("sem energia, a postura é verdade: " + tira(r.verdade.html));
+      if (/Base baixa/.test(r.carta.etiqueta) || /Base baixa/.test(r.jogada.etiqueta)) throw new Error("a etiqueta pequena dele repete a postura que está na carta");
+      if (!/já jogou/.test(tira(r.jogada.etiqueta))) throw new Error("a etiqueta dele perdeu o 'já jogou'");
+      if (!/Base baixa/.test(r.naoMostrou.etiqueta)) throw new Error("sem a carta, a etiqueta continua com a postura");
+    });
     await conf("clareza da luta v2 (2026-11-18, pedido do dono: 'coloco as cartas e torço'): o Como ganhar não abre sozinho (nem na primeira luta v2, nem sem storage: o treino de cartas ensina antes), abre pelo botão e fecha no Entendi; fica na zona da mão, acima da barra de comando; na etapa da carta, cada carta da mão tem o selo da pista contra a postura dele (o mesmo de jxjPrevisao2) e a linha de fintar; sem a postura dele, nada de selo; os dois placares com a vida e a energia (rótulo, 'x de y', marca do cansado), a dele no palco tão grande quanto a minha; a carta que sai exausta ou deixa cansado diz isso; a linha do porquê traz o gasto", async () => {
       if (!lidV2) throw new Error("sem a luta v2");
       await flagV2T({ contas: [u1, u2] });

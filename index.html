@@ -10920,13 +10920,32 @@ function jxjPosicaoTxt2(v,eu){
 /* a etiqueta de postura (e de carta jogada) ao lado do nome. No celular a dele mora na linha de
    situação (situacao: true), porque a coluna do nome dele no topo é estreita demais */
 function jxjTagPostura2(v,l,souEu,{situacao=false}={}){
-  const acao=v.etapa&&v.etapa!=="sinal",cat=acao&&v.sinais?v.sinais[l]:souEu&&v.etapa==="sinal"?v.meuSinal:null;
+  const acao=v.etapa&&v.etapa!=="sinal";
+  /* a dele, quando ele mostrou, está na carta grande (jxjPosturaDele2): aqui só o "já jogou" */
+  const naCarta=!souEu&&acao&&v.adversarioSinalizou;
+  const cat=naCarta?null:acao&&v.sinais?v.sinais[l]:souEu&&v.etapa==="sinal"?v.meuSinal:null;
   const partes=[];
   if(cat)partes.push(`<small class="v2-tag-pre">Mostrou </small>${JXJ_POSTURAS[cat]}`);
   else if(!souEu&&v.etapa==="sinal"&&v.adversarioSinalizou)partes.push("Já mostrou a postura");
   if(!souEu&&acao&&v.adversarioEscolheu)partes.push("já jogou");
   if(!partes.length)return"";
   return `<span class="v2-postura-tag${situacao?" v2-tag-situacao":""}${cat?" f-"+cat:""}"${situacao?' aria-hidden="true"':""}>${cat?ICONE(JXJ_ICONE_ACAO[cat]||"luta"):""}<span>${situacao?"Ele: ":""}${partes.join(" · ")}</span></span>`;
+}
+/* a carta da postura dele (2026-11-21, pedido do dono: "está escrito mas tá muito pequeno"): uma carta
+   grande na direita da tela, só depois que ele mostrou (a etapa da carta, com a postura revelada) e até
+   a troca acabar. Embaixo, se a postura é verdade (sem energia pra fintar) ou se ele pode fintar. Tela
+   estreita (sem margem do lado): entra na ponta direita da linha de situação, compacta */
+JXJ_TAM_CARTA.posturaDele=124;
+function jxjPosturaDele2(v,eu,ele){
+  const cat=v.etapa&&v.etapa!=="sinal"&&v.adversarioSinalizou&&v.sinais?v.sinais[ele]:null;
+  if(!cat||!JXJ_POSTURAS[cat])return null;
+  const p=jxjPrevisao2(v,eu),ver=p&&!p.encaixe&&p.podeFintar!=null?(p.podeFintar?"Pode ser finta":"É verdade: sem energia pra fintar"):"";
+  const a=el("aside","v2-postura-dele f-"+cat); a.id="jxj-postura-dele";
+  if(a.setAttribute)a.setAttribute("aria-label",`Postura dele: ${JXJ_POSTURAS[cat]}, vai de ${JXJ_FAMILIA_TXT[cat]}`);
+  a.innerHTML=`<span class="v2-pd-txt"><span class="v2-pd-tit">Postura dele</span><b class="v2-pd-nome">${JXJ_POSTURAS[cat]}</b><small class="v2-pd-vai">vai de ${JXJ_FAMILIA_TXT[cat]}</small>`
+    +(ver?`<span class="v2-pd-ver${p.podeFintar?"":" verdade"}">${ICONE(p.podeFintar?"alerta":"check")}<span>${ver}</span></span>`:"")
+    +`</span>${jxjCarta({familia:cat},{tam:"posturaDele",postura:true})}`;
+  return a;
 }
 /* treino (o treino de cartas, 2026-11-18): {certa, travado, balao} como no treino de antes; certa é a
    categoria na etapa da postura e o id da carta na etapa da carta */
@@ -11012,6 +11031,9 @@ function jxjDesenharCombate2(area,v,{eu,ele},enviar,{nova=false,maoNova=false,re
   if(momEl&&!palco)tela.appendChild(momEl);
   const palcoEl=palco?el("div","jxj-palco"):null;
   if(palcoEl)palcoEl.id="jxj-palco";
+  const posturaDele=final||duelando?null:jxjPosturaDele2(v,eu,ele);
+  /* na linha de situação (a mão presa no pé da tela cobria uma faixa a mais); no palco, no canto de cima do 3D */
+  if(posturaDele)(palco?palcoEl:faixa).appendChild(posturaDele);
   /* a mesa: só com a minha carta jogada (esperando ele) e na revelação; enquanto escolho, nada */
   const jogou=!!(v.minhaCarta||v.minhaAcao);
   const mesaEl=revelar||(jogou&&!final)?jxjMesa2(v,{eu,ele},revelar,{soltou}):null;

@@ -6878,6 +6878,23 @@ quando a `VERSAO_BALANCEAMENTO` sobe (SQL, e a fila passa a juntar só a mesma
 versão). O deploy do CLI leva o `mx_cartas.glb`; o do push na `master` cai nas
 animações de reserva.
 
+**A carta da postura dele (2026-11-21, pedido do dono: "está escrito mas tá
+muito pequeno").** Depois que ele mostra a postura (a etapa da carta, com
+`adversarioSinalizou`), uma carta grande da categoria dele aparece na direita
+(`jxjPosturaDele2`): o nome da postura, a categoria e, embaixo, "É verdade: sem
+energia pra fintar" ou "Pode ser finta" (o mesmo `jxjPrevisao2` da linha de
+fintar). Fica até a troca acabar; nunca na etapa da postura, sem ele mostrar, no
+duelo nem no fim. Onde mora: com margem do lado (1240 px ou mais) presa na
+direita; sem margem, compacta na ponta direita da linha de situação (uma faixa
+a mais empurrava a mão presa no pé da tela pra cima dela, em 1024 x 768); no
+3D, no canto de cima do palco (a linha do porquê encolhe pra não passar
+embaixo). A etiqueta pequena ao lado do nome dele deixa de repetir a postura
+(fica só o "já jogou"). A largura da carta vem num `--w` embutido: o CSS da
+carta usa `!important` pra trocar. Suíte `jxjtelas`; fotos em
+`ferramentas/online-v2-e2e.mjs` (com `SEM3D=1` e `A_W=1024 A_H=768`). Com
+`SEM3D=1` essa ferramenta já reprovava antes disso na barra dele contra a
+minha (de 0,32 a 0,58, abaixo do 0,6 pedido; varia com a luta).
+
 ## Ritmo da narração da luta (2026-10-04 e 2026-10-05)
 
 Duas rodadas com o dono, jogando em produção:
