@@ -35,7 +35,11 @@ const A = new Lutador(base, OP_A);
 const B = new Lutador(base, OP_B);
 palco.cena.add(A.raiz, B.raiz);
 /* o árbitro: só aparece no fim (anúncio do vencedor, interrupção do nocaute técnico) */
-const PARADO = A.clipeFixo("Alonga", 0.02, "Parado");
+/* em pé: o árbitro (PARADO) e quem lutou esperando o anúncio (ESPERA, cansado, ombros pra frente). Antes era
+   um quadro do Alonga, de braço duro e queixo pro teto (auditoria de postura, 2026-11-22); o vivo() do
+   lutador.js põe respiração, peso e olhar por cima */
+const PARADO = A.clipeFixo("Vitoria_Boxe", 0.1, "Parado");
+const ESPERA = A.clipeFixo("Derrota_Boxe", 0.1, "Espera");
 const C = new Lutador(base, OP_C);
 C.raiz.visible = false; palco.cena.add(C.raiz); C.estado(PARADO, 0);
 A.raiz.position.set(-0.85, 0, 0); B.raiz.position.set(0.85, 0, 0);
@@ -80,7 +84,7 @@ function darPasso(L, delta, dur) {
    somados, às vezes encostavam os dois (achado filmando a troca) */
 function manterDistancia() {
   if (travado || montada) return;
-  const pa = plano(A.raiz.position), pb = plano(B.raiz.position), d = pa.distanceTo(pb), MIN = 0.8;
+  const pa = plano(A.raiz.position), pb = plano(B.raiz.position), d = pa.distanceTo(pb), MIN = 0.72;   // 0,72: o uppercut de perto cabe (0,8 deixava o soco curto)
   // parados na guarda, voltam devagar pra distância de luta
   if (!ocupadoLance && d < 1.4 && d >= MIN) {
     const u = pb.clone().sub(pa).normalize(), passo = Math.min(1.4 - d, 0.01) / 2;
@@ -170,22 +174,24 @@ function som(tipo, vol = 1) {
    que chegue no alvo (o golpe anda junto, root motion). Pacote 2: os golpes de boxe com passo.
    reacao: a de quem leva; mão esquerda de quem bate vira a cabeça pro outro lado. */
 const GOLPES = {
-  jab:          { clip: "Jab",            imp: 0.47, dist: 1.40, alvo: "cabeca", reacao: "Light_Hit_To_Head",  forca: 0.7, membro: "hand_l", nome: "jab" },
-  direto:       { clip: "Direto",         imp: 0.67, dist: 1.47, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.1, membro: "hand_r", nome: "direto" },
-  umDois:       { clip: "Jab_Direto",     imp: 0.67, dist: 1.31, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.0, membro: "hand_r", nome: "jab e direto", antes: { imp: 0.43, membro: "hand_l" } },
-  cruzadoFrente:{ clip: "Cruzado_Frente", imp: 0.50, dist: 1.00, alvo: "cabeca", reacao: "Reacao_Cabeca_Esq",  forca: 1.1, membro: "hand_l", nome: "cruzado de esquerda" },
-  gancho:       { clip: "Cruzado_Tras",   imp: 0.72, dist: 1.16, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.4, membro: "hand_r", nome: "cruzado" },
-  upper:        { clip: "Upper_Tras",     imp: 0.73, dist: 1.15, alvo: "cabeca", reacao: "Receiving_A_Big_Uppercut", forca: 1.5, membro: "hand_r", nome: "uppercut" },
-  jabCorpo:     { clip: "Cruzado_Corpo",  imp: 1.00, dist: 1.38, alvo: "corpo",  reacao: "Reacao_Corpo",       forca: 0.9, membro: "hand_l", nome: "cruzado no corpo" },
+  jab:          { clip: "Jab",            imp: 0.47, dist: 1.20, alvo: "cabeca", reacao: "Light_Hit_To_Head",  forca: 0.7, membro: "hand_l", nome: "jab", mira: "reto" },
+  direto:       { clip: "Direto",         imp: 0.67, dist: 1.35, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.1, membro: "hand_r", nome: "direto", mira: "reto" },
+  umDois:       { clip: "Jab_Direto",     imp: 0.67, dist: 1.12, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.0, membro: "hand_r", nome: "jab e direto", mira: "reto", antes: { imp: 0.43, membro: "hand_l" } },
+  cruzadoFrente:{ clip: "Cruzado_Frente", imp: 0.50, dist: 1.00, alvo: "cabeca", reacao: "Reacao_Cabeca_Esq",  forca: 1.1, membro: "hand_l", nome: "cruzado de esquerda", mira: "gancho" },
+  gancho:       { clip: "Cruzado_Tras",   imp: 0.72, dist: 1.16, alvo: "cabeca", reacao: "Reacao_Cabeca_Dir",  forca: 1.4, membro: "hand_r", nome: "cruzado", mira: "gancho" },
+  /* o Upper_Tras é um uppercut no corpo (no impacto a mão está abaixo do ombro: no queixo o IK travava o braço
+     reto, auditoria de 2026-11-22); o uppercut no queixo é o clipe das cartas (mx_uppercut, golpe()) */
+  upper:        { clip: "Upper_Tras",     imp: 0.73, dist: 1.02, alvo: "corpo",  reacao: "Reacao_Corpo",       forca: 1.5, membro: "hand_r", nome: "uppercut", mira: "upper" },
+  jabCorpo:     { clip: "Cruzado_Corpo",  imp: 1.00, dist: 1.38, alvo: "corpo",  reacao: "Reacao_Corpo",       forca: 0.9, membro: "hand_l", nome: "cruzado no corpo", mira: "gancho" },
   chuteBaixo:   { clip: "Chute_Baixo",    imp: 0.60, dist: 1.30, alvo: "perna",  reacao: "Reacao_Lado",        forca: 0.8, membro: "ball_r", nome: "chute baixo" },
-  chuteCabeca:  { clip: "Mma_Kick",       imp: 0.71, dist: 1.30, alvo: "cabeca", reacao: "Big_Hit_To_Head",    forca: 1.7, membro: "ball_r", nome: "chute alto" },
-  chuteCorpo:   { clip: "Roundhouse_Kick",imp: 0.92, dist: 1.66, alvo: "corpo",  reacao: "Rib_Hit",            forca: 1.3, membro: "ball_r", nome: "chute no corpo" },
+  chuteCabeca:  { clip: "Mma_Kick",       imp: 0.71, dist: 1.18, alvo: "cabeca", reacao: "Big_Hit_To_Head",    forca: 1.7, membro: "ball_r", nome: "chute alto" },
+  chuteCorpo:   { clip: "Roundhouse_Kick",imp: 0.92, dist: 1.47, alvo: "corpo",  reacao: "Rib_Hit",            forca: 1.3, membro: "ball_r", nome: "chute no corpo" },
 };
 /* golpes dos clipes novos das cartas (mx_cartas.glb): imp e dist medidos em lances-cartas.js. Só valem
    com o clipe carregado (golpeDaCarta); sem ele o lance de reserva (GOLPES de cima) segue valendo. */
 const REACAO_MX = { cabeca: "Reacao_Cabeca_Dir", corpo: "Reacao_Corpo", perna: "Reacao_Lado" };
 for (const [id, g] of Object.entries(GOLPES_MX))
-  GOLPES["mx_" + id] = { clip: id, imp: g.imp, dist: g.dist, alvo: g.alvo, reacao: REACAO_MX[g.alvo], forca: g.membro.startsWith("ball") ? 1.4 : 1.1, membro: g.membro, nome: id.replace(/_/g, " "), ik: g.ik };
+  GOLPES["mx_" + id] = { clip: id, imp: g.imp, dist: g.dist, alvo: g.alvo, reacao: id === "uppercut" ? "Receiving_A_Big_Uppercut" : REACAO_MX[g.alvo], forca: g.membro.startsWith("ball") ? 1.4 : 1.1, membro: g.membro, nome: id.replace(/_/g, " "), ik: g.ik, mira: id === "uppercut" ? "upper" : null };
 /* o golpe do lance de uma carta: o clipe novo se já chegou, senão o golpe de reserva (nome do GOLPES) */
 function golpeDaCarta(carta, reserva) {
   const l = carta && LANCES_CARTAS[carta];
@@ -194,10 +200,28 @@ function golpeDaCarta(carta, reserva) {
 }
 /* em que instante da reação o golpe "chega" (medido na velocidade da cabeça do clipe) */
 const REACAO_DE = { Reacao_Cabeca_Esq: 0.06, Reacao_Cabeca_Dir: 0.1, Reacao_Corpo: 0.13, Reacao_Lado: 0.16 };
-/* onde o golpe encosta: rosto (um pouco à frente da cabeça) ou costela */
-function alvoDe(atk, def, alvo) {
-  return () => {
+/* onde o golpe encosta: rosto (um pouco à frente da cabeça) ou costela.
+   Com a mão prevista do clipe (de: onde o clipe põe a mão no impacto), o golpe encosta na superfície da
+   cabeça ou do tronco do lado de onde a mão vem (2026-11-22, auditoria de postura: todo golpe ia num ponto
+   fixo na frente do rosto e o IK esticava o cruzado e o uppercut até virarem um direto). A mira limita a
+   altura: reto e cruzado no rosto e no queixo, nunca no pescoço; uppercut por baixo do queixo. */
+const RAIO_CABECA = 0.19, RAIO_TRONCO = 0.25;   // do centro até o punho (osso da mão), com a luva
+const RAIO_PE = 0.06;                           // a bola do pé encosta mais perto que o punho
+function alvoDe(atk, def, alvo, mira = null, membro = "hand_r") {
+  return (de) => {
     const dir = pelve(atk).sub(pelve(def)).normalize();
+    if (de && (alvo === "cabeca" || alvo === "corpo")) {
+      const cabeca = alvo === "cabeca";
+      // centro do crânio (o osso Head fica na base dele) ou do peito, um pouco pra frente
+      const c = cabeca ? def.posMundo("Head").add(new THREE.Vector3(0, 0.09, 0)).addScaledVector(dir, 0.03) : def.posMundo("spine_02").add(new THREE.Vector3(0, 0.06, 0));
+      const n = de.clone().sub(c), h = new THREE.Vector3(n.x, 0, n.z);
+      if (h.lengthSq() < 1e-6) h.copy(dir); h.normalize();
+      // nunca por trás: a mão chega pela frente ou pelo lado de quem apanha
+      const fr = h.dot(dir); if (fr < 0.2) h.addScaledVector(dir, 0.2 - fr).normalize();
+      const el = THREE.MathUtils.clamp(Math.atan2(n.y, Math.hypot(n.x, n.z)), cabeca ? (mira === "upper" ? -0.6 : -0.45) : -0.35, cabeca ? 0.15 : 0.3);
+      const r = (cabeca ? RAIO_CABECA : RAIO_TRONCO) - (membro.startsWith("ball") ? RAIO_PE : 0);
+      return c.add(h.multiplyScalar(Math.cos(el) * r)).add(new THREE.Vector3(0, Math.sin(el) * r, 0));
+    }
     if (alvo === "cabeca") return def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(dir, 0.1);
     if (alvo === "guarda") return def.posMundo("hand_l").lerp(def.posMundo("hand_r"), 0.5).addScaledVector(dir, 0.05);
     if (alvo === "perna") return def.posMundo("thigh_l").lerp(def.posMundo("calf_l"), 0.55).addScaledVector(dir, 0.08);
@@ -217,6 +241,8 @@ function acertar(atk, def, membro, forca, alvo) {
   else def.impacto("spine_02", eixo, 0.1 * forca);
 }
 async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarReacao = false, deReacao = 0, narra = true } = {}) {
+  // uppercut no queixo: o clipe das cartas quando já chegou (o Upper_Tras é no corpo)
+  if (nome === "upper" && GOLPES.mx_uppercut && base.clips.uppercut) nome = "mx_uppercut";
   const g = GOLPES[nome];
   await ajustarDist(g.dist, 0.4);
   if (narra) narrar(`${nomeDe(atk)} acerta ${g.nome}.`);
@@ -225,8 +251,8 @@ async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarR
   const ondeEstava = def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(pelve(atk).sub(pelve(def)).normalize(), 0.1);
   atk.umaVez(g.clip, { fade: 0.14, volta: 0.35 });
   /* joelho e cotovelo (ik: false) não estão na cadeia do IK: o golpe encosta pelo clipe, com a distância medida */
-  if (g.ik !== false) atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo), g.imp);
-  if (g.antes && !bloqueio) atk.contato(g.antes.membro, alvoDe(atk, def, "cabeca"), g.antes.imp);
+  if (g.ik !== false) atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo, g.mira, g.membro), g.imp, { clipe: g.clip });
+  if (g.antes && !bloqueio) atk.contato(g.antes.membro, alvoDe(atk, def, "cabeca", "reto"), g.antes.imp, { clipe: g.clip });
   let t = 0;
   if (g.antes && !bloqueio) { await esperar(g.antes.imp - 0.02); t = g.antes.imp - 0.02; acertar(atk, def, g.antes.membro, 0.6, "cabeca"); def.umaVez("Light_Hit_To_Head", { fade: 0.06, volta: 0.25, peso: 0.7 }); }
   if (bloqueio) {
@@ -894,7 +920,6 @@ async function mataLeao(atk, def, texto) {
    devagar e só então levanta a mão de quem venceu (pedido do dono: "o jogador fica apreensivo
    esperando a resposta"). Nocaute, nocaute técnico e finalização: o árbitro vem e levanta a mão
    na hora. Disputa de cinturão que o jogador ganha: ele levanta o cinturão. */
-function segurar(L, mao, alvo) { L.ikFixo["hand_" + mao] = { alvo, peso: 1 }; }
 /* a mão do árbitro fecha no punho que segura (2026-11-21, print do dono: aberta, com os dedos esticados, não
    agarrava nada). Roda depois do mixer, que devolve a pose limpa a cada quadro (não acumula) */
 const DEDOS = ["index", "middle", "ring", "pinky"];
@@ -921,22 +946,42 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   flashBranco();
   const esq = Math.random() < 0.5 ? A : B, dir = esq === A ? B : A;
   esq.raiz.position.set(-0.72, 0, 0); dir.raiz.position.set(0.72, 0, 0); C.raiz.position.set(0, 0, 0.1);
-  // tudo que estava tocando para (o nocaute deitado, a finalização, os controles do chão): todos em pé, parados
+  // tudo que estava tocando para (o nocaute deitado, a finalização, os controles do chão): todos em pé, parados.
+  // Quem lutou espera cansado (ESPERA); o árbitro fica em pé (PARADO); os três respiram e olham reto (vivo)
   for (const L of [A, B, C]) {
     L.extras.clear(); L.mixer.stopAllAction(); L.atual = null; L.movendo.clear();
-    L.raiz.rotation.y = 0; L.raiz.position.y = 0; L.estado(PARADO, 0);
+    L.raiz.rotation.y = 0; L.raiz.position.y = 0; L.estado(L === C ? PARADO : ESPERA, 0);
   }
+  const vivos = new Map([A, B, C].map((L) => [L, L.vivo({ folego: L === C ? 1 : 2 })]));
   // de frente pra câmera (+z), a esquerda de cada um fica em +x: quem está à esquerda (x negativo) dá a
   // mão esquerda e o árbitro segura com a direita; do outro lado, ao contrário. Ninguém cruza o braço.
+  // A mão erguida fica onde os dois braços alcançam com o cotovelo quase reto (1,86 m, entre os dois:
+  // com 2,05 os braços travavam esticados e não chegavam, auditoria de 2026-11-22).
   const maoDentro = (L) => (L.raiz.position.x < 0 ? "l" : "r");
   const maoJuiz = (L) => (L.raiz.position.x < 0 ? "r" : "l");
-  const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, maoDentro(L), maoJuiz(L), V(s * 0.38, 1.0, 0.16), V(s * 0.5, 2.05, 0.08)]; });
+  const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, s, maoDentro(L), maoJuiz(L), V(s * 0.38, 1.0, 0.16), V(s * 0.42, 1.86, 0.1)]; });
   cam.cerCentro = V(0, 0, 0);
   C.raiz.visible = true; C.ikFixo = {};
   const sobe = { k: 0, quem: null };
-  for (const [L, mL, mC, baixo, alto] of pontos) {
-    const ponto = () => baixo.clone().lerp(alto, L === sobe.quem ? suave(sobe.k) : 0);
-    segurar(L, mL, ponto); segurar(C, mC, () => ponto().add(V(0, 0.03, 0.02)));
+  const k = (L) => (L === sobe.quem ? suave(sobe.k) : 0);
+  for (const [L, s, mL, mC, baixo, alto] of pontos) {
+    const ponto = () => baixo.clone().lerp(alto, k(L));
+    // o cotovelo do lutador aponta pra trás e pra fora com o braço embaixo, e pro lado com ele erguido
+    const poloL = () => L.posMundo("upperarm_" + mL).add(V(s * 0.25, -0.25, -0.35).lerp(V(s * 0.45, 0.1, 0.05), k(L)));
+    L.ikFixo["hand_" + mL] = { alvo: ponto, peso: 1, cadeia: true, polo: poloL, ext: 0.97 };
+    // o árbitro: a palma no lado do antebraço dele que dá pro árbitro, logo abaixo da luva, e os dedos
+    // dão a volta pela frente (a mão não atravessa a luva nem o braço)
+    const pega = () => {
+      const W = L.posMundo("hand_" + mL), eixo = W.clone().sub(L.posMundo("lowerarm_" + mL)).normalize();
+      const G = W.addScaledVector(eixo, -0.05);
+      const d = C.posMundo("upperarm_" + mC).sub(G); d.addScaledVector(eixo, -d.dot(eixo)).normalize();
+      const f = eixo.clone().cross(d).normalize(); if (f.z < 0) f.negate();
+      return { G, d, f };
+    };
+    const alvoC = () => { const { G, d, f } = pega(); return G.addScaledVector(d, 0.055).addScaledVector(f, -0.07); };
+    const poloC = () => C.posMundo("upperarm_" + mC).add(V(-s * 0.05, -0.3, -0.35).lerp(V(s * 0.35, 0, -0.15), k(L)));
+    C.ikFixo["hand_" + mC] = { alvo: alvoC, peso: 1, cadeia: true, polo: poloC, ext: 0.97,
+      depois: () => { const { d, f } = pega(); C.orientarMao(mC, d.negate(), f); } };
   }
   const abrirMaos = fecharMaos(C);
   cam.modo = "cerimonia"; cam.cerFov = 42; palco.iniciado = false;
@@ -946,15 +991,20 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
     chamada("E O VENCEDOR...", { pequena: true });
     await esperar(1.3);
   } else await esperar(0.6);
-  // a mão sobe
+  // a mão sobe; o árbitro dá meio passo pro lado de quem venceu; quem perdeu baixa a cabeça, quem venceu a levanta
   sobe.quem = venc;
-  await animar(0.35, (k) => { sobe.k = k; });
+  const sV = Math.sign(venc.raiz.position.x);
+  await animar(0.45, (k) => {
+    sobe.k = k; C.raiz.position.x = sV * 0.07 * suave(k);
+    vivos.get(perd).olhar = 0.28 * suave(k); vivos.get(venc).olhar = -0.12 * suave(k);
+  });
   chamada(String((venc === A ? op.nomes && op.nomes.a : op.nomes && op.nomes.b) || "VENCEDOR").toUpperCase());
   som("explode", 1); som("vitoria", 0.9); palco.agitar(1.5);
   await esperar(1.4);
-  // solta: quem venceu comemora, quem perdeu lamenta (se estiver em pé), o árbitro dá um passo
+  // solta: quem venceu comemora, quem perdeu lamenta (se estiver em pé), o árbitro dá um passo.
+  // Os clipes de comemorar e lamentar têm cabeça e fôlego próprios: o vivo dos dois sai
   for (const L of [A, B, C]) L.ikFixo = {};
-  abrirMaos();
+  abrirMaos(); vivos.get(venc).desligar(); vivos.get(perd).desligar();
   venc.umaVez(Math.random() < 0.5 ? "Vitoria_Boxe" : "Comemora", { fade: 0.35, segurar: true, mover: false });
   perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
   const c0 = C.raiz.position.clone(); animar(0.8, (k) => { C.raiz.position.z = c0.z - 0.7 * suave(k); });
@@ -984,11 +1034,12 @@ async function interrupcao(venc, perd) {
   const m = venc.raiz.position.clone().add(perd.raiz.position).multiplyScalar(0.5);
   C.raiz.position.set(m.x + 0.2, 0, m.z + 0.35); C.raiz.rotation.y = 0; C.estado(PARADO, 0);
   const t = { v: 0 }, cr = () => C.posMundo("spine_03").add(new THREE.Vector3(0, 0.12, 0.38));
-  C.ikFixo.hand_l = { alvo: () => cr().add(new THREE.Vector3(0.3 * Math.cos(t.v * 9), 0.1, 0)), peso: 1 };
-  C.ikFixo.hand_r = { alvo: () => cr().add(new THREE.Vector3(-0.3 * Math.cos(t.v * 9), 0.06, 0)), peso: 1 };
+  C.ikFixo.hand_l = { alvo: () => cr().add(new THREE.Vector3(0.3 * Math.cos(t.v * 9), 0.1, 0)), peso: 1, cadeia: true };
+  C.ikFixo.hand_r = { alvo: () => cr().add(new THREE.Vector3(-0.3 * Math.cos(t.v * 9), 0.06, 0)), peso: 1, cadeia: true };
+  const v = C.vivo();
   chamada("NOCAUTE TÉCNICO!"); som("explode", 1); palco.agitar(1.3);
   await animar(1.5, (k) => { t.v = k * 1.5; });
-  C.ikFixo = {};
+  C.ikFixo = {}; v.desligar();
 }
 
 /* ---------- knockdown e nocaute ---------- */
@@ -1019,7 +1070,7 @@ async function nocaute(atk, def, { combinacao = true, textoFim = null } = {}) {
   await ajustarDist(g.dist, 0.3);
   narrar(`${nomeDe(atk)} solta o cruzado...`);
   atk.umaVez(g.clip, { fade: 0.12, volta: 0.4 });
-  atk.contato(g.membro, alvoDe(atk, def, "cabeca"), g.imp);
+  atk.contato(g.membro, alvoDe(atk, def, "cabeca", g.mira, g.membro), g.imp, { clipe: g.clip });
   await esperar(g.imp - 0.03);
   const u = pelve(def).sub(pelve(atk)).normalize(), perp = new THREE.Vector3(-u.z, 0, u.x);
   if (perp.dot(plano(palco.cam.position).sub(pelve(def))) < 0) perp.negate();
@@ -1412,7 +1463,7 @@ return {
   pularEntrada() { if (cortarEntrada) cortarEntrada(); },
   /* só pras ferramentas de conferência (ferramentas/): os lutadores, a câmera, o palco e os
      lances um a um (a arte das cartas, ferramentas/arte-cartas.mjs, fotografa o lance de cada carta) */
-  _dev: { A, B, base, cartasProntas, cam, palco, THREE, MONTADA, get montada() { return montada; },
+  _dev: { A, B, C, GOLPES, base, cartasProntas, cam, palco, THREE, MONTADA, get montada() { return montada; },
     lances: { prog: (nome, atk, def, ev) => PROG[nome](atk, def, ev || {}), golpe, queda, quedaDefendida, finalizacao, tentativaChao, expulsar, serieSocos, knockdown, esperar } },
   /* o clipe que a carta toca: o do mx_cartas.glb se já chegou, senão a reserva (nunca trava a luta) */
   clipeDaCarta(lance) { return clipeDoLance(lance, base.clips); },

@@ -18592,6 +18592,98 @@ async function testarLuta3d() {
   });
   /* pele embaixo do moletom (2026-11-21): na guarda o cotovelo furava a manga; a pele coberta não é desenhada enquanto
      a peça está vestida, e volta quando ela sai */
+  /* auditoria de postura (2026-11-22): o braço do IK com tronco e clavícula, o parado vivo e o alcance do anúncio */
+  const esqueletoBraco = async () => {
+    const url = require("url");
+    const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    // pelve > spine_01..03 > clavícula > braço > antebraço > mão (medidas do corpo de verdade em T), e pescoço > cabeça
+    const raiz = new THREE.Group(), ossos = {};
+    const osso = (nome, pai, x, y, z) => { const b = new THREE.Bone(); b.name = nome; b.position.set(x, y, z); (pai ? ossos[pai] : raiz).add(b); ossos[nome] = b; return b; };
+    osso("pelvis", null, 0, 0.87, 0); osso("spine_01", "pelvis", 0, 0.09, 0); osso("spine_02", "spine_01", 0, 0.05, 0); osso("spine_03", "spine_02", 0, 0.06, 0);
+    osso("clavicle_l", "spine_03", 0.023, 0.27, -0.04); osso("upperarm_l", "clavicle_l", 0.16, -0.035, -0.09); osso("lowerarm_l", "upperarm_l", 0, -0.25, 0); osso("hand_l", "lowerarm_l", 0, -0.252, 0);
+    osso("clavicle_r", "spine_03", -0.023, 0.27, -0.04); osso("neck_01", "spine_03", 0, 0.34, -0.08); osso("Head", "neck_01", 0, 0.05, 0.05);
+    raiz.updateMatrixWorld(true);
+    const L = Object.create(LU.Lutador.prototype);
+    Object.assign(L, { raiz, ossos, extras: new Set(), relogio: 0 });
+    const ang = () => { const a = L.posMundo("upperarm_l"), b = L.posMundo("lowerarm_l"), c = L.posMundo("hand_l"); return THREE.MathUtils.radToDeg(a.sub(b).angleTo(c.sub(b))); };
+    return { THREE, LU, L, ossos, raiz, ang };
+  };
+  await conf("braço erguido pela cadeia: a clavícula sobe junto, o cotovelo nunca trava reto (ext) e a mão chega no alvo que o braço alcança", async () => {
+    const { THREE, LU, L, ang } = await esqueletoBraco();
+    const ombro0 = L.posMundo("upperarm_l"), alvo = ombro0.clone().add(new THREE.Vector3(0.12, 0.46, 0.05));
+    L.ikCadeia("l", alvo.clone(), 1, { tronco: false, ext: 0.97 });
+    const sobe = L.posMundo("upperarm_l").y - ombro0.y, erro = L.posMundo("hand_l").distanceTo(alvo), cot = ang();
+    if (sobe < 0.01) throw new Error(`a clavícula não acompanhou o braço erguido (o ombro subiu ${(sobe * 100).toFixed(1)} cm)`);
+    if (cot > 168) throw new Error(`o cotovelo travou reto (${cot.toFixed(0)} graus) com ext 0,97`);
+    if (erro > 0.06) throw new Error(`a mão ficou a ${(erro * 100).toFixed(1)} cm do alvo`);
+    // longe demais: estica até o limite e não passa dele
+    L.ikCadeia("l", ombro0.clone().add(new THREE.Vector3(0.9, 0.2, 0)), 1, { tronco: false, ext: 0.97 });
+    if (ang() > 168) throw new Error("com o alvo fora do alcance o cotovelo passou do limite: " + ang().toFixed(0));
+    if (!(LU.RITMO_OMBRO.frac > 0 && LU.RITMO_OMBRO.max > 0)) throw new Error("RITMO_OMBRO desligado");
+  });
+  await conf("golpe pela cadeia: o tronco leva parte da mira (com teto) e o braço chega no rosto sem travar", async () => {
+    const { THREE, L, ang } = await esqueletoBraco();
+    const q0 = L.ossos.spine_03.getWorldQuaternion(new THREE.Quaternion()).clone();
+    const alvo = L.posMundo("upperarm_l").add(new THREE.Vector3(0.05, 0.22, 0.42));
+    L.ikCadeia("l", alvo.clone(), 1, { ext: 0.995 });
+    const giro = THREE.MathUtils.radToDeg(q0.angleTo(L.ossos.spine_03.getWorldQuaternion(new THREE.Quaternion())));
+    if (giro < 2 || giro > 16) throw new Error(`o tronco girou ${giro.toFixed(1)} graus pra mirar (faixa 2 a 16)`);
+    if (L.posMundo("hand_l").distanceTo(alvo) > 0.02) throw new Error("a mão não chegou no rosto: " + L.posMundo("hand_l").distanceTo(alvo).toFixed(3));
+    if (ang() > 172) throw new Error("travou reto: " + ang().toFixed(0));
+  });
+  await conf("parado vivo: a cabeça olha na altura dos olhos (NIVEL_OLHAR), baixa quando pedem e o fôlego mexe o peito", async () => {
+    const { THREE, LU, L } = await esqueletoBraco();
+    // a cabeça começa olhando pro teto, como o quadro do Alonga
+    L.ossos.Head.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.5); L.raiz.updateMatrixWorld(true);
+    const ctl = L.vivo({ folego: 2 }), f = [...L.extras][0];
+    const frenteCab = () => new THREE.Vector3(0, 0, 1).applyQuaternion(L.ossos.Head.getWorldQuaternion(new THREE.Quaternion()));
+    const desce = () => -THREE.MathUtils.radToDeg(Math.asin(frenteCab().y));
+    const base = L.listaOssos = Object.values(L.ossos), salvo = base.map((o) => o.quaternion.clone());
+    const passo = (t) => { base.forEach((o, i) => o.quaternion.copy(salvo[i])); L.raiz.updateMatrixWorld(true); L.relogio = t; f(0.5); L.raiz.updateMatrixWorld(true); };
+    passo(1);
+    const nivel = THREE.MathUtils.radToDeg(LU.NIVEL_OLHAR);
+    if (Math.abs(desce() - nivel) > 3) throw new Error(`a cabeça olha ${desce().toFixed(1)} graus abaixo do horizontal (esperado ${nivel.toFixed(1)})`);
+    ctl.olhar = 0.28; passo(1.2);
+    if (desce() < nivel + 12) throw new Error("quem perdeu não baixou a cabeça: " + desce().toFixed(1));
+    ctl.olhar = 0;
+    // um ciclo inteiro de fôlego (cansado: 0,42 por segundo), seja qual for a fase sorteada
+    const peito = (t) => { passo(t); return L.ossos.spine_03.getWorldQuaternion(new THREE.Quaternion()); };
+    const q0 = peito(0); let amp = 0; for (let t = 0.1; t <= 2.5; t += 0.1) amp = Math.max(amp, THREE.MathUtils.radToDeg(q0.angleTo(peito(t))));
+    if (amp < 0.8) throw new Error("o peito não respira (" + amp.toFixed(2) + " graus no ciclo)");
+    ctl.desligar(); if (L.extras.size) throw new Error("desligar não tirou o vivo");
+  });
+  await conf("anúncio: a mão erguida fica onde o braço do corpo de verdade alcança, com polo no cotovelo e a pegada do árbitro orientada", () => {
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.glb")), nj = b.readUInt32LE(12), j = JSON.parse(b.slice(20, 20 + nj).toString()), bin = b.slice(20 + nj + 8);
+    const skin = j.skins[0], a = j.accessors[skin.inverseBindMatrices], bv = j.bufferViews[a.bufferView], off = bin.byteOffset + bv.byteOffset + (a.byteOffset || 0);
+    const IB = new Float32Array(bin.buffer.slice(off, off + a.count * 64));
+    const junta = (nome) => { const k = skin.joints.findIndex((i) => j.nodes[i].name === nome); const m = IB.slice(k * 16, k * 16 + 16);
+      // posição da junta = -R^T t da inversa (sem escala)
+      const t = [m[12], m[13], m[14]], R = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
+      return [0, 1, 2].map((c) => -(R[c][0] * t[0] + R[c][1] * t[1] + R[c][2] * t[2])); };
+    const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    const ombro = junta("upperarm_l"), braco = d(ombro, junta("lowerarm_l")) + d(junta("lowerarm_l"), junta("hand_l"));
+    const dir = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8"), cer = dir.slice(dir.indexOf("async function cerimonia("), dir.indexOf("async function levantarCinturao("));
+    const m = /V\(s \* ([\d.]+), ([\d.]+), ([\d.]+)\)\]; \}\);/.exec(cer); if (!m) throw new Error("ponto da mão erguida não achado");
+    const alto = [0.72 - Number(m[1]), Number(m[2]), Number(m[3])];   // relativo ao lutador (que fica em x 0,72)
+    // ombro na pose de espera (cansado, um pouco abaixo do T) + a clavícula que sobe uns 4 cm
+    const alcance = ombro[1] + 0.04 + braco * 0.97;
+    if (alto[1] > alcance) throw new Error(`a mão erguida (${alto[1]} m) passa do alcance do braço (${alcance.toFixed(2)} m): os braços travavam esticados`);
+    if (alto[1] < ombro[1] + braco * 0.6) throw new Error(`a mão erguida (${alto[1]} m) está baixa demais pro anúncio`);
+    if (!/cadeia: true, polo: poloL/.test(cer) || !/cadeia: true, polo: poloC/.test(cer)) throw new Error("o anúncio não usa a cadeia com polo nos cotovelos");
+    if (!/C\.orientarMao\(/.test(cer)) throw new Error("a mão do árbitro não é orientada no punho");
+    if (/clipeFixo\("Alonga"/.test(dir)) throw new Error("a pose parada voltou a ser o quadro do Alonga (braço duro, queixo pro teto)");
+  });
+  await conf("golpes: o contato leva o clipe (trajetória deslocada), cada soco tem mira e o Upper_Tras é no corpo", () => {
+    const dir = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    const contatos = [...dir.matchAll(/atk\.contato\([^;]*;/g)].map((x) => x[0]);
+    if (contatos.length < 3) throw new Error("contatos de golpe não achados");
+    for (const c of contatos) if (!/clipe: g\.clip/.test(c)) throw new Error("contato de golpe sem o clipe: " + c.slice(0, 80));
+    const gol = dir.slice(dir.indexOf("const GOLPES = {"), dir.indexOf("};", dir.indexOf("const GOLPES = {")));
+    for (const l of gol.split("\n").filter((x) => /clip: "/.test(x) && /membro: "hand_/.test(x))) if (!/mira: "/.test(l)) throw new Error("soco sem mira: " + l.trim().slice(0, 60));
+    if (!/upper:\s+\{ clip: "Upper_Tras",[^}]*alvo: "corpo"/.test(gol)) throw new Error("o Upper_Tras (mão abaixo do ombro no impacto) voltou pra cabeça");
+    if (!/nome === "upper" && GOLPES\.mx_uppercut/.test(dir)) throw new Error("o uppercut no queixo não usa o clipe das cartas");
+  });
   await conf("moletom: só a pele do tronco, ombro, braço e começo do antebraço some (nunca o que é mais de 10% mão, pescoço, pelve ou perna), e volta quando a roupa sai", async () => {
     const url = require("url");
     const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);

@@ -1,0 +1,145 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Poses do 3D (2026-11-22): a luta de verdade (diretor.js) com um cenário por vez, congelada no instante que
+     interessa e fotografada de vários lados (frente, lado, costas), pra auditar ombro, cotovelo, punho e mão.
+     ferramentas/poses3d.mjs dirige. Fora do deploy (ferramentas/). -->
+<link rel="stylesheet" href="../estilo.css">
+<style>html,body{margin:0;height:100%;background:#000}#caixa{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;aspect-ratio:auto!important;max-height:none!important}.luta3d-chamada{display:none!important}</style></head>
+<body><div id="caixa" class="luta3d-caixa"></div>
+<script type="module">
+import { criarLuta3d } from "../luta3d/diretor.js";
+import { RITMO_OMBRO } from "../luta3d/lutador.js";
+{ const q = new URLSearchParams(location.search); if (q.get("rf")) RITMO_OMBRO.frac = Number(q.get("rf")); if (q.get("rm")) RITMO_OMBRO.max = Number(q.get("rm")); }
+{ let s = 7; Math.random = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
+const eu = { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14", porte: "médio" };
+const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia", porte: "pesado" };
+const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "KAYO", b: "TITO" }, som: () => {} });
+await inst._dev.cartasProntas; window.__inst = inst;
+const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;
+/* ?ocultar=<malha>: esconde uma malha do lutador A pelo nome (achar de qual malha é um defeito) */
+{ const o = new URLSearchParams(location.search).get("ocultar"); if (o) A.modelo.traverse((m) => { if (m.isMesh && m.name === o) m.visible = false; }); }
+/* ?pesos=<osso>: pinta o corpo pelo peso desse osso (vermelho = 1), pra ver de onde vem um defeito de pele */
+{ const o = new URLSearchParams(location.search).get("pesos"); if (o) {
+  const m = A.corpo, g = m.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, ib = m.skeleton.bones.findIndex((b) => b.name === o);
+  const cor = new Float32Array(g.attributes.position.count * 3);
+  for (let i = 0; i < g.attributes.position.count; i++) { let w = 0; for (let c = 0; c < 4; c++) if (si.getComponent(i, c) === ib) w += sw.getComponent(i, c); cor[3 * i] = w; cor[3 * i + 1] = 0.15; cor[3 * i + 2] = 1 - w; }
+  g.setAttribute("color", new THREE.BufferAttribute(cor, 3));
+  m.material = new THREE.MeshBasicMaterial({ vertexColors: true, wireframe: new URLSearchParams(location.search).get("fio") === "1" });
+} }
+
+// congelar: os três param no quadro atual (o resto do mundo segue, a câmera também)
+window.__parado = false;
+for (const L of [A, B, C]) { const u = L.update.bind(L); L.update = (dt) => { if (!window.__parado) u(dt); }; }
+const quadro = () => new Promise((r) => requestAnimationFrame(() => r()));
+window.__congelar = (v) => { window.__parado = v; };
+/* câmera: ângulo em graus em volta do centro (0 = de +z), altura e distância */
+window.__camera = async ({ centro, ang, alt = 1.35, dist = 3.4, fov = 34 }) => {
+  cam.modo = "livre";
+  const c = new THREE.Vector3(...centro), r = (ang * Math.PI) / 180;
+  palco.camAlvo.pos.set(c.x + Math.sin(r) * dist, alt, c.z + Math.cos(r) * dist);
+  palco.camAlvo.olhar.copy(c); palco.camAlvo.fov = fov; palco.iniciado = false;
+  await quadro(); await quadro(); await quadro();
+};
+const centroDe = (...Ls) => { const v = new THREE.Vector3(); for (const L of Ls) v.add(L.posMundo("spine_02")); return v.multiplyScalar(1 / Ls.length).toArray(); };
+window.__centro = (q) => centroDe(...q.split("").map((k) => ({ A, B, C })[k]));
+/* espera o instante do contato do golpe que acabou de sair (o IK marca tImp) e soma dt */
+const ateContato = async (L, dt = 0) => {
+  for (let i = 0; i < 600 && !L.contatos.length; i++) await quadro();
+  const c = L.contatos[L.contatos.length - 1]; if (!c) return;
+  while (L.relogio < c.tImp + dt) await quadro();
+};
+window.__cenario = async (nome) => {
+  // pose crua de um clipe num instante (sem IK), com o adversário na guarda como régua: clipe:<nome>:<t>
+  if (nome.startsWith("clipe:")) {
+    const [, c, t] = nome.split(":");
+    A.estado(A.clipeFixo(c, Number(t), c + "@" + t), 0);
+    for (let i = 0; i < 20; i++) await quadro();
+    return;
+  }
+  // um lutador sozinho, de frente pra +z, numa pose de clipe: pose:<nome>:<t>
+  if (nome.startsWith("pose:")) {
+    const [, c, t] = nome.split(":");
+    B.raiz.visible = false; B.raiz.position.set(0, 0, 60); A.raiz.position.set(0, 0, 0); A.raiz.rotation.y = 0;
+    A.estado(A.clipeFixo(c, Number(t), c + "@" + t), 0);
+    for (let i = 0; i < 20; i++) await quadro();
+    A.raiz.position.set(0, 0, 0);
+    return;
+  }
+  // um lutador sozinho com o braço esquerdo erguido pela cadeia do anúncio: ergue:<altura>
+  if (nome.startsWith("ergue:")) {
+    const [, hs, xs, zs] = nome.split(":"), h = Number(hs), ex = xs ? Number(xs) : 0.3, ez = zs ? Number(zs) : 0.1;
+    B.raiz.visible = false; B.raiz.position.set(0, 0, 60); A.raiz.position.set(0, 0, 0); A.raiz.rotation.y = 0;
+    A.estado(A.clipeFixo("Derrota_Boxe", 0.1, "Espera"), 0);
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    A.ikFixo.hand_l = { alvo: () => V(ex, h, ez), peso: 1, cadeia: true, ext: 0.97, polo: () => A.posMundo("upperarm_l").add(V(0.45, 0.1, 0.05)) };
+    for (let i = 0; i < 30; i++) await quadro();
+    A.raiz.position.set(0, 0, 0);
+    return;
+  }
+  // a pose de descanso do esqueleto (em T), sem clipe: rest
+  if (nome === "rest") {
+    B.raiz.visible = false; B.raiz.position.set(0, 0, 60); A.raiz.position.set(0, 0, 0); A.raiz.rotation.y = 0;
+    A.mixer.stopAllAction(); A.extras.clear(); for (let i = 0; i < 5; i++) await quadro();
+    window.__congelar(true); A.corpo.skeleton.pose(); A.modelo.updateMatrixWorld(true);
+    return;
+  }
+  if (nome === "guarda") { for (let i = 0; i < 40; i++) await quadro(); return; }
+  if (nome.startsWith("golpe:") || nome.startsWith("reacao:") || nome.startsWith("defesa:")) {
+    const [tipo, g] = nome.split(":");
+    // pelo caminho de verdade (lance): com o lance ocupado, a distância não puxa os dois de volta no meio do golpe
+    inst.lance({ ev: { tipo: "golpe1", quem: "A", golpe: g, bloqueio: tipo === "defesa" } });
+    await ateContato(A, tipo === "reacao" ? 0.18 : 0);
+    return;
+  }
+  if (nome === "anuncio" || nome === "vitoria") {
+    inst.lance({ ev: { tipo: "decisao", quem: "A" } });
+    // o anúncio: a mão sobe 2,8 + 1,3 + 0,35 s depois; a comemoração, 1,4 s depois de soltar
+    const t0 = performance.now(), ate = nome === "anuncio" ? 5000 : 7600;
+    while (performance.now() - t0 < ate) await quadro();
+    return;
+  }
+  if (nome === "suspense") { inst.lance({ ev: { tipo: "decisao", quem: "A" } }); const t0 = performance.now(); while (performance.now() - t0 < 3200) await quadro(); return; }
+};
+/* medida do braço no quadro congelado: cotovelo do clipe limpo (L.limpo, a saída do mixer) contra o de agora (com IK) */
+const angulo = (L, l) => { const a = L.posMundo("upperarm_" + l), b = L.posMundo("lowerarm_" + l), c = L.posMundo("hand_" + l);
+  return Math.round(THREE.MathUtils.radToDeg(a.sub(b).angleTo(c.sub(b)))); };
+window.__medir = () => {
+  const out = {};
+  for (const [k, L] of Object.entries({ A, B, C })) {
+    if (k === "C" && !C.raiz.visible) continue;
+    const ossos = L.listaOssos, agora = ossos.map((o) => [o.quaternion.clone(), o.position.clone()]);
+    const fim = { l: angulo(L, "l"), r: angulo(L, "r"), ml: L.posMundo("hand_l").toArray().map((v) => +v.toFixed(3)), mr: L.posMundo("hand_r").toArray().map((v) => +v.toFixed(3)) };
+    ossos.forEach((o, i) => { o.quaternion.copy(L.limpo[i].q); o.position.copy(L.limpo[i].p); }); L.modelo.updateMatrixWorld(true);
+    const clipe = { l: angulo(L, "l"), r: angulo(L, "r"), ml: L.posMundo("hand_l").toArray().map((v) => +v.toFixed(3)), mr: L.posMundo("hand_r").toArray().map((v) => +v.toFixed(3)) };
+    ossos.forEach((o, i) => { o.quaternion.copy(agora[i][0]); o.position.copy(agora[i][1]); }); L.modelo.updateMatrixWorld(true);
+    const ct = L.contatos[L.contatos.length - 1];
+    // a ponta e a articulação do meio da cadeia do golpe (cotovelo ou joelho), do clipe e de agora
+    if (ct) {
+      const cad = ct.membro.startsWith("ball") ? ["thigh_", "calf_", "foot_"] : ["upperarm_", "lowerarm_", "hand_"], l = ct.membro.slice(-1);
+      const meio = () => { const a = L.posMundo(cad[0] + l), b = L.posMundo(cad[1] + l), c = L.posMundo(cad[2] + l); return Math.round(THREE.MathUtils.radToDeg(a.sub(b).angleTo(c.sub(b)))); };
+      const pf = L.posMundo(ct.membro).toArray().map((v) => +v.toFixed(3)), mf = meio();
+      ossos.forEach((o, i) => { o.quaternion.copy(L.limpo[i].q); o.position.copy(L.limpo[i].p); }); L.modelo.updateMatrixWorld(true);
+      const mc = meio();
+      ossos.forEach((o, i) => { o.quaternion.copy(agora[i][0]); o.position.copy(agora[i][1]); }); L.modelo.updateMatrixWorld(true);
+      out[k + "_cadeia"] = { meioClipe: mc, meioFinal: mf, ponta: pf };
+    }
+    out[k] = { cotoveloClipe: [clipe.l, clipe.r], cotoveloFinal: [fim.l, fim.r], maoClipe: [clipe.ml, clipe.mr], maoFinal: [fim.ml, fim.mr], alvo: ct ? (ct.T ? ct.T.clone() : ct.alvo()).toArray().map((v) => +v.toFixed(3)) : null, membro: ct && ct.membro,
+      ombro: ct ? L.posMundo((ct.membro.startsWith("ball") ? "thigh_" : "upperarm_") + ct.membro.slice(-1)).toArray().map((v) => +v.toFixed(3)) : null,
+      pelve: L.posMundo("pelvis").toArray().map((v) => +v.toFixed(3)), pelveB: B.posMundo("pelvis").toArray().map((v) => +v.toFixed(3)) };
+  }
+  return out;
+};
+/* perfil de um clipe: a cada 1/30 s, quanto a mão está à frente do quadril (no sentido em que o lutador olha, já com o
+   deslocamento da raiz), a altura dela e o cotovelo */
+window.__perfil = (nome, membro) => {
+  const L = A, l = membro.slice(-1), out = [];
+  const salvo = L.listaOssos.map((o) => [o.quaternion.clone(), o.position.clone()]);
+  for (let t = 0; t <= L.dur(nome); t += 1 / 30) {
+    L.aplicarClipe(nome, t);
+    const p = L.raiz.worldToLocal(L.posMundo(membro)), ombro = L.raiz.worldToLocal(L.posMundo("upperarm_" + l)), c = L.curva(nome, t);
+    out.push([+t.toFixed(2), +(p.z + c[1]).toFixed(3), +p.y.toFixed(3), angulo(L, l), +(p.z - ombro.z).toFixed(3)]);
+  }
+  L.listaOssos.forEach((o, i) => { o.quaternion.copy(salvo[i][0]); o.position.copy(salvo[i][1]); }); L.modelo.updateMatrixWorld(true);
+  return out;
+};
+window.__pronto = true;
+</script></body></html>

@@ -281,6 +281,14 @@ metade). Regras do revamp que valem daqui pra frente:
   CAMPO de distância (alfa e espessura pela distância à borda), nunca por
   face da cabeça (contorno em escada). O moletom esconde a pele coberta
   (`triangulosCobertos`; o cotovelo furava a manga) e `tirarRoupa` devolve.
+  **Postura e IK (2026-11-22; LEIA-ME "Postura, IK e golpes").** Parado é
+  `ESPERA`/`PARADO` com `vivo()` (fôlego, peso, olhar em `NIVEL_OLHAR`),
+  nunca quadro congelado do Alonga. Braço pelo `ikCadeia` (tronco, clavícula
+  `RITMO_OMBRO`, `ext`, polo); contato de golpe sempre com o clipe
+  (trajetória deslocada) e `alvoDe` com a mão prevista e a mira. Mexeu em
+  golpe, distância ou anúncio: `node ferramentas/poses3d.mjs <pasta>` (fotos
+  de 4 lados) e `MEDIR=so` (cotovelo e erro da mão no impacto). A aba na
+  axila com o braço erguido é da malha (um anel só), não de peso nem de IK.
 - **Cartas da árvore (2026-11-17, branch `cartas-integracao`; LEIA-ME
   "Cartas da árvore", catálogo em `docs/combat-v2.md`).** No combate v2
   (flag `combate_v2`) cada nó libera uma carta (`api/_jxj-cartas.js`). A

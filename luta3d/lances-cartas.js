@@ -149,15 +149,15 @@ export const LANCES_CARTAS = {
    ainda não são lance de nenhuma carta (a rasteira é queda e a validação não existe no catálogo):
    ficam medidas pra Tarefa 19. */
 export const GOLPES_MX = {
-  overhand:      { membro: "hand_r",     alvo: "cabeca", imp: 0.42, dist: 0.99, ik: true },
-  chute_frontal: { membro: "ball_l",     alvo: "corpo",  imp: 1.28, dist: 1.12, ik: true },
+  overhand:      { membro: "hand_r",     alvo: "cabeca", imp: 0.42, dist: 0.94, ik: true },
+  chute_frontal: { membro: "ball_l",     alvo: "corpo",  imp: 1.28, dist: 0.95, ik: true },
   chute_rodado:  { membro: "ball_r",     alvo: "cabeca", imp: 0.98, dist: 1.31, ik: true },
-  validacao:     { membro: "ball_r",     alvo: "cabeca", imp: 0.75, dist: 1.51, ik: true },
+  validacao:     { membro: "ball_r",     alvo: "cabeca", imp: 0.75, dist: 1.40, ik: true },
   rasteira:      { membro: "ball_r",     alvo: "perna",  imp: 1.43, dist: 1.56, ik: true },
   joelhada:      { membro: "calf_r",     alvo: "corpo",  imp: 0.85, dist: 0.92, ik: false },
   cotovelada:    { membro: "lowerarm_l", alvo: "cabeca", imp: 0.33, dist: 0.65, ik: false },
-  uppercut:      { membro: "hand_l",     alvo: "cabeca", imp: 0.47, dist: 0.87, ik: true },
-  misericordia:  { membro: "hand_l",     alvo: "cabeca", imp: 0.97, dist: 1.52, ik: true },
+  uppercut:      { membro: "hand_l",     alvo: "cabeca", imp: 0.47, dist: 0.72, ik: true },
+  misericordia:  { membro: "hand_l",     alvo: "cabeca", imp: 0.97, dist: 1.46, ik: true },
 };
 /* a carta que toca o clipe novo: o lance de hoje vira a reserva (clipe e golpe seguem como estão) */
 for (const [id, l] of Object.entries(LANCES_CARTAS)) {

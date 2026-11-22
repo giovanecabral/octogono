@@ -16,6 +16,11 @@ const PONTOS = ["Head", "spine_03", "hand_l", "hand_r", "lowerarm_l", "lowerarm_
 const CADEIA = { hand_l: ["upperarm_l", "lowerarm_l", "hand_l"], hand_r: ["upperarm_r", "lowerarm_r", "hand_r"],
   ball_l: ["thigh_l", "calf_l", "foot_l"], ball_r: ["thigh_r", "calf_r", "foot_r"] };
 const suaveK = (k) => k * k * (3 - 2 * k);
+/* o olhar na altura dos olhos: com o osso da cabeça nivelado, o rosto do corpo escaneado aponta pra cima;
+   a frente do osso uns 17 graus abaixo do horizontal é o olhar reto (medido nas fotos: a guarda olha 24 graus abaixo) */
+export const NIVEL_OLHAR = 0.3;
+/* quanto a clavícula acompanha o braço (fração do ângulo até o alvo e teto, em radianos) */
+export const RITMO_OMBRO = { frac: 0.5, max: 0.32 };
 
 /* ---------- carga única ---------- */
 /* clipes do Mixamo no formato do jogo: o deslocamento do quadril vira curva (root motion) e o osso fica no lugar */
@@ -424,6 +429,43 @@ export class Lutador {
     a.fadeOut(volta);
     if (cheio && this.atual === estado && estado) this.religar(estado, volta);
   }
+  /* parado vivo (2026-11-22, auditoria de postura: a pose parada era um quadro congelado, rígido como boneco):
+     respiração no tronco e nas clavículas, o peso que passeia de um pé pro outro e a cabeça que olha na altura
+     dos olhos (o quadro do clipe olhava pro teto). folego 1 é calmo, 2 é quem acabou de lutar; olhar é quanto a
+     cabeça desce além do nível (radianos, quem perdeu olha pra baixo) e pode mudar depois (o objeto devolvido).
+     Roda depois do mixer e antes do IK (extras). Devolve { olhar, desligar }. */
+  vivo({ folego = 1, olhar = 0 } = {}) {
+    const fase = Math.random() * 6.28, ctl = { olhar, peso: 0 };
+    const lateral = new THREE.Vector3(), frente = new THREE.Vector3(), qr = new THREE.Quaternion();
+    const f = (dt) => {
+      ctl.peso = Math.min(1, ctl.peso + dt / 0.4);   // entra aos poucos, sem salto
+      const w = ctl.peso, t = this.relogio + fase;
+      this.raiz.getWorldQuaternion(qr);
+      lateral.set(1, 0, 0).applyQuaternion(qr); frente.set(0, 0, 1).applyQuaternion(qr);
+      // fôlego: calmo 15 por minuto, cansado 25; o peito abre e as clavículas sobem ao puxar o ar
+      const resp = (Math.sin(t * Math.PI * 2 * (folego > 1 ? 0.42 : 0.25)) + 1) / 2, amp = folego > 1 ? 1.8 : 1;
+      this.girarMundo(this.ossos.spine_03, lateral, -0.022 * amp * resp * w);
+      this.girarMundo(this.ossos.clavicle_l, frente, 0.03 * amp * resp * w);
+      this.girarMundo(this.ossos.clavicle_r, frente, -0.03 * amp * resp * w);
+      // o peso passeia devagar de um pé pro outro: a pelve inclina e a coluna devolve (a cabeça fica no lugar)
+      const peso = Math.sin(t * Math.PI * 2 * 0.09) * 0.014 * w;
+      this.girarMundo(this.ossos.pelvis, frente, peso);
+      this.girarMundo(this.ossos.spine_01, frente, -peso * 0.9);
+      // o olhar: a frente da cabeça (z do osso) desce até o nível visível (NIVEL_OLHAR) mais o olhar pedido
+      const cab = this.ossos.Head; cab.updateWorldMatrix(true, false);
+      const cur = new THREE.Vector3(0, 0, 1).applyQuaternion(cab.getWorldQuaternion(new THREE.Quaternion()));
+      const des = frente.clone().applyAxisAngle(lateral, NIVEL_OLHAR + ctl.olhar + 0.012 * Math.sin(t * 0.7));
+      const ang = cur.angleTo(des) * w, eixo = cur.cross(des);
+      if (ang > 1e-4 && eixo.lengthSq() > 1e-10) {
+        eixo.normalize();
+        this.girarMundo(this.ossos.neck_01, eixo, ang * 0.4);
+        this.girarMundo(cab, eixo, ang * 0.6);
+      }
+    };
+    this.extras.add(f);
+    ctl.desligar = () => this.extras.delete(f);
+    return ctl;
+  }
   /* algum lance de uma vez só (golpe, reação, passo) ainda está tocando por cima do estado */
   ocupado() { for (const a of Object.values(this.acoes)) if (a !== this.atual && a.isRunning() && a.getEffectiveWeight() > 0.2) return true; return false; }
   religar(acao, fade) { acao.stopFading(); acao.enabled = true; if (!acao.isRunning()) acao.play(); acao.fadeIn(fade); }
@@ -432,9 +474,29 @@ export class Lutador {
   posMundo(osso) { return this.ossos[osso].getWorldPosition(new THREE.Vector3()); }
 
   /* IK de contato: a mão ou o pé encosta no alvo no instante do impacto (o braço do
-     Mixamo tem outro tamanho, sem isso o golpe passa do rosto ou para antes) */
-  contato(membro, alvo, tImp, { antes = 0.13, segura = 0.07, depois = 0.16 } = {}) {
-    this.contatos.push({ membro, alvo, t0: this.relogio, tImp: this.relogio + tImp, antes, segura, depois });
+     Mixamo tem outro tamanho, sem isso o golpe passa do rosto ou para antes).
+     Com o clipe (clipe, tClipe: o instante do impacto no clipe), a trajetória do clipe inteira é deslocada
+     pelo erro previsto no impacto (2026-11-22, auditoria de postura): antes a mão ficava presa no alvo de
+     0,13 s antes a 0,23 s depois, o braço travava reto enquanto o clipe já recolhia. Agora o braço sai e
+     volta no ritmo do clipe e só o desvio entra, e o tronco e a clavícula levam parte dele (ikCadeia). */
+  contato(membro, alvo, tImp, { antes = 0.13, segura = 0.07, depois = 0.16, clipe = null, tClipe = tImp } = {}) {
+    const c = { membro, alvo, t0: this.relogio, tImp: this.relogio + tImp, antes, segura, depois };
+    if (clipe && this.base.clips[clipe]) {
+      // onde a ponta do membro estaria no impacto, só pelo clipe (em relação à raiz, sem o deslocamento dela)
+      const salvo = this.listaOssos.map((o) => [o.quaternion.clone(), o.position.clone()]);
+      this.aplicarClipe(clipe, tClipe);
+      c.previsto = this.raiz.worldToLocal(this.posMundo(membro));
+      this.listaOssos.forEach((o, i) => { o.quaternion.copy(salvo[i][0]); o.position.copy(salvo[i][1]); });
+      this.modelo.updateMatrixWorld(true);
+      c.clipe = clipe; c.tClipe = tClipe;
+    }
+    this.contatos.push(c);
+  }
+  /* a ponta prevista no impacto, no mundo de agora: a pose do clipe no impacto mais o que a raiz ainda vai andar */
+  previstoNoMundo(c) {
+    const a = this.acoes[c.clipe], t = a ? a.time : c.tClipe;
+    const ate = this.curva(c.clipe, c.tClipe), agora = this.curva(c.clipe, t);
+    return this.raiz.localToWorld(c.previsto.clone().add(_v3.set(ate[0] - agora[0], 0, ate[1] - agora[1])));
   }
   ikContatos() {
     for (const c of this.contatos.slice()) {
@@ -445,18 +507,74 @@ export class Lutador {
       else { this.contatos.splice(this.contatos.indexOf(c), 1); continue; }
       const [o1, o2, o3] = CADEIA[c.membro].map((n) => this.ossos[n]);
       const ponta = this.ossos[c.membro];
-      const alvo = c.alvo();
+      const previsto = c.previsto ? this.previstoNoMundo(c) : null;
+      const alvo = c.alvo(previsto);   // o alvo pode depender de onde o clipe põe a ponta (o lado de onde ela vem)
       // pé: o alvo é da bola do pé; o IK move o tornozelo
       const ajuste = ponta === o3 ? _v3.set(0, 0, 0) : o3.getWorldPosition(new THREE.Vector3()).sub(ponta.getWorldPosition(new THREE.Vector3()));
-      this.ikDoisOssos(o1, o2, o3, alvo.add(ajuste), w);
+      if (!c.previsto) { this.ikDoisOssos(o1, o2, o3, alvo.add(ajuste), w); continue; }
+      // trajetória deslocada: a ponta de agora mais o erro previsto no impacto, na medida do peso
+      // depois do impacto o desvio fica o do impacto: o braço volta com o clipe, não persegue a cabeça que recua
+      if (t >= 0 && !c.desvio) c.desvio = alvo.clone().sub(previsto);
+      const desvio = c.desvio || alvo.sub(previsto);
+      const T = ponta.getWorldPosition(new THREE.Vector3()).addScaledVector(desvio, w);
+      c.T = T.clone();   // o alvo da ponta neste quadro (as ferramentas de conferência medem por ele)
+      if (ponta === o3) this.ikCadeia(c.membro.slice(-1), T, 1, { ext: 0.995 });
+      else this.ikDoisOssos(o1, o2, o3, T.add(ajuste), 1);
     }
   }
-  /* polo: ponto pra onde o cotovelo (ou o joelho) aponta; sem ele, fica no plano em que já estava */
-  ikDoisOssos(o1, o2, o3, alvo, peso, polo = null) {
+  /* braço inteiro até o alvo, de dentro pra fora (2026-11-22, auditoria de postura: só o braço mexia, o
+     cotovelo travava reto e o ombro ficava parado com o braço erguido):
+     - o tronco (spine_02, spine_03) leva uma parte da mira, com limite (no golpe, opcional);
+     - a clavícula acompanha: sobe com o braço acima da linha do ombro (no braço erguido, cerca de um terço
+       da elevação vem da escápula) e vai pra frente quando o alvo está longe;
+     - braço e antebraço por dois ossos, com extensão máxima (ext) e polo opcional. */
+  ikCadeia(l, alvo, peso = 1, { tronco = true, polo = null, ext = 0.999 } = {}) {
+    const mao = this.ossos["hand_" + l], braco = this.ossos["upperarm_" + l], clav = this.ossos["clavicle_" + l];
+    if (tronco) for (const n of ["spine_02", "spine_03"]) this.girarRumo(this.ossos[n], mao, alvo, 0.3 * peso, 0.12 * peso);
+    if (clav) {
+      const pO = braco.getWorldPosition(new THREE.Vector3()), pC = this.ossos["lowerarm_" + l].getWorldPosition(new THREE.Vector3());
+      const lb = pO.distanceTo(pC) + pC.distanceTo(mao.getWorldPosition(new THREE.Vector3()));
+      const dir = alvo.clone().sub(pO), d = dir.length();
+      // elevação do alvo acima da horizontal do ombro (0 a 1) e quanto falta de alcance (0 a 1)
+      const sobe = Math.max(0, Math.min(1, dir.y / Math.max(1e-4, d))), longe = Math.max(0, Math.min(1, (d - lb * 0.85) / (lb * 0.3)));
+      this.girarRumo(clav, braco, alvo, RITMO_OMBRO.frac * peso * Math.max(sobe, longe * 0.6), RITMO_OMBRO.max * peso);
+    }
+    this.ikDoisOssos(braco, this.ossos["lowerarm_" + l], mao, alvo, peso, polo, ext);
+  }
+  /* a mão no mundo: palma virada pra normal e dedos na direção dedos (os dois no mundo, ortogonais).
+     A palma e os dedos de agora saem dos ossos (dedo médio, indicador e mínimo), sem supor eixo do osso. */
+  orientarMao(l, normal, dedos, peso = 1) {
+    const mao = this.ossos["hand_" + l], o = (n) => this.ossos[`${n}_01_${l}`].getWorldPosition(new THREE.Vector3());
+    mao.updateWorldMatrix(true, true);
+    const p = mao.getWorldPosition(new THREE.Vector3()), f = o("middle").sub(p).normalize(), atr = o("index").sub(o("pinky")).normalize();
+    const n = (l === "l" ? f.clone().cross(atr) : atr.clone().cross(f)).normalize();
+    const fA = f.clone().sub(n.clone().multiplyScalar(f.dot(n))).normalize();
+    const mA = new THREE.Matrix4().makeBasis(fA, n, fA.clone().cross(n));
+    const nD = normal.clone().normalize(), fD = dedos.clone().sub(nD.clone().multiplyScalar(dedos.dot(nD))).normalize();
+    const mD = new THREE.Matrix4().makeBasis(fD, nD, fD.clone().cross(nD));
+    _q2.setFromRotationMatrix(mD.multiply(mA.transpose()));
+    if (peso < 1) _q2.slerp(_q1.identity(), 1 - peso);
+    mao.parent.getWorldQuaternion(_q1); _q3.copy(_q1).invert().multiply(_q2).multiply(_q1);
+    mao.quaternion.premultiply(_q3); mao.updateMatrixWorld(true);
+  }
+  /* gira o osso pra que a ponta vá na direção do alvo: uma fração do ângulo, com teto (radianos) */
+  girarRumo(osso, ponta, alvo, frac, max) {
+    if (!osso || frac <= 0) return;
+    osso.updateWorldMatrix(true, true);
+    const o = osso.getWorldPosition(new THREE.Vector3()), a = ponta.getWorldPosition(new THREE.Vector3()).sub(o).normalize(), b = alvo.clone().sub(o).normalize();
+    const ang = Math.min(max, a.angleTo(b) * frac); if (ang < 1e-4) return;
+    const eixo = a.cross(b); if (eixo.lengthSq() < 1e-10) return;
+    _q2.setFromAxisAngle(eixo.normalize(), ang);
+    osso.parent.getWorldQuaternion(_q1); _q3.copy(_q1).invert().multiply(_q2).multiply(_q1);
+    osso.quaternion.premultiply(_q3); osso.updateMatrixWorld(true);
+  }
+  /* polo: ponto pra onde o cotovelo (ou o joelho) aponta; sem ele, fica no plano em que já estava.
+     ext: fração do comprimento do braço até onde ele estica (abaixo de 1, o cotovelo nunca trava reto) */
+  ikDoisOssos(o1, o2, o3, alvo, peso, polo = null, ext = 0.999) {
     const pA = o1.getWorldPosition(new THREE.Vector3()), pB = o2.getWorldPosition(new THREE.Vector3()), pC = o3.getWorldPosition(new THREE.Vector3());
     const l1 = pA.distanceTo(pB), l2 = pB.distanceTo(pC);
     const T = pC.clone().lerp(alvo, peso);
-    const dir = T.clone().sub(pA); let d = dir.length(); d = Math.min(d, (l1 + l2) * 0.999); dir.normalize();
+    const dir = T.clone().sub(pA); let d = dir.length(); d = Math.min(d, (l1 + l2) * ext); dir.normalize();
     const curva = pB.clone().sub(pA); const lado = curva.sub(dir.clone().multiplyScalar(curva.dot(dir)));
     if (polo) {
       const q = polo.clone().sub(pA); q.sub(dir.clone().multiplyScalar(q.dot(dir)));
@@ -555,6 +673,8 @@ export class Lutador {
     this.ikContatos();
     for (const [membro, k] of Object.entries(this.ikFixo)) {
       if (!k || k.peso < 0.001) continue;
+      // cadeia: o braço com a clavícula (ikCadeia, sem o tronco); senão só os dois ossos, como sempre
+      if (k.cadeia) { this.ikCadeia(membro.slice(-1), k.alvo(), Math.min(1, k.peso), { tronco: false, polo: k.polo ? k.polo() : null, ext: k.ext || 0.999 }); if (k.depois) k.depois(); continue; }
       const [o1, o2, o3] = CADEIA[membro].map((n) => this.ossos[n]);
       this.ikDoisOssos(o1, o2, o3, k.alvo(), Math.min(1, k.peso), k.polo ? k.polo() : null);
     }

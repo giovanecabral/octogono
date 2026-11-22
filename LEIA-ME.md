@@ -6442,6 +6442,59 @@ roupa").**
   abertos) e fecha a mão no punho que segura (`fecharMaos`: os dedos
   dobram no x local, medido nas fotos; roda depois do mixer, que devolve a
   pose limpa a cada quadro, então não acumula) e abre quando solta.
+- *Postura, IK e golpes (auditoria de 2026-11-22, pedido do dono: "postura de
+  boneco", braço esticado, árbitro).* Medido com `ferramentas/poses3d.mjs`
+  (a luta de verdade, um cenário por vez, congelada e fotografada de frente,
+  lado e costas; `MEDIR=so` imprime cotovelo, erro da mão e distância).
+  O que estava errado e a causa:
+  - *Parado era um quadro congelado do Alonga* (braço duro, queixo pro teto).
+    Agora quem lutou espera em `ESPERA` (Derrota_Boxe 0,1: cansado, ombros pra
+    frente) e o árbitro em `PARADO` (Vitoria_Boxe 0,1), com `vivo()` por cima:
+    fôlego no peito e nas clavículas (calmo 0,25 por segundo, cansado 0,42),
+    o peso que passeia na pelve e o olhar na altura dos olhos. No corpo
+    escaneado, a cabeça com o osso nivelado olha pra cima: o olhar reto é a
+    frente do osso 17 graus abaixo do horizontal (`NIVEL_OLHAR`, a guarda olha
+    24). Quem perdeu baixa a cabeça no anúncio e quem venceu levanta.
+  - *Só o braço entrava no IK*: o ombro ficava parado com o braço erguido e o
+    cotovelo travava reto. `ikCadeia`: o tronco (spine_02 e 03) leva parte da
+    mira no golpe (30% do ângulo, teto 0,12 rad cada), a clavícula acompanha
+    (sobe com o braço acima do ombro e vai pra frente com o alvo longe,
+    `RITMO_OMBRO`) e o braço tem extensão máxima (`ext`) e polo.
+  - *O IK de contato prendia a mão no alvo* de 0,13 s antes a 0,23 s depois
+    do impacto, e o clipe já recolhia o braço: ele ficava esticado. Com o
+    clipe no contato (`contato(..., { clipe })`), a mão prevista no impacto
+    sai da pose do clipe (`aplicarClipe`) e a trajetória inteira do clipe é
+    deslocada pelo erro previsto: o braço sai e volta no ritmo do clipe.
+  - *Os socos do Mixamo são baixos* (no impacto do jab a mão está a 1,0 m e o
+    rosto a 1,5 m) e *todo golpe mirava um ponto fixo na frente do rosto*:
+    o cruzado e o uppercut viravam direto. Agora o golpe encosta na
+    superfície da cabeça ou do tronco do lado de onde a mão do clipe vem
+    (`alvoDe` com a mão prevista; a mira limita a altura: rosto e queixo,
+    nunca pescoço; uppercut por baixo). Distâncias medidas de novo pro corpo
+    realista (o braço alcança 0,50 m): no impacto o cruzado chega com o
+    cotovelo a 78 a 114 graus, o direto a 144, e a mão a no máximo 1,3 cm do
+    alvo. O Upper_Tras é um uppercut no corpo (no impacto a mão está abaixo do
+    ombro); o uppercut no queixo é o clipe das cartas (`mx_uppercut`). A
+    distância mínima entre os dois caiu de 0,80 pra 0,72 (o uppercut de perto
+    não chegava).
+  - *O anúncio pedia a mão a 2,05 m*, e o braço (ombro 1,42 m + 0,50) não
+    chega: os dois braços travavam esticados. A mão erguida fica a 1,86 m,
+    entre os dois, o árbitro dá meio passo pro lado de quem venceu, os
+    cotovelos têm polo (pra trás e pra fora com o braço embaixo, pro lado com
+    ele erguido) e a mão do árbitro encosta no antebraço logo abaixo da luva,
+    a palma virada pra ele e os dedos dando a volta pela frente
+    (`orientarMao`, pelos ossos dos dedos, sem supor eixo).
+  - *Limite que fica: a axila com o braço erguido.* O corpo foi esculpido com
+    os braços pra baixo e gravado em T, e a axila tem um anel só de triângulos
+    ligando a parte de dentro do braço à parede do peito (no wireframe da pose
+    de descanso a "teia" aparece). Acima de uns 110 graus esse anel estica
+    numa aba fina embaixo do braço. Testados e descartados (não mudam a aba):
+    pesos em arco em volta da axila, suavização dos pesos pelo grafo,
+    transferência do dorsal pra coluna, ritmo maior da clavícula, braço pela
+    frente ou em diagonal e uma forma corretiva por pose (o giro em arco, o
+    que um dual quaternion faria). Resolver é refazer a malha da axila (mais
+    anéis entre o braço e o peito), fora desta etapa (o dono pediu pra não
+    mexer no corpo).
 - *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
   ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
   ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).
