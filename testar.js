@@ -18427,15 +18427,33 @@ async function testarLuta3d() {
     delete X.sb.window.WebGL2RenderingContext;
     X.run("fecharReprise();fecharReprise();");   // fechar sem nada aberto não quebra
   });
-  await conf("personagem fiel ao boneco: toda opção da criação (cabelo, barba, tatuagem, roupa de entrada) tem peça no 3D, e o corpo leva todos os campos", () => {
+  await conf("personagem fiel ao boneco: toda opção da criação (cabelo, barba, tatuagem, roupa de entrada) tem peça no 3D (malha em luta3d/pecas ou fios pintados na pele), e o corpo leva todos os campos", () => {
     const ap = fs.readFileSync(path.join(__dirname, "luta3d", "aparencia.js"), "utf8");
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
     const L = JSON.parse(X.run("JSON.stringify({c:CABELO_TIPOS,b:BARBAS,t:TATUAGENS,e:ENTRADAS,ci:CICATRIZES})"));
-    const casos = new Set([...ap.matchAll(/case "([^"]+)"/g)].map((m) => m[1]));
+    // os mapas do corpo realista (2026-11-20): opção -> arquivo em luta3d/pecas; cabelo curto e barba rala são só pintura
+    const mapa = (nome, txt) => {   // as chaves (e o valor, quando é texto) do objeto literal, sem executar nada
+      const m = txt.match(new RegExp(`const ${nome} = (\\{[\\s\\S]*?\\n?\\});`)); if (!m) throw new Error("não achei " + nome);
+      return Object.fromEntries([...m[1].matchAll(/(?:\{|,)\s*(?:"([^"]+)"|([A-Za-z_]\w*))\s*:\s*("([^"]*)")?/g)].map((x) => [x[1] || x[2], x[4] ?? true]));
+    };
+    const cab = mapa("MALHA_CABELO", lu), ent = mapa("ROUPA_ENTRADA", lu), pint = mapa("CABELOS", ap), barPint = mapa("BARBAS", ap);
+    const existe = (id) => fs.existsSync(path.join(__dirname, "luta3d", "pecas", id + ".glb"));
     const tat = new Set([...ap.matchAll(/^\s+"([^"]+)": \[\[/gm)].map((m) => m[1]));
-    const faltam = [...L.c.filter((x) => !casos.has(x) && x !== "militar"), ...L.b.filter((x) => !casos.has(x) && x !== "cheia"),
-      ...L.t.filter((x) => x !== "nenhuma" && !tat.has(x)), ...L.e.filter((x) => x !== "nenhuma" && !new RegExp(`tipo === "${x}"`).test(ap)),
+    const faltam = [...L.c.filter((x) => !(cab[x] ? existe(cab[x]) : x in pint)), ...L.b.filter((x) => x !== "nenhuma" && !(x in barPint)),
+      ...L.t.filter((x) => x !== "nenhuma" && !tat.has(x)), ...L.e.filter((x) => x !== "nenhuma" && !(ent[x] && existe(ent[x]))),
       ...L.ci.filter((x) => x !== "nenhuma" && !new RegExp(`cicatriz === "${x}"`).test(ap))];
     if (faltam.length) throw new Error("opção do boneco sem peça no 3D: " + faltam.join(", "));
+    for (const id of ["roupa_prajiad", "roupa_arbitro"]) if (!existe(id)) throw new Error("falta luta3d/pecas/" + id + ".glb");
+    // etapa 3 (2026-11-21): a peça extra do corte (os cachos em saca-rolha) e as texturas do volume esculpido existem
+    for (const id of Object.values(mapa("EXTRA_CABELO", lu))) if (!existe(id)) throw new Error("falta a peça extra luta3d/pecas/" + id + ".glb");
+    for (const t of ["mecha.webp", "mecha_n.webp", "crespo.webp", "crespo_n.webp"]) {
+      if (!fs.existsSync(path.join(__dirname, "luta3d", t))) throw new Error("falta luta3d/" + t);
+      if (!lu.includes(`"${t}"`)) throw new Error("o jogo não carrega luta3d/" + t);
+    }
+    // capuz e papakha guardam o cabelo esculpido (atravessava o pano) e devolvem quando a roupa sai, nos dois caminhos
+    if (!/cobreCabeca = \[[^\]]*"capuz"[^\]]*"papakha"[^\]]*\]/.test(lu)) throw new Error("capuz e papakha não guardam o cabelo");
+    const tirar = lu.slice(lu.indexOf("tirarRoupa("), lu.indexOf("tirarRoupa(") + 900);
+    if ((tirar.match(/cobreCabeca[^;]*cabeloMalhas[^;]*visible = true/g) || []).length < 2) throw new Error("tirarRoupa não devolve o cabelo nos dois caminhos (na hora e com o fade)");
     const c = JSON.parse(X.run("JSON.stringify(corpo3d({...cfgPadrao(),cabelo:2,barba:4,orelha:1,nariz:1,cicatriz:3,tatuagem:6,entrada:2,prajiad:1,corEntrada:4,porte:2}))"));
     const espera = { cabelo: "moicano", barba: "cavanhaque", orelha: "couve-flor", nariz: "quebrado", cicatriz: "olho roxo", tatuagem: "fechado", entrada: "papakha", prajiad: "com", porte: "pesado" };
     for (const [k, v] of Object.entries(espera)) if (c[k] !== v) throw new Error(`corpo3d.${k} = ${c[k]}, esperado ${v}`);
@@ -18528,6 +18546,51 @@ async function testarLuta3d() {
     if (tira.length) throw new Error(".vercelignore tira o 3D do deploy: " + tira);
     if (!/carregarBase\(dir\)/.test(diretor) || !/mx_lutas\.glb/.test(fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8")))
       throw new Error("o 3D não carrega luta3d/mx_lutas.glb");
+  });
+  /* pele embaixo do moletom (2026-11-21): na guarda o cotovelo furava a manga; a pele coberta não é desenhada enquanto
+     a peça está vestida, e volta quando ela sai */
+  await conf("moletom: só a pele do tronco, ombro, braço e começo do antebraço some (nunca o que é mais de 10% mão, pescoço, pelve ou perna), e volta quando a roupa sai", async () => {
+    const url = require("url");
+    const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const regra = { ossos: ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"], antebraco: 0.55 };
+    // 1) de mentira: um tronco, o antebraço perto e longe do cotovelo, a mão e a pelve
+    const nomes = ["pelvis", "spine_02", "neck_01", "lowerarm_l", "hand_l"], ponto = { pelvis: [0, 1, 0], spine_02: [0, 1.3, 0], neck_01: [0, 1.5, 0], lowerarm_l: [0.3, 1.3, 0], hand_l: [0.6, 1.3, 0] };
+    const skel = { bones: nomes.map((name) => ({ name })), boneInverses: nomes.map((n) => new THREE.Matrix4().makeTranslation(...ponto[n].map((x) => -x))) };
+    const vs = [[0, 1.3, 0.1, 1], [0.05, 1.3, 0.1, 1], [0, 1.35, 0.1, 1], [0.35, 1.3, 0, 3], [0.38, 1.32, 0, 3], [0.36, 1.28, 0, 3], [0.5, 1.3, 0, 3], [0.6, 1.3, 0, 4], [0, 1.0, 0.1, 0]];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vs.flatMap((v) => v.slice(0, 3)), 3));
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(vs.flatMap((v) => [v[3], 0, 0, 0]), 4));
+    geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(vs.flatMap(() => [1, 0, 0, 0]), 4));
+    geo.setIndex([0, 1, 2, 3, 4, 5, 3, 4, 6, 6, 7, 3, 0, 1, 8]);
+    const sint = LU.triangulosCobertos(geo, skel, new THREE.Matrix4(), { ossos: ["spine_02", "lowerarm_l"], antebraco: 0.55 });
+    if (sint.join() !== "3,4,6,6,7,3,0,1,8") throw new Error("de mentira: ficaram " + sint.join() + " (esperado: some o tronco e o antebraço perto do cotovelo; o antebraço perto do punho, a mão e a pelve ficam)");
+    // 2) o corpo de verdade (luta3d/lutador.glb, lido sem o carregador)
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.glb")), nj = b.readUInt32LE(12), j = JSON.parse(b.slice(20, 20 + nj).toString()), bin = b.slice(20 + nj + 8);
+    const ler = (i) => { const a = j.accessors[i], bv = j.bufferViews[a.bufferView], n = { SCALAR: 1, VEC3: 3, VEC4: 4, MAT4: 16 }[a.type];
+      const T = { 5126: Float32Array, 5125: Uint32Array, 5123: Uint16Array, 5121: Uint8Array }[a.componentType];
+      const off = bv.byteOffset + (a.byteOffset || 0), buf = bin.buffer.slice(bin.byteOffset + off, bin.byteOffset + off + a.count * n * T.BYTES_PER_ELEMENT); return [new T(buf), n]; };
+    const iCorpo = j.nodes.findIndex((n) => n.name === "corpo"), prim = j.meshes[j.nodes[iCorpo].mesh].primitives[0], skin = j.skins[j.nodes[iCorpo].skin];
+    const pai = {}; j.nodes.forEach((n, i) => (n.children || []).forEach((c) => (pai[c] = i)));
+    const local = (n) => n.matrix ? new THREE.Matrix4().fromArray(n.matrix) : new THREE.Matrix4().compose(new THREE.Vector3(...(n.translation || [0, 0, 0])), new THREE.Quaternion(...(n.rotation || [0, 0, 0, 1])), new THREE.Vector3(...(n.scale || [1, 1, 1])));
+    const mundo = (i) => { const m = local(j.nodes[i]); return pai[i] === undefined ? m : mundo(pai[i]).multiply(m); };
+    const g = new THREE.BufferGeometry(), [P] = ler(prim.attributes.POSITION), [J] = ler(prim.attributes.JOINTS_0), [W] = ler(prim.attributes.WEIGHTS_0), [I] = ler(prim.indices), [IB] = ler(skin.inverseBindMatrices);
+    g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.setAttribute("skinIndex", new THREE.BufferAttribute(J, 4));
+    g.setAttribute("skinWeight", new THREE.BufferAttribute(W instanceof Float32Array ? W : Float32Array.from(W, (x) => x / 255), 4)); g.setIndex(new THREE.BufferAttribute(I, 1));
+    const sk = { bones: skin.joints.map((k) => ({ name: j.nodes[k].name })), boneInverses: skin.joints.map((_, k) => new THREE.Matrix4().fromArray(IB, k * 16)) };
+    const fica = LU.triangulosCobertos(g, sk, mundo(iCorpo), regra), total = I.length / 3, some = total - fica.length / 3;
+    if (some < total * 0.12 || some > total * 0.6) throw new Error(`o moletom esconde ${some} de ${total} triângulos (fora de 12% a 60%)`);
+    const ficam = new Set(); for (let k = 0; k < fica.length; k += 3) ficam.add([fica[k], fica[k + 1], fica[k + 2]].join());
+    const nome = (o) => sk.bones[o].name, proibido = /^(hand|index|middle|ring|pinky|thumb|neck|Head|pelvis|thigh|calf|foot|ball)/;
+    for (let k = 0; k < I.length; k += 3) {
+      if (ficam.has([I[k], I[k + 1], I[k + 2]].join())) continue;
+      for (const v of [I[k], I[k + 1], I[k + 2]]) for (let c = 0; c < 4; c++) if (g.attributes.skinWeight.getComponent(v, c) > 0.1 && proibido.test(nome(J[v * 4 + c]))) throw new Error("some pele de " + nome(J[v * 4 + c]));
+    }
+    // 3) o jogo troca o corpo pelo sem a pele coberta e devolve o de sempre quando a roupa sai (antes do pano sumir)
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/const semPele = this\.vestido && corpoSemCoberto\(this, base, opt\.entrada\);\s*if \(semPele\) this\.corpo\.geometry = semPele;/.test(lu)) throw new Error("o Lutador não esconde a pele embaixo do moletom");
+    const tirar = lu.slice(lu.indexOf("tirarRoupa("), lu.indexOf("tirarRoupa(") + 900);
+    if (!/this\.corpo\.geometry = this\.geoCorpo[\s\S]*if \(dur <= 0\)/.test(tirar)) throw new Error("tirarRoupa não devolve a pele antes dos dois caminhos");
   });
   /* Review Focus 5: o mx_cartas.glb chega depois que a luta abre e fica fora do git; sem ele a luta toca a reserva e não trava */
   await conf("sem o mx_cartas.glb (faltando, quebrado ou vazio) a carga devolve 0 sem lançar e toda carta com clipe novo toca a reserva do mx_lutas.glb", async () => {

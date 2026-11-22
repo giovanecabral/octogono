@@ -73,7 +73,7 @@ api/jxj.js          JxJ (jogador contra jogador). Ver a seção "JxJ".
 api/_jxj-*.js       Motor, árvores, rating e regras do JxJ.
 supabase_jxj.sql    Migração do JxJ (só aditiva); depois dela, supabase_jxj_narracao.sql; _rollback desfaz as duas.
 ferramentas/        Teste do banco (PGlite), servidor local, balanço e E2E do JxJ; E2E e estresse da luta em 3D.
-luta3d/             Luta da carreira em 3D (three.js na pasta vendor/, corpo Quaternius CC0, animações Mixamo).
+luta3d/             Luta da carreira em 3D (three.js na pasta vendor/, corpo realista CC0 com cabelo e roupas em pecas/, animações Mixamo).
                     mx_lutas.glb (as animações) NÃO vai pro git: só sobe no deploy. Ver "Luta em 3D".
 ```
 
@@ -6235,7 +6235,7 @@ carreira, começar outra luta ou chegar no resultado desmonta o palco
 com os imports trocados pra caminho relativo, sem importmap. `palco.js`
 (octógono, luz, plateia, câmera), `lutador.js` (corpo, root motion, IK de
 contato e com polo, pose mais parecida na troca de clipe), `diretor.js` (os
-lances). Corpo e cabelos: Quaternius, CC0. Animações: Mixamo (Adobe),
+lances). Corpo: o realista de 2026-11-20 (abaixo), CC0. Animações: Mixamo (Adobe),
 convertidas pro esqueleto do corpo e enxugadas (só os 30 clipes usados e os
 quadros que a interpolação não recupera, 0,3 grau: de 6,3 MB pra 1,9 MB).
 A licença do Mixamo deixa usar no jogo mas não redistribuir o arquivo, e o
@@ -6365,7 +6365,9 @@ deslizava de lado com um braço solto no ar.
 "o 3D no online", "personagem fiel ao 2D", "animação deles entrando com a
 roupa").**
 
-- *Personagem fiel ao boneco* (`luta3d/aparencia.js`). O corpo do Quaternius
+- *Personagem fiel ao boneco* (`luta3d/aparencia.js`; o corpo, o cabelo, a
+  barba e as roupas foram refeitos em 2026-11-20, ver "Corpo realista" no fim
+  desta seção; o que segue é o que valia até lá). O corpo do Quaternius
   só tem três peças de cabelo; elas são presas só ao osso da cabeça, então
   viram geometria parada no espaço dele e o resto sai delas: os 9 cabelos
   (o moicano é a faixa do meio com espetos; black power e cacheado, a casca
@@ -6472,6 +6474,121 @@ bancada é `ferramentas/bancada3d.mjs` (dois lutadores e uma sequência fixa
 de lances, fotos a cada passo; `SEMTETO=1` mede o custo). `luta3d:max` no
 localStorage (só a gravação dos anúncios liga) dá resolução cheia, antialias
 e a qualidade nunca cai.
+
+**Corpo realista (2026-11-20, pedido do dono: "os bonecos estão meio feios",
+"deixe mais realista", "as roupas também", "faça bem feito, principalmente
+cabelo, barbas e acessórios").** O corpo do Quaternius (desenho) saiu. O novo:
+
+- *Malha e relevo*: o "Realistic Male Body" do Human Base Meshes da Blender
+  Studio (CC0, feito de escaneamento): 10,5 mil vértices, e a escultura em
+  alta (multires) assada num mapa de relevo de 4096 (abdômen, peitoral,
+  costas sem polígono a mais). O MakeHuman puro (MPFB2) foi testado antes e o
+  dono reprovou: corpo paramétrico, sai sempre com cara de manequim.
+- *Esqueleto, pesos e pele*: vêm de um corpo do MakeHuman (MPFB2, rig
+  game_engine, pele young_caucasian_male, tudo CC0) ajustado à silhueta do
+  escaneado (braço e perna girados até a menor distância, 1 a 1,5 cm); as
+  juntas andam até o corpo novo, os pesos passam por proximidade e a pele é
+  assada nos UVs dele. Onde o raio não acha o corpo (axila, dedo do pé) vira
+  a cor média.
+- *Animações sem conversão*: o corpo vai pra pose de descanso do corpo de
+  antes (direção de cada osso, torção pelo lado) e o esqueleto do GLB é
+  trocado pelo do jogo (mesmos nomes e orientações, nas juntas novas;
+  `transplante.mjs`). Os 43 clipes do `mx_lutas.glb` e os das cartas tocam
+  como estão. O pivô da cabeça fica no mesmo ponto do crânio que o de antes
+  (o diretor mira o rosto a partir dele; o topo bate em 0,2106).
+- *Calção e luva* saem da própria malha (os mesmos pesos, refeitos do corpo no fim): corte reto por plano na
+  barra e no elástico (`MI_Faixa`), bainha enrolada nas pernas e no cós (`bainha`), espessura (`engrossar`), a
+  frente da virilha alisada e dobras leves perto da barra. O corpo embaixo do calção é apagado (todo lutador
+  usa calção): a pele não fura o pano em pose nenhuma. A luva cobre até a falange do meio (a ponta do dedo
+  fica de fora, como a de MMA), com o punho e a tira de velcro (`MI_Punho`); a face entra pela maioria dos
+  vértices, e vértice longe dos vizinhos volta pra média (`sem_espinho`: virava espeto).
+- *Cabelo, barba e sobrancelha: etapa 3* (2026-11-21, pedido do dono: "barba, bigode, sobrancelha, cílios
+  muito granulados", "cabelo espalhado demais", "muita textura e pouco desenvolvimento"). Mecha recortada pelo
+  alfa granula no WebGL de qualquer jeito (o recorte não tem antisserrilhado e o fio fino pisca de longe; os
+  mipmaps que preservavam a cobertura só adiavam). Por isso os cortes viraram **volume esculpido**
+  (`cabelos.py`, `esculpir`): as faces do couro copiadas, subdivididas e levadas pra fora pela forma de cada
+  corte (repartido: degradê, topete, risca e mechas deitando pro lado; coque: rente, penteado até um coque em
+  espiral; moicano: faixa rente e a crista de mechas chatas espetadas, cada uma fechada, nascendo no couro e
+  deitando pra trás, em três fileiras abrindo um pouco pra fora (com uma fileira, de frente lia como lâmina; a
+  faixa levantada virava lâmina descolada); a borda da faixa afunda na pele, então o contorno é onde ela cruza a
+  pele, liso (apagar a face saía em serra); cacheado: caroços de cacho mais cachos em
+  saca-rolha em volta, que são tubos; black power: esfera irregular com caroços grandes e pequenos). Os sulcos
+  entre as mechas são geometria; a textura (`mecha.webp`/`crespo.webp` com o relevo, de `atlas_mecha.py`) só põe o
+  fio fino em baixo contraste; a cor do vértice escurece o fundo do sulco e a raiz. O vértice abaixo da linha do
+  cabelo desliza pela pele até ela (a borda cai em cima da linha, lisa; apagar o vértice deixava degrau). No
+  jogo, opaco: `MeshPhysicalMaterial` com anisotropia no liso, fosco no crespo, a normal vem no arquivo (o volume
+  tem costura de UV). Tranças, dreads e os cachos são tubos com `fios.webp`.
+  Barba, bigode, cavanhaque, ferradura e sobrancelha são volume fino do mesmo jeito (`pelo_facial`): mais grossos
+  no queixo, sulcos na direção do pelo, a borda some pelo alfa do vértice. **Cada região é um campo de distância**
+  (metros até a borda da forma, positivo dentro: elipse da boca, curva do bigode, queixo do cavanhaque, linha do
+  pescoço do ângulo da mandíbula até o pomo, sobrancelha afinando até a ponta): o alfa e a espessura sobem da
+  borda pra dentro por essa distância, com um ruído pequeno no contorno. Com a região escolhida por face da
+  cabeça o contorno seguia a malha em escada, o bigode lia pintado e o queixo do cavanhaque era uma laje cortada
+  reta ("bloco colado"); agora a espessura é um domo. O pelo é fosco (`roughness` 0,86): com brilho o bigode
+  ficava cinza. Embaixo da barba cheia e da sem bigode a pele leva só uma sombra lisa; o bigode, o cavanhaque e a
+  ferradura não são pintados (a região retangular da pintura aparecia como caixa em volta da boca na pele clara).
+  **As regiões do rosto foram medidas
+  no corpo escaneado** (perfil da linha do meio: ponta do nariz u -0,048, base do nariz -0,066, lábio de cima
+  -0,073 a -0,083, lábio de baixo até -0,1, queixo até -0,145; o olho fica em -0,02): as faixas de antes eram da
+  cabeça antiga e punham o bigode no meio do nariz (o zigue-zague embaixo do olho).
+  Militar, descolorido, raspado e barba rala continuam só pintura, e a pintura agora é **por pixel**
+  (`pintarRegiao`): cada pixel dos triângulos perto da região tem a posição na cabeça interpolada e a força vem
+  de quantas faixas (até `rampa`, 8 mm, 16 mm na barba rala) contêm o ponto. A região por triângulo saía em
+  degraus (os triângulos do rosto são grandes). Toda região tem folga em todas as bordas (a orelha é elipse,
+  a boca também): borda sem folga ficava reta e dura. Embaixo dos cortes esculpidos a pintura é só a sombra lisa,
+  acabando na borda da malha (a linha do cabelo da pintura fica 2,5 cm abaixo da linha da malha: `COURO(f - 0,022)`;
+  passar dela virava faixa na testa). Bancada: `?giro=graus` vira os lutadores (de lado). O contorno da região é fino e só na faixa de
+  dentro (largo, vazava pra outra ilha do UV). `filter: blur` em canvas inteiro ou em cada risco travou a aba do
+  navegador: a sombra é desenhada pixel a pixel e os riscos vão numa camada desfocada uma vez só.
+- *Roupas de entrada: etapa 3* (pedido do dono: "a capa do Brasil mais parecida com uma capa de verdade", "o
+  moletom do boxeador mais parecendo um moletom mesmo"). **Moletom**: corpo largo que cai reto do peito (o
+  raio em cada direção é o maior do corpo dali até o peito, mais a folga; atrás, as costas alisadas de novo),
+  punho e barra canelados apertando (`MI_Debrum`, na própria peça), o punho acaba antes da luva, mais pano em
+  volta do cotovelo, bolso canguru costurado em cima do pano, capuz de verdade (casca em volta da cabeça com
+  o raio alisado, pico atrás, aba dobrada em volta do rosto, o pé caindo nos ombros e cobrindo a gola; o raio
+  tem teto porque na pose de descanso o braço está aberto e o pé do capuz pousava nele) e cordões saindo da
+  aba. Os pesos do capuz são pela altura (cabeça, pescoço, tronco): por proximidade o pé dele pegava ombro e
+  braço e rasgava em cacos na guarda. **Capa**: a bandeira deitada (como ela é), a borda de cima em volta do
+  pescoço por cima dos trapézios (o raio de cima pra baixo sai de baixo da nuca: de mais alto batia na cabeça
+  e a ponta subia), as duas pontas puxadas num nó curto embaixo do pescoço, caindo pelas costas até a coxa
+  com dobras verticais que crescem pra baixo e a barra em arco; pesos só do tronco de cima (`spine_03` e um
+  pouco de `spine_02`: a pelve gira na guarda e torcia o pano pro lado); descendo, o peso passa pra
+  `spine_02` e `spine_01` (giram menos), e a barra abre 33 cm de cada lado (a 44, de frente parecia asa saindo do
+  quadril). **A pele embaixo do moletom não é desenhada** enquanto ele está vestido (`COBERTO` e
+  `triangulosCobertos` no `lutador.js`, como nos jogos): os triângulos com 90% ou mais do peso no tronco, ombro,
+  braço e começo do antebraço (até 55% dele), longe da barra e da gola pela altura, saem de uma geometria com os
+  mesmos atributos e só o índice filtrado; `tirarRoupa` devolve o corpo de sempre antes do pano começar a sumir.
+  Sem isso o cotovelo e o braço dobrados na guarda furavam a manga e as costas. A barra do moletom não leva peso
+  da coxa (amassava em cacos na guarda). **Capuz e papakha guardam o cabelo
+  esculpido** enquanto a peça está vestida (`cobreCabeca`) e devolvem na metade do fade de `tirarRoupa`.
+  **Kimono e roupão**: a saia ganha peso pela altura (`pesos_da_saia`: pelve e um pouco da coxa do lado;
+  no roupão, aberto na frente, cada lado segue bem a sua coxa) e mais folga. Por proximidade a coxa da frente
+  puxava o pano inteiro e a barra rasgava. Limitação que fica: o calção aparece num ponto da saia do roupão e
+  do kimono na guarda funda (pele com osso, sem simulação de pano; na entrada, andando, não aparece). A pele não
+  some embaixo deles porque o decote e a frente aberta mostram o corpo.
+- *Etapas 1 e 2 da roupa* (2026-11-20): modeladas no Blender em cima do corpo e do calção (os raios medem os
+  dois), alisadas, com bordas alisadas antes da espessura e mais folga nas costas: roupão de cetim
+  (`MeshPhysicalMaterial` com sheen, gola xale e barra douradas, faixa com laço), kimono (lapela até a barra,
+  faixa preta, saia por fora do calção), mongkol (corda trançada com faixas brancas, rabo curvo pra trás),
+  papakha (cascas de pelo), prajiad e o uniforme do árbitro. As de corpo têm pesos e entram no esqueleto do
+  lutador pelo nome do osso; mongkol e papakha são da cabeça. A cor é pelo papel do material (`MI_Tecido`,
+  `MI_Debrum`, `MI_Cinta`...); algodão, moletom e calção levam a trama no relevo (`comTrama`); a luva é couro
+  com verniz leve; olho úmido (verniz); pele com sheen avermelhado.
+- *Simulação de pano* (`tecido`) foi testada no calção (virava saia na guarda, o pano não segue a perna) e na
+  capa (explodia: começa encostada no corpo) e saiu dos dois; a função fica pra peça solta que precise.
+- *Arquivos*: `luta3d/lutador.glb` (1,7 MB), `luta3d/pecas/*.glb` (um por corte e roupa, 11 MB no total, de
+  0,1 a 2,6 MB cada, baixados só os da luta por `carregarPecas`), `fios.webp`, `cachos.webp`, `mecha.webp`,
+  `crespo.webp` e os relevos `mecha_n.webp`/`crespo_n.webp`. Tudo CC0, no git.
+- *Gerar de novo*: `sh ferramentas/corpo3d/gerar.sh` (cerca de 1 minuto;
+  pede o Blender 4.5 com o MPFB2 e os pacotes CC0 do MakeHuman, e o Human
+  Base Meshes; pasta de trabalho fora do repo). O corpo antigo fica em
+  `ferramentas/corpo3d/esqueleto_referencia.glb` como referência do
+  esqueleto. Conferir na bancada: `RETRATO="q=[...]&cam=rosto|perto|corpo|costas"
+  node ferramentas/bancada3d.mjs <pasta>` (lutadores parados na guarda,
+  `retrato3d.html`; `perto` só as cabeças, `&pele=1` mostra a textura da pele
+  pintada do primeiro); `CORPO=<glb>` testa um corpo sem trocar o do jogo.
+- *Sombra*: `normalBias` 0,03 na luz principal (o corpo novo fazia listras de
+  sombra nas costas).
 
 **Anúncios (2026-11-19).** `ferramentas/gravar-anuncio.mjs` (luta do Online
 contra o bot; `CINEMA=1` só o 3D em tela cheia, `MAX=1`, `SCREENCAST=1` com

@@ -1,6 +1,8 @@
 /* Bancada do 3D (2026-11-19): abre ferramentas/bancada3d.html no Chrome com a placa de vídeo, deixa a sequência
    de lances rodar e tira uma foto a cada PASSO segundos (e a folha com todas). Pra comparar luz, material e
    câmera antes e depois. Uso: [W=1080 H=1920 DSF=1 PASSO=0.6 MAX=1] node ferramentas/bancada3d.mjs <pasta>
+   RETRATO=<query> abre o retrato3d.html (lutadores parados, câmera perto; ex.: RETRATO="cam=rosto") e tira uma foto só.
+   CORPO=<arquivo.glb> troca o corpo do lutador por outro (só na bancada).
    SEMTETO=1 tira o limite de 60 quadros (pra medir o custo). MAX=1 liga luta3d:max (resolução cheia e antialias, o modo da gravação dos anúncios). */
 import { spawn, spawnSync } from "node:child_process"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { fileURLToPath } from "node:url";
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -25,10 +27,17 @@ try {
   await enviar("Runtime.enable", {}, S);
   await enviar("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: DSF, mobile: W < 700 }, S);
   if (process.env.MAX === "1") await enviar("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem("luta3d:max","1")` }, S);
-  await enviar("Page.navigate", { url: BASE + "ferramentas/bancada3d.html" }, S);
+  if (process.env.CORPO) { /* CORPO=<arquivo.glb> serve esse corpo no lugar do luta3d/lutador.glb (pra testar um corpo novo sem mexer no jogo) */
+    const corpo = fs.readFileSync(path.resolve(process.env.CORPO)).toString("base64");
+    await enviar("Fetch.enable", { patterns: [{ urlPattern: "*luta3d/lutador.glb*" }] }, S);
+    sock.addEventListener("message", (m) => { const d = JSON.parse(m.data); if (d.method === "Fetch.requestPaused")
+      enviar("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "model/gltf-binary" }], body: corpo }, S); });
+  }
+  await enviar("Page.navigate", { url: BASE + (process.env.RETRATO ? "ferramentas/retrato3d.html?" + process.env.RETRATO.split("&").map((x) => { const [k, ...v] = x.split("="); return k + "=" + encodeURIComponent(v.join("=")); }).join("&") : "ferramentas/bancada3d.html") }, S);
   const avaliar = async (e) => (await enviar("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }, S)).result.value;
   for (let i = 0; i < 300 && !(await avaliar("!!window.__pronto")); i++) await esperar(100);
   let n = 0; const t0 = Date.now();
+  if (process.env.RETRATO) { await esperar(500); if (process.env.DBG) console.log(JSON.stringify(await avaliar("window.__dbg"))); const { data } = await enviar("Page.captureScreenshot", { format: "png" }, S); fs.writeFileSync(path.join(OUT, "retrato.png"), Buffer.from(data, "base64")); n++; }
   while (!(await avaliar("!!window.__fim")) && Date.now() - t0 < 60000) {
     const { data } = await enviar("Page.captureScreenshot", { format: "jpeg", quality: 92 }, S);
     fs.writeFileSync(path.join(OUT, `f${String(n++).padStart(3, "0")}.jpg`), Buffer.from(data, "base64"));

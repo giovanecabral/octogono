@@ -187,7 +187,7 @@ export class Palco {
     // luz principal de cima, branca e forte como a da transmissão; só ela faz sombra
     const chave = new THREE.SpotLight(0xfff6ea, 240, 24, Math.PI / 4.2, 0.55, 1.5);
     chave.position.set(0.6, 9.2, 1.2); chave.target.position.set(0, 0, 0);
-    chave.castShadow = true; chave.shadow.mapSize.set(2048, 2048); chave.shadow.bias = -0.0004; chave.shadow.radius = 4;
+    chave.castShadow = true; chave.shadow.mapSize.set(2048, 2048); chave.shadow.bias = -0.0004; chave.shadow.normalBias = 0.03;   // corpo realista (2026-11-20): sem isso a sombra do próprio corpo fazia listras nas costas chave.shadow.radius = 4;
     chave.shadow.camera.near = 4; chave.shadow.camera.far = 14;
     cena.add(chave, chave.target);
     // contraluz colorida (vermelho e azul de transmissão)

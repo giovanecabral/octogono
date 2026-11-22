@@ -37,7 +37,8 @@ supabase_jxj_rollback.sql  Desfaz só o que é do JxJ.
 supabase_funil.sql  Funil do lançamento (2026-11-19): etapas anônimas por sessão e a leitura do painel. Só aditiva, o dono roda com aprovação.
 supabase_funil_rollback.sql  Desfaz só o funil.
 api/_funil.js       Lista e degraus do funil, sessão do "pagou" e os números da aba Funil do admin.
-luta3d/             Luta da carreira em 3D (2026-11-09): diretor.js, palco.js, lutador.js, three.js em vendor/.
+luta3d/             Luta da carreira em 3D (2026-11-09): diretor.js, palco.js, lutador.js, three.js em vendor/;
+                    corpo realista (2026-11-20) com cabelo, barba e roupas em pecas/ (ferramentas/corpo3d gera).
                     mx_lutas.glb (animações do Mixamo) fica FORA do git e só sobe no vercel --prod.
 ferramentas/        PGlite (Postgres local), servidor local, balanço e E2E do JxJ. Fora do deploy.
 LEIA-ME.md          Documentação detalhada.
@@ -260,6 +261,26 @@ metade). Regras do revamp que valem daqui pra frente:
   sombra suave, suor; LEIA-ME "Luta em 3D"): mexeu em luz, material ou lona,
   compare na `ferramentas/bancada3d.mjs` (e `SEMTETO=1` pro custo).
   `luta3d:max` é só da gravação dos anúncios.
+  **Corpo realista (2026-11-20; LEIA-ME "Corpo realista").** Malha escaneada
+  da Blender Studio com esqueleto, pesos e pele do MakeHuman, no esqueleto do
+  corpo de antes (as animações valem sem conversão; o pivô da cabeça no mesmo
+  ponto do crânio). Cabelo, barba e roupas em `luta3d/pecas` (um GLB por peça,
+  só os da luta, `carregarPecas`); cabelo curto e barba rala são pintura. Tudo
+  sai de `sh ferramentas/corpo3d/gerar.sh`: mexeu em corpo, cabelo ou roupa,
+  gere de novo e confira com `RETRATO=... node ferramentas/bancada3d.mjs`.
+  Opção nova na criação ganha peça no mapa do `lutador.js` e arquivo em
+  `pecas/`, ou região pintada no `aparencia.js` (a suíte `luta3d` reprova
+  opção sem peça). **Etapa 3 (2026-11-21, "granulado"): cabelo, barba e
+  sobrancelha são VOLUME esculpido (malha opaca com sulcos; borda da barba
+  pelo alfa do vértice), nunca mecha recortada pelo alfa** (granula no WebGL,
+  reprovado duas vezes). Regiões do rosto medidas no corpo escaneado
+  (`cabelos.py`); a pintura na pele é por pixel com rampa (`pintarRegiao`),
+  e `filter: blur` no canvas grande trava a aba. Capuz e papakha guardam o
+  cabelo (`cobreCabeca`). Saia e capuz com pesos pela altura (por
+  proximidade rasgavam na guarda). Barba, bigode e sobrancelha: região como
+  CAMPO de distância (alfa e espessura pela distância à borda), nunca por
+  face da cabeça (contorno em escada). O moletom esconde a pele coberta
+  (`triangulosCobertos`; o cotovelo furava a manga) e `tirarRoupa` devolve.
 - **Cartas da árvore (2026-11-17, branch `cartas-integracao`; LEIA-ME
   "Cartas da árvore", catálogo em `docs/combat-v2.md`).** No combate v2
   (flag `combate_v2`) cada nó libera uma carta (`api/_jxj-cartas.js`). A

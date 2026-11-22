@@ -1,11 +1,12 @@
-// Lutador 3D: corpo CC0 do Quaternius com animações de captura de movimento do
-// Mixamo convertidas pro esqueleto dele (ferramenta fora do repositório).
+// Lutador 3D: corpo realista (malha escaneada CC0 da Blender Studio, com esqueleto, pesos e pele do MakeHuman;
+// ferramentas/corpo3d) no esqueleto do corpo de antes, então as animações de captura de movimento do Mixamo
+// convertidas pra ele valem sem conversão nova. Cabelo e roupas vêm em luta3d/pecas, só os da luta.
 // O deslocamento que a animação traz no quadril vira deslocamento da raiz do
 // lutador (root motion), então os pés não escorregam e o golpe anda junto.
 import * as THREE from "./vendor/three.module.js";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import * as SkeletonUtils from "./vendor/SkeletonUtils.js";
-import { geometriaNaCabeca, pecasDoCabelo, pecasDaBarba, pecasDaOrelha, aplicarPorte, pintarPele, infoDoCorpo, montarRoupa } from "./aparencia.js";
+import { pecasDaOrelha, aplicarPorte, pintarPele, pintarCabelo, infoDoCorpo, texturaBandeira } from "./aparencia.js";
 
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const CIMA = new THREE.Vector3(0, 1, 0);
@@ -53,23 +54,56 @@ export async function carregarCartas(base, dir = "./", abrir = null) {
   } catch (e) { return 0; }
 }
 
-export async function carregarBase(dir = "./", abrir = null) {
+export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir ficam na base (carregarPecas usa)
   const L = new GLTFLoader();
   const ler = abrir ? (f) => abrir(L, f) : (f) => L.loadAsync(dir + f);
-  const arq = ["lutador.glb", "mx_lutas.glb", "hair_buzzed.glb", "hair_beard.glb", "hair_simpleparted.glb"];
-  const [corpo, anim, ...cabelos] = await Promise.all(arq.map(ler));
+  const [corpo, anim] = await Promise.all(["lutador.glb", "mx_lutas.glb"].map(ler));
   // espaço do pai da pelve (osso "root") no modelo em repouso
   corpo.scene.updateMatrixWorld(true);
   const pelve = corpo.scene.getObjectByName("pelvis");
   const M = pelve.parent.matrixWorld.clone(), Mi = M.clone().invert();
   const clips = {}, curvas = {};
   juntarClipes(anim.animations, M, Mi, clips, curvas);
-  // peças de cabelo e barba no espaço do osso da cabeça (aparencia.js) e o corpo em repouso (pra pintar a pele)
-  const malhaDe = (gltf) => { let m = null; gltf.scene.traverse((o) => { if (o.isSkinnedMesh && !m) m = o; }); return m; };
-  const pecas = { curto: geometriaNaCabeca(malhaDe(cabelos[0])), barba: geometriaNaCabeca(malhaDe(cabelos[1])), repartido: geometriaNaCabeca(malhaDe(cabelos[2])) };
-  let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Superhero_Male") corpoPele = o; });
+  // o corpo em repouso (pra pintar a pele e achar a orelha) e a passagem do corpo pro espaço do osso da cabeça
+  let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpoPele = o; });
   const { info, orelha } = infoDoCorpo(corpoPele);
-  return { corpo, clips, curvas, pecas, info, orelha, matrizPai: M };
+  const iH = corpoPele.skeleton.bones.findIndex((b) => b.name === "Head");
+  const paraCabeca = new THREE.Matrix4().multiplyMatrices(corpoPele.skeleton.boneInverses[iH], corpoPele.bindMatrix);
+  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir };
+}
+/* Cabelo e roupa: um GLB por peça em pecas/ (cortes só com a geometria; roupas de corpo com pesos),
+   baixados só os da luta, e as texturas de fios e de cachos uma vez. Falhou: o lutador fica com a pintura na pele
+   e sem a roupa. Nunca lança. */
+export async function carregarPecas(base, opcoes) {
+  const L = new GLTFLoader(), nomes = new Set();
+  for (const o of opcoes) {
+    if (!o) continue;
+    const c = MALHA_CABELO[{ buzzed: "militar", barba: "cheia" }[o.cabelo] || o.cabelo], b = MALHA_BARBA[{ barba: "cheia" }[o.barba] || o.barba];
+    if (c) nomes.add(c); if (b) nomes.add(b); if (EXTRA_CABELO[c]) nomes.add(EXTRA_CABELO[c]);
+    for (const r of pecasDeRoupa(o)) nomes.add(r);
+  }
+  nomes.add("rosto_sobrancelhas");   // todo lutador
+  const ler = (f) => base.abrir ? base.abrir(L, f) : L.loadAsync(base.dir + f);
+  const textura = (f) => new THREE.TextureLoader().loadAsync(base.dir + f).then((t) => {
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; }).catch(() => null);
+  if (!base.fios) {
+    base.fios = textura("fios.webp"); base.cachos = textura("cachos.webp");
+    // fio fino do volume esculpido (cor) e o relevo dele (normal: dado, não cor)
+    const relevo = (f) => textura(f).then((t) => { if (t) t.colorSpace = THREE.NoColorSpace; return t; });
+    base.mechaTex = Promise.all([textura("mecha.webp"), relevo("mecha_n.webp"), textura("crespo.webp"), relevo("crespo_n.webp")]);
+  }
+  await Promise.all([...nomes].filter((n) => !(n in base.pecas)).map(async (n) => {
+    try {
+      const g = await ler("pecas/" + n + ".glb"); let geo = null;
+      if (n.startsWith("roupa_")) { base.pecas[n] = partesDaRoupa(base, g, n); return; }
+      g.scene.updateMatrixWorld(true);
+      g.scene.traverse((o) => { if (o.isMesh && !geo) geo = o.geometry.clone().applyMatrix4(o.matrixWorld); });
+      if (geo && !geo.attributes.normal) geo.computeVertexNormals();   // o arquivo do cabelo vem sem normal (menor)
+      base.pecas[n] = geo ? geo.applyMatrix4(base.paraCabeca) : null;
+    } catch (e) { base.pecas[n] = null; }
+  }));
+  base.texFios = await base.fios; base.texCachos = await base.cachos;
+  [base.texMecha, base.texMechaN, base.texCrespo, base.texCrespoN] = await base.mechaTex;
 }
 function amostrar(cv, t) {
   const T = cv.tempos, n = T.length;
@@ -80,31 +114,200 @@ function amostrar(cv, t) {
   return [cv.xs[i] + (cv.xs[i + 1] - cv.xs[i]) * k, cv.zs[i] + (cv.zs[i + 1] - cv.zs[i]) * k];
 }
 
-/* ---------- textura: pele e calção (e as marcas: cicatriz e tatuagem, em 2048 pra linha sair firme) ---------- */
-function tingirTextura(mapOrig, pele, calcao, marcas = null) {
-  const img = mapOrig.image, esc = marcas ? 2 : 1, w = img.width * esc, h = img.height * esc;
+/* ---------- textura da pele: o tom do boneco e as marcas (cabelo curto, barba, cicatriz, tatuagem), em 2048 ---------- */
+function tingirTextura(mapOrig, pele, marcas = null) {
+  const img = mapOrig.image, w = img.width, h = img.height;
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const cx = cv.getContext("2d"); cx.drawImage(img, 0, 0, w, h);
   const d = cx.getImageData(0, 0, w, h), px = d.data;
-  const P = new THREE.Color(pele), C = new THREE.Color(calcao), ref = [0.80, 0.56, 0.42];
+  // ref: a cor média da pele na textura (mediana da textura assada do corpo)
+  const P = new THREE.Color(pele), ref = [0.85, 0.63, 0.51];
   // pele bem escura: na luz do 3D ela virava preto brilhante (achado do dono); sobe um pouco os médios
   const lum = 0.3 * P.r + 0.59 * P.g + 0.11 * P.b;
   if (lum < 0.3) P.lerp(new THREE.Color("#8d5f42"), (0.3 - lum) * 1.4);
   for (let i = 0; i < px.length; i += 4) {
-    const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255;
-    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx === 0 ? 0 : (mx - mn) / mx;
-    if (sat < 0.16 && mx < 0.45) { const l = Math.min(1, mx / 0.32); px[i] = 255 * C.r * l; px[i + 1] = 255 * C.g * l; px[i + 2] = 255 * C.b * l; }
-    else {
-      const lum = 0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2];
-      for (let k = 0; k < 3; k++) px[i + k] += (lum - px[i + k]) * 0.22;
-      px[i] = Math.min(255, px[i] * P.r / ref[0]); px[i + 1] = Math.min(255, px[i + 1] * P.g / ref[1]); px[i + 2] = Math.min(255, px[i + 2] * P.b / ref[2]);
-    }
+    const lum = 0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2];
+    for (let k = 0; k < 3; k++) px[i + k] += (lum - px[i + k]) * 0.22;
+    px[i] = Math.min(255, px[i] * P.r / ref[0]); px[i + 1] = Math.min(255, px[i + 1] * P.g / ref[1]); px[i + 2] = Math.min(255, px[i + 2] * P.b / ref[2]);
   }
   cx.putImageData(d, 0, 0);
   if (marcas) marcas(cx, w, h);
   const t = new THREE.CanvasTexture(cv);
   t.flipY = mapOrig.flipY; t.colorSpace = THREE.SRGBColorSpace; t.wrapS = mapOrig.wrapS; t.wrapT = mapOrig.wrapT; t.anisotropy = 4;
   return t;
+}
+
+/* trama de tecido (relevo procedural, repete): fios que passam por cima e por baixo, com uma irregularidade leve;
+   vai no normalMap do calção e das roupas de pano (algodão, moletom), com a escala de cada tecido */
+let _trama = null;
+function trama() {
+  if (_trama) return _trama;
+  try {
+    const N = 256, P = 8, cv = document.createElement("canvas"); cv.width = cv.height = N; const c = cv.getContext("2d"), im = c.createImageData(N, N), r = sorteio(9);
+    const alt = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = Math.floor(x / P), j = Math.floor(y / P), fx = (x % P) / P, fy = (y % P) / P;
+      const urdume = Math.sin(Math.PI * fx), trama_ = Math.sin(Math.PI * fy), cima = (i + j) % 2 === 0;
+      alt[y * N + x] = (cima ? urdume * (0.6 + 0.4 * trama_) : trama_ * (0.6 + 0.4 * urdume)) + (r() - 0.5) * 0.08;
+    }
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const dx = alt[y * N + (x + 1) % N] - alt[y * N + (x + N - 1) % N], dy = alt[((y + 1) % N) * N + x] - alt[((y + N - 1) % N) * N + x];
+      const n = new THREE.Vector3(-dx, -dy, 0.6).normalize(), k = (y * N + x) * 4;
+      im.data[k] = (n.x * 0.5 + 0.5) * 255; im.data[k + 1] = (n.y * 0.5 + 0.5) * 255; im.data[k + 2] = (n.z * 0.5 + 0.5) * 255; im.data[k + 3] = 255;
+    }
+    c.putImageData(im, 0, 0);
+    _trama = new THREE.CanvasTexture(cv); _trama.wrapS = _trama.wrapT = THREE.RepeatWrapping;
+  } catch (e) { _trama = null; }   // sem canvas (teste em Node)
+  return _trama;
+}
+function comTrama(escala, forca) {
+  const t = trama(); if (!t) return {};
+  const tt = t.clone(); tt.repeat.set(escala, escala); tt.needsUpdate = true;
+  return { normalMap: tt, normalScale: new THREE.Vector2(forca, forca) };
+}
+const sorteio = (s) => () => ((s = (s * 16807) % 2147483647) / 2147483647);
+function materialDaRoupa(peca, mat, opt, base) {
+  const cor = new THREE.Color(opt.corEntrada || "#D7261E"), M = (o) => new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.85, ...o });
+  // cetim: brilho de tecido (sheen) e pouca aspereza, sem metal (antes parecia plástico)
+  const cetim = (c) => new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, color: c, roughness: 0.38, sheen: 1, sheenRoughness: 0.35, sheenColor: c.clone().lerp(new THREE.Color("#ffffff"), 0.35) });
+  if (peca === "roupa_roupao") return mat === "MI_Debrum" ? M({ color: "#d4a017", metalness: 0.7, roughness: 0.32 }) : mat === "MI_Cinta" ? cetim(cor.clone().multiplyScalar(0.72)) : cetim(cor);
+  if (peca === "roupa_kimono") {
+    const gi = ["f2eee6", "1f3a6e", "16181e"].includes(cor.getHexString()) ? cor.clone() : new THREE.Color("#f2eee6");
+    return mat === "MI_Cinta" ? M({ color: "#15161b", roughness: 0.8, ...comTrama(90, 0.6) }) : M({ color: mat === "MI_Lapela" ? gi.clone().multiplyScalar(0.9) : gi, roughness: 0.95, ...comTrama(45, 0.9) });
+  }
+  if (peca === "roupa_moletom") return mat === "MI_Cordao" ? M({ color: "#c9cbd2" }) : M({ color: mat === "MI_Debrum" ? cor.clone().multiplyScalar(0.8) : cor, roughness: 1, ...comTrama(120, 0.35) });
+  if (peca === "roupa_bandeira") return mat === "MI_Bandeira" ? M({ map: texturaBandeira() }) : M({ color: "#1e8c45" });
+  if (peca === "roupa_arbitro") return M({ color: "#121318", roughness: 0.9, ...comTrama(110, 0.4) });
+  if (peca === "roupa_mongkol") return M({ color: mat === "MI_Branco" ? "#f2eee6" : cor, roughness: 0.75 });
+  if (peca === "roupa_papakha") return M({ color: cor.getHex() === 0x16181e ? "#2a2724" : "#e4ded0", map: base.texCachos, alphaTest: 0.3, vertexColors: true, roughness: 1 });
+  return M({ color: cor });   // prajiad
+}
+function vestir(lutador, base, opt) {
+  const out = { entrada: [], fixas: [] };
+  for (const n of pecasDeRoupa(opt)) {
+    for (const p of base.pecas[n] || []) {
+      const mat = materialDaRoupa(n, p.mat, opt, base);
+      let m;
+      if (p.cabeca) { m = new THREE.Mesh(p.geo, mat); lutador.ossos.Head.add(m); }
+      else { m = new THREE.SkinnedMesh(p.geo, mat); m.bind(lutador.corpo.skeleton, lutador.corpo.bindMatrix); lutador.corpo.parent.add(m); }
+      m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+      (n === "roupa_prajiad" || n === "roupa_arbitro" ? out.fixas : out.entrada).push(m);
+    }
+  }
+  return out;
+}
+/* pele embaixo do moletom (2026-11-21): na guarda o cotovelo e o braço dobrados furavam a manga e as costas (o pano
+   segue os mesmos ossos, mas afastado do corpo ele não acompanha a dobra). Como nos jogos, a pele que a peça cobre
+   não é desenhada enquanto ela está vestida: os triângulos só do tronco, do ombro, do braço e do começo do antebraço
+   (longe do punho, da barra e da gola). Geometria nova com os mesmos atributos e só o índice filtrado; o corpo de
+   sempre volta quando a roupa sai. */
+const COBERTO = { capuz: { ossos: ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"], antebraco: 0.55 } };
+export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
+  const ossos = skeleton.bones.map((b) => b.name), em = new Set(regra.ossos.map((n) => ossos.indexOf(n)).filter((i) => i >= 0));
+  const bindPos = (n) => ossos.includes(n) ? new THREE.Vector3().setFromMatrixPosition(skeleton.boneInverses[ossos.indexOf(n)].clone().invert()) : null;
+  const pelve = bindPos("pelvis"), pescoco = bindPos("neck_01");
+  const braco = { l: [bindPos("lowerarm_l"), bindPos("hand_l")], r: [bindPos("lowerarm_r"), bindPos("hand_r")] };   // (osso que falta: nada daquele lado some)
+  const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, v = new THREE.Vector3();
+  const coberto = new Uint8Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    let dentro = 0, ante = null;
+    for (let k = 0; k < 4; k++) {
+      const o = si.getComponent(i, k), w = sw.getComponent(i, k);
+      if (w > 0 && em.has(o)) { dentro += w; const n = ossos[o]; if (n.startsWith("lowerarm") && w > 0.05) ante = n.slice(-1); }
+    }
+    if (dentro < 0.9) continue;   // (o corpo escaneado espalha um pouco de peso pra pelve e pescoço; as bordas ficam pela altura)
+    v.fromBufferAttribute(pos, i).applyMatrix4(bindMatrix);
+    if (v.y < pelve.y + 0.03 || v.y > pescoco.y - 0.025) continue;
+    if (ante) { const [a, b] = braco[ante]; if (!a || !b) continue; const ab = b.clone().sub(a); if (v.clone().sub(a).dot(ab) / ab.lengthSq() > regra.antebraco) continue; }
+    coberto[i] = 1;
+  }
+  const idx = geo.index.array, fica = [];
+  for (let k = 0; k < idx.length; k += 3) if (!(coberto[idx[k]] && coberto[idx[k + 1]] && coberto[idx[k + 2]])) fica.push(idx[k], idx[k + 1], idx[k + 2]);
+  return fica;
+}
+function corpoSemCoberto(lutador, base, entrada) {
+  const regra = COBERTO[entrada]; if (!regra || !lutador.corpo) return null;
+  const c = lutador.corpo, chave = "cob_" + entrada; base.cobertos = base.cobertos || {};
+  if (!base.cobertos[chave]) {
+    const g = new THREE.BufferGeometry();
+    for (const [n, a] of Object.entries(c.geometry.attributes)) g.setAttribute(n, a);
+    g.setIndex(triangulosCobertos(c.geometry, c.skeleton, c.bindMatrix, regra));
+    base.cobertos[chave] = g;
+  }
+  return base.cobertos[chave];
+}
+/* cabelo (etapa 3, 2026-11-21): um GLB por corte em pecas/, preso ao osso da cabeça. Os cortes são VOLUME esculpido
+   (malha sólida com mechas, sulcos, topete, caroços do crespo; mecha.webp/crespo.webp só põem o fio fino e o relevo):
+   mecha recortada pelo alfa granulava de qualquer jeito ("granulado", "espalhado demais", reprovado pelo dono).
+   Tranças, dreads e os cachos em saca-rolha são tubos fechados. O raspado e a sombra embaixo de tudo são pintura
+   lisa na pele (pintarCabelo). */
+/* barba, bigode e sobrancelha: volume fino esculpido do mesmo jeito, com a borda sumindo pelo alfa do vértice */
+const MALHA_BARBA = { cheia: "barba_cheia", "sem bigode": "barba_sembigode", cavanhaque: "barba_cavanhaque", ferradura: "barba_ferradura" };
+function materialDoPelo(base, cor) {
+  return new THREE.MeshStandardMaterial({ map: base.texMecha, normalMap: base.texMechaN, normalScale: new THREE.Vector2(0.5, 0.5), color: cor, vertexColors: true,
+    transparent: true, depthWrite: true, roughness: 0.86, envMapIntensity: 0.1 });   // fosco: com brilho o bigode lia cinza, pintado
+}
+// volume do corte: opaco, fio fino e relevo da textura, brilho esticado ao longo do fio no liso, fosco no crespo
+const CRESPO = new Set(["cabelo_cacheado", "cabelo_blackpower"]);
+function materialDoVolume(base, cor, crespo) {
+  return new THREE.MeshPhysicalMaterial({ map: crespo ? base.texCrespo : base.texMecha, normalMap: crespo ? base.texCrespoN : base.texMechaN,
+    normalScale: new THREE.Vector2(0.7, 0.7), color: cor, vertexColors: true, roughness: crespo ? 0.78 : 0.5, specularIntensity: crespo ? 0.2 : 0.4,
+    anisotropy: crespo ? 0 : 0.6, anisotropyRotation: Math.PI / 2, envMapIntensity: 0.3 });
+}
+const EXTRA_CABELO = { cabelo_cacheado: "cabelo_cacheado_cachos" };   // os cachos em saca-rolha em volta do volume
+const MALHA_CABELO = { repartido: "cabelo_repartido", moicano: "cabelo_moicano", "trança nagô": "cabelo_tranca", dreads: "cabelo_dreads",
+  coque: "cabelo_coque", "black power": "cabelo_blackpower", cacheado: "cabelo_cacheado" };
+/* roupas (entrada e as fixas): um GLB por peça em pecas/. As de corpo vêm com pesos e entram no
+   esqueleto do lutador pelo nome do osso; mongkol e papakha são da cabeça (sem pesos), como o cabelo. */
+const ROUPA_ENTRADA = { "roupão": "roupa_roupao", kimono: "roupa_kimono", capuz: "roupa_moletom", bandeira: "roupa_bandeira", mongkol: "roupa_mongkol", papakha: "roupa_papakha" };
+const ROUPA_CABECA = new Set(["roupa_mongkol", "roupa_papakha"]);
+function pecasDeRoupa(o) {
+  const out = []; if (ROUPA_ENTRADA[o.entrada]) out.push(ROUPA_ENTRADA[o.entrada]);
+  if (o.prajiad === "com") out.push("roupa_prajiad"); if (o.uniforme === "arbitro") out.push("roupa_arbitro");
+  return out;
+}
+const NOME_OSSO = { head: "Head", Root: "root" };
+function partesDaRoupa(base, g, n) {
+  const partes = []; g.scene.updateMatrixWorld(true);
+  let corpo = null; base.corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpo = o; });
+  const ossos = corpo.skeleton.bones.map((b) => b.name), paraLocal = corpo.bindMatrix.clone().invert();
+  g.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const geo = o.geometry.clone().applyMatrix4(o.matrixWorld), mat = (o.material.name || "").replace(/\.\d+$/, "");
+    if (ROUPA_CABECA.has(n)) { geo.applyMatrix4(base.paraCabeca); if (geo.attributes.uv && mat === "MI_Pelo") cascaPorCamada(geo); partes.push({ geo, mat, cabeca: true }); return; }
+    // osso da roupa -> osso do corpo (mesmo nome; o Blender chama a cabeça de "head")
+    const si = geo.attributes.skinIndex, mapa = o.skeleton.bones.map((b) => ossos.indexOf(NOME_OSSO[b.name] || b.name));
+    const novo = new Uint16Array(si.count * 4);
+    for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) novo[i * 4 + k] = Math.max(0, mapa[si.getComponent(i, k)]);
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(novo, 4));
+    partes.push({ geo: geo.applyMatrix4(paraLocal), mat });
+  });
+  return partes;
+}
+/* cascas (o pelo do papakha): o UV traz v + 10 * camada + 100 * borda (0 na borda da região, 9 longe dela); vira
+   alfa no vértice: cada camada mais rala pra fora, e os fios somem perto da borda */
+function cascaPorCamada(geo, rala = 1) {
+  const uv = geo.attributes.uv, cor = new Float32Array(uv.count * 4);
+  // o glTF guarda v invertido (1 - v do Blender): desfaz, decodifica e devolve só a parte da textura
+  const borda = new Float32Array(uv.count), camada = new Int16Array(uv.count);
+  let n = 1;
+  for (let i = 0; i < uv.count; i++) {
+    let v = 1 - uv.getY(i); const b = Math.floor(v / 100); v -= 100 * b; const k = Math.floor(v / 10); v -= 10 * k;
+    borda[i] = Math.min(1, b / 9); camada[i] = k; n = Math.max(n, k + 1); uv.setY(i, 1 - v);
+  }
+  for (let i = 0; i < uv.count; i++) {
+    const k = camada[i];
+    const t = n > 1 ? k / (n - 1) : 0, l = 0.5 + 0.5 * t, d = 0.25 + 0.75 * borda[i];
+    cor.set([l, l, l, (1 - 0.62 * t) * rala * d], i * 4);   // de dentro escuro (sombra) e cheio, de fora claro e ralo
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(cor, 4));
+}
+const corDoFio = (cor) => new THREE.Color(cor || "#2a1d14").multiplyScalar(1.6);   // o atlas é cinza claro e a raiz vem escura no vértice
+/* material dos tubos (tranças, dreads, cachos em saca-rolha): malha fechada com a textura de fios, sombra da raiz no
+   vértice e o brilho esticado ao longo do fio (anisotropia) */
+function materialDoFio(base, cor) {
+  return new THREE.MeshPhysicalMaterial({ map: base.texFios, color: cor, vertexColors: true, side: THREE.DoubleSide,
+    roughness: 0.55, specularIntensity: 0.35, anisotropy: 0.7, anisotropyRotation: Math.PI / 2, envMapIntensity: 0.25 });
 }
 
 /* ---------- o lutador ---------- */
@@ -115,31 +318,54 @@ export class Lutador {
     this.modelo = SkeletonUtils.clone(base.corpo.scene);
     this.raiz.add(this.modelo);
     this.ossos = {};
+    // nomes antigos do boneco (buzzed, barba) continuam valendo
+    const cabelo = { buzzed: "militar", barba: "cheia" }[opt.cabelo] || opt.cabelo;
+    const barba = { barba: "cheia" }[opt.barba] || opt.barba;
     this.modelo.traverse((o) => {
       if (o.isBone) this.ossos[o.name] = o;
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
         o.material = o.material.clone();
-        if (o.material.name === "MI_Superhero_Male" && o.material.map) {
+        if (o.material.name === "MI_Pele" && o.material.map) {
           this.corpo = o;
-          const marcas = (opt.tatuagem && opt.tatuagem !== "nenhuma") || (opt.cicatriz && opt.cicatriz !== "nenhuma") || opt.nariz === "quebrado"
-            ? (c, w, h) => pintarPele(c, w, h, base.info, opt) : null;
-          o.material.map = tingirTextura(o.material.map, opt.pele, opt.calcao, marcas); o.material.roughness = 0.62; o.material.envMapIntensity = 0.55;   // brilho de suor (2026-11-19)
+          const temMarca = (opt.tatuagem && opt.tatuagem !== "nenhuma") || (opt.cicatriz && opt.cicatriz !== "nenhuma") || opt.nariz === "quebrado";
+          // couro, cabelo curto, barba e sobrancelha são fios pintados na pele (pintarCabelo), então sempre pinta
+          const marcas = (c, w, h) => { pintarCabelo(c, w, h, base.info, { cabelo, barba, corCabelo: opt.corCabelo }); if (temMarca) pintarPele(c, w, h, base.info, opt); };
+          // pele (etapa 2): sheen avermelhado (luz que espalha na pele) e menos reflexo do ambiente, sem cara de plástico; o suor fica no verniz leve
+          const m0 = o.material;
+          o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Pele", map: tingirTextura(m0.map, opt.pele, marcas), normalMap: m0.normalMap, normalScale: m0.normalScale,
+            roughness: 0.58, envMapIntensity: 0.4, sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color("#c86a50"), clearcoat: 0.12, clearcoatRoughness: 0.55 });
         }
-        if (o.name === "Eyebrows" && opt.corCabelo) o.material.color = new THREE.Color(opt.corCabelo);
+        // calção e luva são peças com material próprio
+        // olho úmido: verniz forte e quase sem aspereza (a bola fosca parecia de boneco)
+        if (o.material.name === "MI_Eyes") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Eyes", map: o.material.map, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.6 });
+        // calção de poliéster (trama fina), elástico canelado, luva de couro (verniz leve) e o velcro áspero
+        if (o.material.name === "MI_Calcao") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b"), roughness: 0.7 }, comTrama(90, 0.35));
+        if (o.material.name === "MI_Faixa") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b").multiplyScalar(0.25), roughness: 0.85 }, comTrama(160, 0.8));
+        if (o.material.name === "MI_Luva") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Luva", color: new THREE.Color(opt.luva || "#141416"), roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.45 });
+        if (o.material.name === "MI_Punho") Object.assign(o.material, { color: new THREE.Color(opt.luva || "#141416").lerp(new THREE.Color("#4a4b52"), 0.35), roughness: 0.92 }, comTrama(200, 0.5));   // velcro um tom mais claro
       }
     });
-    // cabelo, barba e orelha presos ao osso da cabeça; nomes antigos (buzzed, repartido, barba) continuam valendo
-    const cabelo = { buzzed: "militar", barba: "cheia" }[opt.cabelo] || opt.cabelo;
-    const barba = { barba: "cheia" }[opt.barba] || opt.barba;
-    const pecas = cabelo === "repartido" ? [[base.pecas.repartido, new THREE.MeshStandardMaterial({ color: opt.corCabelo || "#2a1d14", roughness: 0.88, side: THREE.DoubleSide })]]
-      : cabelo ? pecasDoCabelo(base, cabelo, opt.corCabelo || "#2a1d14") : [];
-    if (barba) pecas.push(...pecasDaBarba(base, barba, opt.corCabelo || "#2a1d14"));
-    pecas.push(...pecasDaOrelha(base, opt.orelha, opt.pele || "#c48a64"));
-    for (const [g, mat] of pecas) { const m = new THREE.Mesh(g, mat); m.castShadow = true; this.ossos.Head.add(m); }
+    // cabelo e orelha presos ao osso da cabeça
+    for (const [g, mat] of pecasDaOrelha(base, opt.orelha, opt.pele || "#c48a64")) { const m = new THREE.Mesh(g, mat); m.castShadow = true; this.ossos.Head.add(m); }
+    const nc = MALHA_CABELO[cabelo]; this.cabeloMalhas = [];
+    for (const n of [nc, EXTRA_CABELO[nc], MALHA_BARBA[barba], "rosto_sobrancelhas"]) {
+      const geo = n && base.pecas[n]; if (!geo) continue;
+      const cor = cabelo === "descolorido" && n.startsWith("cabelo") ? new THREE.Color("#d9c58c") : corDoFio(opt.corCabelo);
+      const pelo = n.startsWith("barba") || n === "rosto_sobrancelhas", tubo = n === "cabelo_tranca" || n === "cabelo_dreads" || n === EXTRA_CABELO[nc];
+      const m = new THREE.Mesh(geo, pelo ? materialDoPelo(base, cor) : tubo ? materialDoFio(base, cor) : materialDoVolume(base, cor, CRESPO.has(n)));
+      m.castShadow = true; m.receiveShadow = true; this.ossos.Head.add(m);
+      if (!pelo) this.cabeloMalhas.push(m);
+    }
     aplicarPorte(this.ossos, opt.porte);
-    this.roupa = montarRoupa(this, base, opt);
+    this.roupa = vestir(this, base, opt);
     this.vestido = this.roupa.entrada.length > 0;
+    this.geoCorpo = this.corpo && this.corpo.geometry;
+    const semPele = this.vestido && corpoSemCoberto(this, base, opt.entrada);
+    if (semPele) this.corpo.geometry = semPele;
+    // capuz e papakha cobrem a cabeça: o cabelo esculpido fica guardado embaixo até a peça sair (senão atravessava)
+    this.cobreCabeca = ["capuz", "papakha"].includes(opt.entrada) && this.vestido;
+    if (this.cobreCabeca) for (const m of this.cabeloMalhas) m.visible = false;
     this.mixer = new THREE.AnimationMixer(this.modelo);
     this.acoes = {}; this.atual = null; this.nomeEstado = null;
     this.movendo = new Map();   // ação -> último ponto da curva de deslocamento
@@ -153,10 +379,13 @@ export class Lutador {
     if (!this.vestido) return;
     this.vestido = false;
     const pecas = this.roupa.entrada, t0 = this.relogio;
-    if (dur <= 0) { for (const m of pecas) m.visible = false; return; }
+    if (this.geoCorpo) this.corpo.geometry = this.geoCorpo;   // a pele de baixo volta antes do pano começar a sumir
+    if (dur <= 0) { for (const m of pecas) m.visible = false; if (this.cobreCabeca) for (const m of this.cabeloMalhas) m.visible = true; return; }
+    for (const m of pecas) m.material.transparent = true;   // a roupa nasce opaca (sem briga de ordem com o cabelo); só some com transparência
     const f = () => {
       const k = Math.min(1, (this.relogio - t0) / dur);
       for (const m of pecas) { m.material.opacity = 1 - k; m.visible = k < 1; }
+      if (this.cobreCabeca && k >= 0.5) for (const m of this.cabeloMalhas) m.visible = true;
       if (k >= 1) this.extras.delete(f);
     };
     this.extras.add(f);

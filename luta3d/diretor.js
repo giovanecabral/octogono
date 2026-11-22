@@ -6,7 +6,7 @@
 // esqueleto do corpo; o arquivo delas (mx_lutas.glb) não vai pro GitHub.
 import * as THREE from "./vendor/three.module.js";
 import { Palco } from "./palco.js";
-import { carregarBase, carregarCartas, Lutador } from "./lutador.js";
+import { carregarBase, carregarCartas, carregarPecas, Lutador } from "./lutador.js";
 import { clipeDoLance, LANCES_CARTAS, GOLPES_MX } from "./lances-cartas.js";
 import { modeloCinturao } from "./aparencia.js";
 
@@ -23,16 +23,20 @@ raiz.append(elPalco, elVin, elFlash, elCham);
 const palco = new Palco(elPalco);
 if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
+const OP_A = op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" };
+const OP_B = op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" };
+const OP_C = { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro" };
+await carregarPecas(base, [OP_A, OP_B, OP_C]);   // corpo realista: só os cortes e as roupas desta luta
 /* clipes das cartas: chegam depois que a luta abre; sem o arquivo, o lance de reserva (lances-cartas.js) */
 const cartasProntas = carregarCartas(base, dir);
 /* guarda de luta: o gingado de boxe (pacote 2 do Mixamo, mais vivo que a guarda parada de antes) */
 const GUARDA = "Guarda_Gingando";
-const A = new Lutador(base, op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" });
-const B = new Lutador(base, op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" });
+const A = new Lutador(base, OP_A);
+const B = new Lutador(base, OP_B);
 palco.cena.add(A.raiz, B.raiz);
 /* o árbitro: só aparece no fim (anúncio do vencedor, interrupção do nocaute técnico) */
 const PARADO = A.clipeFixo("Alonga", 0.02, "Parado");
-const C = new Lutador(base, { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro" });
+const C = new Lutador(base, OP_C);
 C.raiz.visible = false; palco.cena.add(C.raiz); C.estado(PARADO, 0);
 A.raiz.position.set(-0.85, 0, 0); B.raiz.position.set(0.85, 0, 0);
 A.estado(GUARDA, 0); B.estado(GUARDA, 0);   // sem fade: nunca mostra a pose de repouso (braços abertos)

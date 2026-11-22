@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Retrato do 3D (2026-11-20): lutadores lado a lado, parados na guarda, câmera perto, pra comparar cabelo, barba,
+     pele e roupa sem rodar a luta. Fora do deploy (ferramentas/). ?q=<json> troca a lista de lutadores;
+     ?cam=rosto|perto|corpo|costas escolhe (e ?giro=graus vira os lutadores) o enquadramento. ferramentas/bancada3d.mjs com RETRATO=1 tira a foto. -->
+<style>html,body{margin:0;height:100%;background:#1b1c21;overflow:hidden}</style></head>
+<body>
+<script type="module">
+import * as THREE from "../luta3d/vendor/three.module.js";
+import { RoomEnvironment } from "../luta3d/vendor/RoomEnvironment.js";
+import { carregarBase, carregarPecas, Lutador } from "../luta3d/lutador.js";
+const par = new URLSearchParams(location.search);
+const lista = par.get("q") ? JSON.parse(par.get("q")) : [
+  { pele: "#c48a64", calcao: "#b3221b", cabelo: "militar", corCabelo: "#2a1d14", barba: "rala" },
+  { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia" },
+  { pele: "#e2b598", calcao: "#1e1f24", cabelo: "black power", corCabelo: "#3b2414", barba: "cavanhaque" },
+  { pele: "#5c3a26", calcao: "#c9a227", cabelo: "dreads", corCabelo: "#120d0a", barba: "nenhuma" },
+];
+const cam = par.get("cam") || "rosto";
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setPixelRatio(Math.min(2, devicePixelRatio)); r.setSize(innerWidth, innerHeight);
+r.shadowMap.enabled = true; r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(r.domElement);
+const cena = new THREE.Scene(); cena.background = new THREE.Color("#1b1c21");
+cena.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+const chave = new THREE.DirectionalLight("#fff3e6", 2.6); chave.position.set(2, 4, 3); chave.castShadow = true; chave.shadow.normalBias = 0.03; cena.add(chave);
+const recorte = new THREE.DirectionalLight("#cfe0ff", 1.6); recorte.position.set(-3, 3, -3); cena.add(recorte);
+cena.add(new THREE.HemisphereLight("#9aa4b5", "#2a2420", 0.6));
+const base = await carregarBase("../luta3d/");
+await carregarPecas(base, lista);
+const n = lista.length, passo = 0.75, lutadores = [];
+lista.forEach((o, i) => {
+  const L = new Lutador(base, o); L.raiz.position.x = (i - (n - 1) / 2) * passo;
+  if (cam === "costas") L.raiz.rotation.y = Math.PI;
+  if (par.get("giro")) L.raiz.rotation.y = Number(par.get("giro")) * Math.PI / 180;   // ?giro=90: de lado
+  cena.add(L.raiz); L.estado("Guarda_Gingando", 0); lutadores.push(L);
+});
+// alguns quadros pra pose assentar (a guarda balança: para num instante fixo)
+for (let k = 0; k < 20; k++) for (const L of lutadores) L.update(1 / 30);
+// perto: só as cabeças, pra ver pelo, barba e sobrancelha de perto
+const camera = new THREE.PerspectiveCamera(cam === "perto" ? 6.5 : cam === "rosto" ? 18 : 30, innerWidth / innerHeight, 0.05, 50);
+const alvoY = cam === "perto" ? 1.6 : cam === "rosto" ? 1.5 : 1.05, dist = cam === "perto" ? 3.2 + n * 1.3 : cam === "rosto" ? 3.2 + n * 0.55 : 3.4 + n * 0.6;
+camera.position.set(0.25, alvoY + 0.05, dist); camera.lookAt(0, alvoY, 0);
+r.render(cena, camera);
+// ?pele=1: mostra a textura da pele pintada do primeiro lutador (pra conferir a pintura do cabelo e da barba)
+if (par.get("pele")) { const im = lutadores[0].corpo.material.map.image; r.domElement.remove(); im.style.cssText = "width:100vw;height:100vh;object-fit:contain"; document.body.appendChild(im); }
+// diagnóstico: o que está preso na cabeça de cada um (tipo, material, caixa no mundo)
+window.__dbg = lutadores.map((L) => L.ossos.Head.children.map((m) => { const b = new THREE.Box3().setFromObject(m);
+  return [m.type, m.material && m.material.map ? "map" : "-", m.visible, b.min.toArray().map((x) => x.toFixed(2)).join(","), b.max.toArray().map((x) => x.toFixed(2)).join(",")]; }));
+window.__pronto = true; window.__fim = true;
+</script></body></html>

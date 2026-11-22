@@ -1,132 +1,17 @@
-// Aparência do lutador em 3D, fiel ao boneco 2D (pedido do dono): os 9 cabelos, as
-// 6 barbas, a orelha couve-flor, a cicatriz, as tatuagens e o porte.
-//
-// O corpo do Quaternius só tem três peças de cabelo (curto, repartido e barba
-// cheia). Todas são presas só ao osso da cabeça, então viram geometria parada no
-// espaço dele e o resto sai delas: o moicano é a faixa do meio com espetos, o black
-// power e o cacheado são a casca curta inflada, as barbas são a cheia recortada.
-// Cicatriz e tatuagem são pintadas na textura da pele, nas regiões do corpo na
-// pose de repouso (T), que não espelha esquerda e direita.
+// Aparência do lutador em 3D, fiel ao boneco 2D (pedido do dono): o cabelo curto e a
+// barba pintados na pele, a orelha couve-flor, a cicatriz, as tatuagens e o porte.
+// Os cortes com volume, as barbas em fios e as roupas de entrada são malhas feitas no
+// Blender (ferramentas/corpo3d, arquivos em luta3d/pecas) e entram pelo lutador.js.
+// Cicatriz, tatuagem, cabelo e barba são pintados na textura da pele, nas regiões do
+// corpo na pose de repouso (T), que não espelha esquerda e direita.
 //
 // Espaço do osso Head (metros): x pra esquerda do lutador, y pra cima, z pra frente.
 import * as THREE from "./vendor/three.module.js";
-import { mergeGeometries } from "./vendor/BufferGeometryUtils.js";
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-/* a cabeça como elipsoide, medida na casca do cabelo curto */
-const C = V(0, 0.12, 0), R = V(0.081, 0.096, 0.097);
-const normalCabeca = (p) => V(p.x / R.x ** 2, (p.y - C.y) / R.y ** 2, (p.z - C.z) / R.z ** 2).normalize();
-/* ponto da cabeça na fatia x, no ângulo phi (0 = topo, negativo = testa, positivo = nuca) */
-function naCabeca(x, phi, fora = 0) {
-  const s = Math.sqrt(Math.max(0, 1 - (x / R.x) ** 2));
-  const p = V(x, C.y + R.y * s * Math.cos(phi), C.z - R.z * s * Math.sin(phi));
-  return p.addScaledVector(normalCabeca(p), fora);
-}
 const suave = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-/* sorteio fixo (os dreads são iguais pra todo mundo) */
+/* sorteio fixo (a mesma orelha e a mesma tatuagem pra todo mundo) */
 const sorteio = (s) => () => ((s = (s * 16807) % 2147483647) / 2147483647);
-
-/* peça com pele presa só à cabeça -> geometria no espaço do osso Head */
-export function geometriaNaCabeca(malha) {
-  const sk = malha.skeleton, i = sk.bones.findIndex((b) => b.name === "Head");
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", malha.geometry.attributes.position.clone());
-  if (malha.geometry.index) g.setIndex(malha.geometry.index.clone());
-  g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(sk.boneInverses[i], malha.bindMatrix));
-  g.computeVertexNormals();
-  return g;
-}
-/* só os triângulos cujo centro passa no teste */
-function filtrar(g, ok) {
-  const n = g.index ? g.toNonIndexed() : g, p = n.attributes.position, out = [];
-  const a = V(), b = V(), c = V(), m = V();
-  for (let i = 0; i < p.count; i += 3) {
-    a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
-    m.copy(a).add(b).add(c).multiplyScalar(1 / 3);
-    if (ok(m)) out.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-  }
-  const r = new THREE.BufferGeometry(); r.setAttribute("position", new THREE.Float32BufferAttribute(out, 3)); r.computeVertexNormals();
-  return r;
-}
-/* empurra a casca pra fora (normal da cabeça); quanto(p) em metros */
-function inflar(g, quanto) {
-  const r = g.clone(), p = r.attributes.position, v = V();
-  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); v.addScaledVector(normalCabeca(v), quanto(v)); p.setXYZ(i, v.x, v.y, v.z); }
-  r.computeVertexNormals();
-  return r;
-}
-const material = (cor, extra = {}) => new THREE.MeshStandardMaterial({ color: cor, roughness: 0.88, side: THREE.DoubleSide, ...extra });
-
-/* ---------- cabelo: raspado, militar, moicano, trança nagô, dreads, coque, black power, cacheado, descolorido ---------- */
-export function pecasDoCabelo(base, tipo, cor) {
-  const curto = base.pecas.curto, mat = material(cor);
-  const frenteBaixa = (p) => 1 - 0.75 * suave(0.045, 0.092, p.z) * (1 - suave(0.15, 0.2, p.y));   // menos volume na linha da testa
-  switch (tipo) {
-    case "raspado": return [];
-    case "militar": return [[curto, mat]];
-    case "descolorido": return [[curto, material("#d9c58c", { roughness: 0.8 })]];
-    case "moicano": {
-      const faixa = filtrar(curto, (m) => Math.abs(m.x) < 0.024);
-      const espetos = [];
-      for (let k = 0; k <= 12; k++) {
-        const phi = -0.95 + k * (2.75 / 12), p = naCabeca(0, phi), n = normalCabeca(p).addScaledVector(V(0, 0, -1), 0.35).normalize();
-        const h = 0.028 + 0.034 * Math.cos(Math.max(-1.4, Math.min(1.4, phi * 0.8))) ** 2;
-        const cone = new THREE.ConeGeometry(0.016, h, 6); cone.translate(0, h / 2, 0);
-        cone.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), n)); cone.translate(p.x, p.y, p.z);
-        espetos.push(cone);
-      }
-      return [[faixa, mat], [mergeGeometries(espetos), mat]];
-    }
-    case "trança nagô": {
-      const trancas = [];
-      for (const x of [-0.054, -0.033, -0.011, 0.011, 0.033, 0.054]) {
-        const pts = []; for (let k = 0; k <= 14; k++) pts.push(naCabeca(x, -0.9 + k * (2.65 / 14), 0.004));
-        trancas.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.0068, 6, false));
-      }
-      return [[curto, material(new THREE.Color(cor).multiplyScalar(0.55))], [mergeGeometries(trancas), mat]];
-    }
-    case "dreads": {
-      const r = sorteio(7), fios = [];
-      for (let k = 0; k < 28; k++) {
-        const x = (r() * 2 - 1) * 0.072, phi = -0.35 + r() * 2.2, p0 = naCabeca(x, phi, 0.002), n = normalCabeca(p0);
-        const comp = 0.12 + r() * 0.09, tras = Math.min(p0.z, 0) - 0.02;
-        const pts = [p0, p0.clone().addScaledVector(n, 0.022).add(V(0, -0.012, -0.01)),
-          V(p0.x * 1.22 + n.x * 0.02, p0.y - comp * 0.55, tras - 0.01), V(p0.x * 1.28, p0.y - comp, tras - 0.025)];
-        fios.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, 0.0085 + r() * 0.002, 5, false));
-      }
-      return [[curto, mat], [mergeGeometries(fios), mat]];
-    }
-    case "coque": {
-      const bola = new THREE.SphereGeometry(0.034, 14, 10); bola.scale(1, 0.85, 1); bola.translate(0, 0.185, -0.078);
-      const elastico = new THREE.TorusGeometry(0.019, 0.005, 6, 16); elastico.rotateX(Math.PI / 2.6); elastico.translate(0, 0.171, -0.066);
-      return [[curto, mat], [bola, mat], [elastico, material("#15161b")]];
-    }
-    case "black power": {
-      // redondo: volume quase igual dos lados e em cima (antes crescia só em cima e virava cogumelo)
-      const g = inflar(curto, (p) => (0.05 + 0.012 * suave(0.12, 0.2, p.y)) * suave(0.035, 0.085, p.y) * frenteBaixa(p) + 0.004 * Math.sin(p.x * 140) * Math.sin(p.y * 120) * Math.sin(p.z * 130));
-      return [[g, material(cor, { roughness: 1, flatShading: true })]];
-    }
-    case "cacheado": {
-      const g = inflar(curto, (p) => 0.024 * suave(0.05, 0.13, p.y) * frenteBaixa(p) + 0.0075 * Math.sin(p.x * 170) * Math.sin(p.y * 150) * Math.sin(p.z * 160));
-      return [[g, material(cor, { roughness: 1, flatShading: true })]];
-    }
-    default: return [[curto, mat]];
-  }
-}
-
-/* ---------- barba: nenhuma, rala, sem bigode, cheia, cavanhaque, ferradura ---------- */
-export function pecasDaBarba(base, tipo, cor) {
-  const g = base.pecas.barba, mat = material(cor, { roughness: 0.95 });
-  const bigode = (m) => m.y > 0.016 && m.z > 0.084 && Math.abs(m.x) < 0.042;
-  switch (tipo) {
-    case "nenhuma": return [];
-    case "rala": return [[g, material(cor, { transparent: true, opacity: 0.42, depthWrite: false, roughness: 1 })]];
-    case "sem bigode": return [[filtrar(g, (m) => !bigode(m)), mat]];
-    case "cavanhaque": return [[filtrar(g, (m) => bigode(m) || (Math.abs(m.x) < 0.03 && m.y < 0.012 && m.z > 0.06)), mat]];
-    case "ferradura": return [[filtrar(g, (m) => bigode(m) || (Math.abs(m.x) > 0.02 && Math.abs(m.x) < 0.044 && m.y < 0.03 && m.y > -0.03 && m.z > 0.07)), mat]];
-    default: return [[g, mat]];
-  }
-}
 
 /* ---------- orelha couve-flor: um caroço em cada orelha ---------- */
 export function pecasDaOrelha(base, tipo, pele) {
@@ -222,6 +107,147 @@ function noRosto(info, alvo, W, H) {
   }
   return { x: u0.x * W, y: u0.y * H, pxm: n ? soma / n : W * 4, cima: cima || [0, -1] };
 }
+/* ---------- cabelo curto e barba pintados na pele (corpo realista, 2026-11-20) ----------
+   Raspado, militar, descolorido e toda barba são só pintura (como cabelo curto de verdade em jogo); os cortes com
+   volume pintam a base e põem a malha por cima. Regiões no espaço da cabeça (o mesmo do resto deste arquivo):
+   a linha do cabelo sobe e desce com o ângulo em volta da cabeça (0 = testa, 90 = orelha, 180 = nuca). */
+const LINHA = [[0, 0.158], [30, 0.155], [55, 0.132], [68, 0.112], [74, 0.088], [84, 0.088], [90, 0.134], [112, 0.13], [135, 0.07], [160, 0.03], [180, 0.018]];
+function linhaDoCabelo(h) {
+  const a = Math.abs(Math.atan2(h.x, h.z)) * 180 / Math.PI;
+  for (let i = 1; i < LINHA.length; i++) if (a <= LINHA[i][0]) { const [a0, y0] = LINHA[i - 1], [a1, y1] = LINHA[i]; return y0 + (y1 - y0) * (a - a0) / (a1 - a0); }
+  return LINHA[LINHA.length - 1][1];
+}
+// a orelha é uma elipse do lado da cabeça (era uma caixa: o recorte quadrado aparecia em volta dela); toda região
+// recebe a folga em todas as bordas, senão a pintura macia (pixel a pixel) acabava em linha reta dura
+const ORELHA = (f = 0) => (h) => Math.abs(h.x) > 0.062 && ((h.y - 0.078) / Math.max(0.01, 0.058 - f)) ** 2 + ((h.z + 0.008) / Math.max(0.01, 0.043 - f)) ** 2 < 1;
+const COURO = (folga) => (h) => !ORELHA(folga)(h) && h.y > linhaDoCabelo(h) - folga && h.y < 0.3;
+// barba: rosto de baixo, na frente da orelha, sem a boca
+const BOCA = (h, f = 0) => (h.x / Math.max(0.005, 0.027 - f)) ** 2 + ((h.y - 0.037) / Math.max(0.004, 0.017 - f)) ** 2 < 1 && h.z > 0.08;
+const BIGODE = (h) => Math.abs(h.x) < 0.041 && h.y >= 0.05 && h.y < 0.069 && h.z > 0.083;
+// a linha de cima da barba desce da costeleta (perto da orelha) até o canto da boca (na frente)
+const linhaBarba = (h) => 0.088 - 0.42 * Math.max(0, h.z - 0.02);
+const ROSTO_BAIXO = (folga) => (h) => h.z > -0.005 - folga && h.y < linhaBarba(h) + folga && h.y > -0.05 - folga * 2 && !ORELHA(folga)(h) && !BOCA(h, folga) && !(Math.abs(h.x) < 0.03 - folga && h.y > 0.066 + folga);
+const BARBAS = {
+  rala: ROSTO_BAIXO, cheia: ROSTO_BAIXO,
+  "sem bigode": (f) => (h) => ROSTO_BAIXO(f)(h) && !BIGODE(h),
+  cavanhaque: (f) => (h) => (BIGODE(h) || (Math.abs(h.x) < 0.032 + f && h.y < 0.022 + f && h.y > -0.035 - f && h.z > 0.055)) && !BOCA(h, f),
+  ferradura: (f) => (h) => (BIGODE(h) || (Math.abs(h.x) > 0.018 - f && Math.abs(h.x) < 0.046 + f && h.y < 0.066 + f && h.y > -0.03 - f && h.z > 0.065 - f)) && !BOCA(h, f),
+};
+// cada corte: base (sombra lisa do cabelo na pele), fios (densidade por pixel²), comprimento do fio (m) e direção
+
+// (etapa 3: riscos fortes pontilhavam de longe; o tom liso faz o cabelo curto e o risco fraco só dá o sentido do fio)
+const CABELOS = {
+  raspado: { base: 0.12, dens: 0.06, comp: 0.0014, alfa: 0.22 },
+  militar: { base: 0.5, dens: 0.1, comp: 0.0035, alfa: 0.25 }, descolorido: { base: 0.5, dens: 0.1, comp: 0.0035, alfa: 0.25 },
+  moicano: { base: 0.12, dens: 0.06, comp: 0.0015, alfa: 0.22 },
+};
+// embaixo dos cortes esculpidos: só a sombra lisa, que acaba na borda da malha (a linha do cabelo da malha fica 2,5 cm
+// acima da desta pintura: COURO(f - 0,022))
+const SOB_CABELO = { base: 0.45, dens: 0, comp: 0, alfa: 0 };
+const dirCouro = (h) => V(Math.sign(h.x) * 0.3, -0.5, -0.8);           // o fio deita pra trás e um pouco pro lado
+const dirBarba = (h) => (BIGODE(h) ? V(Math.sign(h.x) * 0.6, -1, 0) : V(0, -1, 0.25));
+// sobrancelha: o arco acima de cada olho (mais grossa no meio, afina pra fora), fios pra fora e um pouco pra cima
+const SOBRANCELHA = (folga) => (h) => {
+  const ax = Math.abs(h.x), meio = 0.128 + 0.005 * Math.cos(Math.min(1.5, Math.abs(ax - 0.034) / 0.026 * 1.5));   // o olho está em y 0,111
+  return ax > 0.013 - folga && ax < 0.056 + folga && h.z > 0.07 && Math.abs(h.y - meio) < 0.0022 + 0.0016 * Math.max(0, 1 - Math.abs(ax - 0.024) / 0.02) + folga;
+};
+// a pálpebra de cima: um arco logo acima do olho (centro em x 0,034, y 0,111; raio do globo 0,0125)
+const CILIOS = (folga) => (h) => {
+  const dx = Math.abs(Math.abs(h.x) - 0.034), topo = 0.111 + 0.0105 * Math.sqrt(Math.max(0, 1 - (dx / 0.0145) ** 2));
+  return dx < 0.0145 + folga && h.z > 0.085 && h.y > topo - 0.0012 - folga && h.y < topo + 0.0022 + folga;
+};
+// rala: a barba por fazer é só a pintura (tom liso e risco fraco); nas outras a pintura é a sombra lisa embaixo do volume
+const BARBA_FIOS = { rala: { base: 0.24, dens: 0.05, comp: 0.0014, alfa: 0.22, rampa: 0.016 }, cheia: { base: 0.14, dens: 0, comp: 0, alfa: 0 } };
+function regiao(info, ok, W, H) {
+  const caminho = new Path2D(), t = info.tri, h = info.hh;
+  for (let i = 0; i < t.length; i += 3) {
+    const a = t[i], b = t[i + 1], d = t[i + 2];
+    if (!ok(h[a]) || !ok(h[b]) || !ok(h[d])) continue;
+    caminho.moveTo(info.uv[a].x * W, info.uv[a].y * H); caminho.lineTo(info.uv[b].x * W, info.uv[b].y * H); caminho.lineTo(info.uv[d].x * W, info.uv[d].y * H); caminho.closePath();
+  }
+  return caminho;
+}
+/* Pelo pintado na pele: uma sombra lisa (base) e fios riscados na direção do pelo em cada ponto (a direção no espaço
+   da cabeça vira direção no UV pelo triângulo), mais curtos e fracos perto da borda da região. */
+function pintarRegiao(c, W, H, info, regiaoDe, cor, { base, dens, comp, alfa, rampa = 0.008 }, dir, semente = 7) {
+  // a sombra lisa, pixel a pixel (etapa 3): em cada pixel dos triângulos perto da região, a posição na cabeça sai
+  // da interpolação dos vértices e a força vem de quantas faixas (de 8 mm pra fora até a borda) contêm o ponto: a
+  // borda segue a região de verdade, macia, sem os degraus dos triângulos grandes do rosto
+  if (base && typeof OffscreenCanvas === "function") {
+    const FAIXAS = [[1, 0.1], [0.8, 0.22], [0.6, 0.38], [0.4, 0.55], [0.2, 0.75], [0, 1]].map(([f, a]) => [f * rampa, a]), oks = FAIXAS.map(([f]) => regiaoDe(f)), fora = oks[0];
+    const lisa = new OffscreenCanvas(W, H), lc = lisa.getContext("2d"), img = lc.createImageData(W, H), px = img.data, k = new THREE.Color(cor);
+    const R = Math.round(k.r * 255), G = Math.round(k.g * 255), B = Math.round(k.b * 255), t = info.tri, hh = info.hh, uv = info.uv, q = V(0, 0, 0);
+    for (let i = 0; i < t.length; i += 3) {
+      const A = t[i], Bv = t[i + 1], D = t[i + 2];
+      if (!fora(hh[A]) && !fora(hh[Bv]) && !fora(hh[D])) continue;
+      const ax = uv[A].x * W, ay = uv[A].y * H, bx = uv[Bv].x * W, by = uv[Bv].y * H, dx = uv[D].x * W, dy = uv[D].y * H;
+      const det = (bx - ax) * (dy - ay) - (dx - ax) * (by - ay); if (Math.abs(det) < 1e-9) continue;
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx, dx)) - 4), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx, dx)) + 4);
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by, dy)) - 4), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by, dy)) + 4);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const cx = x + 0.5, cy = y + 0.5, l1 = ((cx - ax) * (dy - ay) - (dx - ax) * (cy - ay)) / det, l2 = ((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / det, l0 = 1 - l1 - l2;
+        if (l0 < -0.12 || l1 < -0.12 || l2 < -0.12) continue;   // uns pixels além do triângulo: a ilha do UV vaza pra margem e a costura some
+        q.set(0, 0, 0).addScaledVector(hh[A], l0).addScaledVector(hh[Bv], l1).addScaledVector(hh[D], l2);
+        let a = 0; for (let j = FAIXAS.length - 1; j >= 0; j--) if (oks[j](q)) { a = FAIXAS[j][1]; break; }
+        const o = (y * W + x) * 4; if (a * 255 > px[o + 3]) { px[o] = R; px[o + 1] = G; px[o + 2] = B; px[o + 3] = a * 255; }
+      }
+    }
+    lc.putImageData(img, 0, 0); c.save(); c.globalAlpha = base; c.drawImage(lisa, 0, 0); c.restore();
+  } else if (base) {
+    for (const [folga, k] of [[0.008, 0.3], [0.003, 0.6], [0, 1]]) { const caminho = regiao(info, regiaoDe(folga), W, H); c.save(); c.clip(caminho); c.globalAlpha = base * k; c.fillStyle = cor; c.fillRect(0, 0, W, H); c.restore(); }
+  }
+  if (!dens) return;
+  const fora = regiaoDe(0.008), meio = regiaoDe(0.003), dentro = regiaoDe(0), t = info.tri, hh = info.hh, uv = info.uv, r = sorteio(semente), k = new THREE.Color(cor);
+  // risco macio (nítido demais virava granulado na pele): os fios vão pra uma camada à parte, desfocada uma vez só no
+  // fim. Filtro em cada risco (milhares) travava a aba do navegador.
+  const camada = typeof OffscreenCanvas === "function" ? new OffscreenCanvas(W, H) : null, alvo = c;
+  if (camada) c = camada.getContext("2d");
+  c.save(); c.lineCap = "round";
+  for (let i = 0; i < t.length; i += 3) {
+    const A = t[i], B = t[i + 1], D = t[i + 2];
+    if (!fora(hh[A]) || !fora(hh[B]) || !fora(hh[D])) continue;
+    const pa = [uv[A].x * W, uv[A].y * H], pb = [uv[B].x * W, uv[B].y * H], pd = [uv[D].x * W, uv[D].y * H];
+    const area = Math.abs((pb[0] - pa[0]) * (pd[1] - pa[1]) - (pd[0] - pa[0]) * (pb[1] - pa[1])) / 2;
+    const e1 = hh[B].clone().sub(hh[A]), e2 = hh[D].clone().sub(hh[A]);
+    const centro = hh[A].clone().add(hh[B]).add(hh[D]).multiplyScalar(1 / 3), d = dir(centro);
+    // d = x e1 + y e2 (mínimos quadrados) -> no UV: x f1 + y f2
+    const a11 = e1.dot(e1), a12 = e1.dot(e2), a22 = e2.dot(e2), b1 = d.dot(e1), b2 = d.dot(e2), det = a11 * a22 - a12 * a12;
+    if (Math.abs(det) < 1e-14) continue;
+    const x = (b1 * a22 - b2 * a12) / det, y = (b2 * a11 - b1 * a12) / det;
+    const du = x * (pb[0] - pa[0]) + y * (pd[0] - pa[0]), dv = x * (pb[1] - pa[1]) + y * (pd[1] - pa[1]);
+    const d3 = e1.clone().multiplyScalar(x).add(e2.clone().multiplyScalar(y)).length(), dl = Math.hypot(du, dv);
+    if (dl < 1e-6 || d3 < 1e-9) continue;
+    const ppm = dl / d3, ux = du / dl, uy = dv / dl, n = Math.round(area * dens + r());
+    for (let s = 0; s < n; s++) {
+      let r1 = r(), r2 = r(); if (r1 + r2 > 1) { r1 = 1 - r1; r2 = 1 - r2; }
+      const px = pa[0] + (pb[0] - pa[0]) * r1 + (pd[0] - pa[0]) * r2, py = pa[1] + (pb[1] - pa[1]) * r1 + (pd[1] - pa[1]) * r2;
+      const hp = hh[A].clone().addScaledVector(e1, r1).addScaledVector(e2, r2);
+      const forca = dentro(hp) ? 1 : meio(hp) ? 0.55 : 0.25, l = comp * ppm * (0.55 + 0.7 * r()) * (0.6 + 0.4 * forca), curva = (r() - 0.5) * l * 0.35;
+      const v = 0.75 + r() * 0.5;
+      c.strokeStyle = `rgb(${Math.min(255, 255 * k.r * v) | 0},${Math.min(255, 255 * k.g * v) | 0},${Math.min(255, 255 * k.b * v) | 0})`;
+      c.globalAlpha = alfa * forca * (0.55 + 0.45 * r()); c.lineWidth = 0.9 + r() * 0.6;
+      c.beginPath(); c.moveTo(px, py); c.quadraticCurveTo(px + ux * l / 2 - uy * curva, py + uy * l / 2 + ux * curva, px + ux * l, py + uy * l); c.stroke();
+    }
+  }
+  c.restore();
+  if (camada) { alvo.save(); alvo.filter = "blur(0.8px)"; alvo.drawImage(camada, 0, 0); alvo.restore(); }
+}
+export function pintarCabelo(c, W, H, info, { cabelo, barba, corCabelo }) {
+  if (!info.hh) return;
+  const cor = cabelo === "descolorido" ? "#d9c58c" : (corCabelo || "#2a1d14"), corPelo = corCabelo || "#2a1d14";
+  if (cabelo) pintarRegiao(c, W, H, info, CABELOS[cabelo] ? COURO : (f) => COURO(f - 0.022), cor, CABELOS[cabelo] || SOB_CABELO, dirCouro, 11);
+  if (cabelo === "moicano") pintarRegiao(c, W, H, info, (f) => (h) => COURO(f - 0.022)(h) && Math.abs(h.x) < 0.02 + f, cor, SOB_CABELO, dirCouro, 12);
+  // cavanhaque e ferradura: só o volume (a sombra pintada é mais larga que a forma dele e deixava um contorno de caixa)
+  if (barba && BARBAS[barba] && barba !== "cavanhaque" && barba !== "ferradura") {
+    const semBigode = (f) => (h) => BARBAS[barba](f)(h) && !BIGODE(h);
+    pintarRegiao(c, W, H, info, barba === "rala" ? BARBAS[barba] : semBigode, corPelo, barba === "rala" ? BARBA_FIOS.rala : BARBA_FIOS.cheia, dirBarba, 13);
+    // (o bigode não é pintado: o volume dele tem forma própria e a região retangular da pintura aparecia como um
+    // retângulo em volta da boca na pele clara)
+  }
+  pintarRegiao(c, W, H, info, SOBRANCELHA, corPelo, { base: 0.14, dens: 0, comp: 0, alfa: 0 }, (h) => V(Math.sign(h.x), 0.35, 0.1), 14);   // só a sombra lisa: o volume vem da malha
+  // cílios: a linha escura da pálpebra de cima, fios curtos pra cima e pra fora (o olho deixa de parecer bola colada)
+  pintarRegiao(c, W, H, info, CILIOS, "#1c140f", { base: 0.45, dens: 0, comp: 0.0022, alfa: 0 }, (h) => V(Math.sign(h.x) * 0.4, 1, 0.5), 15);   // linha lisa (fio riscado granulava)
+}
 export function pintarPele(c, W, H, info, { cicatriz, tatuagem, nariz }) {
   info = Object.assign(Object.create(info), { nariz });
   if (tatuagem && TATUAGENS[tatuagem]) {
@@ -266,11 +292,12 @@ export function pintarPele(c, W, H, info, { cicatriz, tatuagem, nariz }) {
 export function infoDoCorpo(corpo) {
   const g = corpo.geometry, pos = g.attributes.position, uv = g.attributes.uv, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
   const sk = corpo.skeleton, iH = sk.bones.findIndex((b) => b.name === "Head"), inv = sk.boneInverses[iH];
-  const info = { p: [], h: [], uv: [], tri: g.index ? Array.from(g.index.array) : [...Array(pos.count).keys()] };
+  const info = { p: [], h: [], hh: [], uv: [], tri: g.index ? Array.from(g.index.array) : [...Array(pos.count).keys()] };
   for (let i = 0; i < pos.count; i++) {
     const p = V().fromBufferAttribute(pos, i).applyMatrix4(corpo.bindMatrix);
     let w = 0; for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === iH) w += sw.getComponent(i, k);
-    info.p.push(p); info.h.push(w > 0.5 ? p.clone().applyMatrix4(inv) : null); info.uv.push(new THREE.Vector2(uv.getX(i), uv.getY(i)));
+    const ph = p.clone().applyMatrix4(inv);
+    info.p.push(p); info.h.push(w > 0.5 ? ph : null); info.hh.push(ph); info.uv.push(new THREE.Vector2(uv.getX(i), uv.getY(i)));
   }
   // orelha: o ponto mais pra fora (x) da cabeça na altura dos olhos
   let orelha = null;
@@ -278,96 +305,8 @@ export function infoDoCorpo(corpo) {
   return { info, orelha };
 }
 
-/* ---------- roupa de entrada: mongkol, papakha, kimono, roupão, capuz, bandeira; prajiad ----------
-   Kimono, roupão, capuz e bandeira são uma casca do próprio corpo (os triângulos da região, empurrados
-   pra fora e presos ao mesmo esqueleto): a roupa dobra junto com o lutador na caminhada. Mongkol e
-   papakha ficam na cabeça. A roupa sai no octógono (tirarRoupa); a prajiad fica a luta inteira, como
-   no muay thai. Regiões na pose de repouso (T): x pra esquerda do lutador, y pra cima, z pra frente. */
-/* seções do corpo na pose de repouso, por fatia: o tronco cortado em y, cada braço cortado em x.
-   Cada fatia vira uma elipse (centro e raios), suavizada entre vizinhas: o tecido passa por
-   cima, sem marcar barriga e peito (o dono achou a roupa colada "pintura"). */
-function secoes(info) {
-  if (info.__secoes) return info.__secoes;
-  const fat = (chave, a, b) => { const m = new Map(); return { m, add(k, u, w) { let f = m.get(k); if (!f) m.set(k, f = { a0: 9, a1: -9, b0: 9, b1: -9 }); f.a0 = Math.min(f.a0, u); f.a1 = Math.max(f.a1, u); f.b0 = Math.min(f.b0, w); f.b1 = Math.max(f.b1, w); } }; };
-  const tronco = fat(), bracoE = fat(), bracoD = fat();
-  for (const p of info.p) {
-    if (p.y > 0.8 && p.y < 1.56 && Math.abs(p.x) < 0.2) tronco.add(Math.round(p.y / 0.03), p.x, p.z);
-    else if (Math.abs(p.x) >= 0.19 && Math.abs(p.x) < 0.72 && p.y > 1.3) (p.x > 0 ? bracoE : bracoD).add(Math.round(Math.abs(p.x) / 0.03), p.y, p.z);
-  }
-  const lisa = (F) => {   // média das vizinhas (5 fatias) pra seção não ter degrau
-    const ks = [...F.m.keys()].sort((x, y) => x - y), out = new Map();
-    for (const k of ks) {
-      let n = 0, a0 = 0, a1 = 0, b0 = 0, b1 = 0;
-      for (let d = -2; d <= 2; d++) { const f = F.m.get(k + d); if (!f) continue; n++; a0 += f.a0; a1 += f.a1; b0 += f.b0; b1 += f.b1; }
-      out.set(k, { ca: (a0 + a1) / (2 * n), ra: (a1 - a0) / (2 * n), cb: (b0 + b1) / (2 * n), rb: (b1 - b0) / (2 * n) });
-    }
-    return out;
-  };
-  return (info.__secoes = { tronco: lisa(tronco), bracoE: lisa(bracoE), bracoD: lisa(bracoD) });
-}
-function embrulhar(p, sec, t) {
-  // p: posição de repouso; devolve o ponto na elipse da fatia dele, t pra fora
-  const braco = Math.abs(p.x) >= 0.19 && p.y > 1.3;
-  const tabela = braco ? (p.x > 0 ? sec.bracoE : sec.bracoD) : sec.tronco, f = tabela.get(Math.round((braco ? Math.abs(p.x) : p.y) / 0.03));
-  if (!f || f.ra < 0.01 || f.rb < 0.01) return null;
-  const u = braco ? p.y : p.x, w = p.z, ang = Math.atan2((w - f.cb) / f.rb, (u - f.ca) / f.ra);
-  const nu = f.ca + (f.ra + t) * Math.cos(ang), nw = f.cb + (f.rb + t) * Math.sin(ang);
-  return braco ? V(p.x, nu, nw) : V(nu, p.y, nw);
-}
-function casca(corpo, info, ok, espessura, corDe, embrulho = 0) {
-  const g = corpo.geometry, pos = g.attributes.position, nor = g.attributes.normal, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
-  const sec = embrulho ? secoes(info) : null, inv = embrulho ? corpo.bindMatrix.clone().invert() : null;
-  const idx = g.index ? g.index.array : [...Array(pos.count).keys()], mapa = new Map(), P = [], N = [], I = [], W = [], Cr = [], T = [];
-  const cor = new THREE.Color();
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
-    if (!ok(info.p[a]) || !ok(info.p[b]) || !ok(info.p[c])) continue;
-    for (const v of [a, b, c]) {
-      if (!mapa.has(v)) {
-        mapa.set(v, P.length / 3);
-        const n = V(nor.getX(v), nor.getY(v), nor.getZ(v)).normalize();
-        let q = V(pos.getX(v) + n.x * espessura, pos.getY(v) + n.y * espessura, pos.getZ(v) + n.z * espessura);
-        if (sec) { const e = embrulhar(info.p[v], sec, espessura); if (e) q.lerp(e.applyMatrix4(inv), embrulho); }
-        P.push(q.x, q.y, q.z);
-        N.push(n.x, n.y, n.z);
-        for (let k = 0; k < 4; k++) { I.push(si.getComponent(v, k)); W.push(sw.getComponent(v, k)); }
-        corDe(info.p[v], cor); Cr.push(cor.r, cor.g, cor.b);
-      }
-      T.push(mapa.get(v));
-    }
-  }
-  const r = new THREE.BufferGeometry();
-  r.setAttribute("position", new THREE.Float32BufferAttribute(P, 3));
-  r.setAttribute("normal", new THREE.Float32BufferAttribute(N, 3));
-  r.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(I, 4));
-  r.setAttribute("skinWeight", new THREE.Float32BufferAttribute(W, 4));
-  r.setAttribute("color", new THREE.Float32BufferAttribute(Cr, 3));
-  r.setIndex(T);
-  if (sec) r.computeVertexNormals();
-  return r;
-}
-/* peça rígida presa a um osso, desenhada nas coordenadas do corpo em repouso */
-function noOsso(lutador, nome, geo, mat, lista) {
-  const o = lutador.ossos[nome]; lutador.modelo.updateMatrixWorld(true);
-  geo.applyMatrix4(o.matrixWorld.clone().invert().multiply(lutador.modelo.matrixWorld));
-  const m = new THREE.Mesh(geo, mat); m.castShadow = true; o.add(m); lista.push(m); return m;
-}
-/* saia (roupão, kimono): cone aberto da cintura pra baixo, preso à pelve */
-function saia(y0, y1, r0, r1, corFrente) {
-  const g = new THREE.CylinderGeometry(1, 1, 1, 28, 6, true), p = g.attributes.position, cores = [];
-  for (let i = 0; i < p.count; i++) {
-    const k = p.getY(i) + 0.5, y = y1 + (y0 - y1) * k, ex = r1[0] + (r0[0] - r1[0]) * k, ez = r1[1] + (r0[1] - r1[1]) * k;
-    p.setXYZ(i, p.getX(i) * ex, y, p.getZ(i) * ez - 0.03);
-    const c = corFrente(p.getX(i) / ex, p.getZ(i) / ez + 0.03 / ez, k); cores.push(c.r, c.g, c.b);
-  }
-  g.setAttribute("color", new THREE.Float32BufferAttribute(cores, 3)); g.computeVertexNormals();
-  return g;
-}
-/* anel horizontal (faixa na cintura): raio em x, raio em z e a grossura do tecido, em metros */
-const anel = (rx, rz, tubo, y, z = 0) => { const g = new THREE.TorusGeometry(rx, tubo, 8, 36); g.rotateX(Math.PI / 2); g.scale(1, 1, rz / rx); g.translate(0, y, z); return g; };
-function corGeo(g, c) { const cs = []; for (let i = 0; i < g.attributes.position.count; i++) cs.push(c.r, c.g, c.b); g.setAttribute("color", new THREE.Float32BufferAttribute(cs, 3)); return g; }
-/* a bandeira do Brasil desenhada (a capa) */
-function texturaBandeira() {
+/* a bandeira do Brasil desenhada (a capa da entrada, roupa_bandeira) */
+export function texturaBandeira() {
   const cv = document.createElement("canvas"); cv.width = 512; cv.height = 360; const c = cv.getContext("2d");
   c.fillStyle = "#1e8c45"; c.fillRect(0, 0, 512, 360);
   c.fillStyle = "#f2c619"; c.beginPath(); c.moveTo(256, 30); c.lineTo(486, 180); c.lineTo(256, 330); c.lineTo(26, 180); c.closePath(); c.fill();
@@ -375,100 +314,6 @@ function texturaBandeira() {
   c.strokeStyle = "#f2eee6"; c.lineWidth = 14; c.beginPath(); c.arc(256, 330, 190, Math.PI * 1.32, Math.PI * 1.68); c.stroke();
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-const TRONCO = (p) => p.y > 0.86 && p.y < 1.54 && Math.abs(p.x) < 0.24;
-const BRACO = (ate) => (p) => Math.abs(p.x) >= 0.17 && Math.abs(p.x) < ate && p.y > 1.3;
-const COXA = (ate) => (p) => p.y > ate && p.y <= 0.9 && Math.abs(p.x) < 0.3;
-/* V do decote na frente: a pele aparece dentro, a borda é a lapela */
-const decote = (p, abre) => p.z > 0.02 && p.y > 1.12 && Math.abs(p.x) < 0.012 + (1.52 - p.y) * abre;
-const naBorda = (p, abre, larg) => p.z > 0.02 && p.y > 1.0 && Math.abs(Math.abs(p.x) - (0.012 + (1.52 - p.y) * abre)) < larg;
-
-export function montarRoupa(lutador, base, opt) {
-  const corpo = lutador.corpo, info = base.info, cor = new THREE.Color(opt.corEntrada || "#D7261E"), out = { entrada: [], fixas: [] };
-  const vestir = (geo, mat, lista) => {
-    const m = new THREE.SkinnedMesh(geo, mat); m.bind(corpo.skeleton, corpo.bindMatrix);
-    m.castShadow = true; m.frustumCulled = false; corpo.parent.add(m); lista.push(m);
-  };
-  const mat = (extra = {}) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, transparent: true, ...extra });
-  const tipo = opt.entrada;
-  const solido = (extra = {}) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide, transparent: true, ...extra });
-  if (tipo === "kimono") {
-    const gi = ["f2eee6", "1f3a6e", "16181e"].includes(cor.getHexString()) ? cor.clone() : new THREE.Color("#f2eee6");
-    const lap = gi.clone().multiplyScalar(0.8), faixa = new THREE.Color("#15161b");
-    vestir(casca(corpo, info, (p) => (TRONCO(p) || BRACO(0.66)(p)) && !decote(p, 0.32), 0.028, (p, c) =>
-      c.copy(naBorda(p, 0.32, 0.035) ? lap : gi), 0.85), mat({ roughness: 0.95 }), out.entrada);
-    // a parte de baixo do kimono, a faixa amarrada e as pontas dela
-    noOsso(lutador, "pelvis", saia(0.98, 0.72, [0.2, 0.16], [0.235, 0.19], (x, z) => (z > 0.85 && Math.abs(x) < 0.16 ? lap : gi)), solido(), out.entrada);
-    noOsso(lutador, "pelvis", corGeo(anel(0.2, 0.16, 0.022, 0.975, -0.03), faixa), solido({ side: THREE.FrontSide }), out.entrada);
-    const pontas = [new THREE.BoxGeometry(0.05, 0.2, 0.012), new THREE.BoxGeometry(0.05, 0.17, 0.012)];
-    pontas[0].rotateZ(0.12); pontas[0].translate(0.05, 0.87, 0.15); pontas[1].rotateZ(-0.18); pontas[1].translate(0.1, 0.885, 0.145);
-    const no = new THREE.BoxGeometry(0.07, 0.05, 0.03); no.translate(0.07, 0.975, 0.15);
-    noOsso(lutador, "pelvis", corGeo(mergeGeometries([...pontas, no]), faixa), solido(), out.entrada);
-  } else if (tipo === "roupão") {
-    const ouro = new THREE.Color("#d4a017"), escuro = cor.clone().multiplyScalar(0.8);
-    vestir(casca(corpo, info, (p) => (TRONCO(p) || BRACO(0.6)(p)) && !decote(p, 0.4), 0.035, (p, c) =>
-      c.copy(naBorda(p, 0.4, 0.034) || Math.abs(p.x) > 0.56 ? ouro : cor), 0.9), mat({ roughness: 0.55, metalness: 0.05 }), out.entrada);
-    // o roupão desce até o joelho, com a barra dourada; a faixa amarrada na cintura
-    noOsso(lutador, "pelvis", saia(1.0, 0.46, [0.21, 0.17], [0.3, 0.25], (x, z, k) => (k < 0.08 || (z > 0.9 && Math.abs(x) < 0.12) ? ouro : cor)),
-      solido({ roughness: 0.55 }), out.entrada);
-    noOsso(lutador, "pelvis", corGeo(anel(0.215, 0.175, 0.026, 1.0, -0.03), escuro), solido({ side: THREE.FrontSide }), out.entrada);
-    // gola alta atrás do pescoço
-    const gola = new THREE.TorusGeometry(0.1, 0.028, 8, 20, Math.PI * 1.1); gola.rotateX(Math.PI / 2); gola.rotateY(Math.PI * 0.95); gola.scale(1.05, 1, 0.9); gola.translate(0, 1.47, -0.04);
-    noOsso(lutador, "spine_03", corGeo(gola, ouro), solido({ roughness: 0.5 }), out.entrada);
-  } else if (tipo === "capuz") {
-    const punho = cor.clone().multiplyScalar(0.82);
-    vestir(casca(corpo, info, (p) => (TRONCO(p) && p.y < 1.53) || BRACO(0.68)(p), 0.032, (p, c) => c.copy(Math.abs(p.x) > 0.6 || p.y < 0.92 ? punho : cor), 0.9),
-      mat({ roughness: 1 }), out.entrada);
-    // o capuz caído atrás, o bolso canguru e os cordões
-    const g = new THREE.SphereGeometry(1, 28, 18); g.scale(R.x * 1.45, R.y * 1.38, R.z * 1.42); g.translate(0, C.y + 0.01, C.z - 0.015);
-    const capuz = filtrar(g, (m) => m.z < 0.07 - (m.y - 0.08) * 0.25 && m.y > -0.08);
-    const borda = new THREE.TorusGeometry(0.085, 0.014, 8, 24); borda.scale(1.05, 1.2, 1); borda.rotateX(-0.25); borda.translate(0, C.y + 0.0, 0.055);
-    const h = new THREE.Mesh(mergeGeometries([capuz, filtrar(borda, (m) => m.y > -0.05)].map((x) => { x.deleteAttribute && x.deleteAttribute("uv"); return x; })),
-      new THREE.MeshStandardMaterial({ color: cor, roughness: 1, side: THREE.DoubleSide, transparent: true }));
-    lutador.ossos.Head.add(h); out.entrada.push(h);
-    const bolso = new THREE.BoxGeometry(0.22, 0.12, 0.03); bolso.translate(0, 0.99, 0.135);
-    noOsso(lutador, "spine_01", corGeo(bolso, punho), solido({ roughness: 1 }), out.entrada);
-    const cordoes = [-0.035, 0.035].map((x) => { const c = new THREE.CylinderGeometry(0.005, 0.005, 0.17, 6); c.translate(x, 1.36, 0.135); return c; });
-    noOsso(lutador, "spine_03", corGeo(mergeGeometries(cordoes), new THREE.Color("#c9cbd2")), solido(), out.entrada);
-  } else if (tipo === "bandeira") {
-    // a bandeira do Brasil nas costas, como capa: presa nos ombros, caindo até a coxa
-    const g = new THREE.CylinderGeometry(0.25, 0.36, 0.92, 24, 6, true, Math.PI * 0.55, Math.PI * 0.9);
-    g.translate(0, 1.0, -0.06);
-    const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (p.getZ(i) > -0.06) p.setZ(i, p.getZ(i) * 0.6); p.setZ(i, p.getZ(i) - (1.46 - y) * 0.06); }
-    g.computeVertexNormals();
-    noOsso(lutador, "spine_03", g, new THREE.MeshStandardMaterial({ map: texturaBandeira(), roughness: 0.85, side: THREE.DoubleSide, transparent: true }), out.entrada);
-    // as pontas amarradas no peito
-    const pontas = [-1, 1].map((sx) => { const b = new THREE.BoxGeometry(0.035, 0.12, 0.012); b.rotateZ(sx * 0.5); b.translate(sx * 0.035, 1.37, 0.125); return b; });
-    noOsso(lutador, "spine_03", corGeo(mergeGeometries(pontas), new THREE.Color("#1e8c45")), solido(), out.entrada);
-  } else if (tipo === "mongkol") {
-    const g = new THREE.TorusGeometry(1, 0.11, 8, 40); g.rotateX(Math.PI / 2); g.scale(R.x * 1.1, R.x * 1.1, R.z * 1.16);
-    g.rotateX(0.16); g.translate(0, C.y + 0.012, C.z - 0.006);
-    const cores = [], p = g.attributes.position; for (let i = 0; i < p.count; i++) { const ang = Math.atan2(p.getZ(i), p.getX(i)); const c = Math.sin(ang * 14) > 0.3 ? new THREE.Color("#f2eee6") : cor; cores.push(c.r, c.g, c.b); }
-    g.setAttribute("color", new THREE.Float32BufferAttribute(cores, 3));
-    const rabo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(0, C.y + 0.03, C.z - R.z * 1.12), V(0, C.y + 0.06, C.z - R.z * 1.3), V(0, C.y + 0.1, C.z - R.z * 1.32)]), 10, 0.008, 6, false);
-    const cr = []; for (let i = 0; i < rabo.attributes.position.count; i++) cr.push(cor.r, cor.g, cor.b); rabo.setAttribute("color", new THREE.Float32BufferAttribute(cr, 3));
-    const m = new THREE.Mesh(mergeGeometries([g, rabo]), mat({ side: THREE.FrontSide }));
-    lutador.ossos.Head.add(m); out.entrada.push(m);
-  } else if (tipo === "papakha") {
-    const la = cor.getHex() === 0x16181e ? new THREE.Color("#2a2724") : new THREE.Color("#e4ded0");
-    const g = new THREE.CylinderGeometry(0.108, 0.097, 0.11, 22, 5, false); const p = g.attributes.position, r = sorteio(5);
-    for (let i = 0; i < p.count; i++) { const k = 1 + (r() - 0.5) * 0.12, topo = p.getY(i) > 0.05 ? 0.85 + 0.15 * Math.hypot(p.getX(i), p.getZ(i)) / 0.108 : 1; p.setXYZ(i, p.getX(i) * k, p.getY(i) * topo + (r() - 0.5) * 0.008, p.getZ(i) * k); }
-    g.computeVertexNormals(); g.rotateX(0.12); g.translate(0, C.y + 0.062, C.z - 0.006);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: la, roughness: 1, flatShading: true, transparent: true }));
-    lutador.ossos.Head.add(m); out.entrada.push(m);
-  }
-  if (opt.uniforme === "arbitro") {
-    // o árbitro: camisa preta de manga curta e calça preta, a luta inteira
-    const preto = new THREE.Color("#121318"), cinza = new THREE.Color("#2a2c33");
-    vestir(casca(corpo, info, (p) => (TRONCO(p) && p.y < 1.53) || BRACO(0.42)(p), 0.02, (p, c) => c.copy(Math.abs(p.x) > 0.38 ? cinza : preto), 0.85),
-      mat({ transparent: false, roughness: 0.9 }), out.fixas);
-    vestir(casca(corpo, info, (p) => p.y > 0.09 && p.y < 0.98 && Math.abs(p.x) < 0.32, 0.014, (p, c) => c.copy(preto)), mat({ transparent: false, roughness: 0.95 }), out.fixas);
-  }
-  if (opt.prajiad === "com") {
-    vestir(casca(corpo, info, (p) => Math.abs(p.x) > 0.29 && Math.abs(p.x) < 0.335 && p.y > 1.35, 0.014, (p, c) => c.copy(cor)), mat({ transparent: false }), out.fixas);
-  }
-  return out;
-}
-
 /* ---------- cinturão: tira de couro preta, a placa grande dourada no meio e as laterais ---------- */
 export function modeloCinturao() {
   const g = new THREE.Group(), ouro = new THREE.MeshStandardMaterial({ color: 0xd9a92b, metalness: 0.85, roughness: 0.3 });
