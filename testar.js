@@ -18723,7 +18723,7 @@ async function testarLuta3d() {
     }
     // 3) o jogo troca o corpo pelo sem a pele coberta e devolve o de sempre quando a roupa sai (antes do pano sumir)
     const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
-    if (!/const semPele = this\.vestido && corpoSemCoberto\(this, base, opt\.entrada\);\s*if \(semPele\) this\.corpo\.geometry = semPele;/.test(lu)) throw new Error("o Lutador não esconde a pele embaixo do moletom");
+    if (!/const semPele = this\.vestido \? corpoSemCoberto\(this, base, opt\.entrada\) : opt\.uniforme === "arbitro" \? corpoSemCoberto\(this, base, "arbitro"\) : null;\s*if \(semPele\) this\.corpo\.geometry = semPele;/.test(lu)) throw new Error("o Lutador não esconde a pele embaixo do moletom (nem do uniforme do árbitro)");
     const tirar = lu.slice(lu.indexOf("tirarRoupa("), lu.indexOf("tirarRoupa(") + 900);
     if (!/this\.corpo\.geometry = this\.geoCorpo[\s\S]*if \(dur <= 0\)/.test(tirar)) throw new Error("tirarRoupa não devolve a pele antes dos dois caminhos");
   });
@@ -18822,6 +18822,130 @@ async function testarLuta3d() {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const o = (y * W + x) * 4; if (pintado.data[o + 3] && pintado.data[o] < 240) (y < H / 2 ? cima++ : baixo++); }
     if (cima < 50) throw new Error("pintou pouco em volta do olho: " + cima);
     if (baixo) throw new Error(`pintou ${baixo} pixels na bochecha, longe do olho`);
+  });
+  /* estrutura do corpo (2026-11-23): porte sem escala de osso, pesos sem costura na axila, calção sem tampa, árbitro */
+  await conf("porte é forma da malha: o vértice sai do eixo do osso na proporção do peso, cabeça e mão não mudam, e nenhum osso ganha escala", async () => {
+    const url = require("url"), THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const AP = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "aparencia.js")).href);
+    const ap = fs.readFileSync(path.join(__dirname, "luta3d", "aparencia.js"), "utf8"), lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    const corpoAP = ap.slice(ap.indexOf("export function aplicarPorte"), ap.indexOf("/* ---------- pele: cicatriz"));
+    if (/\.scale\.set|\.scale\.multiply/.test(corpoAP)) throw new Error("o porte voltou a escalar osso (a escala passa pros filhos: mão, luva e cabeça mudavam de tamanho)");
+    if (!/this\.roupa = vestir\(this, base, opt\);\s*aplicarPorte\(this, opt\.porte, base\);/.test(lu)) throw new Error("o porte tem que vir depois da roupa (vale pra toda malha com pele)");
+    const nomes = ["spine_02", "spine_03", "neck_01", "Head"], alt = { spine_02: 1.2, spine_03: 1.4, neck_01: 1.55, Head: 1.7 };
+    const skel = { bones: nomes.map((name) => ({ name })), boneInverses: nomes.map((n) => new THREE.Matrix4().makeTranslation(0, -alt[n], 0)) };
+    const vs = [[0.1, 1.3, 0, [0, 1]], [0.05, 1.75, 0, [3, 1]], [0.1, 1.3, 0, [0, 0.5, 3, 0.5]]];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vs.flatMap((v) => v.slice(0, 3)), 3));
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(vs.flatMap((v) => [v[3][0], v[3][2] ?? 0, 0, 0]), 4));
+    geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(vs.flatMap((v) => [v[3][1], v[3][3] ?? 0, 0, 0]), 4));
+    const out = AP.porteNaMalha(geo, skel, new THREE.Matrix4(), 1.09), x = (i) => +out[3 * i].toFixed(4);
+    if (x(0) !== 0.109) throw new Error("tronco pesado: o vértice a 10 cm do eixo foi pra " + x(0) + " (esperado 0.109)");
+    if (x(1) !== 0.05 || +out[4].toFixed(4) !== 1.75) throw new Error("a cabeça mudou com o porte: " + [out[3], out[4]]);
+    if (x(2) !== 0.1045) throw new Error("meio tronco, meio cabeça: " + x(2) + " (esperado 0.1045, metade do afastamento)");
+  });
+  await conf("axila sem costura de peso: nenhuma aresta do corpo salta mais de 0,35 no peso do braço (o vértice virava do avesso com o braço fechado)", () => {
+    const { j, ler, no } = lerGLBJogo(), c = no("corpo"), pr = j.meshes[c.mesh].primitives[0], sk = j.skins[c.skin];
+    const P = ler(pr.attributes.POSITION), J = ler(pr.attributes.JOINTS_0), W = ler(pr.attributes.WEIGHTS_0), I = ler(pr.indices), nomes = sk.joints.map((k) => j.nodes[k].name);
+    const w = W instanceof Float32Array ? W : Float32Array.from(W, (x) => x / (W instanceof Uint8Array ? 255 : 65535));
+    for (const l of ["l", "r"]) {
+      const braco = new Set(nomes.map((n, i) => (/^(upperarm|lowerarm|hand|thumb|index|middle|ring|pinky)_/.test(n) && n.endsWith("_" + l) ? i : -1)).filter((i) => i >= 0));
+      const wb = (v) => { let s = 0; for (let k = 0; k < 4; k++) if (braco.has(J[4 * v + k])) s += w[4 * v + k]; return s; };
+      const vistos = new Set(); let saltos = 0;
+      for (let k = 0; k < I.length; k += 3) for (const [a, b] of [[I[k], I[k + 1]], [I[k + 1], I[k + 2]], [I[k + 2], I[k]]]) {
+        const ch = Math.min(a, b) * 1e6 + Math.max(a, b); if (vistos.has(ch)) continue; vistos.add(ch);
+        if (Math.abs(wb(a) - wb(b)) > 0.35) saltos++;
+      }
+      if (saltos > 3) throw new Error(`braço ${l}: ${saltos} arestas com salto de peso (antes do conserto eram 31: o núcleo do braço não era gravado e o peso antigo sobrava)`);
+    }
+  });
+  await conf("calção sem tampa: o cós é aberto em cima (a tampa do remesh pegava peso da coluna e furava o cós de trás feito espinho)", () => {
+    const { j, ler, no } = lerGLBJogo(), c = no("calcao");
+    for (const p of j.meshes[c.mesh].primitives) {
+      if (j.materials[p.material].name !== "MI_Faixa") continue;
+      const P = ler(p.attributes.POSITION), I = ler(p.indices); let ymax = -9; for (let i = 1; i < P.length; i += 3) ymax = Math.max(ymax, P[i]);
+      let area = 0;
+      for (let k = 0; k < I.length; k += 3) {
+        const [a, b, d] = [I[k], I[k + 1], I[k + 2]].map((x) => [P[3 * x], P[3 * x + 1], P[3 * x + 2]]);
+        const u = b.map((x, i) => x - a[i]), v = d.map((x, i) => x - a[i]), n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], L = Math.hypot(...n);
+        if (L && Math.abs(n[1]) / L > 0.8 && (a[1] + b[1] + d[1]) / 3 > ymax - 0.06) area += L / 2;
+      }
+      if (area * 1e4 > 500) throw new Error(`o cós tem ${(area * 1e4).toFixed(0)} cm² de face deitada no alto (tampa; o cós aberto tem só a bainha, uns 250)`);
+      return;
+    }
+    throw new Error("o cós (MI_Faixa) não foi achado");
+  });
+  await conf("crânio rígido: a pele da lateral da cabeça (acima da junta) é toda da cabeça (o peso do pescoço mexia a pele por cima do cabelo esculpido e abria uma faixa careca acima da orelha)", () => {
+    const { j, ler, no, junta } = lerGLBJogo(), c = no("corpo"), pr = j.meshes[c.mesh].primitives[0], sk = j.skins[c.skin];
+    const P = ler(pr.attributes.POSITION), J = ler(pr.attributes.JOINTS_0), W0 = ler(pr.attributes.WEIGHTS_0), W = W0 instanceof Float32Array ? W0 : Float32Array.from(W0, (x) => x / 255);
+    const ih = sk.joints.findIndex((i) => j.nodes[i].name === "Head"), cab = junta(sk, "Head");
+    let n = 0, ruins = 0;
+    for (let i = 0; i < P.length / 3; i++) {
+      const dx = P[3 * i] - cab[0], dy = P[3 * i + 1] - cab[1]; if (Math.abs(dx) < 0.06 || dy < 0.03 || dy > 0.15) continue;
+      let w = 0; for (let k = 0; k < 4; k++) if (J[4 * i + k] === ih) w += W[4 * i + k];
+      n++; if (w < 0.95) ruins++;
+    }
+    if (n < 50) throw new Error("poucos vértices na lateral da cabeça: " + n);
+    if (ruins > n * 0.02) throw new Error(`${ruins} de ${n} vértices da lateral da cabeça com peso do pescoço`);
+  });
+  await conf("coque assentado: a bola encosta no cabelo penteado (ficava 2,5 cm acima, solta no ar)", () => {
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "pecas", "cabelo_coque.glb")), nj = b.readUInt32LE(12), j = JSON.parse(b.slice(20, 20 + nj).toString()), bin = b.slice(20 + nj + 8);
+    const pr = j.meshes[0].primitives[0], ler = (i) => { const a = j.accessors[i], bv = j.bufferViews[a.bufferView], n = { SCALAR: 1, VEC3: 3 }[a.type];
+      const T = { 5126: Float32Array, 5125: Uint32Array, 5123: Uint16Array }[a.componentType], off = (bv.byteOffset || 0) + (a.byteOffset || 0);
+      return new T(bin.buffer.slice(bin.byteOffset + off, bin.byteOffset + off + a.count * n * T.BYTES_PER_ELEMENT)); };
+    const P = ler(pr.attributes.POSITION), I = ler(pr.indices), nv = P.length / 3, pai = Int32Array.from({ length: nv }, (_, i) => i);
+    const raiz = (x) => { while (pai[x] !== x) x = pai[x] = pai[pai[x]]; return x; };
+    for (let k = 0; k < I.length; k += 3) for (const [a, c] of [[I[k], I[k + 1]], [I[k + 1], I[k + 2]]]) pai[raiz(a)] = raiz(c);
+    const ilhas = {}; for (let i = 0; i < nv; i++) (ilhas[raiz(i)] = ilhas[raiz(i)] || []).push(i);
+    const lista = Object.values(ilhas).sort((a, b) => b.length - a.length);
+    // a bola: a ilha mais alta; o resto: o penteado
+    const alto = (vs) => Math.max(...vs.map((i) => P[3 * i + 1])), bola = lista.reduce((m, v) => (alto(v) > alto(m) ? v : m)), resto = lista.filter((v) => v !== bola).flat();
+    let d = 9; for (const a of bola) for (let k = 0; k < resto.length; k += 7) { const c = resto[k]; d = Math.min(d, Math.hypot(P[3 * a] - P[3 * c], P[3 * a + 1] - P[3 * c + 1], P[3 * a + 2] - P[3 * c + 2])); }
+    if (d > 0.006) throw new Error(`a bola do coque fica a ${(d * 100).toFixed(1)} cm do penteado`);
+  });
+  await conf("luva: a pele da palma e das duas falanges some; a ponta do dedo só some da mão fechada (furava o dorso da luva) e o árbitro fica com a mão toda", async () => {
+    const url = require("url"), THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const nomes = ["lowerarm_r", "hand_r", "middle_02_r", "middle_03_r", "middle_03_l"], skel = { bones: nomes.map((name) => ({ name })) };
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(new Array(15 * 3).fill(0), 3));
+    // cinco triângulos, um por osso (três vértices com peso 1 nele)
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute([0, 1, 2, 3, 4].flatMap((o) => [o, 0, 0, 0, o, 0, 0, 0, o, 0, 0, 0]), 4));
+    geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(new Array(15).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+    geo.setIndex([...Array(15).keys()]);
+    const tri = (pontas) => { const f = LU.triangulosSemMao(geo, skel, pontas), out = []; for (let k = 0; k < f.length; k += 3) out.push(nomes[f[k] / 3]); return out.join(); };
+    if (tri("") !== "lowerarm_r,middle_03_r,middle_03_l") throw new Error("mão aberta: ficaram " + tri("") + " (a palma e a 2a falange somem; antebraço e pontas ficam)");
+    if (tri("r") !== "lowerarm_r,middle_03_l") throw new Error("mão direita fechada: ficaram " + tri("r") + " (a ponta da direita some, a da esquerda fica)");
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/if \(this\.corpo && !opt\.semLuva\) \{ this\.geoLuva = this\.corpo\.geometry; this\.corpo\.geometry = corpoSemMao\(/.test(lu)) throw new Error("o lutador de luva não esconde a pele da mão (o árbitro, semLuva, não pode esconder)");
+    if (!/middle_01_" \+ l[\s\S]{0,300}corpoSemMao\(this, this\.base, this\.geoLuva, k\)/.test(lu)) throw new Error("o update não troca a pele pela mão fechada");
+  });
+  await conf("árbitro: a pele embaixo do uniforme some (ombro e trapézio incluídos), o antebraço, a mão, a cabeça e o tornozelo ficam", async () => {
+    const url = require("url"), THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const { j, ler, no } = lerGLBJogo(), c = no("corpo"), pr = j.meshes[c.mesh].primitives[0], skin = j.skins[c.skin];
+    const iC = j.nodes.indexOf(c), pai = {}; j.nodes.forEach((n, i) => (n.children || []).forEach((k) => (pai[k] = i)));
+    const local = (n) => n.matrix ? new THREE.Matrix4().fromArray(n.matrix) : new THREE.Matrix4().compose(new THREE.Vector3(...(n.translation || [0, 0, 0])), new THREE.Quaternion(...(n.rotation || [0, 0, 0, 1])), new THREE.Vector3(...(n.scale || [1, 1, 1])));
+    const mundo = (i) => { const m = local(j.nodes[i]); return pai[i] === undefined ? m : mundo(pai[i]).multiply(m); };
+    const P = ler(pr.attributes.POSITION), J = ler(pr.attributes.JOINTS_0), W0 = ler(pr.attributes.WEIGHTS_0), I = ler(pr.indices), IB = ler(skin.inverseBindMatrices);
+    const W = W0 instanceof Float32Array ? W0 : Float32Array.from(W0, (x) => x / 255);
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.setAttribute("skinIndex", new THREE.BufferAttribute(J, 4));
+    g.setAttribute("skinWeight", new THREE.BufferAttribute(W, 4)); g.setIndex(new THREE.BufferAttribute(I, 1));
+    const sk = { bones: skin.joints.map((k) => ({ name: j.nodes[k].name })), boneInverses: skin.joints.map((_, k) => new THREE.Matrix4().fromArray(IB, k * 16)) };
+    const regra = LU.COBERTO.arbitro; if (!regra) throw new Error("sem a regra do uniforme do árbitro");
+    const fica = LU.triangulosCobertos(g, sk, mundo(iC), regra), total = I.length / 3, some = total - fica.length / 3;
+    if (some < total * 0.12 || some > total * 0.6) throw new Error(`o uniforme esconde ${some} de ${total} triângulos (fora de 12% a 60%; a cabeça e as mãos têm a maior parte deles)`);
+    const ficam = new Set(); for (let k = 0; k < fica.length; k += 3) ficam.add([fica[k], fica[k + 1], fica[k + 2]].join());
+    const nome = (o) => sk.bones[o].name, peso = (v, re) => { let s = 0; for (let k = 0; k < 4; k++) if (re.test(nome(J[4 * v + k]))) s += W[4 * v + k]; return s; };
+    const pesc = new THREE.Vector3().setFromMatrixPosition(sk.boneInverses[sk.bones.findIndex((b) => b.name === "neck_01")].clone().invert().premultiply(new THREE.Matrix4()));
+    let trapezio = 0;   // o alto do ombro, acima da base do pescoço e longe dele (a altura sozinha deixava ele de fora)
+    for (let k = 0; k < I.length; k += 3) {
+      const t = [I[k], I[k + 1], I[k + 2]], sumiu = !ficam.has(t.join());
+      for (const v of t) {
+        if (sumiu && peso(v, /^(hand|index|middle|ring|pinky|thumb|Head|foot|ball)/) > 0.1) throw new Error("some pele de mão, cabeça ou pé");
+        if (sumiu && peso(v, /^lowerarm/) > 0.5) throw new Error("some o antebraço (a manga é curta)");
+      }
+      if (sumiu && t.every((v) => peso(v, /^neck_01/) > 0.05 && Math.abs(P[3 * v]) > 0.1 && P[3 * v + 1] > pesc.y - 0.025)) trapezio++;
+    }
+    if (trapezio < 5) throw new Error("o alto do ombro (peso do pescoço, longe dele) não some: furava a camisa do árbitro");
   });
   /* Review Focus 5: o mx_cartas.glb chega depois que a luta abre e fica fora do git; sem ele a luta toca a reserva e não trava */
   await conf("sem o mx_cartas.glb (faltando, quebrado ou vazio) a carga devolve 0 sem lançar e toda carta com clipe novo toca a reserva do mx_lutas.glb", async () => {

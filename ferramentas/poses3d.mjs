@@ -36,12 +36,19 @@ try {
     await avaliar(`window.__cenario(${JSON.stringify(cen)})`);
     await avaliar("window.__congelar(true)");
     if (process.env.MEDIR) console.log(cen, JSON.stringify(await avaliar("window.__medir()")));
+    if (process.env.DOBRAS) console.log(cen, "dobras", JSON.stringify(await avaliar("window.__dobras()")), "tronco", await avaliar("window.__dobrasPesos().length"));
+    if (process.env.ESPINHOS) for (const l of await avaliar(`window.__espinhos(${JSON.stringify(process.env.ESPINHOS)})`)) console.log(cen, JSON.stringify(l));
+    if (process.env.AVAL) console.log(cen, "aval", JSON.stringify(await avaliar(process.env.AVAL)));
+    if (process.env.DOBRAS === "pesos") for (const l of await avaliar("window.__dobrasPesos()")) console.log(JSON.stringify(l));
+    if (process.env.DOBRAS === "ver") { await avaliar("window.__marcarDobras()"); for (let i = 0; i < 3; i++) await avaliar("new Promise(r => requestAnimationFrame(r))"); }
     const anuncio = ["suspense", "anuncio", "vitoria"].includes(cen) || cen.startsWith("pose:") || cen.startsWith("ergue:") || cen === "rest";
-    const centro = await avaliar(`window.__centro(${JSON.stringify(cen.startsWith("pose:") || cen.startsWith("ergue:") || cen === "rest" ? "A" : anuncio ? "ABC" : "AB")})`);
+    // FOCO=A e DIST=1.6: close de um lutador só (ombro, axila, cotovelo no golpe)
+    const centro = await avaliar(`window.__centro(${JSON.stringify(process.env.FOCO || (cen.startsWith("pose:") || cen.startsWith("ergue:") || cen === "rest" ? "A" : anuncio ? "ABC" : "AB"))})`);
+    if (process.env.CY) centro[1] += Number(process.env.CY);   // CY=0.45: sobe o centro (close da cabeça)
     const nome = cen.replace(/[:]/g, "_");
     if (process.env.MEDIR === "so") { await enviar("Target.closeTarget", { targetId }); continue; }
     for (const [lado, ang] of LADOS[anuncio ? "anuncio" : "luta"]) {
-      await avaliar(`window.__camera(${JSON.stringify({ centro, ang, dist: cen.startsWith("ergue:") || cen === "rest" ? 1.5 : cen.startsWith("pose:") ? 2.6 : anuncio ? 4.2 : 3.4, alt: anuncio ? 1.4 : 1.3 })})`);
+      await avaliar(`window.__camera(${JSON.stringify({ centro, ang, dist: process.env.DIST ? Number(process.env.DIST) : cen.startsWith("ergue:") || cen === "rest" ? 1.5 : cen.startsWith("pose:") ? 2.6 : anuncio ? 4.2 : 3.4, alt: process.env.ALT ? Number(process.env.ALT) : anuncio ? 1.4 : 1.3 })})`);
       const { data } = await enviar("Page.captureScreenshot", { format: "jpeg", quality: 90 }, S);
       fs.writeFileSync(path.join(OUT, `${nome}__${lado}.jpg`), Buffer.from(data, "base64"));
     }

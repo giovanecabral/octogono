@@ -6523,8 +6523,8 @@ roupa").**
   - *Pele por quatérnio duplo misturada ao linear* (`peleDQ`/`comDQ`, no
     corpo, no calção, na luva, nas roupas e na sombra): o linear encolhe nas
     juntas e o quatérnio duplo incha; `DQ_MISTURA` 0,5 foi o melhor nas fotos
-    (1 inchava o dorsal com os dois braços em cima). O porte (escala por osso)
-    continua linear, antes da rotação.
+    (1 inchava o dorsal com os dois braços em cima). Nenhum osso tem escala
+    (o porte é forma da malha, item da estrutura abaixo).
   - *Calção que parecia saia*: era a casca da pele das coxas, que se encostam
     na escultura; abrindo as pernas o pano entre elas virava membrana. Agora
     `calcao_modelado` (`roupas.py`): três tubos medidos por raios no corpo (a
@@ -6544,9 +6544,74 @@ roupa").**
     borda escura em listras (uma mancha no ombro).
   - Roupão e quimono escondem a pele das costas e dos braços (`ABERTO`, o
     peito fica na abertura): o corpo novo furava as costas deles na guarda.
-  - Fica: com a guarda de perfil, uma lasca pequena na dobra de trás da axila
-    (o mapa de esticamento mostra 2x ali); não some com nenhuma regra de peso
-    testada nem com o alcance do osso da axila.
+  - A "lasca" na dobra de trás da axila que ficava aqui era a costura de
+    peso (item seguinte), não a malha.
+- *Estrutura do corpo (2026-11-23, segunda rodada: "ombros, axilas, braços
+  e transições", "o da esquerda pior que o adversário", acabamento de
+  cabelo, barba e roupa).* Medido com contadores, não só foto:
+  `DOBRAS=1 node ferramentas/poses3d.mjs` conta os triângulos da pele que
+  viram do avesso em cada pose (e `DOBRAS=ver` pinta eles), `ESPINHOS=<malha>`
+  acha vértice que saiu da média dos vizinhos, `AVAL=<js>` imprime qualquer
+  medida da página; `poses3d.html` aceita `?porte=`, `?entrada=`, `?cabelo=`,
+  `?barba=`, `?normais=1`, `?ocultar=<malha ou material>&quem=A|B|C` e
+  `?semroupa=1` (o uniforme do árbitro some). Causas e correções:
+  - *O lutador do jogador saía pior que o adversário* porque o adversário é
+    sempre porte médio e o porte leve ou pesado era escala de osso
+    (`spine_02`, `spine_03`, braço, coxa). No three.js a escala passa pros
+    filhos: o leve encolhia mão e luva e afinava a cabeça, o pesado inchava as
+    duas, e com o cotovelo dobrado a escala do úmero cisalhava o antebraço.
+    Agora o porte é forma (`aplicarPorte`/`porteNaMalha`, `aparencia.js`):
+    cada malha com pele (corpo, calção, luva, roupa) ganha uma cópia da
+    posição em que o vértice se afasta do eixo de cada osso na proporção do
+    peso, na pose em que a malha foi amarrada; o ombro abre pelo comprimento
+    da clavícula (só a pelve tem trilha de posição nas animações). Cabeça e
+    mão iguais nos três portes.
+  - *A mancha clara no flanco* (jab, guarda) eram triângulos virados do
+    avesso no fundo da axila: 31 arestas saltavam de 0,03 pra 1 de peso do
+    braço em 2 cm. Dois erros no `membros_por_difusao`: o núcleo do membro
+    servia de borda da difusão mas não era gravado (ficava o peso do
+    MakeHuman, de tronco, na face de dentro do braço), e a limpeza dos grupos
+    removia enquanto percorria `v.groups` (o índice anda a cada remove e metade
+    do peso antigo sobrava somado ao novo, em todo vértice mexido). Com os
+    dois: 1 aresta. Somando 10 poses (guarda, golpes, defesa, comemoração,
+    anúncio, braço erguido), os triângulos virados caíram de 1.767 pra 795 (o
+    resto é cotovelo, dedo dentro da luva e embaixo do queixo) e os vértices
+    dobrados no tronco, na axila e no pescoço de 351 pra 127; os do pescoço
+    vêm do crânio rígido (item do cabelo) e ficam embaixo do queixo baixo. A faixa de transição tem `ANEL_TRONCO`/`ANEL_BRACO` (3 e
+    0; variável de ambiente, pra medir).
+  - *Espinho no cós de trás* (crescia com o golpe): da cintura pra cima o
+    centro do anel do tubo da bacia cai fora do corpo, os raios não acham a
+    pele e o anel encolhia pra 2 cm; o degrau virava uma tampa fechando a boca
+    do calção, e o miolo dela pegava peso da coluna. Agora o tubo começa no
+    primeiro anel bom e sobe reto dele (`calcao_modelado`).
+  - *Ponta do dedo furando a luva* (dois pontos de pele no dorso da luva de
+    trás, em todo lutador): quem usa luva não desenha a pele da palma e das
+    duas falanges (`triangulosSemMao`), e a ponta do dedo some só da mão
+    fechada (`middle_01` dobrado, com folga; o `update` troca a geometria). Na
+    mão solta a ponta fica de fora, como na luva de MMA. O árbitro desenha tudo.
+  - *Pele furando a camisa do árbitro* (ombro, costas, gola em dentes): a
+    roupa dele é fixa e a regra de pele coberta só valia pra roupa de entrada.
+    `COBERTO.arbitro`: tronco, braço até a manga (52% do úmero; a pele da
+    axila, presa ao tronco, sempre), pescoço longe da gola (`ombro`), coxa e
+    canela até 80%. A camisa e a calça têm a borda alisada (`alisa_borda` no
+    `peca`): recortadas da malha do corpo pela face, saíam em degrau.
+  - *Cabelo de capacete*: (1) o coque era uma bola num ponto fixo, 2,5 cm
+    acima do penteado; agora o raio acha o couro e a bola afunda nele; (2) a
+    linha do cabelo acima da orelha ficava 1,6 cm acima de onde a orelha
+    começa e a caixa da orelha também (faixa careca entre a costeleta e a nuca
+    em todo corte esculpido); (3) a borda do corte saía em degrau (`alisa` no
+    `esculpir`, e a face entra com algum vértice no couro e sai a da orelha
+    depois de subdividir). (4) O peso do pescoço subia 4 cm pela lateral da
+    cabeça e por baixo da mandíbula: a pele mexia por cima do cabelo e da
+    barba rígidos com a cabeça baixa na guarda. `cranio_rigido`
+    (`hbm_trocar.py`): nas laterais, de 0 a 3 cm acima da junta Head do jogo, e
+    na frente da garganta, embaixo da mandíbula (rampa mais longa), o peso
+    passa pra cabeça. A junta "head" do MakeHuman fica uns 5 cm acima da Head
+    do jogo: medir pela do jogo.
+  - Ficam: a barba cheia termina numa borda reta diante da orelha (é o limite
+    do campo `no_rosto`); a camisa do árbitro segue com volume de corpo
+    (barriga) e a calça com um degrau no joelho; o velcro da luva é escolhido
+    por face (borda em escada de perto).
 - *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
   ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
   ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).

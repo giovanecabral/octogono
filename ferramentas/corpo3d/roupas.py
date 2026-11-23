@@ -7,7 +7,7 @@ def dominante(o):
     for v in o.data.vertices:
         gs = sorted((x for x in v.groups if x.group in nomes), key=lambda x: -x.weight); out.append(nomes[gs[0].group] if gs else None)
     return out
-def peca(o, nome, escolhe, empurra, espessura, material, cortes=(), maioria=False, suave=0, solido=True, aresta_max=None):
+def peca(o, nome, escolhe, empurra, espessura, material, cortes=(), maioria=False, suave=0, solido=True, aresta_max=None, alisa_borda=0):
     dom = dominante(o)
     me = o.data.copy(); p = bpy.data.objects.new(nome, me); bpy.context.scene.collection.objects.link(p)
     for g in o.vertex_groups: p.vertex_groups.new(name=g.name)   # mesmos grupos, mesma ordem (a malha copiada guarda os pesos pelo índice)
@@ -37,6 +37,16 @@ def peca(o, nome, escolhe, empurra, espessura, material, cortes=(), maioria=Fals
             if q is None: continue
             quer = empurra(v.co, None) * 0.8; dist = (w - q).dot(nq)
             if dist < quer: v.co = mi @ (w + nq * (quer - dist))
+    # borda lisa (2026-11-23): a peça recortada da malha do corpo pela face sai com a borda em degrau (manga, gola e
+    # barra da camisa do árbitro em dentes, e a pele aparecendo entre eles); cada vértice da borda vai pra média dos
+    # dois vizinhos dela, como o alisar_borda das roupas de entrada
+    for _ in range(alisa_borda):
+        novo = {}
+        for v in bm.verts:
+            if not v.is_boundary: continue
+            viz = [e.other_vert(v) for e in v.link_edges if e.is_boundary]
+            if len(viz) == 2: novo[v] = v.co * 0.4 + (viz[0].co + viz[1].co) * 0.3
+        for v, c in novo.items(): v.co = c
     print("PECA", nome, len(bm.faces), "faces")
     bm.to_mesh(me); bm.free()
     me.materials.clear(); me.materials.append(material)
@@ -181,12 +191,19 @@ def calcao_modelado(h, pos, cintura, barra):
             for k in range(N):
                 f = (a[k], a[(k + 1) % N], c); bm.faces.new(f[::-1] if inv else f)
     # bacia: da cintura até um pouco abaixo do gancho, centro na metade entre a frente e as costas
-    aneis = []; z = cintura + 0.015
+    aneis = []; z = cintura
     while z > gancho - 0.012:
         f_ = bvh.ray_cast(Vector((0, yc, z)), Vector((0, -1, 0)), 0.4)[0]; t_ = bvh.ray_cast(Vector((0, yc, z)), Vector((0, 1, 0)), 0.4)[0]
+        if not (f_ and t_) and not aneis: z -= 0.005; continue   # o alto onde o centro cai fora do corpo: o tubo sobe reto do primeiro anel bom
         cy = (f_.y + t_.y) / 2 if f_ and t_ else yc
         k = max(0.0, min(1.0, (cintura - z) / max(0.01, cintura - gancho)))
         aneis.append(anel(Vector((0, cy, z)), Vector((0, 0, -1)), Vector((1, 0, 0)), lambda d, k=k: 0.006 + 0.006 * k)); z -= 0.01
+    # acima do corte o tubo é o primeiro anel subido reto (2026-11-23): da cintura pra cima os raios não acham a pele
+    # (o centro cai fora do corpo), o anel encolhia pra 2 cm e o degrau virava uma tampa logo abaixo do corte; o miolo
+    # dela pegava peso da coluna e furava o cós de trás feito espinho
+    z0 = aneis[0][0].z; subir = int((cintura + 0.04 - z0) / 0.01) + 1
+    aneis = [[q + Vector((0, 0, 0.01 * i)) for q in aneis[0]] for i in range(subir, 0, -1)] + aneis
+    print("CALCAO primeiro anel", round(z0 - cintura, 3))
     tubo(aneis)
     # pernas: anéis em volta do eixo da coxa, do alto da virilha até a barra; folga cresce pra barra e pra fora
     for s, lado in (("l", 1), ("r", -1)):

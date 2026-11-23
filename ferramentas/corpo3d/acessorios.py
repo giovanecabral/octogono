@@ -471,12 +471,12 @@ def camisa_curta(co, d):
         return t < 0.55
     if d and (d.startswith("thigh") or d.startswith("calf") or d.startswith("foot") or d.startswith("ball") or d in ("neck_01", "head")): return False
     return w.z > zq - 0.02
-a_cam = peca(h, "arbitro", camisa_curta, lambda co, _: 0.016, 0.003, pr, maioria=True, suave=5)
+a_cam = peca(h, "arbitro", camisa_curta, lambda co, _: 0.016, 0.003, pr, maioria=True, suave=5, alisa_borda=10)
 z_tornozelo = (Z("foot_l") + Z("foot_r")) / 2 + 0.03
 def calca(co, d):
     w = h.matrix_world @ co
     return d in ("pelvis", "thigh_l", "thigh_r", "calf_l", "calf_r", "spine_01") and z_tornozelo < w.z < zcin + 0.02
-a_calca = peca(h, "arbitro_calca", calca, lambda co, _: 0.014 + 0.012 * max(0.0, min(1.0, (zq - (h.matrix_world @ co).z) / 0.5)), 0.003, pr, maioria=True, suave=4)
+a_calca = peca(h, "arbitro_calca", calca, lambda co, _: 0.014 + 0.012 * max(0.0, min(1.0, (zq - (h.matrix_world @ co).z) / 0.5)), 0.003, pr, maioria=True, suave=4, alisa_borda=10)
 bm = bmesh.new(); gola_a = []
 for k in range(21):
     a = math.radians(-150 + k * 15); p = Vector((math.sin(a) * 0.07, POS["neck_01"].y - math.cos(a) * 0.062, zpesc - 0.01 - 0.02 * max(0, -math.cos(a))))

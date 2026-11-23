@@ -7,19 +7,38 @@
 <body><div id="caixa" class="luta3d-caixa"></div>
 <script type="module">
 import { criarLuta3d } from "../luta3d/diretor.js";
-import { RITMO_OMBRO, raioAxila, misturaDQ } from "../luta3d/lutador.js";
+import { RITMO_OMBRO, raioAxila, misturaDQ, peleDQ } from "../luta3d/lutador.js";
 { const r = new URLSearchParams(location.search).get("dq"); if (r) misturaDQ(Number(r)); }   // ?dq=0.5: quatérnio duplo x linear
 { const r = new URLSearchParams(location.search).get("raioaxila"); if (r) raioAxila(Number(r)); }   // ?raioaxila=0.3: alcance do osso da axila
 { const q = new URLSearchParams(location.search); if (q.get("rf")) RITMO_OMBRO.frac = Number(q.get("rf")); if (q.get("rm")) RITMO_OMBRO.max = Number(q.get("rm")); }
 { let s = 7; Math.random = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 const eu = { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14", porte: "médio" };
 const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia", porte: "pesado" };
+{ const q = new URLSearchParams(location.search); if (q.get("entrada")) eu.entrada = q.get("entrada"); if (q.get("cabelo")) eu.cabelo = q.get("cabelo"); if (q.get("barba")) eu.barba = q.get("barba"); if (q.get("prajiad")) eu.prajiad = "com"; }   // ?entrada=roupão: A vestido (cenário pose:)
+{ const p = new URLSearchParams(location.search).get("porte"); if (p) [eu.porte, ele.porte] = p.split(","); }   // ?porte=leve,médio: porte de A e B
 if (new URLSearchParams(location.search).get("linear") === "1") eu.linear = ele.linear = true;   // ?linear=1: skinning linear (comparar com o quatérnio duplo)
 const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "KAYO", b: "TITO" }, som: () => {} });
 await inst._dev.cartasProntas; window.__inst = inst;
 const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;
 /* ?ocultar=<malha>: esconde uma malha do lutador A pelo nome (achar de qual malha é um defeito) */
-{ const o = new URLSearchParams(location.search).get("ocultar"); if (o) A.modelo.traverse((m) => { if (m.isMesh && m.name === o) m.visible = false; }); }
+{ const q = new URLSearchParams(location.search), o = q.get("ocultar"), L = { A, B, C }[q.get("quem") || "A"];   // &quem=C: no árbitro
+  if (o) L.modelo.traverse((m) => { if (m.isMesh && (m.name === o || m.material.name === o)) { m.visible = false; m.onBeforeRender = () => { m.visible = false; }; } }); }
+/* ?normais=1: pele de A pintada pela normal (dobra e face virada aparecem como cor errada); ?duplo=1: os dois lados da face */
+{ const q = new URLSearchParams(location.search);
+  if (q.get("normais")) { A.corpo.material = new THREE.MeshNormalMaterial({ side: q.get("duplo") ? THREE.DoubleSide : THREE.FrontSide }); peleDQ(A.corpo); }
+  else if (q.get("duplo")) A.corpo.material.side = THREE.DoubleSide; }
+/* ?silhueta=1: só os lutadores, pretos sólidos em fundo branco (folha de silhueta) */
+if (new URLSearchParams(location.search).get("silhueta")) {
+  const deles = new Set(); for (const L of [A, B, C]) L.raiz.traverse((o) => deles.add(o));
+  palco.cena.traverse((o) => { if ((o.isMesh || o.isPoints || o.isSprite || o.isLine) && !deles.has(o)) { o.visible = false; o.onBeforeRender = () => { o.visible = false; }; } });
+  palco.cena.background = new THREE.Color("#ffffff"); palco.cena.fog = null;
+  const preto = new THREE.MeshBasicMaterial({ color: "#000000" });
+  for (const L of [A, B, C]) L.raiz.traverse((o) => { o.layers.enable(1); if (o.isMesh) { o.material = o.isSkinnedMesh ? preto.clone() : preto; if (o.isSkinnedMesh) peleDQ(o); } });
+  palco.cam.layers.set(1);   // a câmera só vê os lutadores (a grade e a torcida ficam de fora)
+  document.querySelectorAll(".luta3d-vinheta,.luta3d-flash").forEach((e) => e.remove());
+}
+/* ?semroupa=1: o uniforme do árbitro some (ver a pele que ficou embaixo dele) */
+if (new URLSearchParams(location.search).get("semroupa")) for (const m of C.roupa.fixas) { m.visible = false; m.onBeforeRender = () => { m.visible = false; }; }
 /* ?pesos=<osso>: pinta o corpo pelo peso desse osso (vermelho = 1), pra ver de onde vem um defeito de pele */
 { const o = new URLSearchParams(location.search).get("pesos"); if (o) {
   const m = A.corpo, g = m.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, ib = m.skeleton.bones.findIndex((b) => b.name === o);
@@ -101,6 +120,65 @@ window.__cenario = async (nome) => {
     return;
   }
   if (nome === "suspense") { inst.lance({ ev: { tipo: "decisao", quem: "A" } }); const t0 = performance.now(); while (performance.now() - t0 < 3200) await quadro(); return; }
+};
+/* dobras da pele de A no quadro de agora (skinning linear na CPU): triângulo que virou contra as normais dos
+   próprios vértices; devolve quantos e os ossos de maior peso deles */
+window.__dobras = () => {
+  const m = A.corpo, g = m.geometry, pos = g.attributes.position, nor = g.attributes.normal, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  m.skeleton.update();
+  const P = [], N = [], v = new THREE.Vector3(), M = new THREE.Matrix4(), S = new THREE.Matrix4();
+  for (let i = 0; i < pos.count; i++) {
+    P.push(m.applyBoneTransform(i, v.fromBufferAttribute(pos, i)).clone());
+    S.set(0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0);
+    for (let c = 0; c < 4; c++) { const w = sw.getComponent(i, c); if (!w) continue; M.multiplyMatrices(m.skeleton.bones[si.getComponent(i, c)].matrixWorld, m.skeleton.boneInverses[si.getComponent(i, c)]); for (let k = 0; k < 16; k++) S.elements[k] += w * M.elements[k]; }
+    N.push(v.fromBufferAttribute(nor, i).applyMatrix4(m.bindMatrix.clone().setPosition(0,0,0)).transformDirection(S).transformDirection(m.bindMatrixInverse).clone());   // no espaço da malha, como P
+  }
+  const idx = g.index.array, ossos = {}, a = new THREE.Vector3(), b = new THREE.Vector3(); let n = 0; const vs = new Set();
+  for (let k = 0; k < idx.length; k += 3) {
+    const [i, j, l] = [idx[k], idx[k + 1], idx[k + 2]];
+    const f = a.subVectors(P[j], P[i]).cross(b.subVectors(P[l], P[i])); if (f.lengthSq() < 1e-14) continue; f.normalize();
+    if (f.dot(N[i]) + f.dot(N[j]) + f.dot(N[l]) > 0) continue;
+    n++; for (const q of [i, j, l]) vs.add(q);
+  }
+  for (const q of vs) { let best = -1, bw = 0; for (let c = 0; c < 4; c++) if (sw.getComponent(q, c) > bw) { bw = sw.getComponent(q, c); best = si.getComponent(q, c); } const nm = m.skeleton.bones[best].name; ossos[nm] = (ossos[nm] || 0) + 1; }
+  window.__dobraVs = [...vs];
+  return { triangulos: n, vertices: vs.size, ossos };
+};
+// pesos e posição de repouso dos vértices de dobra do tronco e da axila (fora mão, pé, cabeça)
+window.__dobrasPesos = () => {
+  const m = A.corpo, g = m.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, pos = g.attributes.position, nomes = m.skeleton.bones.map((b) => b.name), out = [];
+  for (const q of window.__dobraVs) {
+    const w = {}; for (let c = 0; c < 4; c++) if (sw.getComponent(q, c) > 0.01) w[nomes[si.getComponent(q, c)]] = +sw.getComponent(q, c).toFixed(2);
+    if (!Object.keys(w).some((n) => /spine|axila|clavicle/.test(n))) continue;
+    const p = new THREE.Vector3().fromBufferAttribute(pos, q).applyMatrix4(m.bindMatrix);
+    out.push([q, p.toArray().map((v) => +v.toFixed(3)), w]);
+  }
+  return out;
+};
+// espinhos de uma malha de A no quadro de agora: vértice que se afastou da média dos vizinhos bem mais que na pose de
+// amarração (laplaciano posado menos o de repouso); devolve os piores com os pesos
+window.__espinhos = (nome) => {
+  let m = null; A.modelo.traverse((o) => { if (o.isSkinnedMesh && (o.name === nome || o.material.name === nome) && !m) m = o; });
+  const g = m.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, idx = g.index.array, n = pos.count;
+  m.skeleton.update();
+  const viz = Array.from({ length: n }, () => new Set());
+  for (let k = 0; k < idx.length; k += 3) for (const [a, b] of [[idx[k], idx[k + 1]], [idx[k + 1], idx[k + 2]], [idx[k + 2], idx[k]]]) { viz[a].add(b); viz[b].add(a); }
+  const R = [], Q = [], v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) { R.push(v.fromBufferAttribute(pos, i).clone()); Q.push(m.applyBoneTransform(i, v.fromBufferAttribute(pos, i)).clone()); }
+  const lap = (X, i) => { const c = new THREE.Vector3(); for (const j of viz[i]) c.add(X[j]); return c.multiplyScalar(1 / Math.max(1, viz[i].size)).sub(X[i]).length(); };
+  const out = [];
+  for (let i = 0; i < n; i++) out.push([i, lap(Q, i) - lap(R, i)]);
+  out.sort((a, b) => b[1] - a[1]);
+  const nomes = m.skeleton.bones.map((b) => b.name);
+  return out.slice(0, 8).map(([i, d]) => { const w = {}; for (let c = 0; c < 4; c++) if (sw.getComponent(i, c) > 0.01) w[nomes[si.getComponent(i, c)]] = +sw.getComponent(i, c).toFixed(2);
+    return [i, +d.toFixed(3), R[i].toArray().map((x) => +x.toFixed(3)), w, [...viz[i]].length]; });
+};
+// pinta os vértices das dobras de vermelho no corpo de A (o resto cinza, sombreado)
+window.__marcarDobras = () => {
+  const g = A.corpo.geometry, cor = new Float32Array(g.attributes.position.count * 3).fill(0.75);
+  for (const q of window.__dobraVs) { cor[3 * q] = 1; cor[3 * q + 1] = 0; cor[3 * q + 2] = 0; }
+  g.setAttribute("color", new THREE.BufferAttribute(cor, 3));
+  A.corpo.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }); peleDQ(A.corpo);
 };
 /* medida do braço no quadro congelado: cotovelo do clipe limpo (L.limpo, a saída do mixer) contra o de agora (com IK) */
 const angulo = (L, l) => { const a = L.posMundo("upperarm_" + l), b = L.posMundo("lowerarm_" + l), c = L.posMundo("hand_" + l);

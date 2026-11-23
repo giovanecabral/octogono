@@ -28,18 +28,57 @@ export function pecasDaOrelha(base, tipo, pele) {
   return pecas;
 }
 
-/* ---------- porte: leve, médio, pesado (largura do tronco e grossura de braço e coxa) ---------- */
-export function aplicarPorte(ossos, porte) {
-  const k = porte === "pesado" ? 1.09 : porte === "leve" ? 0.93 : 1;
-  if (k === 1) return;
-  const engrossar = (nome, f) => {
-    const o = ossos[nome], filho = o && o.children.find((c) => c.isBone);
-    if (!o || !filho) return;
-    const d = filho.position.clone().normalize();   // eixo do comprimento do osso
-    o.scale.set(1 + (f - 1) * (1 - Math.abs(d.x)), 1 + (f - 1) * (1 - Math.abs(d.y)), 1 + (f - 1) * (1 - Math.abs(d.z)));
-  };
-  for (const n of ["spine_02", "spine_03"]) engrossar(n, k);
-  for (const n of ["upperarm_l", "upperarm_r", "thigh_l", "thigh_r", "calf_l", "calf_r", "lowerarm_l", "lowerarm_r"]) engrossar(n, 1 + (k - 1) * 1.15);
+/* ---------- porte: leve, médio, pesado (largura do tronco e grossura de braço e coxa) ----------
+   Até 2026-11-23 era escala por osso (spine_02, spine_03, braço, coxa). No three.js a escala do osso passa pros
+   filhos, então o porte leve encolhia a mão e a luva e afinava a cabeça, o pesado inchava as duas, e com o cotovelo
+   dobrado a escala do úmero cisalhava o antebraço (o lutador do jogador saía torto e o adversário, sempre médio, não).
+   Agora o porte é forma: cada malha com pele (corpo, calção, luva, roupa) ganha uma cópia da posição em que o vértice
+   se afasta do eixo de cada osso na proporção do peso dele, na pose em que a malha foi amarrada. Os ossos ficam sem
+   escala (a pele por quatérnio duplo só gira) e o ombro abre pelo comprimento da clavícula. */
+const PORTE_K = { pesado: 1.09, leve: 0.93 };
+// osso -> [onde o eixo termina, fração do porte]; a axila (osso do jogo) segue o eixo do úmero
+const PORTE_EIXO = { spine_01: ["spine_02", 0.5], spine_02: ["spine_03", 1], spine_03: ["neck_01", 1], neck_01: ["Head", 0.7] };
+for (const l of ["l", "r"]) Object.assign(PORTE_EIXO, { ["clavicle_" + l]: ["upperarm_" + l, 1], ["upperarm_" + l]: ["lowerarm_" + l, 1.15],
+  ["axila_" + l]: ["lowerarm_" + l, 1.15], ["lowerarm_" + l]: ["hand_" + l, 1.15], ["thigh_" + l]: ["calf_" + l, 1.15], ["calf_" + l]: ["foot_" + l, 1.15] });
+export function porteNaMalha(geo, skeleton, bindMatrix, k) {
+  const nomes = skeleton.bones.map((b) => b.name), M = new THREE.Matrix4(), V = () => new THREE.Vector3();
+  const noBind = (n) => { const i = nomes.indexOf(n); return i < 0 ? null : V().setFromMatrixPosition(M.copy(skeleton.boneInverses[i]).invert()); };
+  // por osso do esqueleto: início, direção (unitária) e fator do eixo; osso sem eixo não mexe
+  const eixos = nomes.map((n) => {
+    const e = PORTE_EIXO[n]; if (!e) return null;
+    const a = noBind(n.startsWith("axila_") ? "upperarm_" + n.slice(-1) : n), b = noBind(e[0]);
+    return a && b ? { a, d: b.sub(a).normalize(), f: (k - 1) * e[1] } : null;
+  });
+  const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+  const out = new Float32Array(pos.count * 3), inv = bindMatrix.clone().invert(), p = V(), q = V(), soma = V();
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i).applyMatrix4(bindMatrix); soma.set(0, 0, 0);
+    for (let c = 0; c < 4; c++) {
+      const w = sw.getComponent(i, c), e = w > 0 && eixos[si.getComponent(i, c)]; if (!e) continue;
+      q.copy(p).sub(e.a); q.addScaledVector(e.d, -q.dot(e.d));   // o que sai do eixo, perpendicular
+      soma.addScaledVector(q, w * e.f);
+    }
+    p.add(soma).applyMatrix4(inv); out[3 * i] = p.x; out[3 * i + 1] = p.y; out[3 * i + 2] = p.z;
+  }
+  return out;
+}
+export function aplicarPorte(lutador, porte, base) {
+  const k = PORTE_K[porte]; if (!k) return;
+  const cache = (base.portes = base.portes || new Map());
+  lutador.modelo.traverse((m) => {
+    if (!m.isSkinnedMesh || !m.geometry.attributes.skinWeight) return;
+    const chave = m.geometry.uuid + "|" + porte;
+    if (!cache.has(chave)) {
+      const g = new THREE.BufferGeometry();
+      for (const [n, a] of Object.entries(m.geometry.attributes)) g.setAttribute(n, a);
+      g.setIndex(m.geometry.index); for (const gr of m.geometry.groups) g.addGroup(gr.start, gr.count, gr.materialIndex);
+      g.setAttribute("position", new THREE.BufferAttribute(porteNaMalha(m.geometry, m.skeleton, m.bindMatrix, k), 3));
+      cache.set(chave, g);
+    }
+    m.geometry = cache.get(chave);
+  });
+  // ombro: a clavícula fica mais comprida (o úmero sai pra fora), sem escala em osso nenhum
+  for (const l of ["l", "r"]) { const u = lutador.ossos["upperarm_" + l]; if (u) u.position.multiplyScalar(k); }
 }
 
 /* ---------- pele: cicatriz e tatuagem pintadas na textura ----------

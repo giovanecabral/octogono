@@ -215,12 +215,18 @@ const OSSOS_TRONCO_BRACO = ["spine_01", "spine_02", "spine_03", "clavicle_l", "c
 // roupão e quimono (2026-11-23) são abertos na frente: só as costas (atrás da pelve) e os braços somem; o corpo
 // amarrado na pose da escultura furava as costas deles na guarda
 const ABERTO = { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55, costas: true };
-const COBERTO = { capuz: { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55 }, "roupão": ABERTO, kimono: ABERTO };
+// o uniforme do árbitro (2026-11-23) é fixo e nunca sai: camisa de manga curta (até 56% do úmero) e calça até o
+// tornozelo. Antes a pele dele nunca sumia, e o ombro e as costas furavam a camisa no anúncio
+const ARBITRO = { ossos: OSSOS_TRONCO_BRACO.filter((n) => !n.startsWith("lowerarm")).concat(["neck_01", "thigh_l", "thigh_r", "calf_l", "calf_r"]), umero: 0.52, perna: 0.8, ombro: true };
+export const COBERTO = { capuz: { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55 }, "roupão": ABERTO, kimono: ABERTO, arbitro: ARBITRO };
 export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
   const ossos = skeleton.bones.map((b) => b.name), em = new Set(regra.ossos.map((n) => ossos.indexOf(n)).filter((i) => i >= 0));
   const bindPos = (n) => ossos.includes(n) ? new THREE.Vector3().setFromMatrixPosition(skeleton.boneInverses[ossos.indexOf(n)].clone().invert()) : null;
   const pelve = bindPos("pelvis"), pescoco = bindPos("neck_01");
   const braco = { l: [bindPos("lowerarm_l"), bindPos("hand_l")], r: [bindPos("lowerarm_r"), bindPos("hand_r")] };   // (osso que falta: nada daquele lado some)
+  const umero = { l: [bindPos("upperarm_l"), bindPos("lowerarm_l")], r: [bindPos("upperarm_r"), bindPos("lowerarm_r")] };
+  const canela = { l: [bindPos("calf_l"), bindPos("foot_l")], r: [bindPos("calf_r"), bindPos("foot_r")] };
+  const fracao = ([a, b], v) => { if (!a || !b) return 9; const ab = b.clone().sub(a); return v.clone().sub(a).dot(ab) / ab.lengthSq(); };
   const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, v = new THREE.Vector3();
   const coberto = new Uint8Array(pos.count), braco_ = new Set();
   if (regra.costas) {   // vértice que é quase todo do braço (úmero, axila, antebraço) some inteiro, na frente também
@@ -228,14 +234,26 @@ export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
     for (let i = 0; i < pos.count; i++) { let w = 0; for (let k = 0; k < 4; k++) if (ib.has(si.getComponent(i, k))) w += sw.getComponent(i, k); if (w > 0.6) braco_.add(i); }
   }
   for (let i = 0; i < pos.count; i++) {
-    let dentro = 0, ante = null;
+    let dentro = 0, ante = null, um = null, perna = 0, can = null, presa = 0;
     for (let k = 0; k < 4; k++) {
       const o = si.getComponent(i, k), w = sw.getComponent(i, k);
-      if (w > 0 && em.has(o)) { dentro += w; const n = ossos[o]; if (n.startsWith("lowerarm") && w > 0.05) ante = n.slice(-1); }
+      if (w > 0 && em.has(o)) {
+        dentro += w; const n = ossos[o]; if (n.startsWith("lowerarm") && w > 0.05) ante = n.slice(-1);
+        if ((n.startsWith("upperarm") || n.startsWith("axila")) && w > 0.05) um = n.slice(-1);
+        if (n.startsWith("axila") || n.startsWith("spine") || n.startsWith("clavicle")) presa += w;
+        if (n.startsWith("thigh") || n.startsWith("calf")) perna += w; if (n.startsWith("calf") && w > 0.05) can = n.slice(-1);
+      }
     }
     if (dentro < 0.9) continue;   // (o corpo escaneado espalha um pouco de peso pra pelve e pescoço; as bordas ficam pela altura)
     v.fromBufferAttribute(pos, i).applyMatrix4(bindMatrix);
-    if (v.y < pelve.y + 0.03 || v.y > pescoco.y - 0.025) continue;
+    // depois da manga curta; a pele da axila (presa ao tronco) fica sempre embaixo da manga: com o braço em A da
+    // escultura ela cai além da fração do úmero e sobrava uma lasca furando a manga por trás
+    if (regra.umero && um && presa < 0.15 && fracao(umero[um], v) > regra.umero) continue;
+    if (regra.perna && can && fracao(canela[can], v) > regra.perna) continue;   // perto do tornozelo, fora da calça
+    if (!(regra.perna && perna > 0.5) && v.y < pelve.y + 0.03) continue;
+    // a gola: só perto do pescoço (com a altura sozinha o alto do ombro e o trapézio, acima da base do pescoço na
+    // escultura, ficavam e furavam a camisa do árbitro)
+    if (v.y > pescoco.y - 0.025 && (!regra.ombro || Math.hypot(v.x - pescoco.x, v.z - pescoco.z) < 0.085)) continue;
     if (regra.costas && !ante && !braco_.has(i) && v.z > pelve.z - 0.01) continue;   // aberto na frente: o peito fica
     if (ante) { const [a, b] = braco[ante]; if (!a || !b) continue; const ab = b.clone().sub(a); if (v.clone().sub(a).dot(ab) / ab.lengthSq() > regra.antebraco) continue; }
     coberto[i] = 1;
@@ -244,9 +262,33 @@ export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
   for (let k = 0; k < idx.length; k += 3) if (!(coberto[idx[k]] && coberto[idx[k + 1]] && coberto[idx[k + 2]])) fica.push(idx[k], idx[k + 1], idx[k + 2]);
   return fica;
 }
+/* a mão embaixo da luva (2026-11-23): a luva é a casca da mão até a falange do meio, e no punho fechado a pele dela
+   furava o dorso da luva (dois pontos de pele em toda luva de trás). Quem luta de luva não desenha a pele que a luva
+   cobre (palma e duas falanges; a ponta do dedo fica de fora, como na luva de MMA); o árbitro (semLuva) desenha tudo */
+export function triangulosSemMao(geo, skeleton, pontas = "") {
+  // a palma e as duas primeiras falanges (o que a luva cobre); a ponta do dedo fica de fora, como na luva de MMA,
+  // menos na mão fechada (pontas: "l", "r" ou "lr"), onde ela furava o dorso da luva
+  const mao = new Set(skeleton.bones.map((b, i) => (/^(hand_|thumb_01|(index|middle|ring|pinky)_0[12])/.test(b.name)
+    || (/^(thumb|index|middle|ring|pinky)_0[23]_[lr]$/.test(b.name) && pontas.includes(b.name.slice(-1))) ? i : -1)).filter((i) => i >= 0));
+  const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, n = si.count, naMao = new Uint8Array(n);
+  for (let i = 0; i < n; i++) { let w = 0; for (let k = 0; k < 4; k++) if (mao.has(si.getComponent(i, k))) w += sw.getComponent(i, k); naMao[i] = w > 0.5 ? 1 : 0; }
+  const idx = geo.index.array, fica = [];
+  for (let k = 0; k < idx.length; k += 3) if (!(naMao[idx[k]] && naMao[idx[k + 1]] && naMao[idx[k + 2]])) fica.push(idx[k], idx[k + 1], idx[k + 2]);
+  return fica;
+}
+function corpoSemMao(lutador, base, geo, pontas = "") {
+  const c = lutador.corpo, chave = "mao|" + geo.uuid + "|" + pontas; base.semMao = base.semMao || {};
+  if (!base.semMao[chave]) {
+    const g = new THREE.BufferGeometry();
+    for (const [n, a] of Object.entries(geo.attributes)) g.setAttribute(n, a);
+    g.setIndex(triangulosSemMao(geo, c.skeleton, pontas));
+    base.semMao[chave] = g;
+  }
+  return base.semMao[chave];
+}
 function corpoSemCoberto(lutador, base, entrada) {
   const regra = COBERTO[entrada]; if (!regra || !lutador.corpo) return null;
-  const c = lutador.corpo, chave = "cob_" + entrada; base.cobertos = base.cobertos || {};
+  const c = lutador.corpo, chave = "cob_" + entrada + "|" + c.geometry.uuid; base.cobertos = base.cobertos || {};   // a geometria já com o porte
   if (!base.cobertos[chave]) {
     const g = new THREE.BufferGeometry();
     for (const [n, a] of Object.entries(c.geometry.attributes)) g.setAttribute(n, a);
@@ -367,7 +409,7 @@ export function prepararAxila(corpo) {
    O skinning padrão (mistura linear das matrizes dos ossos) achata a pele onde dois ossos que giram muito se
    misturam: o braço erguido puxava uma aba da axila até o peito, o peito empolava com o braço na guarda e o antebraço
    torcia feito embrulho de bala. Como nos jogos, a rotação de cada osso é misturada como quatérnio duplo (gira em
-   vez de encolher). O alongamento do porte (aplicarPorte, escala por osso) continua linear, antes da rotação. Vale
+   vez de encolher). O porte é forma da malha (aplicarPorte), nenhum osso tem escala. Vale
    pro corpo e pra tudo que veste em cima dele (calção, luva, roupa), senão o pano descola da pele. */
 const DQ_FUNCOES = `
 void dqOsso(mat4 m, float w, vec4 r0, inout vec4 r, inout vec4 d, inout mat3 k) {
@@ -487,11 +529,12 @@ export class Lutador {
       this.corpo.bind(new THREE.Skeleton(ossos, inv), this.corpo.bindMatrix);
     }
     if (location.search.includes("cinza")) { const m = comDQ(new THREE.MeshStandardMaterial({ color: "#8a817a", roughness: 0.6 })); this.corpo.material = m; }
-    aplicarPorte(this.ossos, opt.porte);
     this.roupa = vestir(this, base, opt);
+    aplicarPorte(this, opt.porte, base);   // depois da roupa: o porte vale pra toda malha com pele
+    if (this.corpo && !opt.semLuva) { this.geoLuva = this.corpo.geometry; this.corpo.geometry = corpoSemMao(this, base, this.geoLuva); this.pontas = ""; }
     this.vestido = this.roupa.entrada.length > 0;
     this.geoCorpo = this.corpo && this.corpo.geometry;
-    const semPele = this.vestido && corpoSemCoberto(this, base, opt.entrada);
+    const semPele = this.vestido ? corpoSemCoberto(this, base, opt.entrada) : opt.uniforme === "arbitro" ? corpoSemCoberto(this, base, "arbitro") : null;
     if (semPele) this.corpo.geometry = semPele;
     // capuz e papakha cobrem a cabeça: o cabelo esculpido fica guardado embaixo até a peça sair (senão atravessava)
     this.cobreCabeca = ["capuz", "papakha"].includes(opt.entrada) && this.vestido;
@@ -509,7 +552,7 @@ export class Lutador {
     if (!this.vestido) return;
     this.vestido = false;
     const pecas = this.roupa.entrada, t0 = this.relogio;
-    if (this.geoCorpo) this.corpo.geometry = this.geoCorpo;   // a pele de baixo volta antes do pano começar a sumir
+    if (this.geoCorpo) { this.corpo.geometry = this.geoCorpo; this.pontas = ""; }   // a pele de baixo volta antes do pano começar a sumir (com as pontas dos dedos; o update tira as da mão fechada)
     if (dur <= 0) { for (const m of pecas) m.visible = false; if (this.cobreCabeca) for (const m of this.cabeloMalhas) m.visible = true; return; }
     for (const m of pecas) m.material.transparent = true;   // a roupa nasce opaca (sem briga de ordem com o cabelo); só some com transparência
     const f = () => {
@@ -813,6 +856,13 @@ export class Lutador {
     }
     // a axila acompanha a metade do úmero (depois do clipe, do IK e das molas)
     for (const a of this.axilas) { a.o.quaternion.copy(a.bindQ).slerp(a.umero.quaternion, 0.5); a.o.position.copy(a.umero.position); }
+    // mão fechada (o primeiro nó do dedo do meio dobrado, com folga pra não piscar): a ponta do dedo some dela
+    if (this.geoLuva && !this.vestido) {
+      let k = "";
+      for (const l of ["l", "r"]) { const q = this.ossos["middle_01_" + l]; if (!q) continue; const a = 2 * Math.acos(Math.min(1, Math.abs(q.quaternion.w)));
+        if (a > (this.pontas.includes(l) ? 1.95 : 2.05)) k += l; }
+      if (k !== this.pontas) { this.pontas = k; this.corpo.geometry = corpoSemMao(this, this.base, this.geoLuva, k); }
+    }
   }
   girarMundo(osso, eixo, ang) {
     if (!osso || !ang) return;

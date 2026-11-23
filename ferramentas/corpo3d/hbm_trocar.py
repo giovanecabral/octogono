@@ -127,6 +127,8 @@ bpy.ops.object.vertex_group_normalize_all(lock_active=False)
 # dentro do raio dele), 0 no tronco longe da junta e no outro lado; entre os dois ele cai suave pelo caminho da pele
 # (pela axila, pelo deltoide, pela virilha, pelo glúteo).
 import numpy as np
+import os
+ANEL_TRONCO = int(os.environ.get("ANEL_TRONCO", 3)); ANEL_BRACO = int(os.environ.get("ANEL_BRACO", 0))
 def membros_por_difusao(B, R):
     nv = len(B.data.vertices); P = np.array([tuple(B.matrix_world @ v.co) for v in B.data.vertices])
     m3 = B.matrix_world.to_3x3(); N = np.array([tuple((m3 @ v.normal).normalized()) for v in B.data.vertices])
@@ -158,17 +160,25 @@ def membros_por_difusao(B, R):
         no_tronco = ~no_braco & (~do_lado | ((np.linalg.norm(rel, axis=1) > 0.2) & ((radial > 1.5 * r_braco) | ~olha_fora)))
         # faixa de transição: o tronco que encosta no membro (até 3 arestas) também fica livre; braço com peso 1
         # colado em tronco com peso 0 esticava uma lasca de pele na dobra da axila
-        perto = no_braco.copy()
-        for _ in range(3):
-            novo = perto.copy(); novo[ar[:, 0][perto[ar[:, 1]]]] = True; novo[ar[:, 1][perto[ar[:, 0]]]] = True; perto = novo
-        no_tronco &= ~(perto & do_lado)
+        def aneis(m, n):
+            for _ in range(n):
+                novo = m.copy(); novo[ar[:, 0][m[ar[:, 1]]]] = True; novo[ar[:, 1][m[ar[:, 0]]]] = True; m = novo
+            return m
+        no_tronco &= ~(aneis(no_braco, ANEL_TRONCO) & do_lado)
+        # e o membro que encosta no tronco também fica livre (2026-11-23): com a faixa só do lado do tronco, no fundo da
+        # axila um vértice com 0,96 de braço ficava a 2 cm de um com 0,78 de tronco, e o triângulo entre eles virava
+        # do avesso com o cotovelo fechado na guarda (a mancha clara no flanco)
+        no_braco &= ~(aneis(no_tronco, ANEL_BRACO) & ~dom_mao)
         livre = ~no_braco & ~no_tronco & do_lado
         h = np.where(no_braco, 1.0, 0.0)
         for _ in range(3000):   # Jacobi: cada livre vira a média dos vizinhos
             soma = np.zeros(nv); np.add.at(soma, ar[:, 0], h[ar[:, 1]]); np.add.at(soma, ar[:, 1], h[ar[:, 0]])
             h = np.where(livre, soma / np.maximum(vizinhos, 1), h)
-        for i in np.nonzero(livre | no_tronco)[0]:
-            pw = pesos[i]; novo_b = float(h[i]) if livre[i] else 0.0
+        # o núcleo do membro também é gravado (2026-11-23): antes ele só servia de borda da difusão e ficava com o peso
+        # transferido do MakeHuman, que na face de dentro do braço (encostada no flanco) era de tronco: 31 arestas no
+        # fundo da axila saltavam de 0,03 pra 1 de braço, e a pele virava do avesso ali com o braço fechado
+        for i in np.nonzero(livre | no_tronco | no_braco)[0]:
+            pw = pesos[i]; novo_b = float(h[i]) if livre[i] else 1.0 if no_braco[i] else 0.0
             fora = {n: w for n, w in pw.items() if n not in braco}; dentro = {n: w for n, w in pw.items() if n in braco}
             tf = sum(fora.values()); td = sum(dentro.values())
             novo = {n: w * (1 - novo_b) / tf for n, w in fora.items()} if tf > 1e-6 else ({reserva: 1 - novo_b} if novo_b < 1 else {})
@@ -176,13 +186,45 @@ def membros_por_difusao(B, R):
             pesos[i] = novo
         print("MEMBRO", raiz, "dentro", int(no_braco.sum()), "livres", int(livre.sum()), "raio", round(float(r_braco), 3))
     for v, pw in zip(B.data.vertices, pesos):
-        for g in list(v.groups): B.vertex_groups[g.group].remove([v.index])
+        # os índices antes de remover (2026-11-23): o v.groups encolhe a cada remove, e percorrer ele direto pulava
+        # grupos (o peso antigo do MakeHuman sobrava e se somava ao novo; o vértice do braço acabava meio tronco)
+        for gi in [g.group for g in v.groups]: B.vertex_groups[gi].remove([v.index])
         tot = sum(pw.values())
         for n, w in pw.items():
             if w <= 1e-5: continue
             if n not in B.vertex_groups: B.vertex_groups.new(name=n)
             B.vertex_groups[n].add([v.index], w / tot, "REPLACE")
 membros_por_difusao(B, R)
+def cranio_rigido(B, R):
+    """o crânio é da cabeça (2026-11-23): o peso do pescoço subia 4 cm pela lateral da cabeça, a pele ali mexia uns
+    milímetros com a cabeça virada e cobria o cabelo esculpido (que é rígido, preso ao osso da cabeça): uma faixa
+    careca acima da orelha em todo corte. Nas laterais, de 0 a 3 cm acima da junta da cabeça do jogo o peso passa
+    todo pra ela. Embaixo da mandíbula, na frente da garganta, também (a pele do pescoço cobria a barba rígida com a
+    cabeça baixa na guarda), com rampa mais longa"""
+    z0 = (R.matrix_world @ R.data.bones["head"].head_local).z
+    yp = (R.matrix_world @ R.data.bones["neck_01"].head_local).y if "neck_01" in R.data.bones else (R.matrix_world @ R.data.bones["head"].head_local).y
+    ih = B.vertex_groups["head"].index if "head" in B.vertex_groups else None
+    if ih is None: return
+    n = 0
+    for v in B.data.vertices:
+        w_ = B.matrix_world @ v.co; lim = lambda x: max(0.0, min(1.0, x))
+        # laterais (a junta "head" do MakeHuman fica uns 5 cm acima da Head do jogo) e embaixo da mandíbula, na frente
+        # da garganta (onde a barba cobre); as duas regiões entram por rampa (com corte seco o vértice de um lado
+        # ficava rígido e o vizinho não, e a pele dobrava ali com o queixo baixo). A nuca segue dobrando com o pescoço
+        lado = lim((abs(w_.x) - 0.03) / 0.025) * lim((w_.z - (z0 - 0.045)) / 0.03)
+        frente = lim((yp - 0.015 - w_.y) / 0.025) * lim((w_.z - (z0 - 0.11)) / 0.045)
+        t = max(lado, frente)
+        if t <= 0: continue
+        pw = {B.vertex_groups[g.group].name: g.weight for g in v.groups}
+        if not pw or pw.get("head", 0) >= 0.999: continue
+        novo = {k: w * (1 - t) for k, w in pw.items()}; novo["head"] = novo.get("head", 0) + t
+        for gi in [g.group for g in v.groups]: B.vertex_groups[gi].remove([v.index])
+        tot = sum(novo.values())
+        for k, w in novo.items():
+            if w > 1e-5: B.vertex_groups[k].add([v.index], w / tot, "REPLACE")
+        n += 1
+    print("CRANIO", n, "vértices com peso do pescoço passaram pra cabeça; junta", round(z0, 3), [b.name for b in R.data.bones if "neck" in b.name or "head" in b.name])
+cranio_rigido(B, R)
 # ---- pele: a textura do MakeHuman assada nos UVs do corpo novo (luz própria, sem sombra)
 pele_png = textura_do_mhmat(pele_mhmat, "diffuseTexture")
 me_ = bpy.data.materials.new("emite"); me_.use_nodes = True; nt = me_.node_tree; nt.nodes.clear()

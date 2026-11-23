@@ -299,6 +299,16 @@ metade). Regras do revamp que valem daqui pra frente:
   meio). Pintura no rosto por posição na cabeça (`pintarCampo`), nunca
   círculo no UV (a ilha do rosto é pequena). Mexeu: `retrato3d.html?estica=1`
   e `node testar.js luta3d`.
+  **Estrutura (2026-11-23, LEIA-ME "Estrutura do corpo").** Osso nunca ganha
+  escala (passa pros filhos: mão, luva e cabeça mudavam com o porte); o porte é
+  forma da malha (`porteNaMalha`). Peso escrito no Blender: pegue os índices
+  antes de remover (`v.groups` encolhe a cada remove) e grave o núcleo do
+  membro também. Crânio e mandíbula são da cabeça (`cranio_rigido`, medido pela
+  junta Head do jogo, 5 cm abaixo da do MakeHuman): cabelo e barba são
+  rígidos. Pele coberta some: roupa de entrada, uniforme do árbitro
+  (`COBERTO.arbitro`) e mão de luva (`triangulosSemMao`, a ponta só na mão
+  fechada). Mexeu no corpo ou nos pesos: `DOBRAS=1 node
+  ferramentas/poses3d.mjs <pasta>` (triângulos virados por pose) além das fotos.
 - **Cartas da árvore (2026-11-17, branch `cartas-integracao`; LEIA-ME
   "Cartas da árvore", catálogo em `docs/combat-v2.md`).** No combate v2
   (flag `combate_v2`) cada nó libera uma carta (`api/_jxj-cartas.js`). A

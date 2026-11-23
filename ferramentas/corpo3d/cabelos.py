@@ -24,13 +24,15 @@ def loc(p): q = p - CEN; return q.dot(S), q.dot(U), q.dot(F)
 def mundo(s, u, f): return CEN + S * s + U * u + F * f
 print("CABECA centro", tuple(round(x, 3) for x in CEN), "topo", round(TOPO, 3))
 # ---- linha do cabelo (altura mínima por ângulo em volta da cabeça; 0 = testa, 90 = orelha, 180 = nuca)
-LINHA = [(0, 0.052), (30, 0.046), (50, 0.028), (62, 0.008), (69, -0.03), (79, -0.03), (85, 0.018), (110, 0.012), (130, -0.035), (155, -0.075), (180, -0.085)]
+# acima da orelha a linha desce até onde a orelha começa (2026-11-23): com 1,8 cm sobrava uma faixa careca de 2 cm
+# entre a costeleta e a nuca, e o corte parecia capacete
+LINHA = [(0, 0.052), (30, 0.046), (50, 0.028), (62, 0.008), (69, -0.03), (79, -0.03), (85, -0.016), (110, -0.016), (130, -0.035), (155, -0.075), (180, -0.085)]
 def linha(s, f):
     a = abs(math.degrees(math.atan2(s, f)))
     for (a0, y0), (a1, y1) in zip(LINHA, LINHA[1:]):
         if a <= a1: return y0 + (y1 - y0) * (a - a0) / (a1 - a0)
     return LINHA[-1][1]
-def orelha(s, u, f): a = abs(math.degrees(math.atan2(s, f))); return abs(s) > 0.06 and -0.04 < u < 0.016 and 80 < a < 118
+def orelha(s, u, f): a = abs(math.degrees(math.atan2(s, f))); return abs(s) > 0.06 and -0.04 < u < -0.016 and 80 < a < 118
 def no_couro(p, folga=0.0):
     s, u, f = loc(p); return u > linha(s, f) - folga and not orelha(s, u, f) and u < 0.3
 def acima_da_linha(p):   # quanto o ponto está acima da linha do cabelo (0 na linha)
@@ -130,7 +132,7 @@ def suave(x): x = min(1.0, max(0.0, x)); return x * x * (3 - 2 * x)
 def sulco(w, fundo=3):
     """1 no fundo do sulco, 0 no meio da mecha (w em períodos)"""
     return (0.5 + 0.5 * math.cos(w * 6.2832)) ** fundo
-def esculpir(nome, regiao, forma, cortes=4, faces_de=None, corta=None, apaga=None, alguma=False):
+def esculpir(nome, regiao, forma, cortes=4, faces_de=None, corta=None, apaga=None, alguma=False, alisa=0):
     """forma(q, nq) -> (ponto, sombra, (u, v)): q é o ponto da pele embaixo, nq a normal; uv em ladrilhos.
     corta(q): o vértice fica acima da linha? O que fica abaixo sobe pela pele até a linha (a borda do corte cai em
     cima da linha do cabelo, lisa; apagar o vértice deixava degrau) e a face toda abaixo some"""
@@ -159,6 +161,18 @@ def esculpir(nome, regiao, forma, cortes=4, faces_de=None, corta=None, apaga=Non
         p, s, uv = forma(q, nq.normalized()); dado[v] = (s, uv, q); v.co = p
     if subiu: bmesh.ops.delete(bm, geom=[f for f in bm.faces if all(v in subiu for v in f.verts)], context="FACES_ONLY")
     if apaga: bmesh.ops.delete(bm, geom=[f for f in bm.faces if all(apaga(dado[v][2]) for v in f.verts)], context="FACES_ONLY")
+    # borda lisa (2026-11-23): a face que sai inteira deixava a borda do corte em degrau (no coque, um dente careca
+    # acima da orelha). Cada vértice da borda vai pra média dos dois vizinhos dela e volta pra mesma folga da pele
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    for _ in range(alisa):
+        novo = {}
+        for v in bm.verts:
+            if not v.is_boundary: continue
+            viz = [e.other_vert(v) for e in v.link_edges if e.is_boundary]
+            if len(viz) == 2: novo[v] = v.co * 0.4 + (viz[0].co + viz[1].co) * 0.3
+        for v, c in novo.items():
+            q, nq, _, _ = bvh_cab.find_nearest(c); folga = (v.co - dado[v][2]).length
+            v.co = (q + nq * folga) if q is not None else c
     for f in bm.faces:
         f.smooth = True
         for lp in f.loops:
@@ -170,6 +184,9 @@ def esculpir(nome, regiao, forma, cortes=4, faces_de=None, corta=None, apaga=Non
 # mechas deitam pro lado a partir da risca (o sulco corre na direção do fio)
 RISCA = 0.032
 na_linha = lambda q: acima_da_linha(q) > 0.0
+# a face da malha do couro é grande acima da orelha: com "a face toda no couro" a borda saía em degrau. Entra a face
+# com algum vértice no couro, e depois de subdividir sai só o que é da orelha (2026-11-23)
+na_orelha = lambda q: orelha(*loc(q))
 def forma_repartido(q, n):
     s, u, f = loc(q); borda = 0.12 + 0.88 * suave(acima_da_linha(q) / 0.014); topo = suave((u - 0.01) / 0.07)
     alt = 0.0035 + 0.013 * topo + 0.009 * suave((f - 0.02) / 0.06) * topo            # degradê, topo e topete
@@ -182,7 +199,7 @@ def forma_repartido(q, n):
     p = q + n * (0.0012 + alt) + S * lado * alt * 0.25 * topo
     fio = math.atan2(s - RISCA, u + 0.1) * 0.1                                        # ao longo do fio
     return p, 0.42 + 0.58 * suave(alt / 0.008) * (1 - 0.45 * g), (f / 0.035, fio / 0.035)
-CORTES["repartido"] = esculpir("cabelo_repartido", lambda p: no_couro(p, 0.02), forma_repartido, cortes=5, corta=na_linha)
+CORTES["repartido"] = esculpir("cabelo_repartido", lambda p: no_couro(p, 0.02), forma_repartido, cortes=5, corta=na_linha, alisa=12, alguma=True, apaga=na_orelha)
 
 # ---- coque: tudo penteado rente pra trás até o coque; o coque é uma bola de mechas torcidas em espiral
 BUN = mundo(0, 0.07, -0.115); EIXO_C = (BUN - CEN).normalized(); B1_C = S; B2_C = EIXO_C.cross(B1_C).normalized()
@@ -194,8 +211,11 @@ def forma_coque(q, n):
     g = sulco(lado / 0.007 + 0.5 * _ruido.noise(q * 30), 2)
     alt = max(0.0, 0.0045 - 0.0018 * g + 0.0006 * _ruido.noise(q * 90)) * borda
     return q + n * (0.0012 + alt), 0.5 + 0.5 * suave(alt / 0.004) * (1 - 0.4 * g), (lado / 0.03, ang * 0.1 / 0.03)
-coque_cab = esculpir("coque_cab", lambda p: no_couro(p, 0.02), forma_coque, cortes=4, corta=na_linha)
-centro_bun = BUN + EIXO_C * 0.012; bm = bmesh.new()
+coque_cab = esculpir("coque_cab", lambda p: no_couro(p, 0.02), forma_coque, cortes=4, corta=na_linha, alisa=12, alguma=True, apaga=na_orelha)
+# o coque assentado no couro (2026-11-23): o centro fixo (BUN + 1,2 cm) deixava a bola 2,5 cm acima do cabelo,
+# solta no ar. Agora o raio do centro da cabeça acha a pele e a bola afunda um terço no cabelo penteado
+_pele_bun = bvh_cab.ray_cast(CEN + EIXO_C * 0.3, -EIXO_C, 0.3)[0]
+centro_bun = (_pele_bun + EIXO_C * (0.005 + 0.026 * 0.85 * 0.6)) if _pele_bun is not None else BUN + EIXO_C * 0.012; bm = bmesh.new()
 bmesh.ops.create_uvsphere(bm, u_segments=64, v_segments=32, radius=1.0)
 uvl = bm.loops.layers.uv.new("UVMap"); cor = bm.loops.layers.color.new("Col"); dado = {}
 for v in bm.verts:
@@ -262,7 +282,7 @@ def forma_cacheado(q, n):
     s, u, f = loc(q); borda = 0.15 + 0.85 * suave(acima_da_linha(q) / 0.02); topo = suave((u + 0.02) / 0.08)
     c = caroco(q, 70); alt = (0.009 + 0.014 * topo + 0.009 * c + 0.002 * _ruido.noise(q * 120)) * borda
     return q + n * (0.0015 + alt), 0.42 + 0.58 * suave(alt / 0.012) * (0.6 + 0.4 * c), (loc(q)[0] / 0.025 + loc(q)[2] / 0.05, loc(q)[1] / 0.025)
-CORTES["cacheado"] = esculpir("cabelo_cacheado", lambda p: no_couro(p, 0.02), forma_cacheado, cortes=5, corta=na_linha)
+CORTES["cacheado"] = esculpir("cabelo_cacheado", lambda p: no_couro(p, 0.02), forma_cacheado, cortes=5, corta=na_linha, alisa=12, alguma=True, apaga=na_orelha)
 def dir_cacho(p, t):
     q, nq, _, _ = bvh_cab.find_nearest(p); nq = nq if nq is not None else U
     return (nq * (0.55 - 0.35 * t) + U * -(0.35 + 0.6 * t) + F * -0.15).normalized()   # sai da cabeça e cai com o peso
@@ -289,7 +309,7 @@ def forma_afro(q, n):
     alvo = AFRO_C + d * (afro_raio(d) + 0.012 * c + 0.005 * c2 + 0.003 * _ruido.noise(d * 30))
     perto = q + n * 0.004; p = perto.lerp(alvo, borda) if (alvo - AFRO_C).length > (perto - AFRO_C).length else perto
     return p, 0.38 + 0.62 * borda * (0.55 + 0.3 * c + 0.15 * c2), (d.x * 0.15 / 0.025 + d.y * 0.15 / 0.05, d.z * 0.15 / 0.025)
-CORTES["black power"] = esculpir("cabelo_blackpower", lambda p: no_couro(p, 0.02), forma_afro, cortes=6, corta=na_linha)
+CORTES["black power"] = esculpir("cabelo_blackpower", lambda p: no_couro(p, 0.02), forma_afro, cortes=6, corta=na_linha, alisa=12, alguma=True, apaga=na_orelha)
 
 # dreads: cordas caindo da cabeça até o ombro, com textura de fio e nós ao longo
 def dir_dread(p, t):
