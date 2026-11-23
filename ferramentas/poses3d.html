@@ -37,10 +37,30 @@ if (new URLSearchParams(location.search).get("silhueta")) {
   palco.cam.layers.set(1);   // a câmera só vê os lutadores (a grade e a torcida ficam de fora)
   document.querySelectorAll(".luta3d-vinheta,.luta3d-flash").forEach((e) => e.remove());
 }
+/* ?esqueleto=1: os ossos do tronco e dos braços por cima da malha (linha e bolinha nas juntas; vermelho = úmero,
+   amarelo = antebraço, azul = clavícula, branco = coluna e mão), sem teste de profundidade */
+if (new URLSearchParams(location.search).get("esqueleto")) {
+  const COR = (n) => (/^upperarm|^axila/.test(n) ? "#ff3b30" : /^lowerarm/.test(n) ? "#ffd60a" : /^clavicle/.test(n) ? "#0a84ff" : "#ffffff");
+  const PARES = [["spine_02", "spine_03"], ["spine_03", "neck_01"], ["neck_01", "Head"]];
+  for (const l of ["l", "r"]) PARES.push(["spine_03", "clavicle_" + l], ["clavicle_" + l, "upperarm_" + l], ["upperarm_" + l, "lowerarm_" + l], ["lowerarm_" + l, "hand_" + l], ["hand_" + l, "middle_01_" + l]);
+  const desenhos = [];
+  for (const L of [A, B, C]) for (const [a, b] of PARES) {
+    if (!L.ossos[a] || !L.ossos[b]) continue;
+    const mat = new THREE.LineBasicMaterial({ color: COR(a === "spine_03" && b.startsWith("clavicle") ? "clavicle" : a), depthTest: false, transparent: true });
+    const ln = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 1, 8), new THREE.MeshBasicMaterial({ color: mat.color, depthTest: false, transparent: true, opacity: 0.9 })); ln.renderOrder = 999; ln.frustumCulled = false;
+    const bola = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), new THREE.MeshBasicMaterial({ color: COR(a), depthTest: false, transparent: true })); bola.renderOrder = 1000;
+    palco.cena.add(ln, bola); desenhos.push({ L, a, b, ln, bola });
+  }
+  const atual = () => { for (const d of desenhos) { const vis = d.L.raiz.visible; d.ln.visible = d.bola.visible = vis; if (!vis) continue;
+    const pa = d.L.posMundo(d.a), pb = d.L.posMundo(d.b), dir = pb.clone().sub(pa), len = dir.length();
+    d.ln.position.copy(pa).addScaledVector(dir, 0.5); d.ln.scale.set(1, Math.max(1e-4, len), 1); d.ln.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize()); d.bola.position.copy(pa); } requestAnimationFrame(atual); };
+  atual();
+}
 /* ?semroupa=1: o uniforme do árbitro some (ver a pele que ficou embaixo dele) */
 if (new URLSearchParams(location.search).get("semroupa")) for (const m of C.roupa.fixas) { m.visible = false; m.onBeforeRender = () => { m.visible = false; }; }
 /* ?pesos=<osso>: pinta o corpo pelo peso desse osso (vermelho = 1), pra ver de onde vem um defeito de pele */
 { const o = new URLSearchParams(location.search).get("pesos"); if (o) {
+  A.geoLuva = null;   // sem a troca da ponta dos dedos (ela trocaria a geometria pintada por uma sem cor)
   const m = A.corpo, g = m.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, ib = m.skeleton.bones.findIndex((b) => b.name === o);
   const cor = new Float32Array(g.attributes.position.count * 3);
   for (let i = 0; i < g.attributes.position.count; i++) { let w = 0; for (let c = 0; c < 4; c++) if (si.getComponent(i, c) === ib) w += sw.getComponent(i, c); cor[3 * i] = w; cor[3 * i + 1] = 0.15; cor[3 * i + 2] = 1 - w; }
@@ -97,6 +117,22 @@ window.__cenario = async (nome) => {
     A.raiz.position.set(0, 0, 0);
     return;
   }
+  // o braço erguido num ângulo (graus a partir do braço caído, no plano da escápula: 30° pra frente do lado),
+  // pela mesma cadeia do anúncio (clavícula, IK de dois ossos, ext 0,97, polo pro lado): eleva:<graus>[:l|r]
+  if (nome.startsWith("eleva:")) {
+    const [, gs, lado = "l"] = nome.split(":"), g = (Number(gs) * Math.PI) / 180, s = lado === "l" ? 1 : -1;
+    B.raiz.visible = false; B.raiz.position.set(0, 0, 60); A.raiz.position.set(0, 0, 0); A.raiz.rotation.y = 0;
+    A.estado(A.clipeFixo("Derrota_Boxe", 0.1, "Espera"), 0);
+    for (let i = 0; i < 5; i++) await quadro();
+    const om = A.posMundo("upperarm_" + lado), L = om.distanceTo(A.posMundo("lowerarm_" + lado)) + A.posMundo("lowerarm_" + lado).distanceTo(A.posMundo("hand_" + lado));
+    const dirPlano = new THREE.Vector3(s * Math.cos(Math.PI / 6), 0, Math.sin(Math.PI / 6));   // o plano da escápula
+    const dir = dirPlano.multiplyScalar(Math.sin(g)).add(new THREE.Vector3(0, -Math.cos(g), 0)).normalize();
+    A.ikFixo["hand_" + lado] = { alvo: () => A.posMundo("clavicle_" + lado).lerp(om, 1).addScaledVector(dir, L * 0.97), peso: 1, cadeia: true, ext: 0.97,
+      polo: () => A.posMundo("upperarm_" + lado).add(new THREE.Vector3(s * 0.45, 0.1, 0.05)) };
+    for (let i = 0; i < 30; i++) await quadro();
+    A.raiz.position.set(0, 0, 0);
+    return;
+  }
   // a pose de descanso do esqueleto (em T), sem clipe: rest
   if (nome === "rest") {
     B.raiz.visible = false; B.raiz.position.set(0, 0, 60); A.raiz.position.set(0, 0, 0); A.raiz.rotation.y = 0;
@@ -115,11 +151,12 @@ window.__cenario = async (nome) => {
   if (nome === "anuncio" || nome === "vitoria") {
     inst.lance({ ev: { tipo: "decisao", quem: "A" } });
     // o anúncio: a mão sobe 2,8 + 1,3 + 0,35 s depois; a comemoração, 1,4 s depois de soltar
-    const t0 = performance.now(), ate = nome === "anuncio" ? 5000 : 7600;
-    while (performance.now() - t0 < ate) await quadro();
+    // pelo relógio do jogo (o tempo real variava o quadro de uma rodada pra outra: a comemoração dava 41 ou 79 dobras)
+    const r0 = A.relogio, ate = nome === "anuncio" ? 5.0 : 7.6;
+    while (A.relogio - r0 < ate) await quadro();
     return;
   }
-  if (nome === "suspense") { inst.lance({ ev: { tipo: "decisao", quem: "A" } }); const t0 = performance.now(); while (performance.now() - t0 < 3200) await quadro(); return; }
+  if (nome === "suspense") { inst.lance({ ev: { tipo: "decisao", quem: "A" } }); const r0 = A.relogio; while (A.relogio - r0 < 3.2) await quadro(); return; }
 };
 /* dobras da pele de A no quadro de agora (skinning linear na CPU): triângulo que virou contra as normais dos
    próprios vértices; devolve quantos e os ossos de maior peso deles */

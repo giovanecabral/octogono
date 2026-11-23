@@ -41,9 +41,9 @@ try {
     if (process.env.AVAL) console.log(cen, "aval", JSON.stringify(await avaliar(process.env.AVAL)));
     if (process.env.DOBRAS === "pesos") for (const l of await avaliar("window.__dobrasPesos()")) console.log(JSON.stringify(l));
     if (process.env.DOBRAS === "ver") { await avaliar("window.__marcarDobras()"); for (let i = 0; i < 3; i++) await avaliar("new Promise(r => requestAnimationFrame(r))"); }
-    const anuncio = ["suspense", "anuncio", "vitoria"].includes(cen) || cen.startsWith("pose:") || cen.startsWith("ergue:") || cen === "rest";
+    const anuncio = ["suspense", "anuncio", "vitoria"].includes(cen) || cen.startsWith("pose:") || cen.startsWith("ergue:") || cen.startsWith("eleva:") || cen === "rest";
     // FOCO=A e DIST=1.6: close de um lutador só (ombro, axila, cotovelo no golpe)
-    const centro = await avaliar(`window.__centro(${JSON.stringify(process.env.FOCO || (cen.startsWith("pose:") || cen.startsWith("ergue:") || cen === "rest" ? "A" : anuncio ? "ABC" : "AB"))})`);
+    const centro = await avaliar(`window.__centro(${JSON.stringify(process.env.FOCO || (cen.startsWith("pose:") || cen.startsWith("ergue:") || cen.startsWith("eleva:") || cen === "rest" ? "A" : anuncio ? "ABC" : "AB"))})`);
     if (process.env.CY) centro[1] += Number(process.env.CY);   // CY=0.45: sobe o centro (close da cabeça)
     const nome = cen.replace(/[:]/g, "_");
     if (process.env.MEDIR === "so") { await enviar("Target.closeTarget", { targetId }); continue; }
