@@ -22,8 +22,18 @@ for m in list(B.modifiers): B.modifiers.remove(m)
 B.data.uv_layers.remove(B.data.uv_layers["UVMap"]); B.data.uv_layers.active = B.data.uv_layers["jogo"]
 # máscara do MPFB aplicada (tira os vértices de ajuda; os índices ficam estáveis daqui pra frente)
 ativo(h)
+# os deltas da forma (FORMA_MH, por vértice do MakeHuman inteiro) seguem os vértices que a máscara deixa
+_fica = None
+for m in [m for m in h.modifiers if m.type == "MASK"]:
+    gi = h.vertex_groups[m.vertex_group].index
+    dentro = [any(g.group == gi and g.weight > m.threshold for g in v.groups) for v in h.data.vertices]
+    _f = [i for i, x in enumerate(dentro) if x != m.invert_vertex_group]
+    _fica = _f if _fica is None else [_fica[i] for i in _f]
+if _fica is not None:
+    for porte in FORMA_MH: FORMA_MH[porte] = [(d[_fica], re_) for d, re_ in FORMA_MH[porte]]
 for m in list(h.modifiers):
     if m.type == "MASK": bpy.ops.object.modifier_apply(modifier=m.name)
+assert all(len(d) == len(h.data.vertices) for g in FORMA_MH.values() for d, _ in g)
 # escala e posição: mesma altura do MPFB, pé no chão, mesmo centro do tronco
 def cx(o, z0, z1):
     vs = [o.matrix_world @ v.co for v in o.data.vertices]; xm = (min(v.x for v in vs) + max(v.x for v in vs)) / 2
@@ -76,6 +86,18 @@ for s, sg in (("l", 1), ("r", -1)):
             if melhor: girar(osso, eixo, melhor)
         print("AJUSTE", osso, round(mc * 1000, 1), "mm")
 bpy.ops.object.mode_set(mode="OBJECT")
+# cada grupo de forma numa cópia do MakeHuman com o delta somado, posada pelo mesmo esqueleto (o delta gira com o osso)
+FORMA_COPIAS = {}
+for porte, grupos in FORMA_MH.items():
+    FORMA_COPIAS[porte] = []
+    for i, (d, re_) in enumerate(grupos):
+        c = h.copy(); c.data = h.data.copy(); c.name = f"forma_{porte}_{i}"; bpy.context.scene.collection.objects.link(c)
+        a = np.empty(len(c.data.vertices) * 3); c.data.vertices.foreach_get("co", a); c.data.vertices.foreach_set("co", a + d.ravel()); c.data.update()
+        ativo(c)
+        for m in list(c.modifiers):
+            if m.type == "ARMATURE": bpy.ops.object.modifier_apply(modifier=m.name)
+            else: c.modifiers.remove(m)
+        FORMA_COPIAS[porte].append((c, re_))
 # pose do MPFB vira descanso
 ativo(h)
 for m in list(h.modifiers):
@@ -225,6 +247,47 @@ def cranio_rigido(B, R):
         n += 1
     print("CRANIO", n, "vértices com peso do pescoço passaram pra cabeça; junta", round(z0, 3), [b.name for b in R.data.bones if "neck" in b.name or "head" in b.name])
 cranio_rigido(B, R)
+def forma_no_corpo(B):
+    """a forma dos alvos do MakeHuman no corpo escaneado (2026-11-23, etapa b): cada vértice do corpo acha o ponto
+    mais perto na malha do MakeHuman posada (triângulo e coordenadas baricêntricas) e recebe o deslocamento desse
+    ponto na cópia com o alvo, vezes o peso dele nos ossos do grupo (cabeça e mão nunca recebem). "base" é assada na
+    malha; os portes vão pra portes.json (alvos de forma no GLB, ligados pelo porte no jogo)"""
+    import re as _re
+    from mathutils.interpolate import poly_3d_calc
+    me = h.data; me.calc_loop_triangles(); tris = [tuple(t.vertices) for t in me.loop_triangles]
+    hv = [h.matrix_world @ v.co for v in me.vertices]
+    bvh_h = BVHTree.FromPolygons(hv, tris)
+    nomesB = {g.index: g.name for g in B.vertex_groups}
+    pesos = [{nomesB[g.group]: g.weight for g in v.groups} for v in B.data.vertices]
+    alvo = [None] * len(B.data.vertices)
+    for i, v in enumerate(B.data.vertices):
+        p = B.matrix_world @ v.co; loc, _, fi, dist = bvh_h.find_nearest(p)
+        if loc is None: continue
+        t = tris[fi]; w = poly_3d_calc([hv[t[0]], hv[t[1]], hv[t[2]]], loc); alvo[i] = (t, w, dist)
+    saida = {}
+    for porte, copias in FORMA_COPIAS.items():
+        tot = np.zeros((len(B.data.vertices), 3))
+        for c, re_ in copias:
+            cv = [c.matrix_world @ x.co for x in c.data.vertices]; rx = _re.compile(re_)
+            for i, a in enumerate(alvo):
+                if a is None: continue
+                m_ = sum(x for n, x in pesos[i].items() if rx.search(n))
+                if m_ <= 1e-4: continue
+                t, w, dist = a; f = m_ * max(0.0, min(1.0, (0.04 - dist) / 0.02))   # longe da malha do MakeHuman (>4 cm): nada
+                d = sum(((cv[t[k]] - hv[t[k]]) * w[k] for k in range(3)), Vector())
+                tot[i] += np.array(d) * f
+            bpy.data.objects.remove(c, do_unlink=True)
+        if porte == "base":
+            for i, v in enumerate(B.data.vertices): v.co = v.co + Vector(tot[i])
+            B.data.update()
+        else:
+            # posição (a do GLB, na pose da escultura) e o delta, no espaço do Blender (z pra cima)
+            saida[porte] = [[*map(float, B.matrix_world @ B.data.vertices[i].co), *map(float, tot[i])] for i in range(len(tot)) if np.abs(tot[i]).max() > 1e-5]
+        print("FORMA", porte, "vértices", int((np.abs(tot).max(1) > 1e-5).sum()), "maior", round(float(np.abs(tot).max()), 4))
+    json.dump(saida, open(os.path.join(TRAB, "portes.json"), "w"))
+import json
+import numpy as np
+forma_no_corpo(B)
 # ---- pele: a textura do MakeHuman assada nos UVs do corpo novo (luz própria, sem sombra)
 pele_png = textura_do_mhmat(pele_mhmat, "diffuseTexture")
 me_ = bpy.data.materials.new("emite"); me_.use_nodes = True; nt = me_.node_tree; nt.nodes.clear()

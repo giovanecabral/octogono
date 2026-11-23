@@ -26,6 +26,21 @@ pele_mhmat = glob.glob(U+"/skins/"+cfg["pele"]+"/*.mhmat")[0]
 HumanService.add_mhclo_asset(glob.glob(U+"/eyebrows/"+cfg.get("sobr","mindfront_eyebrows_04")+"/*.mhclo")[0], h, asset_type="Eyebrows", material_type="MAKESKIN")
 HumanService.add_builtin_rig(h, "game_engine")
 R = [o for o in bpy.data.objects if o.type=="ARMATURE"][0]
+# forma do corpo escaneado por alvos do MakeHuman (2026-11-23, etapa b): o efeito de cada grupo de alvos na malha do
+# MakeHuman, medido aqui (antes de assar as formas dele) e passado pro corpo escaneado no hbm_trocar.py pela superfície.
+# Alvos de sistema do MPFB2 (CC0 desde 2020). FORMA_MH[porte] = [(deltas por vértice do MakeHuman, regex dos ossos)]
+FORMA_MH = {}
+def efeito_mh(alvos, rot):
+    kb = h.data.shape_keys.key_blocks; antes = {k.name for k in kb}
+    for nome, v in alvos: TargetService.load_target(h, TargetService.target_full_path(nome), weight=v, name=rot + "_" + nome)
+    n = len(h.data.vertices); d = np.zeros(n * 3); a = np.empty(n * 3); b = np.empty(n * 3)
+    for k in [k for k in h.data.shape_keys.key_blocks if k.name not in antes]:
+        k.data.foreach_get("co", a); k.relative_key.data.foreach_get("co", b); d += (a - b) * k.value
+        bpy.context.view_layer.objects.active = h; h.active_shape_key_index = list(h.data.shape_keys.key_blocks).index(k); bpy.ops.object.shape_key_remove()
+    return d.reshape(n, 3)
+for porte, grupos in [("base", cfg.get("forma", {}).get("base", []))] + list(cfg.get("forma", {}).get("portes", {}).items()):
+    FORMA_MH[porte] = [(efeito_mh(g["alvos"], f"forma_{porte}_{i}"), g["ossos"]) for i, g in enumerate(grupos)]
+    print("FORMA_MH", porte, [round(float(np.abs(d).max()), 4) for d, _ in FORMA_MH[porte]])
 # formas (músculo, pescoço...) assadas na malha antes de medir qualquer coisa
 for o in [x for x in bpy.data.objects if x.type=="MESH"]:
     bpy.context.view_layer.objects.active = o

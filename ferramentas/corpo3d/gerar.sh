@@ -27,6 +27,7 @@ rm -rf "$TRAB/pecas"
 grep -E "^(CABELOS|ROUPAS|EXPORTADO)" "$TRAB/corpo.log"
 echo "4/5 esqueleto do jogo no corpo novo (e o pivô da cabeça)"
 node "$AQUI/transplante.mjs" "$TRAB/corpo_bruto.glb" "$AQUI/esqueleto_referencia.glb" "$TRAB/lutador.glb" "$TRAB/bind_corpo.json"
+[ -f "$TRAB/portes.json" ] && node "$AQUI/morfos.mjs" "$TRAB/lutador.glb" "$TRAB/portes.json"   # alvos de forma do porte (etapa b)
 echo "5/5 copia pro jogo"
 cp "$TRAB/lutador.glb" "$RAIZ/luta3d/lutador.glb"
 rm -rf "$RAIZ/luta3d/pecas"; mkdir -p "$RAIZ/luta3d/pecas"; cp "$TRAB"/pecas/*.glb "$RAIZ/luta3d/pecas/"

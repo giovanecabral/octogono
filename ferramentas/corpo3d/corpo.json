@@ -82,5 +82,133 @@
    0.6
   ]
  ],
- "base": "hbm"
+ "base": "hbm",
+ "forma": {
+  "base": [
+   {
+    "alvos": [
+     [
+      "l-lowerarm-muscle-incr",
+      1.0
+     ],
+     [
+      "r-lowerarm-muscle-incr",
+      1.0
+     ],
+     [
+      "l-lowerarm-scale-vert-incr",
+      0.25
+     ],
+     [
+      "r-lowerarm-scale-vert-incr",
+      0.25
+     ],
+     [
+      "l-lowerarm-scale-depth-incr",
+      0.25
+     ],
+     [
+      "r-lowerarm-scale-depth-incr",
+      0.25
+     ]
+    ],
+    "ossos": "^lowerarm_"
+   },
+   {
+    "alvos": [
+     [
+      "measure-calf-circ-incr",
+      0.3
+     ],
+     [
+      "l-lowerleg-muscle-incr",
+      0.3
+     ],
+     [
+      "r-lowerleg-muscle-incr",
+      0.3
+     ]
+    ],
+    "ossos": "^calf_"
+   }
+  ],
+  "portes": {
+   "leve": [
+    {
+     "alvos": [
+      [
+       "l-lowerarm-muscle-decr",
+       0.5
+      ],
+      [
+       "r-lowerarm-muscle-decr",
+       0.5
+      ],
+      [
+       "l-lowerarm-fat-decr",
+       0.5
+      ],
+      [
+       "r-lowerarm-fat-decr",
+       0.5
+      ]
+     ],
+     "ossos": "^lowerarm_"
+    },
+    {
+     "alvos": [
+      [
+       "l-lowerleg-fat-decr",
+       0.2
+      ],
+      [
+       "r-lowerleg-fat-decr",
+       0.2
+      ]
+     ],
+     "ossos": "^calf_"
+    }
+   ],
+   "pesado": [
+    {
+     "alvos": [
+      [
+       "l-lowerarm-muscle-incr",
+       0.15
+      ],
+      [
+       "r-lowerarm-muscle-incr",
+       0.15
+      ],
+      [
+       "l-lowerarm-fat-incr",
+       0.2
+      ],
+      [
+       "r-lowerarm-fat-incr",
+       0.2
+      ]
+     ],
+     "ossos": "^lowerarm_"
+    },
+    {
+     "alvos": [
+      [
+       "measure-calf-circ-incr",
+       0.25
+      ],
+      [
+       "l-lowerleg-fat-incr",
+       0.35
+      ],
+      [
+       "r-lowerleg-fat-incr",
+       0.35
+      ]
+     ],
+     "ossos": "^calf_"
+    }
+   ]
+  }
+ }
 }

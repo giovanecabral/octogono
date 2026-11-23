@@ -281,6 +281,7 @@ function corpoSemMao(lutador, base, geo, pontas = "") {
   if (!base.semMao[chave]) {
     const g = new THREE.BufferGeometry();
     for (const [n, a] of Object.entries(geo.attributes)) g.setAttribute(n, a);
+    g.morphAttributes = geo.morphAttributes; g.morphTargetsRelative = geo.morphTargetsRelative;   // os alvos de forma do porte
     g.setIndex(triangulosSemMao(geo, c.skeleton, pontas));
     base.semMao[chave] = g;
   }
@@ -292,6 +293,7 @@ function corpoSemCoberto(lutador, base, entrada) {
   if (!base.cobertos[chave]) {
     const g = new THREE.BufferGeometry();
     for (const [n, a] of Object.entries(c.geometry.attributes)) g.setAttribute(n, a);
+    g.morphAttributes = c.geometry.morphAttributes; g.morphTargetsRelative = c.geometry.morphTargetsRelative;   // os alvos de forma do porte
     g.setIndex(triangulosCobertos(c.geometry, c.skeleton, c.bindMatrix, regra));
     base.cobertos[chave] = g;
   }

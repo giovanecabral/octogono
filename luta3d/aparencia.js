@@ -39,7 +39,9 @@ const PORTE_K = { pesado: 1.09, leve: 0.93 };
 // osso -> [onde o eixo termina, fração do porte]; a axila (osso do jogo) segue o eixo do úmero
 const PORTE_EIXO = { spine_01: ["spine_02", 0.5], spine_02: ["spine_03", 1], spine_03: ["neck_01", 1], neck_01: ["Head", 0.7] };
 for (const l of ["l", "r"]) Object.assign(PORTE_EIXO, { ["clavicle_" + l]: ["upperarm_" + l, 1], ["upperarm_" + l]: ["lowerarm_" + l, 1.15],
-  ["axila_" + l]: ["lowerarm_" + l, 1.15], ["lowerarm_" + l]: ["hand_" + l, 1.15], ["thigh_" + l]: ["calf_" + l, 1.15], ["calf_" + l]: ["foot_" + l, 1.15] });
+  ["axila_" + l]: ["lowerarm_" + l, 1.15], ["thigh_" + l]: ["calf_" + l, 1.15] });
+// antebraço e panturrilha (etapa b, 2026-11-23): o porte deles é alvo de forma do MakeHuman no GLB (porte_leve,
+// porte_pesado), ligado em aplicarPorte; aqui só o que ainda é radial
 export function porteNaMalha(geo, skeleton, bindMatrix, k) {
   const nomes = skeleton.bones.map((b) => b.name), M = new THREE.Matrix4(), V = () => new THREE.Vector3();
   const noBind = (n) => { const i = nomes.indexOf(n); return i < 0 ? null : V().setFromMatrixPosition(M.copy(skeleton.boneInverses[i]).invert()); };
@@ -63,6 +65,9 @@ export function porteNaMalha(geo, skeleton, bindMatrix, k) {
   return out;
 }
 export function aplicarPorte(lutador, porte, base) {
+  // alvo de forma do porte no corpo (gerado no corpo3d/morfos.mjs); médio é a malha como veio
+  const c = lutador.corpo;
+  if (c && c.morphTargetDictionary) for (const [n, i] of Object.entries(c.morphTargetDictionary)) c.morphTargetInfluences[i] = n === "porte_" + porte ? 1 : 0;
   const k = PORTE_K[porte]; if (!k) return;
   const cache = (base.portes = base.portes || new Map());
   lutador.modelo.traverse((m) => {
@@ -71,6 +76,7 @@ export function aplicarPorte(lutador, porte, base) {
     if (!cache.has(chave)) {
       const g = new THREE.BufferGeometry();
       for (const [n, a] of Object.entries(m.geometry.attributes)) g.setAttribute(n, a);
+      g.morphAttributes = m.geometry.morphAttributes; g.morphTargetsRelative = m.geometry.morphTargetsRelative;
       g.setIndex(m.geometry.index); for (const gr of m.geometry.groups) g.addGroup(gr.start, gr.count, gr.materialIndex);
       g.setAttribute("position", new THREE.BufferAttribute(porteNaMalha(m.geometry, m.skeleton, m.bindMatrix, k), 3));
       cache.set(chave, g);
