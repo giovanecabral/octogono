@@ -128,7 +128,8 @@ window.__dobras = () => {
   m.skeleton.update();
   const P = [], N = [], v = new THREE.Vector3(), M = new THREE.Matrix4(), S = new THREE.Matrix4();
   for (let i = 0; i < pos.count; i++) {
-    P.push(m.applyBoneTransform(i, v.fromBufferAttribute(pos, i)).clone());
+    v.fromBufferAttribute(pos, i); (g.morphAttributes.position || []).forEach((a, k) => { const f = (m.morphTargetInfluences || [])[k]; if (f) v.addScaledVector(new THREE.Vector3().fromBufferAttribute(a, i), f); });   // o alvo de forma do porte
+    P.push(m.applyBoneTransform(i, v).clone());
     S.set(0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0);
     for (let c = 0; c < 4; c++) { const w = sw.getComponent(i, c); if (!w) continue; M.multiplyMatrices(m.skeleton.bones[si.getComponent(i, c)].matrixWorld, m.skeleton.boneInverses[si.getComponent(i, c)]); for (let k = 0; k < 16; k++) S.elements[k] += w * M.elements[k]; }
     N.push(v.fromBufferAttribute(nor, i).applyMatrix4(m.bindMatrix.clone().setPosition(0,0,0)).transformDirection(S).transformDirection(m.bindMatrixInverse).clone());   // no espaço da malha, como P

@@ -36,23 +36,26 @@ export function pecasDaOrelha(base, tipo, pele) {
    se afasta do eixo de cada osso na proporção do peso dele, na pose em que a malha foi amarrada. Os ossos ficam sem
    escala (a pele por quatérnio duplo só gira) e o ombro abre pelo comprimento da clavícula. */
 const PORTE_K = { pesado: 1.09, leve: 0.93 };
-// osso -> [onde o eixo termina, fração do porte]; a axila (osso do jogo) segue o eixo do úmero
-const PORTE_EIXO = { spine_01: ["spine_02", 0.5], spine_02: ["spine_03", 1], spine_03: ["neck_01", 1], neck_01: ["Head", 0.7] };
-for (const l of ["l", "r"]) Object.assign(PORTE_EIXO, { ["clavicle_" + l]: ["upperarm_" + l, 1], ["upperarm_" + l]: ["lowerarm_" + l, 1.15],
-  ["axila_" + l]: ["lowerarm_" + l, 1.15], ["thigh_" + l]: ["calf_" + l, 1.15] });
-// antebraço e panturrilha (etapa b, 2026-11-23): o porte deles é alvo de forma do MakeHuman no GLB (porte_leve,
-// porte_pesado), ligado em aplicarPorte; aqui só o que ainda é radial
-export function porteNaMalha(geo, skeleton, bindMatrix, k) {
-  const nomes = skeleton.bones.map((b) => b.name), M = new THREE.Matrix4(), V = () => new THREE.Vector3();
-  const noBind = (n) => { const i = nomes.indexOf(n); return i < 0 ? null : V().setFromMatrixPosition(M.copy(skeleton.boneInverses[i]).invert()); };
-  // por osso do esqueleto: início, direção (unitária) e fator do eixo; osso sem eixo não mexe
-  const eixos = nomes.map((n) => {
-    const e = PORTE_EIXO[n]; if (!e) return null;
-    const a = noBind(n.startsWith("axila_") ? "upperarm_" + n.slice(-1) : n), b = noBind(e[0]);
-    return a && b ? { a, d: b.sub(a).normalize(), f: (k - 1) * e[1] } : null;
-  });
+// osso -> onde o eixo dele termina (a axila, osso do jogo, segue o eixo do úmero)
+const EIXO = { spine_01: "spine_02", spine_02: "spine_03", spine_03: "neck_01", neck_01: "Head" };
+for (const l of ["l", "r"]) Object.assign(EIXO, { ["clavicle_" + l]: "upperarm_" + l, ["upperarm_" + l]: "lowerarm_" + l, ["axila_" + l]: "lowerarm_" + l,
+  ["lowerarm_" + l]: "hand_" + l, ["thigh_" + l]: "calf_" + l, ["calf_" + l]: "foot_" + l });
+// porte radial antigo (k só), ainda usado sem os alvos de forma: fração do porte por osso
+const PORTE_FRACAO = { spine_01: 0.5, spine_02: 1, spine_03: 1, neck_01: 0.7 };
+for (const l of ["l", "r"]) Object.assign(PORTE_FRACAO, { ["clavicle_" + l]: 1, ["upperarm_" + l]: 1.15, ["axila_" + l]: 1.15, ["thigh_" + l]: 1.15 });
+const eixosDo = (skeleton) => {
+  const nomes = skeleton.bones.map((b) => b.name), M = new THREE.Matrix4();
+  const noBind = (n) => { const i = nomes.indexOf(n); return i < 0 ? null : new THREE.Vector3().setFromMatrixPosition(M.copy(skeleton.boneInverses[i]).invert()); };
+  return nomes.map((n) => { if (!EIXO[n]) return null; const a = noBind(n.startsWith("axila_") ? "upperarm_" + n.slice(-1) : n), b = noBind(EIXO[n]);
+    return a && b ? { n, a, d: b.sub(a).normalize() } : null; });
+};
+/* fatores: número (o porte radial antigo, k) ou { osso: quanto o raio cresce } (o medido do alvo de forma do corpo) */
+export function porteNaMalha(geo, skeleton, bindMatrix, fatores) {
+  const eixos = eixosDo(skeleton).map((e) => { if (!e) return null;
+    const f = typeof fatores === "number" ? (PORTE_FRACAO[e.n] ? (fatores - 1) * PORTE_FRACAO[e.n] : 0) : fatores[e.n.replace(/^axila_/, "upperarm_")] || 0;
+    return f ? { ...e, f } : null; });
   const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
-  const out = new Float32Array(pos.count * 3), inv = bindMatrix.clone().invert(), p = V(), q = V(), soma = V();
+  const out = new Float32Array(pos.count * 3), inv = bindMatrix.clone().invert(), p = new THREE.Vector3(), q = new THREE.Vector3(), soma = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     p.fromBufferAttribute(pos, i).applyMatrix4(bindMatrix); soma.set(0, 0, 0);
     for (let c = 0; c < 4; c++) {
@@ -64,27 +67,45 @@ export function porteNaMalha(geo, skeleton, bindMatrix, k) {
   }
   return out;
 }
+/* quanto o alvo de forma do porte engorda cada osso no corpo (raio médio da pele que é quase toda dele, com o alvo
+   sobre o sem): é o que a roupa (calção, luva, roupas) usa, radial, pra acompanhar o corpo */
+function fatoresDoAlvo(corpo, nome) {
+  const g = corpo.geometry, i = corpo.morphTargetDictionary[nome], d = g.morphAttributes.position[i], pos = g.attributes.position;
+  const si = g.attributes.skinIndex, sw = g.attributes.skinWeight, eixos = eixosDo(corpo.skeleton), soma = {}, p = new THREE.Vector3(), q = new THREE.Vector3(), r = new THREE.Vector3();
+  for (let v = 0; v < pos.count; v++) {
+    let k = -1, wk = 0; for (let c = 0; c < 4; c++) if (sw.getComponent(v, c) > wk) { wk = sw.getComponent(v, c); k = si.getComponent(v, c); }
+    const e = wk > 0.6 && eixos[k]; if (!e) continue;
+    p.fromBufferAttribute(pos, v).applyMatrix4(corpo.bindMatrix); q.copy(p).sub(e.a); q.addScaledVector(e.d, -q.dot(e.d)); const r0 = q.length(); if (r0 < 0.01) continue;
+    r.fromBufferAttribute(d, v); const lr = r.length(); if (lr < 1e-7) { const n0 = e.n.replace(/^axila_/, "upperarm_"); (soma[n0] = soma[n0] || [0, 0]); soma[n0][1]++; continue; }
+    r.transformDirection(corpo.bindMatrix).multiplyScalar(lr);   // o delta no espaço do bind, como p
+    const dr = r.dot(q) / r0;   // o quanto o vértice sai do eixo
+    const n = e.n.replace(/^axila_/, "upperarm_"); (soma[n] = soma[n] || [0, 0]); soma[n][0] += dr / r0; soma[n][1]++;
+  }
+  return Object.fromEntries(Object.entries(soma).filter(([, [, c]]) => c > 20).map(([n, [s, c]]) => [n, s / c]));
+}
 export function aplicarPorte(lutador, porte, base) {
-  // alvo de forma do porte no corpo (gerado no corpo3d/morfos.mjs); médio é a malha como veio
-  const c = lutador.corpo;
+  const c = lutador.corpo, alvo = c && c.morphTargetDictionary && c.morphTargetDictionary["porte_" + porte] !== undefined;
+  // alvo de forma do porte no corpo (corpo3d/morfos.mjs): massa por região (peito, braço, coxa, barriga), médio é a malha
   if (c && c.morphTargetDictionary) for (const [n, i] of Object.entries(c.morphTargetDictionary)) c.morphTargetInfluences[i] = n === "porte_" + porte ? 1 : 0;
   const k = PORTE_K[porte]; if (!k) return;
   const cache = (base.portes = base.portes || new Map());
+  const fat = alvo ? (cache.get("fatores|" + porte) || cache.set("fatores|" + porte, fatoresDoAlvo(c, "porte_" + porte)).get("fatores|" + porte)) : k;
   lutador.modelo.traverse((m) => {
     if (!m.isSkinnedMesh || !m.geometry.attributes.skinWeight) return;
+    if (alvo && m === c) return;   // o corpo já tem a forma no alvo; o radial fica só pra roupa
     const chave = m.geometry.uuid + "|" + porte;
     if (!cache.has(chave)) {
       const g = new THREE.BufferGeometry();
       for (const [n, a] of Object.entries(m.geometry.attributes)) g.setAttribute(n, a);
       g.morphAttributes = m.geometry.morphAttributes; g.morphTargetsRelative = m.geometry.morphTargetsRelative;
       g.setIndex(m.geometry.index); for (const gr of m.geometry.groups) g.addGroup(gr.start, gr.count, gr.materialIndex);
-      g.setAttribute("position", new THREE.BufferAttribute(porteNaMalha(m.geometry, m.skeleton, m.bindMatrix, k), 3));
+      g.setAttribute("position", new THREE.BufferAttribute(porteNaMalha(m.geometry, m.skeleton, m.bindMatrix, fat), 3));
       cache.set(chave, g);
     }
     m.geometry = cache.get(chave);
   });
-  // ombro: a clavícula fica mais comprida (o úmero sai pra fora), sem escala em osso nenhum
-  for (const l of ["l", "r"]) { const u = lutador.ossos["upperarm_" + l]; if (u) u.position.multiplyScalar(k); }
+  // ombro: sem o alvo de forma, a clavícula fica mais comprida (o úmero sai pra fora); com ele, a massa já está no alvo
+  if (!alvo) for (const l of ["l", "r"]) { const u = lutador.ossos["upperarm_" + l]; if (u) u.position.multiplyScalar(k); }
 }
 
 /* ---------- pele: cicatriz e tatuagem pintadas na textura ----------

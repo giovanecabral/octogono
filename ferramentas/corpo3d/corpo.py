@@ -32,15 +32,20 @@ R = [o for o in bpy.data.objects if o.type=="ARMATURE"][0]
 FORMA_MH = {}
 def efeito_mh(alvos, rot):
     kb = h.data.shape_keys.key_blocks; antes = {k.name for k in kb}
-    for nome, v in alvos: TargetService.load_target(h, TargetService.target_full_path(nome), weight=v, name=rot + "_" + nome)
+    for nome, v in alvos:
+        k_ = TargetService.load_target(h, TargetService.target_full_path(nome), weight=min(v, 1.0), name=rot + "_" + nome)
+        k_ = h.data.shape_keys.key_blocks[rot + "_" + nome]; k_.slider_max = max(1.0, v); k_.value = v   # peso acima de 1 (o controle cortava no 1)
     n = len(h.data.vertices); d = np.zeros(n * 3); a = np.empty(n * 3); b = np.empty(n * 3)
     for k in [k for k in h.data.shape_keys.key_blocks if k.name not in antes]:
         k.data.foreach_get("co", a); k.relative_key.data.foreach_get("co", b); d += (a - b) * k.value
         bpy.context.view_layer.objects.active = h; h.active_shape_key_index = list(h.data.shape_keys.key_blocks).index(k); bpy.ops.object.shape_key_remove()
     return d.reshape(n, 3)
 for porte, grupos in [("base", cfg.get("forma", {}).get("base", []))] + list(cfg.get("forma", {}).get("portes", {}).items()):
-    FORMA_MH[porte] = [(efeito_mh(g["alvos"], f"forma_{porte}_{i}"), g["ossos"]) for i, g in enumerate(grupos)]
-    print("FORMA_MH", porte, [round(float(np.abs(d).max()), 4) for d, _ in FORMA_MH[porte]])
+    # "fixos": ossos cuja pele nunca muda de forma (cabeça e mão, por padrão; o grupo do ombro só tira a cabeça, porque o
+    # braço inteiro anda junto, mão também, sem mudar de tamanho)
+    # "rampa": [osso, de, até]: o efeito some ao longo do osso (o ombro estreita sem levar o cotovelo nem a mão)
+    FORMA_MH[porte] = [(efeito_mh(g["alvos"], f"forma_{porte}_{i}"), g["ossos"], g.get("fixos", "^(Head|hand_|thumb|index|middle|ring|pinky)"), g.get("rampa")) for i, g in enumerate(grupos)]
+    print("FORMA_MH", porte, [round(float(np.abs(d).max()), 4) for d, *_ in FORMA_MH[porte]])
 # formas (músculo, pescoço...) assadas na malha antes de medir qualquer coisa
 for o in [x for x in bpy.data.objects if x.type=="MESH"]:
     bpy.context.view_layer.objects.active = o

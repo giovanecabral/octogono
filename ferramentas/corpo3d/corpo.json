@@ -130,6 +130,54 @@
      ]
     ],
     "ossos": "^calf_"
+   },
+   {
+    "alvos": [
+     [
+      "measure-shoulder-dist-decr",
+      0.7
+     ]
+    ],
+    "ossos": "^(clavicle|upperarm|spine_03)",
+    "rampa": [
+     "upperarm",
+     0.25,
+     1.0
+    ]
+   },
+   {
+    "alvos": [
+     [
+      "l-upperarm-shoulder-muscle-decr",
+      0.3
+     ],
+     [
+      "r-upperarm-shoulder-muscle-decr",
+      0.3
+     ]
+    ],
+    "ossos": "^(clavicle|upperarm|spine_03)"
+   },
+   {
+    "alvos": [
+     [
+      "measure-waist-circ-incr",
+      0.75
+     ],
+     [
+      "measure-underbust-circ-incr",
+      0.3
+     ],
+     [
+      "torso-vshape-decr",
+      0.3
+     ],
+     [
+      "stomach-tone-incr",
+      0.5
+     ]
+    ],
+    "ossos": "^(spine_0[123]|pelvis)"
    }
   ],
   "portes": {
@@ -138,19 +186,19 @@
      "alvos": [
       [
        "l-lowerarm-muscle-decr",
-       0.5
+       1.6
       ],
       [
        "r-lowerarm-muscle-decr",
-       0.5
+       1.6
       ],
       [
        "l-lowerarm-fat-decr",
-       0.5
+       1.2
       ],
       [
        "r-lowerarm-fat-decr",
-       0.5
+       1.2
       ]
      ],
      "ossos": "^lowerarm_"
@@ -159,14 +207,94 @@
      "alvos": [
       [
        "l-lowerleg-fat-decr",
-       0.2
+       1.0
       ],
       [
        "r-lowerleg-fat-decr",
-       0.2
+       1.0
+      ],
+      [
+       "l-lowerleg-muscle-decr",
+       1.0
+      ],
+      [
+       "r-lowerleg-muscle-decr",
+       1.0
       ]
      ],
      "ossos": "^calf_"
+    },
+    {
+     "alvos": [
+      [
+       "torso-muscle-pectoral-decr",
+       1.0
+      ],
+      [
+       "torso-muscle-dorsi-decr",
+       1.0
+      ],
+      [
+       "measure-bust-circ-decr",
+       0.8
+      ],
+      [
+       "measure-waist-circ-decr",
+       1.1
+      ]
+     ],
+     "ossos": "^(spine_0[123]|pelvis|clavicle)"
+    },
+    {
+     "alvos": [
+      [
+       "l-upperarm-muscle-decr",
+       1.0
+      ],
+      [
+       "r-upperarm-muscle-decr",
+       1.0
+      ],
+      [
+       "l-upperarm-fat-decr",
+       1.0
+      ],
+      [
+       "r-upperarm-fat-decr",
+       1.0
+      ]
+     ],
+     "ossos": "^upperarm_"
+    },
+    {
+     "alvos": [
+      [
+       "l-upperleg-muscle-decr",
+       1.0
+      ],
+      [
+       "r-upperleg-muscle-decr",
+       1.0
+      ],
+      [
+       "l-upperleg-fat-decr",
+       0.8
+      ],
+      [
+       "r-upperleg-fat-decr",
+       0.8
+      ]
+     ],
+     "ossos": "^thigh_"
+    },
+    {
+     "alvos": [
+      [
+       "measure-neck-circ-decr",
+       0.8
+      ]
+     ],
+     "ossos": "^neck_01"
     }
    ],
    "pesado": [
@@ -207,8 +335,100 @@
       ]
      ],
      "ossos": "^calf_"
+    },
+    {
+     "alvos": [
+      [
+       "torso-muscle-pectoral-incr",
+       0.5
+      ],
+      [
+       "torso-muscle-dorsi-incr",
+       0.15
+      ],
+      [
+       "measure-bust-circ-incr",
+       0.3
+      ],
+      [
+       "measure-waist-circ-incr",
+       0.9
+      ],
+      [
+       "torso-vshape-decr",
+       0.4
+      ],
+      [
+       "stomach-tone-incr",
+       1.0
+      ]
+     ],
+     "ossos": "^(spine_0[123]|pelvis|clavicle)"
+    },
+    {
+     "alvos": [
+      [
+       "l-upperarm-muscle-incr",
+       0.4
+      ],
+      [
+       "r-upperarm-muscle-incr",
+       0.4
+      ],
+      [
+       "l-upperarm-fat-incr",
+       0.1
+      ],
+      [
+       "r-upperarm-fat-incr",
+       0.1
+      ],
+      [
+       "l-upperarm-shoulder-muscle-incr",
+       0.15
+      ],
+      [
+       "r-upperarm-shoulder-muscle-incr",
+       0.15
+      ]
+     ],
+     "ossos": "^(upperarm_|clavicle)"
+    },
+    {
+     "alvos": [
+      [
+       "l-upperleg-muscle-incr",
+       0.7
+      ],
+      [
+       "r-upperleg-muscle-incr",
+       0.7
+      ],
+      [
+       "l-upperleg-fat-incr",
+       0.6
+      ],
+      [
+       "r-upperleg-fat-incr",
+       0.6
+      ]
+     ],
+     "ossos": "^thigh_"
+    },
+    {
+     "alvos": [
+      [
+       "measure-neck-circ-incr",
+       0.5
+      ]
+     ],
+     "ossos": "^neck_01"
     }
    ]
+  },
+  "trapezio": {
+   "altura": 0.009,
+   "largura": 0.035
   }
  }
 }

@@ -945,7 +945,9 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   // sorteado, pra posição não entregar quem venceu.
   flashBranco();
   const esq = Math.random() < 0.5 ? A : B, dir = esq === A ? B : A;
-  esq.raiz.position.set(-0.72, 0, 0); dir.raiz.position.set(0.72, 0, 0); C.raiz.position.set(0, 0, 0.1);
+  // ±0,90 e o árbitro 16 cm à frente (2026-11-23): com ±0,72 e 10 cm o pé dele encostava no de um lutador (0,1 cm,
+  // medido pela pele); o pé fica como está, só a posição muda
+  esq.raiz.position.set(-0.9, 0, 0); dir.raiz.position.set(0.9, 0, 0); C.raiz.position.set(0, 0, 0.16);
   // tudo que estava tocando para (o nocaute deitado, a finalização, os controles do chão): todos em pé, parados.
   // Quem lutou espera cansado (ESPERA); o árbitro fica em pé (PARADO); os três respiram e olham reto (vivo)
   for (const L of [A, B, C]) {
