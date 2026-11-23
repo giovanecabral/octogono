@@ -76,6 +76,12 @@ def centro(g):
     c=sum(vs,Vector())/len(vs); return c, max((v-c).length for v in vs)
 OLHOS=dict(OLHOS_HBM) if cfg.get("base")=="hbm" else {s: centro("helper-%s-eye"%s) for s in "lr"}
 cab_rest=R.matrix_world @ R.data.bones["head"].matrix_local
+# corpo amarrado na pose em que foi esculpido (2026-11-23): a malha vai pro GLB na pose dela (braço em A) e o
+# transplante dá a ela matrizes de bind dessa pose. Assim o jogo deforma uma vez só, da escultura direto pra pose da
+# luta; antes ela era dobrada pra pose T aqui e dobrada de novo no jogo, e o peito subia, a axila esticava em aba e o
+# braço torcia. Tudo o mais (calção, luva, cabelo, roupas) continua feito em cima do corpo em T, como antes.
+CO_A = [v.co.copy() for v in h.data.vertices]
+A_MUNDO = {b.name: R.matrix_world @ b.matrix_local for b in R.data.bones}
 bpy.context.view_layer.objects.active = R; bpy.ops.object.mode_set(mode="POSE")
 def visitar(b):
     D = rot_alvo(b.name)
@@ -89,6 +95,8 @@ for b in R.data.bones:
     if b.parent is None: visitar(b)
 bpy.context.view_layer.update()
 cab_pose=R.matrix_world @ R.pose.bones["head"].matrix
+# o quanto cada osso andou da pose da escultura até a T (no mundo): o transplante põe o bind do corpo nessa pose
+DELTA_T = {pb.name: (R.matrix_world @ pb.matrix) @ A_MUNDO[pb.name].inverted() for pb in R.pose.bones}
 OLHOS={k:(cab_pose @ cab_rest.inverted() @ c, r) for k,(c,r) in OLHOS.items()}
 bpy.ops.object.mode_set(mode="OBJECT")
 # ---- aplica: alvos, máscara e armadura na malha; pose vira descanso
@@ -156,6 +164,11 @@ for o in (h, calcao, luvas, *olhos): o.data.name = o.name   # o nome da malha no
 for m in [m for m in h.modifiers if m.type == "COLLISION"]: h.modifiers.remove(m)   # a colisão só servia pro pano
 for pb in R.pose.bones: pb.custom_shape = None   # o desenho dos ossos do rig (Icosphere) não vai pro GLB
 for o in [o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith("Icosphere")]: bpy.data.objects.remove(o, do_unlink=True)
+# o corpo volta pra pose da escultura (os mesmos vértices: o calção só apagou faces) e o delta de cada osso vai pro transplante
+assert len(h.data.vertices) == len(CO_A), (len(h.data.vertices), len(CO_A))
+for v, co in zip(h.data.vertices, CO_A): v.co = co
+h.data.update()
+json.dump({n: [list(r) for r in M] for n, M in DELTA_T.items()}, open(os.path.join(TRAB, "bind_corpo.json"), "w"))
 for x in bpy.data.objects: x.select_set(x in (h,R,calcao,luvas,*olhos))   # a sobrancelha agora é peça (rosto_sobrancelhas)
 bpy.ops.export_scene.gltf(filepath=cfg["saida"], export_format="GLB", use_selection=True, export_skins=True, export_animations=False, export_morph=False,
     export_image_format="JPEG", export_jpeg_quality=88, export_yup=True, export_apply=False)

@@ -7,11 +7,14 @@
 <body><div id="caixa" class="luta3d-caixa"></div>
 <script type="module">
 import { criarLuta3d } from "../luta3d/diretor.js";
-import { RITMO_OMBRO } from "../luta3d/lutador.js";
+import { RITMO_OMBRO, raioAxila, misturaDQ } from "../luta3d/lutador.js";
+{ const r = new URLSearchParams(location.search).get("dq"); if (r) misturaDQ(Number(r)); }   // ?dq=0.5: quatérnio duplo x linear
+{ const r = new URLSearchParams(location.search).get("raioaxila"); if (r) raioAxila(Number(r)); }   // ?raioaxila=0.3: alcance do osso da axila
 { const q = new URLSearchParams(location.search); if (q.get("rf")) RITMO_OMBRO.frac = Number(q.get("rf")); if (q.get("rm")) RITMO_OMBRO.max = Number(q.get("rm")); }
 { let s = 7; Math.random = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 const eu = { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14", porte: "médio" };
 const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia", porte: "pesado" };
+if (new URLSearchParams(location.search).get("linear") === "1") eu.linear = ele.linear = true;   // ?linear=1: skinning linear (comparar com o quatérnio duplo)
 const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "KAYO", b: "TITO" }, som: () => {} });
 await inst._dev.cartasProntas; window.__inst = inst;
 const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;

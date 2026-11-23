@@ -18727,6 +18727,102 @@ async function testarLuta3d() {
     const tirar = lu.slice(lu.indexOf("tirarRoupa("), lu.indexOf("tirarRoupa(") + 900);
     if (!/this\.corpo\.geometry = this\.geoCorpo[\s\S]*if \(dur <= 0\)/.test(tirar)) throw new Error("tirarRoupa não devolve a pele antes dos dois caminhos");
   });
+  /* revamp do corpo (2026-11-23): bind na pose da escultura, osso da axila, quatérnio duplo, calção modelado e olho roxo */
+  const lerGLBJogo = () => {
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.glb")), nj = b.readUInt32LE(12), j = JSON.parse(b.slice(20, 20 + nj).toString()), bin = b.slice(20 + nj + 8);
+    const ler = (i) => { const a = j.accessors[i], bv = j.bufferViews[a.bufferView], n = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }[a.type];
+      const T = { 5126: Float32Array, 5125: Uint32Array, 5123: Uint16Array, 5121: Uint8Array }[a.componentType];
+      const off = bv.byteOffset + (a.byteOffset || 0); return new T(bin.buffer.slice(bin.byteOffset + off, bin.byteOffset + off + a.count * n * T.BYTES_PER_ELEMENT)); };
+    const no = (nome) => j.nodes.find((n) => n.mesh != null && j.meshes[n.mesh].name === nome);
+    const junta = (skin, nome) => { const IB = ler(skin.inverseBindMatrices), k = skin.joints.findIndex((i) => j.nodes[i].name === nome), m = IB.slice(k * 16, k * 16 + 16);
+      const t = [m[12], m[13], m[14]], R = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
+      return [0, 1, 2].map((c) => -(R[c][0] * t[0] + R[c][1] * t[1] + R[c][2] * t[2])); };
+    return { j, ler, no, junta };
+  };
+  await conf("corpo amarrado na pose da escultura: pele própria (as mesmas juntas, a mão abaixo da pose T), e calção, luva e olho seguem em T", () => {
+    const { j, no, junta } = lerGLBJogo(), corpo = no("corpo"), calcao = no("calcao");
+    if (!corpo || !calcao) throw new Error("corpo ou calção não achados no GLB");
+    if (corpo.skin === calcao.skin) throw new Error("o corpo voltou a usar a pele em T do calção (dobrado duas vezes: peito subindo, axila em aba)");
+    const sc = j.skins[corpo.skin], st = j.skins[calcao.skin];
+    if (sc.joints.join() !== st.joints.join()) throw new Error("a pele do corpo tem outras juntas");
+    for (const n of ["luvas", "olho_l", "olho_r"]) if (no(n) && no(n).skin !== calcao.skin) throw new Error(n + " não está na pele em T");
+    const maoA = junta(sc, "hand_l")[1], maoT = junta(st, "hand_l")[1], cab = junta(sc, "Head")[1] - junta(st, "Head")[1];
+    if (maoT - maoA < 0.3) throw new Error(`a mão no bind do corpo está a ${((maoT - maoA) * 100).toFixed(0)} cm abaixo da T (a escultura tem o braço caído)`);
+    if (Math.abs(cab) > 0.03) throw new Error("a cabeça mudou de altura entre os dois binds: " + cab.toFixed(3));
+  });
+  await conf("calção modelado: as duas pernas não se tocam abaixo do gancho (o pano entre as coxas virava saia) e o calção chega ao meio da coxa", () => {
+    const { j, ler, no, junta } = lerGLBJogo(), c = no("calcao"), st = j.skins[c.skin], pr = j.meshes[c.mesh].primitives;
+    const quadril = junta(st, "thigh_l")[1], joelho = junta(st, "calf_l")[1];
+    let cruzam = 0, min = 9, n = 0;
+    for (const p of pr) {
+      const P = ler(p.attributes.POSITION), I = ler(p.indices);
+      for (let k = 0; k < P.length; k += 3) min = Math.min(min, P[k + 1]);
+      for (let k = 0; k < I.length; k += 3) {
+        const v = [I[k], I[k + 1], I[k + 2]].map((i) => [P[i * 3], P[i * 3 + 1]]);
+        if (Math.max(...v.map((x) => x[1])) > quadril - 0.2) continue; n++;
+        if (Math.min(...v.map((x) => x[0])) < -0.004 && Math.max(...v.map((x) => x[0])) > 0.004) cruzam++;
+      }
+    }
+    if (n < 200) throw new Error("poucos triângulos abaixo do gancho: " + n);
+    if (cruzam) throw new Error(`${cruzam} triângulos do calção atravessam o meio abaixo do gancho (as pernas estão ligadas)`);
+    const fração = (quadril - min) / (quadril - joelho);
+    if (fração < 0.5 || fração > 0.8) throw new Error(`a barra está em ${(fração * 100).toFixed(0)}% do quadril ao joelho (faixa 50% a 80%)`);
+  });
+  await conf("osso da axila: a pele meio braço e meio tronco do ombro vai pro osso que gira metade; o cotovelo e o longe do ombro ficam", async () => {
+    const url = require("url");
+    const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const nomes = ["spine_03", "clavicle_l", "upperarm_l", "lowerarm_l"], ponto = { spine_03: [0, 1.35, 0], clavicle_l: [0.03, 1.5, 0], upperarm_l: [0.18, 1.45, 0], lowerarm_l: [0.25, 1.2, 0] };
+    const skeleton = { bones: nomes.map((name) => ({ name })), boneInverses: nomes.map((n) => new THREE.Matrix4().makeTranslation(...ponto[n].map((x) => -x))) };
+    // [x, y, z, [osso, peso]...]: axila meio a meio, axila 3/4 braço, cotovelo (braço e antebraço) e um meio a meio longe do ombro
+    const vs = [[0.15, 1.38, 0, [2, 0.5], [0, 0.5]], [0.16, 1.4, 0, [2, 0.75], [0, 0.25]], [0.24, 1.22, 0, [2, 0.6], [3, 0.4]], [0.1, 1.0, 0, [2, 0.5], [0, 0.5]]];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vs.flatMap((v) => v.slice(0, 3)), 3));
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(vs.flatMap((v) => [v[3][0], v[4][0], 0, 0]), 4));
+    geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(vs.flatMap((v) => [v[3][1], v[4][1], 0, 0]), 4));
+    const ax = LU.prepararAxila({ skeleton, geometry: geo, bindMatrix: new THREE.Matrix4() });
+    const pesos = (v) => { const o = {}; for (let c = 0; c < 4; c++) { const w = geo.attributes.skinWeight.getComponent(v, c); if (w > 1e-4) o[geo.attributes.skinIndex.getComponent(v, c)] = Math.round(w * 100) / 100; } return o; };
+    if (ax.nb !== 4 || ax.lados.length !== 1) throw new Error("axila: " + JSON.stringify(ax));
+    const e = [pesos(0), pesos(1), pesos(2), pesos(3)].map((o) => JSON.stringify(o)).join(" ");
+    if (e !== '{"4":1} {"2":0.5,"4":0.5} {"2":0.6,"3":0.4} {"0":0.5,"2":0.5}') throw new Error("pesos: " + e);
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/a\.o\.quaternion\.copy\(a\.bindQ\)\.slerp\(a\.umero\.quaternion, 0\.5\)/.test(lu)) throw new Error("a axila não gira a metade do úmero no update");
+    if (!/this\.corpo\.bind\(new THREE\.Skeleton\(ossos, inv\)/.test(lu)) throw new Error("o corpo não ganha o esqueleto com a axila");
+  });
+  await conf("pele por quatérnio duplo misturada ao linear: o shader troca os três trechos do skinning, no corpo e na sombra", async () => {
+    const url = require("url");
+    const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const m = { isSkinnedMesh: true, material: new THREE.MeshStandardMaterial() };
+    LU.peleDQ(m);
+    for (const mat of [m.material, m.customDepthMaterial]) {
+      if (!mat || !mat.onBeforeCompile) throw new Error("material sem o shader novo");
+      const sh = { vertexShader: "#include <skinning_pars_vertex>\n#include <skinbase_vertex>\n#include <skinnormal_vertex>\n#include <skinning_vertex>" };
+      mat.onBeforeCompile(sh);
+      if (/#include <skinn(ormal|ing)_vertex>/.test(sh.vertexShader)) throw new Error("ficou o skinning linear puro");
+      for (const t of ["dqOsso", "dqGirar", "mix(linP, dqP"]) if (!sh.vertexShader.includes(t)) throw new Error("falta " + t);
+      if (!/dq0\.\d+/.test(mat.customProgramCacheKey())) throw new Error("sem chave de programa própria");
+    }
+  });
+  await conf("olho roxo: o hematoma pinta só em volta de um olho (pela posição na cabeça), nunca meia cara", async () => {
+    const url = require("url");
+    const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const AP = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "aparencia.js")).href);
+    // tela de mentira: guarda o que a pintura põe (putImageData) e o que chega na pele (drawImage)
+    const W = 64, H = 64; let pintado = null;
+    globalThis.OffscreenCanvas = class { constructor(w, h) { this.w = w; this.h = h; } getContext() { const t = this; return { createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: (img) => { t.img = img; } }; } };
+    const c = { save() {}, restore() {}, drawImage: (tela) => { pintado = tela.img; }, set globalCompositeOperation(x) {} };
+    // dois triângulos no UV: um sobre o olho (metade de cima do UV) e outro na bochecha do mesmo lado (metade de baixo)
+    const V = (x, y, z) => new THREE.Vector3(x, y, z), U = (u, v) => new THREE.Vector2(u, v);
+    const hh = [V(0.02, 0.095, 0.1), V(0.055, 0.095, 0.1), V(0.036, 0.12, 0.1), V(0.03, 0.03, 0.1), V(0.07, 0.03, 0.1), V(0.05, 0.06, 0.1)];
+    const info = { tri: [0, 1, 2, 3, 4, 5], hh, h: hh, uv: [U(0.1, 0.1), U(0.9, 0.1), U(0.5, 0.45), U(0.1, 0.55), U(0.9, 0.55), U(0.5, 0.95)], p: hh };
+    try { AP.pintarPele(c, W, H, info, { cicatriz: "olho roxo" }); } finally { delete globalThis.OffscreenCanvas; }
+    if (!pintado) throw new Error("o olho roxo não pintou nada");
+    let cima = 0, baixo = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const o = (y * W + x) * 4; if (pintado.data[o + 3] && pintado.data[o] < 240) (y < H / 2 ? cima++ : baixo++); }
+    if (cima < 50) throw new Error("pintou pouco em volta do olho: " + cima);
+    if (baixo) throw new Error(`pintou ${baixo} pixels na bochecha, longe do olho`);
+  });
   /* Review Focus 5: o mx_cartas.glb chega depois que a luta abre e fica fora do git; sem ele a luta toca a reserva e não trava */
   await conf("sem o mx_cartas.glb (faltando, quebrado ou vazio) a carga devolve 0 sem lançar e toda carta com clipe novo toca a reserva do mx_lutas.glb", async () => {
     const url = require("url");

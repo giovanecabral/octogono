@@ -136,7 +136,7 @@ dec_v = lambda w: w.y < POS["spine_03"].y - 0.02 and abs(w.x) < largura_v(w) and
 tec = mat("MI_Tecido", (.5, .05, .04), 0.32, 0.05); deb = mat("MI_Debrum", (.83, .63, .1), 0.3, 0.6); cin = mat("MI_Cinta", (.3, .03, .03), 0.4)
 top = camisa("roupao", 0.55, 0.026, 0.022, tec, decote=dec_v, z_baixo=zq + 0.06)
 top.data.materials.append(deb)
-saia_r = saia("roupao_saia", zq + 0.1, zjoelho + 0.06, 0.048, 0.085, 9, 0.016, tec)   # folgada: o calção não aparece quando a coxa avança
+saia_r = saia("roupao_saia", zq + 0.1, zjoelho + 0.06, 0.056, 0.1, 9, 0.016, tec)   # folgada: o calção (solto desde 2026-11-23) não aparece quando a coxa avança
 saia_r.data.materials.append(deb)
 materiais_por(saia_r, lambda c, n: 1 if c.z < zjoelho + 0.11 or (c.y < POS["pelvis"].y - 0.05 and abs(c.x) < 0.035) else 0)   # barra e a frente
 def papel_top(c, n):

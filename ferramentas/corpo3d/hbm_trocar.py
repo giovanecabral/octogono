@@ -119,6 +119,70 @@ ativo(B); bpy.ops.object.modifier_apply(modifier="pesos")
 for g in list(B.vertex_groups):
     if g.name not in BONES: B.vertex_groups.remove(g)
 bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+# ---- ombro e quadril (2026-11-23): o peso do membro espalhado pela superfície, nunca pelo ar. A malha é esculpida
+# com o braço junto do corpo e as coxas juntas (pose A), e a passagem por proximidade dava peso do braço ao flanco
+# inteiro até a cintura (erguer o braço puxava uma aba de pele da axila ao quadril) e peso de uma coxa à parte de
+# dentro da outra (abrir as pernas esticava uma membrana entre elas: o calção virava saia). Aqui o peso do membro é a
+# solução de Laplace na malha (média dos vizinhos por aresta): 1 no membro de verdade (do meio do osso pra baixo,
+# dentro do raio dele), 0 no tronco longe da junta e no outro lado; entre os dois ele cai suave pelo caminho da pele
+# (pela axila, pelo deltoide, pela virilha, pelo glúteo).
+import numpy as np
+def membros_por_difusao(B, R):
+    nv = len(B.data.vertices); P = np.array([tuple(B.matrix_world @ v.co) for v in B.data.vertices])
+    m3 = B.matrix_world.to_3x3(); N = np.array([tuple((m3 @ v.normal).normalized()) for v in B.data.vertices])
+    ar = np.array([tuple(e.vertices) for e in B.data.edges]); vizinhos = np.zeros(nv)
+    np.add.at(vizinhos, ar[:, 0], 1); np.add.at(vizinhos, ar[:, 1], 1)
+    nomesB = {g.index: g.name for g in B.vertex_groups}
+    pesos = [{nomesB[g.group]: g.weight for g in v.groups if g.weight > 1e-5} for v in B.data.vertices]
+    junta = lambda n: np.array(tuple(R.matrix_world @ R.data.bones[n].head_local))
+    membros = []
+    for s in "lr":
+        membros.append(("upperarm_" + s, "lowerarm_" + s, {"upperarm_" + s, "lowerarm_" + s, "hand_" + s} | {b.name for b in R.data.bones if b.name.endswith("_" + s) and b.name.split("_")[0] in ("thumb", "index", "middle", "ring", "pinky")}, "spine_03"))
+        membros.append(("thigh_" + s, "calf_" + s, {"thigh_" + s, "calf_" + s, "foot_" + s, "ball_" + s}, "pelvis"))
+    for raiz, ponta, braco, reserva in membros:
+        s = raiz[-1]
+        o, c = junta(raiz), junta(ponta); eixo = c - o; L = np.linalg.norm(eixo); eixo /= L
+        rel = P - o; t = rel @ eixo / L; radial = np.linalg.norm(rel - np.outer(rel @ eixo, eixo), axis=1)
+        wb = np.array([sum(w for n, w in pw.items() if n in braco) for pw in pesos])
+        dom_mao = np.array([bool(pw) and max(pw, key=pw.get) in braco - {raiz} for pw in pesos])
+        meio = (t > 0.5) & (t < 0.85) & (wb > 0.9)
+        r_braco = np.percentile(radial[meio], 60) * 1.12
+        do_lado = (P[:, 0] > 0) == (o[0] > 0)
+        dir_rad = rel - np.outer(rel @ eixo, eixo); dir_rad /= np.maximum(np.linalg.norm(dir_rad, axis=1), 1e-6)[:, None]
+        olha_fora = np.einsum("ij,ij->i", N, dir_rad) > 0
+        no_braco = dom_mao | ((t > 0.42) & (radial < r_braco))   # o membro: do meio do osso pra baixo, dentro do raio dele
+        # tronco: o outro lado, e do lado do membro o que fica a mais de 20 cm da junta e bem fora do raio dele
+        # (o flanco desce junto do braço: pela altura ele parecia braço e herdava o peso até a cintura). Perto do membro
+        # quem decide é a normal: a pele do braço olha pra fora do úmero, a do flanco olha pra ele (e a de dentro de
+        # uma coxa olha pra outra)
+        no_tronco = ~no_braco & (~do_lado | ((np.linalg.norm(rel, axis=1) > 0.2) & ((radial > 1.5 * r_braco) | ~olha_fora)))
+        # faixa de transição: o tronco que encosta no membro (até 3 arestas) também fica livre; braço com peso 1
+        # colado em tronco com peso 0 esticava uma lasca de pele na dobra da axila
+        perto = no_braco.copy()
+        for _ in range(3):
+            novo = perto.copy(); novo[ar[:, 0][perto[ar[:, 1]]]] = True; novo[ar[:, 1][perto[ar[:, 0]]]] = True; perto = novo
+        no_tronco &= ~(perto & do_lado)
+        livre = ~no_braco & ~no_tronco & do_lado
+        h = np.where(no_braco, 1.0, 0.0)
+        for _ in range(3000):   # Jacobi: cada livre vira a média dos vizinhos
+            soma = np.zeros(nv); np.add.at(soma, ar[:, 0], h[ar[:, 1]]); np.add.at(soma, ar[:, 1], h[ar[:, 0]])
+            h = np.where(livre, soma / np.maximum(vizinhos, 1), h)
+        for i in np.nonzero(livre | no_tronco)[0]:
+            pw = pesos[i]; novo_b = float(h[i]) if livre[i] else 0.0
+            fora = {n: w for n, w in pw.items() if n not in braco}; dentro = {n: w for n, w in pw.items() if n in braco}
+            tf = sum(fora.values()); td = sum(dentro.values())
+            novo = {n: w * (1 - novo_b) / tf for n, w in fora.items()} if tf > 1e-6 else ({reserva: 1 - novo_b} if novo_b < 1 else {})
+            if novo_b > 0: novo.update({n: w * novo_b / td for n, w in dentro.items()} if td > 1e-6 else {raiz: novo_b})
+            pesos[i] = novo
+        print("MEMBRO", raiz, "dentro", int(no_braco.sum()), "livres", int(livre.sum()), "raio", round(float(r_braco), 3))
+    for v, pw in zip(B.data.vertices, pesos):
+        for g in list(v.groups): B.vertex_groups[g.group].remove([v.index])
+        tot = sum(pw.values())
+        for n, w in pw.items():
+            if w <= 1e-5: continue
+            if n not in B.vertex_groups: B.vertex_groups.new(name=n)
+            B.vertex_groups[n].add([v.index], w / tot, "REPLACE")
+membros_por_difusao(B, R)
 # ---- pele: a textura do MakeHuman assada nos UVs do corpo novo (luz própria, sem sombra)
 pele_png = textura_do_mhmat(pele_mhmat, "diffuseTexture")
 me_ = bpy.data.materials.new("emite"); me_.use_nodes = True; nt = me_.node_tree; nt.nodes.clear()
@@ -134,11 +198,42 @@ sc.render.bake.use_selected_to_active = True; sc.render.bake.cage_extrusion = 0.
 for x in bpy.context.view_layer.objects: x.select_set(False)
 h.select_set(True); B.select_set(True); bpy.context.view_layer.objects.active = B
 bpy.ops.object.bake(type="EMIT")
-sc.render.bake.use_selected_to_active = False; sc.render.engine = motor
+sc.render.bake.use_selected_to_active = False
+# cobertura do UV (2026-11-23): o próprio corpo emitindo branco, sem margem: 1 dentro das ilhas, 0 fora
+COBRE_IMG = bpy.data.images.new("cobre", 2048, 2048, alpha=False)
+mc = bpy.data.materials.new("cobre"); mc.use_nodes = True; nt = mc.node_tree; nt.nodes.clear()
+em = nt.nodes.new("ShaderNodeEmission"); em.inputs[0].default_value = (1, 1, 1, 1); out = nt.nodes.new("ShaderNodeOutputMaterial"); nt.links.new(em.outputs[0], out.inputs[0])
+t3 = nt.nodes.new("ShaderNodeTexImage"); t3.image = COBRE_IMG; nt.nodes.active = t3
+B.data.materials.clear(); B.data.materials.append(mc); sc.render.bake.margin = 0
+for x in bpy.context.view_layer.objects: x.select_set(False)
+B.select_set(True); bpy.context.view_layer.objects.active = B
+bpy.ops.object.bake(type="EMIT")
+sc.render.bake.margin = 16; B.data.materials.clear(); B.data.materials.append(mb); sc.render.engine = motor
 # onde o raio não achou o corpo MakeHuman (axila, dedo do pé) ficou preto: vira a cor média da pele
 import numpy as np
 px = np.array(PELE_IMG.pixels[:], dtype=np.float32).reshape(-1, 4); soma = px[:, :3].sum(1)
-pele_media = px[soma > 0.3, :3].mean(0); px[soma < 0.06, :3] = pele_media
+pele_media = px[soma > 0.3, :3].mean(0)
+# o buraco vira a pele em volta (2026-11-23): a cor média era mais clara que a pele da axila (mancha clara esticada
+# quando o braço subia). O buraco e a borda escura dele (2 px) viram a solução de Laplace a partir da pele em volta,
+# só dentro da ilha do UV (o que fica fora dela não entra na média: puxava a cor de fundo pra dentro da axila). Fora
+# das ilhas, a borda delas se repete uns pixels (a margem que o mipmap lê).
+lado = int(round(len(px) ** 0.5)); img = px[:, :3].reshape(lado, lado, 3).copy()
+cobre = (np.array(COBRE_IMG.pixels[:], dtype=np.float32).reshape(lado, lado, 4)[..., 0] > 0.5)
+falta = (soma < 0.25).reshape(lado, lado)
+for _ in range(2):
+    falta = falta | np.roll(falta, 1, 0) | np.roll(falta, -1, 0) | np.roll(falta, 1, 1) | np.roll(falta, -1, 1)
+buraco = falta & cobre; img[buraco] = pele_media; img[~cobre] = 0
+viz = sum(np.roll(cobre, d, a).astype(np.float32) for d in (1, -1) for a in (0, 1))
+for _ in range(500):
+    soma_v = sum(np.roll(img * cobre[..., None], d, a) for d in (1, -1) for a in (0, 1))
+    media = soma_v / np.maximum(viz, 1)[..., None]
+    img[buraco] = media[buraco]
+feito = cobre.copy()
+for _ in range(24):
+    s_ = sum(np.roll(img * feito[..., None], d, a) for d in (1, -1) for a in (0, 1)); n_ = sum(np.roll(feito, d, a).astype(np.float32) for d in (1, -1) for a in (0, 1))
+    novo = ~feito & (n_ > 0); img[novo] = s_[novo] / n_[novo][:, None]; feito |= novo
+img[~feito] = pele_media
+px[:, :3] = img.reshape(-1, 3)
 PELE_IMG.pixels = px.ravel()
 PELE_IMG.filepath_raw = os.path.join(PASTA, "hbm_pele.png"); PELE_IMG.file_format = "PNG"; PELE_IMG.save()
 NORMAL_IMG = bpy.data.images.load(os.path.join(PASTA, "hbm_normal.png")); NORMAL_IMG.colorspace_settings.name = "Non-Color"

@@ -287,8 +287,18 @@ metade). Regras do revamp que valem daqui pra frente:
   `RITMO_OMBRO`, `ext`, polo); contato de golpe sempre com o clipe
   (trajetória deslocada) e `alvoDe` com a mão prevista e a mira. Mexeu em
   golpe, distância ou anúncio: `node ferramentas/poses3d.mjs <pasta>` (fotos
-  de 4 lados) e `MEDIR=so` (cotovelo e erro da mão no impacto). A aba na
-  axila com o braço erguido é da malha (um anel só), não de peso nem de IK.
+  de 4 lados) e `MEDIR=so` (cotovelo e erro da mão no impacto).
+  **Revamp do corpo (2026-11-23; LEIA-ME "Revamp do corpo").** O corpo é
+  amarrado na pose da escultura (pele própria no GLB; calção, luva, olho,
+  cabelo e roupas em T, ligados pelo esqueleto do calção, `malhaT`): nunca
+  voltar a dobrar a malha pra T no gerador. Peso de braço e coxa por difusão
+  na malha (`membros_por_difusao`), nunca por proximidade; osso da axila no
+  jogo (`prepararAxila`, gira metade do úmero); pele por quatérnio duplo
+  misturada ao linear (`peleDQ`, `DQ_MISTURA` 0,5) em tudo que tem pele.
+  Calção modelado (`calcao_modelado`: tubos, remesh, pernas que não passam do
+  meio). Pintura no rosto por posição na cabeça (`pintarCampo`), nunca
+  círculo no UV (a ilha do rosto é pequena). Mexeu: `retrato3d.html?estica=1`
+  e `node testar.js luta3d`.
 - **Cartas da árvore (2026-11-17, branch `cartas-integracao`; LEIA-ME
   "Cartas da árvore", catálogo em `docs/combat-v2.md`).** No combate v2
   (flag `combate_v2`) cada nó libera uma carta (`api/_jxj-cartas.js`). A

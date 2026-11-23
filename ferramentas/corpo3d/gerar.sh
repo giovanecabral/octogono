@@ -26,7 +26,7 @@ rm -rf "$TRAB/pecas"
 "$B" --background --python-exit-code 1 --python "$AQUI/corpo.py" -- "$CFG" > "$TRAB/corpo.log" 2>&1 || { tail -30 "$TRAB/corpo.log"; exit 1; }
 grep -E "^(CABELOS|ROUPAS|EXPORTADO)" "$TRAB/corpo.log"
 echo "4/5 esqueleto do jogo no corpo novo (e o pivô da cabeça)"
-node "$AQUI/transplante.mjs" "$TRAB/corpo_bruto.glb" "$AQUI/esqueleto_referencia.glb" "$TRAB/lutador.glb"
+node "$AQUI/transplante.mjs" "$TRAB/corpo_bruto.glb" "$AQUI/esqueleto_referencia.glb" "$TRAB/lutador.glb" "$TRAB/bind_corpo.json"
 echo "5/5 copia pro jogo"
 cp "$TRAB/lutador.glb" "$RAIZ/luta3d/lutador.glb"
 rm -rf "$RAIZ/luta3d/pecas"; mkdir -p "$RAIZ/luta3d/pecas"; cp "$TRAB"/pecas/*.glb "$RAIZ/luta3d/pecas/"

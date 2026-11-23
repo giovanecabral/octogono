@@ -146,24 +146,109 @@ def bainha(p, raio, material_index=0, achata=0.55, lados=6, so=None, minimo=24):
 def material(nome, cor, rug):
     m = bpy.data.materials.new(nome); m.use_nodes = True; b = m.node_tree.nodes["Principled BSDF"]
     b.inputs["Base Color"].default_value = (*cor, 1); b.inputs["Roughness"].default_value = rug; return m
+def calcao_modelado(h, pos, cintura, barra):
+    """Calção de luta modelado (2026-11-23), no lugar da casca copiada da pele: a casca seguia a pele das coxas, que
+    se encostam na escultura, e o pano entre as pernas virava uma membrana quando elas abriam (o calção parecia saia).
+    Agora são três tubos medidos no corpo por raios (a cintura, em volta da bacia, e uma perna em volta de cada coxa,
+    mais solta na barra e do lado de fora), unidos num volume só (remesh de voxel, que dá o gancho liso entre as
+    pernas) e cortados na cintura e na barra. Por dentro, cada perna nunca passa do meio: as duas não se colam."""
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get(); bvh = BVHTree.FromObject(h, dg)
+    zq = pos["pelvis"].z; zc = (pos["thigh_l"].z + pos["thigh_r"].z) / 2; zj = (pos["calf_l"].z + pos["calf_r"].z) / 2
+    yc = pos["pelvis"].y
+    # gancho: de dentro da bacia (centro, altura da junta do quadril) pra baixo, o raio sai no períneo (de baixo pra
+    # cima ele batia onde as coxas se encostam, bem abaixo)
+    acerto = bvh.ray_cast(Vector((0, yc, zc)), Vector((0, 0, -1)), 0.4)
+    gancho = acerto[0].z - 0.012 if acerto[0] else zc - 0.08
+    N = 56
+    def anel(c, e, ref, folga, so_lado=0, z_corte=None):
+        u = (ref - e * ref.dot(e)).normalized(); w = e.cross(u); pts = []; ult = 0.08
+        for k in range(N):
+            a = 2 * math.pi * k / N; d = u * math.cos(a) + w * math.sin(a)
+            q, _, _, dist = bvh.ray_cast(c, d, 0.4)
+            r = dist if q is not None else ult; ult = r
+            p = c + d * (r + folga(d))
+            if so_lado and (z_corte is None or p.z < z_corte) and p.x * so_lado < 0.013: p.x = so_lado * 0.013   # perna não passa do meio (e não cola na outra)
+            pts.append(p)
+        return pts
+    bm = bmesh.new()
+    def tubo(aneis):
+        vs = [[bm.verts.new(p) for p in a] for a in aneis]
+        for A, B in zip(vs, vs[1:]):
+            for k in range(N): bm.faces.new((A[k], A[(k + 1) % N], B[(k + 1) % N], B[k]))
+        for a, inv in ((vs[0], True), (vs[-1], False)):   # tampas (o volume precisa ser fechado pro remesh)
+            c = bm.verts.new(sum((v.co for v in a), Vector()) / N)
+            for k in range(N):
+                f = (a[k], a[(k + 1) % N], c); bm.faces.new(f[::-1] if inv else f)
+    # bacia: da cintura até um pouco abaixo do gancho, centro na metade entre a frente e as costas
+    aneis = []; z = cintura + 0.015
+    while z > gancho - 0.012:
+        f_ = bvh.ray_cast(Vector((0, yc, z)), Vector((0, -1, 0)), 0.4)[0]; t_ = bvh.ray_cast(Vector((0, yc, z)), Vector((0, 1, 0)), 0.4)[0]
+        cy = (f_.y + t_.y) / 2 if f_ and t_ else yc
+        k = max(0.0, min(1.0, (cintura - z) / max(0.01, cintura - gancho)))
+        aneis.append(anel(Vector((0, cy, z)), Vector((0, 0, -1)), Vector((1, 0, 0)), lambda d, k=k: 0.006 + 0.006 * k)); z -= 0.01
+    tubo(aneis)
+    # pernas: anéis em volta do eixo da coxa, do alto da virilha até a barra; folga cresce pra barra e pra fora
+    for s, lado in (("l", 1), ("r", -1)):
+        a0, a1 = pos["thigh_" + s], pos["calf_" + s]; e = (a1 - a0).normalized(); aneis = []
+        ini = (gancho + 0.05 - a0.z) / e.z; fim = (barra - 0.02 - a0.z) / e.z; n = max(4, int(abs(fim - ini) / 0.012))
+        for i in range(n + 1):
+            t = ini + (fim - ini) * i / n; c = a0 + e * t; k = i / n
+            def folga(d, k=k):
+                fora = max(0.0, d.x * lado)   # o lado de fora da coxa solta mais (calção de luta é largo do lado)
+                dentro = max(0.0, -d.x * lado)
+                return 0.008 + 0.012 * k ** 1.3 + 0.005 * fora * k - 0.005 * dentro * k
+            aneis.append(anel(c, e, Vector((lado, 0, 0)), folga, lado, gancho + 0.01))
+        tubo(aneis)
+    me = bpy.data.meshes.new("calcao"); bm.to_mesh(me); bm.free()
+    p = bpy.data.objects.new("calcao", me); bpy.context.scene.collection.objects.link(p)
+    rm = p.modifiers.new("uniao", "REMESH"); rm.mode = "VOXEL"; rm.voxel_size = 0.0075; rm.use_smooth_shade = True
+    bpy.context.view_layer.objects.active = p; bpy.ops.object.modifier_apply(modifier="uniao")
+    bm = bmesh.new(); bm.from_mesh(p.data)
+    for co, no in ((Vector((0, 0, cintura)), Vector((0, 0, 1))), (Vector((0, 0, barra)), Vector((0, 0, -1)))):
+        bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=co, plane_no=no, clear_outer=True)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    # só o pedaço grande (o corte da cintura deixava uma lasca solta do remesh no cós de trás)
+    bm.faces.ensure_lookup_table(); visto = set(); partes = []
+    for f0 in bm.faces:
+        if f0 in visto: continue
+        pilha = [f0]; parte = []; visto.add(f0)
+        while pilha:
+            f = pilha.pop(); parte.append(f)
+            for e in f.edges:
+                for g in e.link_faces:
+                    if g not in visto: visto.add(g); pilha.append(g)
+        partes.append(parte)
+    partes.sort(key=len)
+    bmesh.ops.delete(bm, geom=[f for parte in partes[:-1] for f in parte], context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    for _ in range(6): bmesh.ops.smooth_vert(bm, verts=[v for v in bm.verts if not v.is_boundary], factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bm.to_mesh(p.data); bm.free()
+    dc = p.modifiers.new("menos", "DECIMATE"); dc.ratio = 0.28; bpy.ops.object.modifier_apply(modifier="menos")
+    for poly in p.data.polygons: poly.use_smooth = True
+    # UV pra trama do tecido, na mesma densidade (pixel por metro) da pele do corpo
+    for x in bpy.context.view_layer.objects: x.select_set(x is p)
+    bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT"); bpy.ops.uv.smart_project(angle_limit=1.15, island_margin=0.01)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    def densidade(o):
+        o.data.calc_loop_triangles(); uvl = o.data.uv_layers.active.data; au = aw = 0.0
+        for tri in o.data.loop_triangles:
+            a, b, c = (uvl[l].uv for l in tri.loops); au += abs((b - a).x * (c - a).y - (c - a).x * (b - a).y) / 2; aw += tri.area
+        return (au / aw) ** 0.5
+    k = densidade(h) / densidade(p)
+    for d in p.data.uv_layers.active.data: d.uv = d.uv * k
+    dobras(p, lambda w: max(0.0, min(1.0, (zc - w.z) / (zc - barra))), 0.0022)
+    p.data.materials.append(material("MI_Calcao", (.5, .05, .04), .92))
+    print("CALCAO quadril", round(zc, 3), "gancho", round(gancho, 3), "barra", round(barra, 3), "cintura", round(cintura, 3), "faces", len(p.data.polygons))
+    return p, gancho
 def roupas(h, R, pos):
     # pos: posição das juntas (mundo, z pra cima)
     zq = pos["pelvis"].z; zc = (pos["thigh_l"].z + pos["thigh_r"].z) / 2; zj = (pos["calf_l"].z + pos["calf_r"].z) / 2
-    cintura = zq + 0.09; barra = zj + 0.42 * (zc - zj)
+    cintura = zq + 0.09; barra = zj + 0.34 * (zc - zj)   # meio da coxa (calção de luta; o de antes acabava 10 cm abaixo do gancho)
     perna = {"pelvis", "spine_01", "thigh_l", "thigh_r"}
-    def no_calcao(co, d): w = h.matrix_world @ co; return d in perna and barra - 0.06 < w.z < cintura + 0.05
-    cortes = [(Vector((0, 0, cintura)), Vector((0, 0, -1))), (Vector((0, 0, barra)), Vector((0, 0, 1)))]
-    def folga(co, d):
-        w = h.matrix_world @ co; t = max(0.0, min(1.0, (zc - w.z) / (zc - barra)))   # 0 no quadril, 1 na barra
-        meio = max(0.0, 1 - abs(w.x) / 0.06) if w.z < zc + 0.03 else 0.0   # entreperna colada (a folga ali dobrava o tecido)
-        cos = max(0.0, (w.z - (cintura - 0.06)) / 0.06)   # perto do elástico: mais folga (a pele furava o tecido na guarda)
-        return (0.005 + 0.004 * cos + 0.016 * t * t) * (1 - 0.7 * meio)
-    calcao = peca(h, "calcao", no_calcao, folga, 0.004, material("MI_Calcao", (.5, .05, .04), .92), cortes, solido=False)
-    alisar(calcao, lambda w: abs(w.x) < 0.09 and zq - 0.16 < w.z < zq + 0.05 and w.y < pos["pelvis"].y)   # a frente da virilha lisa
-    dobras(calcao, lambda w: max(0.0, min(1.0, (zc - w.z) / (zc - barra))), 0.006)
+    calcao, gancho = calcao_modelado(h, pos, cintura, barra)
     # elástico: a faixa de cima com material próprio (o jogo pinta mais escuro)
     calcao.data.materials.append(material("MI_Faixa", (.08, .02, .02), .85))
-    # corte reto na altura do elástico (sem apagar nada) e as faces de cima ficam com o material dele
     bm = bmesh.new(); bm.from_mesh(calcao.data)
     bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=Vector((0, 0, cintura - 0.04)), plane_no=Vector((0, 0, 1)))
     for f in bm.faces: f.material_index = 1 if f.calc_center_median().z > cintura - 0.04 else 0
@@ -171,7 +256,6 @@ def roupas(h, R, pos):
     bainha(calcao, 0.0045, material_index=0, so=lambda pts: max(p.z for p in pts) < cintura - 0.05)   # barra das pernas
     bainha(calcao, 0.006, material_index=1, so=lambda pts: min(p.z for p in pts) > cintura - 0.05)    # o cós
     engrossar(calcao, 0.003)
-    sem_espinho(calcao)
     # vivo de costura na lateral de cada perna (do cós à barra), na cor do cós: a costura que o calção de luta tem
     from mathutils.bvhtree import BVHTree
     bvh_c = BVHTree.FromObject(calcao, bpy.context.evaluated_depsgraph_get()); bm = bmesh.new(); mi = calcao.matrix_world.inverted()
@@ -191,6 +275,19 @@ def roupas(h, R, pos):
     me = bpy.data.meshes.new("vivo"); bm.to_mesh(me); bm.free()
     bm = bmesh.new(); bm.from_mesh(calcao.data); bm.from_mesh(me); bm.to_mesh(calcao.data); bm.free(); bpy.data.meshes.remove(me)
     pesos_do_corpo(calcao, h)
+    # abaixo do gancho a perna do calção é só da coxa (com o peso da bacia que vinha do quadril, a barra ficava pra
+    # trás quando a coxa abria e abria em leque do lado de fora); perto do gancho ela divide com a bacia
+    gs = {g.name: g for g in calcao.vertex_groups}
+    for v in calcao.data.vertices:
+        w = calcao.matrix_world @ v.co
+        if w.z > gancho: continue
+        k = min(1.0, (gancho - w.z) / 0.06); lado = "l" if w.x > 0 else "r"
+        velho = {calcao.vertex_groups[g.group].name: g.weight for g in v.groups}
+        for n in velho: gs[n].remove([v.index])
+        novo = {n: x * (1 - k) for n, x in velho.items()}; novo["thigh_" + lado] = novo.get("thigh_" + lado, 0) + k
+        tot = sum(novo.values())
+        for n, x in novo.items():
+            if x > 1e-4: gs[n].add([v.index], x / tot, "REPLACE")
     # o corpo embaixo do calção some (todo lutador usa calção): a pele não fura o pano em pose nenhuma
     bm = bmesh.new(); bm.from_mesh(h.data); mw = h.matrix_world; dom = dominante(h)
     cobre = lambda v: dom[v.index] in perna and barra + 0.035 < (mw @ v.co).z < cintura - 0.025

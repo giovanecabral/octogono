@@ -7,8 +7,9 @@
 <script type="module">
 import * as THREE from "../luta3d/vendor/three.module.js";
 import { RoomEnvironment } from "../luta3d/vendor/RoomEnvironment.js";
-import { carregarBase, carregarPecas, Lutador } from "../luta3d/lutador.js";
+import { carregarBase, carregarPecas, Lutador, raioAxila } from "../luta3d/lutador.js";
 const par = new URLSearchParams(location.search);
+if (par.get("raioaxila")) raioAxila(Number(par.get("raioaxila")));   // ?raioaxila=0.2: alcance do osso da axila (testes)
 const lista = par.get("q") ? JSON.parse(par.get("q")) : [
   { pele: "#c48a64", calcao: "#b3221b", cabelo: "militar", corCabelo: "#2a1d14", barba: "rala" },
   { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia" },
@@ -38,6 +39,19 @@ for (let k = 0; k < 20; k++) for (const L of lutadores) L.update(1 / 30);
 const camera = new THREE.PerspectiveCamera(cam === "perto" ? 6.5 : cam === "rosto" ? 18 : 30, innerWidth / innerHeight, 0.05, 50);
 const alvoY = cam === "perto" ? 1.6 : cam === "rosto" ? 1.5 : 1.05, dist = cam === "perto" ? 3.2 + n * 1.3 : cam === "rosto" ? 3.2 + n * 0.55 : 3.4 + n * 0.6;
 camera.position.set(0.25, alvoY + 0.05, dist); camera.lookAt(0, alvoY, 0);
+// ?estica=1: pinta o corpo do primeiro pelo quanto cada aresta esticou da pose do bind até a pose atual (skinning na
+// CPU): azul igual, vermelho 2x ou mais. Acha a pele que vira aba (2026-11-23)
+if (par.get("estica")) {
+  const c = lutadores[0].corpo, g = c.geometry, pos = g.attributes.position, n = pos.count;
+  if (par.get("bindpose")) c.skeleton.pose();   // conferência: na pose do bind tem que dar 1 em tudo
+  cena.updateMatrixWorld(true);
+  const bind = [], agora = []; for (let i = 0; i < n; i++) { const v = new THREE.Vector3().fromBufferAttribute(pos, i); bind.push(v.clone()); agora.push(c.applyBoneTransform(i, v)); }
+  const k = new Float32Array(n), idx = g.index.array;
+  for (let t = 0; t < idx.length; t += 3) for (const [a, b] of [[idx[t], idx[t + 1]], [idx[t + 1], idx[t + 2]], [idx[t + 2], idx[t]]]) {
+    const q = agora[a].distanceTo(agora[b]) / Math.max(1e-6, bind[a].distanceTo(bind[b])); const e = Math.max(q, 1 / q); k[a] = Math.max(k[a], e); k[b] = Math.max(k[b], e); }
+  const cor = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const x = Math.min(1, (k[i] - 1)); cor[3 * i] = x; cor[3 * i + 1] = 0.15; cor[3 * i + 2] = 1 - x; }
+  g.setAttribute("color", new THREE.BufferAttribute(cor, 3)); c.material = new THREE.MeshBasicMaterial({ vertexColors: true, wireframe: par.get("estica") === "fio" });
+}
 r.render(cena, camera);
 // ?pele=1: mostra a textura da pele pintada do primeiro lutador (pra conferir a pintura do cabelo e da barba)
 if (par.get("pele")) { const im = lutadores[0].corpo.material.map.image; r.domElement.remove(); im.style.cssText = "width:100vw;height:100vh;object-fit:contain"; document.body.appendChild(im); }

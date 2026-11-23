@@ -248,6 +248,32 @@ export function pintarCabelo(c, W, H, info, { cabelo, barba, corCabelo }) {
   // cílios: a linha escura da pálpebra de cima, fios curtos pra cima e pra fora (o olho deixa de parecer bola colada)
   pintarRegiao(c, W, H, info, CILIOS, "#1c140f", { base: 0.45, dens: 0, comp: 0.0022, alfa: 0 }, (h) => V(Math.sign(h.x) * 0.4, 1, 0.5), 15);   // linha lisa (fio riscado granulava)
 }
+/* Pintura por campo, pixel a pixel: em cada pixel dos triângulos do rosto, a posição na cabeça sai da interpolação dos
+   vértices e campo(h) devolve [r, g, b, alfa] ou null. Multiplica a pele (escurece e tinge sem apagar o relevo). */
+function pintarCampo(c, W, H, info, campo) {
+  if (typeof OffscreenCanvas !== "function") return;
+  const tela = new OffscreenCanvas(W, H), tc = tela.getContext("2d"), img = tc.createImageData(W, H), px = img.data;
+  for (let i = 0; i < px.length; i += 4) { px[i] = px[i + 1] = px[i + 2] = 255; }
+  const t = info.tri, hh = info.hh, uv = info.uv, q = V(0, 0, 0);
+  const perto = (h) => h && h.z > 0.04 && h.y > 0.05 && h.y < 0.16;
+  for (let i = 0; i < t.length; i += 3) {
+    const A = t[i], Bv = t[i + 1], D = t[i + 2];
+    if (!info.h[A] || !info.h[Bv] || !info.h[D] || (!perto(hh[A]) && !perto(hh[Bv]) && !perto(hh[D]))) continue;
+    const ax = uv[A].x * W, ay = uv[A].y * H, bx = uv[Bv].x * W, by = uv[Bv].y * H, dx = uv[D].x * W, dy = uv[D].y * H;
+    const det = (bx - ax) * (dy - ay) - (dx - ax) * (by - ay); if (Math.abs(det) < 1e-9) continue;
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, dx)) - 2), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx, dx)) + 2);
+    const y0 = Math.max(0, Math.floor(Math.min(ay, by, dy)) - 2), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by, dy)) + 2);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const cx = x + 0.5, cy = y + 0.5, l1 = ((cx - ax) * (dy - ay) - (dx - ax) * (cy - ay)) / det, l2 = ((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / det, l0 = 1 - l1 - l2;
+      if (l0 < -0.08 || l1 < -0.08 || l2 < -0.08) continue;
+      q.set(0, 0, 0).addScaledVector(hh[A], l0).addScaledVector(hh[Bv], l1).addScaledVector(hh[D], l2);
+      const v = campo(q); if (!v) continue;
+      const o = (y * W + x) * 4, a = v[3];
+      px[o] = 255 + (v[0] - 255) * a; px[o + 1] = 255 + (v[1] - 255) * a; px[o + 2] = 255 + (v[2] - 255) * a; px[o + 3] = 255;
+    }
+  }
+  tc.putImageData(img, 0, 0); c.save(); c.globalCompositeOperation = "multiply"; c.drawImage(tela, 0, 0); c.restore();
+}
 export function pintarPele(c, W, H, info, { cicatriz, tatuagem, nariz }) {
   info = Object.assign(Object.create(info), { nariz });
   if (tatuagem && TATUAGENS[tatuagem]) {
@@ -281,10 +307,18 @@ export function pintarPele(c, W, H, info, { cicatriz, tatuagem, nariz }) {
     c.lineCap = "round"; c.strokeStyle = "rgba(60,30,20,.45)"; c.lineWidth = Math.max(2, q.pxm * 0.004);
     c.beginPath(); c.moveTo(q.x - dx, q.y - dy); c.lineTo(q.x + dx, q.y + dy); c.stroke();
   });
-  if (cicatriz === "olho roxo") marca(V(0.035, 0.094, 0.098), (q) => {
-    const r = q.pxm * 0.034, g = c.createRadialGradient(q.x, q.y, r * 0.25, q.x, q.y, r);
-    g.addColorStop(0, "rgba(50,12,48,.95)"); g.addColorStop(0.5, "rgba(58,16,55,.9)"); g.addColorStop(0.8, "rgba(75,28,66,.5)"); g.addColorStop(1, "rgba(80,30,70,0)");
-    c.globalCompositeOperation = "multiply"; c.fillStyle = g; c.beginPath(); c.arc(q.x, q.y, r, 0, Math.PI * 2); c.fill();
+  // olho roxo (2026-11-23): o hematoma em volta de um olho só, pixel a pixel pela posição na cabeça. O círculo de
+  // antes era desenhado no UV, e a ilha do rosto no UV é pequena: o círculo cobria meia cara, com a costura no nariz.
+  // Elipse em volta da órbita (mais funda embaixo e no canto de fora), roxo no meio, vinho e uma borda amarelada.
+  if (cicatriz === "olho roxo") pintarCampo(c, W, H, info, (h) => {
+    if (h.z < 0.06 || h.x < 0) return null;
+    const dx = (h.x - 0.036) / 0.027, dy = (h.y - 0.106) / (h.y < 0.106 ? 0.024 : 0.017), d = Math.hypot(dx, dy);
+    if (d >= 1) return null;
+    const k = 1 - d, a = Math.min(1, k * 2.2) * 0.78;
+    // centro roxo escuro, depois vinho, e um anel amarelado na borda (sangue velho)
+    if (d < 0.55) return [74, 34, 72, a];
+    if (d < 0.8) return [112, 46, 70, a * 0.85];
+    return [196, 170, 96, a * 0.5];
   });
 }
 
@@ -294,9 +328,11 @@ export function infoDoCorpo(corpo) {
   const sk = corpo.skeleton, iH = sk.bones.findIndex((b) => b.name === "Head"), inv = sk.boneInverses[iH];
   const info = { p: [], h: [], hh: [], uv: [], tri: g.index ? Array.from(g.index.array) : [...Array(pos.count).keys()] };
   for (let i = 0; i < pos.count; i++) {
-    const p = V().fromBufferAttribute(pos, i).applyMatrix4(corpo.bindMatrix);
+    // p: o ponto no corpo em repouso (T), pras regiões da tatuagem; ph: no espaço da cabeça, pelo bind do próprio corpo
+    // (desde 2026-11-23 o corpo é amarrado na pose em que foi esculpido, não na T)
+    const pb = V().fromBufferAttribute(pos, i), p = corpo.applyBoneTransform(i, pb.clone()).applyMatrix4(corpo.bindMatrix);
     let w = 0; for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === iH) w += sw.getComponent(i, k);
-    const ph = p.clone().applyMatrix4(inv);
+    const ph = pb.applyMatrix4(corpo.bindMatrix).applyMatrix4(inv);
     info.p.push(p); info.h.push(w > 0.5 ? ph : null); info.hh.push(ph); info.uv.push(new THREE.Vector2(uv.getX(i), uv.getY(i)));
   }
   // orelha: o ponto mais pra fora (x) da cabeça na altura dos olhos

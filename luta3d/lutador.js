@@ -72,9 +72,14 @@ export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir 
   // o corpo em repouso (pra pintar a pele e achar a orelha) e a passagem do corpo pro espaço do osso da cabeça
   let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpoPele = o; });
   const { info, orelha } = infoDoCorpo(corpoPele);
-  const iH = corpoPele.skeleton.bones.findIndex((b) => b.name === "Head");
-  const paraCabeca = new THREE.Matrix4().multiplyMatrices(corpoPele.skeleton.boneInverses[iH], corpoPele.bindMatrix);
-  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir };
+  const axila = prepararAxila(corpoPele);
+  // cabelo e roupa de cabeça vêm em coordenadas do corpo em T: vão pro espaço da cabeça pelo bind em T (o do calção;
+  // o corpo tem bind próprio, na pose em que foi esculpido)
+  let malhaT = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Calcao") malhaT = o; });
+  malhaT = malhaT || corpoPele;
+  const iH = malhaT.skeleton.bones.findIndex((b) => b.name === "Head");
+  const paraCabeca = new THREE.Matrix4().multiplyMatrices(malhaT.skeleton.boneInverses[iH], malhaT.bindMatrix);
+  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir, axila };
 }
 /* Cabelo e roupa: um GLB por peça em pecas/ (cortes só com a geometria; roupas de corpo com pesos),
    baixados só os da luta, e as texturas de fios e de cachos uma vez. Falhou: o lutador fica com a pintura na pele
@@ -194,7 +199,7 @@ function vestir(lutador, base, opt) {
       const mat = materialDaRoupa(n, p.mat, opt, base);
       let m;
       if (p.cabeca) { m = new THREE.Mesh(p.geo, mat); lutador.ossos.Head.add(m); }
-      else { m = new THREE.SkinnedMesh(p.geo, mat); m.bind(lutador.corpo.skeleton, lutador.corpo.bindMatrix); lutador.corpo.parent.add(m); }
+      else { const T = lutador.malhaT || lutador.corpo; m = new THREE.SkinnedMesh(p.geo, mat); m.bind(T.skeleton, T.bindMatrix); lutador.corpo.parent.add(m); peleDQ(m); }   // roupa feita no corpo em T: bind em T
       m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
       (n === "roupa_prajiad" || n === "roupa_arbitro" ? out.fixas : out.entrada).push(m);
     }
@@ -206,14 +211,22 @@ function vestir(lutador, base, opt) {
    não é desenhada enquanto ela está vestida: os triângulos só do tronco, do ombro, do braço e do começo do antebraço
    (longe do punho, da barra e da gola). Geometria nova com os mesmos atributos e só o índice filtrado; o corpo de
    sempre volta quando a roupa sai. */
-const COBERTO = { capuz: { ossos: ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"], antebraco: 0.55 } };
+const OSSOS_TRONCO_BRACO = ["spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "axila_l", "axila_r", "lowerarm_l", "lowerarm_r"];
+// roupão e quimono (2026-11-23) são abertos na frente: só as costas (atrás da pelve) e os braços somem; o corpo
+// amarrado na pose da escultura furava as costas deles na guarda
+const ABERTO = { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55, costas: true };
+const COBERTO = { capuz: { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55 }, "roupão": ABERTO, kimono: ABERTO };
 export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
   const ossos = skeleton.bones.map((b) => b.name), em = new Set(regra.ossos.map((n) => ossos.indexOf(n)).filter((i) => i >= 0));
   const bindPos = (n) => ossos.includes(n) ? new THREE.Vector3().setFromMatrixPosition(skeleton.boneInverses[ossos.indexOf(n)].clone().invert()) : null;
   const pelve = bindPos("pelvis"), pescoco = bindPos("neck_01");
   const braco = { l: [bindPos("lowerarm_l"), bindPos("hand_l")], r: [bindPos("lowerarm_r"), bindPos("hand_r")] };   // (osso que falta: nada daquele lado some)
   const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, v = new THREE.Vector3();
-  const coberto = new Uint8Array(pos.count);
+  const coberto = new Uint8Array(pos.count), braco_ = new Set();
+  if (regra.costas) {   // vértice que é quase todo do braço (úmero, axila, antebraço) some inteiro, na frente também
+    const ib = new Set(["upperarm_l", "upperarm_r", "axila_l", "axila_r", "lowerarm_l", "lowerarm_r"].map((n) => ossos.indexOf(n)));
+    for (let i = 0; i < pos.count; i++) { let w = 0; for (let k = 0; k < 4; k++) if (ib.has(si.getComponent(i, k))) w += sw.getComponent(i, k); if (w > 0.6) braco_.add(i); }
+  }
   for (let i = 0; i < pos.count; i++) {
     let dentro = 0, ante = null;
     for (let k = 0; k < 4; k++) {
@@ -223,6 +236,7 @@ export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
     if (dentro < 0.9) continue;   // (o corpo escaneado espalha um pouco de peso pra pelve e pescoço; as bordas ficam pela altura)
     v.fromBufferAttribute(pos, i).applyMatrix4(bindMatrix);
     if (v.y < pelve.y + 0.03 || v.y > pescoco.y - 0.025) continue;
+    if (regra.costas && !ante && !braco_.has(i) && v.z > pelve.z - 0.01) continue;   // aberto na frente: o peito fica
     if (ante) { const [a, b] = braco[ante]; if (!a || !b) continue; const ab = b.clone().sub(a); if (v.clone().sub(a).dot(ab) / ab.lengthSq() > regra.antebraco) continue; }
     coberto[i] = 1;
   }
@@ -315,6 +329,101 @@ function materialDoFio(base, cor) {
     roughness: 0.55, specularIntensity: 0.35, anisotropy: 0.7, anisotropyRotation: Math.PI / 2, envMapIntensity: 0.25 });
 }
 
+/* ---------- osso da axila (2026-11-23) ----------
+   Braço erguido gira o úmero uns 150 graus a partir da pose da escultura; a pele entre o braço e o tronco, que mistura
+   os dois, achatava numa aba (skinning linear) ou inchava em asas (quatérnio duplo). Como nos rigs de jogo, um osso
+   auxiliar em cada ombro gira a metade do que o braço gira (filho da clavícula, no lugar do úmero) e fica com a faixa
+   de transição: quem era metade braço e metade tronco vira todo dele, e cada mistura que sobra cobre só a metade do
+   ângulo. Só no corpo e só no jogo: o esqueleto das animações não muda. */
+let RAIO_AXILA = 0.3;   // até onde (do ombro, no bind) a pele de transição passa pro osso da axila
+export function raioAxila(r) { RAIO_AXILA = r; }
+export function prepararAxila(corpo) {
+  const sk = corpo.skeleton, nomes = sk.bones.map((b) => b.name), nb = nomes.length, out = { nb, lados: [] };
+  const g = corpo.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const Wb = (i) => sk.boneInverses[i].clone().invert();   // o osso na pose do bind do corpo
+  ["l", "r"].forEach((s, k) => {
+    const iU = nomes.indexOf("upperarm_" + s), iC = nomes.indexOf("clavicle_" + s);
+    if (iU < 0 || iC < 0) return;
+    const local = Wb(iC).invert().multiply(Wb(iU)), p = new THREE.Vector3(), q = new THREE.Quaternion(); local.decompose(p, q, new THREE.Vector3());
+    const resto = new Set(nomes.map((n, i) => [n, i]).filter(([n]) => n.endsWith("_" + s) && /^(lowerarm|hand|thumb|index|middle|ring|pinky)/.test(n)).map(([, i]) => i));
+    const iA = nb + k, ombro = new THREE.Vector3().setFromMatrixPosition(Wb(iU)), pos = g.attributes.position, pv = new THREE.Vector3();
+    for (let v = 0; v < si.count; v++) {
+      if (pv.fromBufferAttribute(pos, v).applyMatrix4(corpo.bindMatrix).distanceTo(ombro) > RAIO_AXILA) continue;   // só a região do ombro
+      let u = 0, baixo = 0; const ws = [];
+      for (let c = 0; c < 4; c++) { const i = si.getComponent(v, c), w = sw.getComponent(v, c); if (w <= 0) continue; if (i === iU) u += w; else { if (resto.has(i)) baixo += w; ws.push([i, w]); } }
+      if (u <= 0.002 || u >= 0.998 || baixo > 0.02) continue;
+      // u <= 1/2: axila 2u e o tronco o resto; u > 1/2: axila 2 - 2u e o úmero 2u - 1
+      const ax = u <= 0.5 ? 2 * u : 2 - 2 * u, up = Math.max(0, 2 * u - 1), outros = Math.max(0, 1 - 2 * u), so = ws.reduce((a, [, w]) => a + w, 0);
+      const novo = [[iA, ax], [iU, up], ...ws.map(([i, w]) => [i, so > 0 ? (w * outros) / so : 0])].filter(([, w]) => w > 1e-4).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      const tot = novo.reduce((a, [, w]) => a + w, 0);
+      for (let c = 0; c < 4; c++) { si.setComponent(v, c, novo[c] ? novo[c][0] : 0); sw.setComponent(v, c, novo[c] ? novo[c][1] / tot : 0); }
+    }
+    out.lados.push({ s, iU, pos: p, bindQ: q });
+  });
+  si.needsUpdate = sw.needsUpdate = true;
+  return out;
+}
+/* ---------- pele por quatérnio duplo (2026-11-23) ----------
+   O skinning padrão (mistura linear das matrizes dos ossos) achata a pele onde dois ossos que giram muito se
+   misturam: o braço erguido puxava uma aba da axila até o peito, o peito empolava com o braço na guarda e o antebraço
+   torcia feito embrulho de bala. Como nos jogos, a rotação de cada osso é misturada como quatérnio duplo (gira em
+   vez de encolher). O alongamento do porte (aplicarPorte, escala por osso) continua linear, antes da rotação. Vale
+   pro corpo e pra tudo que veste em cima dele (calção, luva, roupa), senão o pano descola da pele. */
+const DQ_FUNCOES = `
+void dqOsso(mat4 m, float w, vec4 r0, inout vec4 r, inout vec4 d, inout mat3 k) {
+  vec3 a0 = m[0].xyz, a1 = m[1].xyz, a2 = m[2].xyz;
+  vec3 c0 = normalize(a0), c1 = normalize(a1 - dot(a1, c0) * c0), c2 = cross(c0, c1);
+  mat3 R = mat3(c0, c1, c2);
+  k += w * (transpose(R) * mat3(a0, a1, a2));
+  float tr = R[0][0] + R[1][1] + R[2][2]; vec4 q;
+  if (tr > 0.0) { float s = sqrt(tr + 1.0) * 2.0; q = vec4((R[1][2] - R[2][1]) / s, (R[2][0] - R[0][2]) / s, (R[0][1] - R[1][0]) / s, 0.25 * s); }
+  else if (R[0][0] > R[1][1] && R[0][0] > R[2][2]) { float s = sqrt(1.0 + R[0][0] - R[1][1] - R[2][2]) * 2.0; q = vec4(0.25 * s, (R[1][0] + R[0][1]) / s, (R[2][0] + R[0][2]) / s, (R[1][2] - R[2][1]) / s); }
+  else if (R[1][1] > R[2][2]) { float s = sqrt(1.0 + R[1][1] - R[0][0] - R[2][2]) * 2.0; q = vec4((R[1][0] + R[0][1]) / s, 0.25 * s, (R[2][1] + R[1][2]) / s, (R[2][0] - R[0][2]) / s); }
+  else { float s = sqrt(1.0 + R[2][2] - R[0][0] - R[1][1]) * 2.0; q = vec4((R[2][0] + R[0][2]) / s, (R[2][1] + R[1][2]) / s, 0.25 * s, (R[0][1] - R[1][0]) / s); }
+  if (dot(q, r0) < 0.0) q = -q;   // mesmo hemisfério do primeiro osso (senão a mistura dá a volta longa)
+  vec3 t = m[3].xyz;
+  vec4 dq = 0.5 * vec4(q.w * t + cross(t, q.xyz), -dot(t, q.xyz));
+  r += w * q; d += w * dq;
+}
+vec3 dqGirar(vec4 r, vec3 v) { return v + 2.0 * cross(r.xyz, cross(r.xyz, v) + r.w * v); }
+`;
+let DQ_MISTURA = 0.5;   // 1 = só quatérnio duplo (incha o dorsal com o braço em cima), 0 = só linear (achata)
+export function misturaDQ(k) { DQ_MISTURA = k; }
+function comDQ(mat) {
+  const k = DQ_MISTURA.toFixed(3);
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <skinning_pars_vertex>", "#include <skinning_pars_vertex>\n#ifdef USE_SKINNING\n" + DQ_FUNCOES + "#endif")
+      .replace("#include <skinbase_vertex>", `#include <skinbase_vertex>
+#ifdef USE_SKINNING
+  vec4 dqR = vec4(0.0), dqD = vec4(0.0); mat3 dqK = mat3(0.0);
+  vec4 dqR0 = vec4(0.0); { vec4 rr = vec4(0.0), dd = vec4(0.0); mat3 kk = mat3(0.0); dqOsso(boneMatX, 1.0, vec4(0.0, 0.0, 0.0, 1.0), rr, dd, kk); dqR0 = rr; }
+  dqOsso(boneMatX, skinWeight.x, dqR0, dqR, dqD, dqK); dqOsso(boneMatY, skinWeight.y, dqR0, dqR, dqD, dqK);
+  dqOsso(boneMatZ, skinWeight.z, dqR0, dqR, dqD, dqK); dqOsso(boneMatW, skinWeight.w, dqR0, dqR, dqD, dqK);
+  float dqN = length(dqR); dqR /= dqN; dqD /= dqN;
+  vec3 dqT = 2.0 * (dqR.w * dqD.xyz - dqD.w * dqR.xyz + cross(dqR.xyz, dqD.xyz));
+#endif`)
+      .replace("#include <skinnormal_vertex>", `#ifdef USE_SKINNING
+  mat4 dqLin = bindMatrixInverse * (skinWeight.x * boneMatX + skinWeight.y * boneMatY + skinWeight.z * boneMatZ + skinWeight.w * boneMatW) * bindMatrix;
+  objectNormal = mix((dqLin * vec4(objectNormal, 0.0)).xyz, mat3(bindMatrixInverse) * dqGirar(dqR, mat3(bindMatrix) * objectNormal), ${k});
+  #ifdef USE_TANGENT
+  objectTangent = mix((dqLin * vec4(objectTangent, 0.0)).xyz, mat3(bindMatrixInverse) * dqGirar(dqR, mat3(bindMatrix) * objectTangent), ${k});
+  #endif
+#endif`)
+      .replace("#include <skinning_vertex>", `#ifdef USE_SKINNING
+  vec3 dqP = (bindMatrixInverse * vec4(dqGirar(dqR, dqK * (bindMatrix * vec4(transformed, 1.0)).xyz) + dqT, 1.0)).xyz;
+  vec3 linP = (bindMatrixInverse * (skinWeight.x * boneMatX + skinWeight.y * boneMatY + skinWeight.z * boneMatZ + skinWeight.w * boneMatW) * bindMatrix * vec4(transformed, 1.0)).xyz;
+  transformed = mix(linP, dqP, ${k});
+#endif`);
+  };
+  mat.customProgramCacheKey = () => "dq" + k;
+  return mat;
+}
+export function peleDQ(m) {   // a malha e a sombra dela
+  if (!m.isSkinnedMesh) return;
+  comDQ(m.material);
+  m.customDepthMaterial = comDQ(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
+}
 /* ---------- o lutador ---------- */
 export class Lutador {
   constructor(base, opt) {
@@ -345,12 +454,14 @@ export class Lutador {
         // olho úmido: verniz forte e quase sem aspereza (a bola fosca parecia de boneco)
         if (o.material.name === "MI_Eyes") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Eyes", map: o.material.map, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.6 });
         // calção de poliéster (trama fina), elástico canelado, luva de couro (verniz leve) e o velcro áspero
+        if (o.material.name === "MI_Calcao") this.malhaT = o;   // bind em T (o das roupas)
         if (o.material.name === "MI_Calcao") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b"), roughness: 0.7 }, comTrama(90, 0.35));
         if (o.material.name === "MI_Faixa") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b").multiplyScalar(0.25), roughness: 0.85 }, comTrama(160, 0.8));
         if (o.material.name === "MI_Luva") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Luva", color: new THREE.Color(opt.luva || "#141416"), roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.45 });
         // o árbitro não usa luva (semLuva): a mão do corpo aparece (2026-11-21, print do dono: o árbitro de luva de MMA)
         if (opt.semLuva && (o.material.name === "MI_Luva" || o.material.name === "MI_Punho")) o.visible = false;
         if (o.material.name === "MI_Punho") Object.assign(o.material, { color: new THREE.Color(opt.luva || "#141416").lerp(new THREE.Color("#4a4b52"), 0.35), roughness: 0.92 }, comTrama(200, 0.5));   // velcro um tom mais claro
+        if (!opt.linear) peleDQ(o);
       }
     });
     // cabelo e orelha presos ao osso da cabeça
@@ -364,6 +475,18 @@ export class Lutador {
       m.castShadow = true; m.receiveShadow = true; this.ossos.Head.add(m);
       if (!pelo) this.cabeloMalhas.push(m);
     }
+    // osso da axila (prepararAxila): filho da clavícula, gira metade do úmero; o corpo ganha um esqueleto com os dois
+    this.axilas = [];
+    if (this.corpo && base.axila && base.axila.lados.length) {
+      const sk = this.corpo.skeleton, ossos = sk.bones.slice(), inv = sk.boneInverses.slice();
+      for (const l of base.axila.lados) {
+        const o = new THREE.Bone(); o.name = "axila_" + l.s; o.position.copy(l.pos); o.quaternion.copy(l.bindQ);
+        this.ossos["clavicle_" + l.s].add(o); ossos.push(o); inv.push(sk.boneInverses[l.iU].clone());
+        this.axilas.push({ o, umero: this.ossos["upperarm_" + l.s], bindQ: l.bindQ });
+      }
+      this.corpo.bind(new THREE.Skeleton(ossos, inv), this.corpo.bindMatrix);
+    }
+    if (location.search.includes("cinza")) { const m = comDQ(new THREE.MeshStandardMaterial({ color: "#8a817a", roughness: 0.6 })); this.corpo.material = m; }
     aplicarPorte(this.ossos, opt.porte);
     this.roupa = vestir(this, base, opt);
     this.vestido = this.roupa.entrada.length > 0;
@@ -688,6 +811,8 @@ export class Lutador {
       if (Math.abs(m.ang) < 0.0005 && Math.abs(m.vel) < 0.01) { this.molas.splice(this.molas.indexOf(m), 1); continue; }
       this.girarMundo(this.ossos[m.osso], m.eixo, m.ang);
     }
+    // a axila acompanha a metade do úmero (depois do clipe, do IK e das molas)
+    for (const a of this.axilas) { a.o.quaternion.copy(a.bindQ).slerp(a.umero.quaternion, 0.5); a.o.position.copy(a.umero.position); }
   }
   girarMundo(osso, eixo, ang) {
     if (!osso || !ang) return;

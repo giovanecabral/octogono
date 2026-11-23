@@ -6484,17 +6484,69 @@ roupa").**
     ele erguido) e a mão do árbitro encosta no antebraço logo abaixo da luva,
     a palma virada pra ele e os dedos dando a volta pela frente
     (`orientarMao`, pelos ossos dos dedos, sem supor eixo).
-  - *Limite que fica: a axila com o braço erguido.* O corpo foi esculpido com
-    os braços pra baixo e gravado em T, e a axila tem um anel só de triângulos
-    ligando a parte de dentro do braço à parede do peito (no wireframe da pose
-    de descanso a "teia" aparece). Acima de uns 110 graus esse anel estica
-    numa aba fina embaixo do braço. Testados e descartados (não mudam a aba):
-    pesos em arco em volta da axila, suavização dos pesos pelo grafo,
-    transferência do dorsal pra coluna, ritmo maior da clavícula, braço pela
-    frente ou em diagonal e uma forma corretiva por pose (o giro em arco, o
-    que um dual quaternion faria). Resolver é refazer a malha da axila (mais
-    anéis entre o braço e o peito), fora desta etapa (o dono pediu pra não
-    mexer no corpo).
+  - *A axila com o braço erguido* ficou de limite nesta auditoria; a causa de
+    verdade (não era a malha) e a correção estão no item seguinte.
+- *Revamp do corpo (2026-11-23, pedido do dono depois de jogar: "peito mal
+  formado", "pele puxando embaixo dos braços", "braços tortos", "calções
+  parecendo mini-saias", "olho roxo em metade do rosto").* Medido com
+  `ferramentas/poses3d.mjs` e `ferramentas/retrato3d.html` (`?estica=1` pinta
+  o quanto cada aresta esticou do bind até a pose; `?estica=1&bindpose=1` tem
+  que dar tudo azul). Causas e correções:
+  - *O corpo era deformado duas vezes.* A escultura tem o braço caído (pose
+    A); o gerador dobrava a malha pra T com os pesos e o jogo deformava de
+    novo da T pra pose da luta. Cada dobra mistura os ossos: o peito subia
+    feito prateleira e a axila esticava. Agora a malha vai pro GLB na pose da
+    escultura (`corpo.py` guarda os vértices e o delta de cada osso,
+    `bind_corpo.json`) e o transplante dá ao corpo uma pele própria (as mesmas
+    juntas, bind = Wn⁻¹ · delta · malha). Calção, luva, olho, cabelo e roupas
+    continuam feitos e amarrados em T: o jogo amarra as roupas no esqueleto do
+    calção (`malhaT`), o cabelo vai pra cabeça pelo bind em T e as regiões da
+    tatuagem usam o corpo em repouso (`applyBoneTransform`).
+  - *O peso do braço vazava pelo ar.* Com o braço junto do corpo, a passagem
+    de pesos por proximidade dava peso do braço ao flanco até a cintura (o
+    braço erguido puxava uma aba da axila ao quadril) e peso de uma coxa à
+    outra. `membros_por_difusao` (`hbm_trocar.py`): o peso do membro é a
+    solução de Laplace na malha (média dos vizinhos por aresta), 1 no membro
+    (do meio do osso pra baixo, dentro do raio) e 0 no tronco longe da junta,
+    no outro lado e na pele que olha pro membro (a normal separa o dorsal da
+    parte de dentro do braço). O caminho é a pele: pela axila e pelo
+    deltoide, nunca pelo vão. Testados e descartados: pesos do calor do
+    Blender (estragam o rosto e vazam igual) e a regra de núcleo pela normal
+    (borda dura na axila).
+  - *Braço todo pra cima* gira o úmero uns 150 graus a partir da escultura:
+    a pele de transição achatava (skinning linear) ou inchava em asas
+    (quatérnio duplo). Osso da axila (`prepararAxila`, só no jogo): filho da
+    clavícula no lugar do úmero, gira a metade do braço (`slerp` 0,5 no fim do
+    `update`) e fica com a pele meio braço e meio tronco do ombro (u até 1/2:
+    axila 2u; acima: axila 2 - 2u e úmero 2u - 1; nada do cotovelo pra
+    baixo). O esqueleto das animações não muda.
+  - *Pele por quatérnio duplo misturada ao linear* (`peleDQ`/`comDQ`, no
+    corpo, no calção, na luva, nas roupas e na sombra): o linear encolhe nas
+    juntas e o quatérnio duplo incha; `DQ_MISTURA` 0,5 foi o melhor nas fotos
+    (1 inchava o dorsal com os dois braços em cima). O porte (escala por osso)
+    continua linear, antes da rotação.
+  - *Calção que parecia saia*: era a casca da pele das coxas, que se encostam
+    na escultura; abrindo as pernas o pano entre elas virava membrana. Agora
+    `calcao_modelado` (`roupas.py`): três tubos medidos por raios no corpo (a
+    bacia e uma perna em volta de cada coxa, mais solta na barra e do lado de
+    fora, nunca passando do meio), unidos por remesh de voxel (gancho liso),
+    cortados na cintura e no meio da coxa, com a trama na densidade da pele.
+    Abaixo do gancho a perna do calção é só da coxa (com o peso da bacia a
+    barra abria em leque).
+  - *Olho roxo em meia cara*: o círculo era desenhado no UV, e a ilha do rosto
+    no UV é pequena (cada metade da cara é uma ilha). Agora `pintarCampo`
+    pinta pixel a pixel pela posição na cabeça: elipse em volta de uma órbita,
+    roxo, vinho e a borda amarelada.
+  - *Buracos do cozimento da pele* (o raio não achou o corpo de origem: axila,
+    ombro, dedos) eram a cor média, clara, e viravam mancha. Agora é Laplace a
+    partir da pele em volta, só dentro da ilha do UV (máscara de cobertura
+    cozida do próprio corpo): espalhar a cor vizinha anel por anel puxava a
+    borda escura em listras (uma mancha no ombro).
+  - Roupão e quimono escondem a pele das costas e dos braços (`ABERTO`, o
+    peito fica na abertura): o corpo novo furava as costas deles na guarda.
+  - Fica: com a guarda de perfil, uma lasca pequena na dobra de trás da axila
+    (o mapa de esticamento mostra 2x ali); não some com nenhuma regra de peso
+    testada nem com o alcance do osso da axila.
 - *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
   ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
   ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).

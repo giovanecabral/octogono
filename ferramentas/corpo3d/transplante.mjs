@@ -3,7 +3,9 @@
 import fs from "node:fs";
 const T = await import(new URL("../../luta3d/vendor/three.module.js", import.meta.url).href);
 const { lerGLB } = await import(new URL("../converter-mixamo.mjs", import.meta.url).href);
-const [entrada, modelo, saida] = process.argv.slice(2);
+const [entrada, modelo, saida, bindCorpo] = process.argv.slice(2);
+// bind_corpo.json (corpo.py): o quanto cada osso andou da pose da escultura até a T, no mundo do Blender
+const DELTA = bindCorpo && fs.existsSync(bindCorpo) ? JSON.parse(fs.readFileSync(bindCorpo, "utf8")) : null;
 let DESLOCA = null;   // deslocamento do pivô da cabeça (espaço do osso Head), medido na primeira passada
 function gerar() {
   const N = lerGLB(entrada), Q = lerGLB(modelo);
@@ -30,6 +32,7 @@ function gerar() {
     if (nome === "Head" && DESLOCA) p2.add(new T.Vector3(...DESLOCA).applyQuaternion(r));
     Wn[j] = new T.Matrix4().compose(nome === "root" ? p : p2, r, s);
   }
+  const ORIGINAL = Object.fromEntries(skin.joints.map((j) => [j, N.json.nodes[j].name]));   // nome do Blender (o delta usa)
   for (const j of skin.joints) {
     const n = N.json.nodes[j], pi = mn.pai[j], base = Wn[pi] || mn.W[pi] || new T.Matrix4();
     const L = base.clone().invert().multiply(Wn[j]), p = new T.Vector3(), r = new T.Quaternion(), s = new T.Vector3();
@@ -46,7 +49,25 @@ function gerar() {
     const ibm = Wn[j].clone().invert().multiply(Mm);
     ibm.elements.forEach((x, e) => N.bin.writeFloatLE(x, off + (k * 16 + e) * 4));
   });
-  // todas as malhas com pele usam o mesmo esqueleto
+  // o corpo (2026-11-23) tem a pele própria: as mesmas juntas, com o bind na pose em que foi esculpido. As outras
+  // malhas (calção, luva, olho) continuam com o bind em T. Bind da escultura = Wn^-1 · delta(T <- escultura) · malha.
+  if (DELTA) {
+    const C = new T.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1), Ci = C.clone().invert();   // Blender (z pra cima) -> glTF
+    const no = N.json.nodes.findIndex((n) => n.skin === 0 && n.mesh != null && N.json.meshes[n.mesh].name === "corpo");
+    if (no < 0) throw new Error("corpo sem nó com pele");
+    const buf = Buffer.alloc(skin.joints.length * 64);
+    skin.joints.forEach((j, k) => {
+      const d = DELTA[ORIGINAL[j]], P = d ? C.clone().multiply(new T.Matrix4().set(...d.flat())).multiply(Ci) : new T.Matrix4();
+      Wn[j].clone().invert().multiply(P).multiply(mn.W[no]).elements.forEach((x, e) => buf.writeFloatLE(x, (k * 16 + e) * 4));
+    });
+    const ini = Math.ceil(N.bin.length / 4) * 4;
+    N.bin = Buffer.concat([N.bin, Buffer.alloc(ini - N.bin.length), buf]); N.json.buffers[0].byteLength = N.bin.length;
+    N.json.bufferViews.push({ buffer: 0, byteOffset: ini, byteLength: buf.length });
+    N.json.accessors.push({ bufferView: N.json.bufferViews.length - 1, componentType: 5126, count: skin.joints.length, type: "MAT4" });
+    N.json.skins.push({ ...skin, name: "corpo", inverseBindMatrices: N.json.accessors.length - 1 });
+    N.json.nodes[no].skin = N.json.skins.length - 1;
+  }
+  // as outras malhas com pele usam o mesmo esqueleto
   const js = Buffer.from(JSON.stringify(N.json)); const pad = (b, c) => Buffer.concat([b, Buffer.alloc((4 - (b.length % 4)) % 4, c)]);
   const J = pad(js, 0x20), B = pad(N.bin, 0);
   const h = Buffer.alloc(12); h.writeUInt32LE(0x46546c67, 0); h.writeUInt32LE(2, 4); h.writeUInt32LE(12 + 8 + J.length + 8 + B.length, 8);
