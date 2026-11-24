@@ -72,14 +72,16 @@ export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir 
   // o corpo em repouso (pra pintar a pele e achar a orelha) e a passagem do corpo pro espaço do osso da cabeça
   let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpoPele = o; });
   const { info, orelha } = infoDoCorpo(corpoPele);
-  const axila = prepararAxila(corpoPele);
+  const axila = prepararAxila(corpoPele), ombro = prepararOmbro(corpoPele);
+  // escápula e torção nos pesos de toda malha com pele do GLB (corpo, calção, luva, punho), cada uma no bind dela
+  corpo.scene.traverse((o) => { if (o.isSkinnedMesh) pesosDoOmbro(o.geometry, o.skeleton, o.bindMatrix, o === corpoPele); });
   // cabelo e roupa de cabeça vêm em coordenadas do corpo em T: vão pro espaço da cabeça pelo bind em T (o do calção;
   // o corpo tem bind próprio, na pose em que foi esculpido)
   let malhaT = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Calcao") malhaT = o; });
   malhaT = malhaT || corpoPele;
   const iH = malhaT.skeleton.bones.findIndex((b) => b.name === "Head");
   const paraCabeca = new THREE.Matrix4().multiplyMatrices(malhaT.skeleton.boneInverses[iH], malhaT.bindMatrix);
-  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir, axila };
+  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir, axila, ombro };
 }
 /* Cabelo e roupa: um GLB por peça em pecas/ (cortes só com a geometria; roupas de corpo com pesos),
    baixados só os da luta, e as texturas de fios e de cachos uma vez. Falhou: o lutador fica com a pintura na pele
@@ -220,7 +222,9 @@ const ABERTO = { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55, costas: true };
 const ARBITRO = { ossos: OSSOS_TRONCO_BRACO.filter((n) => !n.startsWith("lowerarm")).concat(["neck_01", "thigh_l", "thigh_r", "calf_l", "calf_r"]), umero: 0.52, perna: 0.8, ombro: true };
 export const COBERTO = { capuz: { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55 }, "roupão": ABERTO, kimono: ABERTO, arbitro: ARBITRO };
 export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
-  const ossos = skeleton.bones.map((b) => b.name), em = new Set(regra.ossos.map((n) => ossos.indexOf(n)).filter((i) => i >= 0));
+  // os ossos auxiliares do ombro contam como o osso que eles seguem (a escápula é do tronco)
+  const ossos = skeleton.bones.map((b) => b.name.replace(/^umero_giro_/, "upperarm_").replace(/^antebraco_giro_/, "lowerarm_").replace(/^escapula_[lr]$/, "spine_03"));
+  const em = new Set(ossos.map((n, i) => (regra.ossos.includes(n) ? i : -1)).filter((i) => i >= 0));
   const bindPos = (n) => ossos.includes(n) ? new THREE.Vector3().setFromMatrixPosition(skeleton.boneInverses[ossos.indexOf(n)].clone().invert()) : null;
   const pelve = bindPos("pelvis"), pescoco = bindPos("neck_01");
   const braco = { l: [bindPos("lowerarm_l"), bindPos("hand_l")], r: [bindPos("lowerarm_r"), bindPos("hand_r")] };   // (osso que falta: nada daquele lado some)
@@ -230,7 +234,7 @@ export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
   const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, v = new THREE.Vector3();
   const coberto = new Uint8Array(pos.count), braco_ = new Set();
   if (regra.costas) {   // vértice que é quase todo do braço (úmero, axila, antebraço) some inteiro, na frente também
-    const ib = new Set(["upperarm_l", "upperarm_r", "axila_l", "axila_r", "lowerarm_l", "lowerarm_r"].map((n) => ossos.indexOf(n)));
+    const ib = new Set(ossos.map((n, i) => (["upperarm_l", "upperarm_r", "axila_l", "axila_r", "lowerarm_l", "lowerarm_r"].includes(n) ? i : -1)).filter((i) => i >= 0));
     for (let i = 0; i < pos.count; i++) { let w = 0; for (let k = 0; k < 4; k++) if (ib.has(si.getComponent(i, k))) w += sw.getComponent(i, k); if (w > 0.6) braco_.add(i); }
   }
   for (let i = 0; i < pos.count; i++) {
@@ -332,7 +336,7 @@ function pecasDeRoupa(o) {
 const NOME_OSSO = { head: "Head", Root: "root" };
 function partesDaRoupa(base, g, n) {
   const partes = []; g.scene.updateMatrixWorld(true);
-  let corpo = null; base.corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpo = o; });
+  let corpo = null, calcao = null; base.corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpo = o; if (o.isSkinnedMesh && o.material.name === "MI_Calcao") calcao = o; });
   const ossos = corpo.skeleton.bones.map((b) => b.name), paraLocal = corpo.bindMatrix.clone().invert();
   g.scene.traverse((o) => {
     if (!o.isMesh) return;
@@ -343,7 +347,8 @@ function partesDaRoupa(base, g, n) {
     const novo = new Uint16Array(si.count * 4);
     for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) novo[i * 4 + k] = Math.max(0, mapa[si.getComponent(i, k)]);
     geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(novo, 4));
-    partes.push({ geo: geo.applyMatrix4(paraLocal), mat });
+    geo.applyMatrix4(paraLocal); if (calcao) pesosDoOmbro(geo, calcao.skeleton, calcao.bindMatrix);   // escápula e torção, no bind em T
+    partes.push({ geo, mat });
   });
   return partes;
 }
@@ -407,6 +412,143 @@ export function prepararAxila(corpo) {
   si.needsUpdate = sw.needsUpdate = true;
   return out;
 }
+/* ---------- ombro e braço: escápula, ritmo e torção (Passo 2 da anatomia, 2026-11-23) ----------
+   Diagnóstico aprovado pelo dono: o calombo da escápula era a pele das costas presa à coluna (spine_03, parada)
+   enquanto a borda de fora ia com a axila; o braço erguido "saía do pescoço" porque a clavícula subia só 17 graus;
+   e sem osso de torção o giro do pulso ficava todo na mão (o antebraço torcia como embrulho de bala) e o do úmero
+   torcia o deltoide. Como nos rigs de jogo, ossos auxiliares criados no jogo (as animações não mudam):
+   - escapula_l/r: filha do tronco (spine_03), no meio da escápula; segue uma fração da clavícula em volta da junta
+     do esterno (RITMO.segue: filha da clavícula, a protração da guarda marcava as costas) e roda pra cima com a
+     elevação do úmero (RITMO); leva a pele das costas sobre ela (a parte da coluna que a máscara cobre);
+   - umero_giro_l/r: filho do úmero, desfaz a torção dele: a pele vai de 0% da torção no ombro a 100% no cotovelo;
+   - antebraco_giro_l/r: filho do antebraço, leva a torção da mão: 0% no cotovelo, 100% no pulso.
+   Toda malha com pele (corpo, calção, luva, punho, roupas) ganha os mesmos ossos, no fim do esqueleto, na ordem
+   de AJUDANTES; os pesos de cada geometria mudam uma vez (pesosDoOmbro), no bind dela. */
+export const AJUDANTES = ["axila_l", "axila_r", "escapula_l", "escapula_r", "umero_giro_l", "umero_giro_r", "antebraco_giro_l", "antebraco_giro_r"];
+/* ritmo escapuloumeral, em graus pela elevação do úmero no tronco (0 = braço caído): a clavícula sobe até
+   clavicula graus entre de e ate; a escápula roda pra cima escapula grau por grau acima de escapulaDe (o 2 pra 1 do
+   corpo: um terço da elevação vem dela), com teto, e a pele acompanha a fração pele (a pele desliza sobre o osso) */
+export const RITMO = { clavicula: 22, de: 30, ate: 170, escapula: 0.36, escapulaDe: 15, escapulaMax: 55, pele: 0.45, segue: 0.35, golpe: 0 };
+// (golpe: quanto o IK do contato sobe a clavícula pelo ritmo. 0: o encolher do ombro no soco já vem do clipe; com 1 o
+// ombro subia mais 3 cm no upper e a pele do ombro dobrava mais que antes)
+/* rotação externa do úmero no braço erguido pelo IK sem polo: acima de 90 graus o cotovelo (olécrano) sai de trás
+   pro lado até externa graus em 180 (no corpo, 30 a 50); o polo automático entra de 70 a 110 graus. E o cotovelo
+   dobra no máximo flexaoMax (145 graus no corpo; sem hiperextensão: o alcance já para antes do reto) */
+/* quanto da torção os ossos de giro desfazem (úmero) e levam (antebraço): 1 = inteira */
+export const TORCAO = { umero: 1, antebraco: 1, axila: 1 };
+export const BRACO = { externa: 45, de: 90, ate: 180, entra: [70, 110], flexaoMax: 145 };
+const suave01 = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/* onde a escápula fica (no bind do corpo, metros, em relação ao spine_03: x pro lado, y pra cima, z pra frente) e a
+   máscara da pele que vai com ela: das costas, do meio da borda de dentro pra fora, da ponta de baixo ao alto do ombro */
+// (transições largas: com 4,5 cm entre a coluna e a escápula a borda de dentro vincava em V com o braço erguido)
+export const ESCAPULA = { pivo: [0.085, 0.212, -0.024], mascara: { dentro: [0.0, 0.12], baixo: [-0.05, 0.1], cima: [0.27, 0.33], costas: [0.05, -0.04] } };
+const bindDe = (inv) => new THREE.Matrix4().copy(inv).invert();
+/* informação do ombro no bind do corpo (pose da escultura), uma vez na carga */
+export function prepararOmbro(corpo) {
+  const sk = corpo.skeleton, nomes = sk.bones.map((b) => b.name), W = (n) => bindDe(sk.boneInverses[nomes.indexOf(n)]);
+  const local = (n) => { const b = sk.bones[nomes.indexOf(n)], q = new THREE.Quaternion(); W(b.parent.name).invert().multiply(W(n)).decompose(new THREE.Vector3(), q, new THREE.Vector3()); return q; };
+  const s3 = W("spine_03"), q3 = new THREE.Quaternion().setFromRotationMatrix(s3), q3i = q3.clone().invert(), p3 = new THREE.Vector3().setFromMatrixPosition(s3);
+  const out = { lados: [], baixo: new THREE.Vector3(0, -1, 0).applyQuaternion(q3i) };   // o "pra baixo" do mundo no tronco do bind
+  ["l", "r"].forEach((l) => {
+    const s = l === "l" ? 1 : -1, C = W("clavicle_" + l), U = W("upperarm_" + l), Lo = W("lowerarm_" + l), H = W("hand_" + l);
+    const pC = new THREE.Vector3().setFromMatrixPosition(C), pU = new THREE.Vector3().setFromMatrixPosition(U), pL = new THREE.Vector3().setFromMatrixPosition(Lo), pH = new THREE.Vector3().setFromMatrixPosition(H);
+    // a escápula: pivô no tronco do bind, no espaço da clavícula; eixo da rotação pra cima, perpendicular ao plano da
+    // escápula (30 graus à frente do plano das costas), no sentido que leva a ponta de baixo pra fora
+    const posE = new THREE.Vector3(s * ESCAPULA.pivo[0], ESCAPULA.pivo[1], ESCAPULA.pivo[2]), eixoE = new THREE.Vector3(-s * 0.5, 0, 0.866).normalize();   // no espaço do spine_03
+    // clavícula no tronco do bind (a elevação dela conta a partir daí)
+    const clav = pU.clone().sub(pC).normalize().applyQuaternion(q3i);
+    out.lados.push({ l, s, posE, eixoE, bindC: local("clavicle_" + l), bindU: local("upperarm_" + l), bindH: local("hand_" + l),
+      eixoU: pL.clone().sub(pU).normalize().applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(U).invert()),   // o eixo do úmero no espaço dele
+      eixoH: pH.clone().sub(pL).normalize().applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(H).invert()),   // o eixo do antebraço no espaço da mão
+      clavElev: Math.asin(Math.max(-1, Math.min(1, clav.y))) });
+  });
+  return out;
+}
+/* pesos de uma malha com pele no bind dela (o corpo na pose da escultura, roupa e luva em T): a pele das costas sobre
+   a escápula vai pro osso dela, e a do braço e do antebraço se divide com os ossos de torção ao longo do osso.
+   Muda a geometria (uma vez: geo.userData.ombro). Os ossos auxiliares ficam em nb + AJUDANTES.indexOf(nome). */
+/* cotovelo (só no corpo): os pesos em volta da junta passam por passadas de média com os vizinhos (a malha juntada
+   pelo lugar), cheias até metade do raio e sumindo até ele: o vinco tinha arestas de 2 cm com o peso do úmero indo de
+   0,73 a 0,22 (a 7 cm da junta) e virava triângulos no leve. Com 12 cm a dobra de dentro afinava demais */
+export const COTOVELO = { raio: 0.1, passadas: 6 };
+function suavizarPesos(geo, bindMatrix, centros, raio, passadas) {
+  const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, P = geo.attributes.position, n = si.count, idx = geo.index && geo.index.array; if (!idx) return;
+  const p = Array.from({ length: n }, (_, i) => new THREE.Vector3().fromBufferAttribute(P, i).applyMatrix4(bindMatrix));
+  const chave = (v) => `${Math.round(v.x * 1e4)},${Math.round(v.y * 1e4)},${Math.round(v.z * 1e4)}`, rep = new Int32Array(n), mapa = new Map();
+  for (let i = 0; i < n; i++) { const k = chave(p[i]); if (!mapa.has(k)) mapa.set(k, i); rep[i] = mapa.get(k); }
+  const peso = (c) => Math.max(...centros.map((x) => 1 - suave01(raio * 0.5, raio, p[c].distanceTo(x))));   // 1 perto, 0 no raio
+  const viz = new Map();
+  for (let k = 0; k < idx.length; k += 3) for (const [a0, b0] of [[idx[k], idx[k + 1]], [idx[k + 1], idx[k + 2]], [idx[k + 2], idx[k]]]) {
+    const a = rep[a0], b = rep[b0]; if (a === b) continue;
+    for (const [x, y] of [[a, b], [b, a]]) { if (!viz.has(x)) viz.set(x, new Set()); viz.get(x).add(y); }
+  }
+  const W = new Map(); for (const [i] of viz) { const o = new Map(); for (let c = 0; c < 4; c++) { const w = sw.getComponent(i, c); if (w > 0) o.set(si.getComponent(i, c), (o.get(si.getComponent(i, c)) || 0) + w); } W.set(i, o); }
+  const zona = [...viz.keys()].filter((i) => peso(i) > 0), f = new Map(zona.map((i) => [i, peso(i)]));
+  for (let it = 0; it < passadas; it++) {
+    const novo = new Map();
+    for (const i of zona) {
+      const m = new Map(), vz = viz.get(i);
+      for (const j of vz) for (const [k, w] of W.get(j)) m.set(k, (m.get(k) || 0) + w / vz.size);
+      const o = new Map(), a = 0.5 * f.get(i);
+      for (const [k, w] of W.get(i)) o.set(k, w * (1 - a));
+      for (const [k, w] of m) o.set(k, (o.get(k) || 0) + w * a);
+      novo.set(i, o);
+    }
+    for (const [i, o] of novo) W.set(i, o);
+  }
+  for (let v = 0; v < n; v++) {
+    const o = W.get(rep[v]); if (!o || !f.has(rep[v])) continue;
+    const lista = [...o].filter(([, w]) => w > 1e-4).sort((a, b) => b[1] - a[1]).slice(0, 4), tot = lista.reduce((s0, [, w]) => s0 + w, 0);
+    for (let c = 0; c < 4; c++) { si.setComponent(v, c, lista[c] ? lista[c][0] : 0); sw.setComponent(v, c, lista[c] ? lista[c][1] / tot : 0); }
+  }
+  si.needsUpdate = sw.needsUpdate = true;
+}
+export function pesosDoOmbro(geo, skeleton, bindMatrix, corpo = false) {
+  if (!geo.attributes.skinIndex || geo.userData.ombro) return; geo.userData.ombro = true;
+  const nomes = skeleton.bones.map((b) => b.name), nb = nomes.length, idx = (n) => nomes.indexOf(n), aj = (n) => nb + AJUDANTES.indexOf(n);
+  const pos = (n) => idx(n) < 0 ? null : new THREE.Vector3().setFromMatrixPosition(bindDe(skeleton.boneInverses[idx(n)]));
+  const s3 = idx("spine_03") < 0 ? null : bindDe(skeleton.boneInverses[idx("spine_03")]), s3i = s3 && s3.clone().invert();
+  const lados = ["l", "r"].map((l) => ({ l, iU: idx("upperarm_" + l), iL: idx("lowerarm_" + l), U: pos("upperarm_" + l), L: pos("lowerarm_" + l), H: pos("hand_" + l) }));
+  const fracao = (a, b, v) => { const ab = b.clone().sub(a); return Math.min(1, Math.max(0, v.clone().sub(a).dot(ab) / ab.lengthSq())); };
+  const coluna = new Set(["spine_02", "spine_03"].map(idx).filter((i) => i >= 0));
+  const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, P = geo.attributes.position, v = new THREE.Vector3(), t3 = new THREE.Vector3(), M = ESCAPULA.mascara;
+  for (let i = 0; i < si.count; i++) {
+    v.fromBufferAttribute(P, i).applyMatrix4(bindMatrix);
+    const ws = new Map(); for (let c = 0; c < 4; c++) { const w = sw.getComponent(i, c); if (w > 0) ws.set(si.getComponent(i, c), (ws.get(si.getComponent(i, c)) || 0) + w); }
+    let mudou = false;
+    // escápula: só a parte da coluna, nas costas, do lado
+    if (s3) {
+      t3.copy(v).applyMatrix4(s3i); const ax = Math.abs(t3.x);
+      const m = suave01(M.dentro[0], M.dentro[1], ax) * suave01(M.baixo[0], M.baixo[1], t3.y) * (1 - suave01(M.cima[0], M.cima[1], t3.y)) * suave01(M.costas[0], M.costas[1], t3.z);
+      if (m > 1e-3) for (const k of [...ws.keys()]) if (coluna.has(k)) { const w = ws.get(k) * m; ws.set(k, ws.get(k) - w); const e = aj(t3.x >= 0 ? "escapula_l" : "escapula_r"); ws.set(e, (ws.get(e) || 0) + w); mudou = true; }
+    }
+    for (const L of lados) {
+      if (L.iU >= 0 && L.L && ws.has(L.iU)) {   // úmero: sem torção no ombro, inteira no cotovelo
+        const t = fracao(L.U, L.L, v), w = ws.get(L.iU), g = aj("umero_giro_" + L.l);
+        ws.set(L.iU, w * t); ws.set(g, (ws.get(g) || 0) + w * (1 - t)); mudou = true;
+      }
+      if (L.iL >= 0 && L.H && ws.has(L.iL)) {   // antebraço: a torção da mão de 0 no cotovelo a inteira no pulso
+        const t = fracao(L.L, L.H, v), w = ws.get(L.iL), g = aj("antebraco_giro_" + L.l);
+        ws.set(L.iL, w * (1 - t)); ws.set(g, (ws.get(g) || 0) + w * t); mudou = true;
+      }
+    }
+    if (!mudou) continue;
+    const lista = [...ws].filter(([, w]) => w > 1e-4).sort((a, b) => b[1] - a[1]).slice(0, 4), tot = lista.reduce((a, [, w]) => a + w, 0);
+    for (let c = 0; c < 4; c++) { si.setComponent(i, c, lista[c] ? lista[c][0] : 0); sw.setComponent(i, c, lista[c] ? lista[c][1] / tot : 0); }
+  }
+  si.needsUpdate = sw.needsUpdate = true;
+  if (corpo && COTOVELO.passadas > 0) suavizarPesos(geo, bindMatrix, lados.filter((L) => L.L).map((L) => L.L), COTOVELO.raio, COTOVELO.passadas);
+}
+/* torção de q em volta do eixo a (unitário), pela decomposição balanço-torção (q = balanço * torção): a projeção de
+   q no eixo. Perto do balanço de 180 graus ela fica instável: some aos poucos (fica só o balanço). */
+export function torcaoDe(q, a, out) {
+  const d = q.x * a.x + q.y * a.y + q.z * a.z, n = Math.hypot(d, q.w);
+  if (n < 1e-4) return out.identity();
+  out.set(a.x * d / n, a.y * d / n, a.z * d / n, q.w / n);
+  if (n < 0.25) out.slerp(_qId, 1 - n / 0.25);
+  return out;
+}
+const _qId = new THREE.Quaternion(), _qE = new THREE.Quaternion();
 /* ---------- pele por quatérnio duplo (2026-11-23) ----------
    O skinning padrão (mistura linear das matrizes dos ossos) achata a pele onde dois ossos que giram muito se
    misturam: o braço erguido puxava uma aba da axila até o peito, o peito empolava com o braço na guarda e o antebraço
@@ -519,16 +661,28 @@ export class Lutador {
       m.castShadow = true; m.receiveShadow = true; this.ossos.Head.add(m);
       if (!pelo) this.cabeloMalhas.push(m);
     }
-    // osso da axila (prepararAxila): filho da clavícula, gira metade do úmero; o corpo ganha um esqueleto com os dois
-    this.axilas = [];
-    if (this.corpo && base.axila && base.axila.lados.length) {
-      const sk = this.corpo.skeleton, ossos = sk.bones.slice(), inv = sk.boneInverses.slice();
-      for (const l of base.axila.lados) {
-        const o = new THREE.Bone(); o.name = "axila_" + l.s; o.position.copy(l.pos); o.quaternion.copy(l.bindQ);
-        this.ossos["clavicle_" + l.s].add(o); ossos.push(o); inv.push(sk.boneInverses[l.iU].clone());
-        this.axilas.push({ o, umero: this.ossos["upperarm_" + l.s], bindQ: l.bindQ });
+    // ossos auxiliares do ombro (AJUDANTES): a axila (prepararAxila: filha da clavícula, gira metade do úmero, sem a
+    // torção), a escápula e as torções do úmero e do antebraço (prepararOmbro). Toda malha com pele ganha um esqueleto
+    // com eles no fim, na mesma ordem; o inverso do bind de cada um sai do bind daquela malha
+    this.ombro = [];
+    if (this.corpo && base.ombro && base.axila && base.axila.lados.length === 2) {
+      const aj = {};
+      for (const o of base.ombro.lados) {
+        const l = o.l, ax = base.axila.lados.find((x) => x.s === l);
+        const novo = (n, pai, p) => { const b = new THREE.Bone(); b.name = n + "_" + l; if (p) b.position.copy(p); (this.ossos[pai + "_" + l] || this.ossos[pai]).add(b); aj[b.name] = this.ossos[b.name] = b; return b; };
+        const axila = novo("axila", "clavicle", ax.pos); axila.quaternion.copy(ax.bindQ);
+        this.ombro.push({ ...o, axila, escapula: novo("escapula", "spine_03", o.posE), giroU: novo("umero_giro", "upperarm"), giroA: novo("antebraco_giro", "lowerarm"),
+          bindAxila: ax.bindQ });
       }
-      this.corpo.bind(new THREE.Skeleton(ossos, inv), this.corpo.bindMatrix);
+      const posE = Object.fromEntries(base.ombro.lados.map((o) => [o.l, o.posE]));
+      this.modelo.traverse((m) => {
+        if (!m.isSkinnedMesh) return;
+        const sk = m.skeleton, nomes = sk.bones.map((b) => b.name), inv = (n) => sk.boneInverses[nomes.indexOf(n)];
+        const extra = AJUDANTES.map((n) => { const l = n.slice(-1), tipo = n.slice(0, -2);
+          if (tipo === "escapula") return bindDe(inv("spine_03")).multiply(new THREE.Matrix4().makeTranslation(posE[l].x, posE[l].y, posE[l].z)).invert();
+          return inv((tipo === "antebraco_giro" ? "lowerarm_" : "upperarm_") + l).clone(); });
+        m.bind(new THREE.Skeleton(sk.bones.concat(AJUDANTES.map((n) => aj[n])), sk.boneInverses.concat(extra)), m.bindMatrix);
+      });
     }
     if (location.search.includes("cinza")) { const m = comDQ(new THREE.MeshStandardMaterial({ color: "#8a817a", roughness: 0.6 })); this.corpo.material = m; }
     this.roupa = vestir(this, base, opt);
@@ -666,13 +820,18 @@ export class Lutador {
     const ate = this.curva(c.clipe, c.tClipe), agora = this.curva(c.clipe, t);
     return this.raiz.localToWorld(c.previsto.clone().add(_v3.set(ate[0] - agora[0], 0, ate[1] - agora[1])));
   }
+  /* peso de um contato agora: entra em antes s, segura e sai em depois s; null quando já acabou */
+  pesoContato(c) {
+    const t = this.relogio - c.tImp;
+    if (t < -c.antes) return 0;
+    if (t < 0) return suaveK(1 + t / c.antes); if (t < c.segura) return 1; if (t < c.segura + c.depois) return 1 - suaveK((t - c.segura) / c.depois);
+    return null;
+  }
   ikContatos() {
     for (const c of this.contatos.slice()) {
-      const t = this.relogio - c.tImp;
-      let w = 0;
-      if (t < -c.antes) continue;
-      if (t < 0) w = suaveK(1 + t / c.antes); else if (t < c.segura) w = 1; else if (t < c.segura + c.depois) w = 1 - suaveK((t - c.segura) / c.depois);
-      else { this.contatos.splice(this.contatos.indexOf(c), 1); continue; }
+      const t = this.relogio - c.tImp, w = this.pesoContato(c);
+      if (w === null) { this.contatos.splice(this.contatos.indexOf(c), 1); continue; }
+      if (w === 0) continue;
       const [o1, o2, o3] = CADEIA[c.membro].map((n) => this.ossos[n]);
       const ponta = this.ossos[c.membro];
       const previsto = c.previsto ? this.previstoNoMundo(c) : null;
@@ -696,7 +855,8 @@ export class Lutador {
      - a clavícula acompanha: sobe com o braço acima da linha do ombro (no braço erguido, cerca de um terço
        da elevação vem da escápula) e vai pra frente quando o alvo está longe;
      - braço e antebraço por dois ossos, com extensão máxima (ext) e polo opcional. */
-  ikCadeia(l, alvo, peso = 1, { tronco = true, polo = null, ext = 0.999 } = {}) {
+  ikCadeia(l, alvo, peso = 1, { tronco = true, polo = null, ext = 0.999, externa = false } = {}) {
+    let kPolo = 1;
     const mao = this.ossos["hand_" + l], braco = this.ossos["upperarm_" + l], clav = this.ossos["clavicle_" + l];
     if (tronco) for (const n of ["spine_02", "spine_03"]) this.girarRumo(this.ossos[n], mao, alvo, 0.3 * peso, 0.12 * peso);
     if (clav) {
@@ -705,9 +865,73 @@ export class Lutador {
       const dir = alvo.clone().sub(pO), d = dir.length();
       // elevação do alvo acima da horizontal do ombro (0 a 1) e quanto falta de alcance (0 a 1)
       const sobe = Math.max(0, Math.min(1, dir.y / Math.max(1e-4, d))), longe = Math.max(0, Math.min(1, (d - lb * 0.85) / (lb * 0.3)));
-      this.girarRumo(clav, braco, alvo, RITMO_OMBRO.frac * peso * Math.max(sobe, longe * 0.6), RITMO_OMBRO.max * peso);
+      // com os ossos do ombro: a clavícula sobe pelo ritmo (a elevação do alvo no tronco) e vai pra frente pelo alcance
+      const o = this.ombro && this.ombro.find((x) => x.l === l);
+      if (o) this.subirClavicula(o, this.elevacao(o, dir), peso * (externa ? 1 : RITMO.golpe));
+      this.girarRumo(clav, braco, alvo, RITMO_OMBRO.frac * peso * (o ? longe * 0.6 : Math.max(sobe, longe * 0.6)), RITMO_OMBRO.max * peso);
+      // sem polo, com o braço erguido: o cotovelo pelo giro externo do úmero (de trás pro lado, no tronco)
+      if (!polo && o && externa) {
+        const e = this.elevacao(o, dir), k = suave01(BRACO.entra[0], BRACO.entra[1], e);
+        if (k > 0) {
+          const t = this.ossos.spine_03.getWorldQuaternion(new THREE.Quaternion()), psi = THREE.MathUtils.degToRad(BRACO.externa * suave01(BRACO.de, BRACO.ate, e));
+          const rumo = new THREE.Vector3(o.s * Math.sin(psi), 0, -Math.cos(psi)).applyQuaternion(t);
+          polo = braco.getWorldPosition(new THREE.Vector3()).add(rumo); kPolo = k;
+        }
+      }
     }
-    this.ikDoisOssos(braco, this.ossos["lowerarm_" + l], mao, alvo, peso, polo, ext);
+    this.ikDoisOssos(braco, this.ossos["lowerarm_" + l], mao, alvo, peso, polo, ext, kPolo, BRACO.flexaoMax);
+  }
+  /* elevação (graus) de uma direção do braço no tronco: 0 = caído ao lado do corpo, 180 = reto pra cima. Sem dir, a
+     do úmero de agora */
+  elevacao(o, dir = null) {
+    const d = dir ? _v1.copy(dir) : this.ossos["lowerarm_" + o.l].getWorldPosition(_v1).sub(this.ossos["upperarm_" + o.l].getWorldPosition(_v2));
+    const baixo = _v2.copy(this.base.ombro.baixo).applyQuaternion(this.ossos.spine_03.getWorldQuaternion(_q1));
+    return THREE.MathUtils.radToDeg(d.angleTo(baixo));
+  }
+  /* ritmo escapuloumeral na clavícula: sobe até RITMO pela elevação e (só sobe: o que o clipe já subiu fica); com
+     manter, o úmero não muda de direção no mundo (o ombro sobe e o braço continua apontando pro mesmo lugar) */
+  subirClavicula(o, e, peso = 1, manter = false) {
+    const C = this.ossos["clavicle_" + o.l], U = this.ossos["upperarm_" + o.l];
+    const alvo = THREE.MathUtils.degToRad(RITMO.clavicula * suave01(RITMO.de, RITMO.ate, e)) * peso;
+    const t = this.ossos.spine_03.getWorldQuaternion(_q1), ti = _q2.copy(t).invert();
+    const dir = U.getWorldPosition(_v1).sub(C.getWorldPosition(_v2)).normalize().applyQuaternion(ti);
+    const falta = alvo - (Math.asin(Math.max(-1, Math.min(1, dir.y))) - o.clavElev); if (falta <= 1e-3) return;
+    const qU = manter ? U.getWorldQuaternion(new THREE.Quaternion()) : null;
+    // em volta do eixo perpendicular à clavícula e ao alto do tronco: muda a elevação dela exatamente (o eixo da frente
+    // do tronco subia menos quando a clavícula aponta um pouco pra trás)
+    const eixo = _v3.copy(dir).cross(_v2.set(0, 1, 0)); if (eixo.lengthSq() < 1e-8) return;
+    this.girarMundo(C, eixo.normalize().applyQuaternion(t), falta);
+    if (qU) { U.quaternion.copy(C.getWorldQuaternion(_q3).invert().multiply(qU)); U.updateMatrixWorld(true); }
+  }
+  /* no clipe; o braço com contato de golpe sai na medida do contato (a mão prevista do contato é a do clipe puro: com
+     o ombro já subido o soco chegava acima do rosto), e o IK do contato sobe a clavícula pelo alvo */
+  ritmo() {
+    for (const o of this.ombro) {
+      let w = 0; for (const c of this.contatos || []) if (c.membro === "hand_" + o.l) w = Math.max(w, this.pesoContato(c));
+      if (w < 1) this.subirClavicula(o, this.elevacao(o), 1 - w, true);
+    }
+  }
+  /* os ossos auxiliares do ombro na pose de agora (prepararOmbro) */
+  ombros() {
+    for (const o of this.ombro) {
+      const U = this.ossos["upperarm_" + o.l], H = this.ossos["hand_" + o.l];
+      // o úmero sem a torção dele (a partir do bind do corpo): o giro desfaz, a pele perto do ombro não torce
+      torcaoDe(_q1.copy(o.bindU).invert().multiply(U.quaternion), o.eixoU, _q2);
+      o.giroU.quaternion.copy(_q2.slerp(_qId, 1 - TORCAO.umero)).invert();
+      // a axila: metade do úmero sem a torção
+      o.axila.quaternion.copy(o.bindAxila).slerp(_q3.copy(U.quaternion).multiply(_q2.copy(o.giroU.quaternion).slerp(_qId, 1 - TORCAO.axila)), 0.5); o.axila.position.copy(U.position);
+      // a torção da mão vai pro antebraço (no espaço dele, em volta do eixo do antebraço)
+      torcaoDe(_q1.copy(o.bindH).invert().multiply(H.quaternion), o.eixoH, _q2); _q2.slerp(_qId, 1 - TORCAO.antebraco);
+      o.giroA.quaternion.copy(o.bindH).multiply(_q2).multiply(_q3.copy(o.bindH).invert());
+      // a escápula: uma fração do giro da clavícula (no tronco, a partir do bind) em volta da junta do esterno, e a
+      // rotação pra cima com o braço (a pele acompanha uma fração)
+      // (elevacao usa os temporários _q1/_v1/_v2: vem antes do giro da clavícula, que mora em _qE)
+      const u = Math.min(RITMO.escapulaMax, Math.max(0, RITMO.escapula * (this.elevacao(o) - RITMO.escapulaDe))) * RITMO.pele;
+      const C = this.ossos["clavicle_" + o.l], g = _qE.copy(C.quaternion).multiply(_q2.copy(o.bindC).invert());
+      g.slerp(_qId, 1 - RITMO.segue);
+      o.escapula.position.copy(o.posE).sub(C.position).applyQuaternion(g).add(C.position);
+      o.escapula.quaternion.setFromAxisAngle(o.eixoE, o.s * THREE.MathUtils.degToRad(u)).premultiply(g);
+    }
   }
   /* a mão no mundo: palma virada pra normal e dedos na direção dedos (os dois no mundo, ortogonais).
      A palma e os dedos de agora saem dos ossos (dedo médio, indicador e mínimo), sem supor eixo do osso. */
@@ -738,15 +962,17 @@ export class Lutador {
   }
   /* polo: ponto pra onde o cotovelo (ou o joelho) aponta; sem ele, fica no plano em que já estava.
      ext: fração do comprimento do braço até onde ele estica (abaixo de 1, o cotovelo nunca trava reto) */
-  ikDoisOssos(o1, o2, o3, alvo, peso, polo = null, ext = 0.999) {
+  ikDoisOssos(o1, o2, o3, alvo, peso, polo = null, ext = 0.999, kPolo = 1, flexaoMax = null) {
     const pA = o1.getWorldPosition(new THREE.Vector3()), pB = o2.getWorldPosition(new THREE.Vector3()), pC = o3.getWorldPosition(new THREE.Vector3());
     const l1 = pA.distanceTo(pB), l2 = pB.distanceTo(pC);
     const T = pC.clone().lerp(alvo, peso);
-    const dir = T.clone().sub(pA); let d = dir.length(); d = Math.min(d, (l1 + l2) * ext); dir.normalize();
+    // alcance entre a dobra máxima (flexaoMax: o braço pela cadeia, 145 graus) e ext (abaixo de 1: nunca trava reto nem hiperestende)
+    const dMin = flexaoMax ? Math.sqrt(l1 * l1 + l2 * l2 - 2 * l1 * l2 * Math.cos(THREE.MathUtils.degToRad(180 - flexaoMax))) : 0;
+    const dir = T.clone().sub(pA); let d = dir.length(); d = Math.max(dMin, Math.min(d, (l1 + l2) * ext)); dir.normalize();
     const curva = pB.clone().sub(pA); const lado = curva.sub(dir.clone().multiplyScalar(curva.dot(dir)));
     if (polo) {
       const q = polo.clone().sub(pA); q.sub(dir.clone().multiplyScalar(q.dot(dir)));
-      if (q.lengthSq() > 1e-8) { if (lado.lengthSq() > 1e-8) lado.normalize(); lado.lerp(q.normalize(), peso); }
+      if (q.lengthSq() > 1e-8) { if (lado.lengthSq() > 1e-8) lado.normalize(); lado.lerp(q.normalize(), peso * kPolo); }
     }
     if (lado.lengthSq() < 1e-8) lado.set(0, -1, 0); lado.normalize();
     const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
@@ -838,11 +1064,12 @@ export class Lutador {
     this.alinhar(dt);
     this.modelo.updateMatrixWorld(true);
     for (const f of this.extras) f(dt);
+    this.ritmo();   // a clavícula acompanha a elevação do braço que o clipe trouxe (antes do IK, que corrige a mão)
     this.ikContatos();
     for (const [membro, k] of Object.entries(this.ikFixo)) {
       if (!k || k.peso < 0.001) continue;
       // cadeia: o braço com a clavícula (ikCadeia, sem o tronco); senão só os dois ossos, como sempre
-      if (k.cadeia) { this.ikCadeia(membro.slice(-1), k.alvo(), Math.min(1, k.peso), { tronco: false, polo: k.polo ? k.polo() : null, ext: k.ext || 0.999 }); if (k.depois) k.depois(); continue; }
+      if (k.cadeia) { this.ikCadeia(membro.slice(-1), k.alvo(), Math.min(1, k.peso), { tronco: false, polo: k.polo ? k.polo() : null, ext: k.ext || 0.999, externa: true }); if (k.depois) k.depois(); continue; }
       const [o1, o2, o3] = CADEIA[membro].map((n) => this.ossos[n]);
       this.ikDoisOssos(o1, o2, o3, k.alvo(), Math.min(1, k.peso), k.polo ? k.polo() : null);
     }
@@ -856,8 +1083,8 @@ export class Lutador {
       if (Math.abs(m.ang) < 0.0005 && Math.abs(m.vel) < 0.01) { this.molas.splice(this.molas.indexOf(m), 1); continue; }
       this.girarMundo(this.ossos[m.osso], m.eixo, m.ang);
     }
-    // a axila acompanha a metade do úmero (depois do clipe, do IK e das molas)
-    for (const a of this.axilas) { a.o.quaternion.copy(a.bindQ).slerp(a.umero.quaternion, 0.5); a.o.position.copy(a.umero.position); }
+    // axila, escápula e torções acompanham o braço (depois do clipe, do IK e das molas)
+    this.ombros();
     // mão fechada (o primeiro nó do dedo do meio dobrado, com folga pra não piscar): a ponta do dedo some dela
     if (this.geoLuva && !this.vestido) {
       let k = "";

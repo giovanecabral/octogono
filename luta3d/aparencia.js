@@ -43,16 +43,18 @@ for (const l of ["l", "r"]) Object.assign(EIXO, { ["clavicle_" + l]: "upperarm_"
 // porte radial antigo (k só), ainda usado sem os alvos de forma: fração do porte por osso
 const PORTE_FRACAO = { spine_01: 0.5, spine_02: 1, spine_03: 1, neck_01: 0.7 };
 for (const l of ["l", "r"]) Object.assign(PORTE_FRACAO, { ["clavicle_" + l]: 1, ["upperarm_" + l]: 1.15, ["axila_" + l]: 1.15, ["thigh_" + l]: 1.15 });
+// ossos auxiliares do ombro (lutador.js, AJUDANTES): o porte deles é o do osso que eles seguem
+const apelido = (n) => n.replace(/^(axila|umero_giro)_/, "upperarm_").replace(/^antebraco_giro_/, "lowerarm_").replace(/^escapula_[lr]$/, "spine_03");
 const eixosDo = (skeleton) => {
   const nomes = skeleton.bones.map((b) => b.name), M = new THREE.Matrix4();
   const noBind = (n) => { const i = nomes.indexOf(n); return i < 0 ? null : new THREE.Vector3().setFromMatrixPosition(M.copy(skeleton.boneInverses[i]).invert()); };
-  return nomes.map((n) => { if (!EIXO[n]) return null; const a = noBind(n.startsWith("axila_") ? "upperarm_" + n.slice(-1) : n), b = noBind(EIXO[n]);
+  return nomes.map((n) => { const k = apelido(n); if (!EIXO[k]) return null; const a = noBind(k), b = noBind(EIXO[k]);
     return a && b ? { n, a, d: b.sub(a).normalize() } : null; });
 };
 /* fatores: número (o porte radial antigo, k) ou { osso: quanto o raio cresce } (o medido do alvo de forma do corpo) */
 export function porteNaMalha(geo, skeleton, bindMatrix, fatores) {
   const eixos = eixosDo(skeleton).map((e) => { if (!e) return null;
-    const f = typeof fatores === "number" ? (PORTE_FRACAO[e.n] ? (fatores - 1) * PORTE_FRACAO[e.n] : 0) : fatores[e.n.replace(/^axila_/, "upperarm_")] || 0;
+    const f = typeof fatores === "number" ? (PORTE_FRACAO[apelido(e.n)] ? (fatores - 1) * PORTE_FRACAO[apelido(e.n)] : 0) : fatores[apelido(e.n)] || 0;
     return f ? { ...e, f } : null; });
   const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
   const out = new Float32Array(pos.count * 3), inv = bindMatrix.clone().invert(), p = new THREE.Vector3(), q = new THREE.Vector3(), soma = new THREE.Vector3();
@@ -76,10 +78,10 @@ function fatoresDoAlvo(corpo, nome) {
     let k = -1, wk = 0; for (let c = 0; c < 4; c++) if (sw.getComponent(v, c) > wk) { wk = sw.getComponent(v, c); k = si.getComponent(v, c); }
     const e = wk > 0.6 && eixos[k]; if (!e) continue;
     p.fromBufferAttribute(pos, v).applyMatrix4(corpo.bindMatrix); q.copy(p).sub(e.a); q.addScaledVector(e.d, -q.dot(e.d)); const r0 = q.length(); if (r0 < 0.01) continue;
-    r.fromBufferAttribute(d, v); const lr = r.length(); if (lr < 1e-7) { const n0 = e.n.replace(/^axila_/, "upperarm_"); (soma[n0] = soma[n0] || [0, 0]); soma[n0][1]++; continue; }
+    r.fromBufferAttribute(d, v); const lr = r.length(); if (lr < 1e-7) { const n0 = apelido(e.n); (soma[n0] = soma[n0] || [0, 0]); soma[n0][1]++; continue; }
     r.transformDirection(corpo.bindMatrix).multiplyScalar(lr);   // o delta no espaço do bind, como p
     const dr = r.dot(q) / r0;   // o quanto o vértice sai do eixo
-    const n = e.n.replace(/^axila_/, "upperarm_"); (soma[n] = soma[n] || [0, 0]); soma[n][0] += dr / r0; soma[n][1]++;
+    const n = apelido(e.n); (soma[n] = soma[n] || [0, 0]); soma[n][0] += dr / r0; soma[n][1]++;
   }
   return Object.fromEntries(Object.entries(soma).filter(([, [, c]]) => c > 20).map(([n, [s, c]]) => [n, s / c]));
 }

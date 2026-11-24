@@ -18622,6 +18622,85 @@ async function testarLuta3d() {
     if (ang() > 168) throw new Error("com o alvo fora do alcance o cotovelo passou do limite: " + ang().toFixed(0));
     if (!(LU.RITMO_OMBRO.frac > 0 && LU.RITMO_OMBRO.max > 0)) throw new Error("RITMO_OMBRO desligado");
   });
+  /* Passo 2 da anatomia (2026-11-23): escápula, ritmo escapuloumeral, rotação externa, torção e limite do cotovelo */
+  const esqueletoOmbro = async () => {
+    const e = await esqueletoBraco(), { THREE, LU, L, ossos } = e;
+    // o lado direito também (prepararOmbro olha os dois) e o bind = a pose de agora
+    const osso = (nome, pai, x, y, z) => { const b = new THREE.Bone(); b.name = nome; b.position.set(x, y, z); ossos[pai].add(b); ossos[nome] = b; return b; };
+    osso("upperarm_r", "clavicle_r", -0.16, -0.035, -0.09); osso("lowerarm_r", "upperarm_r", 0, -0.25, 0); osso("hand_r", "lowerarm_r", 0, -0.252, 0);
+    L.raiz.updateMatrixWorld(true);
+    const bones = Object.values(ossos), skeleton = { bones, boneInverses: bones.map((b) => b.matrixWorld.clone().invert()) };
+    const info = LU.prepararOmbro({ skeleton });
+    L.base = { ombro: info };
+    L.ombro = info.lados.map((o) => ({ ...o }));
+    return { ...e, skeleton, info };
+  };
+  await conf("ritmo escapuloumeral: com o braço erguido a clavícula sobe pelo RITMO (no clipe, sem mudar a direção do braço), caído ela fica", async () => {
+    const { THREE, LU, L } = await esqueletoOmbro(), o = L.ombro[0];
+    const elevClav = () => { const d = L.posMundo("upperarm_l").sub(L.posMundo("clavicle_l")).normalize(); return THREE.MathUtils.radToDeg(Math.asin(d.y) - o.clavElev); };
+    // braço caído: nada sobe
+    L.ritmo(); if (Math.abs(elevClav()) > 0.5) throw new Error("a clavícula subiu com o braço caído: " + elevClav().toFixed(1));
+    // braço erguido a uns 170 graus (pelo osso, como faz o clipe): a clavícula sobe e o úmero aponta pro mesmo lugar
+    L.ossos.upperarm_l.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(170)); L.raiz.updateMatrixWorld(true);
+    const e = L.elevacao(o), dirAntes = L.posMundo("lowerarm_l").sub(L.posMundo("upperarm_l")).normalize();
+    L.ritmo();
+    const dirDepois = L.posMundo("lowerarm_l").sub(L.posMundo("upperarm_l")).normalize();
+    const alvo = LU.RITMO.clavicula * Math.min(1, Math.max(0, (e - LU.RITMO.de) / (LU.RITMO.ate - LU.RITMO.de))) ** 2 * (3 - 2 * Math.min(1, Math.max(0, (e - LU.RITMO.de) / (LU.RITMO.ate - LU.RITMO.de))));
+    if (e < 150) throw new Error("o braço de teste não ficou erguido: " + e.toFixed(0));
+    if (Math.abs(elevClav() - alvo) > 1) throw new Error(`a clavícula subiu ${elevClav().toFixed(1)} graus (o ritmo pede ${alvo.toFixed(1)} com o braço a ${e.toFixed(0)})`);
+    if (dirAntes.angleTo(dirDepois) > 1e-3) throw new Error("o braço mudou de direção quando a clavícula subiu");
+    // e o corpo: com o braço a 150 graus ou mais a clavícula sobe ao menos 15 (ritmo de 2 pra 1; o diagnóstico achou 17 com o braço a 180)
+    if (elevClav() < 15) throw new Error(`com o braço a ${e.toFixed(0)} graus a clavícula subiu só ${elevClav().toFixed(1)} (o ombro fica parado e o braço sai do pescoço)`);
+  });
+  await conf("braço erguido pelo IK: rotação externa (o cotovelo sai de trás pro lado acima de 90 graus) e o cotovelo nunca dobra além de 145", async () => {
+    const { THREE, LU, L } = await esqueletoOmbro();
+    const ombro = L.posMundo("upperarm_l"), lb = 0.25 + 0.252;
+    L.ikCadeia("l", ombro.clone().add(new THREE.Vector3(0.05, lb * 0.97, 0)), 1, { tronco: false, ext: 0.995, externa: true });
+    const a = L.posMundo("upperarm_l"), b = L.posMundo("lowerarm_l"), c = L.posMundo("hand_l"), lin = c.clone().sub(a).normalize();
+    const off = b.clone().sub(a); off.addScaledVector(lin, -off.dot(lin)); off.normalize();
+    if (!(off.x > 0.3 && off.z < 0)) throw new Error(`com o braço erguido o cotovelo aponta pra (${off.x.toFixed(2)}, ${off.y.toFixed(2)}, ${off.z.toFixed(2)}); esperado pra trás e pro lado de fora`);
+    // alvo colado no ombro: o cotovelo para em 145 graus de dobra
+    L.ikCadeia("l", L.posMundo("upperarm_l").add(new THREE.Vector3(0.02, -0.02, 0.05)), 1, { tronco: false });
+    const p = L.posMundo("upperarm_l"), q = L.posMundo("lowerarm_l"), r = L.posMundo("hand_l"), flex = 180 - THREE.MathUtils.radToDeg(p.sub(q).angleTo(r.sub(q)));
+    if (flex > LU.BRACO.flexaoMax + 0.5) throw new Error(`o cotovelo dobrou ${flex.toFixed(0)} graus (limite ${LU.BRACO.flexaoMax})`);
+    if (LU.BRACO.flexaoMax > 150 || LU.BRACO.externa < 30 || LU.BRACO.externa > 50) throw new Error("BRACO fora do corpo humano: " + JSON.stringify(LU.BRACO));
+  });
+  await conf("torção: o giro da mão vai pro osso do antebraço (mesmo ângulo, mesmo eixo) e o do úmero é desfeito perto do ombro", async () => {
+    const { THREE, LU } = await esqueletoOmbro(), a = new THREE.Vector3(0, 1, 0);
+    const q = new THREE.Quaternion().setFromAxisAngle(a, 1.0).premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.4));   // torção de 1 rad e um balanço
+    const t = LU.torcaoDe(q, a, new THREE.Quaternion()), ang = 2 * Math.acos(Math.min(1, Math.abs(t.w))), eixo = new THREE.Vector3(t.x, t.y, t.z).normalize();
+    // (balanço depois da torção: q = balanço * torção, a torção sai inteira)
+    const q2 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.4).multiply(new THREE.Quaternion().setFromAxisAngle(a, 1.0));
+    const t2 = LU.torcaoDe(q2, a, new THREE.Quaternion()), ang2 = 2 * Math.acos(Math.min(1, Math.abs(t2.w)));
+    if (Math.abs(ang2 - 1.0) > 0.01) throw new Error("a torção de 1 rad saiu " + ang2.toFixed(3));
+    if (Math.abs(Math.abs(eixo.dot(a)) - 1) > 1e-6 || ang < 0.5) throw new Error("a torção não ficou no eixo do osso: " + eixo.toArray());
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/o\.giroU\.quaternion\.copy\(_q2[^;]*\)\.invert\(\)/.test(lu)) throw new Error("o giro do úmero não desfaz a torção");
+    if (!/o\.giroA\.quaternion\.copy\(o\.bindH\)\.multiply\(_q2\)/.test(lu)) throw new Error("o giro do antebraço não leva a torção da mão");
+    if (!/this\.ritmo\(\);[^\n]*\n\s*this\.ikContatos\(\)/.test(lu)) throw new Error("o ritmo tem que vir antes do IK (o IK corrige a mão)");
+  });
+  await conf("pesos do ombro: a pele das costas vai pra escápula, a do braço e do antebraço se divide com a torção ao longo do osso; o peito fica", async () => {
+    const { THREE, LU, skeleton } = await esqueletoOmbro(), nomes = skeleton.bones.map((b) => b.name), nb = nomes.length, i = (n) => nomes.indexOf(n);
+    const W = (n) => new THREE.Vector3().setFromMatrixPosition(skeleton.boneInverses[i(n)].clone().invert());
+    const s3 = W("spine_03"), U = W("upperarm_l"), Lo = W("lowerarm_l"), H = W("hand_l");
+    // [posição, osso]: costas sobre a escápula, peito, meio do úmero, meio do antebraço, ombro (início do úmero)
+    const vs = [[s3.clone().add(new THREE.Vector3(0.11, 0.18, -0.08)), "spine_03"], [s3.clone().add(new THREE.Vector3(0.1, 0.18, 0.12)), "spine_03"],
+      [U.clone().lerp(Lo, 0.5), "upperarm_l"], [Lo.clone().lerp(H, 0.5), "lowerarm_l"], [U.clone(), "upperarm_l"]];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vs.flatMap(([p]) => p.toArray()), 3));
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(vs.flatMap(([, n]) => [i(n), 0, 0, 0]), 4));
+    geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(vs.flatMap(() => [1, 0, 0, 0]), 4));
+    LU.pesosDoOmbro(geo, skeleton, new THREE.Matrix4());
+    const peso = (v, n) => { const k = n.includes("_") && LU.AJUDANTES.includes(n) ? nb + LU.AJUDANTES.indexOf(n) : i(n); let w = 0; for (let c = 0; c < 4; c++) if (geo.attributes.skinIndex.getComponent(v, c) === k) w += geo.attributes.skinWeight.getComponent(v, c); return w; };
+    if (peso(0, "escapula_l") < 0.5) throw new Error("a pele das costas sobre a escápula ficou com " + peso(0, "escapula_l").toFixed(2) + " da escápula");
+    if (peso(1, "spine_03") < 0.999) throw new Error("o peito foi pra escápula");
+    if (Math.abs(peso(2, "umero_giro_l") - 0.5) > 0.01) throw new Error("meio do úmero: " + peso(2, "umero_giro_l").toFixed(2) + " sem torção (esperado 0,5)");
+    if (Math.abs(peso(3, "antebraco_giro_l") - 0.5) > 0.01) throw new Error("meio do antebraço: " + peso(3, "antebraco_giro_l").toFixed(2) + " com a torção da mão (esperado 0,5)");
+    if (peso(4, "umero_giro_l") < 0.999) throw new Error("no ombro a pele ainda torce com o úmero");
+    // uma vez só por geometria
+    const antes = Array.from(geo.attributes.skinWeight.array); LU.pesosDoOmbro(geo, skeleton, new THREE.Matrix4());
+    if (antes.some((x, k) => x !== geo.attributes.skinWeight.array[k])) throw new Error("os pesos mudaram de novo na segunda chamada");
+  });
   await conf("golpe pela cadeia: o tronco leva parte da mira (com teto) e o braço chega no rosto sem travar", async () => {
     const { THREE, L, ang } = await esqueletoBraco();
     const q0 = L.ossos.spine_03.getWorldQuaternion(new THREE.Quaternion()).clone();
@@ -18786,8 +18865,9 @@ async function testarLuta3d() {
     const e = [pesos(0), pesos(1), pesos(2), pesos(3)].map((o) => JSON.stringify(o)).join(" ");
     if (e !== '{"4":1} {"2":0.5,"4":0.5} {"2":0.6,"3":0.4} {"0":0.5,"2":0.5}') throw new Error("pesos: " + e);
     const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
-    if (!/a\.o\.quaternion\.copy\(a\.bindQ\)\.slerp\(a\.umero\.quaternion, 0\.5\)/.test(lu)) throw new Error("a axila não gira a metade do úmero no update");
-    if (!/this\.corpo\.bind\(new THREE\.Skeleton\(ossos, inv\)/.test(lu)) throw new Error("o corpo não ganha o esqueleto com a axila");
+    // (Passo 2 da anatomia: metade do úmero SEM a torção, e toda malha com pele ganha os ossos auxiliares)
+    if (!/o\.axila\.quaternion\.copy\(o\.bindAxila\)\.slerp\(_q3\.copy\(U\.quaternion\)\.multiply\([^;]*o\.giroU\.quaternion[^;]*, 0\.5\)/.test(lu)) throw new Error("a axila não gira a metade do úmero (sem a torção) no update");
+    if (!/m\.bind\(new THREE\.Skeleton\(sk\.bones\.concat\(AJUDANTES\.map/.test(lu)) throw new Error("as malhas com pele não ganham o esqueleto com a axila e os auxiliares");
   });
   await conf("pele por quatérnio duplo misturada ao linear: o shader troca os três trechos do skinning, no corpo e na sombra", async () => {
     const url = require("url");
