@@ -21,6 +21,7 @@ window.__LU = LU;
 /* ?ritmo={"pele":0.5} e ?escapula={"mascara":{...}}: ajuste do ritmo e da máscara da escápula sem gerar o corpo
    (o lutador.js de antes do Passo 2 não tem os dois: a página abre igual) */
 { const q = new URLSearchParams(location.search); if (q.get("ritmo") && LU.RITMO) Object.assign(LU.RITMO, JSON.parse(q.get("ritmo")));
+  if (q.get("semcorretivo") && LU.CORRETIVOS) LU.CORRETIVOS.desligados = true;   // ?semcorretivo=1: sem as formas corretivas (pra gerar elas)
   if (q.get("torcao") && LU.TORCAO) Object.assign(LU.TORCAO, JSON.parse(q.get("torcao")));
   if (q.get("cotovelo") && LU.COTOVELO) Object.assign(LU.COTOVELO, JSON.parse(q.get("cotovelo")));
   if (q.get("escapula") && LU.ESCAPULA) { const e = JSON.parse(q.get("escapula")); if (e.pivo) LU.ESCAPULA.pivo = e.pivo; if (e.mascara) Object.assign(LU.ESCAPULA.mascara, e.mascara); } }
@@ -245,11 +246,75 @@ const posadoDe = (L) => {
    relevo = quanto a pele ficou mais curva que em repouso (laplaciano posado menos o de repouso, em mm: calombo e
    vinco), estica = aresta posada sobre a de repouso (a maior e a menor). Por grupo: p99 do relevo, quantos vértices
    passam de 4 mm, e o p99 e o p1 do estiramento. */
+/* forma corretiva da pose de agora (Passo 2, item 6): delta mush assado. A pele posada da região do ombro do lado é
+   alisada e ganha de volta o relevo de repouso no referencial local de cada vértice (normal e tangente do alisado);
+   a diferença vira deslocamento no espaço do bind (inverso da mistura linear dos ossos do vértice). Devolve os vértices
+   com deslocamento (todos os da costura de UV) e o deslocamento em metros. raio: cheio até r[0] do ombro, zero em r[1] */
+window.__corretivo = (lado = "l", { raio = [0.16, 0.26], passadas = 14, solto = 0.3, campo = 0, tangente = false } = {}) => {
+  const L = A, m = L.corpo, g = m.geometry, pos = g.attributes.position, n = pos.count, idx = g.index.array, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const Q = posadoDe(L), R = new Float32Array(n * 3), dm = new THREE.Vector3(), tmp = new THREE.Vector3(), morf = g.morphAttributes.position || [], inf = m.morphTargetInfluences || [];
+  for (let i = 0; i < n; i++) { dm.fromBufferAttribute(pos, i); morf.forEach((a, k) => { if (inf[k] && soPorte(L.corpo, k)) dm.addScaledVector(tmp.fromBufferAttribute(a, i), inf[k]); }); R[3 * i] = dm.x; R[3 * i + 1] = dm.y; R[3 * i + 2] = dm.z; }
+  const chave = (i) => `${Math.round(R[3 * i] * 1e4)},${Math.round(R[3 * i + 1] * 1e4)},${Math.round(R[3 * i + 2] * 1e4)}`, rep = new Int32Array(n), mapa = new Map();
+  for (let i = 0; i < n; i++) { const k = chave(i); if (!mapa.has(k)) mapa.set(k, i); rep[i] = mapa.get(k); }
+  const viz = new Map();
+  for (let k = 0; k < idx.length; k += 3) for (const [a0, b0] of [[idx[k], idx[k + 1]], [idx[k + 1], idx[k + 2]], [idx[k + 2], idx[k]]]) {
+    const a = rep[a0], b = rep[b0]; if (a === b) continue; for (const [x, y] of [[a, b], [b, a]]) { if (!viz.has(x)) viz.set(x, []); if (!viz.get(x).includes(y)) viz.get(x).push(y); } }
+  // a região: perto do ombro do lado, no bind (sem a mão: a luva cobre)
+  const nomes = m.skeleton.bones.map((b) => b.name), ombro = new THREE.Vector3().setFromMatrixPosition(m.skeleton.boneInverses[nomes.indexOf("upperarm_" + lado)].clone().invert());
+  const s = lado === "l" ? 1 : -1, peso = new Map(), pb = new THREE.Vector3();
+  for (const [i] of viz) { pb.set(R[3 * i], R[3 * i + 1], R[3 * i + 2]).applyMatrix4(m.bindMatrix); if (pb.x * s < 0.02) continue;
+    const d = pb.distanceTo(ombro), w = 1 - Math.min(1, Math.max(0, (d - raio[0]) / (raio[1] - raio[0]))); if (w > 0) peso.set(i, w * w * (3 - 2 * w)); }
+  // alisar (só a região e uma margem; o resto fica parado como borda)
+  const zona = [...viz.keys()].filter((i) => { pb.set(R[3 * i], R[3 * i + 1], R[3 * i + 2]).applyMatrix4(m.bindMatrix); return pb.x * s > -0.02 && pb.distanceTo(ombro) < raio[1] + 0.06; });
+  const alisar = (X) => { const Y = Float32Array.from(X); for (let it = 0; it < passadas; it++) { const Z = Float32Array.from(Y);
+    for (const i of zona) { const vz = viz.get(i); let x = 0, y = 0, z = 0; for (const j of vz) { x += Y[3 * j]; y += Y[3 * j + 1]; z += Y[3 * j + 2]; } const k = vz.length;
+      Z[3 * i] = Y[3 * i] + (x / k - Y[3 * i]) * 0.5; Z[3 * i + 1] = Y[3 * i + 1] + (y / k - Y[3 * i + 1]) * 0.5; Z[3 * i + 2] = Y[3 * i + 2] + (z / k - Y[3 * i + 2]) * 0.5; }
+    Y.set(Z); } return Y; };
+  const SR = alisar(R), SQ = alisar(Q);
+  // referencial local: normal (faces do alisado) e tangente pro primeiro vizinho
+  const normais = (X) => { const N = new Float32Array(n * 3), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+    for (let k = 0; k < idx.length; k += 3) { const [a, b, c] = [rep[idx[k]], rep[idx[k + 1]], rep[idx[k + 2]]];
+      e1.set(X[3 * b] - X[3 * a], X[3 * b + 1] - X[3 * a + 1], X[3 * b + 2] - X[3 * a + 2]); e2.set(X[3 * c] - X[3 * a], X[3 * c + 1] - X[3 * a + 1], X[3 * c + 2] - X[3 * a + 2]); e1.cross(e2);
+      for (const v of [a, b, c]) { N[3 * v] += e1.x; N[3 * v + 1] += e1.y; N[3 * v + 2] += e1.z; } } return N; };
+  const NR = normais(SR), NQ = normais(SQ), NP = tangente ? normais(Q) : null;
+  const base = (X, N, i) => { const nn = new THREE.Vector3(N[3 * i], N[3 * i + 1], N[3 * i + 2]).normalize(), j = viz.get(i)[0];
+    const t = new THREE.Vector3(X[3 * j] - X[3 * i], X[3 * j + 1] - X[3 * i + 1], X[3 * j + 2] - X[3 * i + 2]); t.addScaledVector(nn, -t.dot(nn)).normalize();
+    return new THREE.Matrix3().set(...[t, nn.clone().cross(t), nn].flatMap((v) => [v.x, v.y, v.z])).transpose(); };   // colunas t, b, n
+  const B = m.skeleton.bones.map((b, i) => new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().multiplyMatrices(b.matrixWorld, m.skeleton.boneInverses[i])));
+  const bm = new THREE.Matrix3().setFromMatrix4(m.bindMatrix), bmi = new THREE.Matrix3().setFromMatrix4(m.bindMatrixInverse);
+  const porRep = new Map();
+  for (const [i, w] of peso) {
+    const FR = base(SR, NR, i), FQ = base(SQ, NQ, i);
+    const dl = new THREE.Vector3(R[3 * i] - SR[3 * i], R[3 * i + 1] - SR[3 * i + 1], R[3 * i + 2] - SR[3 * i + 2]).applyMatrix3(FR.clone().transpose());   // relevo de repouso no local
+    const alvo = new THREE.Vector3(SQ[3 * i], SQ[3 * i + 1], SQ[3 * i + 2]).add(dl.applyMatrix3(FQ));
+    const c = alvo.sub(new THREE.Vector3(Q[3 * i], Q[3 * i + 1], Q[3 * i + 2])).multiplyScalar(w * (1 - solto));   // (solto: fração que fica com o skinning)
+    // tangente: só o deslize no plano da pele posada (iguala o estiramento sem mudar a forma)
+    if (NP) { const nn = new THREE.Vector3(NP[3 * i], NP[3 * i + 1], NP[3 * i + 2]).normalize(); c.addScaledVector(nn, -c.dot(nn)); }
+    porRep.set(i, c);
+  }
+  // o campo da correção alisado sobre a malha (campo passadas): tira o erro de alta frequência do referencial local
+  for (let it = 0; it < campo; it++) { const novo = new Map();
+    for (const [i, c] of porRep) { const s0 = new THREE.Vector3(); let k = 0; for (const j of viz.get(i)) { const cj = porRep.get(j); s0.add(cj || new THREE.Vector3()); k++; }
+      novo.set(i, c.clone().lerp(s0.multiplyScalar(1 / k), 0.5)); }
+    for (const [i, c] of novo) porRep.set(i, c); }
+  for (const [i, c0] of porRep) {
+    const c = c0.clone();
+    // de volta ao bind: inverso da mistura linear dos ossos do vértice
+    const M = new THREE.Matrix3().set(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    for (let k = 0; k < 4; k++) { const ww = sw.getComponent(i, k); if (ww) for (let e = 0; e < 9; e++) M.elements[e] += ww * B[si.getComponent(i, k)].elements[e]; }
+    const d = c.applyMatrix3(bmi.clone().invert()).applyMatrix3(M.invert()).applyMatrix3(bm.clone().invert());
+    if (d.lengthSq() > 1e-10) porRep.set(i, d); else porRep.delete(i);
+  }
+  const out = { lado, idx: [], d: [] };
+  for (let i = 0; i < n; i++) { const d = porRep.get(rep[i]); if (!d) continue; out.idx.push(i); out.d.push(+d.x.toFixed(5), +d.y.toFixed(5), +d.z.toFixed(5)); }
+  out.max = Math.max(0, ...[...porRep.values()].map((v) => v.length()));
+  return out;
+};
 window.__deform = (quem = "A") => {
   const L = { A, B, C }[quem], m = L.corpo, g = m.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = pos.count, idx = g.index.array;
   const nomes = m.skeleton.bones.map((b) => b.name), Q = posadoDe(L), dm = new THREE.Vector3();
   const R = new Float32Array(n * 3), morf = g.morphAttributes.position || [], inf = m.morphTargetInfluences || [];
-  for (let i = 0; i < n; i++) { dm.fromBufferAttribute(pos, i); morf.forEach((a, k) => { if (inf[k]) dm.addScaledVector(new THREE.Vector3().fromBufferAttribute(a, i), inf[k]); }); R[3 * i] = dm.x; R[3 * i + 1] = dm.y; R[3 * i + 2] = dm.z; }
+  for (let i = 0; i < n; i++) { dm.fromBufferAttribute(pos, i); morf.forEach((a, k) => { if (inf[k] && soPorte(L.corpo, k)) dm.addScaledVector(new THREE.Vector3().fromBufferAttribute(a, i), inf[k]); }); R[3 * i] = dm.x; R[3 * i + 1] = dm.y; R[3 * i + 2] = dm.z; }
   // grupo de cada vértice (osso de maior peso; coluna pelo lado no bind)
   const grupo = new Array(n), pb = new THREE.Vector3();
   for (let i = 0; i < n; i++) { let best = 0, bw = -1; for (let c = 0; c < 4; c++) { const w = sw.getComponent(i, c); if (w > bw) { bw = w; best = si.getComponent(i, c); } }
@@ -276,13 +341,15 @@ window.__deform = (quem = "A") => {
   for (const gr of G) out[gr] = { relevo99: +pc(rel[gr], 0.99).toFixed(2), acima4mm: rel[gr].filter((x) => x > 4).length, estica99: +pc(est[gr], 0.99).toFixed(3), encolhe1: +pc(est[gr], 0.01).toFixed(3) };
   return out;
 };
+/* o repouso de referência leva só a forma do porte (as formas corretivas são da pose, não do corpo) */
+const soPorte = (m, k) => { const d = m.morphTargetDictionary || {}; return Object.entries(d).some(([nm, i]) => i === k && nm.startsWith("porte_")); };
 /* relevo de verdade: só a componente do laplaciano na normal da pele (o laplaciano inteiro conta também o deslize
    da malha no plano da pele, e pele que só esticava saía como calombo). Devolve, por vértice representante (as
    costuras de UV juntadas pelo lugar), a curvatura posada menos a de repouso, em mm, e os vizinhos */
 const relevoNormal = (L) => {
   const m = L.corpo, g = m.geometry, pos = g.attributes.position, n = pos.count, idx = g.index.array, Q = posadoDe(L);
   const R = new Float32Array(n * 3), dm = new THREE.Vector3(), tmp = new THREE.Vector3(), morf = g.morphAttributes.position || [], inf = m.morphTargetInfluences || [];
-  for (let i = 0; i < n; i++) { dm.fromBufferAttribute(pos, i); morf.forEach((a, k) => { if (inf[k]) dm.addScaledVector(tmp.fromBufferAttribute(a, i), inf[k]); }); R[3 * i] = dm.x; R[3 * i + 1] = dm.y; R[3 * i + 2] = dm.z; }
+  for (let i = 0; i < n; i++) { dm.fromBufferAttribute(pos, i); morf.forEach((a, k) => { if (inf[k] && soPorte(L.corpo, k)) dm.addScaledVector(tmp.fromBufferAttribute(a, i), inf[k]); }); R[3 * i] = dm.x; R[3 * i + 1] = dm.y; R[3 * i + 2] = dm.z; }
   const chave = (i) => `${Math.round(R[3 * i] * 1e4)},${Math.round(R[3 * i + 1] * 1e4)},${Math.round(R[3 * i + 2] * 1e4)}`, rep = new Int32Array(n), mapa = new Map();
   for (let i = 0; i < n; i++) { const k = chave(i); if (!mapa.has(k)) mapa.set(k, i); rep[i] = mapa.get(k); }
   const viz = new Map(), NQ = new Float32Array(n * 3), NR = new Float32Array(n * 3), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();

@@ -62,7 +62,8 @@ export async function carregarCartas(base, dir = "./", abrir = null) {
 export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir ficam na base (carregarPecas usa)
   const L = new GLTFLoader();
   const ler = abrir ? (f) => abrir(L, f) : (f) => L.loadAsync(dir + f);
-  const [corpo, anim] = await Promise.all(["lutador.glb", "mx_lutas.glb"].map(ler));
+  const [corpo, anim, corr] = await Promise.all([...["lutador.glb", "mx_lutas.glb"].map(ler),
+    abrir ? Promise.resolve(null) : fetch(dir + "corretivos.json").then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
   // espaço do pai da pelve (osso "root") no modelo em repouso
   corpo.scene.updateMatrixWorld(true);
   const pelve = corpo.scene.getObjectByName("pelvis");
@@ -73,6 +74,7 @@ export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir 
   let corpoPele = null; corpo.scene.traverse((o) => { if (o.isSkinnedMesh && o.material.name === "MI_Pele") corpoPele = o; });
   const { info, orelha } = infoDoCorpo(corpoPele);
   const axila = prepararAxila(corpoPele), ombro = prepararOmbro(corpoPele);
+  if (corr && !CORRETIVOS.desligados) prepararCorretivos(corpoPele, corr, ombro);
   // escápula e torção nos pesos de toda malha com pele do GLB (corpo, calção, luva, punho), cada uma no bind dela
   corpo.scene.traverse((o) => { if (o.isSkinnedMesh) pesosDoOmbro(o.geometry, o.skeleton, o.bindMatrix, o === corpoPele); });
   // cabelo e roupa de cabeça vêm em coordenadas do corpo em T: vão pro espaço da cabeça pelo bind em T (o do calção;
@@ -539,6 +541,33 @@ export function pesosDoOmbro(geo, skeleton, bindMatrix, corpo = false) {
   si.needsUpdate = sw.needsUpdate = true;
   if (corpo && COTOVELO.passadas > 0) suavizarPesos(geo, bindMatrix, lados.filter((L) => L.L).map((L) => L.L), COTOVELO.raio, COTOVELO.passadas);
 }
+/* formas corretivas do ombro (item 6; ferramentas/corpo3d/corretivos.mjs): alvos de forma do corpo, um por lado e por
+   elevação do úmero (90, 135, 160, 180), ligados pela elevação no jogo (ombros). Vêm do delta mush assado na pose:
+   tiram o estiramento e a dobra que o skinning deixa na axila, no deltoide e no flanco com o braço erguido.
+   Sem o arquivo, nada muda. */
+export const CORRETIVOS = { desligados: false, entra: 45 };
+export function prepararCorretivos(corpo, dados, ombro) {
+  const g = corpo.geometry, n = g.attributes.position.count, lista = g.morphAttributes.position = g.morphAttributes.position || [];
+  g.morphTargetsRelative = true;
+  const dic = corpo.morphTargetDictionary = corpo.morphTargetDictionary || {};
+  for (const a of dados.alvos) {
+    const d = new Float32Array(n * 3);
+    a.idx.forEach((v, k) => { d[3 * v] = a.d[3 * k] * dados.unidade; d[3 * v + 1] = a.d[3 * k + 1] * dados.unidade; d[3 * v + 2] = a.d[3 * k + 2] * dados.unidade; });
+    const attr = new THREE.Float32BufferAttribute(d, 3); attr.name = a.nome; dic[a.nome] = lista.length; lista.push(attr);
+  }
+  corpo.updateMorphTargets();
+  for (const o of ombro.lados) o.corretivos = dados.alvos.filter((a) => a.lado === o.l).sort((x, y) => x.graus - y.graus).map((a) => [corpo.morphTargetDictionary[a.nome], a.graus]);
+}
+/* peso de cada forma pela elevação: entra de CORRETIVOS.entra até a primeira, entre duas vizinhas reparte, depois da
+   última fica nela */
+export function pesosCorretivos(lista, e, out) {
+  for (let k = 0; k < lista.length; k++) {
+    const g = lista[k][1], ant = k ? lista[k - 1][1] : CORRETIVOS.entra, prox = k < lista.length - 1 ? lista[k + 1][1] : null;
+    let w = 0;
+    if (e <= g) w = e <= ant ? 0 : (e - ant) / (g - ant); else w = prox === null ? 1 : e >= prox ? 0 : 1 - (e - g) / (prox - g);
+    out[lista[k][0]] = w;
+  }
+}
 /* torção de q em volta do eixo a (unitário), pela decomposição balanço-torção (q = balanço * torção): a projeção de
    q no eixo. Perto do balanço de 180 graus ela fica instável: some aos poucos (fica só o balanço). */
 export function torcaoDe(q, a, out) {
@@ -931,6 +960,8 @@ export class Lutador {
       g.slerp(_qId, 1 - RITMO.segue);
       o.escapula.position.copy(o.posE).sub(C.position).applyQuaternion(g).add(C.position);
       o.escapula.quaternion.setFromAxisAngle(o.eixoE, o.s * THREE.MathUtils.degToRad(u)).premultiply(g);
+      // as formas corretivas do lado, pela elevação do úmero
+      if (o.corretivos && this.corpo && this.corpo.morphTargetInfluences) pesosCorretivos(o.corretivos, this.elevacao(o), this.corpo.morphTargetInfluences);
     }
   }
   /* a mão no mundo: palma virada pra normal e dedos na direção dedos (os dois no mundo, ortogonais).

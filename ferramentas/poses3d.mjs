@@ -41,6 +41,10 @@ try {
     // REGIAO=A,B,C: triângulos virados no ombro e no braço por grupo (e os saltos de peso com REGIAO_SALTOS=1)
     if (process.env.REGIAO) for (const q of process.env.REGIAO.split(",")) console.log(cen, "regiao", q, JSON.stringify(await avaliar(`window.__regiao(${JSON.stringify(q)})`)));
     if (process.env.DEFORM) for (const q of process.env.DEFORM.split(",")) console.log(cen, "deform", q, JSON.stringify(await avaliar(`window.__deform(${JSON.stringify(q)})`)));
+    // CORRETIVO=<pasta>: grava a forma corretiva da pose (lado do cenário eleva:<g>:<l|r>) em <pasta>/<cenario>.json
+    if (process.env.CORRETIVO) { const lado = cen.split(":")[2] || "l", c = await avaliar(`JSON.stringify(window.__corretivo(${JSON.stringify(lado)}, ${process.env.CORRETIVO_OPC || "{}"}))`);
+      fs.mkdirSync(process.env.CORRETIVO, { recursive: true }); fs.writeFileSync(path.join(process.env.CORRETIVO, cen.replace(/[:]/g, "_") + ".json"), c);
+      const o = JSON.parse(c); console.log(cen, "corretivo", o.idx.length, "vértices, máx", (o.max * 1000).toFixed(1), "mm"); }
     if (process.env.REGIAO_SALTOS) console.log(cen, "saltos", JSON.stringify(await avaliar("window.__saltos('A')")));
     if (process.env.ESPINHOS) for (const l of await avaliar(`window.__espinhos(${JSON.stringify(process.env.ESPINHOS)})`)) console.log(cen, JSON.stringify(l));
     if (process.env.AVAL) console.log(cen, "aval", JSON.stringify(await avaliar(process.env.AVAL)));

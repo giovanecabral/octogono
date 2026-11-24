@@ -18701,6 +18701,31 @@ async function testarLuta3d() {
     const antes = Array.from(geo.attributes.skinWeight.array); LU.pesosDoOmbro(geo, skeleton, new THREE.Matrix4());
     if (antes.some((x, k) => x !== geo.attributes.skinWeight.array[k])) throw new Error("os pesos mudaram de novo na segunda chamada");
   });
+  await conf("formas corretivas do ombro: 8 (lado x 90/135/160/180) no arquivo, ligadas pela elevação (entram de 45, repartem entre vizinhas, a última fica) e carregadas como alvos de forma", async () => {
+    const { THREE, LU } = await esqueletoOmbro();
+    const j = JSON.parse(fs.readFileSync(path.join(__dirname, "luta3d", "corretivos.json"), "utf8"));
+    const nomes = j.alvos.map((a) => a.nome).sort().join(",");
+    if (nomes !== ["l", "r"].flatMap((l) => [135, 160, 180, 90].map((g) => `corr_${l}_${g}`)).sort().join(",")) throw new Error("formas: " + nomes);
+    for (const a of j.alvos) {
+      if (a.idx.length < 300 || a.d.length !== 3 * a.idx.length) throw new Error(a.nome + ": " + a.idx.length + " vértices");
+      let m = 0; for (let k = 0; k < a.d.length; k += 3) m = Math.max(m, Math.hypot(a.d[k], a.d[k + 1], a.d[k + 2]) * j.unidade);
+      if (m > 0.06) throw new Error(`${a.nome} desloca ${(m * 1000).toFixed(0)} mm (teto 60)`);
+    }
+    // pesos pela elevação
+    const lista = [[0, 90], [1, 135], [2, 160], [3, 180]], w = (e) => { const o = [0, 0, 0, 0]; LU.pesosCorretivos(lista, e, o); return o.map((x) => +x.toFixed(2)).join(" "); };
+    const casos = { 30: "0 0 0 0", 67.5: "0.5 0 0 0", 90: "1 0 0 0", 112.5: "0.5 0.5 0 0", 170: "0 0 0.5 0.5", 190: "0 0 0 1" };
+    for (const [e, esp] of Object.entries(casos)) if (w(Number(e)) !== esp) throw new Error(`elevação ${e}: ${w(Number(e))} (esperado ${esp})`);
+    // carga: vira alvo de forma do corpo, com o deslocamento no vértice certo
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(3 * 12000), 3));
+    const corpo = { geometry: geo, morphTargetDictionary: {}, updateMorphTargets() { this.morphTargetInfluences = geo.morphAttributes.position.map(() => 0); } };
+    const ombro = { lados: [{ l: "l" }, { l: "r" }] };
+    LU.prepararCorretivos(corpo, j, ombro);
+    const a0 = j.alvos[0], at = geo.morphAttributes.position[corpo.morphTargetDictionary[a0.nome]];
+    if (Math.abs(at.getX(a0.idx[0]) - a0.d[0] * j.unidade) > 1e-7 || !geo.morphTargetsRelative) throw new Error("o deslocamento não foi pro vértice certo");
+    if (ombro.lados[0].corretivos.length !== 4 || ombro.lados[0].corretivos.map((x) => x[1]).join() !== "90,135,160,180") throw new Error("as formas do lado não ficaram em ordem de elevação");
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/pesosCorretivos\(o\.corretivos, this\.elevacao\(o\), this\.corpo\.morphTargetInfluences\)/.test(lu)) throw new Error("o jogo não liga as formas pela elevação");
+  });
   await conf("golpe pela cadeia: o tronco leva parte da mira (com teto) e o braço chega no rosto sem travar", async () => {
     const { THREE, L, ang } = await esqueletoBraco();
     const q0 = L.ossos.spine_03.getWorldQuaternion(new THREE.Quaternion()).clone();
