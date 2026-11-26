@@ -62,8 +62,11 @@ export async function carregarCartas(base, dir = "./", abrir = null) {
 export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir ficam na base (carregarPecas usa)
   const L = new GLTFLoader();
   const ler = abrir ? (f) => abrir(L, f) : (f) => L.loadAsync(dir + f);
-  const [corpo, anim, corr] = await Promise.all([...["lutador.glb", "mx_lutas.glb"].map(ler),
-    abrir ? Promise.resolve(null) : fetch(dir + "corretivos.json").then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
+  const [corpo, anim, corr, aspereza] = await Promise.all([...["lutador.glb", "mx_lutas.glb"].map(ler),
+    abrir ? Promise.resolve(null) : fetch(dir + "corretivos.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    // aspereza da pele (etapa e da anatomia, relevo.py): sem ela a pele fica com a aspereza única de antes
+    abrir ? Promise.resolve(null) : new THREE.TextureLoader().loadAsync(dir + "pele_aspereza.webp").then((t) => {
+      t.flipY = false; t.colorSpace = THREE.NoColorSpace; return t; }).catch(() => null)]);
   // espaço do pai da pelve (osso "root") no modelo em repouso
   corpo.scene.updateMatrixWorld(true);
   const pelve = corpo.scene.getObjectByName("pelvis");
@@ -83,7 +86,7 @@ export async function carregarBase(dir = "./", abrir = null) {   // dir e abrir 
   malhaT = malhaT || corpoPele;
   const iH = malhaT.skeleton.bones.findIndex((b) => b.name === "Head");
   const paraCabeca = new THREE.Matrix4().multiplyMatrices(malhaT.skeleton.boneInverses[iH], malhaT.bindMatrix);
-  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir, axila, ombro };
+  return { corpo, clips, curvas, info, orelha, matrizPai: M, paraCabeca, pecas: {}, dir, abrir, axila, ombro, aspereza };
 }
 /* Cabelo e roupa: um GLB por peça em pecas/ (cortes só com a geometria; roupas de corpo com pesos),
    baixados só os da luta, e as texturas de fios e de cachos uma vez. Falhou: o lutador fica com a pintura na pele
@@ -667,7 +670,7 @@ export class Lutador {
           // pele (etapa 2): sheen avermelhado (luz que espalha na pele) e menos reflexo do ambiente, sem cara de plástico; o suor fica no verniz leve
           const m0 = o.material;
           o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Pele", map: tingirTextura(m0.map, opt.pele, marcas), normalMap: m0.normalMap, normalScale: m0.normalScale,
-            roughness: 0.58, envMapIntensity: 0.4, sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color("#c86a50"), clearcoat: 0.12, clearcoatRoughness: 0.55 });
+            roughness: base.aspereza ? 1 : 0.58, roughnessMap: base.aspereza || null, envMapIntensity: 0.4, sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color("#c86a50"), clearcoat: 0.12, clearcoatRoughness: 0.55 });
         }
         // calção e luva são peças com material próprio
         // olho úmido: verniz forte e quase sem aspereza (a bola fosca parecia de boneco)

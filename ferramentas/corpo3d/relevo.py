@@ -4,14 +4,18 @@
 # posicionado pelas juntas do esqueleto, rasterizado no UV da pele e somado ao mapa de normal do corpo escaneado
 # (derivada da altura no espaço tangente). Sai também a oclusão das cavidades (axila, esterno, dobra do cotovelo, umbigo),
 # que escurece a cor da pele, e a aspereza da pele (luta3d/pele_aspereza.webp). Cabeça, pescoço, mãos e pernas não mudam.
-# Uso: python3 ferramentas/corpo3d/relevo.py <lutador.glb> <hbm_normal.png | glb> <pasta de saída>
+# Uso: python3 ferramentas/corpo3d/relevo.py <lutador.glb> <hbm_normal.png | glb> <pasta de saída> [--embutir]
+#   --embutir: troca dentro do próprio lutador.glb o mapa de normal (com o relevo) e a cor da pele (com a oclusão), em JPEG
+#   do tamanho de antes, e marca asset.extras.relevo; um GLB já marcado é recusado (o relevo somaria duas vezes). O
+#   gerar.sh chama assim depois dos alvos de forma. A aspereza vai pra luta3d/pele_aspereza.webp (o jogo lê à parte).
 #   (glb: o mapa de normal que está dentro do lutador.glb; o hbm_normal.png de uma pasta de trabalho pode ser outro)
 #   (escreve hbm_normal_relevo.png, hbm_oclusao.png e pele_aspereza.webp; o hbm_trocar.py usa os dois primeiros se existirem)
 import json, struct, sys, os
 import numpy as np
 from PIL import Image
+np.seterr(all="ignore")   # o matmul do Accelerate (macOS) avisa divisão por zero à toa; o nan_to_num cuida do resto
 
-glb, normal_png, saida = sys.argv[1:4]
+glb, normal_png, saida = sys.argv[1:4]; EMBUTIR = "--embutir" in sys.argv[4:]
 os.makedirs(saida, exist_ok=True)
 
 def ler_glb(arq):
@@ -28,13 +32,18 @@ def ler_glb(arq):
                 I=acc(pr["indices"]).astype(np.int64).reshape(-1, 3), J=acc(pr["attributes"]["JOINTS_0"]).astype(np.int64), W=W,
                 nomes=[j["nodes"][k]["name"] for k in sk["joints"]], IB=acc(sk["inverseBindMatrices"]).astype(np.float64).reshape(-1, 4, 4))
 
+if (json.loads(open(glb, "rb").read()[20:20 + struct.unpack_from("<I", open(glb, "rb").read(), 12)[0]]).get("asset", {}).get("extras") or {}).get("relevo"):
+    sys.exit("relevo: " + glb + " já tem o relevo (asset.extras.relevo); gere o corpo de novo (gerar.sh) antes de rodar outra vez")
 g = ler_glb(glb)
 junta = {n: np.linalg.inv(g["IB"][k].T)[:3, 3] for k, n in enumerate(g["nomes"])}   # (glTF guarda a matriz por coluna)
 dom = np.array([g["nomes"][g["J"][i][np.argmax(g["W"][i])]] for i in range(len(g["P"]))])
+FORA = ("Head", "neck", "hand", "thumb", "index", "middle", "ring", "pinky", "thigh", "calf", "foot", "ball")
+fora_osso = np.array([n.startswith(FORA) for n in g["nomes"]])
+dentro_v = 1.0 - (g["W"] * fora_osso[g["J"]]).sum(1)   # 1 no tronco e no braço, 0 no que não muda (a borda vira rampa)
 
 # ---------------- rasterização no UV: posição do bind, osso dominante e metros por unidade de UV ----------------
 N = 2048
-pos = np.zeros((N, N, 3)); cobre = np.zeros((N, N), bool); mpu = np.zeros((N, N, 2)); osso = np.full((N, N), -1, np.int32)
+pos = np.zeros((N, N, 3)); dentro = np.zeros((N, N)); cobre = np.zeros((N, N), bool); mpu = np.zeros((N, N, 2)); osso = np.full((N, N), -1, np.int32)
 nomes_dom = sorted(set(dom)); id_dom = {n: i for i, n in enumerate(nomes_dom)}; dom_id = np.array([id_dom[n] for n in dom])
 for tri in g["I"]:
     uv = g["UV"][tri] * N; p = g["P"][tri]
@@ -56,12 +65,14 @@ for tri in g["I"]:
     except np.linalg.LinAlgError: continue
     ys_i, xs_i = np.nonzero(m); ys_i += y0; xs_i += x0
     pos[ys_i, xs_i] = pp[m]; cobre[ys_i, xs_i] = True
+    dentro[ys_i, xs_i] = (l0[m] * dentro_v[tri[0]] + l1[m] * dentro_v[tri[1]] + l2[m] * dentro_v[tri[2]])
     mpu[ys_i, xs_i] = [np.linalg.norm(Jm[:, 0]), np.linalg.norm(Jm[:, 1])]
     osso[ys_i, xs_i] = dom_id[tri][np.argmax(np.stack([l0[m], l1[m], l2[m]], 1), 1)]   # o do vértice mais perto
 
 X, Y, Z = pos[..., 0], pos[..., 1], pos[..., 2]
 nome_de = np.array(nomes_dom)
-regiao = cobre & ~np.isin(osso, [id_dom[n] for n in nomes_dom if n.startswith(("Head", "neck", "hand", "thumb", "index", "middle", "ring", "pinky", "thigh", "calf", "foot", "ball"))])
+# rampa, nunca corte: pelo osso dominante de cada texel a altura caía a zero num texel só e virava serrilhado no pescoço
+regiao = cobre * np.clip((dentro - 0.35) / 0.5, 0, 1) ** 2
 
 # ---------------- os traços (mm) ----------------
 gauss = lambda d, w: np.exp(-(d / w) ** 2)
@@ -74,7 +85,6 @@ H = np.zeros((N, N)); AO = np.zeros((N, N))
 # esterno: sulco no meio do peito, do manúbrio ao processo xifoide
 y_man, y_xif = nk[1] - 0.075, s3[1] + 0.06
 H += -1.0 * gauss(X, 0.018) * faixa(Y, y_xif, y_man, 0.03) * frente
-AO += 0.06 * gauss(X, 0.012) * faixa(Y, y_xif, y_man, 0.025) * frente
 # borda de baixo do peitoral: a dobra sobe do esterno até a axila
 y_borda = y_xif + 0.005 + 3.5 * np.clip(ax - 0.03, 0, None) ** 2
 dobra = gauss(Y - y_borda, 0.016) * faixa(ax, 0.02, 0.165, 0.03) * frente
@@ -97,7 +107,7 @@ for s in (1, -1):
     eixo = (c1 - c0); L = np.linalg.norm(eixo); eixo = eixo / L
     rel = pos - c0; t = (rel @ eixo) / L
     perp = rel - (rel @ eixo)[..., None] * eixo; dy = perp[..., 1]   # acima (+) ou abaixo (-) da linha
-    lado_c = (X * s > 0) & (t > 0.08) & (t < 0.85)
+    lado_c = (X * s > 0) * faixa(t, 0.05, 0.8, 0.12)   # pontas em rampa (o corte seco riscava a frente do ombro)
     H += lado_c * (0.8 * gauss(dy - 0.012, 0.011) - 0.6 * gauss(dy - 0.038, 0.013)) * np.clip((Z - c0[2]) / 0.02 + 1, 0, 1)
     AO += lado_c * 0.05 * gauss(dy - 0.035, 0.01)
 # axila: cavidade
@@ -119,7 +129,8 @@ for s in (1, -1):
         H += braco * 0.35 * np.nan_to_num(gauss((perp @ lat) - off, 0.006) * np.clip(-cos_f, 0, 1) ** 2 * faixa(t, 0.5, 0.92, 0.12))
 
 if os.environ.get("ZERO"): H[:] = 0; AO[:] = 0   # ZERO=1: só a troca do mapa (controle)
-H = np.nan_to_num(H) * regiao * float(os.environ.get("GANHO", "1")); AO = np.clip(np.nan_to_num(AO) * regiao, 0, 0.4)
+H = np.nan_to_num(H) * regiao * float(os.environ.get("GANHO", "2.5"))   # 2,5: medido nas fotos (com 4 o abdômen parece desenhado, com 2 some na câmera da luta)
+AO = np.clip(np.nan_to_num(AO) * regiao * float(os.environ.get("AO_GANHO", "2")), 0, 0.6)   # AO_GANHO: exagero pra conferir o lugar
 def estender(A, cob, passadas=12):
     """leva o valor de cada ilha do UV pros texels de fora dela (média dos vizinhos já preenchidos)"""
     A = A.copy(); feito = cob.copy()
@@ -143,7 +154,7 @@ mu = np.asarray(Image.fromarray(mpu[..., 0].astype(np.float32)).resize((M, M), I
 mv = np.asarray(Image.fromarray(mpu[..., 1].astype(np.float32)).resize((M, M), Image.NEAREST), np.float32)
 dHx = np.gradient(Hs, axis=1); dHy = np.gradient(Hs, axis=0)   # mm por texel
 su = dHx / np.maximum(mu / M * 1000.0, 1e-4); sv = dHy / np.maximum(mv / M * 1000.0, 1e-4)   # inclinação (mm/mm)
-SINAL_V = float(os.environ.get("SINAL_V", "1"))   # o eixo v da textura no espaço tangente (conferido pela luz de lado)
+SINAL_V = float(os.environ.get("SINAL_V", "-1"))   # o verde do mapa escaneado cresce contra as linhas da imagem: a correlação de d(nx)/dlinha com d(ny)/dcoluna é -0,35 (rotacional nulo pede o sinal dela); com +1 a inclinação em v saía invertida e o esterno, na costura das duas ilhas do peito (giradas 90 graus), virava risco
 nm[..., 0] -= su; nm[..., 1] -= SINAL_V * sv
 nm /= np.linalg.norm(nm, axis=-1, keepdims=True)
 Image.fromarray(np.clip((nm + 1.0) * 127.5, 0, 255).astype(np.uint8)).save(os.path.join(saida, "hbm_normal_relevo.png"))
@@ -151,11 +162,45 @@ Image.fromarray(np.clip((nm + 1.0) * 127.5, 0, 255).astype(np.uint8)).save(os.pa
 ao = 1.0 - AO
 Image.fromarray(np.clip(ao * 255, 0, 255).astype(np.uint8)).save(os.path.join(saida, "hbm_oclusao.png"))
 rug = np.full((N, N), 0.58)
-rug = np.where(regiao, 0.58 - 0.04 * frente * faixa(Y, y_umb, nk[1], 0.05) - 0.02 * np.clip((Y - s3[1] - 0.15) / 0.05, 0, 1), rug)   # peito e ombro com um pouco de suor
+rug = rug - regiao * (0.02 * frente * faixa(Y, y_umb, nk[1], 0.05) + 0.015 * np.clip((Y - s3[1] - 0.15) / 0.05, 0, 1))
+# variação lenta (3 a 8 cm) calculada na posição do corpo, não no UV (sem costura): brilho uniforme é o que lê plástico
+rg = np.random.default_rng(7); var = np.zeros((N, N))
+for lam in (0.03, 0.05, 0.08):
+    for _ in range(3):
+        d = rg.normal(size=3); d /= np.linalg.norm(d); var += np.sin(pos @ d * (2 * np.pi / lam) + rg.uniform(0, 2 * np.pi))
+rug = rug + 0.035 * var / 3.0 * cobre   # peito e ombro com um pouco de suor
 for s in (1, -1):
     l0 = junta["lowerarm_l" if s > 0 else "lowerarm_r"]
     rug = rug + 0.08 * gauss(np.linalg.norm(pos - l0, axis=-1), 0.04) * cobre   # cotovelo mais áspero
 Image.fromarray(np.clip(rug * 255, 0, 255).astype(np.uint8)).resize((1024, 1024), Image.BILINEAR).convert("RGB").save(os.path.join(saida, "pele_aspereza.webp"), quality=90)
+if EMBUTIR:
+    import io
+    b = open(glb, "rb").read(); nj = struct.unpack_from("<I", b, 12)[0]; j = json.loads(b[20:20 + nj]); binc = b[20 + nj + 8:]
+    def jpeg(im, ref, tam):
+        """a maior qualidade que cabe em 10% a mais que a imagem de antes, com a mesma amostragem de cor (o GLB não cresce)"""
+        from PIL import JpegImagePlugin
+        amostra = JpegImagePlugin.get_sampling(ref); im = im.resize(ref.size, Image.LANCZOS); dado = None
+        for q in range(95, 49, -3):
+            o = io.BytesIO(); im.save(o, "JPEG", quality=q, subsampling=amostra if amostra >= 0 else 2); dado = o.getvalue()
+            if len(dado) <= tam * 1.1: break
+        return dado
+    pele0 = imagem_do_glb(glb, "hbm_pele"); nrm0 = imagem_do_glb(glb, "hbm_normal")
+    aoP = np.asarray(Image.fromarray((ao * 255).astype(np.uint8)).resize(pele0.size, Image.BILINEAR), np.float32) / 255.0
+    tam = {im["name"]: j["bufferViews"][im["bufferView"]]["byteLength"] for im in j["images"] if im.get("name")}
+    novo = {"hbm_normal": jpeg(Image.open(os.path.join(saida, "hbm_normal_relevo.png")), nrm0, tam["hbm_normal"]),
+            "hbm_pele": jpeg(Image.fromarray(np.clip(np.asarray(pele0.convert("RGB"), np.float32) * aoP[..., None], 0, 255).astype(np.uint8)), pele0, tam["hbm_pele"])}
+    vista = {j["images"][k]["bufferView"]: novo[im["name"]] for k, im in enumerate(j["images"]) if im.get("name") in novo}
+    partes = []; pos_b = 0
+    for k, v in enumerate(j["bufferViews"]):   # reempacota o binário (alinhado em 4) com as duas imagens novas
+        dado = vista.get(k, binc[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]])
+        v["byteOffset"] = pos_b; v["byteLength"] = len(dado); partes.append(dado + b"\0" * (-len(dado) % 4)); pos_b += len(partes[-1])
+    j["buffers"][0]["byteLength"] = pos_b
+    j.setdefault("asset", {}).setdefault("extras", {})["relevo"] = 1
+    js = json.dumps(j, separators=(",", ":")).encode(); js += b" " * (-len(js) % 4); bn = b"".join(partes)
+    with open(glb, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(bn)))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A)); f.write(js); f.write(struct.pack("<II", len(bn), 0x004E4942)); f.write(bn)
+    print("relevo: embutido em", glb, {k: len(v) for k, v in novo.items()}, "bytes")
 if os.environ.get("PREVIA"):   # PREVIA=1: a altura (vermelho sobe, azul desce) e a oclusão sobre a pele, pra conferir o lugar dos traços
     pele = np.asarray(imagem_do_glb(glb, "hbm_pele").convert("RGB").resize((N, N)), np.float32)
     v = np.zeros((N, N, 3), np.float32); v[..., 0] = np.clip(H, 0, None) / 1.0; v[..., 2] = np.clip(-H, 0, None) / 1.5; v[..., 1] = AO / 0.2

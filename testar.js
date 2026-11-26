@@ -19065,6 +19065,24 @@ async function testarLuta3d() {
     const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
     if (!/opt\.uniforme === "arbitro" && \(o\.material\.name === "MI_Calcao"/.test(lu)) throw new Error("o calção de luta aparece embaixo da calça do árbitro (a barra marcava um degrau)");
   });
+  /* Etapa e da anatomia (2026-11-26): o relevo fino da pele (esterno, abdômen, costelas, clavícula, tendões) vai no mapa de
+     normal do próprio GLB, a oclusão das cavidades na cor, e a aspereza num arquivo à parte que o jogo lê uma vez */
+  await conf("relevo da pele: o GLB tem o relevo e a oclusão (uma vez só, sem crescer), a aspereza é lida e entra na pele, e o gerador refaz tudo", async () => {
+    const b = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.glb")), j = JSON.parse(b.slice(20, 20 + b.readUInt32LE(12)).toString());
+    if (!(j.asset && j.asset.extras && j.asset.extras.relevo)) throw new Error("o lutador.glb está sem o relevo da pele (asset.extras.relevo): rode o relevo.py --embutir (o gerar.sh já roda)");
+    const tam = (n) => { const im = j.images.find((i) => i.name === n); return im && j.bufferViews[im.bufferView].byteLength; };
+    if (!(tam("hbm_normal") <= 480000 && tam("hbm_pele") <= 250000)) throw new Error(`as imagens da pele cresceram: normal ${tam("hbm_normal")}, cor ${tam("hbm_pele")} bytes (antes 436 mil e 223 mil; o relevo.py cabe em 10% a mais)`);
+    const asp = fs.readFileSync(path.join(__dirname, "luta3d", "pele_aspereza.webp"));
+    if (asp.slice(0, 4).toString() !== "RIFF" || asp.slice(8, 12).toString() !== "WEBP" || asp.length > 64000) throw new Error("luta3d/pele_aspereza.webp falta, não é webp ou passou de 64 kB");
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/loadAsync\(dir \+ "pele_aspereza\.webp"\)\.then\(\(t\) => \{\s*t\.flipY = false; t\.colorSpace = THREE\.NoColorSpace;/.test(lu)) throw new Error("a aspereza não é lida como dado no UV do glTF (flipY false, sem espaço de cor)");
+    if (!/roughness: base\.aspereza \? 1 : 0\.58, roughnessMap: base\.aspereza \|\| null/.test(lu)) throw new Error("a pele não usa a aspereza (ou perde a aspereza única de antes quando o arquivo falta)");
+    if (!/axila, ombro, aspereza \}/.test(lu)) throw new Error("carregarBase não devolve a aspereza");
+    const ge = fs.readFileSync(path.join(__dirname, "ferramentas", "corpo3d", "gerar.sh"), "utf8"), iM = ge.indexOf("morfos.mjs"), iR = ge.indexOf('relevo.py" "$TRAB/lutador.glb" glb "$TRAB/relevo" --embutir');
+    if (iM < 0 || iR < iM || !ge.includes('cp "$TRAB/relevo/pele_aspereza.webp" "$RAIZ/luta3d/"')) throw new Error("o gerar.sh não aplica o relevo depois dos alvos de forma (ou não copia a aspereza)");
+    const re = fs.readFileSync(path.join(__dirname, "ferramentas", "corpo3d", "relevo.py"), "utf8");
+    if (!/já tem o relevo \(asset\.extras\.relevo\)/.test(re)) throw new Error("o relevo.py não recusa um GLB que já tem o relevo (somaria duas vezes)");
+  });
   /* Review Focus 5: o mx_cartas.glb chega depois que a luta abre e fica fora do git; sem ele a luta toca a reserva e não trava */
   await conf("sem o mx_cartas.glb (faltando, quebrado ou vazio) a carga devolve 0 sem lançar e toda carta com clipe novo toca a reserva do mx_lutas.glb", async () => {
     const url = require("url");
