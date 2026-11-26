@@ -24,6 +24,7 @@ window.__LU = LU;
   if (q.get("semcorretivo") && LU.CORRETIVOS) LU.CORRETIVOS.desligados = true;   // ?semcorretivo=1: sem as formas corretivas (pra gerar elas)
   if (q.get("torcao") && LU.TORCAO) Object.assign(LU.TORCAO, JSON.parse(q.get("torcao")));
   if (q.get("cotovelo") && LU.COTOVELO) Object.assign(LU.COTOVELO, JSON.parse(q.get("cotovelo")));
+  if (q.get("carregamento") && LU.CARREGAMENTO) Object.assign(LU.CARREGAMENTO, JSON.parse(q.get("carregamento")));   // ?carregamento={"graus":0}
   if (q.get("escapula") && LU.ESCAPULA) { const e = JSON.parse(q.get("escapula")); if (e.pivo) LU.ESCAPULA.pivo = e.pivo; if (e.mascara) Object.assign(LU.ESCAPULA.mascara, e.mascara); } }
 { const r = new URLSearchParams(location.search).get("dq"); if (r) misturaDQ(Number(r)); }   // ?dq=0.5: quatérnio duplo x linear
 { const r = new URLSearchParams(location.search).get("raioaxila"); if (r) raioAxila(Number(r)); }   // ?raioaxila=0.3: alcance do osso da axila
@@ -35,6 +36,7 @@ const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo
 { const p = new URLSearchParams(location.search).get("porte"); if (p) [eu.porte, ele.porte] = p.split(","); }   // ?porte=leve,médio: porte de A e B
 if (new URLSearchParams(location.search).get("linear") === "1") eu.linear = ele.linear = true;   // ?linear=1: skinning linear (comparar com o quatérnio duplo)
 { const q = new URLSearchParams(location.search); if (q.get("anuncio")) globalThis.__anuncio = JSON.parse(q.get("anuncio")); if (q.get("dedos")) globalThis.__dedos = JSON.parse(q.get("dedos")); if (q.get("palma")) globalThis.__palma = Number(q.get("palma")); }   // ?anuncio={...}&dedos=[...]
+{ const q = new URLSearchParams(location.search).get("postura"); if (q) globalThis.__postura = JSON.parse(q); }   // ?postura={"spine_02":6}: postura do árbitro sem mexer no diretor
 const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "KAYO", b: "TITO" }, som: () => {} });
 await inst._dev.cartasProntas; window.__inst = inst;
 const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;
@@ -327,6 +329,26 @@ window.__corretivo = (lado = "l", { raio = [0.16, 0.26], passadas = 14, solto = 
 };
 /* contorno do tronco (etapa c, item 5): largura e profundidade do tronco em três alturas (peito, abaixo do peito,
    cintura), no referencial do osso da coluna daquela altura, posado sobre o repouso. Achatar = profundidade cair. */
+/* folga da roupa (rodada 2, 2026-11-26): a pele inteira (L.geoCorpo, antes de esconder a coberta) e a malha da roupa,
+   as duas posadas, no referencial da raiz do lutador; em faixas de altura, quanto a roupa sai da pele na frente, atrás e dos lados (cm) */
+window.__folgaRoupa = (quem = "C") => {
+  const L = { A, B, C }[quem], inv = L.raiz.matrixWorld.clone().invert(), v = new THREE.Vector3();   // raiz: y é a altura, z a frente
+  const pontos = (m, geo) => { const g0 = m.geometry; if (geo) m.geometry = geo; const out = [];
+    for (let i = 0; i < m.geometry.attributes.position.count; i++) { m.getVertexPosition(i, v); out.push(v.clone().applyMatrix4(m.matrixWorld).applyMatrix4(inv)); }
+    m.geometry = g0; return out; };
+  const pele = pontos(L.corpo, L.geoCorpo); let roupa = [];
+  // a roupa no jogo perde o nome do material (vem de M({...})): é a malha com pele, visível, sem nome e com mais de 2 mil vértices
+  L.modelo.traverse((m) => { if (m.isSkinnedMesh && m !== L.corpo && m.visible && !m.name && m.geometry.attributes.position.count > 2000) roupa = roupa.concat(pontos(m)); });
+  const faixa = [];
+  for (let y = 0.94; y <= 1.46; y += 0.04) {
+    const f = (ps) => { const q = ps.filter((p) => Math.abs(p.y - y) < 0.012 && Math.abs(p.x) < 0.25); if (!q.length) return null;
+      const meio = q.filter((p) => Math.abs(p.x) < 0.06), lado = q;   // 6 cm do meio: com 4 faltava ponto em algumas faixas
+      return { frente: Math.max(...meio.map((p) => p.z)), tras: Math.min(...meio.map((p) => p.z)), larg: Math.max(...lado.map((p) => p.x)) - Math.min(...lado.map((p) => p.x)) }; };
+    const a = f(pele), b = roupa.length ? f(roupa) : a; if (!a || !b || !isFinite(a.frente) || !isFinite(b.frente)) continue;   // sem roupa: só a pele
+    faixa.push({ y: +y.toFixed(2), frente: +(100 * (b.frente - a.frente)).toFixed(1), tras: +(100 * (a.tras - b.tras)).toFixed(1), prof: +(100 * (b.frente - b.tras)).toFixed(1), profPele: +(100 * (a.frente - a.tras)).toFixed(1), fP: +(100 * a.frente).toFixed(1), fR: +(100 * b.frente).toFixed(1) });
+  }
+  return faixa;
+};
 window.__contorno = (quem = "A") => {
   const L = { A, B, C }[quem], m = L.corpo, g = m.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = pos.count;
   const nomes = m.skeleton.bones.map((b) => b.name), Q = posadoDe(L), tmp = new THREE.Vector3(), dm = new THREE.Vector3();

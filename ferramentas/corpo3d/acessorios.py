@@ -472,7 +472,51 @@ def camisa_curta(co, d):
     if d and (d.startswith("thigh") or d.startswith("calf") or d.startswith("foot") or d.startswith("ball") or d in ("neck_01", "head")): return False
     # até a cintura (2026-11-26): descendo até a pelve ela cobria o alto das coxas e a barra marcava um degrau na calça
     return w.z > zcin - 0.06
-a_cam = peca(h, "arbitro", camisa_curta, lambda co, _: 0.016, 0.003, pr, maioria=True, suave=5, alisa_borda=10)
+# caimento (rodada 2, 2026-11-26): a camisa seguia a pele a 1,6 cm, como látex, e com a barriga pra frente lia como
+# balão. Tecido de verdade cai da parte mais saliente: abaixo do peito a frente desce reta (inclinação de 10% pra trás)
+# a partir da linha mais à frente do peito, e as costas a partir da escápula (60%). Na cintura ela entra pra dentro da
+# calça (a 0,8 cm da pele, por baixo da calça a 1,4 cm): antes a barra ficava por cima do cós e marcava a costura.
+# Só afasta da pele (nunca fura); colunas de 1,5 cm suavizadas pra borda não sair em degrau.
+def caimento_camisa(bm, o):
+    from mathutils.bvhtree import BVHTree
+    mw = o.matrix_world; mi = mw.inverted(); bvh = BVHTree.FromObject(o, bpy.context.evaluated_depsgraph_get())
+    W = {v: mw @ v.co for v in bm.verts}
+    tronco = [v for v, w in W.items() if abs(w.x) < 0.19 and zcin - 0.10 < w.z < zpeito + 0.14]
+    passo = 0.015; cols = range(-13, 14)
+    def linha(sinal, z0, z1):
+        """por coluna de x: o ponto mais saliente (frente: menor y; costas: maior y) entre z0 e z1 -> (y, z)"""
+        out = {}
+        for c in cols:
+            q = [W[v] for v in tronco if abs(W[v].x - c * passo) < passo and z0 < W[v].z < z1]
+            if q: m = min(q, key=lambda w: sinal * w.y); out[c] = (m.y, m.z)
+        for _ in range(3):   # suaviza entre colunas vizinhas
+            out = {c: tuple(sum(out[k][i] for k in (c - 1, c, c + 1) if k in out) / sum(1 for k in (c - 1, c, c + 1) if k in out) for i in (0, 1)) for c in out}
+        return out
+    def na(lin, x):
+        k = x / passo; a = math.floor(k); t = k - a
+        if a in lin and a + 1 in lin: return tuple(lin[a][i] * (1 - t) + lin[a + 1][i] * t for i in (0, 1))
+        return lin.get(round(k))
+    frente = linha(1, zpeito - 0.14, zpeito + 0.10); costas = linha(-1, zpeito - 0.04, zpeito + 0.14)
+    z_cos = zcin + 0.02   # a borda de cima da calça
+    y_meio = (POS["spine_01"].y + POS["spine_03"].y) / 2   # o eixo da coluna em y: separa a frente das costas
+    sm = lambda t: max(0.0, min(1.0, t)) ** 2 * (3 - 2 * max(0.0, min(1.0, t)))
+    for v in tronco:
+        w = W[v].copy(); y = w.y
+        for lin, sinal, forca in ((frente, 1, 1.0), (costas, -1, 0.6)):
+            r = na(lin, w.x)
+            if not r or w.z >= r[1]: continue   # só abaixo do ponto mais saliente
+            if sinal * (w.y - y_meio) > 0: continue   # a frente é a metade de y menor que o eixo da coluna; as costas, a outra
+            cortina = r[0] + sinal * 0.10 * (r[1] - w.z)
+            if sinal * (cortina - w.y) < 0: y = w.y + (cortina - w.y) * forca * sm((w.z - (z_cos - 0.01)) / 0.06)
+        w.y = y
+        # dentro da calça: abaixo do cós a camisa encosta a 0,8 cm da pele
+        enfia = 1 - sm((w.z - (z_cos - 0.03)) / 0.05)
+        if enfia > 0:
+            q, nq, _, _ = bvh.find_nearest(mi @ w)
+            if q is not None:
+                alvo = mw @ (q + nq * 0.008); w = w.lerp(alvo, enfia)
+        v.co = mi @ w
+a_cam = peca(h, "arbitro", camisa_curta, lambda co, _: 0.016, 0.003, pr, maioria=True, suave=5, alisa_borda=10, ajusta=caimento_camisa)
 z_tornozelo = (Z("foot_l") + Z("foot_r")) / 2 + 0.03
 def calca(co, d):
     w = h.matrix_world @ co
@@ -497,15 +541,38 @@ def sapato_convexo(nome, material_):
     for _ in range(2): bmesh.ops.smooth_vert(bm, verts=bm.verts[:], factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
     bm.normal_update()
     for v in bm.verts: v.co = v.co + v.normal * 0.006
-    return obj_de_bm(nome, bm, material_)
-a_sap = sapato_convexo("arbitro_sapato", sa)
+    # sola (rodada 2, 2026-11-26): a faixa de baixo (1,8 cm) com material próprio e o vira 3 mm pra fora (sapato liso lia
+    # como bota de borracha de perto); a sola é a de cada pé, pelo z mais baixo dele
+    fundo = {l: min(v.co.z for v in bm.verts if (v.co.x > 0) == (l == "l")) for l in "lr"}
+    sola = lambda c: c.z < fundo["l" if c.x > 0 else "r"] + 0.018
+    for v in bm.verts:
+        if sola(v.co): n_ = Vector((v.normal.x, v.normal.y, 0)); v.co += n_.normalized() * 0.003 if n_.length > 1e-6 else Vector()
+    centros = [sola(f.calc_center_median()) for f in bm.faces]
+    from mathutils.bvhtree import BVHTree as _B
+    casca = _B.FromBMesh(bm)
+    o = obj_de_bm(nome, bm, material_); o.data.materials.append(mat("MI_Sola", (.05, .04, .035), 0.9))
+    for poly, e in zip(o.data.polygons, centros): poly.material_index = 1 if e else 0
+    # cadarço: quatro barras achatadas atravessando o peito do pé, do tornozelo pra frente, assentadas na casca
+    bm2 = bmesh.new()
+    for l in "lr":
+        a_, b_ = POS["foot_" + l], POS["ball_" + l]; eixo = Vector((b_.x - a_.x, b_.y - a_.y, 0)); L_ = eixo.length; eixo.normalize()
+        lado = eixo.cross(Vector((0, 0, 1))).normalized()
+        for t in (0.38, 0.50, 0.62, 0.72):   # à frente da barra da calça (de 0,22 a calça cobria quase tudo)
+            c = a_ + eixo * (t * L_); pts = []
+            for u in (-0.019, -0.006, 0.006, 0.019):
+                q = Vector((c.x, c.y, 0)) + lado * u; hit, nq, _, _ = casca.ray_cast(Vector((q.x, q.y, c.z + 0.25)), Vector((0, 0, -1)))
+                if hit: pts.append(hit + nq * (0.0022 + 0.0012 * (abs(u) < 0.01)))
+            if len(pts) == 4: tubo(bm2, pts, 0.0026, 5, achata=0.45)
+    cad = obj_de_bm(nome + "_cadarco", bm2, mat("MI_Cadarco", (.06, .06, .065), 0.95))
+    return o, cad
+a_sap, a_cad = sapato_convexo("arbitro_sapato", sa)
 bm = bmesh.new(); gola_a = []
 for k in range(21):
     a = math.radians(-150 + k * 15); p = Vector((math.sin(a) * 0.07, POS["neck_01"].y - math.cos(a) * 0.062, zpesc - 0.01 - 0.02 * max(0, -math.cos(a))))
     gola_a.append(p)
 tubo(bm, gola_a, 0.012, 6, achata=0.35)
 gola_o = obj_de_bm("arbitro_gola", bm, pr)
-junta_bm(a_cam, [a_calca, gola_o, a_sap])   # (MI_Sapato está na lista de materiais que o corpo.py guarda)
+junta_bm(a_cam, [a_calca, gola_o, a_sap, a_cad])   # (MI_Sapato, MI_Sola e MI_Cadarco estão na lista de materiais que o corpo.py guarda)
 ROUPAS["arbitro"] = pesar(a_cam)
 
 # ================= mongkol (cabeça, sem pesos): corda trançada em volta da testa, enrolada em branco, rabo atrás =================

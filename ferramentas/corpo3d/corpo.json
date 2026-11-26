@@ -112,7 +112,12 @@
       0.25
      ]
     ],
-    "ossos": "^lowerarm_"
+    "ossos": "^lowerarm_",
+    "rampa": [
+     "lowerarm",
+     0.45,
+     0.95
+    ]
    },
    {
     "alvos": [
@@ -201,7 +206,12 @@
        1.2
       ]
      ],
-     "ossos": "^lowerarm_"
+     "ossos": "^lowerarm_",
+     "rampa": [
+      "lowerarm",
+      0.45,
+      0.95
+     ]
     },
     {
      "alvos": [
@@ -236,11 +246,11 @@
       ],
       [
        "measure-bust-circ-decr",
-       0.8
+       1.0
       ],
       [
        "measure-waist-circ-decr",
-       1.1
+       1.4
       ]
      ],
      "ossos": "^(spine_0[123]|pelvis|clavicle)"
@@ -249,19 +259,19 @@
      "alvos": [
       [
        "l-upperarm-muscle-decr",
-       1.0
+       1.8
       ],
       [
        "r-upperarm-muscle-decr",
-       1.0
+       1.8
       ],
       [
        "l-upperarm-fat-decr",
-       1.0
+       1.2
       ],
       [
        "r-upperarm-fat-decr",
-       1.0
+       1.2
       ]
      ],
      "ossos": "^upperarm_"
@@ -295,6 +305,28 @@
       ]
      ],
      "ossos": "^neck_01"
+    },
+    {
+     "alvos": [
+      [
+       "measure-shoulder-dist-decr",
+       0.27
+      ],
+      [
+       "l-upperarm-shoulder-muscle-decr",
+       0.18
+      ],
+      [
+       "r-upperarm-shoulder-muscle-decr",
+       0.18
+      ]
+     ],
+     "ossos": "^(clavicle|upperarm|spine_03)",
+     "rampa": [
+      "upperarm",
+      0.25,
+      1.0
+     ]
     }
    ],
    "pesado": [
@@ -317,7 +349,12 @@
        0.2
       ]
      ],
-     "ossos": "^lowerarm_"
+     "ossos": "^lowerarm_",
+     "rampa": [
+      "lowerarm",
+      0.45,
+      0.95
+     ]
     },
     {
      "alvos": [
@@ -340,7 +377,7 @@
      "alvos": [
       [
        "torso-muscle-pectoral-incr",
-       0.5
+       0.8
       ],
       [
        "torso-muscle-dorsi-incr",
@@ -348,11 +385,11 @@
       ],
       [
        "measure-bust-circ-incr",
-       0.3
+       0.6
       ],
       [
        "measure-waist-circ-incr",
-       0.9
+       2.05
       ],
       [
        "torso-vshape-decr",
@@ -369,11 +406,11 @@
      "alvos": [
       [
        "l-upperarm-muscle-incr",
-       0.4
+       0.7
       ],
       [
        "r-upperarm-muscle-incr",
-       0.4
+       0.7
       ],
       [
        "l-upperarm-fat-incr",
@@ -382,14 +419,6 @@
       [
        "r-upperarm-fat-incr",
        0.1
-      ],
-      [
-       "l-upperarm-shoulder-muscle-incr",
-       0.15
-      ],
-      [
-       "r-upperarm-shoulder-muscle-incr",
-       0.15
       ]
      ],
      "ossos": "^(upperarm_|clavicle)"
@@ -436,6 +465,151 @@
       ]
      ],
      "ossos": "^(spine_0[23]|clavicle)"
+    },
+    {
+     "alvos": [
+      [
+       "measure-shoulder-dist-incr",
+       0.5
+      ],
+      [
+       "l-upperarm-shoulder-muscle-incr",
+       0.22
+      ],
+      [
+       "r-upperarm-shoulder-muscle-incr",
+       0.22
+      ]
+     ],
+     "ossos": "^(clavicle|upperarm|spine_03)",
+     "rampa": [
+      "upperarm",
+      0.25,
+      1.0
+     ]
+    }
+   ],
+   "arbitro": [
+    {
+     "alvos": [
+      [
+       "torso-muscle-pectoral-decr",
+       0.8
+      ],
+      [
+       "torso-muscle-dorsi-decr",
+       0.8
+      ],
+      [
+       "measure-bust-circ-decr",
+       0.5
+      ],
+      [
+       "stomach-pregnant-decr",
+       1.0
+      ],
+      [
+       "measure-waist-circ-decr",
+       0.8
+      ]
+     ],
+     "ossos": "^(spine_0[123]|pelvis|clavicle)"
+    },
+    {
+     "alvos": [
+      [
+       "measure-shoulder-dist-decr",
+       0.3
+      ],
+      [
+       "l-upperarm-shoulder-muscle-decr",
+       0.5
+      ],
+      [
+       "r-upperarm-shoulder-muscle-decr",
+       0.5
+      ]
+     ],
+     "ossos": "^(clavicle|upperarm|spine_03)",
+     "rampa": [
+      "upperarm",
+      0.25,
+      1.0
+     ]
+    },
+    {
+     "alvos": [
+      [
+       "l-upperarm-muscle-decr",
+       1.0
+      ],
+      [
+       "r-upperarm-muscle-decr",
+       1.0
+      ],
+      [
+       "l-upperarm-fat-decr",
+       0.6
+      ],
+      [
+       "r-upperarm-fat-decr",
+       0.6
+      ]
+     ],
+     "ossos": "^upperarm_"
+    },
+    {
+     "alvos": [
+      [
+       "l-lowerarm-muscle-decr",
+       1.4
+      ],
+      [
+       "r-lowerarm-muscle-decr",
+       1.4
+      ]
+     ],
+     "ossos": "^lowerarm_",
+     "rampa": [
+      "lowerarm",
+      0.45,
+      0.95
+     ]
+    },
+    {
+     "alvos": [
+      [
+       "l-upperleg-muscle-decr",
+       0.8
+      ],
+      [
+       "r-upperleg-muscle-decr",
+       0.8
+      ]
+     ],
+     "ossos": "^thigh_"
+    },
+    {
+     "alvos": [
+      [
+       "l-lowerleg-muscle-decr",
+       0.8
+      ],
+      [
+       "r-lowerleg-muscle-decr",
+       0.8
+      ]
+     ],
+     "ossos": "^calf_"
+    },
+    {
+     "alvos": [
+      [
+       "measure-neck-circ-decr",
+       0.6
+      ]
+     ],
+     "ossos": "^neck_01"
     }
    ]
   },

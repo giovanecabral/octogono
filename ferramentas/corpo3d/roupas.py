@@ -7,7 +7,7 @@ def dominante(o):
     for v in o.data.vertices:
         gs = sorted((x for x in v.groups if x.group in nomes), key=lambda x: -x.weight); out.append(nomes[gs[0].group] if gs else None)
     return out
-def peca(o, nome, escolhe, empurra, espessura, material, cortes=(), maioria=False, suave=0, solido=True, aresta_max=None, alisa_borda=0):
+def peca(o, nome, escolhe, empurra, espessura, material, cortes=(), maioria=False, suave=0, solido=True, aresta_max=None, alisa_borda=0, ajusta=None):
     dom = dominante(o)
     me = o.data.copy(); p = bpy.data.objects.new(nome, me); bpy.context.scene.collection.objects.link(p)
     for g in o.vertex_groups: p.vertex_groups.new(name=g.name)   # mesmos grupos, mesma ordem (a malha copiada guarda os pesos pelo índice)
@@ -37,6 +37,7 @@ def peca(o, nome, escolhe, empurra, espessura, material, cortes=(), maioria=Fals
             if q is None: continue
             quer = empurra(v.co, None) * 0.8; dist = (w - q).dot(nq)
             if dist < quer: v.co = mi @ (w + nq * (quer - dist))
+    if ajusta: ajusta(bm, o)   # caimento próprio da peça (camisa do árbitro), antes da borda e da espessura
     # borda lisa (2026-11-23): a peça recortada da malha do corpo pela face sai com a borda em degrau (manga, gola e
     # barra da camisa do árbitro em dentes, e a pele aparecendo entre eles); cada vértice da borda vai pra média dos
     # dois vizinhos dela, como o alisar_borda das roupas de entrada
@@ -327,7 +328,10 @@ def roupas(h, R, pos):
     def acolchoa(co, d):
         w = h.matrix_world @ co; s = "l" if d and d.endswith("_l") else "r"
         perto = min((w - j).length for j in junta[s])
-        return 0.008 + 0.012 * max(0.0, 1 - perto / 0.045)   # espuma grossa nos nós dos dedos
+        # punho (rodada 2, 2026-11-26): a tira afina até a borda de cima (8 mm na mão, 3 mm na borda), senão a borda
+        # ficava 11 mm acima da pele (com a espessura) e marcava um degrau no antebraço
+        sobe = max(0.0, (w - pos["hand_" + s]).dot((pos["lowerarm_" + s] - pos["hand_" + s]).normalized()))
+        return 0.008 + 0.012 * max(0.0, 1 - perto / 0.045) - 0.005 * min(1.0, sobe / 0.05)   # espuma grossa nos nós dos dedos
     def acolchoa(co, d, _a=acolchoa):
         w = h.matrix_world @ co; s = "l" if (w - pos["hand_l"]).length < (w - pos["hand_r"]).length else "r"
         return _a(co, "x_" + s)

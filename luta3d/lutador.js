@@ -194,7 +194,10 @@ function materialDaRoupa(peca, mat, opt, base) {
   }
   if (peca === "roupa_moletom") return mat === "MI_Cordao" ? M({ color: "#c9cbd2" }) : M({ color: mat === "MI_Debrum" ? cor.clone().multiplyScalar(0.8) : cor, roughness: 1, ...comTrama(120, 0.35) });
   if (peca === "roupa_bandeira") return mat === "MI_Bandeira" ? M({ map: texturaBandeira() }) : M({ color: "#1e8c45" });
-  if (peca === "roupa_arbitro") return mat === "MI_Sapato" ? M({ color: "#0d0d0f", roughness: 0.32, side: THREE.FrontSide }) : M({ color: "#121318", roughness: 0.9, ...comTrama(110, 0.4) });   // sapato de couro, o resto de tecido
+  if (peca === "roupa_arbitro") return mat === "MI_Sapato" ? M({ color: "#0d0d0f", roughness: 0.32, side: THREE.FrontSide })
+    : mat === "MI_Sola" ? M({ color: "#3a2f27", roughness: 0.85, side: THREE.FrontSide })   // sola de borracha marrom-escura, fosca (preta sumia no couro)
+    : mat === "MI_Cadarco" ? M({ color: "#3b3b42", roughness: 0.95, side: THREE.FrontSide })
+    : M({ color: "#121318", roughness: 0.9, ...comTrama(110, 0.4) });   // sapato de couro, o resto de tecido
   if (peca === "roupa_mongkol") return M({ color: mat === "MI_Branco" ? "#f2eee6" : cor, roughness: 0.75 });
   if (peca === "roupa_papakha") return M({ color: cor.getHex() === 0x16181e ? "#2a2724" : "#e4ded0", map: base.texCachos, alphaTest: 0.3, vertexColors: true, roughness: 1 });
   return M({ color: cor });   // prajiad
@@ -477,6 +480,10 @@ export function prepararOmbro(corpo) {
    pelo lugar), cheias até metade do raio e sumindo até ele: o vinco tinha arestas de 2 cm com o peso do úmero indo de
    0,73 a 0,22 (a 7 cm da junta) e virava triângulos no leve. Com 12 cm a dobra de dentro afinava demais */
 export const COTOVELO = { raio: 0.1, passadas: 6 };
+/* ângulo de carregamento (rodada 2, 2026-11-26): com o braço estendido o antebraço abre pra fora (10 a 15 graus no
+   homem) e a abertura some quando o cotovelo dobra (o antebraço deita sobre o braço). graus: com o cotovelo reto;
+   de/ate: flexão do cotovelo em que ela começa a entrar e em que fica inteira */
+export const CARREGAMENTO = { graus: 12, de: 40, ate: 10 };
 function suavizarPesos(geo, bindMatrix, centros, raio, passadas) {
   const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, P = geo.attributes.position, n = si.count, idx = geo.index && geo.index.array; if (!idx) return;
   const p = Array.from({ length: n }, (_, i) => new THREE.Vector3().fromBufferAttribute(P, i).applyMatrix4(bindMatrix));
@@ -650,6 +657,7 @@ export function peleDQ(m) {   // a malha e a sombra dela
 export class Lutador {
   constructor(base, opt) {
     this.base = base;
+    this.postura = opt.postura || null;   // {osso: graus} por cima do clipe (corrigirPostura)
     this.raiz = new THREE.Group();
     this.modelo = SkeletonUtils.clone(base.corpo.scene);
     this.raiz.add(this.modelo);
@@ -949,6 +957,26 @@ export class Lutador {
       if (w < 1) this.subirClavicula(o, this.elevacao(o), 1 - w, true);
     }
   }
+  /* o antebraço abre pra fora do meio do corpo com o cotovelo estendido (CARREGAMENTO), em volta da junta do cotovelo.
+     Fica de fora a mão presa num alvo pelo IK (a pegada do árbitro), salvo quando o IK pede (carrega), e some no
+     contato do golpe, como o ritmo do ombro (o soco chega onde chegava) */
+  carregamento() {
+    const spine = this.ossos.spine_03; if (!spine) return;
+    for (const l of ["l", "r"]) {
+      const fixo = this.ikFixo["hand_" + l]; if (fixo && fixo.peso > 0.001 && !fixo.carrega) continue;
+      let w = 0; for (const c of this.contatos || []) if (c.membro === "hand_" + l) w = Math.max(w, this.pesoContato(c));
+      const U = this.ossos["upperarm_" + l], F = this.ossos["lowerarm_" + l], H = this.ossos["hand_" + l]; if (!U || !F || !H) continue;
+      const pU = U.getWorldPosition(new THREE.Vector3()), pF = F.getWorldPosition(new THREE.Vector3()), pH = H.getWorldPosition(new THREE.Vector3());
+      const du = pF.clone().sub(pU).normalize(), df = pH.sub(pF).normalize();
+      const flex = THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.max(-1, du.dot(df)))));
+      const k = suaveK(Math.min(1, Math.max(0, (CARREGAMENTO.de - flex) / (CARREGAMENTO.de - CARREGAMENTO.ate)))) * (1 - w);
+      if (k < 0.001) continue;
+      // pra fora: do meio do tronco ao cotovelo, sem a parte ao longo do braço
+      const fora = pF.clone().sub(spine.getWorldPosition(new THREE.Vector3())); fora.addScaledVector(du, -fora.dot(du));
+      if (fora.lengthSq() < 1e-6) continue;
+      this.girarMundo(F, du.clone().cross(fora.normalize()).normalize(), THREE.MathUtils.degToRad(CARREGAMENTO.graus) * k);
+    }
+  }
   /* os ossos auxiliares do ombro na pose de agora (prepararOmbro) */
   ombros() {
     for (const o of this.ombro) {
@@ -1103,6 +1131,7 @@ export class Lutador {
     }
     this.alinhar(dt);
     this.modelo.updateMatrixWorld(true);
+    this.corrigirPostura();
     for (const f of this.extras) f(dt);
     this.ritmo();   // a clavícula acompanha a elevação do braço que o clipe trouxe (antes do IK, que corrige a mão)
     this.ikContatos();
@@ -1123,6 +1152,7 @@ export class Lutador {
       if (Math.abs(m.ang) < 0.0005 && Math.abs(m.vel) < 0.01) { this.molas.splice(this.molas.indexOf(m), 1); continue; }
       this.girarMundo(this.ossos[m.osso], m.eixo, m.ang);
     }
+    this.carregamento();
     // axila, escápula e torções acompanham o braço (depois do clipe, do IK e das molas)
     this.ombros();
     // mão fechada (o primeiro nó do dedo do meio dobrado, com folga pra não piscar): a ponta do dedo some dela
@@ -1132,6 +1162,15 @@ export class Lutador {
         if (a > (this.pontas.includes(l) ? 1.95 : 2.05)) k += l; }
       if (k !== this.pontas) { this.pontas = k; this.corpo.geometry = corpoSemMao(this, this.base, this.geoLuva, k); }
     }
+  }
+  /* postura por cima do clipe (rodada 2, 2026-11-26), só de quem pede (o árbitro): o Parado arqueia as costas (pelve ao
+     spine_01 13 a 16 graus pra frente, spine_03 ao pescoço 13 pra trás) e, de camisa, a barriga lia como balão. Gira cada osso
+     da coluna em volta do eixo de um ombro ao outro (graus; positivo dobra pra frente), depois do clipe e antes do IK */
+  corrigirPostura() {
+    const p = this.postura; if (!p) return;
+    const l = this.ossos.clavicle_l, r = this.ossos.clavicle_r; if (!l || !r) return;
+    const eixo = l.getWorldPosition(_v1).sub(r.getWorldPosition(_v2)).normalize();
+    for (const [osso, graus] of Object.entries(p)) this.girarMundo(this.ossos[osso], eixo, graus * Math.PI / 180);
   }
   girarMundo(osso, eixo, ang) {
     if (!osso || !ang) return;

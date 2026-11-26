@@ -178,7 +178,7 @@ h.name="corpo"; sobr.name="sobrancelha"; R.name="Armature"
 for o in list(bpy.data.objects):
     if o not in (h,sobr,R,calcao,luvas,*olhos,*CABELOS_OBJ,*ROUPAS.values()): bpy.data.objects.remove(o, do_unlink=True)
 for m in list(bpy.data.materials):
-    if m not in (mp,mo,ms) and not m.name.startswith(("MI_Calcao","MI_Luva","MI_Faixa","MI_Fios","MI_Corda","MI_Punho","MI_Tecido","MI_Debrum","MI_Cinta","MI_Pelo","MI_Lapela","MI_Bandeira","MI_Cordao","MI_Branco","MI_Sapato")): bpy.data.materials.remove(m)
+    if m not in (mp,mo,ms) and not m.name.startswith(("MI_Calcao","MI_Luva","MI_Faixa","MI_Fios","MI_Corda","MI_Punho","MI_Tecido","MI_Debrum","MI_Cinta","MI_Pelo","MI_Lapela","MI_Bandeira","MI_Cordao","MI_Branco","MI_Sapato","MI_Sola","MI_Cadarco")): bpy.data.materials.remove(m)
 mp.name="MI_Pele"; mo.name="MI_Eyes"; ms.name="MI_Brows"
 for o in (h, calcao, luvas, *olhos): o.data.name = o.name   # o nome da malha no GLB (o da Blender Studio era "female_v006lowresUV")
 for m in [m for m in h.modifiers if m.type == "COLLISION"]: h.modifiers.remove(m)   # a colisão só servia pro pano

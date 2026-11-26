@@ -25,7 +25,11 @@ if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
 const OP_A = op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" };
 const OP_B = op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" };
-const OP_C = { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro", semLuva: true };
+/* postura do árbitro (rodada 2, 2026-11-26): o Parado arqueia as costas (lombar pra frente, peito pra trás) e, de camisa,
+   a barriga lia como balão no suspense e no anúncio; graus por osso por cima do clipe (Lutador.corrigirPostura) */
+const POSTURA_ARBITRO = { pelvis: -8, thigh_l: 8, thigh_r: 8, spine_01: 12, spine_02: 6, spine_03: 6, neck_01: -10 };   // medida: o peito volta pra frente da barriga (6 a 8 graus a mais já curvava as costas)
+const OP_C = { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro", semLuva: true, porte: "arbitro",
+  postura: { ...POSTURA_ARBITRO, ...globalThis.__postura } };
 await carregarPecas(base, [OP_A, OP_B, OP_C]);   // corpo realista: só os cortes e as roupas desta luta
 /* clipes das cartas: chegam depois que a luta abre; sem o arquivo, o lance de reserva (lances-cartas.js) */
 const cartasProntas = carregarCartas(base, dir);
@@ -980,7 +984,10 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   // baixo: onde os dois braços se encontram (na altura do quadril os dois alcançam com o cotovelo quase reto);
   // pulso: a pegada fica tanto acima da junta da mão (logo acima do punho da luva); raio: do eixo do pulso à palma
   // puxado: quanto o braço de quem perdeu vem com o passo do árbitro (x) e sobe (y), pra ele não largar o pulso
-  const ANUNCIO = { baixo: [0.52, 0.84, 0.12], elev: 160, inclina: 0.07, passo: [0.12, 0.12], pulso: 0.075, raio: 0.025, puxado: [1, 0.05], cruza: 0.6, dedos: 0.075, ...(globalThis.__anuncio || {}) };   // (ferramentas: ?anuncio=)
+  // passo (rodada 2, 2026-11-26): o árbitro se afasta de quem venceu (x negativo) e vem pra frente; o braço erguido de
+  // quem venceu inclina pro meio e o pulso dele ficava quase em cima do ombro do árbitro: o alvo a 72% do braço dele e o
+  // cotovelo dobrado a 87 graus. Afastado 12 cm, o alvo fica no alcance e o cotovelo, a 12 graus
+  const ANUNCIO = { baixo: [0.52, 0.84, 0.12], elev: 160, inclina: 0.07, passo: [-0.12, 0.11], pulso: 0.075, raio: 0.025, puxado: [1, 0.05], cruza: 0.6, dedos: 0.075, ...(globalThis.__anuncio || {}) };   // (ferramentas: ?anuncio=)
   const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, s, maoDentro(L), maoJuiz(L), V(s * ANUNCIO.baixo[0], ANUNCIO.baixo[1], ANUNCIO.baixo[2])]; });
   cam.cerCentro = V(0, 0, 0);
   C.raiz.visible = true; C.ikFixo = {};
@@ -996,7 +1003,8 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
     const ponto = () => baixo.clone().lerp(alto(), k(L)).add(V(C.raiz.position.x * ANUNCIO.puxado[0] * (puxa() > 0 ? 1 : 0), ANUNCIO.puxado[1] * puxa(), (C.raiz.position.z - 0.16) * (puxa() > 0 ? 1 : 0)));
     // embaixo o cotovelo aponta pra trás e pra fora; erguido, o giro externo automático (sem polo) decide
     const poloL = () => (k(L) > 0.5 ? null : L.posMundo("upperarm_" + mL).add(V(s * 0.25, -0.25, -0.35)));
-    L.ikFixo["hand_" + mL] = { alvo: ponto, peso: 1, cadeia: true, polo: poloL, ext: 0.995, depois: () => { ombro = L.posMundo("upperarm_" + mL); } };
+    // carrega: o antebraço do lutador abre no ângulo de carregamento (Lutador.carregamento); o árbitro segue o pulso dele
+    L.ikFixo["hand_" + mL] = { alvo: ponto, peso: 1, cadeia: true, polo: poloL, ext: 0.995, carrega: true, depois: () => { ombro = L.posMundo("upperarm_" + mL); } };
     // o árbitro pega o pulso como quem segura uma barra: a mão continua a direção do antebraço dele (sem quebrar o
     // pulso), o pulso do lutador atravessa a palma e os dedos dão a volta (fecharMaos). Embaixo a palma vem por cima
     const pega = () => {
@@ -1032,11 +1040,11 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
     chamada("E O VENCEDOR...", { pequena: true });
     await esperar(1.3);
   } else await esperar(0.6);
-  // a mão sobe; o árbitro dá meio passo pro lado de quem venceu; quem perdeu baixa a cabeça, quem venceu a levanta
+  // a mão sobe; o árbitro dá meio passo pra longe de quem venceu (o braço dele estica); quem perdeu baixa a cabeça, quem venceu a levanta
   sobe.quem = venc;
   const sV = Math.sign(venc.raiz.position.x);
   await animar(0.45, (k) => {
-    sobe.k = k; C.raiz.position.x = sV * ANUNCIO.passo[0] * suave(k); C.raiz.position.z = 0.16 + ANUNCIO.passo[1] * suave(k);   // meio passo pro lado e pra frente (o pé longe do dele)
+    sobe.k = k; C.raiz.position.x = sV * ANUNCIO.passo[0] * suave(k); C.raiz.position.z = 0.16 + ANUNCIO.passo[1] * suave(k);   // meio passo pro lado de quem perdeu e pra frente (o pé longe dos dois)
     vivos.get(perd).olhar = 0.28 * suave(k); vivos.get(venc).olhar = -0.12 * suave(k);
   });
   chamada(String((venc === A ? op.nomes && op.nomes.a : op.nomes && op.nomes.b) || "VENCEDOR").toUpperCase());

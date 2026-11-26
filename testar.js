@@ -18771,10 +18771,12 @@ async function testarLuta3d() {
     const dir = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8"), cer = dir.slice(dir.indexOf("async function cerimonia("), dir.indexOf("async function levantarCinturao("));
     const m = /const ANUNCIO = \{([^}]*)\}/.exec(cer); if (!m) throw new Error("ANUNCIO não achado");
     const num = (k) => { const r = new RegExp(k + ": ([\\d.]+)").exec(m[1]); return r ? Number(r[1]) : NaN; };
-    const passo = /passo: \[([\d.]+), ([\d.]+)\]/.exec(m[1]);
+    const passo = /passo: \[(-?[\d.]+), (-?[\d.]+)\]/.exec(m[1]);
     if (!(num("elev") >= 150 && num("elev") <= 170)) throw new Error("elevação do braço do vencedor fora de 150-170: " + num("elev"));
     if (!(num("pulso") >= 0.05)) throw new Error("a pegada do árbitro não está acima do punho da luva (pulso " + num("pulso") + ")");
-    if (!passo || Number(passo[1]) > 0.17) throw new Error("o passo do árbitro pro lado passou de 17 cm: o pé dele encosta no do vencedor (mínimo de 10 cm)");
+    // rodada 2: o árbitro se afasta de quem venceu (x negativo; pro lado dele o pulso erguido ficava em cima do ombro e o
+    // cotovelo dobrava 87 graus), no máximo 17 cm (o pé de quem perdeu fica a 39 cm com 12)
+    if (!passo || Number(passo[1]) > 0 || Number(passo[1]) < -0.17) throw new Error("o passo do árbitro tem que ser pra longe de quem venceu, até 17 cm: " + (passo && passo[1]));
     // erguido, sem polo imposto: o giro externo automático do úmero decide o cotovelo (antes o polo virava ele pra dentro)
     if (!/poloL = \(\) => \(k\(L\) > 0\.5 \? null/.test(cer)) throw new Error("o braço erguido do vencedor voltou a ter polo imposto");
     if (!/externa: true/.test(fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8"))) throw new Error("o IK parado não usa a rotação externa");
@@ -19062,8 +19064,59 @@ async function testarLuta3d() {
     if (pe < 50 || peSumiu < pe * 0.95) throw new Error(`só ${peSumiu} de ${pe} triângulos do pé somem embaixo do sapato`);
     const ua = fs.readFileSync(path.join(__dirname, "luta3d", "pecas", "roupa_arbitro.glb")), uj = JSON.parse(ua.slice(20, 20 + ua.readUInt32LE(12)).toString());
     if (!(uj.materials || []).some((m) => m.name === "MI_Sapato")) throw new Error("o uniforme do árbitro está sem o sapato");
+    for (const mt of ["MI_Sola", "MI_Cadarco"]) if (!(uj.materials || []).some((m) => m.name === mt)) throw new Error("o sapato do árbitro está sem " + mt + " (rodada 2: sola e cadarço)");
     const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
     if (!/opt\.uniforme === "arbitro" && \(o\.material\.name === "MI_Calcao"/.test(lu)) throw new Error("o calção de luta aparece embaixo da calça do árbitro (a barra marcava um degrau)");
+  });
+  /* Rodada 2 da anatomia (2026-11-26): portes com mais diferença no ombro, no peito e no braço (pedido do dono: bideltoide
+     ~47 / ~49 / ~52 mantendo as razões com a cintura), mão e cabeça iguais em todos, e o porte do árbitro (adulto comum) */
+  await conf("portes: leve < médio < pesado no bideltoide, no peito e no braço, razões ombro/cintura mantidas, mão e cabeça iguais, e o árbitro sem barriga à frente do peito", async () => {
+    const url = require("url"), M = await import(url.pathToFileURL(path.join(__dirname, "ferramentas", "corpo3d", "medidas.mjs")).href);
+    const m = M.medirPortes(path.join(__dirname, "luta3d", "lutador.glb")), L = m.leve, D = m["médio"], P = m.pesado, A = m.arbitro;
+    if (!L || !P || !A) throw new Error("faltou alvo de porte no lutador.glb: " + Object.keys(m).join(", "));
+    for (const k of ["bideltoide", "peito_larg", "braco"]) if (!(L[k] < D[k] && D[k] < P[k])) throw new Error(`${k} fora de ordem: leve ${L[k]}, médio ${D[k]}, pesado ${P[k]}`);
+    const faixa = { leve: [46, 48, 1.5, 1.6], "médio": [48, 50, 1.42, 1.52], pesado: [51, 53, 1.36, 1.46] };
+    for (const [p, [b0, b1, r0, r1]] of Object.entries(faixa)) { const x = m[p];
+      if (x.bideltoide < b0 || x.bideltoide > b1) throw new Error(`bideltoide do ${p}: ${x.bideltoide} cm (pedido entre ${b0} e ${b1})`);
+      if (x.razao < r0 || x.razao > r1) throw new Error(`razão ombro/cintura do ${p}: ${x.razao} (entre ${r0} e ${r1})`); }
+    for (const [p, x] of Object.entries(m)) if (Math.abs(x.mao_mm - D.mao_mm) > 0.05 || Math.abs(x.cabeca_mm - D.cabeca_mm) > 0.05) throw new Error(`a mão ou a cabeça mudou no ${p}: ${x.mao_mm} / ${x.cabeca_mm} mm`);
+    if (A.barriga_menos_peito > 0) throw new Error(`a barriga do árbitro passa ${A.barriga_menos_peito} cm à frente do peito (balão)`);
+    if (!(A.braco < D.braco && A.peito_larg < D.peito_larg && A.barriga_prof < D.barriga_prof)) throw new Error("o árbitro não ficou menor que o médio no braço, no peito e na barriga: " + JSON.stringify(A));
+  });
+  await conf("roupa no porte: cada vértice leva o deslocamento do corpo perto dele no mesmo osso (o radial deixava a pele do pesado furar o cós atrás)", async () => {
+    const url = require("url"), THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const AP = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "aparencia.js")).href);
+    // um osso só (pelve, na origem), corpo com dois vértices: atrás (z = -0,1) sai 2 cm pra trás, na frente (z = 0,1) não muda
+    const malha = (pts, skin = true) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pts.flat(), 3));
+      if (skin) { g.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(pts.flatMap(() => [0, 0, 0, 0]), 4)); g.setAttribute("skinWeight", new THREE.Float32BufferAttribute(pts.flatMap(() => [1, 0, 0, 0]), 4)); } return g; };
+    const sk = { bones: [{ name: "pelvis" }], boneInverses: [new THREE.Matrix4()] };
+    const g = malha([[0, 1, -0.1], [0, 1, 0.1]]); g.morphAttributes.position = [new THREE.Float32BufferAttribute([0, 0, -0.02, 0, 0, 0], 3)];
+    const corpo = { geometry: g, skeleton: sk, bindMatrix: new THREE.Matrix4(), morphTargetDictionary: { porte_pesado: 0 } };
+    const roupa = malha([[0, 1, -0.115], [0, 1, 0.115]]);
+    const out = AP.deltaDoAlvo(corpo, "porte_pesado", roupa, sk, new THREE.Matrix4());
+    if (Math.abs(out[2] - -0.135) > 0.003) throw new Error("o cós atrás não acompanhou o corpo: z " + out[2].toFixed(4) + " (esperado -0,135)");
+    if (Math.abs(out[5] - 0.115) > 0.003) throw new Error("o cós na frente mudou sem o corpo mudar: z " + out[5].toFixed(4));
+    const ap = fs.readFileSync(path.join(__dirname, "luta3d", "aparencia.js"), "utf8");
+    if (!/alvo \? deltaDoAlvo\(c, "porte_" \+ porte/.test(ap)) throw new Error("aplicarPorte não usa o deslocamento do alvo na roupa");
+  });
+  await conf("árbitro: postura por cima do Parado (pelve pra trás com a coxa compensando, coluna pra frente) e porte de adulto comum; braço erguido no anúncio no alcance", async () => {
+    const di = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8"), lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    const m = /const POSTURA_ARBITRO = (\{[^}]*\});/.exec(di); if (!m) throw new Error("sem POSTURA_ARBITRO no diretor");
+    const P = Function("return " + m[1])();
+    if (!(P.pelvis < 0 && P.thigh_l === -P.pelvis && P.thigh_r === -P.pelvis)) throw new Error("a pelve gira sem a coxa compensar (o pé sairia do lugar): " + m[1]);
+    if (!(P.spine_01 > 0 && P.spine_03 > 0 && P.neck_01 < 0)) throw new Error("a coluna tem que vir pra frente e o pescoço compensar: " + m[1]);
+    if (!/uniforme: "arbitro", semLuva: true, porte: "arbitro",\s*postura: \{ \.\.\.POSTURA_ARBITRO/.test(di)) throw new Error("o árbitro não usa a postura nem o porte dele");
+    if (!/this\.modelo\.updateMatrixWorld\(true\);\s*this\.corrigirPostura\(\);\s*for \(const f of this\.extras\) f\(dt\);/.test(lu)) throw new Error("a postura tem que vir depois do clipe e antes dos extras e do IK");
+    if (!fs.readFileSync(path.join(__dirname, "luta3d", "aparencia.js"), "utf8").includes("arbitro: 0.95")) throw new Error("PORTE_K sem o árbitro (o porte dele não liga)");
+  });
+  await conf("cotovelo: ângulo de carregamento de 10 a 15 graus com o braço estendido, some ao dobrar, fora da pegada do árbitro e no contato do golpe", async () => {
+    const LU = await import(require("url").pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const c = LU.CARREGAMENTO; if (!c || c.graus < 10 || c.graus > 15) throw new Error("ângulo de carregamento fora de 10 a 15 graus: " + JSON.stringify(c));
+    if (!(c.ate <= 15 && c.de >= 30)) throw new Error("a abertura tem que ser inteira com o cotovelo quase reto e sumir até uns 40 graus: " + JSON.stringify(c));
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8"), corpo = lu.slice(lu.indexOf("  carregamento() {"), lu.indexOf("  /* os ossos auxiliares do ombro"));
+    if (!/fixo\.peso > 0\.001 && !fixo\.carrega\) continue/.test(corpo)) throw new Error("o carregamento mexe na mão presa pelo IK (a pegada do árbitro sairia do pulso)");
+    if (!/pesoContato\(c\)/.test(corpo) || !/\* \(1 - w\)/.test(corpo)) throw new Error("o carregamento não some no contato do golpe (o soco erraria o alvo)");
+    if (!/this\.carregamento\(\);\s*\/\/ axila, escápula e torções/.test(lu)) throw new Error("o carregamento tem que vir depois do IK e das molas e antes dos ombros");
   });
   /* Etapa e da anatomia (2026-11-26): o relevo fino da pele (esterno, abdômen, costelas, clavícula, tendões) vai no mapa de
      normal do próprio GLB, a oclusão das cavidades na cor, e a aspereza num arquivo à parte que o jogo lê uma vez */
