@@ -25,3 +25,4 @@ luta3d/mx_lutas.glb
 # clipes das cartas (Mixamo, gerado por ferramentas/converter-mixamo.mjs): mesma licença, fora do git
 luta3d/mx_cartas.glb
 ferramentas/relevo_teste/
+ferramentas/node_modules
