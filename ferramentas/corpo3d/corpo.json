@@ -259,11 +259,11 @@
      "alvos": [
       [
        "l-upperarm-muscle-decr",
-       1.8
+       1.4
       ],
       [
        "r-upperarm-muscle-decr",
-       1.8
+       1.4
       ],
       [
        "l-upperarm-fat-decr",
@@ -310,15 +310,7 @@
      "alvos": [
       [
        "measure-shoulder-dist-decr",
-       0.27
-      ],
-      [
-       "l-upperarm-shoulder-muscle-decr",
-       0.18
-      ],
-      [
-       "r-upperarm-shoulder-muscle-decr",
-       0.18
+       0.32
       ]
      ],
      "ossos": "^(clavicle|upperarm|spine_03)",
@@ -377,7 +369,7 @@
      "alvos": [
       [
        "torso-muscle-pectoral-incr",
-       0.8
+       0.5
       ],
       [
        "torso-muscle-dorsi-incr",
@@ -385,11 +377,11 @@
       ],
       [
        "measure-bust-circ-incr",
-       0.6
+       0.45
       ],
       [
        "measure-waist-circ-incr",
-       2.05
+       0.9
       ],
       [
        "torso-vshape-decr",
@@ -470,15 +462,7 @@
      "alvos": [
       [
        "measure-shoulder-dist-incr",
-       0.5
-      ],
-      [
-       "l-upperarm-shoulder-muscle-incr",
-       0.22
-      ],
-      [
-       "r-upperarm-shoulder-muscle-incr",
-       0.22
+       0.75
       ]
      ],
      "ossos": "^(clavicle|upperarm|spine_03)",
@@ -487,6 +471,15 @@
       0.25,
       1.0
      ]
+    },
+    {
+     "alvos": [
+      [
+       "measure-waist-circ-incr",
+       1.15
+      ]
+     ],
+     "ossos": "^(spine_01|pelvis)"
     }
    ],
    "arbitro": [
