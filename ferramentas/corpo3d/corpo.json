@@ -423,6 +423,19 @@
       ]
      ],
      "ossos": "^neck_01"
+    },
+    {
+     "alvos": [
+      [
+       "breast-trans-up",
+       0.6
+      ],
+      [
+       "breast-volume-vert-up",
+       0.5
+      ]
+     ],
+     "ossos": "^(spine_0[23]|clavicle)"
     }
    ]
   },

@@ -310,6 +310,31 @@ window.__corretivo = (lado = "l", { raio = [0.16, 0.26], passadas = 14, solto = 
   out.max = Math.max(0, ...[...porRep.values()].map((v) => v.length()));
   return out;
 };
+/* contorno do tronco (etapa c, item 5): largura e profundidade do tronco em três alturas (peito, abaixo do peito,
+   cintura), no referencial do osso da coluna daquela altura, posado sobre o repouso. Achatar = profundidade cair. */
+window.__contorno = (quem = "A") => {
+  const L = { A, B, C }[quem], m = L.corpo, g = m.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = pos.count;
+  const nomes = m.skeleton.bones.map((b) => b.name), Q = posadoDe(L), tmp = new THREE.Vector3(), dm = new THREE.Vector3();
+  const R = new Float32Array(n * 3), morf = g.morphAttributes.position || [], inf = m.morphTargetInfluences || [];
+  for (let i = 0; i < n; i++) { dm.fromBufferAttribute(pos, i); morf.forEach((a, k) => { if (inf[k] && soPorte(m, k)) dm.addScaledVector(tmp.fromBufferAttribute(a, i), inf[k]); }); R[3 * i] = dm.x; R[3 * i + 1] = dm.y; R[3 * i + 2] = dm.z; }
+  const tronco = new Set(["spine_01", "spine_02", "spine_03", "pelvis"].map((x) => nomes.indexOf(x)));
+  const out = {};
+  for (const [nm, osso, dy] of [["peito", "spine_03", 0.17], ["costelas", "spine_03", 0.04], ["cintura", "spine_01", 0.02]]) {
+    const k = nomes.indexOf(osso), bindW = m.skeleton.boneInverses[k].clone().invert(), bindI = m.skeleton.boneInverses[k];
+    const posadoI = m.skeleton.bones[k].matrixWorld.clone().invert(), mundo = m.matrixWorld;
+    const r = { xr: [9, -9], zr: [9, -9] }, p = { xr: [9, -9], zr: [9, -9] }; let c = 0;
+    for (let i = 0; i < n; i++) {
+      let wt = 0; for (let e = 0; e < 4; e++) if (tronco.has(si.getComponent(i, e))) wt += sw.getComponent(i, e); if (wt < 0.6) continue;
+      const vr = tmp.set(R[3 * i], R[3 * i + 1], R[3 * i + 2]).applyMatrix4(m.bindMatrix).applyMatrix4(bindI); if (Math.abs(vr.y - dy) > 0.015) continue;
+      r.xr[0] = Math.min(r.xr[0], vr.x); r.xr[1] = Math.max(r.xr[1], vr.x); r.zr[0] = Math.min(r.zr[0], vr.z); r.zr[1] = Math.max(r.zr[1], vr.z);
+      const vp = tmp.set(Q[3 * i], Q[3 * i + 1], Q[3 * i + 2]).applyMatrix4(mundo).applyMatrix4(posadoI);
+      p.xr[0] = Math.min(p.xr[0], vp.x); p.xr[1] = Math.max(p.xr[1], vp.x); p.zr[0] = Math.min(p.zr[0], vp.z); p.zr[1] = Math.max(p.zr[1], vp.z); c++;
+    }
+    const lr = r.xr[1] - r.xr[0], pr = r.zr[1] - r.zr[0], lp = p.xr[1] - p.xr[0], pp = p.zr[1] - p.zr[0];
+    out[nm] = { n: c, largura: +(lp / lr).toFixed(3), profundidade: +(pp / pr).toFixed(3), cm: [+(lr * 100).toFixed(1), +(pr * 100).toFixed(1)] };
+  }
+  return out;
+};
 window.__deform = (quem = "A") => {
   const L = { A, B, C }[quem], m = L.corpo, g = m.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = pos.count, idx = g.index.array;
   const nomes = m.skeleton.bones.map((b) => b.name), Q = posadoDe(L), dm = new THREE.Vector3();
