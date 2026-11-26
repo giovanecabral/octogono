@@ -191,7 +191,7 @@ function materialDaRoupa(peca, mat, opt, base) {
   }
   if (peca === "roupa_moletom") return mat === "MI_Cordao" ? M({ color: "#c9cbd2" }) : M({ color: mat === "MI_Debrum" ? cor.clone().multiplyScalar(0.8) : cor, roughness: 1, ...comTrama(120, 0.35) });
   if (peca === "roupa_bandeira") return mat === "MI_Bandeira" ? M({ map: texturaBandeira() }) : M({ color: "#1e8c45" });
-  if (peca === "roupa_arbitro") return M({ color: "#121318", roughness: 0.9, ...comTrama(110, 0.4) });
+  if (peca === "roupa_arbitro") return mat === "MI_Sapato" ? M({ color: "#0d0d0f", roughness: 0.32, side: THREE.FrontSide }) : M({ color: "#121318", roughness: 0.9, ...comTrama(110, 0.4) });   // sapato de couro, o resto de tecido
   if (peca === "roupa_mongkol") return M({ color: mat === "MI_Branco" ? "#f2eee6" : cor, roughness: 0.75 });
   if (peca === "roupa_papakha") return M({ color: cor.getHex() === 0x16181e ? "#2a2724" : "#e4ded0", map: base.texCachos, alphaTest: 0.3, vertexColors: true, roughness: 1 });
   return M({ color: cor });   // prajiad
@@ -221,7 +221,8 @@ const OSSOS_TRONCO_BRACO = ["spine_01", "spine_02", "spine_03", "clavicle_l", "c
 const ABERTO = { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55, costas: true };
 // o uniforme do árbitro (2026-11-23) é fixo e nunca sai: camisa de manga curta (até 56% do úmero) e calça até o
 // tornozelo. Antes a pele dele nunca sumia, e o ombro e as costas furavam a camisa no anúncio
-const ARBITRO = { ossos: OSSOS_TRONCO_BRACO.filter((n) => !n.startsWith("lowerarm")).concat(["neck_01", "thigh_l", "thigh_r", "calf_l", "calf_r"]), umero: 0.52, perna: 0.8, ombro: true };
+// (2026-11-26: com o sapato, o pé e o tornozelo também ficam cobertos)
+const ARBITRO = { ossos: OSSOS_TRONCO_BRACO.filter((n) => !n.startsWith("lowerarm")).concat(["neck_01", "thigh_l", "thigh_r", "calf_l", "calf_r", "foot_l", "foot_r", "ball_l", "ball_r"]), umero: 0.52, perna: 2, ombro: true };
 export const COBERTO = { capuz: { ossos: OSSOS_TRONCO_BRACO, antebraco: 0.55 }, "roupão": ABERTO, kimono: ABERTO, arbitro: ARBITRO };
 export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
   // os ossos auxiliares do ombro contam como o osso que eles seguem (a escápula é do tronco)
@@ -247,7 +248,7 @@ export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
         dentro += w; const n = ossos[o]; if (n.startsWith("lowerarm") && w > 0.05) ante = n.slice(-1);
         if ((n.startsWith("upperarm") || n.startsWith("axila")) && w > 0.05) um = n.slice(-1);
         if (n.startsWith("axila") || n.startsWith("spine") || n.startsWith("clavicle")) presa += w;
-        if (n.startsWith("thigh") || n.startsWith("calf")) perna += w; if (n.startsWith("calf") && w > 0.05) can = n.slice(-1);
+        if (/^(thigh|calf|foot|ball)/.test(n)) perna += w; if (n.startsWith("calf") && w > 0.05) can = n.slice(-1);
       }
     }
     if (dentro < 0.9) continue;   // (o corpo escaneado espalha um pouco de peso pra pelve e pescoço; as bordas ficam pela altura)
@@ -678,6 +679,8 @@ export class Lutador {
         if (o.material.name === "MI_Luva") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Luva", color: new THREE.Color(opt.luva || "#141416"), roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.45 });
         // o árbitro não usa luva (semLuva): a mão do corpo aparece (2026-11-21, print do dono: o árbitro de luva de MMA)
         if (opt.semLuva && (o.material.name === "MI_Luva" || o.material.name === "MI_Punho")) o.visible = false;
+        // o árbitro veste calça inteira (da cintura ao tornozelo): o calção de luta some embaixo dela (a barra marcava um degrau)
+        if (opt.uniforme === "arbitro" && (o.material.name === "MI_Calcao" || o.material.name === "MI_Faixa")) o.visible = false;
         if (o.material.name === "MI_Punho") Object.assign(o.material, { color: new THREE.Color(opt.luva || "#141416").lerp(new THREE.Color("#4a4b52"), 0.35), roughness: 0.92 }, comTrama(200, 0.5));   // velcro um tom mais claro
         if (!opt.linear) peleDQ(o);
       }

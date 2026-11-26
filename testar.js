@@ -19029,7 +19029,7 @@ async function testarLuta3d() {
     if (!/if \(this\.corpo && !opt\.semLuva\) \{ this\.geoLuva = this\.corpo\.geometry; this\.corpo\.geometry = corpoSemMao\(/.test(lu)) throw new Error("o lutador de luva não esconde a pele da mão (o árbitro, semLuva, não pode esconder)");
     if (!/middle_01_" \+ l[\s\S]{0,300}corpoSemMao\(this, this\.base, this\.geoLuva, k\)/.test(lu)) throw new Error("o update não troca a pele pela mão fechada");
   });
-  await conf("árbitro: a pele embaixo do uniforme some (ombro e trapézio incluídos), o antebraço, a mão, a cabeça e o tornozelo ficam", async () => {
+  await conf("árbitro: a pele embaixo do uniforme some (ombro, trapézio e, com o sapato, o pé), o antebraço, a mão e a cabeça ficam; a calça é inteira e o calção some", async () => {
     const url = require("url"), THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
     const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
     const { j, ler, no } = lerGLBJogo(), c = no("corpo"), pr = j.meshes[c.mesh].primitives[0], skin = j.skins[c.skin];
@@ -19047,16 +19047,23 @@ async function testarLuta3d() {
     const ficam = new Set(); for (let k = 0; k < fica.length; k += 3) ficam.add([fica[k], fica[k + 1], fica[k + 2]].join());
     const nome = (o) => sk.bones[o].name, peso = (v, re) => { let s = 0; for (let k = 0; k < 4; k++) if (re.test(nome(J[4 * v + k]))) s += W[4 * v + k]; return s; };
     const pesc = new THREE.Vector3().setFromMatrixPosition(sk.boneInverses[sk.bones.findIndex((b) => b.name === "neck_01")].clone().invert().premultiply(new THREE.Matrix4()));
-    let trapezio = 0;   // o alto do ombro, acima da base do pescoço e longe dele (a altura sozinha deixava ele de fora)
+    let trapezio = 0, pe = 0, peSumiu = 0;   // o alto do ombro, acima da base do pescoço e longe dele (a altura sozinha deixava ele de fora)
     for (let k = 0; k < I.length; k += 3) {
       const t = [I[k], I[k + 1], I[k + 2]], sumiu = !ficam.has(t.join());
       for (const v of t) {
-        if (sumiu && peso(v, /^(hand|index|middle|ring|pinky|thumb|Head|foot|ball)/) > 0.1) throw new Error("some pele de mão, cabeça ou pé");
+        if (sumiu && peso(v, /^(hand|index|middle|ring|pinky|thumb|Head)/) > 0.1) throw new Error("some pele de mão ou cabeça");
         if (sumiu && peso(v, /^lowerarm/) > 0.5) throw new Error("some o antebraço (a manga é curta)");
       }
       if (sumiu && t.every((v) => peso(v, /^neck_01/) > 0.05 && Math.abs(P[3 * v]) > 0.1 && P[3 * v + 1] > pesc.y - 0.025)) trapezio++;
+      if (t.every((v) => peso(v, /^(foot|ball)/) > 0.9)) { pe++; if (sumiu) peSumiu++; }
     }
     if (trapezio < 5) throw new Error("o alto do ombro (peso do pescoço, longe dele) não some: furava a camisa do árbitro");
+    // o sapato (2026-11-26): o pé dele some embaixo, e o uniforme traz o material do sapato
+    if (pe < 50 || peSumiu < pe * 0.95) throw new Error(`só ${peSumiu} de ${pe} triângulos do pé somem embaixo do sapato`);
+    const ua = fs.readFileSync(path.join(__dirname, "luta3d", "pecas", "roupa_arbitro.glb")), uj = JSON.parse(ua.slice(20, 20 + ua.readUInt32LE(12)).toString());
+    if (!(uj.materials || []).some((m) => m.name === "MI_Sapato")) throw new Error("o uniforme do árbitro está sem o sapato");
+    const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    if (!/opt\.uniforme === "arbitro" && \(o\.material\.name === "MI_Calcao"/.test(lu)) throw new Error("o calção de luta aparece embaixo da calça do árbitro (a barra marcava um degrau)");
   });
   /* Review Focus 5: o mx_cartas.glb chega depois que a luta abre e fica fora do git; sem ele a luta toca a reserva e não trava */
   await conf("sem o mx_cartas.glb (faltando, quebrado ou vazio) a carga devolve 0 sem lançar e toda carta com clipe novo toca a reserva do mx_lutas.glb", async () => {

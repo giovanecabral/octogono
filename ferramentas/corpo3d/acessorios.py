@@ -470,20 +470,42 @@ def camisa_curta(co, d):
         l = d[-1]; t = (w - POS["upperarm_" + l]).dot((POS["lowerarm_" + l] - POS["upperarm_" + l]).normalized()) / (POS["lowerarm_" + l] - POS["upperarm_" + l]).length
         return t < 0.55
     if d and (d.startswith("thigh") or d.startswith("calf") or d.startswith("foot") or d.startswith("ball") or d in ("neck_01", "head")): return False
-    return w.z > zq - 0.02
+    # até a cintura (2026-11-26): descendo até a pelve ela cobria o alto das coxas e a barra marcava um degrau na calça
+    return w.z > zcin - 0.06
 a_cam = peca(h, "arbitro", camisa_curta, lambda co, _: 0.016, 0.003, pr, maioria=True, suave=5, alisa_borda=10)
 z_tornozelo = (Z("foot_l") + Z("foot_r")) / 2 + 0.03
 def calca(co, d):
     w = h.matrix_world @ co
     return d in ("pelvis", "thigh_l", "thigh_r", "calf_l", "calf_r", "spine_01") and z_tornozelo < w.z < zcin + 0.02
-a_calca = peca(h, "arbitro_calca", calca, lambda co, _: 0.014 + 0.012 * max(0.0, min(1.0, (zq - (h.matrix_world @ co).z) / 0.5)), 0.003, pr, maioria=True, suave=4, alisa_borda=10)
+# a folga da calça cresce do quadril pro tornozelo; em rampa suave e longa (2026-11-26: travar em 0,5 m abaixo do quadril
+# quebrava a inclinação na altura do joelho e marcava um degrau na calça)
+def folga_calca(co, _):
+    t = max(0.0, min(1.0, (zq - (h.matrix_world @ co).z) / 0.7)); return 0.014 + 0.012 * t * t * (3 - 2 * t)
+a_calca = peca(CORPO_INTEIRO, "arbitro_calca", calca, folga_calca, 0.003, pr, maioria=True, suave=4, alisa_borda=10)   # (com a pele de baixo do calção)
+# sapato (2026-11-26): o árbitro era o único descalço. Fecho convexo do pé até 3 cm acima do tornozelo (por baixo da barra
+# da calça), alisado e afastado 6 mm: casca da pele seguia os dedos e furava entre eles em espinhos. A pele embaixo dele
+# some no jogo (COBERTO.arbitro)
+sa = mat("MI_Sapato", (.02, .02, .02), 0.35)
+def sapato_convexo(nome, material_):
+    dom = dominante(h); mw = h.matrix_world; bm = bmesh.new()
+    for l in "lr":
+        pts = [mw @ v.co for v in h.data.vertices if dom[v.index] in ("foot_" + l, "ball_" + l) or (dom[v.index] == "calf_" + l and (mw @ v.co).z < z_tornozelo + 0.03)]
+        novos = [bm.verts.new(p) for p in pts]
+        r = bmesh.ops.convex_hull(bm, input=novos)
+        bmesh.ops.delete(bm, geom=list({g for g in r["geom_interior"] + r["geom_unused"] if isinstance(g, bmesh.types.BMVert)}), context="VERTS")
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
+    for _ in range(2): bmesh.ops.smooth_vert(bm, verts=bm.verts[:], factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bm.normal_update()
+    for v in bm.verts: v.co = v.co + v.normal * 0.006
+    return obj_de_bm(nome, bm, material_)
+a_sap = sapato_convexo("arbitro_sapato", sa)
 bm = bmesh.new(); gola_a = []
 for k in range(21):
     a = math.radians(-150 + k * 15); p = Vector((math.sin(a) * 0.07, POS["neck_01"].y - math.cos(a) * 0.062, zpesc - 0.01 - 0.02 * max(0, -math.cos(a))))
     gola_a.append(p)
 tubo(bm, gola_a, 0.012, 6, achata=0.35)
 gola_o = obj_de_bm("arbitro_gola", bm, pr)
-junta_bm(a_cam, [a_calca, gola_o])
+junta_bm(a_cam, [a_calca, gola_o, a_sap])   # (MI_Sapato está na lista de materiais que o corpo.py guarda)
 ROUPAS["arbitro"] = pesar(a_cam)
 
 # ================= mongkol (cabeça, sem pesos): corda trançada em volta da testa, enrolada em branco, rabo atrás =================

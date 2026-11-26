@@ -305,6 +305,10 @@ def roupas(h, R, pos):
         tot = sum(novo.values())
         for n, x in novo.items():
             if x > 1e-4: gs[n].add([v.index], x / tot, "REPLACE")
+    # a pele inteira, antes de apagar a de baixo do calção: a calça do árbitro sai dela (acessorios.py; sem ela a calça
+    # começava no alto da coxa e o resto era o calção pintado de preto, com a barra marcando um degrau)
+    global CORPO_INTEIRO
+    CORPO_INTEIRO = h.copy(); CORPO_INTEIRO.data = h.data.copy(); bpy.context.scene.collection.objects.link(CORPO_INTEIRO)
     # o corpo embaixo do calção some (todo lutador usa calção): a pele não fura o pano em pose nenhuma
     bm = bmesh.new(); bm.from_mesh(h.data); mw = h.matrix_world; dom = dominante(h)
     cobre = lambda v: dom[v.index] in perna and barra + 0.035 < (mw @ v.co).z < cintura - 0.025
