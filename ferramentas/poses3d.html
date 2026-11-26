@@ -34,6 +34,7 @@ const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo
 { const q = new URLSearchParams(location.search); if (q.get("entrada")) eu.entrada = q.get("entrada"); if (q.get("cabelo")) eu.cabelo = q.get("cabelo"); if (q.get("barba")) eu.barba = q.get("barba"); if (q.get("prajiad")) eu.prajiad = "com"; }   // ?entrada=roupão: A vestido (cenário pose:)
 { const p = new URLSearchParams(location.search).get("porte"); if (p) [eu.porte, ele.porte] = p.split(","); }   // ?porte=leve,médio: porte de A e B
 if (new URLSearchParams(location.search).get("linear") === "1") eu.linear = ele.linear = true;   // ?linear=1: skinning linear (comparar com o quatérnio duplo)
+{ const q = new URLSearchParams(location.search); if (q.get("anuncio")) globalThis.__anuncio = JSON.parse(q.get("anuncio")); if (q.get("dedos")) globalThis.__dedos = JSON.parse(q.get("dedos")); if (q.get("palma")) globalThis.__palma = Number(q.get("palma")); }   // ?anuncio={...}&dedos=[...]
 const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "KAYO", b: "TITO" }, som: () => {} });
 await inst._dev.cartasProntas; window.__inst = inst;
 const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;
@@ -99,7 +100,7 @@ window.__camera = async ({ centro, ang, alt = 1.35, dist = 3.4, fov = 34 }) => {
   await quadro(); await quadro(); await quadro();
 };
 const centroDe = (...Ls) => { const v = new THREE.Vector3(); for (const L of Ls) v.add(L.posMundo("spine_02")); return v.multiplyScalar(1 / Ls.length).toArray(); };
-window.__centro = (q) => centroDe(...q.split("").map((k) => ({ A, B, C })[k]));
+window.__centro = (q) => q.includes(":") ? ({ A, B, C })[q.split(":")[0]].posMundo(q.split(":")[1]).toArray() : centroDe(...q.split("").map((k) => ({ A, B, C })[k]));   // FOCO=C:hand_r: num osso
 /* espera o instante do contato do golpe que acabou de sair (o IK marca tImp) e soma dt */
 const ateContato = async (L, dt = 0) => {
   for (let i = 0; i < 600 && !L.contatos.length; i++) await quadro();

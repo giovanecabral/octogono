@@ -550,6 +550,9 @@ export function prepararCorretivos(corpo, dados, ombro) {
   const g = corpo.geometry, n = g.attributes.position.count, lista = g.morphAttributes.position = g.morphAttributes.position || [];
   g.morphTargetsRelative = true;
   const dic = corpo.morphTargetDictionary = corpo.morphTargetDictionary || {};
+  // os alvos do GLB (porte_leve, porte_pesado) só têm nome no dicionário: updateMorphTargets() refaz o dicionário pelo
+  // nome do atributo e os renomeava pra "0" e "1" (o porte deixava de achar a forma e caía no radial antigo)
+  for (const [nm, i] of Object.entries(dic)) if (lista[i] && !lista[i].name) lista[i].name = nm;
   for (const a of dados.alvos) {
     const d = new Float32Array(n * 3);
     a.idx.forEach((v, k) => { d[3 * v] = a.d[3 * k] * dados.unidade; d[3 * v + 1] = a.d[3 * k + 1] * dados.unidade; d[3 * v + 2] = a.d[3 * k + 2] * dados.unidade; });

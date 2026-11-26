@@ -18723,6 +18723,14 @@ async function testarLuta3d() {
     const a0 = j.alvos[0], at = geo.morphAttributes.position[corpo.morphTargetDictionary[a0.nome]];
     if (Math.abs(at.getX(a0.idx[0]) - a0.d[0] * j.unidade) > 1e-7 || !geo.morphTargetsRelative) throw new Error("o deslocamento não foi pro vértice certo");
     if (ombro.lados[0].corretivos.length !== 4 || ombro.lados[0].corretivos.map((x) => x[1]).join() !== "90,135,160,180") throw new Error("as formas do lado não ficaram em ordem de elevação");
+    // um corpo de verdade com os alvos do porte (o GLB só dá nome a eles no dicionário): os nomes sobrevivem à carga
+    // (updateMorphTargets renomeava pra "0" e "1", e o leve e o pesado caíam no porte radial antigo)
+    const g2 = new THREE.BufferGeometry(); g2.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(3 * 12000), 3));
+    g2.morphAttributes.position = [new THREE.Float32BufferAttribute(new Float32Array(3 * 12000), 3), new THREE.Float32BufferAttribute(new Float32Array(3 * 12000), 3)];
+    const m2 = new THREE.Mesh(g2); m2.morphTargetDictionary = { porte_leve: 0, porte_pesado: 1 };
+    LU.prepararCorretivos(m2, j, { lados: [{ l: "l" }, { l: "r" }] });
+    if (m2.morphTargetDictionary.porte_leve !== 0 || m2.morphTargetDictionary.porte_pesado !== 1) throw new Error("os alvos do porte perderam o nome: " + Object.keys(m2.morphTargetDictionary).slice(0, 3));
+    if (m2.morphTargetInfluences.length !== 10) throw new Error("influências: " + m2.morphTargetInfluences.length);
     const lu = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
     if (!/pesosCorretivos\(o\.corretivos, this\.elevacao\(o\), this\.corpo\.morphTargetInfluences\)/.test(lu)) throw new Error("o jogo não liga as formas pela elevação");
   });
@@ -18757,25 +18765,23 @@ async function testarLuta3d() {
     if (amp < 0.8) throw new Error("o peito não respira (" + amp.toFixed(2) + " graus no ciclo)");
     ctl.desligar(); if (L.extras.size) throw new Error("desligar não tirou o vivo");
   });
-  await conf("anúncio: a mão erguida fica onde o braço do corpo de verdade alcança, com polo no cotovelo e a pegada do árbitro orientada", () => {
-    const b = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.glb")), nj = b.readUInt32LE(12), j = JSON.parse(b.slice(20, 20 + nj).toString()), bin = b.slice(20 + nj + 8);
-    const skin = j.skins[0], a = j.accessors[skin.inverseBindMatrices], bv = j.bufferViews[a.bufferView], off = bin.byteOffset + bv.byteOffset + (a.byteOffset || 0);
-    const IB = new Float32Array(bin.buffer.slice(off, off + a.count * 64));
-    const junta = (nome) => { const k = skin.joints.findIndex((i) => j.nodes[i].name === nome); const m = IB.slice(k * 16, k * 16 + 16);
-      // posição da junta = -R^T t da inversa (sem escala)
-      const t = [m[12], m[13], m[14]], R = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
-      return [0, 1, 2].map((c) => -(R[c][0] * t[0] + R[c][1] * t[1] + R[c][2] * t[2])); };
-    const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
-    const ombro = junta("upperarm_l"), braco = d(ombro, junta("lowerarm_l")) + d(junta("lowerarm_l"), junta("hand_l"));
+  /* pose do anúncio (etapa d da anatomia, 2026-11-26): árbitro segura o pulso, vencedor a 150-170 graus, perdedor com o
+     braço na cintura. Os números da pose saem da ferramenta (poses3d.mjs com angulos.js e a pegada); aqui o desenho */
+  await conf("anúncio: o vencedor ergue o braço a 150-170 graus pelo giro externo, o árbitro segura o PULSO (acima da luva, dedos fechando de verdade) e acompanha quem perdeu", () => {
     const dir = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8"), cer = dir.slice(dir.indexOf("async function cerimonia("), dir.indexOf("async function levantarCinturao("));
-    const m = /V\(s \* ([\d.]+), ([\d.]+), ([\d.]+)\)\]; \}\);/.exec(cer); if (!m) throw new Error("ponto da mão erguida não achado");
-    const alto = [0.72 - Number(m[1]), Number(m[2]), Number(m[3])];   // relativo ao lutador (que fica em x 0,72)
-    // ombro na pose de espera (cansado, um pouco abaixo do T) + a clavícula que sobe uns 4 cm
-    const alcance = ombro[1] + 0.04 + braco * 0.97;
-    if (alto[1] > alcance) throw new Error(`a mão erguida (${alto[1]} m) passa do alcance do braço (${alcance.toFixed(2)} m): os braços travavam esticados`);
-    if (alto[1] < ombro[1] + braco * 0.6) throw new Error(`a mão erguida (${alto[1]} m) está baixa demais pro anúncio`);
-    if (!/cadeia: true, polo: poloL/.test(cer) || !/cadeia: true, polo: poloC/.test(cer)) throw new Error("o anúncio não usa a cadeia com polo nos cotovelos");
-    if (!/C\.orientarMao\(/.test(cer)) throw new Error("a mão do árbitro não é orientada no punho");
+    const m = /const ANUNCIO = \{([^}]*)\}/.exec(cer); if (!m) throw new Error("ANUNCIO não achado");
+    const num = (k) => { const r = new RegExp(k + ": ([\\d.]+)").exec(m[1]); return r ? Number(r[1]) : NaN; };
+    const passo = /passo: \[([\d.]+), ([\d.]+)\]/.exec(m[1]);
+    if (!(num("elev") >= 150 && num("elev") <= 170)) throw new Error("elevação do braço do vencedor fora de 150-170: " + num("elev"));
+    if (!(num("pulso") >= 0.05)) throw new Error("a pegada do árbitro não está acima do punho da luva (pulso " + num("pulso") + ")");
+    if (!passo || Number(passo[1]) > 0.17) throw new Error("o passo do árbitro pro lado passou de 17 cm: o pé dele encosta no do vencedor (mínimo de 10 cm)");
+    // erguido, sem polo imposto: o giro externo automático do úmero decide o cotovelo (antes o polo virava ele pra dentro)
+    if (!/poloL = \(\) => \(k\(L\) > 0\.5 \? null/.test(cer)) throw new Error("o braço erguido do vencedor voltou a ter polo imposto");
+    if (!/externa: true/.test(fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8"))) throw new Error("o IK parado não usa a rotação externa");
+    if (!/C\.raiz\.position\.x \* ANUNCIO\.puxado/.test(cer)) throw new Error("o braço de quem perdeu não acompanha o passo do árbitro (ele largava o pulso)");
+    if (!/C\.orientarMao\(mC, n, a\)/.test(cer)) throw new Error("a mão do árbitro não é orientada como pegada de barra");
+    const fm = dir.slice(dir.indexOf("function fecharMaos("), dir.indexOf("async function cerimonia("));
+    if (!/girarMundo\(o, eixo, ang\)/.test(fm) || !/dir\.cross\(palma\)/.test(fm)) throw new Error("os dedos do árbitro não dobram pelo eixo de flexão (médio e anelar abriam pro lado)");
     if (/clipeFixo\("Alonga"/.test(dir)) throw new Error("a pose parada voltou a ser o quadro do Alonga (braço duro, queixo pro teto)");
   });
   await conf("golpes: o contato leva o clipe (trajetória deslocada), cada soco tem mira e o Upper_Tras é no corpo", () => {

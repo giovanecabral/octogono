@@ -8,6 +8,8 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.resolve(process.argv[2] || "poses"); fs.mkdirSync(OUT, { recursive: true });
 const CENARIOS = (process.argv[3] || "guarda,golpe:jab,golpe:direto,golpe:gancho,golpe:upper,golpe:chuteCabeca,reacao:direto,defesa:gancho,suspense,anuncio,vitoria").split(",");
 const W = 640, H = 760, PORTA = Number(process.env.PORTA || 8892), BASE = `http://127.0.0.1:${PORTA}/`;
+// porta ocupada: o servidor que responde seria de outra pasta (já fotografou o worktree no lugar da cópia de antes)
+try { await fetch(BASE); console.error(`porta ${PORTA} ocupada por outro servidor; use PORTA=<outra>`); process.exit(2); } catch {}
 const srv = spawn(process.execPath, [path.join(RAIZ, "ferramentas", "servidor-local.mjs"), String(PORTA)], { stdio: "ignore" });
 for (let i = 0; i < 150; i++) { try { if ((await fetch(BASE)).ok) break; } catch {} await esperar(200); }
 /* lados: a luta é no eixo x (A em -x olhando +x); o anúncio é de frente pra +z */

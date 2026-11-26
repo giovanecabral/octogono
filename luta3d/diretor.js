@@ -923,18 +923,32 @@ async function mataLeao(atk, def, texto) {
 /* a mão do árbitro fecha no punho que segura (2026-11-21, print do dono: aberta, com os dedos esticados, não
    agarrava nada). Roda depois do mixer, que devolve a pose limpa a cada quadro (não acumula) */
 const DEDOS = ["index", "middle", "ring", "pinky"];
+const DOBRA_DEDOS = [0.8, 0.9, 0.7, 0.3];   // primeira, segunda e terceira falange e o polegar (radianos), pro pulso de um lutador
+if (globalThis.__dedos) DOBRA_DEDOS.splice(0, 4, ...globalThis.__dedos);   // (ferramentas: ?dedos= no poses3d)
 function fecharMaos(L) {
-  // os dedos dobram em torno do x local nos dois lados (medido nas fotos da cerimônia: y e z torciam a mão)
-  const q = new THREE.Quaternion(), e = new THREE.Vector3(1, 0, 0);
+  // cada falange dobra em volta do eixo de flexão de verdade, achado no mundo: perpendicular à direção do dedo e à
+  // normal da palma (o x local do osso não é esse eixo no médio e no anelar, que dobravam pro lado e não fechavam)
+  const q = new THREE.Quaternion(), qw = new THREE.Quaternion(), V = () => new THREE.Vector3();
   const f = () => {
     for (const l of "lr") {
-      for (const d of DEDOS) for (const n of ["01", "02", "03"]) { const o = L.ossos[`${d}_${n}_${l}`]; if (o) o.quaternion.multiply(q.setFromAxisAngle(e, n === "01" ? 1.1 : 1.3)); }
-      for (const n of ["02", "03"]) { const o = L.ossos[`thumb_${n}_${l}`]; if (o) o.quaternion.multiply(q.setFromAxisAngle(e, 0.6)); }
+      const mao = L.ossos["hand_" + l]; if (!mao) continue;
+      const p = (n) => L.ossos[n].getWorldPosition(V()), h = p("hand_" + l), fr = p("middle_01_" + l).sub(h).normalize(), atr = p("index_01_" + l).sub(p("pinky_01_" + l)).normalize();
+      const palma = (l === "l" ? fr.clone().cross(atr) : atr.clone().cross(fr)).normalize().multiplyScalar(SENTIDO_PALMA);
+      for (const d of [...DEDOS, "thumb"]) for (const n of ["01", "02", "03"]) {
+        const o = L.ossos[`${d}_${n}_${l}`], prox = L.ossos[`${d}_${String(Number(n) + 1).padStart(2, "0")}_${l}`]; if (!o) continue;
+        if (d === "thumb" && n === "01") continue;
+        const ang = d === "thumb" ? DOBRA_DEDOS[3] : DOBRA_DEDOS[Number(n) - 1];
+        o.updateWorldMatrix(true, false);
+        const dir = prox ? prox.getWorldPosition(V()).sub(o.getWorldPosition(V())).normalize() : o.getWorldPosition(V()).sub(o.parent.getWorldPosition(V())).normalize();
+        const eixo = dir.cross(palma); if (eixo.lengthSq() < 1e-8) continue; eixo.normalize();
+        L.girarMundo(o, eixo, ang); o.updateMatrixWorld(true);
+      }
     }
   };
   L.extras.add(f);
   return () => L.extras.delete(f);
 }
+const SENTIDO_PALMA = globalThis.__palma || 1;   // (ferramentas: ?palma=-1)
 async function cerimonia(venc, perd, { suspense = false } = {}) {
   if (montada) await separar({ narra: false });
   travado = true; ocupadoLance = true;
@@ -957,34 +971,59 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   const vivos = new Map([A, B, C].map((L) => [L, L.vivo({ folego: L === C ? 1 : 2 })]));
   // de frente pra câmera (+z), a esquerda de cada um fica em +x: quem está à esquerda (x negativo) dá a
   // mão esquerda e o árbitro segura com a direita; do outro lado, ao contrário. Ninguém cruza o braço.
-  // A mão erguida fica onde os dois braços alcançam com o cotovelo quase reto (1,86 m, entre os dois:
-  // com 2,05 os braços travavam esticados e não chegavam, auditoria de 2026-11-22).
+  // Pose do anúncio (etapa d da anatomia, 2026-11-26, com fotos de MMA e boxe): o árbitro segura o PULSO dos dois
+  // na altura da cintura, cotovelo pouco dobrado (nada de braço na horizontal); no anúncio ele dá um passo pro lado
+  // de quem venceu e ergue o pulso dele, e o braço do vencedor sobe a uns 160 graus com o cotovelo quase reto (o
+  // giro externo do úmero, sem polo imposto, leva o cotovelo pra fora); quem perdeu fica com o braço na cintura.
   const maoDentro = (L) => (L.raiz.position.x < 0 ? "l" : "r");
   const maoJuiz = (L) => (L.raiz.position.x < 0 ? "r" : "l");
-  const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, s, maoDentro(L), maoJuiz(L), V(s * 0.38, 1.0, 0.16), V(s * 0.42, 1.86, 0.1)]; });
+  // baixo: onde os dois braços se encontram (na altura do quadril os dois alcançam com o cotovelo quase reto);
+  // pulso: a pegada fica tanto acima da junta da mão (logo acima do punho da luva); raio: do eixo do pulso à palma
+  // puxado: quanto o braço de quem perdeu vem com o passo do árbitro (x) e sobe (y), pra ele não largar o pulso
+  const ANUNCIO = { baixo: [0.52, 0.84, 0.12], elev: 160, inclina: 0.07, passo: [0.12, 0.12], pulso: 0.075, raio: 0.025, puxado: [1, 0.05], cruza: 0.6, dedos: 0.075, ...(globalThis.__anuncio || {}) };   // (ferramentas: ?anuncio=)
+  const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, s, maoDentro(L), maoJuiz(L), V(s * ANUNCIO.baixo[0], ANUNCIO.baixo[1], ANUNCIO.baixo[2])]; });
   cam.cerCentro = V(0, 0, 0);
   C.raiz.visible = true; C.ikFixo = {};
   const sobe = { k: 0, quem: null };
   const k = (L) => (L === sobe.quem ? suave(sobe.k) : 0);
-  for (const [L, s, mL, mC, baixo, alto] of pontos) {
-    const ponto = () => baixo.clone().lerp(alto, k(L));
-    // o cotovelo do lutador aponta pra trás e pra fora com o braço embaixo, e pro lado com ele erguido
-    const poloL = () => L.posMundo("upperarm_" + mL).add(V(s * 0.25, -0.25, -0.35).lerp(V(s * 0.45, 0.1, 0.05), k(L)));
-    L.ikFixo["hand_" + mL] = { alvo: ponto, peso: 1, cadeia: true, polo: poloL, ext: 0.97 };
-    // o árbitro: a palma no lado do antebraço dele que dá pro árbitro, logo abaixo da luva, e os dedos
-    // dão a volta pela frente (a mão não atravessa a luva nem o braço)
+  for (const [L, s, mL, mC, baixo] of pontos) {
+    // erguido: a partir do ombro de agora, a elevação pedida no plano da frente, inclinada pro meio (pro árbitro)
+    const e = THREE.MathUtils.degToRad(ANUNCIO.elev), comp = () => L.posMundo("upperarm_" + mL).distanceTo(L.posMundo("lowerarm_" + mL)) + L.posMundo("lowerarm_" + mL).distanceTo(L.posMundo("hand_" + mL));
+    // (o ombro depois do IK do quadro anterior: a clavícula sobe com o braço, o do começo do quadro é o do clipe)
+    let ombro = null;
+    const alto = () => (ombro || L.posMundo("upperarm_" + mL)).clone().add(V(-s * Math.sin(e), -Math.cos(e), 0.12).normalize().multiplyScalar(comp() * 0.985));
+    const puxa = () => (sobe.quem && L !== sobe.quem ? suave(sobe.k) : 0);
+    const ponto = () => baixo.clone().lerp(alto(), k(L)).add(V(C.raiz.position.x * ANUNCIO.puxado[0] * (puxa() > 0 ? 1 : 0), ANUNCIO.puxado[1] * puxa(), (C.raiz.position.z - 0.16) * (puxa() > 0 ? 1 : 0)));
+    // embaixo o cotovelo aponta pra trás e pra fora; erguido, o giro externo automático (sem polo) decide
+    const poloL = () => (k(L) > 0.5 ? null : L.posMundo("upperarm_" + mL).add(V(s * 0.25, -0.25, -0.35)));
+    L.ikFixo["hand_" + mL] = { alvo: ponto, peso: 1, cadeia: true, polo: poloL, ext: 0.995, depois: () => { ombro = L.posMundo("upperarm_" + mL); } };
+    // o árbitro pega o pulso como quem segura uma barra: a mão continua a direção do antebraço dele (sem quebrar o
+    // pulso), o pulso do lutador atravessa a palma e os dedos dão a volta (fecharMaos). Embaixo a palma vem por cima
     const pega = () => {
       const W = L.posMundo("hand_" + mL), eixo = W.clone().sub(L.posMundo("lowerarm_" + mL)).normalize();
-      const G = W.addScaledVector(eixo, -0.05);
-      const d = C.posMundo("upperarm_" + mC).sub(G); d.addScaledVector(eixo, -d.dot(eixo)).normalize();
-      const f = eixo.clone().cross(d).normalize(); if (f.z < 0) f.negate();
-      return { G, d, f };
+      const G = W.addScaledVector(eixo, -ANUNCIO.pulso);
+      // o antebraço dele chegando; com os dois braços quase paralelos (erguido) a mão não pode virar 90 graus: tira
+      // só parte (cruza) do que ela tem ao longo do braço do lutador, e o pulso dele cruza a palma na diagonal
+      const a = G.clone().sub(C.posMundo("lowerarm_" + mC)).normalize(); a.addScaledVector(eixo, -a.dot(eixo) * ANUNCIO.cruza).normalize();
+      // pra onde a palma olha: embaixo, de cima pra baixo; com o braço dele de pé (erguido), do lado do árbitro pro pulso
+      const n = eixo.clone().cross(a).normalize();
+      if (Math.abs(eixo.y) > 0.7) { if (n.dot(G.clone().sub(C.posMundo("spine_03"))) < 0) n.negate(); } else if (n.y > 0) n.negate();
+      return { G, n, a, eixo };
     };
-    const alvoC = () => { const { G, d, f } = pega(); return G.addScaledVector(d, 0.055).addScaledVector(f, -0.07); };
-    const poloC = () => C.posMundo("upperarm_" + mC).add(V(-s * 0.05, -0.3, -0.35).lerp(V(s * 0.35, 0, -0.15), k(L)));
-    C.ikFixo["hand_" + mC] = { alvo: alvoC, peso: 1, cadeia: true, polo: poloC, ext: 0.97,
-      depois: () => { const { d, f } = pega(); C.orientarMao(mC, d.negate(), f); } };
+    const alvoC = () => { const { G, n, a } = pega(); return G.addScaledVector(n, -ANUNCIO.raio).addScaledVector(a, -ANUNCIO.dedos); };
+    // o cotovelo do árbitro: embaixo, pra trás e pra fora; erguido, o giro externo automático
+    const poloC = () => (k(L) > 0.5 ? null : C.posMundo("upperarm_" + mC).add(V(-s * 0.15, -0.2, -0.35)));
+    C.ikFixo["hand_" + mC] = { alvo: alvoC, peso: 1, cadeia: true, polo: poloC, ext: 0.995,
+      depois: () => { const { n, a } = pega(); C.orientarMao(mC, n, a); } };
   }
+  // quem venceu inclina o tronco pro braço erguido; quem perdeu cai os ombros e curva o tronco (cansado)
+  const corpoDe = (L) => { const f = () => {
+    const s = Math.sign(L.raiz.position.x), w = L === sobe.quem ? suave(sobe.k) : 0, fr = V(0, 0, 1);
+    if (L === venc) { L.girarMundo(L.ossos.spine_02, fr, s * ANUNCIO.inclina * w); L.girarMundo(L.ossos.spine_03, fr, s * ANUNCIO.inclina * 0.6 * w); }
+    else { const p = sobe.quem ? suave(sobe.k) : 0; L.girarMundo(L.ossos.spine_03, V(1, 0, 0), 0.07 * p);
+      L.girarMundo(L.ossos.clavicle_l, fr, -0.06 * p); L.girarMundo(L.ossos.clavicle_r, fr, 0.06 * p); }
+  }; L.extras.add(f); return () => L.extras.delete(f); };
+  const soltarCorpo = [corpoDe(venc), corpoDe(perd)];
   const abrirMaos = fecharMaos(C);
   cam.modo = "cerimonia"; cam.cerFov = 42; palco.iniciado = false;
   if (suspense) {
@@ -997,7 +1036,7 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   sobe.quem = venc;
   const sV = Math.sign(venc.raiz.position.x);
   await animar(0.45, (k) => {
-    sobe.k = k; C.raiz.position.x = sV * 0.07 * suave(k);
+    sobe.k = k; C.raiz.position.x = sV * ANUNCIO.passo[0] * suave(k); C.raiz.position.z = 0.16 + ANUNCIO.passo[1] * suave(k);   // meio passo pro lado e pra frente (o pé longe do dele)
     vivos.get(perd).olhar = 0.28 * suave(k); vivos.get(venc).olhar = -0.12 * suave(k);
   });
   chamada(String((venc === A ? op.nomes && op.nomes.a : op.nomes && op.nomes.b) || "VENCEDOR").toUpperCase());
@@ -1006,7 +1045,7 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   // solta: quem venceu comemora, quem perdeu lamenta (se estiver em pé), o árbitro dá um passo.
   // Os clipes de comemorar e lamentar têm cabeça e fôlego próprios: o vivo dos dois sai
   for (const L of [A, B, C]) L.ikFixo = {};
-  abrirMaos(); vivos.get(venc).desligar(); vivos.get(perd).desligar();
+  abrirMaos(); vivos.get(venc).desligar(); vivos.get(perd).desligar(); for (const f of soltarCorpo) f();
   venc.umaVez(Math.random() < 0.5 ? "Vitoria_Boxe" : "Comemora", { fade: 0.35, segurar: true, mover: false });
   perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
   const c0 = C.raiz.position.clone(); animar(0.8, (k) => { C.raiz.position.z = c0.z - 0.7 * suave(k); });
