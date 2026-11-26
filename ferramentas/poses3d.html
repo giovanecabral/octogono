@@ -45,6 +45,18 @@ const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;
 { const q = new URLSearchParams(location.search);
   if (q.get("normais")) { A.corpo.material = new THREE.MeshNormalMaterial({ side: q.get("duplo") ? THREE.DoubleSide : THREE.FrontSide }); peleDQ(A.corpo); }
   else if (q.get("duplo")) A.corpo.material.side = THREE.DoubleSide; }
+/* ?relevo=1: os mapas de ferramentas/relevo_teste (relevo.py) na pele de A: normal, oclusão multiplicada na cor e aspereza
+   (pra conferir no jogo antes de levar ao gerador do corpo) */
+if (new URLSearchParams(location.search).get("relevo")) {
+  const tl = new THREE.TextureLoader(), d = "./relevo_teste/", ler = (f) => new Promise((ok) => tl.load(d + f, ok, undefined, () => ok(null)));
+  const [nrm, ocl, rug] = await Promise.all([ler("hbm_normal_relevo.png"), ler("hbm_oclusao.png"), ler("pele_aspereza.webp")]);
+  const mt = A.corpo.material;
+  const igual = (t, o) => { if (!o) return; for (const k of ["anisotropy", "minFilter", "magFilter", "wrapS", "wrapT", "generateMipmaps"]) t[k] = o[k]; };   // a amostragem da textura que sai
+  if (nrm) { nrm.flipY = false; nrm.colorSpace = THREE.NoColorSpace; igual(nrm, mt.normalMap); nrm.needsUpdate = true; mt.normalMap = nrm; }
+  if (rug && new URLSearchParams(location.search).get("relevo") !== "semrug") { rug.flipY = false; rug.colorSpace = THREE.NoColorSpace; mt.roughnessMap = rug; mt.roughness = 1; }
+  if (ocl && mt.map && mt.map.image && mt.map.image.getContext) { const c = mt.map.image.getContext("2d"); c.globalCompositeOperation = "multiply"; c.drawImage(ocl.image, 0, 0, mt.map.image.width, mt.map.image.height); c.globalCompositeOperation = "source-over"; mt.map.needsUpdate = true; }
+  mt.needsUpdate = true;
+}
 /* ?silhueta=1: só os lutadores, pretos sólidos em fundo branco (folha de silhueta) */
 if (new URLSearchParams(location.search).get("silhueta")) {
   const deles = new Set(); for (const L of [A, B, C]) L.raiz.traverse((o) => deles.add(o));
@@ -90,7 +102,9 @@ if (new URLSearchParams(location.search).get("semroupa")) for (const m of C.roup
 window.__parado = false;
 for (const L of [A, B, C]) { const u = L.update.bind(L); L.update = (dt) => { if (!window.__parado) u(dt); }; }
 const quadro = () => new Promise((r) => requestAnimationFrame(() => r()));
-window.__congelar = (v) => { window.__parado = v; };
+// congelado, o relógio também para (andar): as luzes e os telões da arena param na mesma fase, e a foto de um estado
+// sai igual à do outro (com elas andando, duas fotos do mesmo corpo diferiam em dezenas de milhares de pixels)
+window.__congelar = (v) => { window.__parado = v; if (!new URLSearchParams(location.search).get("temporeal")) andar = !v; };
 /* câmera: ângulo em graus em volta do centro (0 = de +z), altura e distância */
 window.__camera = async ({ centro, ang, alt = 1.35, dist = 3.4, fov = 34 }) => {
   cam.modo = "livre";
