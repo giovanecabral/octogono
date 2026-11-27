@@ -107,9 +107,22 @@ for s in (1, -1):
     eixo = (c1 - c0); L = np.linalg.norm(eixo); eixo = eixo / L
     rel = pos - c0; t = (rel @ eixo) / L
     perp = rel - (rel @ eixo)[..., None] * eixo; dy = perp[..., 1]   # acima (+) ou abaixo (-) da linha
-    lado_c = (X * s > 0) * faixa(t, 0.05, 0.8, 0.12)   # pontas em rampa (o corte seco riscava a frente do ombro)
-    H += lado_c * (0.8 * gauss(dy - 0.012, 0.011) - 0.6 * gauss(dy - 0.038, 0.013)) * np.clip((Z - c0[2]) / 0.02 + 1, 0, 1)
-    AO += lado_c * 0.05 * gauss(dy - 0.035, 0.01)
+    # refinamento do tronco superior (2026-11-27): a clavícula vai até perto do acrômio e marca mais (osso e cova)
+    lado_c = (X * s > 0) * faixa(t, 0.05, 0.92, 0.12)   # pontas em rampa (o corte seco riscava a frente do ombro)
+    na_frente = np.clip((Z - c0[2]) / 0.02 + 1, 0, 1)
+    H += lado_c * (1.1 * gauss(dy - 0.012, 0.011) - 0.8 * gauss(dy - 0.038, 0.013)) * na_frente
+    AO += lado_c * 0.07 * gauss(dy - 0.035, 0.01)
+    # acrômio: a ponta do ombro, onde a clavícula encontra o deltoide
+    acromio = c1 + np.array([s * 0.012, 0.045, 0.0])
+    H += 0.5 * gauss(np.linalg.norm(pos - acromio, axis=-1), 0.016) * (X * s > 0)
+    # sulco deltopeitoral: do terço de fora da clavícula, descendo pela frente do ombro até a dobra da axila
+    # (separa o deltoide do peitoral e marca a entrada do braço no tronco)
+    p0 = c0 + 0.72 * (c1 - c0) + np.array([0.0, -0.01, 0.02]); p1 = c1 + np.array([-s * 0.015, -0.115, 0.035])
+    seg = p1 - p0; ls = seg @ seg
+    k = np.clip(((pos - p0) @ seg) / ls, 0, 1)
+    d_dp = np.linalg.norm(pos - (p0 + k[..., None] * seg), axis=-1)
+    sulco = gauss(d_dp, 0.008) * (X * s > 0) * na_frente * faixa(k, 0.0, 1.0, 0.15)
+    H += -0.9 * sulco; AO += 0.06 * sulco
 # axila: cavidade
 for s in (1, -1):
     u = junta["upperarm_l" if s > 0 else "upperarm_r"]; cav = u + np.array([-s * 0.035, -0.07, -0.01])

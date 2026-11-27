@@ -140,7 +140,7 @@
     "alvos": [
      [
       "measure-shoulder-dist-decr",
-      0.7
+      0.3
      ]
     ],
     "ossos": "^(clavicle|upperarm|spine_03)",
@@ -153,15 +153,24 @@
    {
     "alvos": [
      [
-      "l-upperarm-shoulder-muscle-decr",
-      0.3
+      "l-upperarm-shoulder-muscle-incr",
+      0.2
      ],
      [
-      "r-upperarm-shoulder-muscle-decr",
-      0.3
+      "r-upperarm-shoulder-muscle-incr",
+      0.2
      ]
     ],
-    "ossos": "^(clavicle|upperarm|spine_03)"
+    "ossos": "^(clavicle|upperarm)"
+   },
+   {
+    "alvos": [
+     [
+      "torso-muscle-pectoral-incr",
+      0.2
+     ]
+    ],
+    "ossos": "^(spine_03|clavicle)"
    },
    {
     "alvos": [
@@ -171,11 +180,11 @@
      ],
      [
       "measure-underbust-circ-incr",
-      0.3
+      0
      ],
      [
       "torso-vshape-decr",
-      0.3
+      0
      ],
      [
       "stomach-tone-incr",

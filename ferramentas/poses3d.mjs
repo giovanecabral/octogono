@@ -35,7 +35,7 @@ try {
     await enviar("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1.5, mobile: false }, S);
     await enviar("Page.navigate", { url: BASE + "ferramentas/poses3d.html" + (process.env.Q ? "?" + process.env.Q : "") }, S);
     const avaliar = async (e) => (await enviar("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }, S)).result.value;
-    for (let i = 0; i < 300 && !(await avaliar("!!window.__pronto")); i++) await esperar(100);
+    for (let i = 0; i < 1200 && !(await avaliar("!!window.__pronto")); i++) await esperar(100);   // até 2 min (o corpo com relevo demora a abrir)
     await avaliar(`window.__cenario(${JSON.stringify(cen)})`);
     await avaliar("window.__congelar(true)");
     if (process.env.MEDIR) console.log(cen, JSON.stringify(await avaliar("window.__medir()")));
