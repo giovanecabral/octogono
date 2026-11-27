@@ -278,6 +278,27 @@ function acertar(atk, def, membro, forca, alvo) {
   if (alvo === "cabeca") { def.impacto("Head", eixo, 0.16 * forca); def.impacto("neck_01", eixo, 0.08 * forca); }
   else def.impacto("spine_02", eixo, 0.1 * forca);
 }
+/* o corpo entra no soco (2026-11-27, pedido do dono: "menos braço girando na articulação"): a coluna gira pro lado da
+   mão que bate (a parte de baixo mais, como o quadril puxando), o tronco inclina pra frente e a cabeça compensa pra
+   manter os olhos no alvo; sobe até o impacto e volta na recuperação. Por cima do clipe e antes do IK do contato (que
+   ainda leva a mão ao alvo). Força do soco = quanto gira (jab pouco, cruzado e uppercut muito) */
+const CORPO_GOLPE = VISUAL.impacto.corpoGolpe;
+function corpoNoGolpe(L, alvoL, g) {
+  if (!/^hand_/.test(g.membro)) return;
+  const lado = g.membro.slice(-1), t0 = L.relogio, sobe = g.imp, amp = CORPO_GOLPE.giro * Math.min(1.6, g.forca);
+  const f = (dt) => {
+    const t = L.relogio - t0;
+    const w = t < sobe ? suave(t / sobe) : Math.max(0, 1 - suave((t - sobe) / CORPO_GOLPE.volta));
+    if (t > sobe + CORPO_GOLPE.volta) { L.extras.delete(f); return; }
+    const fr = horiz(pelve(alvoL).sub(pelve(L))).normalize(), ombro = horiz(L.posMundo("upperarm_" + lado).sub(L.posMundo("spine_03")));
+    const sinal = Math.sign(new THREE.Vector3().crossVectors(UP, ombro).dot(fr)) || 1, lat = new THREE.Vector3().crossVectors(UP, fr).normalize();
+    const a = sinal * amp * w;
+    for (const [o, k] of [["spine_01", 0.4], ["spine_02", 0.35], ["spine_03", 0.25]]) L.girarMundo(L.ossos[o], UP, a * k);
+    L.girarMundo(L.ossos.spine_02, lat, CORPO_GOLPE.inclina * w);   // o peso vai pra frente
+    L.girarMundo(L.ossos.Head, UP, -a * CORPO_GOLPE.cabeca);         // os olhos ficam no alvo
+  };
+  L.extras.add(f);
+}
 async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarReacao = false, deReacao = 0, narra = true } = {}) {
   // uppercut no queixo: o clipe das cartas quando já chegou (o Upper_Tras é no corpo)
   if (nome === "upper" && GOLPES.mx_uppercut && base.clips.uppercut) nome = "mx_uppercut";
@@ -288,6 +309,7 @@ async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarR
   const esquiva = bloqueio && g.alvo === "cabeca" && Math.random() < 0.5;
   const ondeEstava = def.posMundo("Head").add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(pelve(atk).sub(pelve(def)).normalize(), 0.1);
   atk.umaVez(g.clip, { fade: 0.14, volta: 0.35 });
+  corpoNoGolpe(atk, def, g);
   /* joelho e cotovelo (ik: false) não estão na cadeia do IK: o golpe encosta pelo clipe, com a distância medida */
   if (g.ik !== false) atk.contato(g.membro, esquiva ? () => ondeEstava.clone() : alvoDe(atk, def, bloqueio ? (g.alvo === "cabeca" ? "guarda" : g.alvo) : g.alvo, g.mira, g.membro), g.imp, { clipe: g.clip });
   if (g.antes && !bloqueio) atk.contato(g.antes.membro, alvoDe(atk, def, "cabeca", "reto"), g.antes.imp, { clipe: g.clip });
@@ -540,7 +562,7 @@ async function queda(atk, def, { soco = true, antes = null } = {}) {
   const yaw = Math.atan2(u.x, u.z);
   atk.raiz.rotation.y = yaw; def.raiz.rotation.y = yaw + Math.PI;
   narrar(`${nomeDe(atk)} entra nas pernas...`);
-  atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 2.6 });
+  atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 3.2 });
   def.umaVez("Double_Leg_Takedown___Victim", { fade: 0.12, segurar: true });
   const limpaAntes = antes ? antes(atk, def) : null;   // lance programado: o que se vê enquanto ele entra
   await esperar(1.15);
@@ -548,8 +570,11 @@ async function queda(atk, def, { soco = true, antes = null } = {}) {
   chamada("QUEDA!"); som("queda", 0.9); som("sobe", 0.5);
   narrar(`Queda de ${nomeDe(atk)}. Levou pro chão.`, true);
   palco.tremor = Math.max(palco.tremor, 0.04); efeitoGolpe(1.0, def);
+  // (2026-11-27) a queda inteira na câmera de TV: o corte pro chão no impacto parecia teletransporte; e quem
+  // derrubou termina de subir em cima pelo próprio clipe (antes a montada entrava em 1,85 s e o arrastava de lado)
+  await esperar(0.5);
   cam.chaoEixo = V3(-u.z, 0, u.x); cam.modo = "chao";
-  await esperar(0.7);
+  await esperar(1.25);
   await montarPor(atk, def, soco);
 }
 /* quem derrubou (ou raspou) fica por cima: quem caiu assenta de costas e quem está por cima monta */
@@ -659,15 +684,19 @@ async function expulsar(texto) {
   palco.impactoFx(def.posMundo(ladoCam === "l" ? "foot_l" : "foot_r"), long.clone().negate(), 0.7); pararImpacto(0.45);
   cima.parar();
   atk.impacto("spine_02", esq0(atk), -0.4);
-  atk.umaVez("Getting_Up", { casar: [3.8, 6.4], vel: 1.3, fade: 0.3, segurar: true });
+  atk.umaVez("Getting_Up", { casar: [3.8, 6.4], vel: 1.15, fade: 0.3, segurar: true });
   const a1 = atk.raiz.position.clone().setY(0), fuga = long.clone().negate().addScaledVector(esq, -0.45 * foge).normalize();
-  animar(1.4, (k) => { const s = 1 - Math.pow(1 - k, 2); atk.raiz.position.x = a1.x + fuga.x * 1.6 * s; atk.raiz.position.z = a1.z + fuga.z * 1.6 * s; });
+  // (2026-11-27) o chute empurra 0,7 m enquanto ele ainda está de joelho; o resto da distância é o passo pra trás em pé
+  // (antes 1,6 m deslizando durante o levantar: parecia flutuar)
+  animar(0.55, (k) => { const s = 1 - Math.pow(1 - k, 2); atk.raiz.position.x = a1.x + fuga.x * 0.7 * s; atk.raiz.position.z = a1.z + fuga.z * 0.7 * s; });
   // a perna estica no chute e as duas voltam dobradas (sem esticar embaixo de quem levanta)
   await animar(0.3, (k) => { baixo.st.quadril = 0.4 * (1 - k); baixo.st.pe = 1 - k; });
   baixo.parar();
   def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.35, fade: 0.45, segurar: true });
   cam.modo = "tv";
-  await esperar(0.8);
+  await esperar(0.9);
+  atk.umaVez("Passo_Tras", { fade: 0.3, segurar: true });
+  await esperar(0.55);
   atk.estado(GUARDA, 0.5);
   const tDef = (8.33 - def.acao("Getting_Up").time) / 1.35;
   await esperar(Math.max(0.3, tDef - 0.5));
@@ -683,13 +712,16 @@ async function separar({ narra = true } = {}) {
   if (narra) narrar(`${nomeDe(def)} consegue levantar.`);
   await esperar(0.3);
   const recuo = pelve(atk).sub(pelve(def)).normalize();
-  atk.umaVez("Getting_Up", { casar: [3.8, 6.4], vel: 1.25, fade: 0.45, segurar: true });
+  // (2026-11-27) o recuo acontece de joelho, antes de subir (andar 0,9 m enquanto levantava fazia ele flutuar)
+  atk.umaVez("Getting_Up", { casar: [3.8, 6.4], vel: 1.1, fade: 0.45, segurar: true });
   const a0 = atk.raiz.position.clone().setY(0);
-  animar(1.2, (k) => { atk.raiz.position.copy(a0).addScaledVector(recuo, 0.9 * suave(k)); });
-  await esperar(0.5);
+  await animar(0.45, (k) => { atk.raiz.position.copy(a0).addScaledVector(recuo, 0.4 * suave(k)); });
+  await esperar(0.05);
   def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.3, fade: 0.5, segurar: true });
   cam.modo = "tv";
   await esperar(1.0);
+  atk.umaVez("Passo_Tras", { fade: 0.3, segurar: true });   // o passo pra trás com os pés no chão (root motion)
+  await esperar(0.6);
   atk.estado(GUARDA, 0.5);
   const tDef = (8.33 - def.acao("Getting_Up").time) / 1.3;
   await esperar(Math.max(0.3, tDef - 0.5));

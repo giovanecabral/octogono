@@ -89,5 +89,8 @@ export default {
     // gotas por golpe = base + porForca × força (nocaute: 4 + 5 × 2 = 14), nunca mais que o máximo na tela; tamanho e opacidade
     // multiplicam os de antes (1 e 0,85); abaixo = metros abaixo do ponto de contato onde elas nascem
     particulas: { base: 4, porForca: 5, maximo: 36, tamanho: 0.65, opacidade: 0.55, abaixo: 0.14 },
+    // o corpo no soco (diretor.js, corpoNoGolpe): giro da coluna pro lado da mão (radianos × força do golpe, até 1,6),
+    // inclinação pra frente, quanto a cabeça desfaz do giro e o tempo da volta (s)
+    corpoGolpe: { giro: 0.2, inclina: 0.07, cabeca: 0.45, volta: 0.45 },
   },
 };

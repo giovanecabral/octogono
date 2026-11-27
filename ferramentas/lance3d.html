@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../estilo.css">
+<!-- Bancada de lances do 3D (2026-11-27): ?seq=queda:A,controle:A,separa:A roda os lances em sequência (fora do deploy) -->
+<style>html,body{margin:0;height:100%;background:#000}#caixa{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;aspect-ratio:auto!important;max-height:none!important}</style></head>
+<body><div id="caixa" class="luta3d-caixa"></div>
+<script type="module">
+const { criarLuta3d } = await import("../luta3d/diretor.js");
+const eu = { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14", porte: "médio" };
+const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia", porte: "pesado" };
+const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "A", b: "B" }, titulo: false, som: () => {} });
+const L = (ev) => ({ round: 1, kind: "", text: "", ev });
+await new Promise((r) => setTimeout(r, 600));
+await inst.lance(L({ tipo: "inicio" })); await new Promise((r) => setTimeout(r, 800));
+window.__comeca = performance.now(); window.__marca = "inicio";
+for (const p of new URLSearchParams(location.search).get("seq").split(",")) {
+  const [tipo, quem, extra] = p.split(":"); window.__marca = tipo;
+  await inst.lance(L({ tipo, quem, golpe: extra, forca: 3 }));
+}
+window.__fim = true;
+</script></body></html>
