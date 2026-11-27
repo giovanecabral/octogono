@@ -27,14 +27,22 @@ export default {
     neblina: { cor: "#05060a", perto: 8, longe: 30 },   // a plateia afunda no escuro: o olho vai pro octógono
   },
 
+  /* ---------- arena ---------- */
+  arena: {
+    grade: { cor: "#8f949e", opacidade: 1 },      // malha de aço entre os postes
+    torcida: { roupa: 0.3, pele: 0.28 },             // brilho dos torcedores (antes 0,55 e 0,45: pareciam blocos marrons)
+    // flashes de celular na plateia: brilho e tamanho do ponto parado e do que pisca (antes 0,12 / 0,95 / 2 / 3,2: céu estrelado)
+    pontos: { brilho: 0.035, flash: 0.7, tamanho: 1.2, tamanhoFlash: 2.2 },
+  },
+
   /* ---------- luzes ---------- */
   luzes: {
     ceu: { cor: "#6f7a9c", chao: "#120d0b", intensidade: 0.42 },
     principal: { cor: "#fff6ea", intensidade: 270, abertura: 0.75, penumbra: 0.6, altura: 9.2 },   // abertura em radianos
     // contraluz atrás dos lutadores, do lado oposto da câmera: vermelha à esquerda da tela, azul à direita
     // alto e mirando no tronco: mais baixo a luz lavava a lona de lilás
-    contraluz: { vermelha: { cor: "#ff3a2e", intensidade: 90 }, azul: { cor: "#4a7dff", intensidade: 96 }, distancia: 5, lado: 4.2, altura: 6, alvo: 1.35, abertura: 0.32 },
-    preenchimento: { cor: "#fff1e6", intensidade: 0.6 },   // acompanha a câmera: o rosto não some na sombra
+    contraluz: { vermelha: { cor: "#ff3a2e", intensidade: 90 }, azul: { cor: "#4a7dff", intensidade: 160 }, distancia: 5, lado: 4.2, altura: 6, alvo: 1.35, abertura: 0.32 },
+    preenchimento: { cor: "#fff1e6", intensidade: 1.7 },  // acompanha a câmera: o rosto não some na sombra (0,6 sumia o rosto de pele escura no nocaute e no anúncio)
     contatoPes: { opacidade: 0.55, tamanho: 0.34 },        // sombra macia embaixo de cada pé (some quando o pé sobe)
   },
 
@@ -67,6 +75,10 @@ export default {
     tremor: { base: 0.008, porForca: 0.012, recuperacao: 9 },   // tremor = base + porForca × força² (jab ~0,014; nocaute ~0,066)
     socoZoom: { porForca: 2.5, limiar: 1.25 },                   // o campo fecha por um instante nos golpes fortes
   },
+
+  /* ---------- textos na tela (NOCAUTE!, o nome do vencedor) ----------
+     lugar: "cima" ou "baixo"; margem em % da altura do palco. Fora do meio pra não cobrir rosto e ombro */
+  textos: { grande: { lugar: "baixo", margem: 8 }, pequena: { lugar: "cima", margem: 6 } },
 
   /* ---------- sensação de impacto ---------- */
   impacto: {

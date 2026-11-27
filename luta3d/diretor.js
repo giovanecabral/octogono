@@ -33,6 +33,10 @@ elQual.onclick = () => {
   palco.definirModo(prox); pintarQual();
 };
 if (!op.semQualidade) { pintarQual(); raiz.append(elQual); }
+/* o botão só aparece quando o mouse mexe (ou o dedo toca) no palco, e some sozinho */
+let timerQual = null;
+const mostrarQual = () => { elQual.classList.add("visivel"); clearTimeout(timerQual); timerQual = setTimeout(() => elQual.classList.remove("visivel"), 2500); };
+if (!op.semQualidade) { raiz.addEventListener("pointermove", mostrarQual); raiz.addEventListener("pointerdown", mostrarQual); }
 if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
 const OP_A = op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" };
@@ -171,6 +175,8 @@ let timerCham = null;
 function chamada(texto, { pequena = false } = {}) {
   elCham.textContent = texto;
   elCham.className = "luta3d-chamada" + (pequena ? " pequena" : "");
+  const TX = VISUAL.textos[pequena ? "pequena" : "grande"];   // terço de cima ou de baixo (visual.config.js)
+  elCham.style.top = TX.lugar === "cima" ? TX.margem + "%" : "auto"; elCham.style.bottom = TX.lugar === "baixo" ? TX.margem + "%" : "auto";
   void elCham.offsetWidth; elCham.classList.add("ativa");
   clearTimeout(timerCham); timerCham = setTimeout(() => elCham.classList.remove("ativa"), pequena ? 1300 : 1900);
 }
@@ -1544,7 +1550,8 @@ return {
   clipeDaCarta(lance) { return clipeDoLance(lance, base.clips); },
   velocidade(v) { vel = Math.max(0.5, Math.min(3, Number(v) || 1)); },
   destruir() {
-    vivo = false; cancelAnimationFrame(quadro); clearTimeout(timerCham);
+    vivo = false; cancelAnimationFrame(quadro); clearTimeout(timerCham); clearTimeout(timerQual);
+    raiz.removeEventListener("pointermove", mostrarQual); raiz.removeEventListener("pointerdown", mostrarQual);
     tweens.length = 0;   // as promessas pendentes nunca resolvem: quem esperava confere o token da carreira
     palco.destruir();
     raiz.classList.remove("luta3d", "lenta");

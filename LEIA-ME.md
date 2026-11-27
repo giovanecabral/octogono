@@ -6320,7 +6320,7 @@ escuros puxados um pouco pros médios (`tingirTextura`).
 lançável" só com luz, pós-processamento, câmera e impacto; modelos, rig, poses e
 animações intocados).** Todo valor de olho fica em `luta3d/visual.config.js`
 (comentado; o dono ajusta sem mexer em código). O que mudou:
-- Ambiente: HDRI `assets/hdri/arena.hdr` (Poly Haven "Crossfit Gym", CC0, 2K) só
+- Ambiente: HDRI `assets/hdri/arena.hdr` (Poly Haven "Crossfit Gym", CC0, 1K: 1,7 MB; o 2K tinha 6,6 MB e, medido em esferas do fosco ao espelho, dava 59 dB de PSNR contra o 1K, a mesma imagem) só
   como reflexo e preenchimento (intensidade 0,16; mais que isso a sombra fica
   lilás, o ginásio tem luz fria e chão azul). Modo baixa e falha de rede: o
   ambiente procedural de antes.

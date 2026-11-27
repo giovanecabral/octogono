@@ -330,7 +330,8 @@ export class Palco {
     const altura = 1.75, matPoste = new THREE.MeshStandardMaterial({ color: 0x111215, roughness: 0.45, metalness: 0.2 });
     const matAcolch = new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.55 });
     const matCanto = { 0: new THREE.MeshStandardMaterial({ color: 0x9c1a14, roughness: 0.5 }), 4: new THREE.MeshStandardMaterial({ color: 0x1d3a8a, roughness: 0.5 }) };
-    const matGrade = new THREE.MeshStandardMaterial({ alphaMap: texturaGrade(), transparent: true, color: 0x1a1b1f, side: THREE.DoubleSide, depthWrite: false, roughness: 0.6, metalness: 0.4 });
+    // a malha da grade: cinza de aço (o 0x1a1b1f de antes sumia no fundo escuro); cor e força no visual.config.js
+    const matGrade = new THREE.MeshStandardMaterial({ alphaMap: texturaGrade(), transparent: true, color: VISUAL.arena.grade.cor, opacity: VISUAL.arena.grade.opacidade, side: THREE.DoubleSide, depthWrite: false, roughness: 0.6, metalness: 0.4 });
     this.pedacos = [];
     for (let k = 0; k < 8; k++) {
       const a = k * Math.PI / 4, a2 = a + Math.PI / 4;
@@ -484,8 +485,8 @@ export class Palco {
       mt.compose(s.pos, q, e);
       this.torcida.base.push({ p: s.pos.clone(), q: q.clone(), e: esc });
       this.torcida.corpo.setMatrixAt(i, mt); this.torcida.cabeca.setMatrixAt(i, mt);
-      this.torcida.corpo.setColorAt(i, cor.setHex(ROUPA[Math.floor(Math.random() * ROUPA.length)]).multiplyScalar(0.55));
-      this.torcida.cabeca.setColorAt(i, cor.setHex(PELE[Math.floor(Math.random() * PELE.length)]).multiplyScalar(0.45));
+      this.torcida.corpo.setColorAt(i, cor.setHex(ROUPA[Math.floor(Math.random() * ROUPA.length)]).multiplyScalar(VISUAL.arena.torcida.roupa));
+      this.torcida.cabeca.setColorAt(i, cor.setHex(PELE[Math.floor(Math.random() * PELE.length)]).multiplyScalar(VISUAL.arena.torcida.pele));
       this.torcida.fase[i] = Math.random() * 100;
     });
     this.cena.add(this.torcida.corpo, this.torcida.cabeca);
@@ -497,11 +498,12 @@ export class Palco {
     }
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("fase", new THREE.BufferAttribute(fase, 1));
     this.matPlateia = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { tempo: { value: 0 }, px: { value: Math.min(devicePixelRatio, 2) }, agita: { value: 0 } },
-      vertexShader: `attribute float fase; uniform float tempo; uniform float px; uniform float agita; varying float b;
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { tempo: { value: 0 }, px: { value: Math.min(devicePixelRatio, 2) }, agita: { value: 0 },
+        PT: { value: new THREE.Vector4(VISUAL.arena.pontos.brilho, VISUAL.arena.pontos.flash, VISUAL.arena.pontos.tamanho, VISUAL.arena.pontos.tamanhoFlash) } },
+      vertexShader: `attribute float fase; uniform float tempo; uniform float px; uniform float agita; uniform vec4 PT; varying float b;
         void main(){ vec4 mv=modelViewMatrix*vec4(position,1.); gl_Position=projectionMatrix*mv;
-          float pisca=step(0.985-agita*0.06,fract(sin(floor(tempo*3.+fase)*12.9898)*43758.5)); b=0.12+pisca*0.95;
-          gl_PointSize=(2.0+pisca*3.2)*px*(14./-mv.z); }`,
+          float pisca=step(0.985-agita*0.06,fract(sin(floor(tempo*3.+fase)*12.9898)*43758.5)); b=PT.x+pisca*PT.y;
+          gl_PointSize=(PT.z+pisca*PT.w)*px*(14./-mv.z); }`,
       fragmentShader: `varying float b; void main(){ float d=length(gl_PointCoord-.5); if(d>.5) discard; gl_FragColor=vec4(vec3(1.,.95,.86)*b*(1.-d*2.),1.); }`,
     });
     this.cena.add(new THREE.Points(g, this.matPlateia));
