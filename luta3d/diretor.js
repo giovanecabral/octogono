@@ -562,7 +562,10 @@ async function queda(atk, def, { soco = true, antes = null } = {}) {
   const yaw = Math.atan2(u.x, u.z);
   atk.raiz.rotation.y = yaw; def.raiz.rotation.y = yaw + Math.PI;
   narrar(`${nomeDe(atk)} entra nas pernas...`);
-  atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 3.2 });
+  // (2026-11-27) a câmera segura o enquadramento durante a queda: a de TV segue a linha entre os dois, que gira
+  // quando eles caem, e a câmera dava uma volta no meio do lance
+  cam.modo = "livre";
+  atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 2.6 });
   def.umaVez("Double_Leg_Takedown___Victim", { fade: 0.12, segurar: true });
   const limpaAntes = antes ? antes(atk, def) : null;   // lance programado: o que se vê enquanto ele entra
   await esperar(1.15);
@@ -572,9 +575,8 @@ async function queda(atk, def, { soco = true, antes = null } = {}) {
   palco.tremor = Math.max(palco.tremor, 0.04); efeitoGolpe(1.0, def);
   // (2026-11-27) a queda inteira na câmera de TV: o corte pro chão no impacto parecia teletransporte; e quem
   // derrubou termina de subir em cima pelo próprio clipe (antes a montada entrava em 1,85 s e o arrastava de lado)
-  await esperar(0.5);
-  cam.chaoEixo = V3(-u.z, 0, u.x); cam.modo = "chao";
-  await esperar(1.25);
+  await esperar(1.2);   // quem caiu assenta e quem derrubou chega em cima pelo clipe (antes do giro de perna do fim)
+  cam.chaoEixo = V3(-u.z, 0, u.x);
   await montarPor(atk, def, soco);
 }
 /* quem derrubou (ou raspou) fica por cima: quem caiu assenta de costas e quem está por cima monta */
@@ -599,9 +601,20 @@ async function montarPor(atk, def, soco) {
   await esperar(0.15);
   await animar(0.4, (k) => { cima.st.apoio = 1 - suave(k); });
   baixo.st.livre = true;
-  cam.chaoEixo = V3(-long.z, 0, long.x);
+  cam.chaoEixo = V3(-long.z, 0, long.x); cam.modo = "chao";   // a câmera do chão entra com os dois já assentados
   if (soco) await serieSocos(6);
   else await esperar(0.6);
+}
+/* (2026-11-27) o embaixo reage o tempo todo: uma ponte curta ou uma fuga de quadril, e o de cima recua a base e volta.
+   Antes, entre os socos os dois ficavam parados (o dono: "posições praticamente congeladas") */
+async function brigaNoChao(dur) {
+  if (!montada) return esperar(dur);
+  const { baixo, cima } = montada, ponte = Math.random() < 0.55;
+  baixo.st.livre = false;
+  await animar(dur, (k) => { const s = Math.sin(Math.PI * k);
+    if (ponte) { baixo.st.ponte = 0.45 * s; baixo.st.ergue = 0.015 * s; cima.st.recuo = 0.18 * s; }
+    else { baixo.st.quadril = 0.35 * s; cima.st.recuo = 0.08 * s; } });
+  baixo.st.ponte = 0; baixo.st.ergue = 0; baixo.st.quadril = 0; cima.st.recuo = 0; baixo.st.livre = true;
 }
 async function serieSocos(n, forte = false) {
   if (!montada) return;
@@ -612,7 +625,7 @@ async function serieSocos(n, forte = false) {
     const ultimo = forte && i === n - 1;
     const f = ultimo ? 1.6 : 0.8 + Math.random() * 0.5;
     await cima.soco(lado, 0, f, ultimo || forte ? true : undefined);
-    await esperar(0.16 + Math.random() * 0.24);
+    await brigaNoChao(0.35 + Math.random() * 0.35);
     // às vezes repete a mesma mão (dois socos seguidos de um lado só)
     if (Math.random() < 0.75) lado = lado === "r" ? "l" : "r";
   }
@@ -663,19 +676,19 @@ async function expulsar(texto) {
   const foge = ladoCam === "r" ? 1 : -1;   // o quadril foge pro lado contrário do pé que entra
   narrar(`${nomeDe(def)} tenta sair por baixo...`, true);
   // a primeira ponte: quem está em cima abre os braços e segura
-  await animar(0.6, (k) => { const s = Math.sin(Math.PI * k); baixo.st.ponte = 1.0 * s; baixo.st.ergue = 0.03 * s; cima.st.recuo = 0.65 * s; });
+  await animar(0.85, (k) => { const s = Math.sin(Math.PI * k); baixo.st.ponte = 1.0 * s; baixo.st.ergue = 0.03 * s; cima.st.recuo = 0.65 * s; });
   palco.tremor = Math.max(palco.tremor, 0.015);
   await esperar(0.2);
   narrar(`${nomeDe(def)} segura o quadril de ${nomeDe(atk)}...`, true);
-  await animar(0.3, (k) => { baixo.st.quadril = suave(k); });
+  await animar(0.45, (k) => { baixo.st.quadril = suave(k); });
   // a ponte forte: o quadril explode pra cima e joga quem está em cima pra trás
   som("queda", 0.6); palco.tremor = Math.max(palco.tremor, 0.035);
   const a0 = atk.raiz.position.clone().setY(0);
-  await animar(0.28, (k) => { const s = suave(k); baixo.st.ponte = 1.3 * s; baixo.st.ergue = 0.05 * s; cima.st.recuo = s;
+  await animar(0.38, (k) => { const s = suave(k); baixo.st.ponte = 1.3 * s; baixo.st.ergue = 0.05 * s; cima.st.recuo = s;
     atk.raiz.position.x = a0.x - long.x * 0.25 * s; atk.raiz.position.z = a0.z - long.z * 0.25 * s; });
   // fuga de quadril e o pé entra no quadril dele
   const d0 = def.raiz.position.clone();
-  await animar(0.32, (k) => { const s = suave(k); baixo.st.ponte = 1.3 - 1.1 * s; baixo.st.quadril = 1 - 0.6 * s; baixo.st.pe = s;
+  await animar(0.5, (k) => { const s = suave(k); baixo.st.ponte = 1.3 - 1.1 * s; baixo.st.quadril = 1 - 0.6 * s; baixo.st.pe = s;
     def.raiz.position.copy(d0).addScaledVector(esq, 0.16 * foge * s); });
   // o chute: quem estava em cima vai pra trás, longe das pernas de quem chutou, e levanta
   montada = null;
@@ -688,17 +701,20 @@ async function expulsar(texto) {
   const a1 = atk.raiz.position.clone().setY(0), fuga = long.clone().negate().addScaledVector(esq, -0.45 * foge).normalize();
   // (2026-11-27) o chute empurra 0,7 m enquanto ele ainda está de joelho; o resto da distância é o passo pra trás em pé
   // (antes 1,6 m deslizando durante o levantar: parecia flutuar)
-  animar(0.55, (k) => { const s = 1 - Math.pow(1 - k, 2); atk.raiz.position.x = a1.x + fuga.x * 0.7 * s; atk.raiz.position.z = a1.z + fuga.z * 0.7 * s; });
+  animar(0.6, (k) => { const s = 1 - Math.pow(1 - k, 2); atk.raiz.position.x = a1.x + fuga.x * 0.95 * s; atk.raiz.position.z = a1.z + fuga.z * 0.95 * s; });
   // a perna estica no chute e as duas voltam dobradas (sem esticar embaixo de quem levanta)
   await animar(0.3, (k) => { baixo.st.quadril = 0.4 * (1 - k); baixo.st.pe = 1 - k; });
   baixo.parar();
-  def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.35, fade: 0.45, segurar: true });
+  def.umaVez("Getting_Up", { casar: [2.4, 3.4], vel: 1.0, fade: 0.45, segurar: true });
   cam.modo = "tv";
   await esperar(0.9);
+  // dois passos pra trás: quem levanta de baixo sobe longe dele (com um só subia dentro do corpo dele)
   atk.umaVez("Passo_Tras", { fade: 0.3, segurar: true });
+  await esperar(0.7);
+  atk.umaVez("Passo_Tras", { fade: 0.2, segurar: true });
   await esperar(0.55);
   atk.estado(GUARDA, 0.5);
-  const tDef = (8.33 - def.acao("Getting_Up").time) / 1.35;
+  const tDef = (8.33 - def.acao("Getting_Up").time) / 1.0;
   await esperar(Math.max(0.3, tDef - 0.5));
   def.estado(GUARDA, 0.5);
   travado = false;
@@ -717,13 +733,13 @@ async function separar({ narra = true } = {}) {
   const a0 = atk.raiz.position.clone().setY(0);
   await animar(0.45, (k) => { atk.raiz.position.copy(a0).addScaledVector(recuo, 0.4 * suave(k)); });
   await esperar(0.05);
-  def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.3, fade: 0.5, segurar: true });
+  def.umaVez("Getting_Up", { casar: [2.4, 3.4], vel: 1.0, fade: 0.5, segurar: true });
   cam.modo = "tv";
   await esperar(1.0);
   atk.umaVez("Passo_Tras", { fade: 0.3, segurar: true });   // o passo pra trás com os pés no chão (root motion)
   await esperar(0.6);
   atk.estado(GUARDA, 0.5);
-  const tDef = (8.33 - def.acao("Getting_Up").time) / 1.3;
+  const tDef = (8.33 - def.acao("Getting_Up").time) / 1.0;
   await esperar(Math.max(0.3, tDef - 0.5));
   def.estado(GUARDA, 0.5);
   travado = false;
@@ -935,14 +951,14 @@ async function finalizacao(atk, def, texto, tipo = tipoDeFinalizacao(atk)) {
   vida(def, 0);
   if (cena.perdedorDeitado) def.umaVez("Writhing_In_Pain", { fade: 0.5, segurar: true, mover: false });
   else def.umaVez("Getting_Up", { casar: [3.8, 6.4], vel: 0.8, fade: 0.6, segurar: true });
-  atk.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.35, fade: 0.5, segurar: true });
+  atk.umaVez("Getting_Up", { casar: [2.4, 3.4], vel: 1.0, fade: 0.5, segurar: true });
   // quem venceu levanta já se afastando de quem ficou no chão
   const longe = pelve(atk).sub(pelve(def)); if (longe.lengthSq() < 1e-4) longe.set(1, 0, 0); longe.normalize();
   const s0 = atk.raiz.position.clone();
   animar(1.8, (k) => { atk.raiz.position.copy(s0).addScaledVector(longe, 1.1 * suave(k)); });
   await esperar(0.6);
   cam.modo = "tv";
-  await esperar(Math.max(0.3, (8.33 - atk.acao("Getting_Up").time) / 1.35 - 0.4));
+  await esperar(Math.max(0.3, (8.33 - atk.acao("Getting_Up").time) / 1.0 - 0.4));
   narrar(texto || `${nomeDe(atk)} vence por finalização.`, true);
   await cerimonia(atk, def);
 }
@@ -1175,9 +1191,9 @@ async function knockdown(atk, def) {
   cam.modo = "tv";
   travado = true;
   await esperar(0.8);
-  def.umaVez("Getting_Up", { casar: [0, 3.2], vel: 1.3, fade: 0.5, segurar: true });
+  def.umaVez("Getting_Up", { casar: [2.4, 3.4], vel: 1.0, fade: 0.5, segurar: true });
   narrar(`${nomeDe(def)} levantou cambaleando.`, true);
-  await esperar(Math.max(0.3, (8.33 - def.acao("Getting_Up").time) / 1.3 - 0.45));
+  await esperar(Math.max(0.3, (8.33 - def.acao("Getting_Up").time) / 1.0 - 0.45));
   // de pé, ainda tonto: balança um pouco antes de levantar a guarda
   def.umaVez("Tonto", { fade: 0.45, de: 0.4, ate: 1.9, segurar: true, mover: false });
   await esperar(1.2);

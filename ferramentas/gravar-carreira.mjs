@@ -46,7 +46,9 @@ const fightersB64 = Buffer.from(JSON.stringify(fighters)).toString("base64");
 
 const perfil = fs.mkdtempSync(path.join(os.tmpdir(), "carreira-")), portaCh = 9376;
 const ch = spawn(process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ["--headless=new", `--remote-debugging-port=${portaCh}`, `--user-data-dir=${perfil}`,
-  "--hide-scrollbars", "--use-angle=metal", "--enable-gpu", "--no-first-run", "--no-default-browser-check", "--autoplay-policy=no-user-gesture-required", "about:blank"], { stdio: "ignore" });
+  "--hide-scrollbars", "--use-angle=metal", "--enable-gpu",
+  // (2026-11-27) com a tela do Mac apagada o Chrome marcava a aba como escondida e parava de desenhar (a gravação travava)
+  "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling", "--no-first-run", "--no-default-browser-check", "--autoplay-policy=no-user-gesture-required", "about:blank"], { stdio: "ignore" });
 let ws = null; for (let i = 0; i < 100 && !ws; i++) { try { ws = (await (await fetch(`http://127.0.0.1:${portaCh}/json/version`)).json()).webSocketDebuggerUrl; } catch {} if (!ws) await esperar(200); }
 const sock = new WebSocket(ws); await new Promise((r, j) => { sock.onopen = r; sock.onerror = j; });
 let seq = 0; const pend = new Map(), ouvintes = [];
