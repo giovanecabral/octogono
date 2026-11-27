@@ -18594,6 +18594,35 @@ async function testarLuta3d() {
     const semFaixa = [...LU.peleDoCalcao(corpo, calcao, null)];
     if (semFaixa[0] !== 0) throw new Error("sem a faixa o cós é o do calção: " + semFaixa);
   });
+  /* queda (2026-11-27): a raiz de quem cai não pode estalar entre quadros (antes caía 0,32 m de quadril num quadro de
+     0,1 s) e, no chão, a cabeça de um nunca entra no tronco do outro. Limites: 0,05 m por quadro a 60 por segundo
+     (3 m/s) e nenhum giro da raiz durante a queda; folga pele a pele acima de 5 cm */
+  await conf("queda: duração 1,2 a 1,8 s, chão em 0,4 a 0,6 s, raiz sem estalo (≤ 0,05 m por quadro, sem giro) e folga cabeça-tronco no chão ≥ 5 cm", async () => {
+    const url = require("url");
+    const V = (await import(url.pathToFileURL(path.join(__dirname, "luta3d", "visual.config.js")).href)).default;
+    const QD = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "queda.js")).href);
+    const Q = V.queda, F = QD.fasesDaQueda(Q);
+    if (F.fim < 1.2 || F.fim > 1.8) throw new Error("queda de " + F.fim.toFixed(2) + " s");
+    if (Q.cai < 0.4 || Q.cai > 0.6) throw new Error("transição pro chão de " + Q.cai + " s");
+    // o recuo é o que o clipe da vítima anda do contato até deitado (0,67 m medido no mx_lutas.glb); 0,8 com folga
+    const ctx = { recuo: 0.8, segue: Q.segue }, passo = QD.maiorPassoDaRaiz(Q, ctx);
+    if (passo > 0.05) throw new Error("a raiz anda " + passo.toFixed(3) + " m num quadro");
+    // dente: a mesma queda em 0,1 s estala (o teste reprova o jeito de antes)
+    if (QD.maiorPassoDaRaiz({ ...Q, cai: 0.1 }, ctx) <= 0.05) throw new Error("o limite não pega uma queda de 0,1 s");
+    // a raiz de quem cai só gira antes da queda (encarando quem entra), nunca durante
+    const fonte = fs.readFileSync(path.join(__dirname, "luta3d", "diretor.js"), "utf8");
+    const corpo = fonte.slice(fonte.indexOf("async function queda("), fonte.indexOf("/* quem derrubou (ou raspou)"));
+    if ((corpo.match(/def\.raiz\.rotation\.\w\s*=[^=]/g) || []).length !== 1) throw new Error("a raiz de quem cai gira durante a queda");
+    // no chão: cabeça 4 cm dentro do tronco do outro; o empurrão leva a folga pra cima de 5 cm (e longe não empurra)
+    const tronco = [[0, 0.15, 0], [0, 0.15, 0.5]], cab = [0.12, 0.2, 0.25];
+    const antes = QD.folgaCabecaTronco(cab, tronco[0], tronco[1], Q.chao.raioCabeca, Q.chao.raioTronco).folga;
+    const e = QD.empurraoNoChao(cab, tronco[0], tronco[1], Q);
+    const depois = QD.folgaCabecaTronco([cab[0] + e[0], cab[1], cab[2] + e[1]], tronco[0], tronco[1], Q.chao.raioCabeca, Q.chao.raioTronco).folga;
+    if (!(antes < 0.05) || depois < 0.05) throw new Error(`folga antes ${antes.toFixed(3)} depois ${depois.toFixed(3)}`);
+    const longe = QD.empurraoNoChao([0.6, 0.2, 0.25], tronco[0], tronco[1], Q);
+    if (longe[0] || longe[1]) throw new Error("empurrou quem já estava longe");
+    if (!fonte.includes("empurraoNoChao(")) throw new Error("o diretor não usa a folga no chão");
+  });
   await conf("visual da luta: valores no visual.config.js, modos de qualidade e sons com reserva", async () => {
     const url = require("url");
     const V = (await import(url.pathToFileURL(path.join(__dirname, "luta3d", "visual.config.js")).href)).default;

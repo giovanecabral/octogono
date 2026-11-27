@@ -93,4 +93,16 @@ export default {
     // inclinação pra frente, quanto a cabeça desfaz do giro e o tempo da volta (s)
     corpoGolpe: { giro: 0.2, inclina: 0.07, cabeca: 0.45, volta: 0.45 },
   },
+
+  /* ---------- a queda (luta3d/queda.js e diretor.js) ----------
+     total = contato + levanta + cai + quique.dur (1,2 a 1,8 s; hoje 1,69). velClipe: o par do Mixamo até o contato
+     (clipe em 0,9 s / velClipe = contato). ergue: quanto o quadril de quem cai sobe com o ombro de quem entra (m);
+     segue: quanto ele anda junto (m). maos: entrada e saída do IK das mãos de quem entra nas coxas (s).
+     chao: cabeça (esfera) e tronco (cápsula) pra folga mínima pele a pele entre um e outro no chão (m) */
+  queda: {
+    velClipe: 1.35, contato: 0.67, levanta: 0.32, cai: 0.5, ergue: 0.09, segue: 0.12,
+    quique: { dur: 0.2, altura: 0.035 }, maos: { entra: 0.22, sai: 0.18, naCoxa: 0.6 }, assenta: 0.45, tremor: 0.05,
+    poeira: { n: 14, tamanho: 0.16, cresce: 2.2, vida: 0.7, opacidade: 0.28, cor: "#b9b2a8", espalha: 0.9 },
+    chao: { raioCabeca: 0.1, raioTronco: 0.13, folga: 0.08 },
+  },
 };

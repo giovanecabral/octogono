@@ -10,6 +10,7 @@ import { carregarBase, carregarCartas, carregarPecas, Lutador } from "./lutador.
 import { clipeDoLance, LANCES_CARTAS, GOLPES_MX } from "./lances-cartas.js";
 import { modeloCinturao } from "./aparencia.js";
 import VISUAL from "./visual.config.js";
+import { fasesDaQueda, raizDaQueda, senoide, empurraoNoChao } from "./queda.js";
 
 /* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
    Devolve { lance(linha), velocidade(v), destruir() }. */
@@ -555,6 +556,10 @@ function ctrlCima(top, bot, baixo) {
 }
 
 async function queda(atk, def, { soco = true, antes = null } = {}) {
+  /* a queda em fases (luta3d/queda.js; tempos em visual.config.js, queda): o par do Mixamo até o contato, o quadril
+     de quem cai acompanha o ombro de quem entra com as mãos dele nas coxas, solta no pico, cai numa curva suave até
+     a pose deitada e quica. Antes, o clipe inteiro: quem caía estalava pro chão entre dois quadros (16 por segundo) */
+  const Q = VISUAL.queda, F = fasesDaQueda(Q), ATK = "Double_Leg_Takedown___Attacker", VIT = "Double_Leg_Takedown___Victim";
   cam.modo = "tv";
   await ajustarDist(1.2, 0.45);
   travado = true;
@@ -562,20 +567,57 @@ async function queda(atk, def, { soco = true, antes = null } = {}) {
   const yaw = Math.atan2(u.x, u.z);
   atk.raiz.rotation.y = yaw; def.raiz.rotation.y = yaw + Math.PI;
   narrar(`${nomeDe(atk)} entra nas pernas...`);
-  // (2026-11-27) a câmera segura o enquadramento durante a queda: a de TV segue a linha entre os dois, que gira
-  // quando eles caem, e a câmera dava uma volta no meio do lance
-  cam.modo = "livre";
-  atk.umaVez("Double_Leg_Takedown___Attacker", { fade: 0.12, segurar: true, ate: 2.6 });
-  def.umaVez("Double_Leg_Takedown___Victim", { fade: 0.12, segurar: true });
-  const limpaAntes = antes ? antes(atk, def) : null;   // lance programado: o que se vê enquanto ele entra
-  await esperar(1.15);
+  cam.modo = "livre";   // a câmera segura o enquadramento (a de TV seguia a linha entre os dois, que gira na queda)
+  const DEITADO = def.clipeFixo(VIT, 3.4, "Queda_Deitado");
+  atk.umaVez(ATK, { fade: 0.12, segurar: true, ate: 2.6, vel: Q.velClipe });
+  def.umaVez(VIT, { fade: 0.12, segurar: true, vel: Q.velClipe });
+  const aV = def.acao(VIT), limpaAntes = antes ? antes(atk, def) : null;   // lance programado: o que se vê enquanto ele entra
+  // mãos de quem entra na coxa de quem cai, perto do joelho (cada mão na perna mais perto dela)
+  const naCoxa = (l) => () => def.posMundo("thigh_" + l).lerp(def.posMundo("calf_" + l), Q.maos.naCoxa);
+  const t0 = atk.relogio;
+  const maos = (dt) => {
+    const t = atk.relogio - t0;
+    const w = t < F.levanta - Q.maos.entra ? 0 : t < F.levanta ? suave((t - (F.levanta - Q.maos.entra)) / Q.maos.entra) : t < F.cai ? 1 : Math.max(0, 1 - (t - F.cai) / Q.maos.sai);
+    for (const l of ["l", "r"]) {
+      const k = atk.ikFixo["hand_" + l]; if (k) k.peso = w;
+    }
+    if (t > F.cai + Q.maos.sai) { delete atk.ikFixo.hand_l; delete atk.ikFixo.hand_r; atk.extras.delete(maos); }
+  };
+  const perto = (l) => { const m = atk.posMundo("hand_" + l); return m.distanceTo(def.posMundo("calf_l")) < m.distanceTo(def.posMundo("calf_r")) ? "l" : "r"; };
+  atk.extras.add(maos);
+  await esperar(F.levanta - Q.maos.entra);
+  const pl = perto("l"); atk.ikFixo.hand_l = { alvo: naCoxa(pl), peso: 0 }; atk.ikFixo.hand_r = { alvo: naCoxa(pl === "l" ? "r" : "l"), peso: 0 };
+  await esperar(Q.maos.entra);
   if (limpaAntes) limpaAntes();
+  // contato: daqui em diante a raiz de quem cai é da queda (o clipe só dá a pose)
+  def.movendo.delete(aV); aV.timeScale = 0.25;
+  const r0 = def.raiz.position.clone(), tq = aV.time;
+  const fim = def.curva(VIT, 3.4), agora = def.curva(VIT, tq);
+  const resto = V3(fim[0] - agora[0], 0, fim[1] - agora[1]).applyAxisAngle(UP, def.raiz.rotation.y);
+  const recuo = resto.length(), dirR = recuo > 1e-4 ? resto.clone().normalize() : u.clone();
+  const tc = def.relogio; let caiu = false, pousou = false;
+  const aD = def.acao(DEITADO);
+  const raiz = () => {
+    const t = Q.contato + (def.relogio - tc), p = raizDaQueda(t, Q, { recuo, segue: Q.segue });
+    // anda junto (segue) na linha de quem entra; o resto do clipe na direção que o clipe andaria
+    const segueAgora = Math.min(p.frente, Q.segue), resto = Math.max(0, p.frente - Q.segue);
+    def.raiz.position.copy(r0).addScaledVector(u, segueAgora).addScaledVector(dirR, resto).setY(r0.y + p.cima);
+    if (!caiu && t >= F.cai) {   // solta no pico: a pose vai da do contato à deitada pelo peso, na mesma curva da raiz
+      caiu = true; aV.timeScale = 0;
+      aD.reset(); aD.setLoop(THREE.LoopOnce); aD.clampWhenFinished = true; aD.play(); aD.setEffectiveWeight(0);
+      def.atual = aD; def.nomeEstado = DEITADO;
+    }
+    if (caiu) { const w = senoide((t - F.cai) / Q.cai); aD.setEffectiveWeight(w); aV.setEffectiveWeight(1 - w); }
+    if (t >= F.fim) { def.raiz.position.y = r0.y; aV.stop(); def.extras.delete(raiz); }
+  };
+  def.extras.add(raiz);
+  await esperar(F.quique - Q.contato);
+  // pouso: quique, tremor, poeira e o som da queda
   chamada("QUEDA!"); som("queda", 0.9); som("sobe", 0.5);
   narrar(`Queda de ${nomeDe(atk)}. Levou pro chão.`, true);
-  palco.tremor = Math.max(palco.tremor, 0.04); efeitoGolpe(1.0, def);
-  // (2026-11-27) a queda inteira na câmera de TV: o corte pro chão no impacto parecia teletransporte; e quem
-  // derrubou termina de subir em cima pelo próprio clipe (antes a montada entrava em 1,85 s e o arrastava de lado)
-  await esperar(1.2);   // quem caiu assenta e quem derrubou chega em cima pelo clipe (antes do giro de perna do fim)
+  palco.tremor = Math.max(palco.tremor, Q.tremor); efeitoGolpe(1.0, def);
+  palco.poeira(def.posMundo("pelvis").setY(0), 1);
+  await esperar(Q.quique.dur + Q.assenta);
   cam.chaoEixo = V3(-u.z, 0, u.x);
   await montarPor(atk, def, soco);
 }
@@ -596,6 +638,15 @@ async function montarPor(atk, def, soco) {
   const baixo = ctrlBaixo(def, atk), cima = ctrlCima(atk, def, baixo);
   cima.st.apoio = 1; baixo.st.livre = false;
   montada = { atk, def, cima, baixo };
+  // (2026-11-27) folga mínima entre a cabeça de um e o tronco do outro (queda.js, empurraoNoChao; visual.config.js, queda.chao)
+  const folga = () => {
+    if (!montada || montada.atk !== atk) { atk.extras.delete(folga); return; }
+    const arr = (v) => [v.x, v.y, v.z];
+    const e1 = empurraoNoChao(arr(atk.posMundo("Head")), arr(def.posMundo("spine_01")), arr(def.posMundo("neck_01")), VISUAL.queda);
+    const e2 = empurraoNoChao(arr(def.posMundo("Head")), arr(atk.posMundo("spine_01")), arr(atk.posMundo("neck_01")), VISUAL.queda);
+    atk.raiz.position.x += 0.5 * (e1[0] - e2[0]); atk.raiz.position.z += 0.5 * (e1[1] - e2[1]);
+  };
+  atk.extras.add(folga);
   await animar(0.7, (k) => { baixo.st.ergue = 0.08 * Math.sin(Math.PI * k); });
   baixo.st.ergue = 0;
   await esperar(0.15);

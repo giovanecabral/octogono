@@ -586,9 +586,28 @@ export class Palco {
     if (this.comAberracao && forca >= VISUAL.pos.aberracao.limiar) this.aberracaoT = VISUAL.pos.aberracao.duracao;
   }
 
+  /* poeira da queda (2026-11-27): nuvem baixa que se abre no chão e some (valores em visual.config.js, queda.poeira) */
+  poeira(pos, forca = 1) {
+    if (!this.texGota) this.impactoFx(pos, new THREE.Vector3(), 0);   // cria a textura (forca 0 não solta gota)
+    const P = VISUAL.queda.poeira;
+    for (let i = 0; i < Math.round(P.n * Math.min(1.5, forca)); i++) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.texGota, color: new THREE.Color(P.cor), transparent: true, depthWrite: false, opacity: P.opacidade }));
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 0.25;
+      m.position.set(pos.x + Math.cos(a) * r, 0.04 + Math.random() * 0.06, pos.z + Math.sin(a) * r); m.scale.setScalar(P.tamanho * (0.6 + Math.random() * 0.6));
+      const v = new THREE.Vector3(Math.cos(a), 0.05 + Math.random() * 0.15, Math.sin(a)).multiplyScalar(P.espalha * (0.4 + Math.random() * 0.8));
+      this.cena.add(m); this.flashes.push({ m, v, t: 0, vida: P.vida * (0.7 + Math.random() * 0.6), poeira: true });
+    }
+  }
+
   /* câmera: vai suave até o alvo; tremor nos golpes fortes */
   quadro(dt, tempo) {
     for (const f of this.flashes.slice()) {
+      if (f.poeira) {   // poeira: sem gravidade, freia, cresce e some
+        f.t += dt; f.v.multiplyScalar(Math.exp(-dt * 3)); f.m.position.addScaledVector(f.v, dt); f.m.scale.multiplyScalar(1 + VISUAL.queda.poeira.cresce * dt);
+        f.m.material.opacity = VISUAL.queda.poeira.opacidade * (1 - f.t / f.vida);
+        if (f.t >= f.vida) { this.cena.remove(f.m); f.m.material.dispose(); this.flashes.splice(this.flashes.indexOf(f), 1); }
+        continue;
+      }
       f.t += dt; f.v.y -= 9.8 * dt; f.m.position.addScaledVector(f.v, dt);
       f.m.material.opacity = Math.max(0, VISUAL.impacto.particulas.opacidade * (1 - f.t / f.vida));
       if (f.t >= f.vida || f.m.position.y < 0.01) { this.cena.remove(f.m); this.gotasLivres.push(f.m); this.flashes.splice(this.flashes.indexOf(f), 1); }
