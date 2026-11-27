@@ -18574,6 +18574,26 @@ async function testarLuta3d() {
   });
   /* acabamento de transmissão (2026-11-26): todo valor de olho no visual.config.js, o modo baixa sem pós-processamento,
      o hit-stop na faixa do dono (40 a 70 ms) e os sons novos com reserva enquanto o arquivo não chega */
+  /* pele embaixo do calção (2026-11-27): no pesado de costas a pele furava logo abaixo do cós. A pele do quadril, do
+     tronco e da coxa entre o cós (a faixa, que fica acima do calção) e a barra não é desenhada; a mão que cai nessa
+     altura fica, e a pele acima do cós também */
+  await conf("pele embaixo do calção e do cós some; mão na mesma altura e pele acima do cós ficam", async () => {
+    const url = require("url");
+    const THREE = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "vendor", "three.module.js")).href);
+    const LU = await import(url.pathToFileURL(path.join(__dirname, "luta3d", "lutador.js")).href);
+    const ossos = ["pelvis", "hand_l"].map((n) => { const b = new THREE.Bone(); b.name = n; return b; });
+    const esq = new THREE.Skeleton(ossos);
+    const malha = (pts, osso) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pts.flat(), 3));
+      g.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(pts.flatMap((_, i) => [osso[i], 0, 0, 0]), 4)); g.setAttribute("skinWeight", new THREE.Float32BufferAttribute(pts.flatMap(() => [1, 0, 0, 0]), 4));
+      const m = new THREE.SkinnedMesh(g, new THREE.MeshBasicMaterial()); m.add(ossos[0]); m.bind(esq); return m; };
+    const calcao = malha([[0, 0.5, 0], [0, 0.9, 0]], [0, 0]), faixa = malha([[0, 0.95, 0]], [0]);
+    // pelve abaixo do cós da faixa (some), pelve acima do cós (fica), pelve perto da barra (fica), mão no meio (fica)
+    const corpo = malha([[0, 0.92, 0.1], [0, 0.7, 0.1], [0, 0.98, 0.1], [0, 0.51, 0.1], [0, 0.7, 0.3]], [0, 0, 0, 0, 1]);
+    const r = [...LU.peleDoCalcao(corpo, calcao, faixa)];
+    if (r.join() !== "1,1,0,0,0") throw new Error("pele coberta (cós da faixa, meio, acima, barra, mão): " + r);
+    const semFaixa = [...LU.peleDoCalcao(corpo, calcao, null)];
+    if (semFaixa[0] !== 0) throw new Error("sem a faixa o cós é o do calção: " + semFaixa);
+  });
   await conf("visual da luta: valores no visual.config.js, modos de qualidade e sons com reserva", async () => {
     const url = require("url");
     const V = (await import(url.pathToFileURL(path.join(__dirname, "luta3d", "visual.config.js")).href)).default;

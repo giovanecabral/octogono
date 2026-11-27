@@ -502,11 +502,13 @@ def caimento_camisa(bm, o):
     sm = lambda t: max(0.0, min(1.0, t)) ** 2 * (3 - 2 * max(0.0, min(1.0, t)))
     for v in tronco:
         w = W[v].copy(); y = w.y
-        for lin, sinal, forca in ((frente, 1, 1.0), (costas, -1, 0.6)):
+        # 2026-11-27 (dono: "grossa, com sombreado borrado"): a cortina da frente pela metade e caindo mais rente ao
+        # corpo (0,10 -> 0,22 por metro de queda); antes a camisa descia reta do peito e lia como volume
+        for lin, sinal, forca in ((frente, 1, 0.5), (costas, -1, 0.4)):
             r = na(lin, w.x)
             if not r or w.z >= r[1]: continue   # só abaixo do ponto mais saliente
             if sinal * (w.y - y_meio) > 0: continue   # a frente é a metade de y menor que o eixo da coluna; as costas, a outra
-            cortina = r[0] + sinal * 0.10 * (r[1] - w.z)
+            cortina = r[0] + sinal * 0.22 * (r[1] - w.z)
             if sinal * (cortina - w.y) < 0: y = w.y + (cortina - w.y) * forca * sm((w.z - (z_cos - 0.01)) / 0.06)
         w.y = y
         # dentro da calça: abaixo do cós a camisa encosta a 0,8 cm da pele
@@ -516,7 +518,12 @@ def caimento_camisa(bm, o):
             if q is not None:
                 alvo = mw @ (q + nq * 0.008); w = w.lerp(alvo, enfia)
         v.co = mi @ w
-a_cam = peca(h, "arbitro", camisa_curta, lambda co, _: 0.016, 0.003, pr, maioria=True, suave=5, alisa_borda=10, ajusta=caimento_camisa)
+# folga da camisa (2026-11-27): 1,0 cm no tronco (antes 1,6, lia grossa); no ombro e na manga continua 1,6 (com 1,0 o
+# ombro do braço erguido dobrava a camisa pra dentro dela mesma: pontos escuros no anúncio). Transição suave em altura e x
+_sm = lambda t: max(0.0, min(1.0, t)) ** 2 * (3 - 2 * max(0.0, min(1.0, t)))
+folga_camisa = lambda co, _: 0.010 + 0.006 * max(_sm((co.z - (zpeito - 0.02)) / 0.08), _sm((abs(co.x) - 0.11) / 0.05))
+a_cam = peca(h, "arbitro", camisa_curta, folga_camisa, 0.003, pr,
+ maioria=True, suave=5, alisa_borda=10, ajusta=caimento_camisa)
 z_tornozelo = (Z("foot_l") + Z("foot_r")) / 2 + 0.03
 def calca(co, d):
     w = h.matrix_world @ co

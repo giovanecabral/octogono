@@ -43,6 +43,9 @@ const OP_A = op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", co
 const OP_B = op.ele || { pele: "#a8704c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210" };
 /* postura do árbitro (rodada 2, 2026-11-26): o Parado arqueia as costas (lombar pra frente, peito pra trás) e, de camisa,
    a barriga lia como balão no suspense e no anúncio; graus por osso por cima do clipe (Lutador.corrigirPostura) */
+/* quem perdeu no anúncio (radianos, em volta do eixo de lado do corpo e da frente): ombro caído, braço pra trás e
+   antebraço aberto, tronco reto. Medido no poses3d (?perdedor={...}) */
+const PERDEDOR = { ombro: 0.12, braco: 0.3, antebraco: 0.4, tronco: 0, ...globalThis.__perdedor };
 const POSTURA_ARBITRO = { pelvis: -8, thigh_l: 8, thigh_r: 8, spine_01: 12, spine_02: 6, spine_03: 6, neck_01: -10 };   // medida: o peito volta pra frente da barriga (6 a 8 graus a mais já curvava as costas)
 const OP_C = { pele: "#c98e62", calcao: "#121318", cabelo: "militar", corCabelo: "#2a1b12", uniforme: "arbitro", semLuva: true, porte: "arbitro",
   postura: { ...POSTURA_ARBITRO, ...globalThis.__postura } };
@@ -1018,6 +1021,9 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   // passo (rodada 2, 2026-11-26): o árbitro se afasta de quem venceu (x negativo) e vem pra frente; o braço erguido de
   // quem venceu inclina pro meio e o pulso dele ficava quase em cima do ombro do árbitro: o alvo a 72% do braço dele e o
   // cotovelo dobrado a 87 graus. Afastado 12 cm, o alvo fica no alcance e o cotovelo, a 12 graus
+  // (2026-11-27: puxar a pegada de quem perdeu pra trás deixava o braço dele solto, mas o do árbitro chegava no limite
+  // do alcance já com 8 cm; pra ir além o árbitro teria que vir pra perto dele e o braço erguido do vencedor voltaria a
+  // dobrar. O braço preso fica; o outro solta, PERDEDOR)
   const ANUNCIO = { baixo: [0.52, 0.84, 0.12], elev: 160, inclina: 0.07, passo: [-0.12, 0.11], pulso: 0.075, raio: 0.025, puxado: [1, 0.05], cruza: 0.6, dedos: 0.075, ...(globalThis.__anuncio || {}) };   // (ferramentas: ?anuncio=)
   const pontos = [esq, dir].map((L) => { const s = Math.sign(L.raiz.position.x); return [L, s, maoDentro(L), maoJuiz(L), V(s * ANUNCIO.baixo[0], ANUNCIO.baixo[1], ANUNCIO.baixo[2])]; });
   cam.cerCentro = V(0, 0, 0);
@@ -1055,12 +1061,16 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
     C.ikFixo["hand_" + mC] = { alvo: alvoC, peso: 1, cadeia: true, polo: poloC, ext: 0.995,
       depois: () => { const { n, a } = pega(); C.orientarMao(mC, n, a); } };
   }
-  // quem venceu inclina o tronco pro braço erguido; quem perdeu cai os ombros e curva o tronco (cansado)
+  // quem venceu inclina o tronco pro braço erguido; quem perdeu cai os ombros, com o tronco reto e o braço solto do lado
+  // do corpo (2026-11-27, pedido do dono: antes curvava o tronco; o braço livre ia 30 cm à frente do quadril, agora 7; o
+  // preso pelo árbitro segue a pegada)
   const corpoDe = (L) => { const f = () => {
     const s = Math.sign(L.raiz.position.x), w = L === sobe.quem ? suave(sobe.k) : 0, fr = V(0, 0, 1);
     if (L === venc) { L.girarMundo(L.ossos.spine_02, fr, s * ANUNCIO.inclina * w); L.girarMundo(L.ossos.spine_03, fr, s * ANUNCIO.inclina * 0.6 * w); }
-    else { const p = sobe.quem ? suave(sobe.k) : 0; L.girarMundo(L.ossos.spine_03, V(1, 0, 0), 0.07 * p);
-      L.girarMundo(L.ossos.clavicle_l, fr, -0.06 * p); L.girarMundo(L.ossos.clavicle_r, fr, 0.06 * p); }
+    else { const p = sobe.quem ? suave(sobe.k) : 0, P = PERDEDOR, lat = V(1, 0, 0).applyQuaternion(L.raiz.quaternion);
+      if (P.tronco) L.girarMundo(L.ossos.spine_03, lat, P.tronco * p);
+      L.girarMundo(L.ossos.clavicle_l, fr, -P.ombro * p); L.girarMundo(L.ossos.clavicle_r, fr, P.ombro * p);
+      for (const l of ["l", "r"]) { L.girarMundo(L.ossos["upperarm_" + l], lat, P.braco * p); L.girarMundo(L.ossos["lowerarm_" + l], lat, P.antebraco * p); } }
   }; L.extras.add(f); return () => L.extras.delete(f); };
   const soltarCorpo = [corpoDe(venc), corpoDe(perd)];
   const abrirMaos = fecharMaos(C);

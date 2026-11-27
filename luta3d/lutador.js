@@ -280,13 +280,37 @@ export function triangulosCobertos(geo, skeleton, bindMatrix, regra) {
 /* a mão embaixo da luva (2026-11-23): a luva é a casca da mão até a falange do meio, e no punho fechado a pele dela
    furava o dorso da luva (dois pontos de pele em toda luva de trás). Quem luta de luva não desenha a pele que a luva
    cobre (palma e duas falanges; a ponta do dedo fica de fora, como na luva de MMA); o árbitro (semLuva) desenha tudo */
-export function triangulosSemMao(geo, skeleton, pontas = "") {
+/* a pele embaixo do calção (2026-11-27): no pesado de costas a pele furava o calção logo abaixo do cós (manchas de
+   pele numa faixa escura). Embaixo do calção o corpo só tem a borda (o resto já foi tirado da malha), e o porte empurra
+   essa borda pra fora do pano em alguns pontos. Como no moletom, a pele que o calção cobre não é desenhada: entre o cós
+   e a barra (com margem nas duas bordas), só a do quadril, do tronco e da coxa (a mão em pé fica nessa altura).
+   Medido já com a pele dos ossos e o porte (getVertexPosition): o corpo e o calção têm bind diferente (escultura e T) */
+export const PELE_CALCAO = { cos: 0.003, barra: 0.035 };
+export function peleDoCalcao(corpo, calcao, faixa) {
+  const n = corpo.geometry.attributes.position.count, fora = new Uint8Array(n);
+  if (!calcao) return fora;
+  corpo.updateMatrixWorld(true);
+  const v = new THREE.Vector3(); let topo = -9, barra = 9;
+  for (const m of [calcao, faixa]) { if (!m) continue; m.updateMatrixWorld(true);   // o cós é outra malha, acima do calção
+    for (let i = 0; i < m.geometry.attributes.position.count; i++) { m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld); topo = Math.max(topo, v.y); if (m === calcao) barra = Math.min(barra, v.y); } }
+  const ossos = new Set(corpo.skeleton.bones.map((b, i) => (/^(pelvis|spine_01|thigh_[lr])$/.test(b.name) ? i : -1)).filter((i) => i >= 0));
+  const si = corpo.geometry.attributes.skinIndex, sw = corpo.geometry.attributes.skinWeight;
+  for (let i = 0; i < n; i++) {
+    let w = 0; for (let k = 0; k < 4; k++) if (ossos.has(si.getComponent(i, k))) w += sw.getComponent(i, k);
+    if (w < 0.8) continue;
+    corpo.getVertexPosition(i, v).applyMatrix4(corpo.matrixWorld);
+    if (v.y < topo - PELE_CALCAO.cos && v.y > barra + PELE_CALCAO.barra) fora[i] = 1;
+  }
+  return fora;
+}
+export function triangulosSemMao(geo, skeleton, pontas = "", calcao = null) {
   // a palma e as duas primeiras falanges (o que a luva cobre); a ponta do dedo fica de fora, como na luva de MMA,
   // menos na mão fechada (pontas: "l", "r" ou "lr"), onde ela furava o dorso da luva
   const mao = new Set(skeleton.bones.map((b, i) => (/^(hand_|thumb_01|(index|middle|ring|pinky)_0[12])/.test(b.name)
     || (/^(thumb|index|middle|ring|pinky)_0[23]_[lr]$/.test(b.name) && pontas.includes(b.name.slice(-1))) ? i : -1)).filter((i) => i >= 0));
   const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, n = si.count, naMao = new Uint8Array(n);
   for (let i = 0; i < n; i++) { let w = 0; for (let k = 0; k < 4; k++) if (mao.has(si.getComponent(i, k))) w += sw.getComponent(i, k); naMao[i] = w > 0.5 ? 1 : 0; }
+  if (calcao) for (let i = 0; i < n; i++) if (calcao[i]) naMao[i] = 1;   // a pele embaixo do calção some junto
   const idx = geo.index.array, fica = [];
   for (let k = 0; k < idx.length; k += 3) if (!(naMao[idx[k]] && naMao[idx[k + 1]] && naMao[idx[k + 2]])) fica.push(idx[k], idx[k + 1], idx[k + 2]);
   return fica;
@@ -297,7 +321,9 @@ function corpoSemMao(lutador, base, geo, pontas = "") {
     const g = new THREE.BufferGeometry();
     for (const [n, a] of Object.entries(geo.attributes)) g.setAttribute(n, a);
     g.morphAttributes = geo.morphAttributes; g.morphTargetsRelative = geo.morphTargetsRelative;   // os alvos de forma do porte
-    g.setIndex(triangulosSemMao(geo, c.skeleton, pontas));
+    base.peleCalcao = base.peleCalcao || {};
+    if (!base.peleCalcao[geo.uuid]) { lutador.modelo.updateMatrixWorld(true); base.peleCalcao[geo.uuid] = peleDoCalcao(c, lutador.malhaT, lutador.faixa); }
+    g.setIndex(triangulosSemMao(geo, c.skeleton, pontas, base.peleCalcao[geo.uuid]));
     base.semMao[chave] = g;
   }
   return base.semMao[chave];
@@ -689,6 +715,7 @@ export class Lutador {
         // calção de poliéster (trama fina), elástico canelado, luva de couro (verniz leve) e o velcro áspero
         if (o.material.name === "MI_Calcao") this.malhaT = o;   // bind em T (o das roupas)
         if (o.material.name === "MI_Calcao") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b"), roughness: 0.7 }, comTrama(90, 0.35));
+        if (o.material.name === "MI_Faixa") this.faixa = o;   // o cós (a pele embaixo dele também some: peleDoCalcao)
         if (o.material.name === "MI_Faixa") Object.assign(o.material, { color: new THREE.Color(opt.calcao || "#b3221b").multiplyScalar(0.25), roughness: 0.85 }, comTrama(160, 0.8));
         if (o.material.name === "MI_Luva") o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Luva", color: new THREE.Color(opt.luva || "#141416"), roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.45 });
         // o árbitro não usa luva (semLuva): a mão do corpo aparece (2026-11-21, print do dono: o árbitro de luva de MMA)

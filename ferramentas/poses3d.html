@@ -36,7 +36,8 @@ const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo
 { const p = new URLSearchParams(location.search).get("porte"); if (p) [eu.porte, ele.porte] = p.split(","); }   // ?porte=leve,médio: porte de A e B
 if (new URLSearchParams(location.search).get("linear") === "1") eu.linear = ele.linear = true;   // ?linear=1: skinning linear (comparar com o quatérnio duplo)
 { const q = new URLSearchParams(location.search); if (q.get("anuncio")) globalThis.__anuncio = JSON.parse(q.get("anuncio")); if (q.get("dedos")) globalThis.__dedos = JSON.parse(q.get("dedos")); if (q.get("palma")) globalThis.__palma = Number(q.get("palma")); }   // ?anuncio={...}&dedos=[...]
-{ const q = new URLSearchParams(location.search).get("postura"); if (q) globalThis.__postura = JSON.parse(q); }   // ?postura={"spine_02":6}: postura do árbitro sem mexer no diretor
+{ const q = new URLSearchParams(location.search).get("postura"); if (q) globalThis.__postura = JSON.parse(q); }
+{ const q = new URLSearchParams(location.search).get("perdedor"); if (q) globalThis.__perdedor = JSON.parse(q); }   // ?perdedor={"braco":0.3}: quem perdeu no anúncio   // ?postura={"spine_02":6}: postura do árbitro sem mexer no diretor
 const inst = await criarLuta3d(document.getElementById("caixa"), { eu, ele, nomes: { a: "KAYO", b: "TITO" }, som: () => {} });
 await inst._dev.cartasProntas; window.__inst = inst;
 const { A, B, C, GOLPES, cam, palco, THREE, lances } = inst._dev;
