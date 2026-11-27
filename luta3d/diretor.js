@@ -9,6 +9,7 @@ import { Palco } from "./palco.js";
 import { carregarBase, carregarCartas, carregarPecas, Lutador } from "./lutador.js";
 import { clipeDoLance, LANCES_CARTAS, GOLPES_MX } from "./lances-cartas.js";
 import { modeloCinturao } from "./aparencia.js";
+import VISUAL from "./visual.config.js";
 
 /* raiz: elemento onde o palco nasce. op: { eu, ele (cores e cabelo), nomes {a, b} (telões), som(tipo, volume) }.
    Devolve { lance(linha), velocidade(v), destruir() }. */
@@ -21,6 +22,17 @@ const elFlash = document.createElement("div"); elFlash.className = "luta3d-flash
 const elCham = document.createElement("div"); elCham.className = "luta3d-chamada"; elCham.setAttribute("aria-hidden", "true");
 raiz.append(elPalco, elVin, elFlash, elCham);
 const palco = new Palco(elPalco);
+/* qualidade da imagem (2026-11-26): o jogador troca no canto da luta, fica lembrada em luta3d:qualidade e vale
+   também no Online (que não mostra o botão: o palco de lá fica atrás da mesa, sem toque) */
+const QUALIDADES = [["auto", "Qualidade automática"], ["baixa", "Qualidade baixa"], ["media", "Qualidade média"], ["alta", "Qualidade alta"]];
+const elQual = document.createElement("button"); elQual.type = "button"; elQual.className = "luta3d-qualidade";
+const pintarQual = () => { elQual.textContent = QUALIDADES.find((x) => x[0] === palco.modo)[1]; };
+elQual.onclick = () => {
+  const i = QUALIDADES.findIndex((x) => x[0] === palco.modo), prox = QUALIDADES[(i + 1) % QUALIDADES.length][0];
+  try { localStorage.setItem("luta3d:qualidade", prox); } catch (e) {}
+  palco.definirModo(prox); pintarQual();
+};
+if (!op.semQualidade) { pintarQual(); raiz.append(elQual); }
 if (op.nomes) palco.placar({ a: op.nomes.a, b: op.nomes.b, round: 1 });
 const base = await carregarBase(dir);
 const OP_A = op.eu || { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14" };
@@ -46,6 +58,7 @@ const PARADO = A.clipeFixo("Vitoria_Boxe", 0.1, "Parado");
 const ESPERA = A.clipeFixo("Derrota_Boxe", 0.1, "Espera");
 const C = new Lutador(base, OP_C);
 C.raiz.visible = false; palco.cena.add(C.raiz); C.estado(PARADO, 0);
+palco.pes([A, B, C]);   // sombra de contato dos pés
 A.raiz.position.set(-0.85, 0, 0); B.raiz.position.set(0.85, 0, 0);
 A.estado(GUARDA, 0); B.estado(GUARDA, 0);   // sem fade: nunca mostra a pose de repouso (braços abertos)
 B.acao(GUARDA).time = 1.4;          // os dois não gingam no mesmo compasso
@@ -117,9 +130,13 @@ function dirigir(dt) {
   if (lado.dot(plano(palco.cam.position).sub(m)) < 0) lado.negate();
   if (palco.retrato) lado.applyAxisAngle(THREE.Object3D.DEFAULT_UP, 0.8);
   lado.applyAxisAngle(THREE.Object3D.DEFAULT_UP, Math.sin(cam.orb) * (palco.retrato ? 0.18 : 0.3));
-  const a = palco.camAlvo, longe = palco.retrato ? 4.2 : 4.4;
-  if (cam.modo === "tv") { a.pos.copy(m).addScaledVector(lado, longe).setY(palco.retrato ? 2.2 : 1.95); a.olhar.copy(m).setY(0.95); a.fov = 40; a.rapido = false; }
-  else if (cam.modo === "perto") { a.pos.copy(m).addScaledVector(lado, 3.2).setY(1.6); a.olhar.copy(m).setY(1.05); a.fov = 38; a.rapido = false; }
+  const CV = VISUAL.camera, a = palco.camAlvo, longe = palco.retrato ? CV.tv.distancia - 0.2 : CV.tv.distancia;
+  if (cam.modo === "tv") {
+    // plano médio; o campo abre quando eles se afastam (os dois sempre inteiros no quadro) e fecha quando colam
+    const fov = THREE.MathUtils.clamp(CV.tv.fov + CV.tv.fovPorMetro * (pa.distanceTo(pb) - 1.3), CV.tv.fovMin, CV.tv.fovMax);
+    a.pos.copy(m).addScaledVector(lado, longe).setY(palco.retrato ? CV.tv.altura + 0.25 : CV.tv.altura); a.olhar.copy(m).setY(0.95); a.fov = fov; a.rapido = false;
+  }
+  else if (cam.modo === "perto") { a.pos.copy(m).addScaledVector(lado, CV.perto.distancia).setY(CV.perto.altura); a.olhar.copy(m).setY(1.05); a.fov = CV.perto.fov; a.rapido = false; }
   else if (cam.modo === "chao") {
     const e = cam.chaoEixo.clone(); if (e.dot(plano(palco.cam.position).sub(m)) < 0) e.negate();
     a.pos.copy(m).addScaledVector(e, 3.1).setY(1.7); a.olhar.copy(m).setY(0.35); a.fov = 40; a.rapido = false;
@@ -135,12 +152,13 @@ function dirigir(dt) {
     return;
   } else if (cam.modo === "cerimonia") {
     // de frente pros três, fechando devagar durante o suspense
-    const c = cam.cerCentro;
-    a.pos.set(c.x + 0.25, 1.45, c.z + 3.6); a.olhar.set(c.x, 1.25, c.z); a.fov = cam.cerFov || 40; a.rapido = true;
+    // de frente e aberta: os três de corpo inteiro, sem fechar no árbitro (pedido do dono, 2026-11-26)
+    const c = cam.cerCentro, CC = VISUAL.camera.cerimonia;
+    a.pos.set(c.x + 0.25, CC.altura, c.z + CC.distancia); a.olhar.set(c.x, CC.olhar, c.z); a.fov = cam.cerFov || CC.fovInicio; a.rapido = true;
     return;
   } else if (cam.modo === "ko") {
     const t = cam.koAlvo.posMundo("spine_03"); t.y = Math.max(0.4, t.y * 0.85);
-    a.pos.copy(cam.koPos); a.olhar.copy(t); a.fov = 36; a.rapido = true;
+    a.pos.copy(cam.koPos); a.olhar.copy(t); a.fov = VISUAL.camera.nocaute.fov; a.rapido = true;
   }
   const raio = Math.hypot(a.pos.x, a.pos.z); if (raio > 4.25) { a.pos.x *= 4.25 / raio; a.pos.z *= 4.25 / raio; }
 }
@@ -161,16 +179,21 @@ function flashBranco() { elFlash.classList.remove("ativa"); void elFlash.offsetW
 function camLenta(on) { raiz.classList.toggle("lenta", on); }
 function vida() {}
 /* def: quem levou. O jogo baixa a vida desse lado nesta hora (aoGolpe), nunca antes do golpe encostar. */
-function efeitoGolpe(forca, def) {
+/* tipo: "chute" ou "corpo" (som próprio quando o arquivo existir; até lá o leve ou o pesado de sempre) */
+function efeitoGolpe(forca, def, tipo) {
   if (op.aoGolpe && def) op.aoGolpe(def === B ? "B" : "A");
-  som(forca > 1.15 ? "pesado" : "leve", Math.min(1, 0.55 + 0.3 * forca));
-  if (forca > 1.25) { vinheta(forca - 0.6); palco.chute = Math.max(palco.chute, 2.5 * forca); }
+  const reserva = forca > 1.15 ? "pesado" : "leve";
+  som(tipo || reserva, Math.min(1, 0.55 + 0.3 * forca), reserva);
+  const SZ = VISUAL.camera.socoZoom;
+  if (forca > VISUAL.impacto.flash.limiar) vinheta(forca - 0.6);
+  if (forca > SZ.limiar) palco.chute = Math.max(palco.chute, SZ.porForca * forca);
 }
 /* som: quem decide (e respeita o mudo) é o jogo. A torcida da arena reage junto. */
 const AGITA = { explode: 1.2, sobe: 0.6, pesado: 0.25, queda: 0.35 };
-function som(tipo, vol = 1) {
+/* reserva: o som que toca enquanto o arquivo de um tipo novo (chute, corpo, bloqueio, nocaute) não existe */
+function som(tipo, vol = 1, reserva) {
   if (AGITA[tipo]) palco.agitar(AGITA[tipo] * Math.min(1, vol + 0.2));
-  if (op.som) op.som(tipo, vol);
+  if (op.som) op.som(tipo, vol, reserva);
 }
 
 /* ---------- golpes: animação, instante do impacto e distância medidos ----------
@@ -232,13 +255,14 @@ function alvoDe(atk, def, alvo, mira = null, membro = "hand_r") {
     return def.posMundo("spine_02").addScaledVector(dir, 0.15);
   };
 }
-function pararImpacto(forca) { pausa = Math.max(pausa, 0.035 + 0.035 * forca); }
+/* hit-stop: o mundo quase para no contato (de min a max segundos pela força); a luta segue no tempo certo depois */
+function pararImpacto(forca) { const H = VISUAL.impacto.hitstop; pausa = Math.max(pausa, H.min + (H.max - H.min) * Math.min(1, Math.max(0, forca) / H.forcaMax)); }
 function acertar(atk, def, membro, forca, alvo) {
   const dir = pelve(def).sub(pelve(atk)).normalize();
   const contato = atk.posMundo(membro);
   palco.impactoFx(contato, dir, forca);
   pararImpacto(forca);
-  efeitoGolpe(forca, def);
+  efeitoGolpe(forca, def, membro.startsWith("ball") ? "chute" : alvo === "corpo" ? "corpo" : null);
   // empurrão extra na cabeça ou no tronco, no sentido do golpe (por cima da reação capturada)
   const eixo = new THREE.Vector3(0, 1, 0).cross(dir).normalize();
   if (alvo === "cabeca") { def.impacto("Head", eixo, 0.16 * forca); def.impacto("neck_01", eixo, 0.08 * forca); }
@@ -269,7 +293,7 @@ async function golpe(atk, def, nome, { bloqueio = false, reacao = null, segurarR
   }
   await esperar(Math.max(0, g.imp - 0.02 - t));
   if (esquiva) { /* passou no vazio: nada encosta */ }
-  else if (bloqueio) { palco.impactoFx(atk.posMundo(g.membro), pelve(def).sub(pelve(atk)).normalize(), 0.3); pararImpacto(0.3); som("leve", 0.4); }
+  else if (bloqueio) { palco.impactoFx(atk.posMundo(g.membro), pelve(def).sub(pelve(atk)).normalize(), 0.3); pararImpacto(0.3); som("bloqueio", 0.4, "leve"); }
   else {
     acertar(atk, def, g.membro, g.forca, g.alvo === "perna" ? "corpo" : g.alvo);
     const r = reacao || g.reacao;
@@ -487,7 +511,7 @@ function ctrlCima(top, bot, baixo) {
         aoBater: () => {
           const mao = top.posMundo("hand_" + lado), dir = bot.posMundo("Head").sub(mao).normalize();
           if (rosto) { palco.impactoFx(mao, dir, 0.55 * forca); pararImpacto(0.35 * forca); baixo.reagir(lado, forca); efeitoGolpe(0.8 * forca, bot); }
-          else { palco.impactoFx(mao, dir, 0.2); pararImpacto(0.12); baixo.bloqueio(); som("leve", 0.45); }
+          else { palco.impactoFx(mao, dir, 0.2); pararImpacto(0.12); baixo.bloqueio(); som("bloqueio", 0.45, "leve"); }
           top.impacto("spine_03", esq0(top), -0.08);
           ok(rosto);
         } }));
@@ -1033,10 +1057,11 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   }; L.extras.add(f); return () => L.extras.delete(f); };
   const soltarCorpo = [corpoDe(venc), corpoDe(perd)];
   const abrirMaos = fecharMaos(C);
-  cam.modo = "cerimonia"; cam.cerFov = 42; palco.iniciado = false;
+  const CC = VISUAL.camera.cerimonia;
+  cam.modo = "cerimonia"; cam.cerFov = CC.fovInicio; palco.iniciado = false;
   if (suspense) {
     chamada("DECISÃO DOS JUÍZES", { pequena: true }); som("sobe", 0.8);
-    await animar(2.8, (k) => { cam.cerFov = 42 - 12 * suave(k); });
+    await animar(2.8, (k) => { cam.cerFov = CC.fovInicio + (CC.fovSuspense - CC.fovInicio) * suave(k); });
     chamada("E O VENCEDOR...", { pequena: true });
     await esperar(1.3);
   } else await esperar(0.6);
@@ -1057,7 +1082,7 @@ async function cerimonia(venc, perd, { suspense = false } = {}) {
   venc.umaVez(Math.random() < 0.5 ? "Vitoria_Boxe" : "Comemora", { fade: 0.35, segurar: true, mover: false });
   perd.umaVez("Derrota_Boxe", { fade: 0.5, segurar: true, mover: false });
   const c0 = C.raiz.position.clone(); animar(0.8, (k) => { C.raiz.position.z = c0.z - 0.7 * suave(k); });
-  cam.cerFov = 44;
+  cam.cerFov = CC.fovAnuncio;
   await esperar(2.2);
   if (op.titulo && venc === A) await levantarCinturao(venc);
 }
@@ -1127,10 +1152,11 @@ async function nocaute(atk, def, { combinacao = true, textoFim = null } = {}) {
   acertar(atk, def, g.membro, 2.2, "cabeca");
   def.umaVez("Knocked_Out", { fade: 0.05, de: 0.95, segurar: true });
   narrar("Nocaute!", true);
-  flashBranco(); chamada("NOCAUTE!"); som("explode", 1); vida(def, 0); camLenta(true);
-  escala = 0.3;
-  await esperar(0.9);
-  await animar(0.5, (k) => { escala = 0.3 + 0.7 * k; });
+  flashBranco(); chamada("NOCAUTE!"); som("nocaute", 1, "pesado"); som("explode", 1); vida(def, 0); camLenta(true);
+  const LT = VISUAL.impacto.lenta;
+  escala = LT.escala;
+  await esperar(LT.duracao * LT.escala);   // esperar anda no tempo do mundo: em câmera lenta, duracao segundos de relógio
+  await animar(LT.volta * (1 + LT.escala) / 2, (k) => { escala = LT.escala + (1 - LT.escala) * suave(k); });
   escala = 1; camLenta(false);
   await esperar(2.4);
   cam.modo = "tv";
@@ -1497,7 +1523,7 @@ function laco() {
   // com 1/20 ela andava em câmera lenta abaixo de 20 quadros por segundo (achado do dono)
   const dtBruto = relogioReal.getDelta(), dtReal = Math.min(dtBruto, 1 / 10);
   medirQualidade(Math.min(dtBruto, 0.5));
-  let fator = escala; if (pausa > 0) { pausa -= dtReal; fator = 0.04; }
+  let fator = escala; if (pausa > 0) { pausa -= dtReal; fator = VISUAL.impacto.hitstop.lento; }
   tempo += dtReal;
   mundo(dtReal * fator * vel);
   dirigir(dtReal);
@@ -1522,7 +1548,7 @@ return {
     tweens.length = 0;   // as promessas pendentes nunca resolvem: quem esperava confere o token da carreira
     palco.destruir();
     raiz.classList.remove("luta3d", "lenta");
-    for (const e of [elPalco, elVin, elFlash, elCham]) e.remove();
+    for (const e of [elPalco, elVin, elFlash, elCham, elQual]) e.remove();
   },
 };
 }

@@ -4,6 +4,8 @@
 // O deslocamento que a animação traz no quadril vira deslocamento da raiz do
 // lutador (root motion), então os pés não escorregam e o golpe anda junto.
 import * as THREE from "./vendor/three.module.js";
+import VISUAL from "./visual.config.js";
+const PELE = VISUAL.pele;   // pele sem cara de plástico: só material (2026-11-26)
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import * as SkeletonUtils from "./vendor/SkeletonUtils.js";
 import { pecasDaOrelha, aplicarPorte, pintarPele, pintarCabelo, infoDoCorpo, texturaBandeira } from "./aparencia.js";
@@ -678,7 +680,8 @@ export class Lutador {
           // pele (etapa 2): sheen avermelhado (luz que espalha na pele) e menos reflexo do ambiente, sem cara de plástico; o suor fica no verniz leve
           const m0 = o.material;
           o.material = new THREE.MeshPhysicalMaterial({ name: "MI_Pele", map: tingirTextura(m0.map, opt.pele, marcas), normalMap: m0.normalMap, normalScale: m0.normalScale,
-            roughness: base.aspereza ? 1 : 0.58, roughnessMap: base.aspereza || null, envMapIntensity: 0.4, sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color("#c86a50"), clearcoat: 0.12, clearcoatRoughness: 0.55 });
+            roughness: base.aspereza ? 1 : 0.58, roughnessMap: base.aspereza || null, envMapIntensity: PELE.reflexo, specularIntensity: PELE.especular,
+            sheen: PELE.bordaForca, sheenRoughness: PELE.bordaAspereza, sheenColor: new THREE.Color(PELE.bordaCor), clearcoat: PELE.verniz, clearcoatRoughness: PELE.vernizAspereza });   // valores em visual.config.js
         }
         // calção e luva são peças com material próprio
         // olho úmido: verniz forte e quase sem aspereza (a bola fosca parecia de boneco)

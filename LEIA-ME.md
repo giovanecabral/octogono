@@ -6316,6 +6316,37 @@ triângulos por quadro (`ferramentas`: medir com `palco.r.info`). A pele mais
 escura virava preto brilhante na luz do 3D: pele mais fosca e os tons muito
 escuros puxados um pouco pros médios (`tingirTextura`).
 
+**Acabamento de transmissão (2026-11-26, pedido do dono: "jogo de luta polido e
+lançável" só com luz, pós-processamento, câmera e impacto; modelos, rig, poses e
+animações intocados).** Todo valor de olho fica em `luta3d/visual.config.js`
+(comentado; o dono ajusta sem mexer em código). O que mudou:
+- Ambiente: HDRI `assets/hdri/arena.hdr` (Poly Haven "Crossfit Gym", CC0, 2K) só
+  como reflexo e preenchimento (intensidade 0,16; mais que isso a sombra fica
+  lilás, o ginásio tem luz fria e chão azul). Modo baixa e falha de rede: o
+  ambiente procedural de antes.
+- Contraluz vermelha e azul anda com a câmera (sempre atrás dos lutadores,
+  vermelha à esquerda da tela), alta e mirando no tronco (baixa lavava a lona).
+  Sombra de contato macia embaixo de cada pé (`sombrasDeContato`).
+- Pele: menos especular (0,55), menos verniz, brilho de borda quente (sheen). Só
+  material.
+- Pós-processamento (média e alta): `EffectComposer` com `RenderPass` em
+  HalfFloat e um passe final próprio (`PassoFinal`: bloom somado, ACES, sRGB,
+  contraste, saturação com um pouco a mais só no vermelho e no azul puros dos
+  cantos, vinheta, grão no alta, pico de aberração no golpe forte). Bloom: o
+  que passa do limiar a 1/4 da tela, 1/8 e um borrão de 12 amostras. Lentes,
+  telões e LED ganham brilho só com o bloom ligado (`forte()`).
+- Câmera: campo da câmera de TV abre com a distância entre os dois (37 a 46
+  graus); cerimônia a 4,4 m com os três de corpo inteiro (antes fechava de 42
+  pra 30 graus no suspense, close no árbitro).
+- Impacto: hit-stop de 40 a 70 ms pela força; câmera lenta do nocaute 0,3x
+  por 0,6 s de relógio e volta em 0,5 s (antes 0,9 s de mundo a 0,3x, uns 3 s);
+  gotas com teto de 48 na tela e reaproveitadas.
+- Custo (Apple M5, Chrome com a placa, 1280 x 720 retina, mediana de rodadas
+  alternadas): o pós custa ~1,3 ms de placa na densidade 1,5, por isso a alta
+  usa 1,35. `node ferramentas/visual3d.mjs custo` mede; `fotos <pasta>` tira os
+  4 momentos. O ruído entre rodadas é de uns 15%: compare sempre alternando
+  com a versão de antes, nunca uma rodada só.
+
 **Câmera lenta em 1x (achado do dono).** O relógio do 3D cortava cada
 quadro em 1/20 s; num aparelho abaixo de 20 quadros por segundo a luta
 andava mais devagar que o tempo real (medido: 0,56 do tempo a 12 quadros).

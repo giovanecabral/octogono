@@ -15,6 +15,7 @@ index.html          O JOGO INTEIRO (~7000 linhas de JS). Fonte única de verdade
 estilo.css          Visual NOVO (revamp 2026-09-26, identidade "Noite de Luta").
 legado.css          CSS antigo movido sem mudança; some quando a última tela antiga for trocada.
 img/                icones.svg (sprite Lucide), fundos .webp, gerar.py (gera e trata os fundos).
+assets/hdri/        arena.hdr: HDRI da luta 3D (Poly Haven, CC0), só reflexo e preenchimento (2026-11-26).
 audio/              29 MP3 (música e efeitos reais, CC0/CC BY), LICENCAS.md, preparar.py (baixa, corta, normaliza).
 404.html            Página de erro estática (a Vercel serve sozinha).
 fighters.json       1.527 lutadores reais com stats do ufcstats.
@@ -247,9 +248,20 @@ metade). Regras do revamp que valem daqui pra frente:
   (item abaixo); o palco nunca empurra as cartas (`jxj3dPosicionar`). Fim da luta: árbitro e
   `cerimonia` (suspense na decisão), cinturão em 3D na disputa que o
   jogador ganha. Postura da montada em `MONTADA` (diretor),
-  escolhida comparando prints: mexeu, compare de novo. Desempenho: sem
-  pós-processamento (bloom deixava pesado e a pele brilhando), torcida em
-  poucos triângulos (~112 mil por quadro; antes 605 mil). Qualquer coisa
+  escolhida comparando prints: mexeu, compare de novo. Desempenho: torcida em
+  poucos triângulos (~112 mil por quadro; antes 605 mil). **Acabamento de
+  transmissão (2026-11-26; LEIA-ME "Acabamento de transmissão"): todo valor de
+  olho (luz, exposição, bloom, vinheta, tremor, hit-stop, câmera lenta, câmera
+  da cerimônia) mora em `luta3d/visual.config.js`, nunca no código** (a suíte
+  `luta3d` reprova número antigo de volta). Modos baixa/média/alta no botão do
+  canto (`luta3d:qualidade`; o Online não mostra o botão, `semQualidade`):
+  baixa = a imagem de antes, sem pós; média e alta com `PassoFinal` (bloom de 3
+  passes pequenos, tom, cor, vinheta, grão num passe só). O `UnrealBloomPass`
+  custava 2,7 ms em qualquer resolução: não voltar com ele. Mexeu em custo:
+  `node ferramentas/visual3d.mjs custo` (Chrome que sobra aberto deixa a rodada
+  seguinte 2 ms mais lenta; a ferramenta fecha e espera). Som novo da luta
+  (chute, corpo, bloqueio, nocaute) em `EFEITOS_OPCIONAIS`: toca a reserva até o
+  arquivo chegar em `audio/`. Qualquer coisa
   que dependa do passo do quadro tem que aguentar passo de 0,15 s (3x num
   aparelho lento): a mola da cabeça divergia e girava a cabeça. O passo do
   mundo vai até 1/10 s × velocidade (com 1/20 a luta ficava em câmera

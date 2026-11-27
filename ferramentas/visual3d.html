@@ -1,0 +1,73 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Visual da luta em 3D (2026-11-26): a sequência fixa de ferramentas/visual3d.mjs. ?fotos=1 congela a tela em 4
+     momentos (guarda, impacto do jab, anúncio, nocaute) pra foto; sem ele, roda a sequência e mede o tempo de cada quadro.
+     Fora do deploy (ferramentas/). -->
+<link rel="stylesheet" href="../estilo.css">
+<style>html,body{margin:0;height:100%;background:#000}#caixa{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;aspect-ratio:auto!important;max-height:none!important}</style></head>
+<body><div id="caixa" class="luta3d-caixa"></div>
+<script type="module">
+const FOTOS = location.search.includes("fotos=1"), CUSTO = location.search.includes("custo=1");
+// congelar: o laço da luta pede o próximo quadro e ele fica na fila até a foto sair (a tela mostra o quadro do momento)
+const raf = window.requestAnimationFrame.bind(window); let fila = [];
+window.__congelado = false; window.__foto = null;
+window.requestAnimationFrame = (cb) => (window.__congelado ? (fila.push(cb), 0) : raf(cb));
+window.__soltar = () => { window.__congelado = false; window.__foto = null; const f = fila; fila = []; for (const cb of f) raf(cb); };
+const congelar = (nome) => { if (!FOTOS || window.__congelado) return; window.__congelado = true; window.__foto = nome; };
+const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+const esperarFoto = async () => { while (window.__congelado) await pausa(30); };
+// tempo de cada quadro (medida do custo): intervalo entre quadros, sem o limite de 60
+const quadros = []; let ultimo = 0;
+const medir = (t) => { if (ultimo) quadros.push(t - ultimo); ultimo = t; raf(medir); };
+let fase = "";
+// ?ajuste={...}: muda o visual.config.js só nesta página (mesmo módulo que o palco lê), pra medir variantes
+const ajuste = new URLSearchParams(location.search).get("ajuste");
+if (ajuste) { const V = (await import("../luta3d/visual.config.js")).default;
+  const junta = (a, b) => { for (const [k, v] of Object.entries(b)) if (v && typeof v === "object" && !Array.isArray(v)) junta(a[k] || (a[k] = {}), v); else a[k] = v; };
+  junta(V, JSON.parse(ajuste)); }
+const { criarLuta3d } = await import("../luta3d/diretor.js");
+const caixa = document.getElementById("caixa");
+const eu = { pele: "#c48a64", calcao: "#b3221b", cabelo: "buzzed", corCabelo: "#2a1d14", porte: "médio" };
+const ele = { pele: "#8a5a3c", calcao: "#1f3f9e", cabelo: "repartido", corCabelo: "#151210", barba: "cheia", porte: "pesado" };
+const inst = await criarLuta3d(caixa, { eu, ele, nomes: { a: "KAYO BRASA", b: "TITO VARGAS" }, titulo: false,
+  som: (tipo) => { if (fase === "anuncio" && tipo === "explode") setTimeout(() => congelar("anuncio"), 700); } });
+const palco = inst._dev.palco, fx = palco.impactoFx.bind(palco);
+const gl = palco.r.getContext(), TQ = gl.getExtension("EXT_disjoint_timer_query_webgl2"), gpu = [], cpu = [], abertas = [];
+const quadroOrig = palco.quadro.bind(palco);
+palco.quadro = (dt, t) => {
+  let q = null; if (TQ && abertas.length < 8) { q = gl.createQuery(); gl.beginQuery(TQ.TIME_ELAPSED_EXT, q); }
+  const c0 = performance.now(); quadroOrig(dt, t); cpu.push(performance.now() - c0);
+  if (q) { gl.endQuery(TQ.TIME_ELAPSED_EXT); abertas.push(q); }
+  for (let i = abertas.length - 1; i >= 0; i--) { const a = abertas[i];
+    if (gl.getQueryParameter(a, gl.QUERY_RESULT_AVAILABLE)) { if (!gl.getParameter(TQ.GPU_DISJOINT_EXT)) gpu.push(gl.getQueryParameter(a, gl.QUERY_RESULT) / 1e6); gl.deleteQuery(a); abertas.splice(i, 1); } }
+};
+window.__temGpu = !!TQ;
+palco.impactoFx = (pos, dir, forca) => { fx(pos, dir, forca);
+  if (fase === "jab" && forca > 0.5) congelar("jab");
+  if (fase === "nocaute" && forca > 2) setTimeout(() => congelar("nocaute"), 220); };
+const L = (round, ev) => ({ round, kind: "", text: "", ev });
+window.__pronto = true;
+await pausa(600);   // os clipes das cartas chegam
+raf(medir);
+if (CUSTO) {
+  // custo: trechos fixos e iguais em qualquer versão (a sequência inteira muda de duração quando a câmera lenta muda)
+  const media = (q) => { q = q.slice().sort((a, b) => a - b); return { media: +(q.reduce((s, x) => s + x, 0) / q.length).toFixed(2), p95: +q[Math.floor(q.length * 0.95)].toFixed(2) }; };
+  await inst.lance(L(1, { tipo: "inicio" })); await pausa(1500);
+  quadros.length = 0; gpu.length = 0; cpu.length = 0; await pausa(5000); const guarda = media(quadros), gGpu = media(gpu), gCpu = media(cpu);
+  quadros.length = 0; gpu.length = 0; cpu.length = 0; const t0 = performance.now();
+  for (let i = 0; performance.now() - t0 < 5000; i++) await inst.lance(L(1, { tipo: "golpe1", quem: i % 3 ? "A" : "B", forca: 5, golpe: ["jab", "direto", "chuteCorpo", "gancho"][i % 4] }));
+  const troca = media(quadros), tGpu = media(gpu), tCpu = media(cpu);
+  window.__custo = { guarda, troca, gpu: { guarda: gGpu, troca: tGpu }, cpuDesenho: { guarda: gCpu, troca: tCpu }, temGpu: !!TQ, modo: palco.efetivo || "antes", pixel: palco.r.getPixelRatio(), hdri: !!palco.envHdri && palco.cena.environment === palco.envHdri };
+  window.__fim = true;
+  await new Promise(() => {});   // para aqui (a medida acabou)
+}
+fase = "guarda"; await inst.lance(L(1, { tipo: "inicio" })); await pausa(1800); congelar("guarda"); await esperarFoto();
+fase = "jab"; await inst.lance(L(1, { tipo: "golpe1", quem: "A", forca: 2, golpe: "jab" })); await esperarFoto();
+fase = "";
+for (const g of ["direto", "gancho", "chuteCorpo", "jab", "umDois"]) await inst.lance(L(1, { tipo: "golpe1", quem: g === "gancho" ? "B" : "A", forca: 5, golpe: g }));
+fase = "anuncio"; await inst.lance(L(3, { tipo: "decisao", quem: "A" })); await esperarFoto();
+fase = "nocaute"; await inst.lance(L(3, { tipo: "fim", quem: "A", metodo: "Nocaute" })); await esperarFoto();
+const q = quadros.slice(30).sort((a, b) => a - b), media = q.reduce((s, x) => s + x, 0) / q.length;
+window.__custo = { media: +media.toFixed(2), p95: +q[Math.floor(q.length * 0.95)].toFixed(2), n: q.length,
+  modo: palco.efetivo || "antes", pixel: palco.r.getPixelRatio(), hdri: palco.cena.environment !== palco.envReserva && !!palco.envHdri, hdriFalhou: palco.hdriFalhou || null };
+window.__fim = true;
+</script></body></html>

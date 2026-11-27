@@ -11008,6 +11008,8 @@ async function testarSom() {
     const { run } = ambiente("ok");
     const usados = new Set(run(`[...Object.values(TRILHAS),...[].concat(...Object.values(EFEITOS)).map(n=>n+".mp3"),"torcida-ambiente.mp3"]`));
     const faltam = [...usados].filter(f => !mp3.includes(f));
+    /* os sons opcionais da luta em 3D (EFEITOS_OPCIONAIS) podem faltar (tocam a reserva), mas o arquivo que chegou conta como usado */
+    for (const f of run(`[].concat(...Object.values(EFEITOS_OPCIONAIS)).map(n=>n+".mp3")`)) usados.add(f);
     if (faltam.length) throw new Error("o jogo pede arquivo que não existe: " + faltam.join(", "));
     const sobram = mp3.filter(f => !usados.has(f));
     if (sobram.length) throw new Error("arquivo sem uso no jogo: " + sobram.join(", "));
@@ -18570,8 +18572,33 @@ async function testarLuta3d() {
     if (tipos.size < 10) throw new Error("achei poucos tipos no motor: " + [...tipos]);
     if (faltam.length) throw new Error("evento sem lance: " + faltam);
   });
+  /* acabamento de transmissão (2026-11-26): todo valor de olho no visual.config.js, o modo baixa sem pós-processamento,
+     o hit-stop na faixa do dono (40 a 70 ms) e os sons novos com reserva enquanto o arquivo não chega */
+  await conf("visual da luta: valores no visual.config.js, modos de qualidade e sons com reserva", async () => {
+    const url = require("url");
+    const V = (await import(url.pathToFileURL(path.join(__dirname, "luta3d", "visual.config.js")).href)).default;
+    for (const m of ["baixa", "media", "alta"]) if (!V.qualidade[m]) throw new Error("falta o modo " + m);
+    if (V.qualidade.baixa.pos || V.qualidade.baixa.hdri || !V.qualidade.alta.pos) throw new Error("baixa sem pós e sem HDRI, alta com pós: " + JSON.stringify(V.qualidade));
+    const H = V.impacto.hitstop; if (!(H.min >= 0.04 && H.max <= 0.07 && H.min <= H.max)) throw new Error("hit-stop fora de 40 a 70 ms: " + JSON.stringify(H));
+    if (!(V.impacto.lenta.escala > 0 && V.impacto.lenta.escala < 1)) throw new Error("câmera lenta: " + JSON.stringify(V.impacto.lenta));
+    const palcoJs = fs.readFileSync(path.join(__dirname, "luta3d", "palco.js"), "utf8"), lutJs = fs.readFileSync(path.join(__dirname, "luta3d", "lutador.js"), "utf8");
+    // os números de antes, escritos no código, não podem voltar (o dono ajusta tudo no arquivo)
+    for (const [f, t, re] of [["palco.js", palcoJs, /toneMappingExposure = 0\.9|0\.012 \* forca \* forca|exp\(-dt \* 9\)|SpotLight\(0xfff6ea, 240/], ["diretor.js", diretor, /escala = 0\.3;|0\.035 \+ 0\.035|fator = 0\.04/], ["lutador.js", lutJs, /sheen: 0\.35, sheenRoughness/]])
+      if (re.test(t)) throw new Error(`${f}: valor visual escrito no código (${t.match(re)[0]}); vai no visual.config.js`);
+    if (!/import VISUAL from "\.\/visual\.config\.js"/.test(palcoJs) || !/import VISUAL from "\.\/visual\.config\.js"/.test(diretor)) throw new Error("palco ou diretor não lê o visual.config.js");
+    if (!fs.existsSync(path.join(__dirname, "assets", "hdri", "arena.hdr")) || !/arena\.hdr[^\n]*CC0/.test(fs.readFileSync(path.join(__dirname, "luta3d", "LICENCAS.md"), "utf8")))
+      throw new Error("o HDRI da arena (assets/hdri/arena.hdr) e a licença dele no luta3d/LICENCAS.md");
+    // som novo sem arquivo: o diretor manda a reserva e o jogo toca ela
+    const env = criarAmbiente(); vm.createContext(env.sandbox); vm.runInContext(lerScript(), env.sandbox, { filename: "index.html" });   // sem AudioContext: toca() devolve false
+    const r = JSON.parse(vm.runInContext(`(() => { const t = []; const g = SOM.golpePesado, l = SOM.golpeLeve; SOM.golpePesado = () => t.push("pesado"); SOM.golpeLeve = () => t.push("leve");
+      try { som3d("chute", 1, "pesado"); som3d("bloqueio", .4, "leve"); som3d("leve", .5); } finally { SOM.golpePesado = g; SOM.golpeLeve = l; }
+      return JSON.stringify({ t, dentro: Object.keys(EFEITOS_OPCIONAIS).filter((k) => k in EFEITOS) }); })()`, env.sandbox));
+    if (r.t.join() !== "pesado,leve,leve") throw new Error("reserva do som: " + JSON.stringify(r));
+    if (r.dentro.length) throw new Error("som opcional dentro do EFEITOS (o carregaAudio pediria arquivo que não existe): " + r.dentro);
+    if (!/som\("chute"|"chute" : alvo/.test(diretor) || !/som\("bloqueio"/.test(diretor) || !/som\("nocaute"/.test(diretor)) throw new Error("o diretor não manda chute, bloqueio e nocaute");
+  });
   await conf("texto do 3D sem travessão (as chamadas na tela e os comentários)", () => {
-    for (const f of ["diretor.js", "palco.js", "lutador.js"]) {
+    for (const f of ["diretor.js", "palco.js", "lutador.js", "visual.config.js"]) {
       const t = fs.readFileSync(path.join(__dirname, "luta3d", f), "utf8");
       const m = t.match(/[–—]/);
       if (m) throw new Error(`${f}: travessão perto de "${t.slice(Math.max(0, m.index - 30), m.index + 10)}"`);

@@ -3849,6 +3849,11 @@ const EFEITOS={clique:["ui-clique"],hover:["ui-hover"],aba:["ui-aba"],carta:["ca
   queda:["queda-1","queda-2"],sinoInicio:["sino-inicio"],sinoFim:["sino-fim"],
   torcidaExplode:["torcida-explode"],torcidaSobe:["torcida-sobe"],
   dueloFalhou:["duelo-falhou"],dueloDois:["duelo-dois"]};
+/* sons da luta em 3D que ainda não têm arquivo (2026-11-26): o gancho está pronto. Quando o arquivo chegar em
+   audio/ (CC0, com a linha no LICENCAS.md), passa a tocar sozinho; até lá cada um toca o de reserva que o
+   diretor manda (leve ou pesado). Carregam só na primeira vez que a luta pede, nunca no carregaAudio. */
+const EFEITOS_OPCIONAIS={chute:["golpe-chute-1","golpe-chute-2"],corpo:["golpe-corpo-1","golpe-corpo-2"],
+  bloqueio:["bloqueio-1","bloqueio-2"],nocaute:["nocaute-1"]};
 const BUF={};          // nome do arquivo -> AudioBuffer, ou false se falhou
 const CARREGANDO={};
 function carregarEfeito(nome){
@@ -3873,7 +3878,7 @@ function carregaAudio(){
    Math.random: som não é jogo, nunca toca um gerador da carreira. */
 function toca(k,ganho=1,taxa=1){
   const a=ctx(); if(!a)return false;
-  const lista=EFEITOS[k]; if(!lista)return false;
+  const lista=EFEITOS[k]||EFEITOS_OPCIONAIS[k]; if(!lista)return false;
   const nome=lista[Math.floor(Math.random()*lista.length)];
   const b=BUF[nome];
   if(!b){ if(!(nome in BUF))carregarEfeito(nome); return false; }
@@ -8358,7 +8363,7 @@ function jxj3dTrocas(caixa,v,{eu,ele},novas,aoCair=null){
     const nome=l=>(v.nomes[l]&&v.nomes[l].nome)||"";
     x.fila=import("./luta3d/diretor.js")
       .then(m=>m.criarLuta3d(caixa,{eu:corpo3d(v.nomes[eu]&&v.nomes[eu].rosto||cfgPadrao()),ele:corpo3d(v.nomes[ele]&&v.nomes[ele].rosto||cfgPadrao()),
-        nomes:{a:nome(eu),b:nome(ele)},som:som3d,aoGolpe:lado=>jxj3dGolpe(x,lado)}))
+        nomes:{a:nome(eu),b:nome(ele)},som:som3d,aoGolpe:lado=>jxj3dGolpe(x,lado),semQualidade:true}))
       .then(inst=>{
         if(!x.vivo){ inst.destruir(); return; }
         x.inst=inst; const c=caixa.querySelector(".luta3d-carregando"); if(c&&c.remove)c.remove();
@@ -14612,7 +14617,8 @@ function rolarNarracao(play,row){
   if(luta3dAtiva())play.scrollTop=play.scrollHeight;
   else row.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
-function som3d(tipo,vol=1){
+function som3d(tipo,vol=1,reserva){
+  if(EFEITOS_OPCIONAIS[tipo]){ if(toca(tipo,.85*vol))return; tipo=reserva||"leve"; }   // som novo sem arquivo: o de reserva
   const f={leve:()=>SOM.golpeLeve(),pesado:()=>SOM.golpePesado(),queda:()=>SOM.queda(),sinoIni:()=>SOM.sinoInicio(),
     sinoFim:()=>SOM.sinoFim(),explode:()=>toca("torcidaExplode",.8*vol),sobe:()=>toca("torcidaSobe",.6*vol)}[tipo];
   if(f)f();

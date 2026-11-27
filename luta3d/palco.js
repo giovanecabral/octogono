@@ -4,10 +4,115 @@
 // de transmissão. Feito pra rodar leve no celular (sem pós-processamento,
 // torcida em poucos triângulos, poucas luzes): o dono achou pesado e brilhante
 // demais com bloom, feixes e 3.800 torcedores.
+// Acabamento de transmissão (2026-11-26, pedido do dono): HDRI de reflexo, contraluz do lado oposto da câmera,
+// sombra de contato dos pés e, nos modos média e alta, bloom só nas luzes, cor e vinheta num passe só
+// (PassoFinal). Modo baixa = a imagem de antes, sem pós-processamento. Todo valor de olho em visual.config.js.
 import * as THREE from "./vendor/three.module.js";
 import { RoomEnvironment } from "./vendor/RoomEnvironment.js";
 import { mergeGeometries } from "./vendor/BufferGeometryUtils.js";
+import { EffectComposer } from "./vendor/EffectComposer.js";
+import { RenderPass } from "./vendor/RenderPass.js";
+import { Pass, FullScreenQuad } from "./vendor/Pass.js";
+import { RGBELoader } from "./vendor/RGBELoader.js";
+import VISUAL from "./visual.config.js";
 
+
+/* o último passe do pós-processamento: bloom, ACES, sRGB, contraste, saturação (com um pouco a mais no vermelho e no
+   azul dos cantos), vinheta, grão e o pico de aberração do golpe forte. Um passe de tela cheia só; o bloom são 3 passes
+   pequenos (o que passa do limiar a 1/4 da tela, 1/8 e um borrão largo) somados aqui. Medido: o UnrealBloomPass do
+   three.js custava 2,7 ms em qualquer resolução (12 passes; o que pesa é a troca de alvo, não o pixel) */
+const VERT = `precision highp float; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix; attribute vec3 position; attribute vec2 uv; varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+// 4 amostras em volta (passo = um texel da origem): reduz pela metade sem serrilhar; com limiar, guarda só o que passa dele
+const FRAG_REDUZ = `precision highp float; uniform sampler2D tDiffuse; uniform vec2 texel; uniform float limiar; varying vec2 vUv;
+  void main() { vec3 c = (texture2D(tDiffuse, vUv + texel * vec2(-1., -1.)).rgb + texture2D(tDiffuse, vUv + texel * vec2(1., -1.)).rgb
+      + texture2D(tDiffuse, vUv + texel * vec2(-1., 1.)).rgb + texture2D(tDiffuse, vUv + texel * vec2(1., 1.)).rgb) * 0.25;
+    gl_FragColor = vec4(limiar > 0.0 ? max(c - limiar, 0.0) : c, 1.0); }`;
+// borrão largo num passe só: 12 amostras em dois anéis
+const FRAG_BORRA = `precision highp float; uniform sampler2D tDiffuse; uniform vec2 texel; uniform float raio; varying vec2 vUv;
+  void main() { vec3 c = texture2D(tDiffuse, vUv).rgb * 0.16; float p = 0.07;
+    for (int i = 0; i < 6; i++) { float a = float(i) * 1.0472; vec2 d = vec2(cos(a), sin(a)) * texel * raio;
+      c += (texture2D(tDiffuse, vUv + d * 1.5).rgb * 0.08 + texture2D(tDiffuse, vUv + d * 3.5 + d.yx * 0.5).rgb * p); }
+    gl_FragColor = vec4(c, 1.0); }`;
+class PassoFinal extends Pass {
+  constructor(comBloom) {
+    super();
+    const P = VISUAL.pos;
+    this.comBloom = comBloom;
+    if (comBloom) {
+      const rt = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+      this.rt4 = rt(); this.rt8 = rt(); this.rtB = rt();
+      const mat = (f, u) => new THREE.RawShaderMaterial({ vertexShader: VERT, fragmentShader: f, uniforms: u, depthTest: false, depthWrite: false });
+      this.reduz = mat(FRAG_REDUZ, { tDiffuse: { value: null }, texel: { value: new THREE.Vector2() }, limiar: { value: 0 } });
+      this.borra = mat(FRAG_BORRA, { tDiffuse: { value: null }, texel: { value: new THREE.Vector2() }, raio: { value: P.bloom.raio } });
+      this.qReduz = new FullScreenQuad(this.reduz); this.qBorra = new FullScreenQuad(this.borra);
+    }
+    this.uniforms = { tDiffuse: { value: null }, toneMappingExposure: { value: 1 }, contraste: { value: P.contraste }, saturacao: { value: P.saturacao },
+      tBrilho: { value: comBloom ? this.rt4.texture : null }, tBrilhoLargo: { value: comBloom ? this.rtB.texture : null }, forcaBrilho: { value: comBloom ? P.bloom.forca : 0 },
+      cantos: { value: P.cantos }, vinheta: { value: new THREE.Vector3(P.vinheta.forca, P.vinheta.raio, P.vinheta.suavidade) },
+      grao: { value: 0 }, tempo: { value: 0 }, aberracao: { value: 0 } };
+    this.material = new THREE.RawShaderMaterial({ name: "PassoFinal", uniforms: this.uniforms, defines: { ACES_FILMIC_TONE_MAPPING: "", SRGB_TRANSFER: "" },
+      vertexShader: `precision highp float; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix; attribute vec3 position; attribute vec2 uv; varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `precision highp float;
+        uniform sampler2D tDiffuse, tBrilho, tBrilhoLargo; uniform float contraste, saturacao, cantos, grao, tempo, aberracao, forcaBrilho; uniform vec3 vinheta;
+        #include <tonemapping_pars_fragment>
+        #include <colorspace_pars_fragment>
+        varying vec2 vUv;
+        void main() {
+          vec2 d = vUv - 0.5;
+          vec4 c = texture2D(tDiffuse, vUv);
+          if (aberracao > 0.0) { c.r = texture2D(tDiffuse, vUv + d * aberracao).r; c.b = texture2D(tDiffuse, vUv - d * aberracao).b; }
+          if (forcaBrilho > 0.0) c.rgb += (texture2D(tBrilho, vUv).rgb * 0.35 + texture2D(tBrilhoLargo, vUv).rgb) * forcaBrilho;
+          c.rgb = ACESFilmicToneMapping(c.rgb);
+          c = sRGBTransferOETF(c);
+          vec3 g = c.rgb;
+          float l = dot(g, vec3(0.2126, 0.7152, 0.0722));
+          // vermelho puro (verde e azul iguais) e azul puro (vermelho e verde iguais); a pele (laranja) fica de fora
+          float canto = clamp(max((g.r - max(g.g, g.b)) * (1.0 - clamp(abs(g.g - g.b) * 6.0, 0.0, 1.0)),
+                                  (g.b - max(g.r, g.g)) * (1.0 - clamp(abs(g.r - g.g) * 6.0, 0.0, 1.0))) * 3.0, 0.0, 1.0);
+          g = mix(vec3(l), g, saturacao + cantos * canto);
+          g = (g - 0.5) * contraste + 0.5;
+          g *= mix(1.0 - vinheta.x, 1.0, smoothstep(vinheta.y, vinheta.y - vinheta.z, length(d) * 1.4142));
+          if (grao > 0.0) g += (fract(sin(dot(vUv * 1000.0 + tempo, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * grao;
+          gl_FragColor = vec4(clamp(g, 0.0, 1.0), 1.0);
+        }` });
+    this.fsQuad = new FullScreenQuad(this.material);
+  }
+  setSize(w, h) {
+    if (!this.comBloom) return;
+    const w4 = Math.max(1, Math.round(w / 4)), h4 = Math.max(1, Math.round(h / 4));
+    this.rt4.setSize(w4, h4); this.rt8.setSize(Math.max(1, w4 >> 1), Math.max(1, h4 >> 1)); this.rtB.setSize(Math.max(1, w4 >> 1), Math.max(1, h4 >> 1));
+    this.tam = [w, h, w4, h4];
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    if (this.comBloom) {
+      const [w, h, w4, h4] = this.tam, R = this.reduz.uniforms;
+      // 1/4 com o limiar (de 1/1 pra 1/4 em um passe: as 4 amostras caem a 1,5 texel, cobrem o quadrado)
+      R.tDiffuse.value = readBuffer.texture; R.texel.value.set(1.5 / w, 1.5 / h); R.limiar.value = VISUAL.pos.bloom.limiar;
+      renderer.setRenderTarget(this.rt4); this.qReduz.render(renderer);
+      R.tDiffuse.value = this.rt4.texture; R.texel.value.set(1 / w4, 1 / h4); R.limiar.value = 0;
+      renderer.setRenderTarget(this.rt8); this.qReduz.render(renderer);
+      const B = this.borra.uniforms; B.tDiffuse.value = this.rt8.texture; B.texel.value.set(2 / w4, 2 / h4);
+      renderer.setRenderTarget(this.rtB); this.qBorra.render(renderer);
+    }
+    this.uniforms.tDiffuse.value = readBuffer.texture;
+    this.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.fsQuad.render(renderer);
+  }
+  dispose() {
+    this.material.dispose(); this.fsQuad.dispose();
+    if (this.comBloom) { for (const x of [this.rt4, this.rt8, this.rtB, this.reduz, this.borra, this.qReduz, this.qBorra]) x.dispose(); }
+  }
+}
+
+/* sombra de contato: mancha macia embaixo de cada pé (a sombra do canhão de cima sozinha deixava o pé boiando) */
+function texturaContato() {
+  const cv = document.createElement("canvas"); cv.width = cv.height = 64; const c = cv.getContext("2d");
+  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(0.5, "rgba(0,0,0,.55)"); g.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv);
+}
 
 const RAIO = 4.6;           // raio do octógono (até o meio da grade), em metros
 export { RAIO };
@@ -92,19 +197,21 @@ export class Palco {
     const r = this.r = new THREE.WebGLRenderer({ antialias: max || devicePixelRatio < 1.5, powerPreference: "high-performance" });
     r.setPixelRatio(max ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, innerWidth < 700 ? 1.25 : 1.5));   // menos pixel, mais quadro por segundo
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.9;
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = VISUAL.exposicao;
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;   // sombra suave (2026-11-19: a dura saía em degraus)
     alvo.appendChild(r.domElement);
 
     const cena = this.cena = new THREE.Scene();
-    cena.background = new THREE.Color(0x05060a);
-    cena.fog = new THREE.Fog(0x06070b, 9, 34);   // a torcida afunda no escuro (2026-11-19: os recortes apareciam demais)
-    const pm = new THREE.PMREMGenerator(r);
-    cena.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
-    cena.environmentIntensity = 0.3;
+    const AMB = VISUAL.ambiente;
+    cena.background = new THREE.Color(AMB.fundo);
+    cena.fog = new THREE.Fog(AMB.neblina.cor, AMB.neblina.perto, AMB.neblina.longe);   // a torcida afunda no escuro (2026-11-19: os recortes apareciam demais)
+    const pm = this.pm = new THREE.PMREMGenerator(r);
+    this.envReserva = cena.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    cena.environmentIntensity = AMB.intensidadeReserva;
 
     this.cam = new THREE.PerspectiveCamera(38, 1, 0.1, 120);
     this.agitacao = 0; this.nivel = 0;
+    this.luzesFortes = [];   // materiais sem luz (lentes, telas, LED) que o bloom faz brilhar: { m, base, k }
     this.montarOctogono();
     this.montarLuz();
     this.montarArena();
@@ -121,6 +228,9 @@ export class Palco {
       this.placa = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || "") : "";
     } catch (e) { this.placa = ""; }
     this.semPlaca = /swiftshader|llvmpipe|software|basic render/i.test(this.placa);
+    /* modo do jogador (botão no canto da luta): "auto" começa em alta no computador e média no celular */
+    let modo = "auto"; try { modo = localStorage.getItem("luta3d:qualidade") || "auto"; } catch (e) {}
+    this.definirModo(modo);
     if (this.semPlaca) for (const n of [1, 2, 3]) this.qualidade(n);
     // o palco mora dentro da tela da luta: muda de tamanho com ela, não só com a janela
     this.obs = typeof ResizeObserver === "function" ? new ResizeObserver(() => this.redimensionar()) : null;
@@ -128,11 +238,15 @@ export class Palco {
   }
 
   destruir() {
+    this.destruido = true;
     if (this.obs) this.obs.disconnect(); else removeEventListener("resize", this.aoMudar);
     this.cena.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
       for (const m of [].concat(o.material || [])) { for (const v of Object.values(m)) if (v && v.isTexture) v.dispose(); m.dispose(); }
     });
+    if (this.composer) this.desmontarPos();
+    if (this.envHdri) this.envHdri.dispose();
+    this.envReserva.dispose(); this.pm.dispose();
     this.r.dispose(); this.r.forceContextLoss();
     this.r.domElement.remove();
   }
@@ -142,6 +256,59 @@ export class Palco {
     this.r.setSize(w, h, false);
     this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
     this.retrato = h > w;
+    if (this.composer) { this.composer.setPixelRatio(this.r.getPixelRatio()); this.composer.setSize(w, h); }
+  }
+
+  /* ---------- qualidade escolhida (botão da luta) ----------
+     modo: "auto", "baixa", "media" ou "alta". Auto: alta no computador, média no celular, baixa sem placa de vídeo;
+     a medida de quadros (diretor) desce dali. A gravação dos anúncios (luta3d:max) fica sempre na alta. */
+  definirModo(modo) {
+    this.modo = ["auto", "baixa", "media", "alta"].includes(modo) ? modo : "auto";
+    const celular = innerWidth < 700 || (typeof matchMedia === "function" && matchMedia("(pointer:coarse)").matches);
+    const ef = this.max ? "alta" : this.modo !== "auto" ? this.modo : this.semPlaca ? "baixa" : celular ? "media" : "alta";
+    this.aplicar(ef);
+  }
+  aplicar(ef) {
+    const q = VISUAL.qualidade[ef], r = this.r; this.efetivo = ef;
+    const teto = this.max ? 2 : innerWidth < 700 ? q.celular : q.resolucao;   // o pós no celular se paga com menos pixel
+    r.setPixelRatio(this.nivel >= 1 && !this.max ? 1 : Math.min(devicePixelRatio, teto));
+    if (this.chave.shadow.mapSize.x !== q.sombra) { this.chave.shadow.mapSize.set(q.sombra, q.sombra); if (this.chave.shadow.map) { this.chave.shadow.map.dispose(); this.chave.shadow.map = null; } }
+    if (this.composer && this.final.comBloom !== !!q.bloom) this.desmontarPos();   // o bloom liga e desliga com o modo
+    if (q.pos && !this.composer) this.montarPos(q.bloom);
+    if (!q.pos && this.composer) this.desmontarPos();
+    if (this.composer) this.final.uniforms.grao.value = q.grao ? VISUAL.pos.grao : 0;
+    this.comAberracao = !!(q.pos && q.aberracao);
+    // lentes, telões e LED: mais fortes que a pele só quando o bloom existe (é o bloom que lê o brilho)
+    for (const { m, base, k } of this.luzesFortes) m.color.copy(base).multiplyScalar(q.pos ? k : 1);
+    if (q.hdri) this.carregarHdri();
+    else { this.cena.environment = this.envReserva; this.cena.environmentIntensity = VISUAL.ambiente.intensidadeReserva; }
+    this.redimensionar();
+  }
+  montarPos(comBloom) {
+    const P = VISUAL.pos, gl = this.r.getContext(), aa = gl.getContextAttributes && gl.getContextAttributes().antialias;
+    // HalfFloat: a cena sai do RenderPass sem tom (o PassoFinal aplica), e o bloom lê o que passa de 1; com antialias
+    // ligado no renderer, o alvo tem MSAA (sem isso a borda serrilhava em relação ao modo baixa)
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: aa ? 4 : 0 });
+    const c = this.composer = new EffectComposer(this.r, rt);
+    c.addPass(new RenderPass(this.cena, this.cam));
+    c.addPass(this.final = new PassoFinal(!!comBloom));
+  }
+  desmontarPos() {
+    for (const p of this.composer.passes) if (p.dispose) p.dispose();
+    this.composer.dispose(); this.composer = null; this.final = null;
+  }
+  /* HDRI da arena (Poly Haven, CC0): só reflexo e preenchimento. Carrega uma vez, depois que a luta abriu; sem ele
+     (arquivo faltando, rede), fica o ambiente procedural e o aviso no console */
+  carregarHdri() {
+    const usar = () => { if (!VISUAL.qualidade[this.efetivo].hdri || !this.envHdri) return;
+      this.cena.environment = this.envHdri; this.cena.environmentIntensity = VISUAL.ambiente.intensidade; this.cena.environmentRotation.y = VISUAL.ambiente.rotacao; };
+    if (this.envHdri) return usar();
+    if (this.hdriPedido) return;
+    this.hdriPedido = new RGBELoader().loadAsync(new URL(VISUAL.ambiente.hdri, import.meta.url).href).then((t) => {
+      if (this.destruido) { t.dispose(); return; }
+      t.mapping = THREE.EquirectangularReflectionMapping;
+      this.envHdri = this.pm.fromEquirectangular(t).texture; t.dispose(); usar();
+    }).catch((e) => { this.hdriFalhou = String(e && e.message || e); console.warn("luta3d: HDRI da arena não carregou, ambiente procedural", this.hdriFalhou); });
   }
 
   montarOctogono() {
@@ -183,26 +350,36 @@ export class Palco {
 
   montarLuz() {
     const cena = this.cena;
-    cena.add(new THREE.HemisphereLight(0x6f7a9c, 0x120d0b, 0.42));
+    const LZ = VISUAL.luzes;
+    cena.add(new THREE.HemisphereLight(LZ.ceu.cor, LZ.ceu.chao, LZ.ceu.intensidade));
     // luz principal de cima, branca e forte como a da transmissão; só ela faz sombra
-    const chave = new THREE.SpotLight(0xfff6ea, 240, 24, Math.PI / 4.2, 0.55, 1.5);
-    chave.position.set(0.6, 9.2, 1.2); chave.target.position.set(0, 0, 0);
+    const chave = this.chave = new THREE.SpotLight(LZ.principal.cor, LZ.principal.intensidade, 24, LZ.principal.abertura, LZ.principal.penumbra, 1.5);
+    chave.position.set(0.6, LZ.principal.altura, 1.2); chave.target.position.set(0, 0, 0);
     chave.castShadow = true; chave.shadow.mapSize.set(2048, 2048); chave.shadow.bias = -0.0004; chave.shadow.normalBias = 0.03;   // corpo realista (2026-11-20): sem isso a sombra do próprio corpo fazia listras nas costas chave.shadow.radius = 4;
     chave.shadow.camera.near = 4; chave.shadow.camera.far = 14;
     cena.add(chave, chave.target);
-    // contraluz colorida (vermelho e azul de transmissão)
-    const rim1 = new THREE.SpotLight(0xff3a2e, 48, 18, Math.PI / 6, 0.7, 1.5); rim1.position.set(-6, 4.5, -5); rim1.target.position.set(0, 1, 0);
-    const rim2 = new THREE.SpotLight(0x4a7dff, 52, 18, Math.PI / 6, 0.7, 1.5); rim2.position.set(6, 4.5, -5); rim2.target.position.set(0, 1, 0);
+    // contraluz colorida (vermelho e azul de transmissão): atrás dos lutadores, do lado oposto da câmera (quadro())
+    const CL = LZ.contraluz;
+    const rim1 = this.rimV = new THREE.SpotLight(CL.vermelha.cor, CL.vermelha.intensidade, 18, CL.abertura, 0.7, 1.5); rim1.position.set(-6, 4.5, -5); rim1.target.position.set(0, 1, 0);
+    const rim2 = this.rimA = new THREE.SpotLight(CL.azul.cor, CL.azul.intensidade, 18, CL.abertura, 0.7, 1.5); rim2.position.set(6, 4.5, -5); rim2.target.position.set(0, 1, 0);
     // canhão que segue o lutador na entrada (fora do octógono a arena é escura); desligado na luta
     this.seguidor = new THREE.SpotLight(0xfff2e0, 0, 16, Math.PI / 14, 0.5, 1.4); this.seguidor.position.set(0, 9, 12);
     cena.add(this.seguidor, this.seguidor.target);
     // luz de preenchimento que acompanha a câmera: o rosto não some na sombra
-    this.preenche = new THREE.DirectionalLight(0xfff1e6, 0.6); cena.add(this.preenche, this.preenche.target);
+    this.preenche = new THREE.DirectionalLight(LZ.preenchimento.cor, LZ.preenchimento.intensidade); cena.add(this.preenche, this.preenche.target);
     cena.add(rim1, rim1.target, rim2, rim2.target);
+    // sombra de contato dos pés (até 3 pessoas: os dois e o árbitro), posta no quadro por quem chamou pes()
+    const texC = texturaContato(), geoC = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    this.contatos = [];
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.Mesh(geoC, new THREE.MeshBasicMaterial({ map: texC, transparent: true, depthWrite: false, opacity: 0, color: 0x000000, polygonOffset: true, polygonOffsetFactor: -2 }));
+      m.renderOrder = 1; m.visible = false; cena.add(m); this.contatos.push(m);
+    }
+    this.pesDe = [];
 
     // estrutura de luz em cima do octógono: treliça octogonal com refletores apontados pra lona
     const matTrelica = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.5, metalness: 0.6 });
-    const matLente = new THREE.MeshBasicMaterial({ color: 0xfff3dc, toneMapped: false });
+    const matLente = new THREE.MeshBasicMaterial({ color: 0xfff3dc, toneMapped: false }); this.forte(matLente, VISUAL.pos.brilhoLuzes);
     const matCorpo = new THREE.MeshStandardMaterial({ color: 0x0d0e11, roughness: 0.5, metalness: 0.4 });
     const RT = 3.4, YT = 8.6;
     for (let k = 0; k < 8; k++) {
@@ -235,7 +412,7 @@ export class Palco {
     // mesas da beira do octógono (comentaristas e juízes), com a tela dos computadores acesa
     const matMesa = new THREE.MeshStandardMaterial({ color: 0x101217, roughness: 0.5 });
     const matFrente = new THREE.MeshStandardMaterial({ color: 0x15171d, roughness: 0.6, emissive: 0x2a0806, emissiveIntensity: 0.6 });
-    const matTela = new THREE.MeshBasicMaterial({ color: 0x9fc3ff, toneMapped: false });
+    const matTela = new THREE.MeshBasicMaterial({ color: 0x9fc3ff, toneMapped: false }); this.forte(matTela, VISUAL.pos.brilhoTelas);
     this.assentos = [];
     for (let k = 0; k < 8; k++) {
       const a = k * Math.PI / 4 + Math.PI / 8;
@@ -267,10 +444,10 @@ export class Palco {
     cena.add(degraus);
     // parede da primeira fileira com a faixa de LED que corre
     this.texFaixa = texturaFaixa();
-    const faixa = new THREE.Mesh(new THREE.CylinderGeometry(11.38, 11.38, 0.5, 48, 1, true), new THREE.MeshBasicMaterial({ map: this.texFaixa, side: THREE.BackSide, toneMapped: false }));
+    const faixa = new THREE.Mesh(new THREE.CylinderGeometry(11.38, 11.38, 0.5, 48, 1, true), this.forte(new THREE.MeshBasicMaterial({ map: this.texFaixa, side: THREE.BackSide, toneMapped: false }), VISUAL.pos.brilhoTelas));
     faixa.position.y = CHAO + 1.1; cena.add(faixa);
     // luzinhas dos corredores da arquibancada
-    const matLuz = new THREE.MeshBasicMaterial({ color: 0x7fa0ff, toneMapped: false });
+    const matLuz = new THREE.MeshBasicMaterial({ color: 0x7fa0ff, toneMapped: false }); this.forte(matLuz, VISUAL.pos.brilhoLuzes);
     const geoLuz = new THREE.BoxGeometry(0.06, 0.03, 0.06), luzes = new THREE.InstancedMesh(geoLuz, matLuz, 12 * FILEIRAS);
     const m = new THREE.Matrix4(); let n = 0;
     for (let s = 0; s < 12; s++) {
@@ -334,7 +511,7 @@ export class Palco {
   montarTeloes() {
     const cv = this.cvTelao = document.createElement("canvas"); cv.width = 1024; cv.height = 576;
     this.texTelao = new THREE.CanvasTexture(cv); this.texTelao.colorSpace = THREE.SRGBColorSpace; this.texTelao.anisotropy = 4;
-    const matTela = new THREE.MeshBasicMaterial({ map: this.texTelao, toneMapped: false });
+    const matTela = this.forte(new THREE.MeshBasicMaterial({ map: this.texTelao, toneMapped: false }), VISUAL.pos.brilhoTelas);
     const matMoldura = new THREE.MeshStandardMaterial({ color: 0x0b0c0f, roughness: 0.5, metalness: 0.5 });
     for (const a of [0, Math.PI]) {
       const g = new THREE.Group(), r = 22;
@@ -367,12 +544,20 @@ export class Palco {
      2 = sem sombra, 3 = sem torcida. Só desce, pra não ficar trocando. */
   qualidade(nivel) {
     if (this.max && !this.semPlaca) return;   // a gravação dos anúncios fica no máximo
+    if (!this.semPlaca && this.modo !== "auto") return;   // o jogador escolheu: não desce sozinho
+    if (!this.semPlaca && this.efetivo !== "baixa") { this.aplicar(this.efetivo === "alta" ? "media" : "baixa"); return; }   // antes de tudo, o pós-processamento
     if (!(nivel > (this.nivel || 0)) || nivel > 3) return;
     this.nivel = nivel;
     if (nivel === 1) { this.r.setPixelRatio(1); this.redimensionar(); }
     if (nivel === 2) { this.r.shadowMap.enabled = false; this.cena.traverse((o) => { for (const m of [].concat(o.material || [])) m.needsUpdate = true; }); }
     if (nivel === 3 && this.torcida) { this.torcida.corpo.visible = false; this.torcida.cabeca.visible = false; }
   }
+
+  /* material sem luz que fica k vezes mais forte com o bloom ligado (aplicar()) */
+  forte(m, k) { this.luzesFortes.push({ m, base: m.color.clone(), k }); return m; }
+
+  /* quem tem pé no chão (Lutador com posMundo): a sombra de contato segue os pés deles */
+  pes(lista) { this.pesDe = lista; }
 
   /* a torcida levanta: knockdown, nocaute, finalização */
   agitar(forca = 1) { this.agitacao = Math.max(this.agitacao, Math.min(1.5, forca)); }
@@ -384,14 +569,18 @@ export class Palco {
       const g = c.createRadialGradient(16, 16, 0, 16, 16, 16); g.addColorStop(0, "rgba(255,255,255,.95)"); g.addColorStop(0.5, "rgba(230,236,245,.5)"); g.addColorStop(1, "rgba(230,236,245,0)");
       c.fillStyle = g; c.fillRect(0, 0, 32, 32); this.texGota = new THREE.CanvasTexture(cv);
     }
-    const n = Math.round(10 + 14 * Math.min(2, forca));
+    // poucas gotas e com teto na tela; os sprites voltam pra uma reserva (antes: 10 a 38 por golpe, material novo em cada)
+    const PT = VISUAL.impacto.particulas, livres = this.gotasLivres || (this.gotasLivres = []);
+    const n = Math.min(Math.round(PT.base + PT.porForca * Math.min(2, forca)), PT.maximo - this.flashes.length);
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.texGota, transparent: true, depthWrite: false, opacity: 0.85 }));
+      const m = livres.pop() || new THREE.Sprite(new THREE.SpriteMaterial({ map: this.texGota, transparent: true, depthWrite: false, opacity: 0.85 }));
       m.position.copy(pos); const t = 0.012 + Math.random() * 0.022; m.scale.setScalar(t);
       const v = dir.clone().multiplyScalar(1.2 + Math.random() * 1.6 * forca).add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 0.4 + Math.random() * 1.2, (Math.random() - 0.5) * 1.6));
       this.cena.add(m); this.flashes.push({ m, v, t: 0, vida: 0.35 + Math.random() * 0.35 });
     }
-    this.tremor = Math.max(this.tremor, 0.012 * forca * forca + 0.008);
+    const TR = VISUAL.camera.tremor;
+    this.tremor = Math.max(this.tremor, TR.base + TR.porForca * forca * forca);
+    if (this.comAberracao && forca >= VISUAL.pos.aberracao.limiar) this.aberracaoT = VISUAL.pos.aberracao.duracao;
   }
 
   /* câmera: vai suave até o alvo; tremor nos golpes fortes */
@@ -399,7 +588,7 @@ export class Palco {
     for (const f of this.flashes.slice()) {
       f.t += dt; f.v.y -= 9.8 * dt; f.m.position.addScaledVector(f.v, dt);
       f.m.material.opacity = Math.max(0, 0.85 * (1 - f.t / f.vida));
-      if (f.t >= f.vida || f.m.position.y < 0.01) { this.cena.remove(f.m); f.m.material.dispose(); this.flashes.splice(this.flashes.indexOf(f), 1); }
+      if (f.t >= f.vida || f.m.position.y < 0.01) { this.cena.remove(f.m); this.gotasLivres.push(f.m); this.flashes.splice(this.flashes.indexOf(f), 1); }
     }
     this.matPlateia.uniforms.tempo.value = tempo;
     this.matPlateia.uniforms.agita.value = this.agitacao;
@@ -413,14 +602,45 @@ export class Palco {
     this.cam.updateProjectionMatrix();
     this.cam.lookAt(this.camOlhar);
     this.preenche.position.copy(this.cam.position).add(new THREE.Vector3(0, 1.2, 0)); this.preenche.target.position.copy(this.camOlhar);
+    this.contraluz(); this.sombrasDeContato();
     // grade entre a câmera e a luta some (como câmera de lado da grade)
     const cx = this.cam.position.x, cz = this.cam.position.z;
     for (const pd of this.pedacos) { const d = Math.hypot(pd.pos.x - cx, pd.pos.z - cz); for (const o of pd.objs) o.visible = d > 2.4; }
     if (this.tremor > 0.0005) {
       this.cam.position.x += (Math.random() - 0.5) * this.tremor; this.cam.position.y += (Math.random() - 0.5) * this.tremor;
-      this.tremor *= Math.exp(-dt * 9);
+      this.tremor *= Math.exp(-dt * VISUAL.camera.tremor.recuperacao);
     }
-    this.r.render(this.cena, this.cam);
+    if (this.composer) {
+      const F = this.final.uniforms; F.tempo.value = tempo % 100;
+      const AB = VISUAL.pos.aberracao; this.aberracaoT = Math.max(0, (this.aberracaoT || 0) - dt);
+      F.aberracao.value = this.comAberracao ? AB.forca * this.aberracaoT / AB.duracao : 0;
+      this.composer.render(dt);
+    } else this.r.render(this.cena, this.cam);
+  }
+
+  /* a contraluz anda com a câmera: sempre atrás dos lutadores, vermelha à esquerda da tela e azul à direita */
+  contraluz() {
+    const CL = VISUAL.luzes.contraluz, o = this.camOlhar, c = this.cam.position;
+    const fx = c.x - o.x, fz = c.z - o.z, l = Math.hypot(fx, fz) || 1, ux = fx / l, uz = fz / l;   // da luta pra câmera
+    for (const [luz, s] of [[this.rimV, -1], [this.rimA, 1]]) {
+      luz.position.set(o.x - ux * CL.distancia + s * uz * CL.lado, CL.altura, o.z - uz * CL.distancia - s * ux * CL.lado);
+      luz.target.position.set(o.x, CL.alvo, o.z);
+    }
+  }
+  /* mancha embaixo de cada pé; some quando o pé sobe (chute, queda) */
+  sombrasDeContato() {
+    const CP = VISUAL.luzes.contatoPes; let k = 0;
+    for (const L of this.pesDe) {
+      if (!L.raiz.visible) continue;
+      for (const [pe, ponta] of [["foot_l", "ball_l"], ["foot_r", "ball_r"]]) {
+        const m = this.contatos[k++]; if (!m) return;
+        const a = L.posMundo(pe), b = L.posMundo(ponta), alt = Math.min(a.y, b.y);
+        const forca = THREE.MathUtils.clamp(1 - (alt - 0.03) / 0.22, 0, 1);
+        m.visible = forca > 0.01; m.material.opacity = CP.opacidade * forca;
+        m.position.set((a.x + b.x) / 2, 0.003, (a.z + b.z) / 2); m.scale.setScalar(CP.tamanho * (1.3 - 0.3 * forca));
+      }
+    }
+    for (; k < this.contatos.length; k++) this.contatos[k].visible = false;
   }
 
   /* torcida de pé pulando quando agita; parada, não gasta nada */
