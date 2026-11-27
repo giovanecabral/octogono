@@ -6643,6 +6643,16 @@ roupa").**
     do campo `no_rosto`); a camisa do árbitro segue com volume de corpo
     (barriga) e a calça com um degrau no joelho; o velcro da luva é escolhido
     por face (borda em escada de perto).
+- *Corpo, rodada 3 (2026-11-27, aprovada).* Camisa do árbitro a 1,0 cm da pele no tronco e 1,6 no ombro e na manga
+  (`folga_camisa` em `acessorios.py`; com 1,0 no ombro o braço erguido dobrava o pano pra dentro e apareciam pontos
+  escuros), cortina da frente pela metade e caindo mais rente (0,22): 3,1 cm sobre a pele no peito (antes 4,7). A pele
+  embaixo do calção e do cós não é desenhada (`peleDoCalcao`, junto da máscara da mão em `corpoSemMao`): no pesado de
+  costas ela furava logo abaixo do cós. A faixa do cós é outra malha, acima do calção: o limite de cima vem dela. O
+  corpo (escultura) e o calção (T) têm bind diferente: a altura é medida já com a pele dos ossos (`getVertexPosition`).
+  Quem perdeu no anúncio: tronco reto, ombros caídos, braço livre do lado do corpo (`PERDEDOR` no diretor). O braço
+  que o árbitro segura fica: puxar a pegada pra trás levava o braço do árbitro ao limite com 8 cm, e chegar mais perto
+  dobraria de novo o braço erguido do vencedor. Dobras de tecido na camisa ficaram de fora: a malha (pontos a 2,5 a 3
+  cm) não segura dobra e subdividir custaria uns 18 mil triângulos.
 - *Cinturão em 3D* (`modeloCinturao`): na disputa de cinturão que o jogador
   ganha, depois do anúncio ele levanta o cinturão por cima da cabeça
   ("CAMPEÃO!"). O jogo manda `titulo` pro diretor (também no Rever luta).
