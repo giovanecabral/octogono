@@ -78,13 +78,16 @@ export default {
 
   /* ---------- textos na tela (NOCAUTE!, o nome do vencedor) ----------
      lugar: "cima" ou "baixo"; margem em % da altura do palco. Fora do meio pra não cobrir rosto e ombro */
-  textos: { grande: { lugar: "baixo", margem: 8 }, pequena: { lugar: "cima", margem: 6 } },
+  // tamanho: a fonte em CSS (antes clamp(34px, 7vw, 92px) no grande e clamp(20px, 4vw, 44px) no pequeno)
+  textos: { grande: { lugar: "baixo", margem: 3, tamanho: "clamp(26px, 5.2vw, 68px)" }, pequena: { lugar: "cima", margem: 6, tamanho: "clamp(20px, 4vw, 44px)" } },
 
   /* ---------- sensação de impacto ---------- */
   impacto: {
     hitstop: { min: 0.04, max: 0.07, forcaMax: 2.2, lento: 0.04 },   // segundos parados no contato (força 0 = min, forcaMax = max); lento = velocidade do mundo parado
     lenta: { escala: 0.3, duracao: 0.6, volta: 0.5 },               // câmera lenta do nocaute: velocidade, quanto dura, quanto leva pra voltar
     flash: { limiar: 1.25 },                                       // vinheta vermelha a partir desta força
-    particulas: { base: 6, porForca: 8, maximo: 48 },             // gotas por golpe = base + porForca × força; nunca mais que o máximo na tela
+    // gotas por golpe = base + porForca × força (nocaute: 4 + 5 × 2 = 14), nunca mais que o máximo na tela; tamanho e opacidade
+    // multiplicam os de antes (1 e 0,85); abaixo = metros abaixo do ponto de contato onde elas nascem
+    particulas: { base: 4, porForca: 5, maximo: 36, tamanho: 0.65, opacidade: 0.55, abaixo: 0.14 },
   },
 };

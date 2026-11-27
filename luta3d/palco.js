@@ -576,7 +576,8 @@ export class Palco {
     const n = Math.min(Math.round(PT.base + PT.porForca * Math.min(2, forca)), PT.maximo - this.flashes.length);
     for (let i = 0; i < n; i++) {
       const m = livres.pop() || new THREE.Sprite(new THREE.SpriteMaterial({ map: this.texGota, transparent: true, depthWrite: false, opacity: 0.85 }));
-      m.position.copy(pos); const t = 0.012 + Math.random() * 0.022; m.scale.setScalar(t);
+      m.position.copy(pos); m.position.y -= PT.abaixo; const t = (0.012 + Math.random() * 0.022) * PT.tamanho; m.scale.setScalar(t);   // nasce abaixo do contato: não cobre rosto e ombro
+      m.material.opacity = PT.opacidade;
       const v = dir.clone().multiplyScalar(1.2 + Math.random() * 1.6 * forca).add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 0.4 + Math.random() * 1.2, (Math.random() - 0.5) * 1.6));
       this.cena.add(m); this.flashes.push({ m, v, t: 0, vida: 0.35 + Math.random() * 0.35 });
     }
@@ -589,7 +590,7 @@ export class Palco {
   quadro(dt, tempo) {
     for (const f of this.flashes.slice()) {
       f.t += dt; f.v.y -= 9.8 * dt; f.m.position.addScaledVector(f.v, dt);
-      f.m.material.opacity = Math.max(0, 0.85 * (1 - f.t / f.vida));
+      f.m.material.opacity = Math.max(0, VISUAL.impacto.particulas.opacidade * (1 - f.t / f.vida));
       if (f.t >= f.vida || f.m.position.y < 0.01) { this.cena.remove(f.m); this.gotasLivres.push(f.m); this.flashes.splice(this.flashes.indexOf(f), 1); }
     }
     this.matPlateia.uniforms.tempo.value = tempo;

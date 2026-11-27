@@ -177,6 +177,7 @@ function chamada(texto, { pequena = false } = {}) {
   elCham.className = "luta3d-chamada" + (pequena ? " pequena" : "");
   const TX = VISUAL.textos[pequena ? "pequena" : "grande"];   // terço de cima ou de baixo (visual.config.js)
   elCham.style.top = TX.lugar === "cima" ? TX.margem + "%" : "auto"; elCham.style.bottom = TX.lugar === "baixo" ? TX.margem + "%" : "auto";
+  elCham.style.fontSize = TX.tamanho || "";
   void elCham.offsetWidth; elCham.classList.add("ativa");
   clearTimeout(timerCham); timerCham = setTimeout(() => elCham.classList.remove("ativa"), pequena ? 1300 : 1900);
 }
